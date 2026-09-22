@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.35.32",
+    "version": "0.36.0",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -1341,6 +1341,304 @@
           },
           "422": {
             "description": "`validation_failed` — the id is not a uuid. Malformed is the caller's mistake,\nanswered before anything is read; well-formed-but-absent is the `404` above.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/runs/{id}/controls": {
+      "post": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Pause, resume, abort or steer a run",
+        "description": "Mockup 10's *Pause loop*, *Abort run* and the steering box\n([#306](https://github.com/NobuData/ouroboros/issues/306), decision **R6**). A control is\na row on a **durable queue**, not a call to the executor. The executor fetches it, applies\nit and acknowledges it with the effect it had, so the console can tell *acknowledged*\nfrom *sent* from *no response* instead of drawing all three as success.\n\n**Who may press what.** `steer` is `owner`, `admin` or `member`. `pause`, `resume` and\n`abort` are `owner` or `admin`. Checked by the server before the run is read, so a\nmember's abort is refused whatever it carries.\n\n**Abort needs the typed confirmation**: `confirmation` must be the run's loop number,\nthe `1847` of *Loop #1847*. The server re-checks it against the run.\n\n**Steering does not pause.** The text is appended to the current attempt's context and\nmirrored into the transcript as a `user` entry at once. The ack names the attempt it\nlanded on: *\"steering applied to attempt 2\"*. `remember: true` marks a steer as a\ncandidate fact for review (the #412 amendment). It is a hint, not a confirmation.\n\n**`202`, and the body's `state` says what became of it:**\n\n* `pending`: queued, not yet fetched. The chip reads *sent*.\n* `rejected`: the run has already finished. `detail` is the reason to display, and\n  nothing was queued.\n* any other state: a repeat collapsed into the control already outstanding. A second\n  `pause` or `abort` while one is pending or delivered answers with that one, and a\n  retry under the same `idempotencyKey` answers with the control that key named.\n\nA control that nobody acknowledges before `expiresAt` becomes `expired`, which is a\ndifferent state from `rejected`: *\"no response — the run may be between stages\"*.\nEvery control is audited as `run_control.*`, and no audit body carries the steer text.",
+        "operationId": "submitRunControl",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SubmitRunControlRequest"
+              },
+              "examples": {
+                "steer": {
+                  "summary": "A member steers the loop",
+                  "value": {
+                    "kind": "steer",
+                    "payload": "prefer a fix inside the ISR; do not touch the test timeouts"
+                  }
+                },
+                "abort": {
+                  "summary": "An administrator aborts, having typed the loop number",
+                  "value": {
+                    "kind": "abort",
+                    "confirmation": "1847",
+                    "idempotencyKey": "abort-1847-1"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The control, as the ack chip reads it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunControl"
+                },
+                "examples": {
+                  "queued": {
+                    "summary": "A steer, queued",
+                    "value": {
+                      "id": "c0000000-0000-4000-8000-000000000001",
+                      "runId": "5eed0009-0000-4000-8000-000000000482",
+                      "kind": "steer",
+                      "state": "pending",
+                      "requestedBy": "5eed0001-0000-4000-8000-00000000000a",
+                      "requestedAt": "2026-09-22T14:04:40.000Z",
+                      "deliveredAt": null,
+                      "ackedAt": null,
+                      "expiresAt": "2026-09-22T14:09:40.000Z",
+                      "detail": null,
+                      "hasPayload": true,
+                      "remember": false
+                    }
+                  },
+                  "rejected": {
+                    "summary": "A steer on a run that has already finished",
+                    "value": {
+                      "id": "c0000000-0000-4000-8000-000000000002",
+                      "runId": "5eed0009-0000-4000-8000-000000000482",
+                      "kind": "steer",
+                      "state": "rejected",
+                      "requestedBy": "5eed0001-0000-4000-8000-00000000000a",
+                      "requestedAt": "2026-09-22T14:30:00.000Z",
+                      "deliveredAt": null,
+                      "ackedAt": null,
+                      "expiresAt": "2026-09-22T14:35:00.000Z",
+                      "detail": "The run is merged and has already finished, so there is nothing left to control.",
+                      "hasPayload": true,
+                      "remember": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role in this workspace may not request this kind of control.\nSteering is `owner`, `admin` or `member`; pausing, resuming and aborting are `owner`\nor `admin`. `details.required` lists the roles that would have been enough. Nothing\nis written.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "forbidden",
+                  "message": "Your role in this workspace does not permit this.",
+                  "details": {
+                    "role": "member",
+                    "required": [
+                      "owner",
+                      "admin"
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found` — no run with that id, **or none this caller may know about**. Or\n`tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`control_key_reused` — that `idempotencyKey` already named a different control on\nthis run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "control_key_reused",
+                  "message": "That idempotency key was already used for a different control on this run.",
+                  "details": {
+                    "idempotencyKey": "abort-1847-1"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`abort_confirmation_invalid` — an abort whose `confirmation` is not the run's loop\nnumber (the expected value is not echoed). `control_payload_invalid` — a steer with\nno text, text on any other kind, or `remember` on anything but a steer;\n`details.field` names which. `validation_failed` — the id is not a uuid, or a field\nis the wrong shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "abort_confirmation_invalid",
+                  "message": "Type the loop number to confirm the abort.",
+                  "details": {
+                    "kind": "abort"
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "A run's recent controls",
+        "description": "The controls behind the run page's ack chips, newest first, at most 50\n([#306](https://github.com/NobuData/ouroboros/issues/306)). Every member may read them,\na `viewer` included.\n\nElapsed controls are expired before this answers, so a chip never reads *sent* for a\ncontrol that can no longer be delivered. The steer text is not included: it is in the\ntranscript, as the `user` entry the steer wrote.",
+        "operationId": "listRunControls",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The run's recent controls.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunControlList"
+                },
+                "example": {
+                  "controls": [
+                    {
+                      "id": "c0000000-0000-4000-8000-000000000003",
+                      "runId": "5eed0009-0000-4000-8000-000000000482",
+                      "kind": "steer",
+                      "state": "acked",
+                      "requestedBy": "5eed0001-0000-4000-8000-00000000000a",
+                      "requestedAt": "2026-09-22T14:04:40.000Z",
+                      "deliveredAt": "2026-09-22T14:04:43.000Z",
+                      "ackedAt": "2026-09-22T14:04:51.000Z",
+                      "expiresAt": "2026-09-22T14:09:40.000Z",
+                      "detail": "steering applied to attempt 2",
+                      "hasPayload": true,
+                      "remember": false
+                    },
+                    {
+                      "id": "c0000000-0000-4000-8000-000000000004",
+                      "runId": "5eed0009-0000-4000-8000-000000000482",
+                      "kind": "pause",
+                      "state": "expired",
+                      "requestedBy": "5eed0001-0000-4000-8000-00000000000b",
+                      "requestedAt": "2026-09-22T13:50:00.000Z",
+                      "deliveredAt": null,
+                      "ackedAt": null,
+                      "expiresAt": "2026-09-22T13:52:00.000Z",
+                      "detail": null,
+                      "hasPayload": false,
+                      "remember": false
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found` — no run with that id, or none this caller may know about.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -19024,17 +19322,176 @@
           }
         }
       },
+      "RunControlKind": {
+        "type": "string",
+        "title": "RunControlKind",
+        "description": "Which control. `pause` and `resume` are the page head's toggle, `abort` its red button,\nand `steer` the box under the transcript.",
+        "enum": [
+          "pause",
+          "resume",
+          "abort",
+          "steer"
+        ],
+        "example": "steer"
+      },
+      "RunControlState": {
+        "type": "string",
+        "title": "RunControlState",
+        "description": "Where a control has got to. `pending` renders *sent*, `delivered` *received*, `acked`\n*acknowledged* with `detail`, `expired` *no response — the run may be between stages*,\nand `rejected` shows `detail` as the reason. Forward only: `pending → delivered | expired\n| rejected`, `delivered → acked | expired`.",
+        "enum": [
+          "pending",
+          "delivered",
+          "acked",
+          "expired",
+          "rejected"
+        ],
+        "example": "pending"
+      },
+      "SubmitRunControlRequest": {
+        "type": "object",
+        "title": "SubmitRunControlRequest",
+        "additionalProperties": false,
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/RunControlKind"
+          },
+          "payload": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "The steering text. Required for a steer, and refused on every other kind."
+          },
+          "remember": {
+            "type": "boolean",
+            "description": "The steer's *remember this* flag. Only a flagged steer becomes a fact candidate, and\nthe candidate still waits for review. Refused as `true` on every other kind."
+          },
+          "confirmation": {
+            "type": "string",
+            "maxLength": 32,
+            "description": "What was typed into the abort dialog: the run's loop number. Required for an abort\nand re-checked by the server; ignored for every other kind."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The caller's name for this submission, trimmed and non-empty. A retry under the same\nkey is answered with the same control. Optional."
+          }
+        }
+      },
+      "RunControl": {
+        "type": "object",
+        "title": "RunControl",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "runId",
+          "kind",
+          "state",
+          "requestedBy",
+          "requestedAt",
+          "deliveredAt",
+          "ackedAt",
+          "expiresAt",
+          "detail",
+          "hasPayload",
+          "remember"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/RunControlKind"
+          },
+          "state": {
+            "$ref": "#/components/schemas/RunControlState"
+          },
+          "requestedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who asked. Null once that person has been deleted."
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "deliveredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the executor fetched it. Null until it has."
+          },
+          "ackedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the executor acknowledged it. Set exactly for `acked`."
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "After this instant an unanswered control is `expired`."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the ack said (*\"steering applied to attempt 2\"*), or why the control was\nrejected. Null while nobody has answered."
+          },
+          "hasPayload": {
+            "type": "boolean",
+            "description": "Whether the control carried steering text. The text is in the transcript."
+          },
+          "remember": {
+            "type": "boolean",
+            "description": "The steer's *remember this* flag. Always false for the other kinds."
+          }
+        }
+      },
+      "RunControlList": {
+        "type": "object",
+        "title": "RunControlList",
+        "additionalProperties": false,
+        "required": [
+          "controls"
+        ],
+        "properties": {
+          "controls": {
+            "type": "array",
+            "maxItems": 50,
+            "description": "Newest first.",
+            "items": {
+              "$ref": "#/components/schemas/RunControl"
+            }
+          }
+        }
+      },
       "RunStatus": {
         "type": "string",
         "title": "RunStatus",
-        "description": "Where a run is in its life. The first three are **active** — the run is in flight and\nhas no `finishedAt` — and the last three are **terminal**.\n\nThe split is the dashboard's two run cards: *Active loops* is the runs holding one of\nthe first three, *Recently closed by the loop* is the runs holding one of the last\nthree. They are one table and one shape, queried twice; a run moving between the cards\n*is* the transition into a terminal status.",
+        "description": "Where a run is in its life. The first three are **active** — the run is in flight and\nhas no `finishedAt` — and the last four are **terminal**.\n\nThe split is the dashboard's two run cards: *Active loops* is the runs holding one of\nthe first three, *Recently closed by the loop* is the runs holding one of the last\nfour. They are one table and one shape, queried twice; a run moving between the cards\n*is* the transition into a terminal status.\n\n`canceled` is an aborted run ([#306](https://github.com/NobuData/ouroboros/issues/306)):\nan administrator pressed *Abort run* and the executor acknowledged it. It is a person's\ndecision, which is why it is not `failed`, and the run's branch is preserved. It counts\namong the closed runs of the merge-rate window like every other terminal status.",
         "enum": [
           "coding",
           "building",
           "review",
           "merged",
           "needs_human",
-          "failed"
+          "failed",
+          "canceled"
         ],
         "example": "coding"
       },

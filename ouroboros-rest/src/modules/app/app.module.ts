@@ -22,6 +22,7 @@ import { FarmFleetModule } from "../farm/fleet/fleet.module";
 import { FarmLogsModule } from "../farm/logs/logs.module";
 import { FarmInstallerModule } from "../farm/installer/installer.module";
 import { IngestModule } from "../ingest/ingest.module";
+import { ControlsModule } from "../controls/controls.module";
 import { InternalModule } from "../internal/internal.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
@@ -411,6 +412,11 @@ export class AppModule {
         // the same, but listing it after keeps the reading order the same as the protection
         // order.
         IngestModule,
+        // AP.4 ([#306](https://github.com/NobuData/ouroboros/issues/306)) — the run control
+        // queue: `POST`/`GET /api/v1/runs/:id/controls` for a person, and the fetch and ack
+        // routes under `/internal/runs` for an executor. After `InternalModule` for the reason
+        // `IngestModule` is.
+        ControlsModule,
       ],
     };
   }

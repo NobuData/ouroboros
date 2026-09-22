@@ -22,6 +22,8 @@ import pytest
 from pydantic import ValidationError
 
 from ouroboros_engine.control_plane.contract import (
+    CONTROL_ERRORS,
+    CONTROL_KINDS,
     EVENT_MODELS,
     INTERNAL_KEY_HEADER,
     INVOKE_ERROR_CODES,
@@ -32,11 +34,15 @@ from ouroboros_engine.control_plane.contract import (
     LEASE_PATH,
     PROVIDERS,
     PROXIED_PROVIDERS,
+    RUN_CONTROL_ACK_PATH,
+    RUN_CONTROLS_FETCH_PATH,
+    ControlAck,
     DeltaEvent,
     ErrorEnvelope,
     InvokeRequest,
     Lease,
     LeaseRequest,
+    PendingControl,
     RunContext,
     UsageEvent,
 )
@@ -84,10 +90,71 @@ def test_the_document_describes_a_surface_this_client_does_not_mirror_whole() ->
     it and fails on the change that dropped it.
     """
     paths = set(_document()["paths"])
-    ingestion = {path for path in paths if path.startswith("/internal/runs")}
+    controls = {RUN_CONTROLS_FETCH_PATH, RUN_CONTROL_ACK_PATH}
+    ingestion = {
+        path for path in paths if path.startswith("/internal/runs")
+    } - _openapi(controls)
 
     assert len(ingestion) == 6, sorted(paths)
-    assert paths == ingestion | {LEASE_PATH, INVOKE_PATH}
+    assert paths == ingestion | _openapi(controls) | {LEASE_PATH, INVOKE_PATH}
+
+
+def _openapi(paths: set[str]) -> set[str]:
+    """Spell this module's paths the way the document does.
+
+    Args:
+        paths: Paths carrying Python format fields, ``{control_id}`` among them.
+
+    Returns:
+        The same paths with the document's ``camelCase`` parameter names.
+    """
+    return {path.replace("{control_id}", "{controlId}") for path in paths}
+
+
+def test_the_control_queue_paths_are_the_ones_the_control_plane_serves() -> None:
+    """The fetch and the acknowledgment are served — AP.4 (#306).
+
+    Every executor, the simulated driver (#307) and real execution (#315), calls these two to
+    honour Pause, Resume, Abort and Steer.
+    """
+    assert _openapi({RUN_CONTROLS_FETCH_PATH, RUN_CONTROL_ACK_PATH}) <= set(
+        _document()["paths"]
+    )
+
+
+def test_the_control_kinds_are_the_published_ones() -> None:
+    schema = _document()["components"]["schemas"]["PendingControl"]
+
+    assert tuple(schema["properties"]["kind"]["enum"]) == CONTROL_KINDS
+
+
+def test_a_pending_control_carries_the_fields_the_document_requires() -> None:
+    required = set(_document()["components"]["schemas"]["PendingControl"]["required"])
+    wire = {field.alias or name for name, field in PendingControl.model_fields.items()}
+
+    assert required == wire
+
+
+def test_an_ack_sends_only_fields_the_document_declares() -> None:
+    declared = set(
+        _document()["components"]["schemas"]["AckControlRequest"]["properties"]
+    )
+    wire = {field.alias or name for name, field in ControlAck.model_fields.items()}
+
+    assert wire == declared
+
+
+@pytest.mark.parametrize("code", CONTROL_ERRORS)
+def test_every_control_refusal_this_client_knows_is_documented(code: str) -> None:
+    text = json.dumps(
+        {
+            path: operation
+            for path, operation in _document()["paths"].items()
+            if "/controls/" in path
+        }
+    )
+
+    assert code in text
 
 
 def test_the_key_travels_on_the_header_the_control_plane_reads() -> None:

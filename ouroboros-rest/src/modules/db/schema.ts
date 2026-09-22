@@ -731,7 +731,8 @@ export interface IssueEstimatesTable {
  * makes the split a property of the row rather than a convention — a terminal status and a
  * null `finished_at` cannot both be true.
  */
-export type RunStatus = "coding" | "building" | "review" | "merged" | "needs_human" | "failed";
+export type RunStatus =
+  "coding" | "building" | "review" | "merged" | "needs_human" | "failed" | "canceled";
 
 /**
  * The three statuses a run still in flight may hold, in lifecycle order.
@@ -746,11 +747,18 @@ export const ACTIVE_RUN_STATUSES = [
   "review",
 ] as const satisfies readonly RunStatus[];
 
-/** The three a run rests at, in the order the CHECK declares them. */
+/**
+ * The four a run rests at, in the order the CHECK declares them.
+ *
+ * `canceled` is V050's ([#306](https://github.com/NobuData/ouroboros/issues/306), AP.4): where
+ * an acknowledged abort leaves a run. A person's decision rather than the agent's failure,
+ * which is why it is not `failed`.
+ */
 export const TERMINAL_RUN_STATUSES = [
   "merged",
   "needs_human",
   "failed",
+  "canceled",
 ] as const satisfies readonly RunStatus[];
 
 /** A status a run in flight may hold — the narrowing {@link ACTIVE_RUN_STATUSES} carries. */
@@ -1666,6 +1674,15 @@ export interface RunControlsTable {
    * that guarantees nothing at all.
    */
   idempotency_key: Generated<string>;
+  /**
+   * The steer's explicit *remember this* flag (V050, the #412 amendment on
+   * [#306](https://github.com/NobuData/ouroboros/issues/306), decision **K5**).
+   *
+   * Steer-only (`run_controls_remember_belongs_to_steer`), false unless set, and frozen at
+   * insert with the rest of what was asked. Only a flagged steer becomes a fact candidate, and
+   * the candidate still lands `awaiting review`: the flag is a hint, not a confirmation.
+   */
+  remember: Generated<boolean>;
 }
 
 /**
@@ -4591,6 +4608,7 @@ export const TABLE_COLUMNS = {
     "expires_at",
     "ack_detail",
     "idempotency_key",
+    "remember",
   ],
   run_ingest_receipts: [
     "id",

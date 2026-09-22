@@ -52,6 +52,8 @@ import {
   INTERNAL_RUN_EVENTS_PATH,
   INTERNAL_RUN_FILES_PATH,
   INTERNAL_RUN_RESOURCES_PATH,
+  INTERNAL_RUN_CONTROLS_FETCH_PATH,
+  INTERNAL_RUN_CONTROL_ACK_PATH,
   INTERNAL_RUN_STAGE_TRANSITIONS_PATH,
   isInternalPath,
 } from "../internal/internal.paths";
@@ -140,6 +142,11 @@ export const INTERNAL_SURFACE: readonly string[] = [
   `PUT ${INTERNAL_RUN_FILES_PATH}`,
   `POST ${INTERNAL_RUN_COMMITS_PATH}`,
   `POST ${INTERNAL_RUN_RESOURCES_PATH}`,
+  // The control queue's executor half (AP.4, #306, decision R6): claim what is pending for a
+  // run, and acknowledge one control with the effect it had. A stranger who could reach these
+  // could swallow an abort before the executor ever saw it.
+  `POST ${INTERNAL_RUN_CONTROLS_FETCH_PATH}`,
+  `POST ${INTERNAL_RUN_CONTROL_ACK_PATH}`,
 ].sort();
 
 /** One route, as the enumeration sees it. */

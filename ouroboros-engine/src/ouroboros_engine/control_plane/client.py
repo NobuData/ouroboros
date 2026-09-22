@@ -52,6 +52,11 @@ from ouroboros_engine.control_plane.contract import (
     INVOKE_MEDIA_TYPE,
     INVOKE_PATH,
     LEASE_PATH,
+    RUN_CONTROL_ACK_PATH,
+    RUN_CONTROLS_FETCH_PATH,
+    AckedControl,
+    ControlAck,
+    ControlsFetched,
     ErrorEnvelope,
     InvokeEvent,
     InvokeRequest,
@@ -265,6 +270,88 @@ class ControlPlaneClient:
             json=body.model_dump(by_alias=True, exclude_none=True),
             accept=INVOKE_MEDIA_TYPE,
         )
+
+    def fetch_controls_request(self, run: str) -> ControlPlaneRequest:
+        """Build the request that claims a run's pending controls (AP.4, #306).
+
+        Args:
+            run: The run — ``runs.id``.
+
+        Returns:
+            The request to send. Its body is empty: claiming is the whole of the request.
+        """
+        return ControlPlaneRequest(
+            method="POST",
+            url=self._url(RUN_CONTROLS_FETCH_PATH.format(id=run)),
+            headers=self._headers(JSON_MEDIA_TYPE),
+            json={},
+        )
+
+    def read_controls(self, status: int, body: dict[str, Any]) -> ControlsFetched:
+        """Read the answer to a fetch.
+
+        Args:
+            status: The HTTP status the control plane answered with.
+            body: The parsed JSON body.
+
+        Returns:
+            The claimed controls, oldest first — now ``delivered``, and this executor's to
+            acknowledge.
+
+        Raises:
+            ControlPlaneError: On any status but ``200``.
+        """
+        if status != HTTPStatus.OK:
+            raise _refusal(status, body)
+
+        return ControlsFetched.model_validate(body)
+
+    def ack_control_request(
+        self,
+        run: str,
+        control: str,
+        *,
+        effect: str | None = None,
+        attempt: int | None = None,
+    ) -> ControlPlaneRequest:
+        """Build the request that acknowledges one control.
+
+        Args:
+            run: The run.
+            control: The control, as the fetch handed it over.
+            effect: What was done, in this executor's words. Optional.
+            attempt: For a steer, the attempt it was applied to. Optional.
+
+        Returns:
+            The request to send.
+        """
+        body = ControlAck(effect=effect, attempt=attempt)
+
+        return ControlPlaneRequest(
+            method="POST",
+            url=self._url(RUN_CONTROL_ACK_PATH.format(id=run, control_id=control)),
+            headers=self._headers(JSON_MEDIA_TYPE),
+            json=body.model_dump(by_alias=True, exclude_none=True),
+        )
+
+    def read_ack(self, status: int, body: dict[str, Any]) -> AckedControl:
+        """Read the answer to an acknowledgment.
+
+        Args:
+            status: The HTTP status the control plane answered with.
+            body: The parsed JSON body.
+
+        Returns:
+            The control, acknowledged.
+
+        Raises:
+            ControlPlaneError: On any status but ``200``. ``control_not_delivered`` carries
+                the control's state in :attr:`ControlPlaneError.details`.
+        """
+        if status != HTTPStatus.OK:
+            raise _refusal(status, body)
+
+        return AckedControl.model_validate(body)
 
     def read_events(self, lines: Iterable[str]) -> Iterator[InvokeEvent]:
         """Read a streamed answer, one line at a time.

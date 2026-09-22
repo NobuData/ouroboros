@@ -645,6 +645,65 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{id}/controls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A run's recent controls
+         * @description The controls behind the run page's ack chips, newest first, at most 50
+         *     ([#306](https://github.com/NobuData/ouroboros/issues/306)). Every member may read them,
+         *     a `viewer` included.
+         *
+         *     Elapsed controls are expired before this answers, so a chip never reads *sent* for a
+         *     control that can no longer be delivered. The steer text is not included: it is in the
+         *     transcript, as the `user` entry the steer wrote.
+         */
+        get: operations["listRunControls"];
+        put?: never;
+        /**
+         * Pause, resume, abort or steer a run
+         * @description Mockup 10's *Pause loop*, *Abort run* and the steering box
+         *     ([#306](https://github.com/NobuData/ouroboros/issues/306), decision **R6**). A control is
+         *     a row on a **durable queue**, not a call to the executor. The executor fetches it, applies
+         *     it and acknowledges it with the effect it had, so the console can tell *acknowledged*
+         *     from *sent* from *no response* instead of drawing all three as success.
+         *
+         *     **Who may press what.** `steer` is `owner`, `admin` or `member`. `pause`, `resume` and
+         *     `abort` are `owner` or `admin`. Checked by the server before the run is read, so a
+         *     member's abort is refused whatever it carries.
+         *
+         *     **Abort needs the typed confirmation**: `confirmation` must be the run's loop number,
+         *     the `1847` of *Loop #1847*. The server re-checks it against the run.
+         *
+         *     **Steering does not pause.** The text is appended to the current attempt's context and
+         *     mirrored into the transcript as a `user` entry at once. The ack names the attempt it
+         *     landed on: *"steering applied to attempt 2"*. `remember: true` marks a steer as a
+         *     candidate fact for review (the #412 amendment). It is a hint, not a confirmation.
+         *
+         *     **`202`, and the body's `state` says what became of it:**
+         *
+         *     * `pending`: queued, not yet fetched. The chip reads *sent*.
+         *     * `rejected`: the run has already finished. `detail` is the reason to display, and
+         *       nothing was queued.
+         *     * any other state: a repeat collapsed into the control already outstanding. A second
+         *       `pause` or `abort` while one is pending or delivered answers with that one, and a
+         *       retry under the same `idempotencyKey` answers with the control that key named.
+         *
+         *     A control that nobody acknowledges before `expiresAt` becomes `expired`, which is a
+         *     different state from `rejected`: *"no response — the run may be between stages"*.
+         *     Every control is audited as `run_control.*`, and no audit body carries the steer text.
+         */
+        post: operations["submitRunControl"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/queue": {
         parameters: {
             query?: never;
@@ -6144,18 +6203,104 @@ export interface components {
             fontScale?: components["schemas"]["FontScale"];
         };
         /**
+         * RunControlKind
+         * @description Which control. `pause` and `resume` are the page head's toggle, `abort` its red button,
+         *     and `steer` the box under the transcript.
+         * @example steer
+         * @enum {string}
+         */
+        RunControlKind: "pause" | "resume" | "abort" | "steer";
+        /**
+         * RunControlState
+         * @description Where a control has got to. `pending` renders *sent*, `delivered` *received*, `acked`
+         *     *acknowledged* with `detail`, `expired` *no response — the run may be between stages*,
+         *     and `rejected` shows `detail` as the reason. Forward only: `pending → delivered | expired
+         *     | rejected`, `delivered → acked | expired`.
+         * @example pending
+         * @enum {string}
+         */
+        RunControlState: "pending" | "delivered" | "acked" | "expired" | "rejected";
+        /** SubmitRunControlRequest */
+        SubmitRunControlRequest: {
+            kind: components["schemas"]["RunControlKind"];
+            /** @description The steering text. Required for a steer, and refused on every other kind. */
+            payload?: string;
+            /**
+             * @description The steer's *remember this* flag. Only a flagged steer becomes a fact candidate, and
+             *     the candidate still waits for review. Refused as `true` on every other kind.
+             */
+            remember?: boolean;
+            /**
+             * @description What was typed into the abort dialog: the run's loop number. Required for an abort
+             *     and re-checked by the server; ignored for every other kind.
+             */
+            confirmation?: string;
+            /**
+             * @description The caller's name for this submission, trimmed and non-empty. A retry under the same
+             *     key is answered with the same control. Optional.
+             */
+            idempotencyKey?: string;
+        };
+        /** RunControl */
+        RunControl: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            runId: string;
+            kind: components["schemas"]["RunControlKind"];
+            state: components["schemas"]["RunControlState"];
+            /** @description Who asked. Null once that person has been deleted. */
+            requestedBy: string | null;
+            /** Format: date-time */
+            requestedAt: string;
+            /**
+             * Format: date-time
+             * @description When the executor fetched it. Null until it has.
+             */
+            deliveredAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the executor acknowledged it. Set exactly for `acked`.
+             */
+            ackedAt: string | null;
+            /**
+             * Format: date-time
+             * @description After this instant an unanswered control is `expired`.
+             */
+            expiresAt: string;
+            /**
+             * @description What the ack said (*"steering applied to attempt 2"*), or why the control was
+             *     rejected. Null while nobody has answered.
+             */
+            detail: string | null;
+            /** @description Whether the control carried steering text. The text is in the transcript. */
+            hasPayload: boolean;
+            /** @description The steer's *remember this* flag. Always false for the other kinds. */
+            remember: boolean;
+        };
+        /** RunControlList */
+        RunControlList: {
+            /** @description Newest first. */
+            controls: components["schemas"]["RunControl"][];
+        };
+        /**
          * RunStatus
          * @description Where a run is in its life. The first three are **active** — the run is in flight and
-         *     has no `finishedAt` — and the last three are **terminal**.
+         *     has no `finishedAt` — and the last four are **terminal**.
          *
          *     The split is the dashboard's two run cards: *Active loops* is the runs holding one of
          *     the first three, *Recently closed by the loop* is the runs holding one of the last
-         *     three. They are one table and one shape, queried twice; a run moving between the cards
+         *     four. They are one table and one shape, queried twice; a run moving between the cards
          *     *is* the transition into a terminal status.
+         *
+         *     `canceled` is an aborted run ([#306](https://github.com/NobuData/ouroboros/issues/306)):
+         *     an administrator pressed *Abort run* and the executor acknowledged it. It is a person's
+         *     decision, which is why it is not `failed`, and the run's branch is preserved. It counts
+         *     among the closed runs of the merge-rate window like every other terminal status.
          * @example coding
          * @enum {string}
          */
-        RunStatus: "coding" | "building" | "review" | "merged" | "needs_human" | "failed";
+        RunStatus: "coding" | "building" | "review" | "merged" | "needs_human" | "failed" | "canceled";
         /**
          * QueueEffort
          * @description The size somebody put on a queued issue — the chip the card renders, lower-case, which
@@ -14967,6 +15112,344 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listRunControls: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0009-0000-4000-8000-000000000482
+                 */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run's recent controls. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "controls": [
+                     *         {
+                     *           "id": "c0000000-0000-4000-8000-000000000003",
+                     *           "runId": "5eed0009-0000-4000-8000-000000000482",
+                     *           "kind": "steer",
+                     *           "state": "acked",
+                     *           "requestedBy": "5eed0001-0000-4000-8000-00000000000a",
+                     *           "requestedAt": "2026-09-22T14:04:40.000Z",
+                     *           "deliveredAt": "2026-09-22T14:04:43.000Z",
+                     *           "ackedAt": "2026-09-22T14:04:51.000Z",
+                     *           "expiresAt": "2026-09-22T14:09:40.000Z",
+                     *           "detail": "steering applied to attempt 2",
+                     *           "hasPayload": true,
+                     *           "remember": false
+                     *         },
+                     *         {
+                     *           "id": "c0000000-0000-4000-8000-000000000004",
+                     *           "runId": "5eed0009-0000-4000-8000-000000000482",
+                     *           "kind": "pause",
+                     *           "state": "expired",
+                     *           "requestedBy": "5eed0001-0000-4000-8000-00000000000b",
+                     *           "requestedAt": "2026-09-22T13:50:00.000Z",
+                     *           "deliveredAt": null,
+                     *           "ackedAt": null,
+                     *           "expiresAt": "2026-09-22T13:52:00.000Z",
+                     *           "detail": null,
+                     *           "hasPayload": false,
+                     *           "remember": false
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["RunControlList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `run_not_found` — no run with that id, or none this caller may know about. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    submitRunControl: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0009-0000-4000-8000-000000000482
+                 */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SubmitRunControlRequest"];
+            };
+        };
+        responses: {
+            /** @description The control, as the ack chip reads it. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunControl"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — your role in this workspace may not request this kind of control.
+             *     Steering is `owner`, `admin` or `member`; pausing, resuming and aborting are `owner`
+             *     or `admin`. `details.required` lists the roles that would have been enough. Nothing
+             *     is written.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "forbidden",
+                     *       "message": "Your role in this workspace does not permit this.",
+                     *       "details": {
+                     *         "role": "member",
+                     *         "required": [
+                     *           "owner",
+                     *           "admin"
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `run_not_found` — no run with that id, **or none this caller may know about**. Or
+             *     `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `control_key_reused` — that `idempotencyKey` already named a different control on
+             *     this run.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "control_key_reused",
+                     *       "message": "That idempotency key was already used for a different control on this run.",
+                     *       "details": {
+                     *         "idempotencyKey": "abort-1847-1"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `abort_confirmation_invalid` — an abort whose `confirmation` is not the run's loop
+             *     number (the expected value is not echoed). `control_payload_invalid` — a steer with
+             *     no text, text on any other kind, or `remember` on anything but a steer;
+             *     `details.field` names which. `validation_failed` — the id is not a uuid, or a field
+             *     is the wrong shape.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "abort_confirmation_invalid",
+                     *       "message": "Type the loop number to confirm the abort.",
+                     *       "details": {
+                     *         "kind": "abort"
+                     *       }
+                     *     }
+                     */
                     "application/json": components["schemas"]["Error"];
                 };
             };

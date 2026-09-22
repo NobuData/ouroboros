@@ -1,6 +1,8 @@
 import { API_BASE_PATH } from "../../application";
 import {
   COMMITS_ROUTE,
+  CONTROL_ACK_ROUTE,
+  CONTROLS_FETCH_ROUTE,
   CREDENTIALS_PATH,
   EVENTS_ROUTE,
   FILES_ROUTE,
@@ -10,6 +12,8 @@ import {
   INTERNAL_PATHS,
   INTERNAL_RUNS_PATH,
   INTERNAL_RUN_COMMITS_PATH,
+  INTERNAL_RUN_CONTROL_ACK_PATH,
+  INTERNAL_RUN_CONTROLS_FETCH_PATH,
   INTERNAL_RUN_EVENTS_PATH,
   INTERNAL_RUN_FILES_PATH,
   INTERNAL_RUN_RESOURCES_PATH,
@@ -52,6 +56,13 @@ describe("the internal paths", () => {
     expect(INTERNAL_RUN_RESOURCES_PATH).toBe("/internal/runs/:id/resources");
   });
 
+  it("are the two #306 specifies, composed from the segments the control controller declares", () => {
+    expect(INTERNAL_RUN_CONTROLS_FETCH_PATH).toBe("/internal/runs/:id/controls/fetch");
+    expect(INTERNAL_RUN_CONTROL_ACK_PATH).toBe("/internal/runs/:id/controls/:controlId/ack");
+    expect(`/${RUNS_PATH}/${CONTROLS_FETCH_ROUTE}`).toBe(INTERNAL_RUN_CONTROLS_FETCH_PATH);
+    expect(`/${RUNS_PATH}/${CONTROL_ACK_ROUTE}`).toBe(INTERNAL_RUN_CONTROL_ACK_PATH);
+  });
+
   it("compose the ingestion routes from the segments its controller declares", () => {
     // The ingestion controller takes `RUNS_PATH` and the five route segments, so a change to
     // one has to reach the composed constant or the router and the exclusion disagree.
@@ -92,6 +103,8 @@ describe("the internal paths", () => {
         INTERNAL_RUN_FILES_PATH,
         INTERNAL_RUN_COMMITS_PATH,
         INTERNAL_RUN_RESOURCES_PATH,
+        INTERNAL_RUN_CONTROLS_FETCH_PATH,
+        INTERNAL_RUN_CONTROL_ACK_PATH,
       ].toSorted(),
     );
   });

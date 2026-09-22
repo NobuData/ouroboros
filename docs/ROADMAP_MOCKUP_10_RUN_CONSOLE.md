@@ -419,7 +419,7 @@ seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript ent
 | AP.1 | #303 | 🟢 Done | ouroboros-rest: [AP.1] Run ingestion contract & API | Events/stages/files/commits/resources ingest (absorbs DASH-J.3) | mvp, runs, rest, engine | N (after AO.2, #51) | Y | L | ouroboros-rest |
 | AP.2 | #304 | 🟡 Open | ouroboros-rest: [AP.2] Console read APIs & JSONL export | Timeline, offset event stream, cards payloads, export | mvp, runs, rest | N (after AP.1) | Y | M | ouroboros-rest |
 | AP.3 | #305 | 🟢 Done | ouroboros-rest: [AP.3] Guardrail evaluation service | Paths/CI-config/secrets/review checks on reported change-sets | mvp, runs, rest | N (after AO.4, WF-P.2) | Y | L | ouroboros-rest |
-| AP.4 | #306 | 🟡 Open | ouroboros-rest: [AP.4] Control queue & delivery | Pause/resume/abort/steer with acks, TTLs, audit (R6) | mvp, runs, rest, engine | N (after AO.4, #51) | Y | M | ouroboros-rest, ouroboros-engine |
+| AP.4 | #306 | 🟢 Done | ouroboros-rest: [AP.4] Control queue & delivery | Pause/resume/abort/steer with acks, TTLs, audit (R6) | mvp, runs, rest, engine | N (after AO.4, #51) | Y | M | ouroboros-rest, ouroboros-engine |
 | AP.5 | #307 | 🟡 Open | ouroboros-engine: [AP.5] Simulated-run driver | Scripted lifecycles through the real contract, incl. control acks | mvp, runs, engine | N (after AP.1, AP.4) | Y | M | ouroboros-engine |
 | AP.6 | #308 | 🟡 Open | ouroboros-rest: [AP.6] Console integration tests | Ingestion ordering/idempotency, guardrail matrix, controls, isolation | mvp, runs, rest, ci | N (after AP.2–AP.5) | Y | M | ouroboros-rest |
 
@@ -585,7 +585,7 @@ fail ─▶ {verdict: fail, evidence: {path, rule: aws-access-key-id}}  (no secr
 
 ### Issue AP.4 — ouroboros-rest: [AP.4] Control queue & delivery
 
-> **GitHub issue:** #306 · **Status:** 🟡 Open · **Parent epic:** #295
+> **GitHub issue:** #306 · **Status:** 🟢 Done · **Parent epic:** #295
 
 - **Problem Statement:** Pause/abort/steer must survive executor hiccups,
   prove delivery, and leave an audit trail (decision R6).
@@ -611,6 +611,35 @@ fail ─▶ {verdict: fail, evidence: {path, rule: aws-access-key-id}}  (no secr
 POST controls {steer: "prefer ISR fix"} ─▶ pending ─▶ delivered ─▶ acked("applied to attempt 2")
 POST controls {abort} (typed confirm, admin+) ─▶ … ─▶ run: canceled · audited
 ```
+
+> **Delivered as `src/modules/controls/` over V048's `run_controls`, with `V050`, and five
+> decisions the scope above left open.**
+>
+> 1. **`canceled` is a new terminal run status (V050).** None of V008's three was true of an
+>    abort: `failed` would draw a person's decision as the agent's failure. An acked abort sets
+>    `status = canceled` and `finished_at`, and leaves `branch_name` alone. It counts in the
+>    merge-rate window like every other terminal status. The UI's status maps gained it
+>    (neutral tone).
+> 2. **The typed confirmation is the loop number.** `confirmation` must equal `runs.loop_seq`
+>    (a leading `#` and whitespace are forgiven), re-checked on the locked row. The role is
+>    checked before anything is read: steer is member+, pause/resume/abort admin+, and a
+>    refusal is the existing `403 forbidden`.
+> 3. **A refusal is a row.** A control against a finished run is written `rejected` with a
+>    displayable reason, so it is audited and the chip can say why. `expired` stays a separate
+>    state. The listing, the fetch and the ack sweep their own run first; a jittered loop
+>    (`OURO_RUN_CONTROL_SWEEP_SECONDS`) sweeps the rest. TTLs: `OURO_RUN_CONTROL_TTL_SECONDS`
+>    (120) and `OURO_RUN_STEER_TTL_SECONDS` (300).
+> 4. **Duplicates collapse two ways.** A second pause/abort while one is pending or delivered
+>    answers with that one, and a retry under the same `idempotencyKey` answers with the
+>    control the key named (`409 control_key_reused` for a different body).
+> 5. **The engine side is a contract, not a loop.** `POST /internal/runs/:id/controls/fetch`
+>    and `…/controls/:controlId/ack` are published in `openapi.internal.yaml` with each kind's
+>    semantics, and `ouroboros-engine`'s control-plane client mirrors them. The loop that
+>    honours them is AP.5's (#307) and AR.1's (#315).
+>
+> The #412 amendment's *remember this* flag is `run_controls.remember` (V050): steer-only and
+> frozen at insert, waiting for BF.3 (#412) to read it. The chat-ops path (#537/#549) will
+> submit through the same service.
 
 ### Issue AP.5 — ouroboros-engine: [AP.5] Simulated-run driver
 

@@ -261,6 +261,9 @@ service never starts half-configured.
 | `OURO_ESTIMATION_CONFIDENCE_FLOOR` | Below what confidence an estimate sends its issue to `needs_human` — this service's policy, defaulted to the engine's own published floor |      no — 70      | a whole number, 0–100 |
 | `OURO_ESTIMATION_STALE_SECONDS` | How long an issue may sit in `estimating` before the recovery sweep re-queues it — a restart mid-flight is the case it exists for |     no — 600      | a whole number of seconds, 60–86400 |
 | `OURO_ESTIMATION_SWEEP_INTERVAL_SECONDS` | Seconds between recovery sweeps — jittered ±25%, and one indexed query against this deployment's own database |     no — 120      | a whole number of seconds, 10–86400 |
+| `OURO_RUN_CONTROL_TTL_SECONDS` | How long a pause, resume or abort is worth delivering before it is [expired](#run-controls) ([#306](https://github.com/NobuData/ouroboros/issues/306)) |     no — 120      | a whole number of seconds, 10–3600 |
+| `OURO_RUN_STEER_TTL_SECONDS` | How long a steer is worth delivering — longer, because it lands at the executor's next point of context injection |     no — 300      | a whole number of seconds, 10–3600 |
+| `OURO_RUN_CONTROL_SWEEP_SECONDS` | Seconds between control-expiry sweeps — jittered ±25%; the routes sweep their own run first, so this decides only how soon an expiry is audited for a run nobody is watching |     no — 15       | a whole number of seconds, 5–3600 |
 | `OURO_BACKLOG_STALE_DAYS` | Days without a tracker update after which an open ticket counts as stale on the [Backlog Health card](#backlog-health-and-nightly-re-estimation) ([#281](https://github.com/NobuData/ouroboros/issues/281)) |      no — 30      | a whole number of days, 1–3650 |
 | `OURO_REESTIMATION_HOUR_UTC` | The UTC hour the [nightly re-estimation job](#backlog-health-and-nightly-re-estimation) is scheduled at |      no — 2       | a whole number, 0–23 |
 | `OURO_REESTIMATION_JITTER_MINUTES` | The window after that hour a night's run is jittered across, so installations do not all run on the hour |      no — 30      | a whole number of minutes, 1–180 |
@@ -4573,7 +4576,8 @@ triggers none, because there is no change-set to judge. The four verdicts are an
 AP.3's `GuardrailService` — see [Guardrail evaluation](#guardrail-evaluation) below.
 
 **What it deliberately does not do is move `runs.status`.** None of the six operations carries
-one. What closes a run is a terminal node's action (WF-T.6) or a control (AP.4), and inferring
+one. What closes a run is a terminal node's action (WF-T.6) or an acknowledged abort
+([Run controls](#run-controls), AP.4), and inferring
 it from stage rows would be this service guessing at a workflow's semantics — wrong for every
 document whose last node is `needs_review`.
 
@@ -4614,6 +4618,48 @@ real-world secrets; high-entropy values with no recognisable shape are not detec
 Guardrails card's tooltip (#313). Bump `SECRETS_RULESET_VERSION` / `CI_REGISTRY_VERSION` with
 every edit to the ruleset or the registry — each verdict records the version it was judged
 under.
+
+### Run controls
+
+AP.4 ([#306](https://github.com/NobuData/ouroboros/issues/306)), decision **R6**, in
+[`src/modules/controls/`](src/modules/controls). Mockup 10's *Pause loop*, *Abort run* and the
+steering box are rows on V048's durable `run_controls` queue, not calls to the executor,
+because the moment somebody needs *Abort* is the moment the executor is busy or wedged.
+
+```
+POST /api/v1/runs/:id/controls                    a person asks        → pending | rejected
+GET  /api/v1/runs/:id/controls                    the ack chips (newest 50)
+POST /internal/runs/:id/controls/fetch            the executor claims  → delivered
+POST /internal/runs/:id/controls/:controlId/ack   the executor answers → acked
+     (sweep: every OURO_RUN_CONTROL_SWEEP_SECONDS) nobody answered     → expired
+```
+
+| kind     | who may send it          | what the executor does                                                      | TTL                             |
+| -------- | ------------------------ | --------------------------------------------------------------------------- | ------------------------------- |
+| `steer`  | `owner`, `admin`, `member` | appends the text to the **current attempt's** context and **does not pause**; acks with the attempt (*"steering applied to attempt 2"*) | `OURO_RUN_STEER_TTL_SECONDS`    |
+| `pause`  | `owner`, `admin`         | stops at the next safe boundary, never mid-write                            | `OURO_RUN_CONTROL_TTL_SECONDS`  |
+| `resume` | `owner`, `admin`         | continues a paused loop                                                     | `OURO_RUN_CONTROL_TTL_SECONDS`  |
+| `abort`  | `owner`, `admin`         | terminates the run and **preserves its branch**; the ack closes the run as `canceled` (V050) | `OURO_RUN_CONTROL_TTL_SECONDS`  |
+
+**The server decides, whatever the console showed.** The role is checked before the run is
+read, so a member's abort is a `403 forbidden` that writes nothing, even with a correct
+confirmation. An abort's `confirmation` must be the run's loop number, and it is re-checked
+against `runs.loop_seq`.
+
+**Nothing silently disappears.** A control against a run that has already finished is written
+as `rejected` with a reason the console displays. A control nobody acknowledges before its
+`expiresAt` becomes `expired`, which is a different state. A second `pause` or `abort` while one
+is outstanding answers with that one, and a retry under the same `idempotencyKey` answers with
+the control the key named. The listing, the fetch and the ack each sweep their own run first,
+so none of them reports a control that has already elapsed.
+
+**A steer is mirrored into the transcript** as a `user` entry on the active stage attempt, with
+`{controlId, requestedBy}` in its payload. `remember: true` is the #412 amendment's *remember
+this* flag: stored (V050) for the knowledge pipeline, never applied differently by an executor.
+
+**The audit is the database's.** V048's `run_controls_audit()` trigger writes a
+`run_control.requested | delivered | acked | expired | rejected` event for every write, and the
+body is `{run_id, kind, state, has_payload}`, so the steer text has nowhere to go.
 
 ## Container
 

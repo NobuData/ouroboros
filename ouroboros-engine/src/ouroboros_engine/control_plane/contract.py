@@ -54,6 +54,40 @@ LEASE_PATH = "/internal/credentials/lease"
 #: ``POST`` — the proxied invocation. Specified by #224, implemented by AF.2 (#235).
 INVOKE_PATH = "/internal/llm/invoke"
 
+#: ``POST`` — claim a run's pending controls (AP.4,
+#: `#306 <https://github.com/NobuData/ouroboros/issues/306>`_). ``{id}`` is the run.
+RUN_CONTROLS_FETCH_PATH = "/internal/runs/{id}/controls/fetch"
+
+#: ``POST`` — acknowledge one control with the effect it had (AP.4, #306). ``{id}`` is the
+#: run and ``{control_id}`` the control, as the fetch handed it over.
+RUN_CONTROL_ACK_PATH = "/internal/runs/{id}/controls/{control_id}/ack"
+
+#: The four controls a person can send a run, and what an executor must do with each:
+#:
+#: ``pause``
+#:     Stop at the next safe boundary (between tool calls, or between stages), never
+#:     mid-write. Acknowledge once the loop has actually stopped.
+#: ``resume``
+#:     Continue a paused loop from where it stopped.
+#: ``abort``
+#:     Terminate the run and **preserve its branch**. Nothing is reverted or deleted. The
+#:     acknowledgment closes the run as ``canceled``.
+#: ``steer``
+#:     Append the payload to the **current attempt's** context and keep going. **Do not
+#:     pause.** Acknowledge with the attempt it landed on.
+CONTROL_KINDS: tuple[str, ...] = ("pause", "resume", "abort", "steer")
+
+#: What the control plane can refuse a fetch or an acknowledgment with.
+#: ``control_not_delivered`` carries the control's state in ``details.state``: ``acked`` is a
+#: lost response to stop retrying, ``expired`` an answer that came too late.
+CONTROL_ERRORS: tuple[str, ...] = (
+    "unauthenticated",
+    "run_not_found",
+    "control_not_found",
+    "control_not_delivered",
+    "validation_failed",
+)
+
 #: How the invocation answer is framed: one JSON object per line. NDJSON rather than SSE
 #: because the reader is this process rather than a browser — reconnection and event ids
 #: buy nothing here and cost a framing layer on both sides.
@@ -389,3 +423,69 @@ class ErrorEnvelope(_Response):
     code: str
     message: str
     details: dict[str, Any] = Field(default_factory=dict)
+
+
+class PendingControl(_Response):
+    """A control the executor now holds — one entry of a fetch (AP.4, #306).
+
+    Attributes:
+        id: ``run_controls.id``, which the acknowledgment is addressed to.
+        kind: One of :data:`CONTROL_KINDS`.
+        payload: The steering text, and ``None`` for every other kind.
+        remember: The steer's *remember this* flag. For the knowledge pipeline, not for the
+            executor, which applies a remembered steer exactly as any other.
+        requested_at: When a person asked, ISO 8601.
+        expires_at: After this instant an acknowledgment is refused, ISO 8601.
+    """
+
+    id: str
+    kind: Literal["pause", "resume", "abort", "steer"]
+    payload: str | None = None
+    remember: bool = False
+    requested_at: str
+    expires_at: str
+
+
+class ControlsFetched(_Response):
+    """The answer to a fetch.
+
+    Attributes:
+        controls: Oldest first, which is the order to apply them in. Empty when nothing was
+            waiting.
+    """
+
+    controls: list[PendingControl] = Field(default_factory=list)
+
+
+class ControlAck(_Request):
+    """The body of ``POST /internal/runs/{id}/controls/{controlId}/ack``.
+
+    Attributes:
+        effect: What was done, in the executor's own words, trimmed and non-empty. Without
+            it the control plane records the kind's default sentence.
+        attempt: The attempt a steer was applied to, which gives *"steering applied to
+            attempt 2"*. Used only when :attr:`effect` is absent.
+    """
+
+    effect: str | None = Field(default=None, min_length=1, max_length=1024)
+    attempt: int | None = Field(default=None, ge=1, le=1000)
+
+
+class AckedControl(_Response):
+    """A control as it stands after an acknowledgment.
+
+    Attributes:
+        id: The control.
+        run_id: The run.
+        kind: One of :data:`CONTROL_KINDS`.
+        state: ``acked``.
+        detail: What was recorded — the executor's effect, or the default sentence.
+        acked_at: When, ISO 8601.
+    """
+
+    id: str
+    run_id: str
+    kind: str
+    state: str
+    detail: str | None = None
+    acked_at: str | None = None

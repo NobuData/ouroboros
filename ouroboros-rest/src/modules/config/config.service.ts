@@ -295,6 +295,25 @@ export class AppConfigService {
     return this.config.getOrThrow<number>("estimationSweepIntervalSeconds");
   }
 
+  /** Seconds a pause, resume or abort is worth delivering — `OURO_RUN_CONTROL_TTL_SECONDS` (#306). */
+  get runControlTtlSeconds(): number {
+    return this.config.getOrThrow<number>("runControlTtlSeconds");
+  }
+
+  /** Seconds a steer is worth delivering — `OURO_RUN_STEER_TTL_SECONDS` (#306). */
+  get runSteerTtlSeconds(): number {
+    return this.config.getOrThrow<number>("runSteerTtlSeconds");
+  }
+
+  /**
+   * Seconds between control-expiry sweeps — `OURO_RUN_CONTROL_SWEEP_SECONDS` (#306).
+   *
+   * The nominal interval; `src/modules/controls/` jitters it by ±25%, as every loop here does.
+   */
+  get runControlSweepSeconds(): number {
+    return this.config.getOrThrow<number>("runControlSweepSeconds");
+  }
+
   /**
    * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
    *
@@ -378,6 +397,9 @@ export class AppConfigService {
       estimationConfidenceFloor: this.estimationConfidenceFloor,
       estimationStaleSeconds: this.estimationStaleSeconds,
       estimationSweepIntervalSeconds: this.estimationSweepIntervalSeconds,
+      runControlTtlSeconds: this.runControlTtlSeconds,
+      runSteerTtlSeconds: this.runSteerTtlSeconds,
+      runControlSweepSeconds: this.runControlSweepSeconds,
       backlogStaleDays: this.backlogStaleDays,
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,

@@ -203,6 +203,19 @@ describe("an outcome the mockup never drew", () => {
     expect(cells(0)[4]).toBe("failed");
   });
 
+  it("renders an aborted run as canceled, in no outcome hue (#306)", () => {
+    // An abort is a person's decision, not the agent's failure, so it is neither the danger
+    // treatment nor a merge.
+    card({ recentRuns: [closedRun({ status: "canceled" })] });
+
+    // The neutral tone adds no modifier, so what is asserted is the absence of every hue.
+    for (const hue of ["ok", "warn", "err", "accent"]) {
+      expect(outcome(0)).not.toHaveClass(`ou-chip--${hue}`);
+    }
+    expect(cells(0)[4]).toBe("canceled");
+    expect(within(region()).queryByRole("button", { name: "Review →" })).toBeNull();
+  });
+
   it("offers no inbox control on a failed row, which is not waiting for anybody", () => {
     card({ recentRuns: [closedRun({ status: "failed" })] });
 

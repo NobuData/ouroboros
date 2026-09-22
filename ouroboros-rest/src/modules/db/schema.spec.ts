@@ -716,13 +716,13 @@ describe("the dashboard read-model's vocabularies", () => {
   /**
    * Both halves of `runs_status`, as one list.
    *
-   * The CHECK names six words and the mirror splits them in two, so what has to be asserted
+   * The CHECK names seven words (V008, `canceled` added by V050) and the mirror splits them in two, so what has to be asserted
    * is that the split loses none of them and invents none — the failure that would let a
    * status the database accepts fall out of every query that reads by status.
    */
   const everyStatus: readonly RunStatus[] = [...ACTIVE_RUN_STATUSES, ...TERMINAL_RUN_STATUSES];
 
-  it("splits the six statuses V008 declares into active and terminal, losing none", () => {
+  it("splits the seven statuses V008 and V050 declare into active and terminal, losing none", () => {
     expect(everyStatus).toEqual([
       "coding",
       "building",
@@ -730,6 +730,7 @@ describe("the dashboard read-model's vocabularies", () => {
       "merged",
       "needs_human",
       "failed",
+      "canceled",
     ]);
     expect(new Set(everyStatus).size).toBe(everyStatus.length);
   });
@@ -745,7 +746,7 @@ describe("the dashboard read-model's vocabularies", () => {
     expect([...QUEUE_EFFORTS]).toEqual(["xs", "s", "m", "l", "xl"]);
   });
 
-  it("does not compile a run whose status is not one of the six", () => {
+  it("does not compile a run whose status is not one of the seven", () => {
     const run: NewRun = {
       organization_id: "org",
       github_repo_id: "00000000-0000-4000-8000-000000000000",
