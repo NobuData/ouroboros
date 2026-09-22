@@ -10,9 +10,11 @@
  * between "you asked wrongly" and "there is no such thing for you".
  */
 
-import { IsIn, IsOptional, IsUUID } from "class-validator";
+import { Type } from "class-transformer";
+import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from "class-validator";
 
 import { PageQuery } from "../tenancy/pagination";
+import { RUN_EVENTS_PAGE_MAX } from "./console.policy";
 
 /**
  * The two families a listing is asked for — the card links' destinations, not the six
@@ -61,4 +63,38 @@ export class RunParams {
   /** The run — `runs.id`, a uuid (V008). Anything else is a `422`, not a probe's `404`. */
   @IsUUID()
   id!: string;
+}
+
+/**
+ * The largest transcript cursor worth accepting — PostgreSQL's `integer`, which is what
+ * `run_events.seq` is (V046). Anything above it is a `422` naming the field, not a query.
+ */
+export const MAX_EVENT_SEQ = 2_147_483_647;
+
+/**
+ * The query string of `GET /api/v1/runs/{id}/events`
+ * ([#304](https://github.com/NobuData/ouroboros/issues/304)).
+ *
+ * Both integers are transformed by the pipe, so `?after=abc` is a `422` naming the field rather
+ * than a read from nowhere — the build log's own rule (`farm/logs/logs.dto.ts`).
+ */
+export class RunEventsQuery {
+  /**
+   * The last `seq` the reader holds — the `nextAfter` it was given — or absent for the start.
+   * Entries with a greater `seq` are returned.
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(MAX_EVENT_SEQ)
+  after?: number;
+
+  /** The most entries to return, up to {@link RUN_EVENTS_PAGE_MAX}. */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(RUN_EVENTS_PAGE_MAX)
+  limit?: number;
 }

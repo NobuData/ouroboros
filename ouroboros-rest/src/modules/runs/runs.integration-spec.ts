@@ -267,7 +267,7 @@ describe("the runs endpoints", () => {
   });
 
   describe("the detail", () => {
-    it("answers a run of this workspace's, in the listing's own shape", async () => {
+    it("answers a run of this workspace's, carrying the listing's own row", async () => {
       const owner = await api.signIn();
       const workspace = await workspaceWithRepo(api, owner);
       const id = await insertRun(workspace, {
@@ -277,7 +277,10 @@ describe("the runs endpoints", () => {
         finishedAgo: 40,
       });
 
-      const detail = bodyOf<RunSummary>(await read(owner, workspace, `${RUNS}/${id}`).expect(200));
+      // Since #304 the detail is the Run Console page, which carries the row whole as `run`.
+      const detail = bodyOf<{ run: RunSummary }>(
+        await read(owner, workspace, `${RUNS}/${id}`).expect(200),
+      ).run;
       const listed = bodyOf<Page<RunSummary>>(
         await read(owner, workspace, `${RUNS}?status=terminal`).expect(200),
       );

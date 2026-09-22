@@ -417,7 +417,7 @@ seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript ent
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AP.1 | #303 | 🟢 Done | ouroboros-rest: [AP.1] Run ingestion contract & API | Events/stages/files/commits/resources ingest (absorbs DASH-J.3) | mvp, runs, rest, engine | N (after AO.2, #51) | Y | L | ouroboros-rest |
-| AP.2 | #304 | 🟡 Open | ouroboros-rest: [AP.2] Console read APIs & JSONL export | Timeline, offset event stream, cards payloads, export | mvp, runs, rest | N (after AP.1) | Y | M | ouroboros-rest |
+| AP.2 | #304 | 🟢 Done | ouroboros-rest: [AP.2] Console read APIs & JSONL export | Timeline, offset event stream, cards payloads, export | mvp, runs, rest | N (after AP.1) | Y | M | ouroboros-rest |
 | AP.3 | #305 | 🟢 Done | ouroboros-rest: [AP.3] Guardrail evaluation service | Paths/CI-config/secrets/review checks on reported change-sets | mvp, runs, rest | N (after AO.4, WF-P.2) | Y | L | ouroboros-rest |
 | AP.4 | #306 | 🟢 Done | ouroboros-rest: [AP.4] Control queue & delivery | Pause/resume/abort/steer with acks, TTLs, audit (R6) | mvp, runs, rest, engine | N (after AO.4, #51) | Y | M | ouroboros-rest, ouroboros-engine |
 | AP.5 | #307 | 🟡 Open | ouroboros-engine: [AP.5] Simulated-run driver | Scripted lifecycles through the real contract, incl. control acks | mvp, runs, engine | N (after AP.1, AP.4) | Y | M | ouroboros-engine |
@@ -499,7 +499,7 @@ executor ─▶ POST stage-transitions {implement, attempt:2, from: gate-fail} �
 
 ### Issue AP.2 — ouroboros-rest: [AP.2] Console read APIs & JSONL export
 
-> **GitHub issue:** #304 · **Status:** 🟡 Open · **Parent epic:** #295
+> **GitHub issue:** #304 · **Status:** 🟢 Done · **Parent epic:** #295
 
 - **Problem Statement:** The console needs shaped reads: the timeline, the
   incremental transcript, card payloads, and the raw export.
@@ -522,6 +522,39 @@ GET /runs/:id ─▶ {head, timeline[stages×attempts], changes, resources, guar
 GET /runs/:id/events?after=7 ─▶ {entries[2], live: true, pollAfter: 5}
 GET /runs/:id/transcript.jsonl ─▶ streamed · "# simulated run" watermark
 ```
+
+> **Delivered in `src/modules/runs/` (`console.*.ts`, `run.spend.ts`). Five decisions the scope
+> above left open:**
+>
+> 1. **`GET /runs/:id` changed shape, and the run row is still in it.** It used to answer a bare
+>    `RunSummary` (#71). It now answers the console page, with that same row carried whole as
+>    `run` beside `head`, `timeline`, `changes`, `resources` and `guardrails`, so a run still has
+>    one shape everywhere. The response change is breaking: ouroboros-rest goes to 0.37.0. Every
+>    figure the mockup draws is stated server-side, down to durations, totals, `elapsedSeconds`
+>    to an `asOf` anchor, and the Guardrails pill (`clean`, `violations`, `pending` or
+>    `unevaluated`).
+> 2. **Which budget and which cap (R8).** Tokens are the run's whole `token_usage` against the
+>    `token_budget` of the **model stage that started most recently**, so a run sitting in
+>    *Build* still reads against *Implement*'s `400k`. Cost is measured against the cap of the
+>    route that stage **inherits** (`routing.inherit_task` in the pinned document → task kind →
+>    `routes.max_cost_cents_per_run`). A stage that pins a model has no route, so it has no cap.
+>    An unpriced ledger answers `costCents: null` with the token count and `unpricedEvents`,
+>    never `"0"`. The sum is one shared statement (`run.spend.ts`) that AP.1's resources receipt
+>    now also calls.
+> 3. **The cursor is bounded by `runs.event_seq`.** The tail reads the run first and pages
+>    `after < seq ≤ event_seq`. V046 allocates `seq` under the run lock and moves `event_seq` in
+>    the same transaction, so a page never sees an entry whose predecessor is still in flight.
+>    A cursor past the end is `422 run_events_cursor_out_of_range` with `latestSeq`.
+>    `pollAfter` is 5 s while live and the shared dashboard cadence once terminal, following the
+>    build log's split.
+> 4. **The export writes the view's bytes.** `transcript.jsonl` streams
+>    `ouroboros.run_events_jsonl` in batches of 500, bounded by `event_seq` at request time, and
+>    adds exactly one line: `# simulated run` when `runs.simulated`. It is served as
+>    `application/x-ndjson`, `inline; filename="loop-<n>.jsonl"`. The integration suite
+>    compares it to the golden lines in `tests/lib/run-events-jsonl.sql`, read from that file.
+> 5. **Absent is absent, null is null.** A missing relationship is an omitted field (`farm`,
+>    `returnedFrom`, `evidence`, `repository`). A nullable scalar is `null`. A transcript entry
+>    omits null fields, as its JSONL line does.
 
 ### Issue AP.3 — ouroboros-rest: [AP.3] Guardrail evaluation service
 

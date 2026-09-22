@@ -1,7 +1,14 @@
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 
-import { ListRunsQuery, RUN_STATUS_FAMILIES, RunParams } from "./runs.dto";
+import { RUN_EVENTS_PAGE_MAX } from "./console.policy";
+import {
+  ListRunsQuery,
+  MAX_EVENT_SEQ,
+  RUN_STATUS_FAMILIES,
+  RunEventsQuery,
+  RunParams,
+} from "./runs.dto";
 
 /**
  * The request shapes, validated the way the pipe validates them — through
@@ -62,5 +69,42 @@ describe("the detail's path", () => {
     // repository's 404. The distinction keeps a probe from reading validation as existence.
     const bad = await validate(plainToInstance(RunParams, { id: "not-a-uuid" }));
     expect(bad.map((failure) => failure.property)).toEqual(["id"]);
+  });
+});
+
+describe("the transcript tail's query", () => {
+  /** Validate the tail's query the way the pipe would, returning the failing property names. */
+  async function tailViolations(query: Record<string, unknown>): Promise<string[]> {
+    const failures = await validate(plainToInstance(RunEventsQuery, query));
+    return failures.map((failure) => failure.property);
+  }
+
+  it("admits no query at all — the start of the transcript, at the default page size", async () => {
+    expect(await tailViolations({})).toEqual([]);
+  });
+
+  it("admits a cursor and a page size, as the strings a query string carries", async () => {
+    const query = plainToInstance(RunEventsQuery, { after: "7", limit: "50" });
+
+    expect(await validate(query)).toEqual([]);
+    // Transformed, so the service compares numbers rather than strings: "10" > "9" is false.
+    expect(query.after).toBe(7);
+    expect(query.limit).toBe(50);
+  });
+
+  it("admits the cursor at zero and at the largest seq PostgreSQL's integer can hold", async () => {
+    expect(await tailViolations({ after: "0" })).toEqual([]);
+    expect(await tailViolations({ after: String(MAX_EVENT_SEQ) })).toEqual([]);
+  });
+
+  it.each([
+    ["a negative cursor", { after: "-1" }, "after"],
+    ["a fractional cursor", { after: "1.5" }, "after"],
+    ["a cursor that is not a number", { after: "abc" }, "after"],
+    ["a cursor past integer range", { after: String(MAX_EVENT_SEQ + 1) }, "after"],
+    ["a page of nothing", { limit: "0" }, "limit"],
+    ["a page larger than the cap", { limit: String(RUN_EVENTS_PAGE_MAX + 1) }, "limit"],
+  ])("refuses %s, naming the field", async (_name, query, field) => {
+    expect(await tailViolations(query)).toEqual([field]);
   });
 });

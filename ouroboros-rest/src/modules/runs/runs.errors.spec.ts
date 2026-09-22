@@ -3,10 +3,10 @@ import { join } from "node:path";
 
 import { HttpStatus } from "@nestjs/common";
 
-import { RUNS_ERRORS, runNotFound } from "./runs.errors";
+import { RUNS_ERRORS, eventsCursorOutOfRange, runNotFound } from "./runs.errors";
 
 /**
- * The one code, held to the two places it must agree with itself: the constant the answer
+ * The codes, held to the two places it must agree with itself: the constant the answer
  * is built from, and the specification a client reads — `tenancy.errors.spec.ts`'s
  * contract, at this module's size.
  */
@@ -42,5 +42,18 @@ describe("run_not_found", () => {
     // The no-existence-leak criterion at the message level: nothing about the sentence
     // varies with why the run was not found.
     expect(runNotFound("a").envelope().message).toBe(runNotFound("b").envelope().message);
+  });
+});
+
+describe("run_events_cursor_out_of_range", () => {
+  it("is a 422 that says where the transcript ends, so the client can resume from there", () => {
+    const error = eventsCursorOutOfRange(9);
+
+    expect(error.getStatus()).toBe(HttpStatus.UNPROCESSABLE_ENTITY);
+    expect(error.envelope()).toEqual({
+      code: "run_events_cursor_out_of_range",
+      message: "This transcript holds 9 entries; there is nothing after that.",
+      details: { latestSeq: 9 },
+    });
   });
 });

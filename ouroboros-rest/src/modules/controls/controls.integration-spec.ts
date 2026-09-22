@@ -246,12 +246,15 @@ describe("the control queue", () => {
     expect(rows[0].branch_name).toBe("loop/482-canbus-flake");
 
     // A run that has ended is terminal for the dashboard's read too.
-    const run = bodyOf<{ status: string; finishedAt: string | null }>(
-      await as(scene.owner, scene, "get", `/api/v1/runs/${scene.run.id}`).expect(200),
-    );
+    // The console page carries the run row as `run` (#304), and stops calling it live.
+    const page = bodyOf<{
+      run: { status: string; finishedAt: string | null };
+      head: { live: boolean };
+    }>(await as(scene.owner, scene, "get", `/api/v1/runs/${scene.run.id}`).expect(200));
 
-    expect(run.status).toBe("canceled");
-    expect(run.finishedAt).not.toBeNull();
+    expect(page.run.status).toBe("canceled");
+    expect(page.run.finishedAt).not.toBeNull();
+    expect(page.head.live).toBe(false);
   });
 
   it("expires an unanswered control, distinguishably from a rejection", async () => {

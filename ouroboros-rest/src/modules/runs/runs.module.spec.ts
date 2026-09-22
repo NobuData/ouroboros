@@ -2,6 +2,8 @@ import { Test } from "@nestjs/testing";
 
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
+import { ConsoleRepository } from "./console.repository";
+import { ConsoleService } from "./console.service";
 import { RunsController } from "./runs.controller";
 import { RunsModule } from "./runs.module";
 import { RunsRepository } from "./runs.repository";
@@ -22,6 +24,8 @@ describe("the runs module", () => {
     expect(moduleRef.get(RunsController)).toBeInstanceOf(RunsController);
     expect(moduleRef.get(RunsService)).toBeInstanceOf(RunsService);
     expect(moduleRef.get(RunsRepository)).toBeInstanceOf(RunsRepository);
+    expect(moduleRef.get(ConsoleService)).toBeInstanceOf(ConsoleService);
+    expect(moduleRef.get(ConsoleRepository)).toBeInstanceOf(ConsoleRepository);
 
     await moduleRef.close();
   });
