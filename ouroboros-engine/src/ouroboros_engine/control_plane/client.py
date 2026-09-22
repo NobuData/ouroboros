@@ -28,6 +28,12 @@ testable with no network anywhere::
     for event in client.read_events(lines):  # delta · usage · hop · done
         ...
 
+**The first sender is development tooling.** The simulated-run driver (AP.5,
+`#307 <https://github.com/NobuData/ouroboros/issues/307>`_) puts these requests on a socket
+with the standard library, from a package the production wheel does not contain. It builds
+every request here, so the driver and the future executor share one client and differ only
+in their transport.
+
 **The key travels on every request.** :attr:`ControlPlaneRequest.headers` carries
 ``X-Ouro-Internal-Key``, and there is no way to build a request without it — the same
 posture ``ouroboros-rest``'s engine client keeps in the other direction, and the reason a
@@ -46,6 +52,8 @@ from http import HTTPStatus
 from typing import Any
 from urllib.parse import urljoin
 
+from pydantic import BaseModel
+
 from ouroboros_engine.control_plane.contract import (
     EVENT_MODELS,
     INTERNAL_KEY_HEADER,
@@ -63,6 +71,26 @@ from ouroboros_engine.control_plane.contract import (
     Lease,
     LeaseRequest,
     RunContext,
+)
+from ouroboros_engine.control_plane.ingest import (
+    RUN_COMMITS_PATH,
+    RUN_EVENTS_PATH,
+    RUN_FILES_PATH,
+    RUN_RESOURCES_PATH,
+    RUN_STAGE_TRANSITIONS_PATH,
+    RUNS_PATH,
+    ChangeSet,
+    CommitsAppended,
+    EventsAppended,
+    IngestEventsRequest,
+    OpenRunRequest,
+    ReportCommitsRequest,
+    ReportFilesRequest,
+    ReportResourcesRequest,
+    ResourcesReported,
+    RunOpened,
+    StageTransition,
+    StageTransitionRequest,
 )
 
 #: What a request that carries a JSON body says it is.
@@ -112,8 +140,9 @@ class ControlPlaneRequest:
     depends on nothing that opens a socket.
 
     Attributes:
-        method: Always ``POST`` today; carried rather than assumed so a reader of a log
-            line does not have to know that.
+        method: ``POST``, or ``PUT`` for the change-set report, whose verb is its
+            semantics. Carried rather than assumed so a reader of a log line does not have
+            to know which.
         url: The absolute URL, resolved against the control plane's base.
         headers: What to send, including :data:`~ouroboros_engine.control_plane.contract.INTERNAL_KEY_HEADER`.
         json: The body, already in the control plane's ``camelCase``.
@@ -148,7 +177,8 @@ class ControlPlaneClient:
                 this service already reads for the *inbound* direction
                 (:mod:`ouroboros_engine.core.security`); both sides of the boundary hold
                 one value, and a stack where they disagree fails in both directions at
-                once.
+                once. The simulated-run driver passes ``OURO_RUN_SIMULATOR_SECRET`` instead,
+                which is how the control plane knows to mark its runs simulated (#303).
         """
         self.base_url = base_url if base_url.endswith("/") else f"{base_url}/"
         self._secret = shared_secret
@@ -388,6 +418,242 @@ class ControlPlaneClient:
                 )
 
             yield model.model_validate(parsed)
+
+    # --- run ingestion (AP.1, #303) ---------------------------------------------------------
+    #
+    # One builder and one reader per operation. The builders share `_write` and the readers
+    # share `_read`, so every write carries the key and its idempotency key in one way.
+
+    def open_run_request(self, body: OpenRunRequest) -> ControlPlaneRequest:
+        """Build the request that opens a run.
+
+        Args:
+            body: The run to open. Its ``idempotency_key`` names this submission.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUNS_PATH, body)
+
+    def read_run_opened(self, status: int, body: dict[str, Any]) -> RunOpened:
+        """Read the answer to an open.
+
+        Args:
+            status: The HTTP status the control plane answered with.
+            body: The parsed JSON body.
+
+        Returns:
+            The run, with the ``loop_seq`` the database allocated and the ``simulated``
+            watermark that follows the caller's secret.
+
+        Raises:
+            ControlPlaneError: On any status but ``201``.
+        """
+        return _read(status, body, RunOpened, expected=HTTPStatus.CREATED)
+
+    def transition_stage_request(
+        self, run: str, body: StageTransitionRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that moves one stage attempt.
+
+        Args:
+            run: The run.
+            body: The transition.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_STAGE_TRANSITIONS_PATH.format(id=run), body)
+
+    def read_stage_transition(
+        self, status: int, body: dict[str, Any]
+    ) -> StageTransition:
+        """Read the answer to a transition.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            Where the stage stands, with the note the database composed.
+
+        Raises:
+            ControlPlaneError: On any status but ``200``. ``stage_transition_invalid``
+                carries the stage, the attempt and both statuses in ``details``.
+        """
+        return _read(status, body, StageTransition)
+
+    def append_events_request(
+        self, run: str, body: IngestEventsRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that appends a batch to the transcript.
+
+        Args:
+            run: The run.
+            body: The batch.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_EVENTS_PATH.format(id=run), body)
+
+    def read_events_appended(self, status: int, body: dict[str, Any]) -> EventsAppended:
+        """Read the answer to an append.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            What was stored, and the sequence numbers the store allocated.
+
+        Raises:
+            ControlPlaneError: On any status but ``200``. ``events_out_of_order``
+                carries ``accepted`` and ``offered`` in ``details``.
+        """
+        return _read(status, body, EventsAppended)
+
+    def report_files_request(
+        self, run: str, body: ReportFilesRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that reports the whole change-set.
+
+        Args:
+            run: The run.
+            body: The change-set.
+
+        Returns:
+            The request to send. A ``PUT``, because the report replaces the stored set.
+        """
+        return self._write("PUT", RUN_FILES_PATH.format(id=run), body)
+
+    def read_change_set(self, status: int, body: dict[str, Any]) -> ChangeSet:
+        """Read the answer to a change-set report.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The totals and the guardrail verdicts the control plane computed.
+
+        Raises:
+            ControlPlaneError: On any status but ``200``.
+        """
+        return _read(status, body, ChangeSet)
+
+    def report_commits_request(
+        self, run: str, body: ReportCommitsRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that appends commits.
+
+        Args:
+            run: The run.
+            body: The commits, oldest first.
+
+        Returns:
+            The request to send.
+        """
+        return self._write("POST", RUN_COMMITS_PATH.format(id=run), body)
+
+    def read_commits_appended(
+        self, status: int, body: dict[str, Any]
+    ) -> CommitsAppended:
+        """Read the answer to a commit report.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            How many commits were new and how many were already known.
+
+        Raises:
+            ControlPlaneError: On any status but ``200``.
+        """
+        return _read(status, body, CommitsAppended)
+
+    def report_resources_request(
+        self, run: str, body: ReportResourcesRequest
+    ) -> ControlPlaneRequest:
+        """Build the request that attributes spend or moves a reservation.
+
+        Args:
+            run: The run.
+            body: The report. ``reserved_build_job`` is sent as ``null`` only when it was
+                set to ``None``, which releases the job held; left unset, it is absent and
+                says nothing. Every other ``None`` is left out, so an unpriced spend has no
+                ``costCents`` rather than a ``null`` one.
+
+        Returns:
+            The request to send.
+        """
+        request = self._write("POST", RUN_RESOURCES_PATH.format(id=run), body)
+        if "reserved_build_job" in body.model_fields_set:
+            request.json["reservedBuildJob"] = body.reserved_build_job
+        return request
+
+    def read_resources_reported(
+        self, status: int, body: dict[str, Any]
+    ) -> ResourcesReported:
+        """Read the answer to a resources report.
+
+        Args:
+            status: The HTTP status.
+            body: The parsed JSON body.
+
+        Returns:
+            The run's totals and the job it holds.
+
+        Raises:
+            ControlPlaneError: On any status but ``200``.
+        """
+        return _read(status, body, ResourcesReported)
+
+    def _write(self, method: str, path: str, body: BaseModel) -> ControlPlaneRequest:
+        """Build one ingestion request.
+
+        Args:
+            method: ``POST`` or ``PUT``.
+            path: The contract path, with the run already substituted.
+            body: The request model. ``None`` fields are left out.
+
+        Returns:
+            The request to send.
+        """
+        return ControlPlaneRequest(
+            method=method,
+            url=self._url(path),
+            headers=self._headers(JSON_MEDIA_TYPE),
+            json=body.model_dump(by_alias=True, exclude_none=True),
+        )
+
+
+def _read[T: BaseModel](
+    status: int,
+    body: dict[str, Any],
+    model: type[T],
+    *,
+    expected: int = HTTPStatus.OK,
+) -> T:
+    """Read one answer: the model on the expected status, a refusal on any other.
+
+    Args:
+        status: The HTTP status.
+        body: The parsed JSON body.
+        model: What a success parses as.
+        expected: The one status that means success.
+
+    Returns:
+        The parsed answer.
+
+    Raises:
+        ControlPlaneError: On any other status, carrying the envelope's code.
+    """
+    if status != expected:
+        raise _refusal(status, body)
+
+    return model.model_validate(body)
 
 
 def _refusal(status: int, body: dict[str, Any]) -> ControlPlaneError:

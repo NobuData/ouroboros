@@ -7,7 +7,8 @@ call itself and streams the answer back, and a **local** provider is reached dir
 an address this package can ask for.
 
 :mod:`~ouroboros_engine.control_plane.contract` mirrors the control plane's internal
-OpenAPI document; :mod:`~ouroboros_engine.control_plane.client` builds the requests and
+OpenAPI document, :mod:`~ouroboros_engine.control_plane.ingest` mirrors its run-ingestion
+operations (AP.1, #303); :mod:`~ouroboros_engine.control_plane.client` builds the requests and
 reads the answers. Neither opens a socket: the transport arrives with the executor that
 needs one — AF.2 (`#235 <https://github.com/NobuData/ouroboros/issues/235>`_) — and the
 client's own docstring says why that is a decision rather than an omission.
@@ -32,8 +33,14 @@ from ouroboros_engine.control_plane.contract import (
     LeaseRequest,
     RunContext,
 )
+from ouroboros_engine.control_plane.ingest import (
+    INGEST_PATHS,
+    OpenRunRequest,
+    RunOpened,
+)
 
 __all__ = [
+    "INGEST_PATHS",
     "INTERNAL_KEY_HEADER",
     "INVOKE_MEDIA_TYPE",
     "INVOKE_PATH",
@@ -48,5 +55,7 @@ __all__ = [
     "InvokeRequest",
     "Lease",
     "LeaseRequest",
+    "OpenRunRequest",
     "RunContext",
+    "RunOpened",
 ]

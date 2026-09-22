@@ -45,7 +45,13 @@ from workflows_golden import read_fixture
 #: the one list the tests work from, so a setting added without being isolated here
 #: fails an exhaustiveness check rather than quietly reading a developer's shell
 #: (tests/test_settings.py::test_every_field_is_isolated_by_the_fixture).
-_ENGINE_VARIABLES = ("PORT", "OURO_LOG_LEVEL", "OURO_ENGINE_SHARED_SECRET")
+_ENGINE_VARIABLES = (
+    "PORT",
+    "OURO_LOG_LEVEL",
+    "OURO_ENGINE_SHARED_SECRET",
+    "OURO_RUN_SIMULATOR_SECRET",
+    "OURO_REST_URL",
+)
 
 #: The shared secret the suite runs with. Not a credential and never deployed — the
 #: engine's real one is generated per environment — but it is long enough that a test

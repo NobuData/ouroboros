@@ -7,7 +7,7 @@
 
 [project]
 name = "ouroboros-engine"
-version = "0.7.2"
+version = "0.7.3"
 description = "Ouroboros backend — executes the work ouroboros-rest brokers."
 readme = "README.md"
 license = "Apache-2.0"
@@ -54,6 +54,10 @@ dev = [
     # with the standard library and never imports this.
     "pyyaml>=6.0.3",
     "ruff>=0.16.2",
+    # The build backend below, importable so tests/test_simulator_packaging.py can build
+    # the production wheel in-process and prove the simulated-run driver (AP.5, #307) is
+    # not in it. A wheel built here is the one the image installs.
+    "hatchling>=1.27",
 ]
 
 [build-system]
@@ -62,6 +66,12 @@ build-backend = "hatchling.build"
 
 # src layout: the package is importable in tests only because it is installed, never
 # because pytest happened to start in this directory.
+#
+# **One package, and only one.** `src/ouroboros_simulator` (the simulated-run driver,
+# AP.5 #307) sits beside it and is deliberately absent from this list, so the wheel, and
+# the image that installs it, does not contain the driver. An editable install exposes
+# the whole of `src/`, which is how `uv run` reaches it in development.
+# tests/test_simulator_packaging.py builds the wheel and checks.
 [tool.hatch.build.targets.wheel]
 packages = ["src/ouroboros_engine"]
 

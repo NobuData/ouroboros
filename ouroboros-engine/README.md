@@ -373,6 +373,67 @@ recorded case per rule beside it, because AN.1 implements the *same* contract an
 ([#280](https://github.com/NobuData/ouroboros/issues/280)) persists what comes back —
 `tests/test_planning_golden.py` holds this implementation to both.
 
+## The simulated-run driver (development only)
+
+[#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by
+`ouroboros-rest`'s ingestion contract ([#303](https://github.com/NobuData/ouroboros/issues/303))
+and steered through its control queue ([#306](https://github.com/NobuData/ouroboros/issues/306)).
+The driver in [`src/ouroboros_simulator/`](src/ouroboros_simulator) is a **client of both**,
+used to show the console working end to end before real execution exists. It is not a mock:
+every request is built by the production `ControlPlaneClient`, carries an idempotency key and
+goes over HTTP to the real REST. Change-sets are judged by AP.3's guardrails and the driver
+never posts a verdict. It never touches the database.
+
+| Scenario | What it does |
+|---|---|
+| `happy-path` | Queued → … → Open PR, one attempt at every stage, clean guardrails, merged |
+| `482-gate-return` | Mockup 10's story: `implement` fails its tests, the `checks-green` gate returns the loop, attempt 2 proceeds. A steer on attempt 2 switches it to an IRQ-lock fix |
+| `guardrail-violation` | A change-set editing `.github/workflows/` and planting an AWS key id: REST fails `ci_config` and `secrets` with evidence, and the attempt stops for a person |
+| `control-responsive` | A long `implement` with a safe boundary between tool calls: pause mid-stage, resume, steer the approach, or abort |
+
+```bash
+# against a running stack (yarn dev, or compose, which publishes REST on :4000)
+uv run python -m ouroboros_simulator --list
+uv run python -m ouroboros_simulator 482-gate-return            # --speed 10 by default
+uv run python -m ouroboros_simulator 482-gate-return --speed 60 --json
+```
+
+It reads `OURO_REST_URL` and `OURO_RUN_SIMULATOR_SECRET` from the same `.env` files as the
+engine. Runs open for the development seeds' `#482` in `acme-robotics` (`--ticket`,
+`--repository`, `--workflow` and `--workflow-version` override that). A development engine
+started with the simulator secret set also serves the driver, behind the internal key:
+
+| Path | Answers |
+|---|---|
+| `GET /dev/scenarios` | The four scenarios |
+| `POST /dev/simulations` | `{scenario, speed?, target?}` → `202 {id, state: running}`. At most four run at once (`429`) |
+| `GET /dev/simulations/{id}` | `runId` once the run opens, `result` once it ends |
+
+**Controls mean what AP.4 publishes.** The driver fetches the run's controls at every safe
+boundary (before a stage starts, and after each stretch of scripted work). *Pause* stops
+there and is acknowledged once stopped. *Resume* carries on. *Abort* is acknowledged, which
+closes the run as `canceled`, and the branch is kept. *Steer* is recorded against the current
+attempt **without pausing**, and the ack reads *"steering applied to attempt N"*. Scripts read
+the steer at their branch points, so it changes the edit, the change-set and the commit.
+
+**Everything it writes is simulated** (decision R4). The watermark follows the secret, so
+REST marks the run, every transcript line and the JSONL export. The driver refuses a
+simulator secret equal to `OURO_ENGINE_SHARED_SECRET` and stops before writing anything if
+the opened run comes back unmarked.
+
+**It is not in the production build.** `pyproject.toml` builds the wheel from
+`src/ouroboros_engine` only, and the image installs that wheel, so `ouroboros_simulator` is
+not in the image. [`tests/test_simulator_packaging.py`](tests/test_simulator_packaging.py)
+builds the wheel and checks it. `main.py` mounts `/dev` through a guarded `importlib` call
+that finds nothing there, so a production engine serves no `/dev` whatever its environment
+says. `/dev` is not in `openapi.yaml` either, because that document describes the service
+that ships.
+
+**What it cannot do yet.** The contract has no operation that moves `runs.status`, so a
+"merged" run is one whose `open-pr` stage succeeded. Only an abort changes the status. And
+with no plan on `#482`'s mirrored issue, `allowed_paths` is `not_applicable`, so
+`guardrail-violation` fails on CI config and secrets.
+
 ## The API specification
 
 **[`openapi.yaml`](openapi.yaml) is the specification, and the service serves it.** This
@@ -428,12 +489,14 @@ Development default port: **8000** (`PORT`).
 | `PORT` | HTTP listen port (unprefixed by convention — see [conventions](../docs/CONVENTIONS.md)) | `8000` |
 | `OURO_ENGINE_SHARED_SECRET` | Expected value of `X-Ouro-Internal-Key`; compared in constant time | **required** |
 | `OURO_LOG_LEVEL` | Log verbosity — `debug`, `info`, `warning` or `error` | `info` |
+| `OURO_RUN_SIMULATOR_SECRET` | The simulator's principal on REST's internal surface. Set, a development engine mounts `/dev` and the driver can run ([#307](https://github.com/NobuData/ouroboros/issues/307)). Must differ from `OURO_ENGINE_SHARED_SECRET` | unset |
+| `OURO_REST_URL` | Where the simulated-run driver reports runs to | `http://localhost:4000` |
 
 Values come from the **process environment layered over `.env` files** — the repo-root
 one, then this module's, then the real environment, later winning
 ([conventions § 4](../docs/CONVENTIONS.md#4-configuration--environment-variables)). Every
 variable is documented with its development default in the repo-root
-[`.env.example`](../.env.example), and those three — and only those three — again in
+[`.env.example`](../.env.example), and those five, and only those five, again in
 [`.env.example`](.env.example) here, for copying:
 
 ```bash
@@ -600,7 +663,8 @@ ouroboros-engine/
 │   │   └── uptime.py   #   the stopwatch /v0/status reports from
 │   ├── control_plane/  # what this service may ask ouroboros-rest for        · #224
 │   │   ├── contract.py #   ouroboros-rest's internal OpenAPI document, mirrored
-│   │   └── client.py   #   builds the requests, reads the answers — no transport yet
+│   │   ├── ingest.py   #   its six run-ingestion operations, mirrored           · #307
+│   │   └── client.py   #   builds the requests, reads the answers — no transport
 │   ├── estimation/     # sizing an issue — the contract, and what is behind it · #105
 │   │   ├── contract.py #   the shapes; one version of K.2's issue_estimates row
 │   │   ├── estimator.py#   the seam an estimator plugs into, and the K5/K6 check
@@ -625,6 +689,15 @@ ouroboros-engine/
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
 │   └── settings.py     # pydantic-settings, OURO_*
+├── src/ouroboros_simulator/  # the simulated-run driver — NOT in the wheel      · #307
+│   ├── session.py      #   one run: reports through the client, honours controls
+│   ├── scenarios/      #   the four scripts, over the session
+│   ├── runner.py       #   open a run, play a scenario, say what happened
+│   ├── transport.py    #   urllib, retrying 502/503/504 with the same key
+│   ├── clock.py        #   real timestamps, compressed waits
+│   ├── settings.py     #   OURO_REST_URL, OURO_RUN_SIMULATOR_SECRET
+│   ├── cli.py          #   python -m ouroboros_simulator
+│   └── api.py          #   /dev/* on a development engine
 ├── tests/              # pytest; conftest.py isolates the environment
 ├── openapi.yaml        # the API specification — authoritative, hand-written
 ├── openapi.json        # rendered from it; the copy the service loads
@@ -681,7 +754,11 @@ reads what comes back, and whoever writes the executor brings the transport.
 [`ouroboros-rest/openapi.internal.yaml`](../ouroboros-rest/openapi.internal.yaml), and
 `tests/test_control_plane_contract.py` reads that committed document and compares the paths,
 the header, the provider kinds and AB.1's error taxonomy against this module's copy — so the
-mirror is checked rather than asserted. The naming convention changes in that one file: the
+mirror is checked rather than asserted. `ingest.py` does the same for AP.1's six run-ingestion
+operations ([#303](https://github.com/NobuData/ouroboros/issues/303)), checked by
+`tests/test_control_plane_ingest.py`, and the client builds those requests too. Their first
+sender is the simulated-run driver, which brings a `urllib` transport from outside the wheel
+(see [the driver](#the-simulated-run-driver-development-only)). The naming convention changes in that one file: the
 control plane writes `camelCase` and this service writes `snake_case`, so nothing beneath it
 carries `runCtx` or `ttlSeconds`.
 
@@ -714,6 +791,7 @@ heuristic estimator [#106](https://github.com/NobuData/ouroboros/issues/106) ·
 the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
 workflow validation and the dry-run simulator [#144](https://github.com/NobuData/ouroboros/issues/144) ·
 the plan contract and its outline parser [#277](https://github.com/NobuData/ouroboros/issues/277) ·
+the simulated-run driver [#307](https://github.com/NobuData/ouroboros/issues/307) ·
 the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
 

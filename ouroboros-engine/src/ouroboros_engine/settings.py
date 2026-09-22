@@ -78,6 +78,13 @@ class Settings(BaseSettings):
             :class:`ouroboros_engine.core.security.InternalKeyMiddleware`, so a process
             without a secret could serve nothing and refusing to start is the honest
             outcome.
+        run_simulator_secret: ``OURO_RUN_SIMULATOR_SECRET``, the second principal
+            ``ouroboros-rest`` accepts on its internal surface, whose runs are marked
+            simulated (AP.1, #303). Optional. Set, a *development* engine mounts the
+            simulated-run driver's ``/dev`` routes (AP.5, #307). A production image does
+            not contain the driver, so there it mounts nothing and says so in the log.
+        rest_url: ``OURO_REST_URL``, where ``ouroboros-rest`` is. Read only by that
+            development driver, which reports runs to it.
     """
 
     model_config = SettingsConfigDict(
@@ -102,6 +109,19 @@ class Settings(BaseSettings):
     shared_secret: str = Field(
         min_length=1,
         validation_alias="OURO_ENGINE_SHARED_SECRET",
+    )
+    # Both optional, and both read only by the development-only simulator (AP.5, #307):
+    # `ouroboros_engine.main` mounts its routes when the secret is set *and* the package is
+    # installed, which the production wheel never is.
+    run_simulator_secret: str | None = Field(
+        default=None,
+        min_length=1,
+        validation_alias="OURO_RUN_SIMULATOR_SECRET",
+    )
+    rest_url: str = Field(
+        default="http://localhost:4000",
+        min_length=1,
+        validation_alias="OURO_REST_URL",
     )
 
 

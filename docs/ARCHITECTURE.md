@@ -806,7 +806,7 @@ checkout runs with:
 | `OURO_DB_PASSWORD` | compose, `run.sh` | Password for that role — local development only | `ouroboros` |
 | `OURO_DB_SCHEMA` | compose, `run.sh` | Schema Flyway owns and migrates | `ouroboros` |
 | `OURO_DATABASE_URL` | `ouroboros-rest` | Connection string for the Kysely pool | `postgresql://ouroboros:ouroboros@localhost:5432/ouroboros` |
-| `OURO_REST_URL` | `ouroboros-ui`, `ouroboros-rest` | Base URL of the communications layer — the only service address the UI knows, and the origin `ouroboros-rest` builds its OAuth `redirect_uri` from rather than trusting a `Host` header | `http://localhost:4000` |
+| `OURO_REST_URL` | `ouroboros-ui`, `ouroboros-rest`, `ouroboros-engine` | Base URL of the communications layer — the only service address the UI knows, the origin `ouroboros-rest` builds its OAuth `redirect_uri` from rather than trusting a `Host` header, and where the engine's development-only simulated-run driver reports runs ([#307](https://github.com/NobuData/ouroboros/issues/307)) | `http://localhost:4000` |
 | `OURO_UI_URL` | `ouroboros-rest` | Where a browser lands after signing in or out; the OAuth callback is a navigation, and this service serves no pages | `http://localhost:3000` |
 | `OURO_ENGINE_URL` | `ouroboros-rest` | Base URL of the engine; never exposed to a browser | `http://localhost:8000` |
 | `OURO_ENGINE_SHARED_SECRET` | `ouroboros-rest`, `ouroboros-engine` | Value of `X-Ouro-Internal-Key`; compared in constant time. Both sides must match | `dev-engine-shared-secret-change-me` |
