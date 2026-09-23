@@ -255,7 +255,12 @@ ouroboros-ui/
 │   │   │                    #   + log() — one page of a build's log, from an offset · #261
 │   │   ├── farm-page.ts     #   readFarmPage() — the same read, answered for the farm's poll
 │   │   ├── runs.ts          #   runs.console() — GET /api/v1/runs/{id}, mockup 10 in one snapshot · #309
+│   │   │                    #   + controls() / submitControl() — the head's control queue · #310
 │   │   ├── run-console.ts   #   readRunConsole() — the same read, answered for the console's poll
+│   │   ├── run-controls.ts  #   readRunControls() — the chips' read, 2 s while a control is on its way · #310
+│   │   ├── run-transcript.ts #  readRunTranscript() — AP.2's JSONL export, streamed through · #310
+│   │   ├── runs/[id]/controls/route.ts # GET /api/runs/{id}/controls — the chips' poll, on this origin
+│   │   ├── runs/[id]/transcript.jsonl/route.ts # GET — the take-over's transcript link, on this origin
 │   │   ├── farm-log.ts      #   readFarmLog() — a log page for the live card's stream, at its own cadence
 │   │   ├── farm/route.ts    #   GET /api/farm — that poll, on this origin
 │   │   ├── farm/jobs/[id]/log/route.ts # GET /api/farm/jobs/{id}/log?after= — that stream, on this origin
@@ -370,6 +375,14 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readRun() — the first paint: found, missing (notFound) or failed (banner)
 │   │   ├── copy-branch.tsx  #   the mono branch name and its copy control, announced in words
 │   │   ├── run-head.tsx     #   the eyebrow, the linked headline and the five-element meta row
+│   │   ├── controls.ts      #   the controls' rules: paused from acks, the toggle, the delivery chips · #310
+│   │   ├── controls-poll.ts #   the chips' reader and guard
+│   │   ├── control-actions.ts # submitRunControl() — pause, resume, abort; the Server Action
+│   │   ├── handoff.ts       #   the take-over's commands (shell-quoted), links and limitation
+│   │   ├── use-copy.ts      #   a copy control's state — the branch's and the commands'
+│   │   ├── run-controls.tsx #   Pause loop / Take over in IDE / Abort run, with their chips
+│   │   ├── abort-dialog.tsx #   the typed-confirmation danger dialog
+│   │   ├── takeover-dialog.tsx # decision R7's hand-off: branch, commands, links, #316 note
 │   │   ├── run-skeleton.tsx #   the loading state, at the head's own geometry
 │   │   └── run-screen.tsx   #   the contextual frame: breadcrumb, banners, head — polled
 │   ├── settings/            # the settings section's frame and tab row — mockup 17 · #141
@@ -3322,8 +3335,8 @@ disabled would reasonably expect to draft and be refused on the first click.
 `/runs/:id` ([#309](https://github.com/NobuData/ouroboros/issues/309)) is
 [`docs/mockups/10-run-detail.html`](../docs/mockups/10-run-detail.html)'s **page head**, read from
 `GET /api/v1/runs/{id}` ([#304](https://github.com/NobuData/ouroboros/issues/304)) and polled at
-the shared I.8 cadence through `/api/runs/:id`. The stepper, transcript, cards and run controls
-are AQ.2–AQ.5 (#310–#313), which mount beneath it.
+the shared I.8 cadence through `/api/runs/:id`. The [run controls](#run-controls) sit beside it
+(AQ.2, #310); the stepper, transcript and cards are AQ.3–AQ.5 (#311–#313), which mount beneath it.
 
 ```
 Dashboard / Loop #1847
@@ -3355,6 +3368,45 @@ Jira, Linear or GitLab ticket's URL needs the contract to carry it — and is pl
 repository is missing. A run
 another workspace owns, or an id that is not a uuid, is the not-found page; a failed read is the
 retry banner, keeping the last answer on screen.
+
+### Run controls
+
+The head's three actions ([#310](https://github.com/NobuData/ouroboros/issues/310)) — **Pause
+loop**, **Take over in IDE**, **Abort run** — queue controls on #306's durable queue through a
+Server Action ([`control-actions.ts`](app/runs/control-actions.ts)). They are drawn for an
+**owner or admin** while the run is **live**, and for nobody else; the service refuses a member's
+pause, resume or abort with `403` whatever the page draws.
+
+```
+                                  [Pause loop] [Take over in IDE] [Abort run]
+                                               (● Pause · acknowledged)
+```
+
+**Delivery is shown as it is.** A press reads `sending` while the request is in flight, then the
+queue's own state — `sent`, `received`, `acknowledged` — from `GET /api/runs/:id/controls`, which
+asks every 2 s while any control is `pending` or `delivered` and at the shared 15 s otherwise. A
+control nobody acknowledged before its TTL reads *no response — run may be between stages*, in
+the warn hue, never as a success. **Paused is what the executor said**: the snapshot has no
+paused flag, so the button becomes **Resume** only once the newest acknowledged pause-or-resume
+is a pause ([`controls.ts`](app/runs/controls.ts)). A control on its way disables its button, and
+a synchronous guard makes a double click one submission.
+
+**Abort** is an `alertdialog` described by its consequences — the loop stops at its next safe
+boundary, uncommitted work is discarded, the run is marked canceled and its branch preserved —
+and its button stays inert until the loop number is typed (`1847` or `#1847`). The service
+re-checks the confirmation and a forged one comes back as the dialog's alert. Once the abort is
+acknowledged the page asks for a fresh snapshot, the run reads `canceled`, and the row goes.
+
+**Take over in IDE** is decision R7, not IDE magic: it pauses the loop (unless it is paused or
+pausing), then shows that pause's chip, the branch as copy-able `git fetch origin <branch>` /
+`git switch <branch>` (shell-quoted when a branch name needs it), links to the ticket and to the
+transcript — `/api/runs/:id/transcript.jsonl`, which streams AP.2's export through the visitor's
+session — and says plainly that deep IDE integration is arriving (#316). **Resume** on the page
+brings the loop back.
+
+Both dialogs trap Tab, close on Escape and return focus to the button that opened them
+(`ShellOverlay`, which gained `role` and `describedBy` for the abort). The e2e leg is
+`tests/e2e/specs/runs.spec.ts`, against the real simulated-run driver.
 
 ## Workflow Studio
 

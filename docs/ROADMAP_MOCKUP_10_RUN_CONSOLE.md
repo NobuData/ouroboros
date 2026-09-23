@@ -785,7 +785,7 @@ via the #16 tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AQ.1 | #309 | 🟢 Done | ouroboros-ui: [AQ.1] Run route, head & meta row | `/runs/:id` frame, live meta, links from dashboard/farm | mvp, runs, ui, design | N (after #41, AP.2, BA-D.5) | Y | S | ouroboros-ui |
-| AQ.2 | #310 | 🟡 Open | ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over) | Action row with confirmation, ack states, branch-handoff dialog | mvp, runs, ui | N (after AQ.1, AP.4) | Y | M | ouroboros-ui |
+| AQ.2 | #310 | 🟢 Done | ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over) | Action row with confirmation, ack states, branch-handoff dialog | mvp, runs, ui | N (after AQ.1, AP.4) | Y | M | ouroboros-ui |
 | AQ.3 | #311 | 🟡 Open | ouroboros-ui: [AQ.3] Stage timeline stepper | Done/active/pending nodes, attempt chips, gate-return notes | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
 | AQ.4 | #312 | 🟡 Open | ouroboros-ui: [AQ.4] Agent transcript & steering | Streaming entries, actor chips, diff blocks, live entry, steer input | mvp, runs, ui, design | N (after AQ.1, AP.4) | Y | L | ouroboros-ui |
 | AQ.5 | #313 | 🟡 Open | ouroboros-ui: [AQ.5] Changes, resources & guardrails cards | The three right-column cards from computed payloads | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
@@ -836,7 +836,7 @@ Run Console · Loop #1847
 
 ### Issue AQ.2 — ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over)
 
-> **GitHub issue:** #310 · **Status:** 🟡 Open · **Parent epic:** #296
+> **GitHub issue:** #310 · **Status:** 🟢 Done · **Parent epic:** #296
 
 - **Problem Statement:** The head's three actions carry real consequences —
   ack-visible delivery, typed-confirmation abort, and the honest take-over
@@ -861,6 +861,23 @@ Run Console · Loop #1847
 [Abort run] ─▶ "Type 1847 to confirm — branch loop/482-… is preserved" ─▶ acked · canceled
 [Take over] ─▶ paused ✓ · git fetch origin loop/482-canbus-flake … ⧉ · "deep IDE integration soon"
 ```
+
+> **Delivered as `ouroboros-ui/app/runs/run-controls.tsx` and its two dialogs, plus e2e leg 17.
+> Four decisions the scope above left open:**
+>
+> 1. **Paused is read from the queue.** `RunConsole` carries no paused flag, so the loop is
+>    paused exactly when the newest *acknowledged* pause-or-resume is a pause
+>    (`app/runs/controls.ts`). The chips poll `GET /api/runs/:id/controls` every 2 s while a
+>    control is `pending`/`delivered` and at the shared 15 s otherwise.
+> 2. **Pause and Abort share the queue's collapse.** A pending pause-or-resume disables the
+>    toggle and a pending abort the abort button; a synchronous guard makes a double click one
+>    submission even before React re-renders. The service collapses repeats anyway.
+> 3. **The JSONL link needs a hop.** The browser cannot reach `ouroboros-rest`, so
+>    `/api/runs/:id/transcript.jsonl` streams AP.2's export through the visitor's session.
+> 4. **Role gating reads today's membership roles** (`mayAdminister`: owner/admin) in place of
+>    the unfiled BA-C.3; the service's `403` is the policy. The e2e leg runs the real
+>    `control-responsive` driver on the host through `uv` against a stack whose `rest` is given
+>    a simulator secret by `docker-compose.e2e.yml`.
 
 ### Issue AQ.3 — ouroboros-ui: [AQ.3] Stage timeline stepper
 

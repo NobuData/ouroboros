@@ -9,7 +9,9 @@ import { setNavOrigin } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 
 import { type RunPollOptions, createRunPoll, runUrl } from "./console-poll";
+import type { ControlsPollOptions } from "./controls-poll";
 import type { RunOrigin } from "./origin";
+import { type ControlSender, RunControls } from "./run-controls";
 import { RunHead } from "./run-head";
 import {
   BREADCRUMB_LABEL,
@@ -39,11 +41,20 @@ import "./runs.css";
  * **The watermark sits at the frame**, above everything else, so every card the later AQ
  * issues add below the head inherits its context (decision R4).
  *
+ * **The head's controls** ([#310](https://github.com/NobuData/ouroboros/issues/310)) — *Pause
+ * loop*, *Take over in IDE*, *Abort run* — are drawn for an owner or admin while the run is
+ * live, and for nobody else: a member sees none of them, and the service refuses a direct call
+ * all the same. Once a run has ended there is nothing left to control, and the row goes.
+ *
  * @param props.id The run's id.
  * @param props.initial The server's first read, or `null` when it failed.
  * @param props.initialError Why the first read failed, or `null`.
  * @param props.origin The module the console was opened from.
+ * @param props.mayControl Whether the reader may pause, abort or take over — owner or admin.
+ *   `false` when absent, erring the way `mayAdminister` does.
  * @param props.poll Test seams for the poll; production passes none.
+ * @param props.controlsPoll Test seams for the controls' poll; production passes none.
+ * @param props.send How to send a control. Defaults to the Server Action; tests replace it.
  * @returns The screen.
  */
 export function RunScreen({
@@ -51,13 +62,19 @@ export function RunScreen({
   initial,
   initialError,
   origin,
+  mayControl = false,
   poll,
+  controlsPoll,
+  send,
 }: Readonly<{
   id: string;
   initial: RunConsole | null;
   initialError: string | null;
   origin: RunOrigin;
+  mayControl?: boolean;
   poll?: RunPollOptions;
+  controlsPoll?: ControlsPollOptions;
+  send?: ControlSender;
 }>) {
   const { snapshot, refresh } = useKeyedPoll(id, (run) => createRunPoll(runUrl(run), poll));
 
@@ -99,7 +116,24 @@ export function RunScreen({
         </p>
       )}
 
-      {view !== null && <RunHead view={view} />}
+      {data !== null && view !== null && (
+        <RunHead
+          actions={
+            mayControl && data.head.live ? (
+              <RunControls
+                branch={view.branch}
+                loopSeq={data.head.loopSeq}
+                onRunChanged={refresh}
+                poll={controlsPoll}
+                runId={id}
+                send={send}
+                trackerUrl={view.trackerUrl}
+              />
+            ) : null
+          }
+          view={view}
+        />
+      )}
     </main>
   );
 }

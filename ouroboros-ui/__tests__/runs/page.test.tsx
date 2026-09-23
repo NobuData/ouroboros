@@ -1,6 +1,8 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { Membership } from "@/app/api/membership";
+import { ABORT_LABEL, CONTROLS_LABEL, PAUSE_LABEL, TAKEOVER_LABEL } from "@/app/runs/controls";
 import { navRegistry } from "@/app/shell/nav-registry";
 
 import { membership, sessionUser } from "../helpers/login";
@@ -20,6 +22,7 @@ class NotFound extends Error {}
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/runs/data", () => ({ readRun: (id: string) => readRun(id) }));
+vi.mock("@/app/runs/control-actions", () => ({ submitRunControl: vi.fn() }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new NotFound();
@@ -86,5 +89,46 @@ describe("the run console route", () => {
 
     await open({ from: "nowhere" });
     expect(navRegistry().origin).toBe("dashboard");
+  });
+});
+
+describe("the run controls (#310)", () => {
+  /**
+   * Sign in holding these roles.
+   *
+   * @param roles The active membership's roles.
+   */
+  function holding(roles: Membership["roles"]): void {
+    const held = membership({ roles });
+    requireWorkspace.mockResolvedValue({
+      session: { user: sessionUser(), memberships: [held], tenantSuggestion: null },
+      membership: held,
+    });
+  }
+
+  it("draws pause, take-over and abort for an owner or an admin", async () => {
+    for (const roles of [["owner"], ["admin"]] as const) {
+      holding([...roles]);
+      const view = await open();
+
+      const group = screen.getByRole("group", { name: CONTROLS_LABEL });
+      expect(within(group).getByRole("button", { name: PAUSE_LABEL })).toBeInTheDocument();
+      expect(within(group).getByRole("button", { name: TAKEOVER_LABEL })).toBeInTheDocument();
+      expect(within(group).getByRole("button", { name: ABORT_LABEL })).toBeInTheDocument();
+      view.unmount();
+    }
+  });
+
+  it("draws none of them for a member or a viewer", async () => {
+    for (const roles of [["member"], ["viewer"], []] as const) {
+      holding([...roles]);
+      const view = await open();
+
+      expect(screen.queryByRole("group", { name: CONTROLS_LABEL })).toBeNull();
+      expect(screen.queryByRole("button", { name: PAUSE_LABEL })).toBeNull();
+      expect(screen.queryByRole("button", { name: TAKEOVER_LABEL })).toBeNull();
+      expect(screen.queryByRole("button", { name: ABORT_LABEL })).toBeNull();
+      view.unmount();
+    }
   });
 });

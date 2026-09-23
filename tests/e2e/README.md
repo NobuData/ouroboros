@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and eleven amended in since:
+deployment. Five legs from the issue, and twelve amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -34,6 +34,7 @@ deployment. Five legs from the issue, and eleven amended in since:
 | 14 | [`specs/registry.spec.ts`](specs/registry.spec.ts) | Mockup 21's promises composed: an alias created, tuned and **rebound in the inspector, with the routing matrix on another page redrawing its resolution line**; a delete refused by the service's `409` to a page drawn before the route existed; an import landing a row; an orphan's **Fix in Providers →**; a switch-off that drops a hop in the next simulation; a raw model id refused at **Publish**; and a member served every control inert — with the page diffed in both palettes |
 | 15 | [`specs/planning.spec.ts`](specs/planning.spec.ts) | Mockup 09's four cards and its gantt against the planning seed, in both palettes — and the longest chain in the product, in one traversal: an outline planned by the engine into sized drafts, one deselected, pushed to a **sandbox tracker** with one creation refused mid-batch, the issues *and their native dependencies and epic parent* read back **through the tracker's own API**, ordinary sync adopting each of them as exactly one canonical ticket, a **Resume push** that leaves the tracker holding the intended issues and not one more, and the small ones landing on the **dashboard's** queue card; plus a bar moved and an epic round-tripped, the *Blocked* meter shifting because the push wired real dependencies, and a member who may draft and may not push |
 | 16 | [`specs/farm.spec.ts`](specs/farm.spec.ts) | Mockup 08 against the farm seed in both palettes — and **the first chain that leaves the stack's language and its network**: a fresh workspace walked from *no pools* to *no runners, enrol first* to a live row by **pasting the page's copied command, verbatim, into a bare machine**, where a real Go agent installs itself over TLS, enrols with a single-use token against a farm CA made a second earlier, and connects out over mTLS through a certificate-forwarding gateway; a token revoked in the browser **refused by the control plane in its own words**; a drain that round-trips on the agent's heartbeat; and the machine killed with `SIGKILL`, its row flipping to `offline` *because nothing is heartbeating* — plus a stale-data banner over a refused poll, a member served everything and offered nothing, and the shell at 125%. The build → live log → stats test is written and **parked** on [#991](https://github.com/NobuData/ouroboros/issues/991) |
+| 17 | [`specs/runs.spec.ts`](specs/runs.spec.ts) | Mockup 10's run controls against **a run that really answers them**: the simulated-run driver (#307), started on the host, opens a run through the ingestion contract, and the leg presses **Pause loop** until the chip reads *acknowledged* and the button becomes **Resume**, resumes it the same way, double-clicks Pause into exactly one queued control, takes the run over (the branch's commands, the JSONL export, the #316 limitation), shows a member none of it and has the service refuse their direct call, has a forged abort confirmation refused with `422`, and aborts the run for real — the page going `canceled` without a reload and the driver reporting `aborted` |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -320,6 +321,13 @@ yarn e2e specs/engine.spec.ts          # one leg
 
 From the repository root, `yarn e2e` is the same thing.
 
+**Leg 17 needs [uv](https://docs.astral.sh/uv/) on the machine running the suite.** Its run is
+opened by the simulated-run driver, which is development-only — not in the engine image — so
+`support/simulator.ts` runs it on the host as `uv run python -m ouroboros_simulator`, against
+REST on `localhost:4000`, presenting the simulator secret `docker-compose.e2e.yml` gives
+`rest`. `uv sync --locked` in `ouroboros-engine` once beforehand saves the leg resolving Python
+inside its own budget; CI does exactly that.
+
 **Leg 8 is a separate command**, because it is a separate gate with a separate budget:
 
 ```bash
@@ -433,6 +441,7 @@ tests/e2e/
 │   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
 │   ├── farm.ts                 # what mockup 08 renders, the fresh workspace the real chain runs in, and what leg 16 leaves
 │   ├── farm-runner.ts          # the build machine's three verbs: a fresh one, a pasted line, a pulled plug (leg 16)
+│   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (leg 17)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
 │   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
@@ -706,3 +715,6 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#248](https://github.com/NobuData/ouroboros/issues/248) — the installer and release leg 16 pastes and downloads
 - [#251](https://github.com/NobuData/ouroboros/issues/251) — the agent gateway and the presence sweep leg 16 holds to their word
 - [#991](https://github.com/NobuData/ouroboros/issues/991) — agent source checkout, which un-parks leg 16's build test
+- [#310](https://github.com/NobuData/ouroboros/issues/310) — leg 17, the run console's pause, abort and take-over
+- [#306](https://github.com/NobuData/ouroboros/issues/306) — the control queue leg 17's presses travel through
+- [#307](https://github.com/NobuData/ouroboros/issues/307) — the simulated-run driver that acknowledges them

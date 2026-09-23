@@ -215,6 +215,21 @@
 # *ahead*, which no sweep reaches, so mockup 08's `4/5` is still `4/5` when the parity group
 # photographs it. That file argues it; there is no setting because there is nothing to set.
 #
+# ---------------------------------------------------------------------------
+# The sixth line, and the leg it exists for (issue #310, AQ.2).
+# ---------------------------------------------------------------------------
+#
+#   * `OURO_RUN_SIMULATOR_SECRET: e2e-run-simulator-secret` — the second principal
+#     `X-Ouro-Internal-Key` may carry (#307), so the simulated-run driver can open a run.
+#
+# **What it is for.** The run console leg (specs/runs.spec.ts) presses Pause, Resume and Abort
+# and asserts they reach *acknowledged* — which needs something on the other side of the
+# control queue that fetches and acknowledges them. That is `ouroboros_simulator`, run on the
+# host by tests/e2e/support/simulator.ts (it is not in the engine image), presenting this
+# value. A literal rather than `${...}` because the suite hard-codes the same string: a value
+# read from a developer's `.env` could disagree with it, and this file is never handed to a
+# deployment. It differs from the engine's secret, which `rest` refuses to boot without.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -225,6 +240,7 @@ services:
       OURO_PROVIDER_HEALTH_INTERVAL_SECONDS: "86400"
       OURO_ESTIMATION_STALE_SECONDS: "86400"
       OURO_GITHUB_API_BASE_URL: "http://tracker-stub:8080"
+      OURO_RUN_SIMULATOR_SECRET: "e2e-run-simulator-secret"
     depends_on:
       # Appended to the base file's three. See the header: healthy must include *there is a
       # release to install*.

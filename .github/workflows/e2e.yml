@@ -101,6 +101,16 @@ jobs:
         working-directory: tests/e2e
         run: yarn browsers
 
+      # The run console leg (#310) drives the simulated-run driver, which is not in the engine
+      # image and runs on the host through uv (tests/e2e/support/simulator.ts). Synced here so
+      # the leg does not spend its own budget resolving Python.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+
+      - name: Prepare the simulated-run driver
+        working-directory: ouroboros-engine
+        run: uv sync --locked
+
       # scripts/run.sh owns what "run the e2e suite" means, so this workflow and a
       # developer's laptop cannot drift into two slightly different definitions of it.
       - name: Run the suite against a cold stack
@@ -170,6 +180,14 @@ jobs:
       - name: Install the browser
         working-directory: tests/e2e
         run: yarn browsers
+
+      # The run console leg's driver runs on the host (#310); see the e2e job.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+
+      - name: Prepare the simulated-run driver
+        working-directory: ouroboros-engine
+        run: uv sync --locked
 
       - name: Verify each leg fails when its service is stopped
         working-directory: tests/e2e
