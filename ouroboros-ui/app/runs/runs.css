@@ -332,6 +332,255 @@
   color: var(--ink);
 }
 
+/* ---------- the stage timeline (#311) ---------- */
+
+/*
+ * Mockup 10's c-12 stepper. Colours are tokens, so the dark-only mockup draws in both palettes;
+ * the two glows are gradients and shadows built from tokens, set through background-image so a
+ * cross-fade can run on opacity rather than on a property that does not animate.
+ */
+.run-timeline {
+  margin-bottom: var(--sp-10);
+}
+
+.run-timeline__empty {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--ink-mut);
+}
+
+/*
+ * The strip's own scroll box — the shell allows one page-level scroller, the pane, so a
+ * stepper wider than a phone scrolls sideways in here and never pushes the pane wider.
+ */
+.run-timeline__scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.run-stepper {
+  display: flex;
+  align-items: flex-start;
+  min-width: min-content;
+  margin: 0;
+  padding: var(--sp-3) var(--sp-1) var(--sp-1);
+  list-style: none;
+}
+
+/* A step is its leading segment and its column; the first has no segment. */
+.run-step {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: flex-start;
+}
+
+.run-step:first-child {
+  flex-grow: 0;
+}
+
+/* The mockup's `.seg` — a hairline at the node's middle, glowing between two done nodes. */
+.run-step__seg {
+  position: relative;
+  flex: 1 0 1.625rem;
+  height: 0.125rem;
+  margin-top: 0.75rem;
+  border-radius: 0.125rem;
+  background: var(--line);
+}
+
+.run-step__seg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-image: linear-gradient(90deg, var(--accent-deep), var(--accent));
+  box-shadow: 0 0 0.5rem -0.0625rem var(--accent-glow);
+  opacity: 0;
+}
+
+.run-step__seg--done::after {
+  opacity: 1;
+}
+
+.run-step__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 5.375rem;
+  text-align: center;
+}
+
+/* The press target: node, name and caption. A button so Tab walks the steps in order. */
+.run-step__button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.run-step__button:hover {
+  border-color: var(--line);
+}
+
+.run-step__button:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* The transcript's filter: the pressed step is framed in the accent. */
+.run-step__button[aria-pressed="true"] {
+  border-color: var(--accent-line);
+  background: var(--accent-wash);
+}
+
+.run-step__node {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-round);
+  background: var(--raised);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: 1;
+}
+
+.run-step__name {
+  font-family: var(--f-disp);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  color: var(--ink-mut);
+}
+
+.run-step__caption {
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The warn note wraps — never truncates: it is the story of why the loop went backwards. */
+.run-step__note {
+  max-width: 12rem;
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-sm);
+  background: var(--warn-tint);
+  color: var(--warn);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* done ✓ */
+.run-step--done .run-step__node {
+  border-color: var(--accent-deep);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.run-step--done .run-step__name {
+  color: var(--ink-dim);
+}
+
+/* active ● — the accent fill and its glow; the ring is what reads when nothing moves. */
+.run-step--active .run-step__node {
+  border-color: var(--accent);
+  background-image: linear-gradient(180deg, var(--accent-lift), var(--accent-deep));
+  color: var(--accent-ink);
+  box-shadow:
+    0 0 0 0.1875rem var(--accent-tint),
+    0 0 0.875rem -0.0625rem var(--accent-glow);
+}
+
+.run-step--active .run-step__name {
+  color: var(--ink);
+}
+
+.run-step--active .run-step__caption {
+  color: var(--accent);
+}
+
+/* failed ✕ — the loop died here; never drawn as merely paused. */
+.run-step--failed .run-step__node {
+  border-color: var(--err);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.run-step--failed .run-step__name,
+.run-step--failed .run-step__caption {
+  color: var(--err);
+}
+
+/* pending ○ — the node's resting treatment above, said once more so the state has its rule. */
+.run-step--pending .run-step__name {
+  color: var(--ink-mut);
+}
+
+/* skipped – — a branch the loop did not take. */
+.run-step--skipped .run-step__node {
+  border-style: dashed;
+}
+
+.run-step--skipped .run-step__name {
+  color: var(--ink-faint);
+}
+
+/*
+ * Motion, for readers who have not asked for less: the pulse on a live run's active node, and a
+ * cross-fade when a poll moves a node from one treatment to the next. Without it every state
+ * is the same and still says what it is — the static ring above is the reduced variant.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .run-stepper--live .run-step--active .run-step__node {
+    animation: run-step-pulse 0.8s ease-in-out infinite alternate;
+  }
+
+  .run-step__node,
+  .run-step__name,
+  .run-step__caption {
+    transition:
+      border-color 0.4s ease,
+      background-color 0.4s ease,
+      color 0.4s ease;
+  }
+
+  .run-step__seg::after {
+    transition: opacity 0.4s ease;
+  }
+}
+
+/* Run `alternate`, so out-and-back is the mockup's 1.6s pulse with two stops rather than three. */
+@keyframes run-step-pulse {
+  from {
+    box-shadow:
+      0 0 0 0 var(--accent-glow),
+      0 0 0.875rem -0.0625rem var(--accent-glow);
+  }
+
+  to {
+    box-shadow:
+      0 0 0 0.3125rem transparent,
+      0 0 0.875rem -0.0625rem var(--accent-glow);
+  }
+}
+
 /* ---------- the skeleton ---------- */
 
 .run-skeleton {

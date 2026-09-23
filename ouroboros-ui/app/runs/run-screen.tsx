@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 import type { RunConsole } from "@/app/api/runs";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
@@ -13,6 +13,8 @@ import type { ControlsPollOptions } from "./controls-poll";
 import type { RunOrigin } from "./origin";
 import { type ControlSender, RunControls } from "./run-controls";
 import { RunHead } from "./run-head";
+import { RunStepper } from "./run-stepper";
+import { runStepper, selectedStage, withStage } from "./stepper";
 import {
   BREADCRUMB_LABEL,
   SIMULATED_HEADLINE,
@@ -46,10 +48,16 @@ import "./runs.css";
  * live, and for nobody else: a member sees none of them, and the service refuses a direct call
  * all the same. Once a run has ended there is nothing left to control, and the row goes.
  *
+ * **The stage timeline** ([#311](https://github.com/NobuData/ouroboros/issues/311)) sits under
+ * the head. The stage it is filtered to lives here, in the URL's `?stage=`, so the filtered view
+ * is shareable; the transcript (#312) reads the same value. A key the run does not have is no
+ * filter at all.
+ *
  * @param props.id The run's id.
  * @param props.initial The server's first read, or `null` when it failed.
  * @param props.initialError Why the first read failed, or `null`.
  * @param props.origin The module the console was opened from.
+ * @param props.initialStage The `?stage=` the page was opened with, or `null`.
  * @param props.mayControl Whether the reader may pause, abort or take over — owner or admin.
  *   `false` when absent, erring the way `mayAdminister` does.
  * @param props.poll Test seams for the poll; production passes none.
@@ -62,6 +70,7 @@ export function RunScreen({
   initial,
   initialError,
   origin,
+  initialStage = null,
   mayControl = false,
   poll,
   controlsPoll,
@@ -71,6 +80,7 @@ export function RunScreen({
   initial: RunConsole | null;
   initialError: string | null;
   origin: RunOrigin;
+  initialStage?: string | null;
   mayControl?: boolean;
   poll?: RunPollOptions;
   controlsPoll?: ControlsPollOptions;
@@ -84,6 +94,24 @@ export function RunScreen({
   // A poll's own verdict supersedes the server's once it has one — either way.
   const error = snapshot.updatedAt === null ? (snapshot.error ?? initialError) : snapshot.error;
   const view = data === null ? null : runHead(data);
+  const stepper = data === null ? null : runStepper(data);
+
+  const [requestedStage, setRequestedStage] = useState<string | null>(initialStage);
+  const stage = stepper === null ? null : selectedStage(requestedStage, stepper.steps);
+
+  /**
+   * Filter to a stage, or clear the filter, and say so in the address — replaced rather than
+   * pushed, so Back leaves the page instead of stepping through every click. Next.js keeps its
+   * router in step with the native History API.
+   *
+   * @param next The stage, or `null`.
+   */
+  function selectStage(next: string | null): void {
+    setRequestedStage(next);
+
+    const { pathname, search, hash } = window.location;
+    window.history.replaceState(window.history.state, "", `${pathname}${withStage(search, next)}${hash}`);
+  }
 
   return (
     <main className="run">
@@ -134,6 +162,8 @@ export function RunScreen({
           view={view}
         />
       )}
+
+      {stepper !== null && <RunStepper onSelect={selectStage} selected={stage} view={stepper} />}
     </main>
   );
 }

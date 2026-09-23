@@ -24,6 +24,7 @@ import {
   SEEDED_RUN_ID,
   SEEDED_STARTED_AT,
   runConsole,
+  seededStages,
 } from "../helpers/runs";
 
 /**
@@ -305,7 +306,8 @@ describe("the contextual frame", () => {
     const { container } = draw();
 
     expect(container.firstElementChild?.tagName).toBe("MAIN");
-    expect(container.querySelector("header, aside")).toBeNull();
+    // A card's own head is a <header> too (#311's timeline); what must not appear is chrome.
+    expect(container.querySelector("header:not(.ou-card__head), aside")).toBeNull();
   });
 });
 
@@ -352,5 +354,87 @@ describe("the run controls (#310)", () => {
 
     await vi.waitFor(() => expect(screen.queryByRole("group", { name: CONTROLS_LABEL })).toBeNull());
     expect(meta().firstElementChild).toHaveTextContent("canceled");
+  });
+});
+
+describe("the stage timeline (#311)", () => {
+  afterEach(() => {
+    window.history.replaceState(null, "", "/");
+  });
+
+  it("sits under the head, drawn from the snapshot", () => {
+    draw();
+
+    const timeline = screen.getByRole("region", { name: "Stage timeline" });
+    expect(within(timeline).getByRole("button", { name: /^Implement, in progress, attempt 2\/3/ })).toBeInTheDocument();
+  });
+
+  it("filters to a pressed stage and says so in the address, keeping ?from=", () => {
+    window.history.replaceState(null, "", `/runs/${SEEDED_RUN_ID}?from=build-farm`);
+    draw();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Plan/ }));
+    expect(window.location.search).toBe("?from=build-farm&stage=plan");
+    expect(screen.getByRole("button", { name: /^Plan/ })).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: /^Plan/ }));
+    expect(window.location.search).toBe("?from=build-farm");
+    expect(screen.getByRole("button", { name: /^Plan/ })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("opens filtered when the address names a stage — the view is shareable", () => {
+    render(
+      <RunScreen
+        controlsPoll={QUIET_CONTROLS}
+        id={SEEDED_RUN_ID}
+        initial={runConsole()}
+        initialError={null}
+        initialStage="implement"
+        origin={DASHBOARD_ORIGIN}
+        poll={QUIET}
+      />,
+    );
+
+    expect(screen.getByRole("button", { name: /^Implement/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("ignores a stage the run does not have", () => {
+    render(
+      <RunScreen
+        controlsPoll={QUIET_CONTROLS}
+        id={SEEDED_RUN_ID}
+        initial={runConsole()}
+        initialError={null}
+        initialStage="deploy"
+        origin={DASHBOARD_ORIGIN}
+        poll={QUIET}
+      />,
+    );
+
+    const pressed = screen.getAllByRole("button").filter((button) => button.getAttribute("aria-pressed") === "true");
+    expect(pressed).toHaveLength(0);
+  });
+
+  it("moves a node on the poll's answer, without a reload", async () => {
+    answer = {
+      state: "fresh",
+      payload: runConsole({
+        stages: seededStages().map((stage) =>
+          stage.stageKey === "implement"
+            ? { ...stage, status: "succeeded" as const, durationSeconds: 300, note: null }
+            : stage.stageKey === "build"
+              ? { ...stage, status: "active" as const }
+              : stage,
+        ),
+      }),
+      etag: null,
+      pollAfterSeconds: null,
+    };
+    draw(runConsole(), { poll: LIVE });
+
+    await vi.waitFor(() =>
+      expect(screen.getByRole("button", { name: /^Build, in progress/ })).toBeInTheDocument(),
+    );
+    expect(screen.getByRole("button", { name: "Implement, done, 5m 00s" })).toBeInTheDocument();
   });
 });

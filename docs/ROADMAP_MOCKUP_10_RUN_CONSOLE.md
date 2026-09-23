@@ -786,7 +786,7 @@ via the #16 tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AQ.1 | #309 | 🟢 Done | ouroboros-ui: [AQ.1] Run route, head & meta row | `/runs/:id` frame, live meta, links from dashboard/farm | mvp, runs, ui, design | N (after #41, AP.2, BA-D.5) | Y | S | ouroboros-ui |
 | AQ.2 | #310 | 🟢 Done | ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over) | Action row with confirmation, ack states, branch-handoff dialog | mvp, runs, ui | N (after AQ.1, AP.4) | Y | M | ouroboros-ui |
-| AQ.3 | #311 | 🟡 Open | ouroboros-ui: [AQ.3] Stage timeline stepper | Done/active/pending nodes, attempt chips, gate-return notes | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
+| AQ.3 | #311 | 🟢 Done | ouroboros-ui: [AQ.3] Stage timeline stepper | Done/active/pending nodes, attempt chips, gate-return notes | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
 | AQ.4 | #312 | 🟡 Open | ouroboros-ui: [AQ.4] Agent transcript & steering | Streaming entries, actor chips, diff blocks, live entry, steer input | mvp, runs, ui, design | N (after AQ.1, AP.4) | Y | L | ouroboros-ui |
 | AQ.5 | #313 | 🟡 Open | ouroboros-ui: [AQ.5] Changes, resources & guardrails cards | The three right-column cards from computed payloads | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
 | AQ.6 | #314 | 🟡 Open | ouroboros-ui: [AQ.6] Console states & e2e leg | Terminal/queued/error states, watermark, themes, simulated e2e | mvp, runs, ui, ci | N (after AQ.2–AQ.5) | Y | M | ouroboros-ui, .github |
@@ -881,7 +881,7 @@ Run Console · Loop #1847
 
 ### Issue AQ.3 — ouroboros-ui: [AQ.3] Stage timeline stepper
 
-> **GitHub issue:** #311 · **Status:** 🟡 Open · **Parent epic:** #296
+> **GitHub issue:** #311 · **Status:** 🟢 Done · **Parent epic:** #296
 
 - **Problem Statement:** The stepper renders stage history with the mockup's
   exact states — done glow, pulsing active node, attempt caption, warn
@@ -905,6 +905,21 @@ Run Console · Loop #1847
 ✓Queued 0m04s ══ ✓Analyze 1m12s ══ ✓Plan 2m05s ══ ●Implement attempt 2/3 ── ○Build ── ○Test…
                                     └ ⚠ "attempt 1 failed tests — loop returned from gate ↺"
 ```
+
+> **Delivered as `ouroboros-ui/app/runs/stepper.ts` + `run-stepper.tsx`, and e2e leg 17's second
+> test. Four decisions the scope above left open:**
+>
+> 1. **Two treatments the mockup does not draw.** `failed` (`✕`, err) for a failed attempt and
+>    for the stage a failed/canceled run stopped on (captioned `canceled` after an abort), and
+>    `skipped` (`–`, dashed) for a branch not taken. A `needs_human` run keeps its active node,
+>    unpulsed.
+> 2. **The filter is `?stage=<stageKey>`**, set with `history.replaceState` (Back leaves the page
+>    rather than stepping through clicks) and validated against the run's stages. The transcript
+>    that consumes it is #312; until then the pressed node is the whole of the filter.
+> 3. **The note is printed verbatim** from `timeline.stages[].note`; the component writes no
+>    sentence of its own (asserted by a test that removes the stored note).
+> 4. **#335's amendment (Test node → `/runs/:id/tests`) is left to #335**, which makes that route
+>    real; linking it now would be a link to a page that does not exist.
 
 ### Issue AQ.4 — ouroboros-ui: [AQ.4] Agent transcript & steering
 
