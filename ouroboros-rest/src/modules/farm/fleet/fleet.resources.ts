@@ -135,6 +135,12 @@ export interface RunnerJobRef {
   readonly title: string;
   /** When it started, ISO 8601 — what the live card's elapsed timer counts from. */
   readonly startedAt: string | null;
+  /**
+   * The loop run the build belongs to — `build_jobs.run_id` — or `null` for a build no loop
+   * opened (decision B6). What the *Current job* cell links to the run console by
+   * ([#309](https://github.com/NobuData/ouroboros/issues/309)).
+   */
+  readonly runId: string | null;
 }
 
 /**
@@ -386,6 +392,7 @@ function runnerJobRef(job: BuildJob): RunnerJobRef {
     label: job.label,
     title: job.title,
     startedAt: job.started_at?.toISOString() ?? null,
+    runId: job.run_id,
   };
 }
 

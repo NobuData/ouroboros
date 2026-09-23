@@ -99,8 +99,8 @@ import { SOON_MARK } from "./view";
  * ### What cannot act yet says so
  *
  * `Health history →` is AJ.4 (#266): an inert *soon* control whose tooltip names the issue, and
- * it navigates nowhere. The current-job cell opens the job sheet until the run console (#309)
- * exists (`app/farm/job-sheet.tsx`).
+ * it navigates nowhere. The current-job cell links to the run console (#309) for a build a loop
+ * opened, and opens the job sheet for one it did not (`app/farm/job-sheet.tsx`).
  *
  * @param props.mayAdminister Whether this reader may drain, undrain and remove. A member's
  *   menus hold **View details** alone — the actions are absent, not inert.
@@ -300,6 +300,7 @@ function runnerColumns(
           note={row.jobNote}
           number={row.jobNumber}
           onOpen={openJob}
+          runId={row.jobRunId}
           title={row.jobTitle}
         />
       ),

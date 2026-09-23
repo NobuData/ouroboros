@@ -749,7 +749,9 @@ describe("the build farm page", () => {
         ramUsedBytes: 14_200_000_000,
         ramTotalBytes: 32_000_000_000,
       });
-      expect(machine(payload, "forge-01").currentJob).toMatchObject({ number: 479 });
+      // A hand-submitted build (decision B6) belongs to no run, so its cell has no console to
+      // link to (#309).
+      expect(machine(payload, "forge-01").currentJob).toMatchObject({ number: 479, runId: null });
 
       const offline = machine(payload, "forge-03");
 

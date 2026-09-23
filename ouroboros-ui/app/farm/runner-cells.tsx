@@ -1,7 +1,10 @@
 "use client";
 
+import Link from "next/link";
 import { memo } from "react";
 
+import { runPath } from "@/app/paths";
+import { BUILD_FARM_ORIGIN } from "@/app/runs/origin";
 import { Chip, Meter, cx } from "@/app/ui";
 import type { MeterTone } from "@/app/ui";
 
@@ -121,19 +124,21 @@ export const RunnerStatusCell = memo(function RunnerStatusCell({
 });
 
 /**
- * The current-job cell — `#479 zephyr build`, opening the job sheet.
+ * The current-job cell — `#479 zephyr build`.
  *
- * **It is a button, not a link**, because it does not navigate: the run console it will link to
- * is #309 and is not built, so it opens a sheet over what the page already knows
- * (`app/farm/job-sheet.tsx`, and `JOB_SHEET_NOTE` for the whole argument). It stays in the tab
- * order — unlike the row's inert `⋯` — because it is the one thing in the row that acts, and a
- * reader on a keyboard has no other way to it.
+ * **A link when the build belongs to a loop run**: it opens that run's console (`/runs/:id`,
+ * [#309](https://github.com/NobuData/ouroboros/issues/309)) with `?from=build-farm`, so the
+ * sidebar keeps **Build Farm** lit there. A build no loop opened has no console, so the cell is
+ * a button opening the job sheet over what the page already knows (`app/farm/job-sheet.tsx`,
+ * and `JOB_SHEET_NOTE`). Either way it stays in the tab order — unlike the row's inert `⋯` —
+ * because it is the one thing in the row that acts.
  *
  * @param props.jobId The job's id — what `onOpen` is called with — or `null` for a machine
  *   running nothing.
  * @param props.number `#479`, or `null` for a machine running nothing.
  * @param props.note `zephyr build`, or `null`.
  * @param props.title The job's full title — the tooltip.
+ * @param props.runId The loop run the job belongs to, or `null` — which decides link or button.
  * @param props.onOpen Opens the sheet for a job. Identity-stable, or the memo is for nothing.
  * @returns The cell: an em dash for a machine running nothing.
  */
@@ -142,16 +147,31 @@ export const RunnerJobCell = memo(function RunnerJobCell({
   number,
   note,
   title,
+  runId,
   onOpen,
 }: Readonly<{
   jobId: string | null;
   number: string | null;
   note: string | null;
   title: string | null;
+  runId: string | null;
   onOpen: (jobId: string) => void;
 }>) {
   if (jobId === null || number === null || note === null) {
     return <span className="farm-runners__none">{NOT_MEASURED}</span>;
+  }
+
+  if (runId !== null) {
+    return (
+      <Link
+        className="farm-runners__job"
+        href={runPath(runId, BUILD_FARM_ORIGIN.id)}
+        title={title ?? undefined}
+      >
+        <span className="farm-runners__job-number">{number}</span>{" "}
+        <span className="farm-runners__job-note">{note}</span>
+      </Link>
+    );
   }
 
   return (

@@ -198,6 +198,42 @@ export function workflowCodePath(slug: string): string {
 }
 
 /**
+ * The run console ([#309](https://github.com/NobuData/ouroboros/issues/309)) — mockup 10.
+ *
+ * **A contextual surface with no sidebar entry of its own**
+ * (`docs/DESIGN_SYSTEM_APP_SHELL.md`): a run is opened *from* somewhere — the dashboard's
+ * active loops, the build farm's current-job cells — and the sidebar keeps that module lit
+ * rather than going dark. {@link runPath} carries where the reader came from in
+ * {@link RUN_ORIGIN_PARAM} for exactly that reason.
+ */
+export const RUNS_PATH = "/runs";
+
+/**
+ * The query parameter naming the module a run console was opened from — a sidebar entry's id
+ * (`dashboard`, `build-farm`, …).
+ *
+ * Read on the page through `runOrigin` (`app/runs/origin.ts`), which accepts only the modules
+ * that link here, so a hand-typed value can light no entry but those.
+ */
+export const RUN_ORIGIN_PARAM = "from";
+
+/**
+ * The run console for one run — `/runs/7f00…?from=dashboard`.
+ *
+ * @param id The run's id (a uuid). Encoded anyway, for {@link workflowPath}'s reason.
+ * @param from The sidebar entry id of the module linking here, so that entry stays active on
+ *   the console. Omitted, the console falls back to the dashboard.
+ * @returns The path.
+ */
+export function runPath(id: string, from?: string): string {
+  const path = `${RUNS_PATH}/${encodeURIComponent(id)}`;
+
+  return from === undefined
+    ? path
+    : `${path}?${RUN_ORIGIN_PARAM}=${encodeURIComponent(from)}`;
+}
+
+/**
  * The routing matrix's heading, as an element id — where a **Used by** chip naming a route
  * goes ([#593](https://github.com/NobuData/ouroboros/issues/593)).
  *

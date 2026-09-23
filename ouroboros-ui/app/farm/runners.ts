@@ -386,6 +386,11 @@ export interface RunnerRow {
   readonly jobTitle: string | null;
   /** When the job started, ISO 8601, or `null`. */
   readonly jobStartedAt: string | null;
+  /**
+   * The loop run the job belongs to, or `null` for a build no loop opened — what the cell links
+   * to the run console by (#309).
+   */
+  readonly jobRunId: string | null;
   /** `82%`, or an em dash. */
   readonly cpu: string;
   /** How full the CPU meter is, or `null` for no meter. */
@@ -430,6 +435,7 @@ export function runnerRow(runner: FarmRunner, nowMs: number): RunnerRow {
     jobNote: job ? jobNote(job.label, runner.status) : null,
     jobTitle: job?.title ?? null,
     jobStartedAt: job?.startedAt ?? null,
+    jobRunId: job?.runId ?? null,
     cpu: cpu.text,
     cpuMeter: cpu.meter,
     cpuTone: cpu.tone,
@@ -585,18 +591,16 @@ export function jobSheetLabel(number: string): string {
 }
 
 /**
- * Why the current-job cell opens a sheet rather than a page.
+ * Why the current-job cell opened a sheet rather than a page.
  *
- * The cell's honest destination is the run the build belongs to, and the route that draws one
- * is AQ.1 ([#309](https://github.com/NobuData/ouroboros/issues/309)) — not built, and the
- * reference from a job to its run is AO.3's
- * ([#300](https://github.com/NobuData/ouroboros/issues/300)). Until both land the cell opens
- * this sheet over what the page already knows; on the commit that makes `/runs/:id` real it
- * becomes a link there, per the amendment on #257.
+ * A build a loop opened links straight to that run's console (AQ.1,
+ * [#309](https://github.com/NobuData/ouroboros/issues/309), per the amendment on #257). A build
+ * submitted by hand belongs to no run (decision B6), so there is no console to open — the cell
+ * opens this sheet over what the page already knows instead.
  */
 export const JOB_SHEET_NOTE =
-  "The run console arrives with #309 — until then this is everything the farm reports about " +
-  "the build.";
+  "This build was not opened by a loop, so it has no run console — this is everything the " +
+  "farm reports about it.";
 
 /** One fact in the job sheet. */
 export interface JobFact {

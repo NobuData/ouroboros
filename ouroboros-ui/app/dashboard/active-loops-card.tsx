@@ -1,4 +1,9 @@
+import Link from "next/link";
+
 import type { Dashboard, RunStatus } from "@/app/api/dashboard";
+import { runPath } from "@/app/paths";
+import { DASHBOARD_ORIGIN } from "@/app/runs/origin";
+import { RUN_STATUS_LABEL } from "@/app/runs/view";
 import {
   Button,
   Card,
@@ -33,17 +38,14 @@ import { type ActiveLoop, NO_VALUE, type Reading, activeLoops, moreActiveLoops }
  * derived figure in the table is the meter's width, and it rounds *down*
  * (`stagePercent`) so the bar can never claim work that has not finished.
  *
- * ### What it will not do yet
+ ### Where a row leads
  *
- * **A row is not a link.** The issue asks that the whole row open the run console; the run
- * console is mockup 10 and its route does not exist — `#49` holds the placeholder and is
- * post-MVP. The design system's honesty rule (§ 3.5) and #49's own first acceptance criterion
- * (*no dead nav links*) both say the same thing about linking there today, and the sidebar
- * already answers it the same way for nine other destinations. So the issue cell is labelled
- * rather than linked, and it says what is missing in its tooltip; the *Open run console* head
- * link and the *+N more* footer are inert {@link Button}s for the same reason, which keeps
- * their explanation in the tab order where a dropped link would take it out. Each becomes an
- * `href` the day #49 lands, and none of them fakes an outcome in the meantime.
+ * **The issue cell links to the run's console** (`/runs/:id`, AQ.1
+ * [#309](https://github.com/NobuData/ouroboros/issues/309)), carrying `?from=dashboard` so the
+ * sidebar keeps **Dashboard** lit on a surface that has no entry of its own. The *Open run
+ * console* head link and the *+N more* footer name the full list of runs rather than one run,
+ * and that list is still unbuilt — so they stay inert {@link Button}s with their reason in the
+ * tooltip, which keeps the explanation in the tab order where a dropped link would take it out.
  *
  * @param props.aggregate The dashboard aggregate, or why it could not be read.
  * @param props.readAt When the page was read, in milliseconds since the epoch — one instant
@@ -120,10 +122,10 @@ const TITLE_ID = "dash-active-loops-title";
  */
 const CAPTION = "Loops running right now";
 
-/** Why *Open run console* cannot act yet. */
+/** Why *Open run console* cannot act yet — it names the list of runs, not one run. */
 const RUN_CONSOLE_SOON =
-  "The run console is not built yet — it arrives with its own roadmap (mockup 10), and #49 " +
-  "holds its placeholder route.";
+  "The list of every run is not built yet — #71 serves it and #49 holds its route. Open a " +
+  "loop's issue to see its run console.";
 
 /** Why *+N more* cannot act yet. */
 const ALL_RUNS_SOON =
@@ -195,22 +197,6 @@ const STATUS_TONE: Record<RunStatus, ChipTone> = {
 };
 
 /**
- * What each status is called, where the contract's own word is not one.
- *
- * The three active ones are printed exactly as the mockup prints them, which is exactly as
- * the contract spells them; only `needs_human` needs its underscore taken out.
- */
-const STATUS_LABEL: Record<RunStatus, string> = {
-  coding: "coding",
-  building: "building",
-  review: "review",
-  merged: "merged",
-  needs_human: "needs human",
-  failed: "failed",
-  canceled: "canceled",
-};
-
-/**
  * The hue a run's stage meter takes.
  *
  * *ok* for a run in review, which is the mockup's own `meter ok` on its third row: a run that
@@ -238,9 +224,8 @@ const COLUMNS: readonly Column<ActiveLoop>[] = [
     key: "issue",
     header: "Issue",
     cell: (run) => (
-      // The whole cell carries the tooltip, so a reader who hovers the title gets the same
-      // answer as one who hovers the number: this is the thing that will be a link.
-      <span className="dash-run__issue" title={RUN_CONSOLE_SOON}>
+      // The whole cell is the link, so the number and the title lead to the same console.
+      <Link className="dash-run__issue" href={runPath(run.id, DASHBOARD_ORIGIN.id)}>
         <span className="dash-run__number">{`#${run.issueNumber}`}</span>
         {/*
           A real space between the two, which the flex gap does not supply: a whitespace-only
@@ -249,7 +234,7 @@ const COLUMNS: readonly Column<ActiveLoop>[] = [
           own `&nbsp;`, in the one form that survives both layouts.
         */}{" "}
         <span className="dash-run__title">{run.issueTitle}</span>
-      </span>
+      </Link>
     ),
   },
   {
@@ -300,6 +285,6 @@ const COLUMNS: readonly Column<ActiveLoop>[] = [
   {
     key: "status",
     header: "Status",
-    cell: (run) => <Chip tone={STATUS_TONE[run.status]}>{STATUS_LABEL[run.status]}</Chip>,
+    cell: (run) => <Chip tone={STATUS_TONE[run.status]}>{RUN_STATUS_LABEL[run.status]}</Chip>,
   },
 ];

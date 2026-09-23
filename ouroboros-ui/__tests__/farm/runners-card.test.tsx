@@ -20,6 +20,7 @@ import {
 } from "@/app/farm/runners";
 import { FIRST_RUN_STEPS_LABEL } from "@/app/farm/states";
 import { NOT_MEASURED, SOON_MARK } from "@/app/farm/view";
+import { runPath } from "@/app/paths";
 import type { PollAnswer } from "@/app/poll";
 
 import {
@@ -527,7 +528,7 @@ describe("the current-job cell", () => {
     expect(jobControl("#472")).toHaveTextContent("#472 HIL test rig · finishing");
   });
 
-  it("opens the job sheet — what the farm knows about the build, and that the console is coming", () => {
+  it("opens the job sheet for a build no loop opened — what the farm knows, and why no console", () => {
     draw();
 
     fireEvent.click(jobControl("#479"));
@@ -538,8 +539,29 @@ describe("the current-job cell", () => {
     expect(sheet).toHaveTextContent("pool-a");
     expect(sheet).toHaveTextContent("Running for3m");
     expect(sheet).toHaveTextContent(JOB_SHEET_NOTE);
-    expect(JOB_SHEET_NOTE).toContain("#309");
+    expect(JOB_SHEET_NOTE).toMatch(/not opened by a loop/);
     expect(sheet.querySelector("a")).toBeNull();
+  });
+
+  it("links a loop's build to its run console, keeping the farm as the origin (#309)", () => {
+    const runId = "7f000009-0000-4000-8000-000000000001";
+    const page = seededFarm();
+    draw({
+      ...page,
+      runners: page.runners.map((runner) =>
+        runner.currentJob?.number === 479
+          ? { ...runner, currentJob: { ...runner.currentJob, runId } }
+          : runner,
+      ),
+    });
+
+    const link = within(card()).getByRole("link", { name: /^#479 / });
+    expect(link).toHaveAttribute("href", runPath(runId, "build-farm"));
+    expect(link).toHaveAttribute("title", "Add OTA rollback on failed checksum");
+    expect(within(card()).queryByRole("button", { name: /^#479 / })).toBeNull();
+
+    // The hand-submitted build beside it still opens the sheet.
+    expect(jobControl("#472")).toHaveTextContent("#472 HIL test rig · finishing");
   });
 
   it("closes from its own control and on Escape", () => {
