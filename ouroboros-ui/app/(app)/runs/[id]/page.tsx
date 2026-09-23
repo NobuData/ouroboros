@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { requireWorkspace } from "@/app/api/access";
-import { mayAdminister } from "@/app/api/membership";
+import { mayAdminister, mayContribute } from "@/app/api/membership";
 import { RUN_ORIGIN_PARAM } from "@/app/paths";
 import { readRun } from "@/app/runs/data";
 import { runOrigin } from "@/app/runs/origin";
@@ -21,7 +21,8 @@ import { RunScreen } from "@/app/runs/run-screen";
  *
  * The head's controls (#310) are drawn for an owner or admin — `mayAdminister`, the rule the
  * service applies to pause, resume and abort — and the screen is handed a boolean rather than
- * a role. The service checks again on every press.
+ * a role. The service checks again on every press. Steering the transcript (#312) is
+ * `mayContribute` — owner, admin or member — by the same argument.
  *
  * @param props.params The run's id.
  * @param props.searchParams The query — `?from=`, and `?stage=`, the stage the timeline and the
@@ -50,6 +51,7 @@ export default async function Page({
       initial={reading.state === "found" ? reading.value : null}
       initialError={reading.state === "failed" ? reading.reason : null}
       initialStage={typeof stage === "string" ? stage : (stage?.[0] ?? null)}
+      mayContribute={mayContribute(membership.roles)}
       mayControl={mayAdminister(membership.roles)}
       origin={origin}
     />

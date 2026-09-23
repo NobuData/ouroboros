@@ -564,6 +564,22 @@
   .run-step__seg::after {
     transition: opacity 0.4s ease;
   }
+
+  /* The live entry's meter, only while the run is live (#312): a stalled entry stands still. */
+  .run-entry__meter--live .run-entry__fill {
+    animation: run-meter-live 0.7s ease-in-out infinite alternate;
+  }
+}
+
+/* Run `alternate`: out and back is the mockup's 1.4s breath, with two stops. */
+@keyframes run-meter-live {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.55;
+  }
 }
 
 /* Run `alternate`, so out-and-back is the mockup's 1.6s pulse with two stops rather than three. */
@@ -579,6 +595,341 @@
       0 0 0 0.3125rem transparent,
       0 0 0.875rem -0.0625rem var(--accent-glow);
   }
+}
+
+/* ---------- the agent transcript (#312) ---------- */
+
+/*
+ * Mockup 10's c-7 card. The entries scroll in their own well — never the pane — and a wide diff
+ * scrolls inside its own block, so nothing here can push the pane sideways. Diff lines take the
+ * code view's palette (app/workflows/code/code-save.css): err on err-tint, ok on ok-tint, in the
+ * inset well, so a diff looks the same everywhere in the product.
+ */
+.run-transcript {
+  margin-bottom: var(--sp-10);
+}
+
+.run-transcript__filter,
+.run-transcript__error {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--t-xs);
+  color: var(--ink-mut);
+}
+
+.run-transcript__error {
+  color: var(--err);
+}
+
+.run-transcript__clear {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The frame positions the jump affordance against the well; it scrolls nothing itself. */
+.run-transcript__frame {
+  position: relative;
+}
+
+/*
+ * The well — the mockup's `.transcript`. Scroll anchoring (the browser default) keeps the lines
+ * a reader is on in place when old entries leave the head of a long transcript.
+ */
+.run-transcript__scroll {
+  max-height: 32.5rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: auto;
+  padding: var(--sp-1) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.run-transcript__scroll:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+.run-transcript__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.run-transcript__empty,
+.run-transcript__dropped {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-7);
+  font-size: var(--t-xs);
+  color: var(--ink-faint);
+}
+
+.run-transcript__dropped {
+  border-bottom: 1px dashed var(--line);
+  font-style: italic;
+}
+
+/* Back to following the tail — inside the frame, over the well's lower edge. */
+.run-transcript__jump {
+  position: absolute;
+  right: var(--sp-6);
+  bottom: var(--sp-5);
+  padding: var(--sp-2) var(--sp-5);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--accent);
+  font: inherit;
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.run-transcript__jump:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* One entry — the mockup's `.tr-entry`. */
+.run-entry {
+  min-width: 0;
+  padding: var(--sp-5) var(--sp-7);
+  border-bottom: 1px solid var(--line);
+}
+
+.run-entry:last-child {
+  border-bottom: 0;
+}
+
+/* The live entry: an accent rule down its left edge, on the accent wash. */
+.run-entry--live {
+  padding-left: calc(var(--sp-7) - 0.125rem);
+  border-left: 0.1875rem solid var(--accent);
+  background: var(--accent-tint);
+}
+
+/* A steer this page sent, before the service's mirror of it has arrived. */
+.run-entry--optimistic {
+  background: var(--accent-wash);
+}
+
+/* An elision marker is not content, and must not pass for it: dashed, italic, muted. */
+.run-entry--elision {
+  border-top: 1px dashed var(--warn-line);
+  border-bottom: 1px dashed var(--warn-line);
+  background: var(--warn-tint);
+}
+
+.run-entry__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-2);
+}
+
+.run-entry__time {
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The actor chip — the mockup's `.tr-actor`, one treatment per actor. */
+.run-entry__actor {
+  padding: 0.0625rem var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: var(--tr-wider);
+}
+
+.run-entry__actor--plan {
+  color: var(--ink-faint);
+}
+
+.run-entry__actor--tool {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  color: var(--accent);
+}
+
+.run-entry__actor--model {
+  border-color: var(--model-line);
+  background: var(--model-tint);
+  color: var(--model);
+}
+
+.run-entry__actor--gate {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.run-entry__actor--user {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+.run-entry__actor--system {
+  border-style: dashed;
+  color: var(--ink-mut);
+}
+
+/* The tool's tag — the mockup's `.tag`. */
+.run-entry__tag {
+  padding: 0.0625rem var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-xs);
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* The edited file, the command a meter is running — faint mono, and it may wrap. */
+.run-entry__note {
+  min-width: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  overflow-wrap: anywhere;
+}
+
+.run-entry__body {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.run-entry__body--faint {
+  color: var(--ink-faint);
+}
+
+.run-entry__body--reason {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.run-entry__body--mono {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.run-entry__body--warn {
+  color: var(--warn);
+}
+
+.run-entry__elision {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  font-style: italic;
+  line-height: var(--lh-body);
+}
+
+/* The diff block — the code view's well and type; long lines scroll inside it. */
+.run-entry__diff {
+  max-width: 100%;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-4) var(--sp-6);
+  overflow-x: auto;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-loose);
+}
+
+.run-entry__line {
+  display: block;
+  white-space: pre;
+}
+
+.run-entry__line--ctx {
+  color: var(--ink-faint);
+}
+
+.run-entry__line--del {
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.run-entry__line--add {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+/* A tool's result, coloured by its stored severity. */
+.run-entry__result {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.run-entry__result--ok {
+  color: var(--ok);
+}
+
+.run-entry__result--warn {
+  color: var(--warn);
+}
+
+.run-entry__result--err {
+  color: var(--err);
+}
+
+/* The meter — the mockup's `.meter`; its width is the one number the sheet cannot know. */
+.run-entry__meter {
+  height: 0.375rem;
+  margin-top: var(--sp-4);
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+.run-entry__fill {
+  display: block;
+  width: var(--run-entry-progress);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+}
+
+/* ---------- the steering box (#312) ---------- */
+
+.run-steer {
+  margin-top: var(--sp-6);
+}
+
+.run-steer__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.run-steer__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.run-steer__caption {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
 }
 
 /* ---------- the skeleton ---------- */

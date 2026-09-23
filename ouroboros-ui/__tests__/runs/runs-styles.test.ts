@@ -95,7 +95,7 @@ describe("the stage timeline (#311)", () => {
 
     expect(guard).toBeGreaterThanOrEqual(0);
     expect(animation).toBeGreaterThan(guard);
-    expect(CODE.match(/animation:/g)).toHaveLength(1);
+    for (const match of CODE.matchAll(/animation:/g)) expect(match.index).toBeGreaterThan(guard);
     expect(CODE.match(/transition:/g)?.length).toBeGreaterThan(0);
     for (const match of CODE.matchAll(/transition:/g)) expect(match.index).toBeGreaterThan(guard);
 
@@ -120,5 +120,46 @@ describe("the stage timeline (#311)", () => {
     expect(scroll).toMatch(/overflow-x:\s*auto/);
     expect(scroll).toMatch(/max-width:\s*100%/);
     expect(rule(".run-stepper")).toMatch(/min-width:\s*min-content/);
+  });
+});
+
+describe("the agent transcript (#312)", () => {
+  /**
+   * One rule's body, by its exact selector.
+   *
+   * @param selector The selector as written.
+   * @returns The declarations between its braces.
+   */
+  function rule(selector: string): string {
+    const start = CODE.indexOf(`${selector} {`);
+    expect(start, `${selector} is declared`).toBeGreaterThanOrEqual(0);
+
+    return CODE.slice(start, CODE.indexOf("}", start));
+  }
+
+  it("scrolls in its own well, which never scrolls sideways — a wide diff scrolls inside itself", () => {
+    const well = rule(".run-transcript__scroll");
+    expect(well).toMatch(/overflow-y:\s*auto/);
+    expect(well).toMatch(/overflow-x:\s*hidden/);
+    expect(well).toMatch(/max-height:\s*[\d.]+rem/);
+
+    expect(rule(".run-entry__diff")).toMatch(/overflow-x:\s*auto/);
+    expect(rule(".run-entry__line")).toMatch(/white-space:\s*pre/);
+    expect(rule(".run-entry")).toMatch(/min-width:\s*0/);
+  });
+
+  it("draws diffs in the code view's palette", () => {
+    expect(rule(".run-entry__line--del")).toMatch(/background:\s*var\(--err-tint\);\s*color:\s*var\(--err\)/);
+    expect(rule(".run-entry__line--add")).toMatch(/background:\s*var\(--ok-tint\);\s*color:\s*var\(--ok\)/);
+  });
+
+  it("sets the elision marker apart from content", () => {
+    expect(rule(".run-entry--elision")).toMatch(/dashed/);
+    expect(rule(".run-entry__elision")).toMatch(/font-style:\s*italic/);
+  });
+
+  it("pulses the live meter only inside the reduced-motion guard", () => {
+    const guard = CODE.indexOf("@media (prefers-reduced-motion: no-preference)");
+    expect(CODE.indexOf(".run-entry__meter--live .run-entry__fill")).toBeGreaterThan(guard);
   });
 });

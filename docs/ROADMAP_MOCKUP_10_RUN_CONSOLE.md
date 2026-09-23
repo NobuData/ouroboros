@@ -787,7 +787,7 @@ via the #16 tokens (both themes; the mockup is dark-only).
 | AQ.1 | #309 | 🟢 Done | ouroboros-ui: [AQ.1] Run route, head & meta row | `/runs/:id` frame, live meta, links from dashboard/farm | mvp, runs, ui, design | N (after #41, AP.2, BA-D.5) | Y | S | ouroboros-ui |
 | AQ.2 | #310 | 🟢 Done | ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over) | Action row with confirmation, ack states, branch-handoff dialog | mvp, runs, ui | N (after AQ.1, AP.4) | Y | M | ouroboros-ui |
 | AQ.3 | #311 | 🟢 Done | ouroboros-ui: [AQ.3] Stage timeline stepper | Done/active/pending nodes, attempt chips, gate-return notes | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
-| AQ.4 | #312 | 🟡 Open | ouroboros-ui: [AQ.4] Agent transcript & steering | Streaming entries, actor chips, diff blocks, live entry, steer input | mvp, runs, ui, design | N (after AQ.1, AP.4) | Y | L | ouroboros-ui |
+| AQ.4 | #312 | 🟢 Done | ouroboros-ui: [AQ.4] Agent transcript & steering | Streaming entries, actor chips, diff blocks, live entry, steer input | mvp, runs, ui, design | N (after AQ.1, AP.4) | Y | L | ouroboros-ui |
 | AQ.5 | #313 | 🟡 Open | ouroboros-ui: [AQ.5] Changes, resources & guardrails cards | The three right-column cards from computed payloads | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
 | AQ.6 | #314 | 🟡 Open | ouroboros-ui: [AQ.6] Console states & e2e leg | Terminal/queued/error states, watermark, themes, simulated e2e | mvp, runs, ui, ci | N (after AQ.2–AQ.5) | Y | M | ouroboros-ui, .github |
 
@@ -923,7 +923,7 @@ Run Console · Loop #1847
 
 ### Issue AQ.4 — ouroboros-ui: [AQ.4] Agent transcript & steering
 
-> **GitHub issue:** #312 · **Status:** 🟡 Open · **Parent epic:** #296
+> **GitHub issue:** #312 · **Status:** 🟢 Done · **Parent epic:** #296
 
 - **Problem Statement:** The transcript is the page's soul: typed entries
   with actor chips, inline diffs, the live tail — plus the steering input
@@ -955,6 +955,24 @@ Run Console · Loop #1847
 14:12:19 [TOOL run_tests] running… 47/63 ▓▓▓▓░ (live)
 [ Steer the loop — e.g. "prefer a fix inside the ISR…" ] [Send] → USER entry + acked ✓
 ```
+
+> **Delivered as `ouroboros-ui/app/runs/transcript*.ts(x)` + `steer-box.tsx`, and e2e leg 17's
+> transcript tests. Five decisions the scope above left open:**
+>
+> 1. **Bounded, not virtualized row-by-row.** Entries are variable-height (a diff is tall), so the
+>    farm log's fixed-row window does not apply; the stream holds the newest 500 entries, says
+>    how many earlier ones left (*Raw JSONL has all of them*), memoises each entry, and relies on
+>    the browser's scroll anchoring to keep a scrolled-up reader in place as the head trims.
+> 2. **The live entry is the newest one whose payload says `state: "running"`.** An older
+>    running entry is history; the meter pulses only while the page's `live` is true.
+> 3. **Steering reuses #310's Server Action**, now accepting `steer` (text trimmed, 1–4096) for
+>    owner/admin/member (`mayContribute`); the optimistic `USER` entry is replaced by the
+>    service's mirror (matched by text after the cursor it was sent at), and the chip moves with
+>    it. Viewers and terminal runs get a disabled box with the reason printed.
+> 4. **R9's caption** is *"Steering nudges the current attempt without pausing it."* — no Slack
+>    sentence until #318.
+> 5. **The screenshot test** is the card at parity with the seed in both palettes, timestamps
+>    masked (the seed dates them from `now()`).
 
 ### Issue AQ.5 — ouroboros-ui: [AQ.5] Changes, resources & guardrails cards
 

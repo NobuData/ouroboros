@@ -6,6 +6,7 @@ import { BUILD_FARM_PATH, DASHBOARD_PATH } from "@/app/paths";
 import type { RunPollOptions } from "@/app/runs/console-poll";
 import { CONTROLS_LABEL } from "@/app/runs/controls";
 import type { ControlsPollOptions } from "@/app/runs/controls-poll";
+import type { TranscriptStreamOptions } from "@/app/runs/transcript-stream";
 import { BUILD_FARM_ORIGIN, DASHBOARD_ORIGIN, type RunOrigin } from "@/app/runs/origin";
 import { RunScreen } from "@/app/runs/run-screen";
 import {
@@ -42,6 +43,9 @@ const QUIET: RunPollOptions = { read: () => new Promise(() => {}), visible: () =
 /** A controls poll that never answers. */
 const QUIET_CONTROLS: ControlsPollOptions = { read: () => new Promise(() => {}), visible: () => true };
 
+/** A transcript that never answers — the card shows it is reading. */
+const QUIET_TRANSCRIPT: TranscriptStreamOptions = { read: () => new Promise(() => {}), visible: () => true };
+
 /** What the live poll answers. Reassigned by the cases that care. */
 let answer: PollAnswer<RunConsole>;
 
@@ -73,6 +77,7 @@ function draw(
       mayControl={options.mayControl}
       origin={options.origin ?? DASHBOARD_ORIGIN}
       poll={options.poll ?? QUIET}
+      transcript={QUIET_TRANSCRIPT}
     />,
   );
 }
@@ -392,6 +397,7 @@ describe("the stage timeline (#311)", () => {
         initialStage="implement"
         origin={DASHBOARD_ORIGIN}
         poll={QUIET}
+        transcript={QUIET_TRANSCRIPT}
       />,
     );
 
@@ -408,6 +414,7 @@ describe("the stage timeline (#311)", () => {
         initialStage="deploy"
         origin={DASHBOARD_ORIGIN}
         poll={QUIET}
+        transcript={QUIET_TRANSCRIPT}
       />,
     );
 
@@ -436,5 +443,54 @@ describe("the stage timeline (#311)", () => {
       expect(screen.getByRole("button", { name: /^Build, in progress/ })).toBeInTheDocument(),
     );
     expect(screen.getByRole("button", { name: "Implement, done, 5m 00s" })).toBeInTheDocument();
+  });
+});
+
+describe("the agent transcript (#312)", () => {
+  it("sits under the timeline, and a viewer is told why they cannot steer", () => {
+    draw();
+
+    expect(screen.getByRole("region", { name: "Agent transcript" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "Steer the loop" })).toBeDisabled();
+    expect(screen.getByText("Viewers can read the transcript but cannot steer the loop.")).toBeInTheDocument();
+  });
+
+  it("is open to a reader who may contribute", () => {
+    render(
+      <RunScreen
+        controlsPoll={QUIET_CONTROLS}
+        id={SEEDED_RUN_ID}
+        initial={runConsole()}
+        initialError={null}
+        mayContribute
+        origin={DASHBOARD_ORIGIN}
+        poll={QUIET}
+        transcript={QUIET_TRANSCRIPT}
+      />,
+    );
+
+    expect(screen.getByRole("textbox", { name: "Steer the loop" })).toBeEnabled();
+  });
+
+  it("follows the stepper's filter, and Show all clears both", () => {
+    window.history.replaceState(null, "", `/runs/${SEEDED_RUN_ID}`);
+    render(
+      <RunScreen
+        controlsPoll={QUIET_CONTROLS}
+        id={SEEDED_RUN_ID}
+        initial={runConsole()}
+        initialError={null}
+        initialStage="implement"
+        origin={DASHBOARD_ORIGIN}
+        poll={QUIET}
+        transcript={QUIET_TRANSCRIPT}
+      />,
+    );
+
+    expect(screen.getByText(/Showing Implement only/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all" }));
+    expect(screen.queryByText(/Showing Implement only/)).toBeNull();
+    expect(screen.getByRole("button", { name: /^Implement/ })).toHaveAttribute("aria-pressed", "false");
+    window.history.replaceState(null, "", "/");
   });
 });

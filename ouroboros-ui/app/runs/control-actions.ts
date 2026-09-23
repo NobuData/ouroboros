@@ -2,7 +2,8 @@
 
 /**
  * The server hop for the run controls ([#310](https://github.com/NobuData/ouroboros/issues/310)):
- * *Pause loop*, *Resume* and *Abort run*, queued on #306's control queue.
+ * *Pause loop*, *Resume* and *Abort run*, queued on #306's control queue — and, since
+ * [#312](https://github.com/NobuData/ouroboros/issues/312), the transcript's steering box.
  *
  * `app/providers/card-actions.ts` states the rule this exists under: the browser cannot reach
  * `ouroboros-rest`, so a Client Component that needs to write calls a Server Action that calls
@@ -10,15 +11,17 @@
  * so this carries three facts:
  *
  * - **The role gate is the service's.** `pause`, `resume` and `abort` are `owner` or `admin`,
- *   checked before the run is read. The page hides the buttons from a member; a member who
+ *   and `steer` is `owner`, `admin` or `member`, checked before the run is read. The page hides the buttons from a member; a member who
  *   calls this anyway gets the service's `403`, handed back as a refusal. A hidden button is
  *   not a permission model.
  * - **The abort's confirmation is the service's to judge.** The dialog only enables its button
  *   for the right number; what is typed is sent as typed and re-checked against the run, so a
  *   forged confirmation is `422 abort_confirmation_invalid`.
  * - **The run id is checked before it is put in a path**: a uuid, or nothing is sent.
- * - **Steering is not here.** It has its own box and its own issue (#311); this accepts the
- *   three head controls and refuses anything else before calling out.
+ * - **Only the four kinds, each with its own fields.** A steer carries its text, trimmed and
+ *   non-empty — the service mirrors exactly that into the transcript, which is how the card
+ *   finds the mirror of its optimistic entry — and nothing else carries a payload. Anything else
+ *   is refused before calling out.
  *
  * A refusal is a value, because the page is one the reader is still entitled to be on.
  */
@@ -30,13 +33,17 @@ import {
   CONTROL_NOT_ALLOWED,
   CONTROL_NOT_ALLOWED_CODE,
   CONTROL_UNREACHABLE_CODE,
+  STEER_INVALID,
+  STEER_INVALID_CODE,
   SUBMIT_UNREACHABLE,
+  steerText,
 } from "./controls";
 
-/** The controls the head may send. */
+/** The controls the page may send. */
 export type HeadControl =
   | { readonly kind: "pause" | "resume"; readonly idempotencyKey?: string }
-  | { readonly kind: "abort"; readonly confirmation: string; readonly idempotencyKey?: string };
+  | { readonly kind: "abort"; readonly confirmation: string; readonly idempotencyKey?: string }
+  | { readonly kind: "steer"; readonly payload: string; readonly idempotencyKey?: string };
 
 /** What became of a submission. */
 export type SubmitOutcome =
@@ -63,8 +70,13 @@ export async function submitRunControl(
   }
 
   const kind: unknown = control?.kind;
-  if (kind !== "pause" && kind !== "resume" && kind !== "abort") {
+  if (kind !== "pause" && kind !== "resume" && kind !== "abort" && kind !== "steer") {
     return { ok: false, status: 422, code: CONTROL_NOT_ALLOWED_CODE, reason: CONTROL_NOT_ALLOWED };
+  }
+
+  const text = kind === "steer" ? steerText((control as { payload?: unknown }).payload) : null;
+  if (kind === "steer" && text === null) {
+    return { ok: false, status: 422, code: STEER_INVALID_CODE, reason: STEER_INVALID };
   }
 
   const key =
@@ -78,6 +90,7 @@ export async function submitRunControl(
       ...(kind === "abort"
         ? { confirmation: String((control as { confirmation?: unknown }).confirmation ?? "") }
         : {}),
+      ...(text === null ? {} : { payload: text }),
       ...(key === undefined ? {} : { idempotencyKey: key }),
     });
 
