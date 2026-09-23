@@ -84,6 +84,82 @@ export interface RunConsoleOverrides {
   readonly head?: Partial<RunConsole["head"]>;
   readonly wallClock?: Partial<RunConsole["resources"]["wallClock"]>;
   readonly asOf?: string;
+  readonly changes?: Partial<RunConsole["changes"]>;
+  readonly resources?: Partial<Omit<RunConsole["resources"], "wallClock">>;
+  readonly guardrails?: Partial<RunConsole["guardrails"]>;
+}
+
+/** The seeded files — the mockup's three, with its counts. */
+export function seededFiles(): RunConsole["changes"]["files"] {
+  return [
+    { path: "drivers/can/telemetry_buf.c", status: "modified", additions: 38, deletions: 12 },
+    { path: "drivers/can/isr_fastpath.c", status: "modified", additions: 9, deletions: 3 },
+    { path: "tests/telemetry/test_frame_order.c", status: "added", additions: 21, deletions: 0 },
+  ];
+}
+
+/** The seeded commits — the mockup's two, in the writer's order. */
+export function seededCommits(): RunConsole["changes"]["commits"] {
+  return [
+    {
+      sha: "a41c9e2f0b7d3c5e8a1f6b2d4c9e7a3f5b8d1c0e",
+      shortSha: "a41c9e2",
+      subject: "can: replace telemetry k_fifo with k_msgq + frame seq",
+      committedAt: "2026-09-19T12:04:40.000Z",
+    },
+    {
+      sha: "7f03b8d1e6c2a9f4b0d5e3c8a7f1b6d2e9c4a0f3",
+      shortSha: "7f03b8d",
+      subject: "can: assign frame seq in ISR before enqueue",
+      committedAt: "2026-09-19T12:09:30.000Z",
+    },
+  ];
+}
+
+/** AP.3's secrets disclosure, as the service states it. */
+export const SEEDED_SECRETS: RunConsole["guardrails"]["secrets"] = {
+  version: "v3",
+  ruleCount: 152,
+  recallClass: "~70%",
+  summary:
+    "Secrets ruleset v3: 152 known credential formats plus keyword proximity, scanned over added diff lines.",
+  limitation:
+    "A pass means no known credential format was found — not that the diff holds no secrets. " +
+    "High-entropy secrets with no recognisable format (roughly 30% of real-world leaks) are " +
+    "not detected; verified scanning arrives with AR.5.",
+};
+
+/**
+ * One guardrail verdict.
+ *
+ * @param check Which check.
+ * @param verdict Its answer.
+ * @param evidence Where, and by which rule.
+ * @returns The verdict.
+ */
+export function guardrailCheck(
+  check: RunConsole["guardrails"]["checks"][number]["check"],
+  verdict: RunConsole["guardrails"]["checks"][number]["verdict"],
+  evidence?: RunConsole["guardrails"]["checks"][number]["evidence"],
+): RunConsole["guardrails"]["checks"][number] {
+  return {
+    check,
+    verdict,
+    ...(evidence === undefined ? {} : { evidence }),
+    rulesetVersion: check === "secrets" ? "v3" : null,
+    evaluatedAt: "2026-09-19T12:09:31.000Z",
+    changeSetSeq: check === "review_required" ? null : 2,
+  };
+}
+
+/** The seeded verdicts — the mockup's three ticks and its `○`. */
+export function seededChecks(): RunConsole["guardrails"]["checks"] {
+  return [
+    guardrailCheck("allowed_paths", "pass"),
+    guardrailCheck("ci_config", "pass"),
+    guardrailCheck("secrets", "pass"),
+    guardrailCheck("review_required", "not_applicable"),
+  ];
 }
 
 /**
@@ -128,14 +204,17 @@ export function runConsole(over: RunConsoleOverrides = {}): RunConsole {
       stages: over.stages ?? seededStages(),
     },
     changes: {
-      files: [],
-      totals: { files: 0, additions: 0, deletions: 0 },
-      commits: [],
+      files: seededFiles(),
+      totals: { files: 3, additions: 68, deletions: 15 },
+      commits: seededCommits(),
       mergeStrategy: "squash",
+      ...over.changes,
     },
     resources: {
-      tokens: { used: 0, tokensIn: 0, tokensOut: 0, budget: null, budgetStageKey: null },
-      cost: { costCents: null, unpricedEvents: 0, capCents: null, routeTag: null },
+      tokens: { used: 212_000, tokensIn: 180_000, tokensOut: 32_000, budget: 400_000, budgetStageKey: "implement" },
+      cost: { costCents: "114.0000", unpricedEvents: 0, capCents: 250, routeTag: "implement-primary" },
+      farm: { buildJobId: "5eed0008-0000-4000-8000-000000000001", jobNumber: 12, jobStatus: "queued", runnerName: "forge-02" },
+      ...over.resources,
       wallClock: {
         startedAt: SEEDED_STARTED_AT,
         finishedAt: null,
@@ -144,10 +223,11 @@ export function runConsole(over: RunConsoleOverrides = {}): RunConsole {
       },
     },
     guardrails: {
-      status: "unevaluated",
-      checks: [],
-      policy: { workflowTag: "standard-fix", workflowVersion: 14, tenant: "acme" },
-      secrets: { version: "1", ruleCount: 0, recallClass: "", summary: "", limitation: "" },
+      status: "clean",
+      checks: seededChecks(),
+      policy: { workflowTag: "standard-fix", workflowVersion: 14, tenant: "acme-robotics" },
+      secrets: SEEDED_SECRETS,
+      ...over.guardrails,
     },
   };
 }

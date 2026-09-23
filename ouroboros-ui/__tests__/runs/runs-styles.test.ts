@@ -163,3 +163,59 @@ describe("the agent transcript (#312)", () => {
     expect(CODE.indexOf(".run-entry__meter--live .run-entry__fill")).toBeGreaterThan(guard);
   });
 });
+
+describe("the right column (#313)", () => {
+  /**
+   * One rule's body, by its exact selector.
+   *
+   * @param selector The selector as written.
+   * @returns The declarations between its braces.
+   */
+  function rule(selector: string): string {
+    const start = CODE.indexOf(`${selector} {`);
+    expect(start, `${selector} is declared`).toBeGreaterThanOrEqual(0);
+
+    return CODE.slice(start, CODE.indexOf("}", start));
+  }
+
+  it("lays the column beside the transcript on tracks a long path cannot widen", () => {
+    expect(rule(".run__body")).toMatch(/grid-template-columns:\s*repeat\(12, minmax\(0, 1fr\)\)/);
+    expect(rule(".run__main")).toMatch(/grid-column:\s*span 7/);
+    expect(rule(".run__side")).toMatch(/grid-column:\s*span 5/);
+    expect(rule(".run__side")).toMatch(/min-width:\s*0/);
+  });
+
+  it("stacks the column under the transcript on a narrow pane", () => {
+    const step = CODE.indexOf("@media (max-width: 68.75rem)", CODE.indexOf(".run__body"));
+
+    expect(step).toBeGreaterThanOrEqual(0);
+    expect(CODE.slice(step, CODE.indexOf("}", CODE.indexOf("{", step) + 1))).toMatch(
+      /\.run__main,\s*\.run__side\s*\{\s*grid-column:\s*span 12/,
+    );
+  });
+
+  it("scrolls long lists inside the card, never sideways — a long path wraps", () => {
+    const scroll = rule(".run-changes__scroll");
+    expect(scroll).toMatch(/overflow-y:\s*auto/);
+    expect(scroll).toMatch(/overflow-x:\s*hidden/);
+    expect(scroll).toMatch(/max-height:\s*[\d.]+rem/);
+
+    expect(rule(".run-changes__path")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule(".run-changes__subject")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule(".run-guard__value")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule(".run-guard__policy")).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it("colours additions ok and deletions err", () => {
+    expect(rule(".run-changes__plus")).toMatch(/color:\s*var\(--ok\)/);
+    expect(rule(".run-changes__minus")).toMatch(/color:\s*var\(--err\)/);
+  });
+
+  it("gives every guardrail mark and dot its tone", () => {
+    for (const tone of ["ok", "err", "warn"]) {
+      expect(rule(`.run-guard__mark--${tone}`)).toMatch(new RegExp(`color:\\s*var\\(--${tone}\\)`));
+      expect(rule(`.run-guard__dot--${tone}`)).toMatch(new RegExp(`background:\\s*var\\(--${tone}\\)`));
+    }
+    expect(rule(".run-guard__mark--idle")).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+});

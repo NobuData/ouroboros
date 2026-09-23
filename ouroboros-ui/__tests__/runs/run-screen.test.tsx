@@ -24,6 +24,7 @@ import {
   SEEDED_ELAPSED_SECONDS,
   SEEDED_RUN_ID,
   SEEDED_STARTED_AT,
+  guardrailCheck,
   runConsole,
   seededStages,
 } from "../helpers/runs";
@@ -492,5 +493,54 @@ describe("the agent transcript (#312)", () => {
     expect(screen.queryByText(/Showing Implement only/)).toBeNull();
     expect(screen.getByRole("button", { name: /^Implement/ })).toHaveAttribute("aria-pressed", "false");
     window.history.replaceState(null, "", "/");
+  });
+});
+
+describe("the right column (#313)", () => {
+  it("sits beside the transcript: Changes, Resources and Guardrails, in the mockup's order", () => {
+    draw();
+
+    const side = document.querySelector(".run__side") as HTMLElement;
+    expect(side.previousElementSibling).toHaveClass("run__main");
+    const cards = within(side).getAllByRole("region", { name: /^(Changes so far|Resources|Guardrails)$/ });
+    expect(cards.map((card) => card.querySelector("h2")?.textContent)).toEqual([
+      "Changes so far",
+      "Resources",
+      "Guardrails",
+    ]);
+  });
+
+  it("ticks the wall clock with the head's elapsed — one number, never two", () => {
+    vi.useFakeTimers({ now: Date.parse(SEEDED_AS_OF) });
+    draw();
+
+    const wallClock = () =>
+      screen.getByRole("region", { name: "Resources" }).querySelector(".run-resources__row:last-child .run-resources__figure")
+        ?.textContent;
+
+    expect(wallClock()).toBe("12m 40s");
+    advance(5);
+    expect(elapsed()).toBe("12m 45s");
+    expect(wallClock()).toBe("12m 45s");
+  });
+
+  it("moves with the poll — a verdict that fails flips the pill without a reload", async () => {
+    answer = {
+      state: "fresh",
+      payload: runConsole({
+        guardrails: {
+          checks: [
+            guardrailCheck("allowed_paths", "fail", { path: "infra/terraform/main.tf", glob: "drivers/can/**" }),
+          ],
+        },
+      }),
+      etag: null,
+      pollAfterSeconds: null,
+    };
+    draw(runConsole(), { poll: LIVE });
+
+    const card = screen.getByRole("region", { name: "Guardrails" });
+    await vi.waitFor(() => expect(card.querySelector(".ou-card__head .ou-chip")).toHaveTextContent("violations"));
+    expect(within(card).getByText("infra/terraform/main.tf")).toBeInTheDocument();
   });
 });

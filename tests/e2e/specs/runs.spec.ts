@@ -439,3 +439,77 @@ test.describe("the agent transcript (#312)", () => {
     }
   });
 });
+
+/**
+ * A window wide enough for mockup 10's 7/5 split and tall enough that the right column is
+ * photographed whole — the parity pairs' reason, in the README's *Screenshot baselines*.
+ */
+const RIGHT_COLUMN_WINDOW = { width: 1920, height: 1400 };
+
+test.describe("the right column (#313)", () => {
+  test("draws the seeded changes, resources and guardrails in both palettes", async ({
+    context,
+    page,
+  }) => {
+    await signIn(context, SEED_OWNER.id);
+    await selectWorkspace(context, SEED_TENANT.slug);
+    await page.setViewportSize(RIGHT_COLUMN_WINDOW);
+    await page.goto(`/runs/${SEEDED_RUN_ID}`);
+
+    const side = page.locator(".run__side");
+    const changes = side.getByRole("region", { name: "Changes so far" });
+    const resources = side.getByRole("region", { name: "Resources" });
+    const guardrails = side.getByRole("region", { name: "Guardrails" });
+
+    // ---- Changes so far: three files with counts, two commits, the squash tag.
+    await expect(changes).toContainText("3 files");
+    const files = changes.getByRole("region", { name: "Changed files" }).getByRole("listitem");
+    await expect(files).toHaveCount(3);
+    await expect(files.nth(0)).toHaveText("drivers/can/telemetry_buf.c+38−12");
+    await expect(files.nth(1)).toHaveText("drivers/can/isr_fastpath.c+9−3");
+    await expect(files.nth(2)).toHaveText("tests/telemetry/test_frame_order.c+21−0");
+    const commits = changes.getByRole("region", { name: "Commits" }).getByRole("listitem");
+    await expect(commits).toHaveCount(2);
+    await expect(commits.nth(0)).toContainText("a41c9e2");
+    await expect(commits.nth(0)).toContainText(
+      "can: replace telemetry k_fifo with k_msgq + frame seq",
+    );
+    await expect(commits.nth(1)).toContainText("7f03b8d");
+    await expect(changes).toContainText("will squash on merge");
+
+    // ---- Resources: both meters at the mockup's fills, forge-02 reserved.
+    await expect(resources).toContainText("212k / 400k budget");
+    await expect(resources).toContainText("$1.14 / $2.50 cap");
+    await expect(resources).toContainText("forge-02 reserved");
+    await expect(resources.locator(".run-resources__dot--idle")).toHaveCount(1);
+    await expect(resources.locator(".ou-meter")).toHaveCount(2);
+
+    // ---- Guardrails: the four marks, the computed pill, the disclosure, the footer.
+    const rows = guardrails.getByRole("listitem");
+    await expect(rows.locator(".run-guard__mark")).toHaveText(["✓", "✓", "✓", "○"]);
+    await expect(rows.nth(3)).toContainText("Human review not required (auto-merge eligible)");
+    await expect(guardrails.locator(".ou-card__head .ou-chip")).toHaveText("clean");
+    await expect(guardrails.locator(".run-guard__info")).toHaveAttribute(
+      "title",
+      /not that the diff holds no secrets/,
+    );
+    await expect(guardrails).toContainText("Policy: standard-fix v14 · tenant acme-robotics");
+
+    // The wall clock ticks with the head: masked.
+    const mask = [
+      resources.locator(".run-resources__row").last().locator(".run-resources__figure"),
+    ];
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+      await expect(side).toHaveScreenshot(`run-right-column-${theme}.png`, { mask });
+    }
+
+    // ---- Narrow, in both palettes: the column drops under the transcript and nothing in it
+    // pushes the pane sideways.
+    await page.setViewportSize({ width: 390, height: 844 });
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+      await expectNoPaneHorizontalScroll(page);
+    }
+  });
+});
