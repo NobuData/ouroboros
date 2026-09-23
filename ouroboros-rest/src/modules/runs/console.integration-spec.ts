@@ -14,6 +14,7 @@ import type { RunOpenedResource } from "../ingest/ingest.resources";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { RUN_EXPORT_BATCH, RUN_EXPORT_WATERMARK } from "./console.policy";
 import type { RunConsoleResource, RunEventsPage } from "./console.resources";
+import { DB_ROOT, seedConsole } from "./console.seed.fixture";
 
 /**
  * The Run Console's three reads against a migrated PostgreSQL (#304, AP.2), one block per
@@ -38,26 +39,6 @@ import type { RunConsoleResource, RunEventsPage } from "./console.resources";
 
 /** The simulator's credential — the principal whose runs carry R4's watermark. */
 const SIMULATOR_SECRET = "integration-run-simulator-secret";
-
-/** Where the committed migrations and the database's own test fixtures are. */
-const DB_ROOT = join(__dirname, "..", "..", "..", "..", "ouroboros-db");
-
-/**
- * The seeds mockup 10's `#482` is built from, in the order Flyway applies them (by description):
- * the workspace, the dashboard's runs and stage history, the farm's `forge-02` and job `#483`,
- * the providers and routing matrix (`implement-primary`'s `$2.50` cap), the console's own rows,
- * and the workflows (`standard-fix` v14, whose `implement` inherits the `implement` route).
- */
-const CONSOLE_SEEDS = [
-  "R__dev_seed.sql",
-  "R__dev_seed_dashboard.sql",
-  "R__dev_seed_farm.sql",
-  "R__dev_seed_providers.sql",
-  "R__dev_seed_routing.sql",
-  "R__dev_seed_run_console.sql",
-  "R__dev_seed_workflows.sql",
-  "R__model_price_catalog.sql",
-] as const;
 
 /**
  * AO.2's golden JSONL lines, parsed out of the SQL fixture that pins them.
@@ -112,25 +93,7 @@ describe("the run console's reads", () => {
     let runId: string;
 
     beforeEach(async () => {
-      for (const seed of CONSOLE_SEEDS) {
-        const text = readFileSync(join(DB_ROOT, "migrations", seed), "utf8").replaceAll(
-          "${ouro_dev_seed}",
-          "true",
-        );
-        await api.sql.query(text);
-      }
-
-      const { rows } = await api.sql.query<{ id: string; slug: string; name: string }>(
-        `select "id", "slug", "name" from ${SCHEMA_NAME}.organization where "slug" = 'acme-robotics'`,
-      );
-      workspace = rows[0];
-      owner = await memberOf(api, workspace, "owner");
-
-      const runs = await api.sql.query<{ id: string }>(
-        `select id from ${SCHEMA_NAME}.runs where organization_id = $1 and issue_number = 482`,
-        [workspace.id],
-      );
-      runId = runs.rows[0].id;
+      ({ workspace, owner, runId } = await seedConsole(api));
     });
 
     it("states every element of the page head, stepper and three cards", async () => {

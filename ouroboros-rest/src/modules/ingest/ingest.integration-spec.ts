@@ -538,6 +538,55 @@ describe("the ingestion contract", () => {
 
       expect(appended).toMatchObject({ submitted: 2, stored: 1, elided: true });
     });
+
+    it("inserts one elision marker at the hole, and keeps counting into it (AP.6, #308)", async () => {
+      // `elided: true` is the answer; the marker is the *transcript's* record of the hole, and
+      // it is what a reader of the flight recorder actually sees. Two batches breach the cap:
+      // the first writes the marker at the next seq, the second is counted into the same one.
+      const seeded = await bench();
+      const run = await openRun(seeded);
+      await api.sql.query(`update ${SCHEMA_NAME}.runs set event_cap = 2 where id = $1`, [run.id]);
+      const post = (key: string, hints: number[]) =>
+        as("simulator", "post", `/internal/runs/${run.id}/events`, {
+          idempotencyKey: key,
+          events: hints.map((hint) => ({
+            hint,
+            actor: "tool",
+            toolTag: "pytest",
+            body: `e${String(hint)}`,
+          })),
+        }).expect(200);
+
+      await post("batch-1", [1, 2, 3]);
+      await post("batch-2", [4, 5]);
+
+      const { rows } = await api.sql.query<{
+        seq: number;
+        actor: string;
+        body: string | null;
+        tool_tag: string | null;
+        elided_events: number | null;
+        elided_bytes: string | null;
+        elided_ordered: boolean | null;
+      }>(
+        `select seq, actor, body, tool_tag, elided_events, elided_bytes::text as elided_bytes,
+                elided_to >= elided_from as elided_ordered
+           from ${SCHEMA_NAME}.run_events where run_id = $1 order by seq`,
+        [run.id],
+      );
+
+      // Dense: two kept entries, then the marker in the third place — and nothing after it.
+      expect(rows.map((row) => row.seq)).toEqual([1, 2, 3]);
+      expect(rows.slice(0, 2).map((row) => row.body)).toEqual(["e1", "e2"]);
+      expect(rows[2]).toMatchObject({
+        actor: "system",
+        body: null,
+        tool_tag: null,
+        elided_events: 3,
+        elided_ordered: true,
+      });
+      expect(Number(rows[2].elided_bytes)).toBeGreaterThan(0);
+    });
   });
 
   describe("replaying a key", () => {

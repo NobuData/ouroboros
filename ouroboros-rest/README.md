@@ -4702,6 +4702,39 @@ statement, bounded by `event_seq` at request time, and are never re-serialized. 
 adds only the watermark line. It is served as `application/x-ndjson`,
 `inline; filename="loop-<loopSeq>.jsonl"`, and chunked.
 
+### Console suites & mutation checks
+
+AP.6 ([#308](https://github.com/NobuData/ouroboros/issues/308)) holds the console's
+correctness core under `yarn test:integration`, beside AP.1–AP.4's own suites:
+
+| Suite | Holds |
+| ----- | ----- |
+| `ingest/ingest.integration-spec.ts` | dense ordered `seq` under interleaving, replay of every write, the cap's elision marker, refused transitions and `max_attempts`, `simulated` follows the principal |
+| `guardrails/guardrails.integration-spec.ts` | every rule-matrix cell `standard-fix` can reach, end to end; four credential formats reported three times and stored nowhere (rows, receipts, audit, logs); the ≤ 50 ms budget from the service's own timing line |
+| `controls/controls.integration-spec.ts` | deliver / ack / expire / reject, duplicate suppression, the role matrix with a forged abort confirmation, steer mirrored into the transcript, audit rows without steer text |
+| `runs/console.integration-spec.ts` | offset resume under concurrent ingest, export byte parity with AO.2's fixture, unpriced resource math, `live` false on terminal runs |
+| `runs/console.mockup.integration-spec.ts` | the seeded `#482` against values **parsed out of `docs/mockups/10-run-detail.html`** at test time, so a drift from the design source fails |
+| `runs/console.isolation.integration-spec.ts` | every route under `/api/v1/runs` and `/internal/runs`, checked against the route table the app registers — public routes `404` another org's run; internal routes `404` another org's repository, build job or control |
+| `runs/console.mutation.integration-spec.ts` | one named test per mechanism below |
+
+**Mutation checks.** Each mechanism has one test named for it, and removing the mechanism turns
+that test — and only that test — red:
+
+| Remove | Red test |
+| ------ | -------- |
+| idempotency (`IngestService.replayed()` and the receipt `commitReceipt()` records) | `idempotency: a replayed write stores nothing twice and answers the first answer` |
+| the transition validator (`canTransition()` answering `true`) | `transition validator: pending → succeeded and every other illegal move is refused, and the stage does not move` |
+| the evidence constraint (V048's `guardrail_evaluations_evidence_*` CHECKs) | `evidence constraint: a credential written straight into evidence is refused by the database` |
+
+```bash
+yarn test:integration src/modules/runs/console.mutation.integration-spec.ts
+```
+
+**One mockup disagreement is pinned, not hidden.** Run `#482` is drawn by mockup 01
+(`Implementing · 4/6`, which the shared dev seed follows) and by mockup 10 (`Implement` … `Open
+PR`). The parity suite asserts both label lists exactly, so the stepper after the active node is
+the one reviewed difference and any further drift still fails.
+
 ## Container
 
 [`Dockerfile`](Dockerfile) is the production image
