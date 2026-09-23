@@ -385,6 +385,11 @@ ouroboros-ui/
 │   │   ├── use-transcript.ts #  where the stream meets React
 │   │   ├── transcript-card.tsx # the card: entries, follow/lock scrolling, streaming pill, Raw JSONL
 │   │   ├── steer-box.tsx    #   the steering input, its reasons, and R9's caption
+│   │   ├── cards.ts         #   the right column's rules: totals from rows, commit URLs, meters, farm row, computed pill · #313
+│   │   ├── changes-card.tsx #   Changes so far: file and commit rows, each list in its own scroll box
+│   │   ├── resources-card.tsx # Resources: tokens, cost, farm reservation, wall clock
+│   │   ├── guardrails-card.tsx # Guardrails: verdict rows, evidence, the secrets ⓘ, the policy footer
+│   │   ├── elapsed-figure.tsx # the anchored elapsed the head and the wall clock share
 │   │   ├── controls.ts      #   the controls' rules: paused from acks, the toggle, the delivery chips · #310
 │   │   ├── controls-poll.ts #   the chips' reader and guard
 │   │   ├── control-actions.ts # submitRunControl() — pause, resume, abort; the Server Action
@@ -3347,7 +3352,8 @@ disabled would reasonably expect to draft and be refused on the first click.
 `GET /api/v1/runs/{id}` ([#304](https://github.com/NobuData/ouroboros/issues/304)) and polled at
 the shared I.8 cadence through `/api/runs/:id`. The [run controls](#run-controls) sit beside it
 (AQ.2, #310); the [stage timeline](#stage-timeline) sits beneath it (AQ.3, #311), then the
-[agent transcript](#agent-transcript) (AQ.4, #312); the cards are AQ.5 (#313).
+[agent transcript](#agent-transcript) (AQ.4, #312), with the [right column](#right-column)
+(AQ.5, #313) beside it.
 
 ```
 Dashboard / Loop #1847
@@ -3450,6 +3456,37 @@ service mirrors the steer into the transcript, the mirror replaces the optimisti
 chip follows it to *acknowledged — steering applied to attempt N*. On a terminal run, or for a
 viewer, the box is disabled and says why. The caption is decision **R9**'s: it does not mention
 Slack until the ChatOps integration (#318) makes it true.
+
+### Right column
+
+Mockup 10's `c-5` column ([#313](https://github.com/NobuData/ouroboros/issues/313)) — *Changes so
+far*, *Resources* and *Guardrails* — drawn from the same snapshot as the head, so a poll moves all
+of them together. On a wide pane it sits beside the transcript (the mockup's 7/5 split); below
+68.75rem it drops under it. Every rule is [`cards.ts`](app/runs/cards.ts)'s, and each is about what
+is *not* known:
+
+```
+CHANGES SO FAR                3 files   RESOURCES                          GUARDRAILS         (clean)
+drivers/can/telemetry_buf.c +38 −12     Tokens      212k / 400k budget ▓▓▓  ✓ ● Diff confined to allowed paths
+a41c9e2 can: replace telemetry …        Est. cost   $1.14 / $2.50 cap  ▓▓   ○ ● Human review not required (auto-merge eligible)
+[will squash on merge]                  Build farm  ● forge-02 reserved     Policy: standard-fix v14 · tenant acme-robotics
+```
+
+- **Changes.** The `3 files` tag is summed from the rows drawn, never read from the stored totals.
+  The files and the commits each scroll in their own keyboard-reachable box, and a long path
+  wraps, so the pane never moves sideways. A sha links to its commit only when the source can
+  build the URL (`commitUrl`: GitHub, GitLab incl. self-managed, Bitbucket); the contract names
+  only a GitHub repository today, and with none the sha is plain text.
+- **Resources.** A meter needs a denominator: no pinned budget is `212k tokens` with no bar, and no
+  cap is money with no bar. **Unpriced is not free** — a cost nobody priced is `— · 212k tokens`,
+  never `$0.00`; a priced cost with unpriced calls says *lower bound*. No reservation is **no farm
+  row at all**. The wall clock is the head's anchored elapsed, so the two tick together.
+- **Guardrails.** One row per stored verdict (AP.3): `✓` pass, `✗` fail, `○` not applicable —
+  never a tick — and `…` evaluating. The pill is **computed from those rows** (`violations`,
+  `pending`, `clean`, or *not evaluated* with none), never a static `clean`. A row's evidence —
+  path and line, rule id, glob, why; never the matched value — is a disclosure, open on a
+  failure. The secrets row's `ⓘ` carries the ruleset's own statement of its recall limit, as a
+  tooltip and as screen-reader text.
 
 ### Run controls
 

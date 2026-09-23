@@ -1,10 +1,9 @@
 import type { ReactNode } from "react";
 
-import { Elapsed } from "@/app/dashboard/elapsed";
-import { elapsedOfSeconds } from "@/app/format";
 import { Chip, Eyebrow, Tag } from "@/app/ui";
 
 import { CopyBranch } from "./copy-branch";
+import { ElapsedFigure } from "./elapsed-figure";
 import { NO_BRANCH, type RunHeadView } from "./view";
 
 /**
@@ -59,14 +58,7 @@ export function RunHead({
           <span className="run-head__mono">
             elapsed{" "}
             <span className="run-head__elapsed">
-              {view.elapsed.live ? (
-                <Elapsed
-                  serverSeconds={view.elapsed.serverSeconds}
-                  startedAtSeconds={view.elapsed.startedAtSeconds}
-                />
-              ) : (
-                elapsedOfSeconds(view.elapsed.seconds)
-              )}
+              <ElapsedFigure elapsed={view.elapsed} />
             </span>
           </span>
           {view.branch === null ? (

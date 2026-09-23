@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**260 of 454 ordered issues are closed** — P0 through P9 are complete, and P10 is under way.
+**261 of 454 ordered issues are closed** — P0 through P9 are complete, and P10 is under way.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9 | **245** |
-| 🟡 **In progress** | P10 | **15** of 17 |
+| 🟡 **In progress** | P10 | **16** of 17 |
 | — **Not started** | P11–P17 | 0 of 192 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -113,7 +113,7 @@ position is not forced by dependencies, one of these decided it.
 | **P7** | Workflow authoring (visual + code) | ✅ 43/43 | 43 | 137 | Mockups 04, 05 |
 | **P8** | Planning & batch work creation | ✅ 17/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | ✅ 20/20 | 20 | 70 | Mockup 08 |
-| **P10** | Run console & ingestion contract | 🟡 15/17 | 17 | 55 | Mockup 10 |
+| **P10** | Run console & ingestion contract | 🟡 16/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | — 0/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | — 0/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | — 0/32 | 32 | 109 | Mockups 15, 18 |
@@ -121,7 +121,7 @@ position is not forced by dependencies, one of these decided it.
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **260/454** | **454** | **1,404** | |
+| | **Total** | **261/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -1452,7 +1452,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **17 issues** · 55 complexity points · order **#246–#262** · 7 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_10_RUN_CONSOLE.md` (Epics AO–AQ)
-> **Status:** 🟡 **In progress** — 15 of 17 issues closed
+> **Status:** 🟡 **In progress** — 16 of 17 issues closed
 
 **Goal.** Define the run ingestion contract (stage transitions, attempts, transcript events, file/commit reports, token accounting, farm reservations), evaluate guardrails against the pinned workflow, and build mockup 10 with the stage stepper, transcript and steering input — driven by a scripted simulated-run driver.
 
@@ -1479,7 +1479,7 @@ the blockquote above that records what it did and what it did differently.
 | 258 | **AQ.2** | ✅ [#310](https://github.com/NobuData/ouroboros/issues/310) | Run controls (pause · abort · take-over) | ouroboros-ui | M | AP.4, AQ.1 |
 | 259 | **AQ.3** | ✅ [#311](https://github.com/NobuData/ouroboros/issues/311) | Stage timeline stepper | ouroboros-ui | M | AQ.1 |
 | 260 | **AQ.4** | ✅ [#312](https://github.com/NobuData/ouroboros/issues/312) | Agent transcript & steering | ouroboros-ui | L | AP.4, AQ.1 |
-| 261 | **AQ.5** | [#313](https://github.com/NobuData/ouroboros/issues/313) | Changes, resources & guardrails cards | ouroboros-ui | M | AQ.1 |
+| 261 | **AQ.5** | ✅ [#313](https://github.com/NobuData/ouroboros/issues/313) | Changes, resources & guardrails cards | ouroboros-ui | M | AQ.1 |
 | 262 | **AQ.6** | [#314](https://github.com/NobuData/ouroboros/issues/314) | Console states & e2e leg | ouroboros-ui, .github | M | AQ.2, AQ.5 |
 
 ## P11 — Evidence — Test Results & PR Verification

@@ -606,7 +606,7 @@
  * inset well, so a diff looks the same everywhere in the product.
  */
 .run-transcript {
-  margin-bottom: var(--sp-10);
+  min-width: 0;
 }
 
 .run-transcript__filter,
@@ -930,6 +930,382 @@
   margin: var(--sp-3) 0 0;
   color: var(--ink-faint);
   font-size: var(--t-xs);
+}
+
+/* ---------- the body: the transcript and the right column (#313) ---------- */
+
+/*
+ * Mockup 10's 12-column grid: the transcript is its c-7, the three cards its c-5 column. Each
+ * track is `minmax(0, 1fr)` so a long path or a wide diff can never widen its column past the
+ * pane; below the dashboard's own wide step the column drops under the transcript.
+ */
+.run__body {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: start;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+.run__main {
+  grid-column: span 7;
+  min-width: 0;
+}
+
+.run__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  grid-column: span 5;
+  min-width: 0;
+}
+
+@media (max-width: 68.75rem) {
+  .run__main,
+  .run__side {
+    grid-column: span 12;
+  }
+}
+
+/* What a card says while it has nothing to list — never a zero dressed as a row. */
+.run-card__empty {
+  margin: 0;
+  padding: var(--sp-3) 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+/* The mockup's `hr.divider`. */
+.run-card__divider {
+  margin: var(--sp-5) 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- changes so far (#313) ---------- */
+
+.run-changes,
+.run-resources,
+.run-guardrails {
+  min-width: 0;
+}
+
+/*
+ * The files and the commits each scroll in their own region, so a run that touched two hundred
+ * files grows the card by a capped amount and the pane not at all. A long path wraps.
+ */
+.run-changes__scroll {
+  max-height: 15rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.run-changes__scroll:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+.run-changes__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The mockup's `.file-row`. */
+.run-changes__file {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-5);
+  padding: var(--sp-3) 0;
+  border-bottom: 1px solid var(--line);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.run-changes__file:last-child {
+  border-bottom: 0;
+}
+
+.run-changes__path {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+.run-changes__plus {
+  color: var(--ok);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.run-changes__minus {
+  color: var(--err);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The mockup's `.commit-row`: the accent sha, then the subject. */
+.run-changes__commit {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-5);
+  padding: var(--sp-3) 0;
+  font-size: var(--t-sm);
+}
+
+.run-changes__sha {
+  flex: none;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+a.run-changes__sha {
+  text-decoration: none;
+}
+
+a.run-changes__sha:hover {
+  text-decoration: underline;
+}
+
+a.run-changes__sha:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+.run-changes__subject {
+  min-width: 0;
+  color: var(--ink-mut);
+  overflow-wrap: anywhere;
+}
+
+.run-changes__merge {
+  margin: var(--sp-5) 0 0;
+}
+
+/* ---------- resources (#313) ---------- */
+
+.run-resources__list {
+  display: flex;
+  flex-direction: column;
+}
+
+/* The mockup's `.res-row`: a line, and under it a note or a meter when there is one. */
+.run-resources__row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.run-resources__row:last-child {
+  border-bottom: 0;
+}
+
+.run-resources__line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-5);
+  font-size: var(--t-xs);
+}
+
+.run-resources__label {
+  color: var(--ink-mut);
+}
+
+.run-resources__figure {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.run-resources__note {
+  margin: 0;
+  color: var(--warn);
+  font-size: var(--t-2xs);
+  text-align: right;
+}
+
+/* The farm row's dot — grey while a runner is held, lit while it builds. */
+.run-resources__dot {
+  flex: none;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: var(--r-round);
+}
+
+.run-resources__dot--idle {
+  background: var(--ink-faint);
+}
+
+.run-resources__dot--live {
+  background: var(--accent);
+}
+
+.run-resources__dot--ok {
+  background: var(--ok);
+}
+
+.run-resources__dot--warn {
+  background: var(--warn);
+}
+
+.run-resources__dot--err {
+  background: var(--err);
+}
+
+/* ---------- guardrails (#313) ---------- */
+
+.run-guard__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The mockup's `.guard-row`. */
+.run-guard__row {
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-sm);
+}
+
+.run-guard__row:last-child {
+  border-bottom: 0;
+}
+
+.run-guard__line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.run-guard__mark {
+  flex: none;
+  width: 1rem;
+  font-family: var(--f-mono);
+  text-align: center;
+}
+
+.run-guard__mark--ok {
+  color: var(--ok);
+}
+
+.run-guard__mark--err {
+  color: var(--err);
+}
+
+.run-guard__mark--idle {
+  color: var(--ink-faint);
+}
+
+.run-guard__mark--warn {
+  color: var(--warn);
+}
+
+.run-guard__dot {
+  flex: none;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  border-radius: var(--r-round);
+}
+
+.run-guard__dot--ok {
+  background: var(--ok);
+}
+
+.run-guard__dot--err {
+  background: var(--err);
+}
+
+.run-guard__dot--idle {
+  background: var(--ink-faint);
+}
+
+.run-guard__dot--warn {
+  background: var(--warn);
+}
+
+.run-guard__text {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.run-guard__caption {
+  color: var(--ink-faint);
+}
+
+/* The secrets ruleset's disclosure: the pointer's tooltip; its text is in the tree too. */
+.run-guard__info {
+  flex: none;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  cursor: help;
+}
+
+/* A failure's evidence — where, and by which rule — indented under its sentence. */
+.run-guard__evidence {
+  margin: var(--sp-3) 0 0 calc(1rem + var(--sp-5));
+  font-size: var(--t-xs);
+}
+
+.run-guard__summary {
+  color: var(--ink-mut);
+  cursor: pointer;
+}
+
+.run-guard__summary:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+.run-guard__facts {
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-3) var(--sp-5);
+  border: 1px solid var(--err-line);
+  border-radius: var(--r-sm);
+  background: var(--err-tint);
+}
+
+.run-guard__fact {
+  display: flex;
+  gap: var(--sp-4);
+  padding: var(--sp-1) 0;
+}
+
+.run-guard__term {
+  flex: none;
+  width: 3.5rem;
+  color: var(--ink-mut);
+}
+
+.run-guard__value {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-dim);
+  overflow-wrap: anywhere;
+}
+
+.run-guard__value--mono {
+  font-family: var(--f-mono);
+}
+
+/* The mockup's `small muted mono` footer. */
+.run-guard__policy {
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
 }
 
 /* ---------- the skeleton ---------- */

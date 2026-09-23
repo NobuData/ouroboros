@@ -8,9 +8,13 @@ import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { setNavOrigin } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 
+import { changesView, commitSource, guardrailsView, resourcesView } from "./cards";
+import { ChangesCard } from "./changes-card";
 import { type RunPollOptions, createRunPoll, runUrl } from "./console-poll";
 import type { ControlsPollOptions } from "./controls-poll";
 import type { RunOrigin } from "./origin";
+import { GuardrailsCard } from "./guardrails-card";
+import { ResourcesCard } from "./resources-card";
 import { type ControlSender, RunControls } from "./run-controls";
 import { RunHead } from "./run-head";
 import { RunStepper } from "./run-stepper";
@@ -62,6 +66,11 @@ import "./runs.css";
  * **The agent transcript** ([#312](https://github.com/NobuData/ouroboros/issues/312)) sits under
  * the timeline, filtered to the same stage, with the steering box beneath it for anyone who may
  * put work in front of the loop — a viewer reads it and is told why they cannot steer.
+ *
+ * **The right column** ([#313](https://github.com/NobuData/ouroboros/issues/313)) — *Changes so
+ * far*, *Resources* and *Guardrails* — sits beside the transcript on a wide pane, the mockup's
+ * 7/5 split, and under it on a narrow one. Each card is drawn from the same snapshot as the
+ * head, so a poll moves all of them together.
  *
  * @param props.initialStage The `?stage=` the page was opened with, or `null`.
  * @param props.mayControl Whether the reader may pause, abort or take over — owner or admin.
@@ -181,18 +190,28 @@ export function RunScreen({
 
       {stepper !== null && <RunStepper onSelect={selectStage} selected={stage} view={stepper} />}
 
-      {data !== null && stepper !== null && (
-        <TranscriptCard
-          controlsPoll={controlsPoll}
-          mayContribute={mayContribute}
-          onClearStage={() => selectStage(null)}
-          runId={id}
-          runLive={data.head.live}
-          send={steer}
-          stage={stage}
-          stageLabel={stepper.steps.find((step) => step.key === stage)?.label ?? null}
-          stream={transcript}
-        />
+      {data !== null && view !== null && stepper !== null && (
+        <div className="run__body">
+          <div className="run__main">
+            <TranscriptCard
+              controlsPoll={controlsPoll}
+              mayContribute={mayContribute}
+              onClearStage={() => selectStage(null)}
+              runId={id}
+              runLive={data.head.live}
+              send={steer}
+              stage={stage}
+              stageLabel={stepper.steps.find((step) => step.key === stage)?.label ?? null}
+              stream={transcript}
+            />
+          </div>
+
+          <div className="run__side">
+            <ChangesCard view={changesView(data.changes, commitSource(data.head.repository))} />
+            <ResourcesCard elapsed={view.elapsed} view={resourcesView(data.resources)} />
+            <GuardrailsCard view={guardrailsView(data.guardrails)} />
+          </div>
+        </div>
       )}
     </main>
   );

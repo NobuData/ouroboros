@@ -788,7 +788,7 @@ via the #16 tokens (both themes; the mockup is dark-only).
 | AQ.2 | #310 | 🟢 Done | ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over) | Action row with confirmation, ack states, branch-handoff dialog | mvp, runs, ui | N (after AQ.1, AP.4) | Y | M | ouroboros-ui |
 | AQ.3 | #311 | 🟢 Done | ouroboros-ui: [AQ.3] Stage timeline stepper | Done/active/pending nodes, attempt chips, gate-return notes | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
 | AQ.4 | #312 | 🟢 Done | ouroboros-ui: [AQ.4] Agent transcript & steering | Streaming entries, actor chips, diff blocks, live entry, steer input | mvp, runs, ui, design | N (after AQ.1, AP.4) | Y | L | ouroboros-ui |
-| AQ.5 | #313 | 🟡 Open | ouroboros-ui: [AQ.5] Changes, resources & guardrails cards | The three right-column cards from computed payloads | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
+| AQ.5 | #313 | 🟢 Done | ouroboros-ui: [AQ.5] Changes, resources & guardrails cards | The three right-column cards from computed payloads | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
 | AQ.6 | #314 | 🟡 Open | ouroboros-ui: [AQ.6] Console states & e2e leg | Terminal/queued/error states, watermark, themes, simulated e2e | mvp, runs, ui, ci | N (after AQ.2–AQ.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue AQ.1 — ouroboros-ui: [AQ.1] Run route, head & meta row
@@ -976,7 +976,7 @@ Run Console · Loop #1847
 
 ### Issue AQ.5 — ouroboros-ui: [AQ.5] Changes, resources & guardrails cards
 
-> **GitHub issue:** #313 · **Status:** 🟡 Open · **Parent epic:** #296
+> **GitHub issue:** #313 · **Status:** 🟢 Done · **Parent epic:** #296
 
 - **Problem Statement:** The right column's three cards — cumulative
   changes, resource meters, guardrail verdicts — from computed payloads
@@ -1004,6 +1004,28 @@ CHANGES 3 files  drivers/can/telemetry_buf.c +38 −12 …  a41c9e2 · [will squ
 RESOURCES  212k/400k ▓▓▓▓▓░ · $1.14/$2.50 ▓▓▓▓░ · forge-02 reserved ◌ · 12m 40s
 GUARDRAILS (clean)  ✓ paths ✓ no CI ✓ secrets ○ review not required — policy v14
 ```
+
+> **Delivered as `ouroboros-ui/app/runs/cards.ts` + `changes-card.tsx`, `resources-card.tsx`,
+> `guardrails-card.tsx`, and e2e leg 17's right-column test. Five decisions the scope above left
+> open:**
+>
+> 1. **The body is mockup 10's 12-column grid.** The transcript is its c-7 and the three cards its
+>    c-5 column, on `minmax(0, 1fr)` tracks so no path can widen a column; below 68.75rem (the
+>    dashboard's wide step) the column drops under the transcript. #312's transcript baselines were
+>    re-recorded at the narrower width.
+> 2. **Commit links go through a source builder.** `commitUrl` builds GitHub, GitLab (subgroups,
+>    self-managed base) and Bitbucket URLs from the full sha, and is unlinked for a non-hex sha, an
+>    unbuildable source or a non-`http(s)` base. The contract names the repository only as GitHub
+>    names it, so a real run links to GitHub today; the others wait for a contract that carries the
+>    source, as AQ.1's headline does.
+> 3. **The pill is computed on the card**, by the service's own rule applied to the rows drawn
+>    (`fail` → violations, else `pending`, else `clean`; none → *not evaluated*), so it can never
+>    disagree with them. The file-count tag is likewise summed from the rows, not read from `totals`.
+> 4. **Evidence is a disclosure on any row that carries it** — open on a failure, closed otherwise
+>    (a `not_applicable` row's *why*). A priced cost with unpriced calls says *lower bound — N calls
+>    unpriced*; the farm row names the job (`job #12 reserved`) until a runner takes it.
+> 5. **The wall clock is the head's anchored elapsed** (`ElapsedFigure`, shared), so the two tick
+>    together rather than differing by a poll.
 
 ### Issue AQ.6 — ouroboros-ui: [AQ.6] Console states & e2e leg
 
