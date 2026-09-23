@@ -376,3 +376,33 @@ describe("its focus", () => {
     expect(dialog).toHaveFocus();
   });
 });
+
+describe("an overlay's role and description (#310)", () => {
+  it("is a plain dialog, described by nothing, unless told otherwise", () => {
+    shell();
+
+    render(
+      <ShellOverlay open onClose={vi.fn()} label="Shortcuts">
+        <p>keys</p>
+      </ShellOverlay>,
+    );
+
+    const dialog = screen.getByRole("dialog", { name: "Shortcuts" });
+    expect(dialog).not.toHaveAttribute("aria-describedby");
+  });
+
+  it("announces a destructive confirmation as an alert dialog, described by its consequences", () => {
+    shell();
+
+    render(
+      <ShellOverlay open onClose={vi.fn()} label="Abort Loop #1847?" role="alertdialog" describedBy="why">
+        <p id="why">The run is marked canceled.</p>
+      </ShellOverlay>,
+    );
+
+    const dialog = screen.getByRole("alertdialog", { name: "Abort Loop #1847?" });
+    expect(dialog).toHaveAttribute("aria-modal", "true");
+    expect(dialog).toHaveAccessibleDescription("The run is marked canceled.");
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+});

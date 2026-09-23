@@ -86,8 +86,28 @@
 
 /* ---------- the head ---------- */
 
+/*
+ * The head and its controls (#310) — the mockup's head row: the title block on the left, the
+ * action buttons on the right. Wraps rather than squeezes, so on a narrow pane the buttons
+ * drop beneath the meta row instead of crushing the headline.
+ */
 .run-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-8);
   margin-bottom: var(--sp-10);
+}
+
+.run-head__main {
+  flex: 1 1 28rem;
+  min-width: 0;
+}
+
+.run-head__actions {
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .run-head__title {
@@ -161,6 +181,155 @@
 .run-head__copy-status {
   font-size: var(--t-xs);
   color: var(--ink-mut);
+}
+
+/* ---------- the run controls (#310) ---------- */
+
+.run-controls {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-4);
+}
+
+/* The mockup's three buttons, in its order: Pause, Take over, Abort. */
+.run-controls__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+}
+
+/* The delivery chips — always rendered, so a screen reader is listening before they change. */
+.run-controls__status {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  min-height: var(--sp-8);
+}
+
+.run-controls__error {
+  font-size: var(--t-xs);
+  color: var(--err);
+}
+
+/* ---------- the dialogs (#310) ---------- */
+
+/* The panel is .shell-overlay__panel's; this is the column inside it. */
+.run-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.run-dialog__text {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  color: var(--ink-dim);
+}
+
+/* What an abort costs, set apart in the error hue so it is read before the field. */
+.run-dialog__consequences {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--err-line);
+  border-radius: var(--r-md);
+  background: var(--err-tint);
+}
+
+.run-dialog__consequences .run-dialog__text {
+  color: var(--ink);
+}
+
+.run-dialog__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: var(--sp-8);
+}
+
+.run-dialog__error {
+  margin: 0;
+  font-size: var(--t-sm);
+  color: var(--err);
+}
+
+.run-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* ---------- the take-over hand-off (#310, decision R7) ---------- */
+
+.run-handoff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.run-handoff__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.run-handoff__label {
+  font-size: var(--t-xs);
+  font-weight: 600;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+  color: var(--ink-mut);
+}
+
+/* The commands, as a terminal would print them; a long branch scrolls inside the block. */
+.run-handoff__commands {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  overflow-x: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  color: var(--ink);
+}
+
+.run-handoff__links {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--t-sm);
+}
+
+.run-handoff__link {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.run-handoff__link:hover {
+  text-decoration: underline;
+}
+
+/* The AR.2 limitation — the model hue, as the watermark: a different kind of thing, not a fault. */
+.run-handoff__limitation {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--model-line);
+  border-radius: var(--r-md);
+  background: var(--model-tint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  color: var(--ink);
 }
 
 /* ---------- the skeleton ---------- */

@@ -43,3 +43,20 @@ describe("readRunConsole", () => {
     });
   });
 });
+
+describe("isRunId (#310)", () => {
+  it("accepts a run's uuid, in either case", async () => {
+    const { isRunId } = await import("@/app/api/runs");
+
+    expect(isRunId(SEEDED_RUN_ID)).toBe(true);
+    expect(isRunId(SEEDED_RUN_ID.toUpperCase())).toBe(true);
+  });
+
+  it("refuses anything a path could be steered with", async () => {
+    const { isRunId } = await import("@/app/api/runs");
+
+    for (const value of ["..", ".", "", "x", `${SEEDED_RUN_ID}/..`, `${SEEDED_RUN_ID} `, 42, null, undefined]) {
+      expect(isRunId(value)).toBe(false);
+    }
+  });
+});

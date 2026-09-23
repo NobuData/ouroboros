@@ -82,6 +82,18 @@ export interface ShellOverlayProps {
    * default: a column of sentences at that width is harder to read, not easier.
    */
   readonly wide?: boolean;
+  /**
+   * The panel's role. `dialog` by default; `alertdialog` for a confirmation of something that
+   * cannot be undone — the run console's abort
+   * ([#310](https://github.com/NobuData/ouroboros/issues/310)) — which a screen reader
+   * announces as urgent rather than as one more window.
+   */
+  readonly role?: "dialog" | "alertdialog";
+  /**
+   * The id of the element that says what the dialog is about — its consequences, for a
+   * destructive one. Read out with the label when the dialog opens.
+   */
+  readonly describedBy?: string;
   /** What the panel draws. */
   readonly children: React.ReactNode;
 }
@@ -99,6 +111,8 @@ export function ShellOverlay({
   label,
   initialFocus,
   wide = false,
+  role = "dialog",
+  describedBy,
   children,
 }: ShellOverlayProps) {
   /**
@@ -202,9 +216,10 @@ export function ShellOverlay({
     <div className="shell-overlay" role="presentation" onMouseDown={onBackdropPress}>
       <div
         className={wide ? "shell-overlay__panel shell-overlay__panel--wide" : "shell-overlay__panel"}
-        role="dialog"
+        role={role}
         aria-modal="true"
         aria-label={label}
+        aria-describedby={describedBy}
         // A target for the effect above, and not a tab stop: the trap cycles through the
         // panel's contents, never through the panel itself.
         tabIndex={-1}

@@ -1,17 +1,11 @@
 "use client";
 
 import { Check, Copy } from "lucide-react";
-import { useEffect, useState } from "react";
 
-import { copyWhenReady } from "@/app/farm/clipboard";
-
+import { useCopy } from "./use-copy";
 import { COPIED_BRANCH, COPY_BRANCH_FAILED, COPY_BRANCH_LABEL } from "./view";
 
-/** How long the control says *copied* before it goes back to offering to copy. */
-export const COPY_FEEDBACK_MS = 2000;
-
-/** Where the last press left the control. */
-type CopyState = "idle" | "copied" | "failed";
+export { COPY_FEEDBACK_MS } from "./use-copy";
 
 /**
  * The branch name, in mono, with a copy control beside it
@@ -27,23 +21,7 @@ type CopyState = "idle" | "copied" | "failed";
  * @returns The branch and its control.
  */
 export function CopyBranch({ branch }: Readonly<{ branch: string }>) {
-  const [state, setState] = useState<CopyState>("idle");
-
-  // The *copied* answer fades back to the control's resting state; a new press restarts it.
-  useEffect(() => {
-    if (state === "idle") return;
-
-    const timer = setTimeout(() => setState("idle"), COPY_FEEDBACK_MS);
-    return () => clearTimeout(timer);
-  }, [state]);
-
-  /** Put the branch on the clipboard, inside the press so the browser counts the gesture. */
-  function copy(): void {
-    copyWhenReady(Promise.resolve(branch)).then(
-      () => setState("copied"),
-      () => setState("failed"),
-    );
-  }
+  const { state, copy } = useCopy();
 
   return (
     <span className="run-head__branch">
@@ -53,7 +31,7 @@ export function CopyBranch({ branch }: Readonly<{ branch: string }>) {
       <button
         aria-label={COPY_BRANCH_LABEL}
         className="run-head__copy"
-        onClick={copy}
+        onClick={() => copy(branch)}
         title={COPY_BRANCH_LABEL}
         type="button"
       >

@@ -62,6 +62,9 @@
 #   farm-     farm.spec.ts        PARKED — the build → live log → stats test, which waits on
 #   gateway   (the build test)    agent source checkout; registered so that the day it runs,
 #                                 this script starts checking it (#262)
+#   db        runs.spec.ts        the run the console controls is opened through the real
+#                                 ingestion contract, rows and all: with the database stopped
+#                                 the driver cannot open one, and says so (#310)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -579,6 +582,11 @@ expect_red farm-gateway farm.spec.ts "Could not resolve host|Failed to connect t
 
 # …and the parked build test, by name. Reported `--` until agent source checkout lands.
 expect_red farm-gateway farm.spec.ts "the log streamed" "streams a real build"
+
+# The run console leg (#310). Its run is opened by the simulated-run driver through
+# `ouroboros-rest`'s ingestion contract, so with the database stopped there is no run to
+# control, and the leg goes red at its first step naming the driver rather than a timeout.
+expect_red db runs.spec.ts "the simulator (exited|opened no run)"
 
 printf '\n'
 if check_summary; then

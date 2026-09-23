@@ -24,8 +24,46 @@ export type RunWallClock = components["schemas"]["RunWallClock"];
 /** The repository the run's issue lives in, as GitHub names it. */
 export type RunRepository = components["schemas"]["RunRepository"];
 
+/** One control on a run's queue — what the head's delivery chip reads (#306). */
+export type RunControl = components["schemas"]["RunControl"];
+
+/** Which control: `pause`, `resume`, `abort` or `steer`. */
+export type RunControlKind = components["schemas"]["RunControlKind"];
+
+/** Where a control has got to: `pending`, `delivered`, `acked`, `expired` or `rejected`. */
+export type RunControlState = components["schemas"]["RunControlState"];
+
+/** A run's recent controls, newest first. */
+export type RunControlList = components["schemas"]["RunControlList"];
+
+/** What a submission carries. */
+export type SubmitRunControlRequest = components["schemas"]["SubmitRunControlRequest"];
+
 /** The error code the service answers for a run this workspace cannot see. */
 export const RUN_NOT_FOUND_CODE = "run_not_found";
+
+/** The code this module answers, before calling out, for a run id that is not a uuid. */
+export const RUN_ID_INVALID_CODE = "validation_failed";
+
+/** What is said beside {@link RUN_ID_INVALID_CODE}. */
+export const RUN_ID_INVALID = "That is not a run id.";
+
+/** A run's id: `runs.id`, a uuid minted by the database (V008). */
+const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Whether a value can be a run's id.
+ *
+ * Checked by the hops that put an id into a path themselves — the transcript's pass-through and
+ * the controls' Server Action — because `encodeURIComponent` leaves `.` and `..` alone, and a
+ * path segment of `..` would reach a different route of the service than the one meant.
+ *
+ * @param value What arrived.
+ * @returns `true` for a uuid.
+ */
+export function isRunId(value: unknown): value is string {
+  return typeof value === "string" && RUN_ID.test(value);
+}
 
 export const runs = {
   /**
@@ -40,5 +78,51 @@ export const runs = {
    */
   async console(id: string, client: ApiClient = api(), signal?: AbortSignal): Promise<RunConsole> {
     return unwrap(await client.GET("/api/v1/runs/{id}", { params: { path: { id } }, signal }));
+  },
+
+  /**
+   * Read one run's recent controls — the head's delivery chips
+   * ([#310](https://github.com/NobuData/ouroboros/issues/310)).
+   *
+   * @param id The run's id.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @param signal Aborts the read — the poll route's timeout.
+   * @returns The controls, newest first. Elapsed ones are already `expired`.
+   * @throws ApiError `404 run_not_found` for a run that is not this workspace's.
+   */
+  async controls(
+    id: string,
+    client: ApiClient = api(),
+    signal?: AbortSignal,
+  ): Promise<RunControlList> {
+    return unwrap(
+      await client.GET("/api/v1/runs/{id}/controls", { params: { path: { id } }, signal }),
+    );
+  },
+
+  /**
+   * Queue a control on a run — *Pause loop*, *Resume*, *Abort run*
+   * ([#310](https://github.com/NobuData/ouroboros/issues/310), over #306's queue).
+   *
+   * The service is the gate: `pause`, `resume` and `abort` are `owner` or `admin`, checked
+   * before the run is read, and an abort's `confirmation` is re-checked against the run's
+   * loop number whatever the browser decided.
+   *
+   * @param id The run's id.
+   * @param body The control.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The control as the queue holds it — `pending`, `rejected` for a finished run, or
+   *   the one already outstanding when this was a repeat.
+   * @throws ApiError `403` for a role that may not press it, `422 abort_confirmation_invalid`
+   *   for a wrong typed number, `404 run_not_found` for another workspace's run.
+   */
+  async submitControl(
+    id: string,
+    body: SubmitRunControlRequest,
+    client: ApiClient = api(),
+  ): Promise<RunControl> {
+    return unwrap(
+      await client.POST("/api/v1/runs/{id}/controls", { params: { path: { id } }, body }),
+    );
   },
 };

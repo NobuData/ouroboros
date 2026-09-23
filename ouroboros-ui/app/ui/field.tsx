@@ -1,6 +1,7 @@
 import type {
   InputHTMLAttributes,
   ReactNode,
+  Ref,
   SelectHTMLAttributes,
   TextareaHTMLAttributes,
 } from "react";
@@ -128,6 +129,12 @@ export type TextFieldProps = Omit<FieldFrameProps, "children"> &
   Omit<InputHTMLAttributes<HTMLInputElement>, "className" | "id"> & {
     /** Whether the value is read character by character — a domain, a key, an identifier. */
     readonly mono?: boolean;
+    /**
+     * The `<input>` itself — for a dialog that opens with focus in the field (the run console's
+     * abort confirmation, [#310](https://github.com/NobuData/ouroboros/issues/310)). A prop since
+     * React 19, carried onto the input with the rest.
+     */
+    readonly ref?: Ref<HTMLInputElement>;
   };
 
 /**

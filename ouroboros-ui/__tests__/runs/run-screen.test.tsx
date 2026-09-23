@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RunConsole } from "@/app/api/runs";
 import { BUILD_FARM_PATH, DASHBOARD_PATH } from "@/app/paths";
 import type { RunPollOptions } from "@/app/runs/console-poll";
+import { CONTROLS_LABEL } from "@/app/runs/controls";
+import type { ControlsPollOptions } from "@/app/runs/controls-poll";
 import { BUILD_FARM_ORIGIN, DASHBOARD_ORIGIN, type RunOrigin } from "@/app/runs/origin";
 import { RunScreen } from "@/app/runs/run-screen";
 import {
@@ -30,8 +32,14 @@ import {
  * sidebar origin — and a refresh that failed.
  */
 
+// The Server Action is never reached here: the controls' cases pass their own sender.
+vi.mock("@/app/runs/control-actions", () => ({ submitRunControl: vi.fn() }));
+
 /** A poll that never answers — the page shows the server's first read. */
 const QUIET: RunPollOptions = { read: () => new Promise(() => {}), visible: () => true };
+
+/** A controls poll that never answers. */
+const QUIET_CONTROLS: ControlsPollOptions = { read: () => new Promise(() => {}), visible: () => true };
 
 /** What the live poll answers. Reassigned by the cases that care. */
 let answer: PollAnswer<RunConsole>;
@@ -48,13 +56,20 @@ const LIVE: RunPollOptions = { read: () => Promise.resolve(answer), visible: () 
  */
 function draw(
   initial: RunConsole | null = runConsole(),
-  options: { poll?: RunPollOptions; origin?: RunOrigin; initialError?: string | null } = {},
+  options: {
+    poll?: RunPollOptions;
+    origin?: RunOrigin;
+    initialError?: string | null;
+    mayControl?: boolean;
+  } = {},
 ) {
   return render(
     <RunScreen
+      controlsPoll={QUIET_CONTROLS}
       id={SEEDED_RUN_ID}
       initial={initial}
       initialError={options.initialError ?? null}
+      mayControl={options.mayControl}
       origin={options.origin ?? DASHBOARD_ORIGIN}
       poll={options.poll ?? QUIET}
     />,
@@ -291,5 +306,51 @@ describe("the contextual frame", () => {
 
     expect(container.firstElementChild?.tagName).toBe("MAIN");
     expect(container.querySelector("header, aside")).toBeNull();
+  });
+});
+
+describe("the run controls (#310)", () => {
+  it("are drawn beside the head for a reader who may control the run", () => {
+    draw(runConsole(), { mayControl: true });
+
+    const head = document.querySelector(".run-head") as HTMLElement;
+    expect(within(head).getByRole("group", { name: CONTROLS_LABEL })).toBeInTheDocument();
+  });
+
+  it("are not drawn for a reader who may not — the default", () => {
+    draw(runConsole());
+
+    expect(screen.queryByRole("group", { name: CONTROLS_LABEL })).toBeNull();
+  });
+
+  it("go once the run has ended — there is nothing left to control", () => {
+    draw(
+      runConsole({
+        run: { status: "canceled", finishedAt: "2026-09-19T12:30:00.000Z" },
+        head: { live: false },
+        wallClock: { finishedAt: "2026-09-19T12:30:00.000Z", elapsedSeconds: 1800 },
+      }),
+      { mayControl: true },
+    );
+
+    expect(screen.queryByRole("group", { name: CONTROLS_LABEL })).toBeNull();
+    expect(meta().firstElementChild).toHaveTextContent("canceled");
+  });
+
+  it("leave the page on the poll's answer once an abort has ended the run", async () => {
+    answer = {
+      state: "fresh",
+      payload: runConsole({
+        run: { status: "canceled", finishedAt: "2026-09-19T12:30:00.000Z" },
+        head: { live: false },
+      }),
+      etag: null,
+      pollAfterSeconds: null,
+    };
+    draw(runConsole(), { mayControl: true, poll: LIVE });
+    expect(screen.getByRole("group", { name: CONTROLS_LABEL })).toBeInTheDocument();
+
+    await vi.waitFor(() => expect(screen.queryByRole("group", { name: CONTROLS_LABEL })).toBeNull());
+    expect(meta().firstElementChild).toHaveTextContent("canceled");
   });
 });

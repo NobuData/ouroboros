@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 
 import { requireWorkspace } from "@/app/api/access";
+import { mayAdminister } from "@/app/api/membership";
 import { RUN_ORIGIN_PARAM } from "@/app/paths";
 import { readRun } from "@/app/runs/data";
 import { runOrigin } from "@/app/runs/origin";
@@ -17,6 +18,10 @@ import { RunScreen } from "@/app/runs/run-screen";
  * A contextual surface: no sidebar entry of its own, and `?from=` names the module the reader
  * came from, which stays lit (`app/runs/origin.ts`).
  *
+ * The head's controls (#310) are drawn for an owner or admin — `mayAdminister`, the rule the
+ * service applies to pause, resume and abort — and the screen is handed a boolean rather than
+ * a role. The service checks again on every press.
+ *
  * @param props.params The run's id.
  * @param props.searchParams The query — only `?from=` is read.
  * @returns The screen, or the not-found page for a run this workspace cannot see.
@@ -28,7 +33,7 @@ export default async function Page({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }>) {
-  await requireWorkspace();
+  const { membership } = await requireWorkspace();
   const { id } = await params;
   const origin = runOrigin((await searchParams)[RUN_ORIGIN_PARAM]);
   const reading = await readRun(id);
@@ -40,6 +45,7 @@ export default async function Page({
       id={id}
       initial={reading.state === "found" ? reading.value : null}
       initialError={reading.state === "failed" ? reading.reason : null}
+      mayControl={mayAdminister(membership.roles)}
       origin={origin}
     />
   );

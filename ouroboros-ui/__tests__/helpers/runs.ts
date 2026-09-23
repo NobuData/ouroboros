@@ -1,4 +1,4 @@
-import type { RunConsole } from "@/app/api/runs";
+import type { RunConsole, RunControl } from "@/app/api/runs";
 
 /**
  * The run console's seed, as `docs/mockups/10-run-detail.html` draws it (#309): loop #1847 on
@@ -84,5 +84,38 @@ export function runConsole(over: RunConsoleOverrides = {}): RunConsole {
       policy: { workflowTag: "standard-fix", workflowVersion: 14, tenant: "acme" },
       secrets: { version: "1", ruleCount: 0, recallClass: "", summary: "", limitation: "" },
     },
+  };
+}
+
+/** What a test may override on a control. */
+export type RunControlOverrides = Partial<RunControl>;
+
+/** A counter for {@link runControl}'s ids, so two controls in one list never collide. */
+let controlSeq = 0;
+
+/**
+ * One control on the seeded run's queue (#310) — a pause, queued and not yet fetched, unless
+ * told otherwise.
+ *
+ * @param over The parts to replace.
+ * @returns The control.
+ */
+export function runControl(over: RunControlOverrides = {}): RunControl {
+  controlSeq += 1;
+
+  return {
+    id: `c0000000-0000-4000-8000-${String(controlSeq).padStart(12, "0")}`,
+    runId: SEEDED_RUN_ID,
+    kind: "pause",
+    state: "pending",
+    requestedBy: "5eed0001-0000-4000-8000-00000000000a",
+    requestedAt: "2026-09-19T12:12:40.000Z",
+    deliveredAt: null,
+    ackedAt: null,
+    expiresAt: "2026-09-19T12:14:40.000Z",
+    detail: null,
+    hasPayload: false,
+    remember: false,
+    ...over,
   };
 }
