@@ -375,6 +375,8 @@ ouroboros-ui/
 │   │   ├── data.ts          #   readRun() — the first paint: found, missing (notFound) or failed (banner)
 │   │   ├── copy-branch.tsx  #   the mono branch name and its copy control, announced in words
 │   │   ├── run-head.tsx     #   the eyebrow, the linked headline and the five-element meta row
+│   │   ├── stepper.ts       #   the stage timeline's rules: five treatments, captions, the stored note, ?stage= · #311
+│   │   ├── run-stepper.tsx  #   the timeline card: node buttons, glowing segments, its own scroll box
 │   │   ├── controls.ts      #   the controls' rules: paused from acks, the toggle, the delivery chips · #310
 │   │   ├── controls-poll.ts #   the chips' reader and guard
 │   │   ├── control-actions.ts # submitRunControl() — pause, resume, abort; the Server Action
@@ -3336,7 +3338,8 @@ disabled would reasonably expect to draft and be refused on the first click.
 [`docs/mockups/10-run-detail.html`](../docs/mockups/10-run-detail.html)'s **page head**, read from
 `GET /api/v1/runs/{id}` ([#304](https://github.com/NobuData/ouroboros/issues/304)) and polled at
 the shared I.8 cadence through `/api/runs/:id`. The [run controls](#run-controls) sit beside it
-(AQ.2, #310); the stepper, transcript and cards are AQ.3–AQ.5 (#311–#313), which mount beneath it.
+(AQ.2, #310); the [stage timeline](#stage-timeline) sits beneath it (AQ.3, #311), and the
+transcript and cards are AQ.4–AQ.5 (#312–#313).
 
 ```
 Dashboard / Loop #1847
@@ -3368,6 +3371,35 @@ Jira, Linear or GitLab ticket's URL needs the contract to carry it — and is pl
 repository is missing. A run
 another workspace owns, or an id that is not a uuid, is the not-found page; a failed read is the
 retry banner, keeping the last answer on screen.
+
+### Stage timeline
+
+Mockup 10's `c-12` stepper ([#311](https://github.com/NobuData/ouroboros/issues/311)), from
+AP.2's `timeline` in the pinned workflow's order ([`stepper.ts`](app/runs/stepper.ts)):
+
+```
+✓ Queued ══ ✓ Analyze ══ ✓ Plan ══ ● Implement ── ○ Build ── ○ Test ── ○ Review ── ○ Open PR
+  0m 04s     1m 12s      2m 05s    attempt 2/3
+                                   ⚠ attempt 1 failed tests — loop returned from gate ↺
+```
+
+**Read, never narrated.** Done nodes caption the stage's duration, the active node its
+`attempt N/M`, and the warn note is the stored transition note (decision R1), printed verbatim
+and wrapped, never truncated. Two treatments beyond the mockup's three: **failed** (`✕`) for a
+failed attempt and for the stage a failed or canceled run stopped on — `canceled` after an
+abort — and **skipped** (`–`) for a branch the loop did not take. The segments glow up to the
+active node.
+
+**Each node is a button.** Pressing one filters to that stage and writes `?stage=<stageKey>` with
+`history.replaceState`, so the filtered view is shareable and survives a reload; pressing it
+again clears it. The page validates the value against the run's stages. The transcript that
+consumes it is AQ.4 (#312).
+
+**Motion is optional and the strip scrolls in its own box.** The active node pulses only while
+the run is live and only under `prefers-reduced-motion: no-preference`; without motion a static
+ring still reads as active, and treatments cross-fade on a poll's change the same way. Eight
+nodes do not fit a phone, so `.run-timeline__scroll` scrolls sideways and, on first paint, is
+moved (never the pane) to centre the active node.
 
 ### Run controls
 

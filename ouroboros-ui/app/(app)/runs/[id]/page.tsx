@@ -5,6 +5,7 @@ import { mayAdminister } from "@/app/api/membership";
 import { RUN_ORIGIN_PARAM } from "@/app/paths";
 import { readRun } from "@/app/runs/data";
 import { runOrigin } from "@/app/runs/origin";
+import { STAGE_PARAM } from "@/app/runs/stepper";
 import { RunScreen } from "@/app/runs/run-screen";
 
 /**
@@ -23,7 +24,8 @@ import { RunScreen } from "@/app/runs/run-screen";
  * a role. The service checks again on every press.
  *
  * @param props.params The run's id.
- * @param props.searchParams The query — only `?from=` is read.
+ * @param props.searchParams The query — `?from=`, and `?stage=`, the stage the timeline and the
+ *   transcript are filtered to (#311); the screen checks it against the run's stages.
  * @returns The screen, or the not-found page for a run this workspace cannot see.
  */
 export default async function Page({
@@ -35,7 +37,9 @@ export default async function Page({
 }>) {
   const { membership } = await requireWorkspace();
   const { id } = await params;
-  const origin = runOrigin((await searchParams)[RUN_ORIGIN_PARAM]);
+  const query = await searchParams;
+  const origin = runOrigin(query[RUN_ORIGIN_PARAM]);
+  const stage = query[STAGE_PARAM];
   const reading = await readRun(id);
 
   if (reading.state === "missing") notFound();
@@ -45,6 +49,7 @@ export default async function Page({
       id={id}
       initial={reading.state === "found" ? reading.value : null}
       initialError={reading.state === "failed" ? reading.reason : null}
+      initialStage={typeof stage === "string" ? stage : (stage?.[0] ?? null)}
       mayControl={mayAdminister(membership.roles)}
       origin={origin}
     />

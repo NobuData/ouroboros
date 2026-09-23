@@ -18,8 +18,68 @@ export const SEEDED_STARTED_AT = "2026-09-19T12:00:00.000Z";
 /** The seeded elapsed figure, in seconds — `12m 40s`. */
 export const SEEDED_ELAPSED_SECONDS = 760;
 
+/** One timeline stage, as the payload carries it. */
+export type RunTimelineStage = RunConsole["timeline"]["stages"][number];
+
+/** The warn note the seed stores on implement's second attempt — the mockup's words. */
+export const SEEDED_NOTE = "attempt 1 failed tests — loop returned from gate ↺";
+
+/**
+ * One stage of the seeded timeline.
+ *
+ * @param stageKey The DSL node id.
+ * @param label The node's title.
+ * @param position Its place in the pinned order.
+ * @param over The rest.
+ * @returns The stage.
+ */
+export function timelineStage(
+  stageKey: string,
+  label: string,
+  position: number,
+  over: Partial<RunTimelineStage> = {},
+): RunTimelineStage {
+  return {
+    stageKey,
+    label,
+    position,
+    status: "pending",
+    attempt: 1,
+    maxAttempts: null,
+    durationSeconds: null,
+    note: null,
+    attempts: [],
+    ...over,
+  };
+}
+
+/**
+ * Mockup 10's stepper as the timeline payload (#311): three done with `0m 04s`, `1m 12s` and
+ * `2m 05s`; Implement active on `attempt 2/3` with the gate-return note; four pending.
+ *
+ * @returns The stages, in the pinned order.
+ */
+export function seededStages(): RunTimelineStage[] {
+  return [
+    timelineStage("issue-queued", "Queued", 1, { status: "succeeded", durationSeconds: 4 }),
+    timelineStage("analyze", "Analyze", 2, { status: "succeeded", durationSeconds: 72 }),
+    timelineStage("plan", "Plan", 3, { status: "succeeded", durationSeconds: 125 }),
+    timelineStage("implement", "Implement", 4, {
+      status: "active",
+      attempt: 2,
+      maxAttempts: 3,
+      note: SEEDED_NOTE,
+    }),
+    timelineStage("build", "Build", 5),
+    timelineStage("test", "Test", 6),
+    timelineStage("review", "Review", 7),
+    timelineStage("open-pr", "Open PR", 8),
+  ];
+}
+
 /** What a test may override on the seed. */
 export interface RunConsoleOverrides {
+  readonly stages?: RunTimelineStage[];
   readonly run?: Partial<RunConsole["run"]>;
   readonly head?: Partial<RunConsole["head"]>;
   readonly wallClock?: Partial<RunConsole["resources"]["wallClock"]>;
@@ -61,7 +121,12 @@ export function runConsole(over: RunConsoleOverrides = {}): RunConsole {
       repository: { owner: "acme", name: "helios-firmware" },
       ...over.head,
     },
-    timeline: { workflowTag: "standard-fix", workflowVersion: 14, currentStageKey: null, stages: [] },
+    timeline: {
+      workflowTag: "standard-fix",
+      workflowVersion: 14,
+      currentStageKey: "implement",
+      stages: over.stages ?? seededStages(),
+    },
     changes: {
       files: [],
       totals: { files: 0, additions: 0, deletions: 0 },

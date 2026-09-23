@@ -74,3 +74,51 @@ describe("the shell", () => {
     expect(CODE).not.toMatch(/position:\s*(fixed|sticky)/);
   });
 });
+
+describe("the stage timeline (#311)", () => {
+  /**
+   * One rule's body, by its exact selector.
+   *
+   * @param selector The selector as written.
+   * @returns The declarations between its braces.
+   */
+  function rule(selector: string): string {
+    const start = CODE.indexOf(`${selector} {`);
+    expect(start, `${selector} is declared`).toBeGreaterThanOrEqual(0);
+
+    return CODE.slice(start, CODE.indexOf("}", start));
+  }
+
+  it("animates only inside the reduced-motion guard, and the still variant keeps a ring", () => {
+    const guard = CODE.indexOf("@media (prefers-reduced-motion: no-preference)", CODE.indexOf(".run-stepper"));
+    const animation = CODE.indexOf("animation: run-step-pulse");
+
+    expect(guard).toBeGreaterThanOrEqual(0);
+    expect(animation).toBeGreaterThan(guard);
+    expect(CODE.match(/animation:/g)).toHaveLength(1);
+    expect(CODE.match(/transition:/g)?.length).toBeGreaterThan(0);
+    for (const match of CODE.matchAll(/transition:/g)) expect(match.index).toBeGreaterThan(guard);
+
+    // Without motion, active still reads: a static ring around the filled node.
+    expect(rule(".run-step--active .run-step__node")).toMatch(/box-shadow:\s*0 0 0 0\.1875rem var\(--accent-tint\)/);
+  });
+
+  it("pulses only a live run's active node", () => {
+    expect(CODE).toMatch(/\.run-stepper--live \.run-step--active \.run-step__node \{\s*animation: run-step-pulse/);
+  });
+
+  it("wraps the warn note and never truncates it", () => {
+    const note = rule(".run-step__note");
+
+    expect(note).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(note).not.toMatch(/text-overflow|white-space:\s*nowrap|overflow:\s*hidden|line-clamp/);
+  });
+
+  it("scrolls the strip inside its own wrapper, never the pane", () => {
+    const scroll = rule(".run-timeline__scroll");
+
+    expect(scroll).toMatch(/overflow-x:\s*auto/);
+    expect(scroll).toMatch(/max-width:\s*100%/);
+    expect(rule(".run-stepper")).toMatch(/min-width:\s*min-content/);
+  });
+});

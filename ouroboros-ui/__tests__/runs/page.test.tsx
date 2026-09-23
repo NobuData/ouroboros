@@ -92,6 +92,20 @@ describe("the run console route", () => {
   });
 });
 
+describe("the stage filter (#311)", () => {
+  it("opens with the stage ?stage= names pressed", async () => {
+    await open({ stage: "implement" });
+
+    expect(screen.getByRole("button", { name: /^Implement/ })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("takes the first of a repeated ?stage=", async () => {
+    await open({ stage: ["plan", "implement"] });
+
+    expect(screen.getByRole("button", { name: /^Plan/ })).toHaveAttribute("aria-pressed", "true");
+  });
+});
+
 describe("the run controls (#310)", () => {
   /**
    * Sign in holding these roles.
