@@ -421,7 +421,7 @@ seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript ent
 | AP.3 | #305 | 🟢 Done | ouroboros-rest: [AP.3] Guardrail evaluation service | Paths/CI-config/secrets/review checks on reported change-sets | mvp, runs, rest | N (after AO.4, WF-P.2) | Y | L | ouroboros-rest |
 | AP.4 | #306 | 🟢 Done | ouroboros-rest: [AP.4] Control queue & delivery | Pause/resume/abort/steer with acks, TTLs, audit (R6) | mvp, runs, rest, engine | N (after AO.4, #51) | Y | M | ouroboros-rest, ouroboros-engine |
 | AP.5 | #307 | 🟢 Done | ouroboros-engine: [AP.5] Simulated-run driver | Scripted lifecycles through the real contract, incl. control acks | mvp, runs, engine | N (after AP.1, AP.4) | Y | M | ouroboros-engine |
-| AP.6 | #308 | 🟡 Open | ouroboros-rest: [AP.6] Console integration tests | Ingestion ordering/idempotency, guardrail matrix, controls, isolation | mvp, runs, rest, ci | N (after AP.2–AP.5) | Y | M | ouroboros-rest |
+| AP.6 | #308 | 🟢 Done | ouroboros-rest: [AP.6] Console integration tests | Ingestion ordering/idempotency, guardrail matrix, controls, isolation | mvp, runs, rest, ci | N (after AP.2–AP.5) | Y | M | ouroboros-rest |
 
 ### Issue AP.1 — ouroboros-rest: [AP.1] Run ingestion contract & API
 
@@ -734,7 +734,7 @@ scenario "482-gate-return" ─▶ queued→analyze→plan→implement(1)→gate�
 
 ### Issue AP.6 — ouroboros-rest: [AP.6] Console integration tests
 
-> **GitHub issue:** #308 · **Status:** 🟡 Open · **Parent epic:** #295
+> **GitHub issue:** #308 · **Status:** 🟢 Done · **Parent epic:** #295
 
 - **Problem Statement:** Ingestion ordering, guardrail matrices, and control
   semantics are the console's correctness core.
@@ -752,6 +752,26 @@ scenario "482-gate-return" ─▶ queued→analyze→plan→implement(1)→gate�
 ```
 suites: ingest ✓ · guardrails ✓ · controls ✓ · reads/export ✓ · isolation ✓
 ```
+
+> **Delivered as four suites beside AP.1–AP.4's own (`ouroboros-rest/src/modules/runs/console.*`)
+> and additions to the ingest and guardrail suites. Four decisions the scope above left open:**
+>
+> 1. **Mutation checks are one named test per mechanism** (`console.mutation.integration-spec.ts`):
+>    `idempotency: …`, `transition validator: …`, `evidence constraint: …`. Each was demonstrated
+>    at review: disabling the receipt ledger, making `canTransition()` answer `true`, and dropping
+>    V048's nine `guardrail_evaluations_evidence_*` CHECKs each turned exactly its own test red.
+> 2. **"Every route" is checked, not listed.** The isolation suite holds its route table equal to
+>    the route table the running application registers under `/api/v1/runs` and `/internal/runs`.
+>    Public routes answer another org's run `404 run_not_found`. The internal principals are
+>    fleet-wide and carry no org, so internal routes are isolated by the *references* they accept
+>    (another org's repository, build job or control → `404`), and the run-id-only ones are
+>    asserted to `404` a run nobody has.
+> 3. **Fixtures are parsed out of `10-run-detail.html` at test time** (`console.mockup.fixture.ts`),
+>    and `ci/rest` now runs on an edit to that file. One disagreement is pinned both ways rather
+>    than hidden: the stepper after the active node, where mockup 01's `Implementing · 4/6` (which
+>    the shared dev seed follows) and mockup 10's `Implement … Open PR` differ.
+> 4. **The guardrail matrix runs end to end for the nine cells `standard-fix` can reach**; the
+>    cells that need `touch_ci: true` or another review policy stay in `guardrails.checks.spec.ts`.
 
 ---
 

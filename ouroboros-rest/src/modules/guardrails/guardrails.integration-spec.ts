@@ -6,7 +6,50 @@ import { SCHEMA_NAME } from "../db/schema";
 import { INTERNAL_KEY_HEADER } from "../engine/engine.contract";
 import { seedIngestBench, type IngestBench } from "../ingest/ingest.fixture";
 import type { ChangeSetResource, RunOpenedResource } from "../ingest/ingest.resources";
-import { AWS_ACCESS_KEY_ID } from "./guardrails.fixture";
+import type { GuardrailInput } from "./guardrails.checks";
+import {
+  AWS_ACCESS_KEY_ID,
+  GITHUB_PAT,
+  SLACK_BOT_TOKEN,
+  STRIPE_SECRET_KEY,
+} from "./guardrails.fixture";
+import { MOCKUP_INPUT, RULE_MATRIX, type MatrixCell } from "./guardrails.matrix.fixture";
+
+/**
+ * Can a matrix cell be driven through the real API with the ingestion bench?
+ *
+ * The bench pins `standard-fix` (whose `implement` has `touch_ci: false` and whose terminal
+ * auto-merges with no vote rule) and can give the run a plan or not, and hunks or not. A cell
+ * whose input asks for any other stage permissions or review policy stays at the unit scale —
+ * `guardrails.checks.spec.ts` runs all of them there.
+ *
+ * @param cell - A cell of {@link RULE_MATRIX}.
+ * @returns Whether its input is one the bench can reproduce.
+ */
+function reachable(cell: MatrixCell): boolean {
+  return (
+    JSON.stringify(cell.input.permissions) === JSON.stringify(MOCKUP_INPUT.permissions) &&
+    JSON.stringify(cell.input.review) === JSON.stringify(MOCKUP_INPUT.review)
+  );
+}
+
+/**
+ * A matrix input's change-set, as the body of `PUT /internal/runs/:id/files`.
+ *
+ * @param input - The cell's input.
+ * @returns One reported file per scanned file, hunks carried through when the input has them.
+ */
+function asReport(input: GuardrailInput): unknown[] {
+  return input.files.map((file) => ({
+    path: file.path,
+    status: "modified",
+    additions: Math.max(
+      1,
+      (file.hunks ?? []).flatMap((hunk) => hunk.lines).filter((line) => line.kind === "add").length,
+    ),
+    ...(file.hunks === undefined ? {} : { hunks: file.hunks }),
+  }));
+}
 
 /**
  * **The guardrail evaluation service, over a socket and against a migrated database** — AP.3
@@ -24,9 +67,16 @@ import { AWS_ACCESS_KEY_ID } from "./guardrails.fixture";
  *   * re-evaluating a fixed change-set flips the latest verdict to `pass` while the failing
  *     evaluation remains in history.
  *
- * The pass / fail / not-applicable matrix for every check is `guardrails.checks.spec.ts`; the
- * `touch_ci: true` half of the CI criterion is there too, since every model stage of the
- * product's `standard-fix` document forbids CI.
+ * AP.6 ([#308](https://github.com/NobuData/ouroboros/issues/308)) adds:
+ *
+ *   * **the rule matrix end to end** — every cell of `guardrails.matrix.fixture.ts` the bench can
+ *     reproduce, reported through the API and read back from the card's view;
+ *   * **evidence hygiene, repeatedly** — several credential formats, reported more than once, and
+ *     none of them anywhere afterwards;
+ *   * **the ≤ 50 ms budget**, read from the service's own timing line.
+ *
+ * The whole matrix — including the cells that need a stage with `touch_ci: true` or a review
+ * policy other than `standard-fix`'s — is `guardrails.checks.spec.ts`.
  *
  * ```bash
  * yarn test:integration
@@ -57,8 +107,13 @@ describe("guardrail evaluation", () => {
    * The ingestion bench opens runs for a canonical ticket; the plan lives on the mirrored issue
    * the run's `(repository, number)` names, which is what the service reads.
    */
-  async function plannedBench(files: string[]): Promise<IngestBench> {
+  async function plannedBench(files: readonly string[]): Promise<IngestBench> {
     const bench = await seedIngestBench(api, await api.signUp());
+
+    // No plan files is no plan: the run's ticket is then not a mirrored, estimated issue.
+    if (files.length === 0) {
+      return bench;
+    }
     const { rows } = await api.sql.query<{ id: string }>(
       `insert into ${SCHEMA_NAME}.github_issues
               (organization_id, github_repo_id, number, title, body, state, labels,
@@ -283,5 +338,120 @@ describe("guardrail evaluation", () => {
       { verdict: "fail", change_set_seq: 1 },
       { verdict: "pass", change_set_seq: 2 },
     ]);
+  });
+
+  /** Spy on every Logger level, collecting what is written. */
+  function captureLogs(): { lines: string[]; restore: () => void } {
+    const lines: string[] = [];
+    const spies = (["log", "debug", "warn", "error", "verbose", "fatal"] as const).map((level) =>
+      jest.spyOn(Logger.prototype, level).mockImplementation((...args: unknown[]) => {
+        lines.push(args.map((arg) => JSON.stringify(arg) ?? String(arg)).join(" "));
+      }),
+    );
+
+    return { lines, restore: () => spies.forEach((spy) => spy.mockRestore()) };
+  }
+
+  describe("the rule matrix, end to end (AP.6)", () => {
+    const cells = RULE_MATRIX.filter(reachable);
+
+    it("reaches every check, and every verdict each check can reach with this policy", () => {
+      expect([...new Set(cells.map((cell) => `${cell.check}:${cell.verdict}`))].sort()).toEqual([
+        "allowed_paths:fail",
+        "allowed_paths:not_applicable",
+        "allowed_paths:pass",
+        "ci_config:fail",
+        "ci_config:pass",
+        "review_required:not_applicable",
+        "secrets:fail",
+        "secrets:not_applicable",
+        "secrets:pass",
+      ]);
+    });
+
+    it.each(cells.map((cell) => [cell.check, cell.verdict, cell.because, cell] as const))(
+      "%s → %s when %s",
+      async (check, verdict, _because, cell) => {
+        const run = await implementingRun(await plannedBench(cell.input.planFiles ?? []));
+
+        const answer = await report(run, "files-1", asReport(cell.input));
+        const card = await latest(run);
+
+        expect(card[check].verdict).toBe(verdict);
+        // A `fail` must reach the executor as well as the card — the loud half of the verdict.
+        expect(answer.guardrailFailures.includes(check)).toBe(verdict === "fail");
+
+        if (cell.evidence !== undefined) {
+          expect(card[check].evidence).toEqual(cell.evidence);
+        }
+      },
+    );
+  });
+
+  it("stores no credential of any format, however many times one is reported (AP.6)", async () => {
+    const planted = [AWS_ACCESS_KEY_ID, GITHUB_PAT, SLACK_BOT_TOKEN, STRIPE_SECRET_KEY];
+    const logs = captureLogs();
+
+    try {
+      const run = await implementingRun(await plannedBench(["drivers/can/telemetry_buf.c"]));
+
+      // Three reports, each planting every format: the same temptation, recurring.
+      for (const round of [1, 2, 3]) {
+        const answer = await report(
+          run,
+          `files-${String(round)}`,
+          planted.map((secret, index) => ({
+            path: `drivers/can/keys_${String(index)}.h`,
+            status: "added",
+            additions: 1,
+            hunks: added(round * 10, `#define KEY_${String(index)} "${secret}"`),
+          })),
+        );
+
+        expect(answer.guardrailFailures).toContain("secrets");
+      }
+
+      expect((await latest(run)).secrets.verdict).toBe("fail");
+
+      const traces = await api.sql.query<{ trace: string }>(
+        `select row_to_json(g)::text as trace from ${SCHEMA_NAME}.guardrail_evaluations g
+          union all select row_to_json(f)::text from ${SCHEMA_NAME}.run_files f
+          union all select row_to_json(r)::text from ${SCHEMA_NAME}.run_ingest_receipts r
+          union all select row_to_json(e)::text from ${SCHEMA_NAME}.run_events e
+          union all select row_to_json(a)::text from ${SCHEMA_NAME}.audit_events a`,
+      );
+      const stored = traces.rows.map((row) => row.trace).join("\n");
+      const logged = logs.lines.join("\n");
+
+      // Twelve verdict rows at least: three reports of four checks.
+      expect(traces.rows.length).toBeGreaterThanOrEqual(12);
+
+      for (const secret of planted) {
+        expect(stored).not.toContain(secret);
+        expect(logged).not.toContain(secret);
+      }
+    } finally {
+      logs.restore();
+    }
+  });
+
+  it("judges the mockup's change-set within the 50 ms budget, as the service times it (AP.6)", async () => {
+    const logs = captureLogs();
+
+    try {
+      const run = await implementingRun(await plannedBench(MOCKUP_INPUT.planFiles ?? []));
+
+      await report(run, "files-1", asReport(MOCKUP_INPUT));
+
+      const timings = logs.lines
+        .map((line) => /change-set \d+: .* in ([\d.]+) ms/.exec(line))
+        .filter((match): match is RegExpExecArray => match !== null)
+        .map((match) => Number(match[1]));
+
+      expect(timings).toHaveLength(1);
+      expect(timings[0]).toBeLessThanOrEqual(50);
+    } finally {
+      logs.restore();
+    }
   });
 });

@@ -41,6 +41,11 @@ name: ouroboros-rest · ci
 # docs/mockups/05-workflow-code.html is here because of W.2 (#178). The Loop Checks suite reads the
 # mockup's own rows at test time and holds a clean seed's rows to its first two, so an edit to that
 # one file has to run the suite that would notice. The rest of docs/ stays out.
+#
+# docs/mockups/10-run-detail.html is here for the same reason, because of AP.6 (#308). The Run
+# Console's parity suite parses the mockup's values at test time and holds the seeded #482 page to
+# them, so a drift from the design source is a failure — which it can only be if editing the
+# mockup runs the suite.
 
 on:
   pull_request:
@@ -58,6 +63,7 @@ on:
       - "schemas/runner-protocol/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
+      - "docs/mockups/10-run-detail.html"
       - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
@@ -79,6 +85,7 @@ on:
       - "schemas/runner-protocol/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
+      - "docs/mockups/10-run-detail.html"
       - "docker-compose.yml"
       - ".github/actions/node-module/**"
       - ".github/actions/scaffold-gate/**"
