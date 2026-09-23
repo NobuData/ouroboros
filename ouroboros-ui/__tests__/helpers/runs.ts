@@ -1,4 +1,4 @@
-import type { RunConsole, RunControl } from "@/app/api/runs";
+import type { RunConsole, RunControl, RunEventsPage } from "@/app/api/runs";
 
 /**
  * The run console's seed, as `docs/mockups/10-run-detail.html` draws it (#309): loop #1847 on
@@ -181,6 +181,85 @@ export function runControl(over: RunControlOverrides = {}): RunControl {
     detail: null,
     hasPayload: false,
     remember: false,
+    ...over,
+  };
+}
+
+/** One transcript entry, as the events page carries it. */
+export type RunEventEntry = RunEventsPage["entries"][number];
+
+/**
+ * An instant `seconds` into the seeded run.
+ *
+ * @param seconds How far in.
+ * @returns The ISO instant.
+ */
+export function atSecond(seconds: number): string {
+  return new Date(Date.parse(SEEDED_STARTED_AT) + seconds * 1000).toISOString();
+}
+
+/**
+ * Mockup 10's nine transcript entries, as `R__dev_seed_run_console.sql` writes them (#312).
+ *
+ * @returns The entries, in `seq` order.
+ */
+export function seededEntries(): RunEventEntry[] {
+  return [
+    { seq: 1, ts: atSecond(131), actor: "plan", stageKey: "plan", attempt: 1, simulated: false,
+      body: "Root cause: test asserts on frame order; CAN driver ISR can reorder under load." },
+    { seq: 2, ts: atSecond(206), actor: "tool", stageKey: "implement", attempt: 1, toolTag: "read_file",
+      simulated: false, body: "drivers/can/telemetry_buf.c" },
+    { seq: 3, ts: atSecond(242), actor: "model", stageKey: "implement", attempt: 1, modelId: "claude-fable-5",
+      simulated: false,
+      body: "The buffer uses a bare k_fifo shared between the RX ISR and the telemetry thread." },
+    { seq: 4, ts: atSecond(280), actor: "tool", stageKey: "implement", attempt: 1, toolTag: "edit_file",
+      simulated: false, body: "drivers/can/telemetry_buf.c",
+      payload: { hunks: [
+        { kind: "ctx", text: "/* telemetry frame path */" },
+        { kind: "del", text: "static struct k_fifo tel_fifo;" },
+        { kind: "add", text: "K_MSGQ_DEFINE(tel_msgq, sizeof(struct tel_frame), CONFIG_TEL_QUEUE_DEPTH, 4);" },
+      ] } },
+    { seq: 5, ts: atSecond(312), actor: "tool", stageKey: "implement", attempt: 1, toolTag: "run_tests",
+      simulated: false, body: "twister -T tests/telemetry",
+      payload: { severity: "warn", result: "2 passed, 1 flaked → retrying under load profile" } },
+    { seq: 6, ts: atSecond(468), actor: "gate", stageKey: "checks-green", attempt: 1, simulated: false,
+      body: "test flake reproduced — returning to implement (attempt 2) ↺" },
+    { seq: 7, ts: atSecond(495), actor: "model", stageKey: "implement", attempt: 2, modelId: "claude-fable-5",
+      simulated: false,
+      body: "The reorder window is in the ISR fast path; sequence numbers must be assigned before the enqueue." },
+    { seq: 8, ts: atSecond(570), actor: "tool", stageKey: "implement", attempt: 2, toolTag: "edit_file",
+      simulated: false, body: "drivers/can/isr_fastpath.c",
+      payload: { hunks: [
+        { kind: "del", text: "k_msgq_put(&tel_msgq, &frame, K_NO_WAIT);" },
+        { kind: "add", text: "frame.seq = atomic_inc(&tel_seq);   /* assign before enqueue */" },
+      ] } },
+    { seq: 9, ts: atSecond(739), actor: "tool", stageKey: "implement", attempt: 2, toolTag: "run_tests",
+      simulated: false, body: "twister -T tests/telemetry --load-profile",
+      payload: { state: "running", progress: { done: 47, total: 63 } } },
+  ];
+}
+
+/**
+ * One page of the transcript's tail.
+ *
+ * @param over The parts to replace.
+ * @returns The page — by default the whole seeded transcript from the start, live.
+ */
+export function eventsPage(over: Partial<RunEventsPage> = {}): RunEventsPage {
+  const entries = over.entries ?? seededEntries();
+  const after = over.after ?? 0;
+  const nextAfter = over.nextAfter ?? (entries.at(-1)?.seq ?? after);
+
+  return {
+    runId: SEEDED_RUN_ID,
+    after,
+    entries,
+    nextAfter,
+    latestSeq: nextAfter,
+    hasMore: false,
+    live: true,
+    elided: false,
+    pollAfter: 5,
     ...over,
   };
 }

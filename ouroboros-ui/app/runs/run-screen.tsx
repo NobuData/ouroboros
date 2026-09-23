@@ -14,6 +14,8 @@ import type { RunOrigin } from "./origin";
 import { type ControlSender, RunControls } from "./run-controls";
 import { RunHead } from "./run-head";
 import { RunStepper } from "./run-stepper";
+import { type SteerSender, TranscriptCard } from "./transcript-card";
+import type { TranscriptStreamOptions } from "./transcript-stream";
 import { runStepper, selectedStage, withStage } from "./stepper";
 import {
   BREADCRUMB_LABEL,
@@ -57,10 +59,18 @@ import "./runs.css";
  * @param props.initial The server's first read, or `null` when it failed.
  * @param props.initialError Why the first read failed, or `null`.
  * @param props.origin The module the console was opened from.
+ * **The agent transcript** ([#312](https://github.com/NobuData/ouroboros/issues/312)) sits under
+ * the timeline, filtered to the same stage, with the steering box beneath it for anyone who may
+ * put work in front of the loop — a viewer reads it and is told why they cannot steer.
+ *
  * @param props.initialStage The `?stage=` the page was opened with, or `null`.
  * @param props.mayControl Whether the reader may pause, abort or take over — owner or admin.
  *   `false` when absent, erring the way `mayAdminister` does.
+ * @param props.mayContribute Whether the reader may steer — owner, admin or member. `false` when
+ *   absent, erring the way `mayContribute` does.
  * @param props.poll Test seams for the poll; production passes none.
+ * @param props.transcript Test seams for the transcript's stream; production passes none.
+ * @param props.steer How to send a steer. Defaults to the Server Action; tests replace it.
  * @param props.controlsPoll Test seams for the controls' poll; production passes none.
  * @param props.send How to send a control. Defaults to the Server Action; tests replace it.
  * @returns The screen.
@@ -72,7 +82,10 @@ export function RunScreen({
   origin,
   initialStage = null,
   mayControl = false,
+  mayContribute = false,
   poll,
+  transcript,
+  steer,
   controlsPoll,
   send,
 }: Readonly<{
@@ -82,7 +95,10 @@ export function RunScreen({
   origin: RunOrigin;
   initialStage?: string | null;
   mayControl?: boolean;
+  mayContribute?: boolean;
   poll?: RunPollOptions;
+  transcript?: TranscriptStreamOptions;
+  steer?: SteerSender;
   controlsPoll?: ControlsPollOptions;
   send?: ControlSender;
 }>) {
@@ -164,6 +180,20 @@ export function RunScreen({
       )}
 
       {stepper !== null && <RunStepper onSelect={selectStage} selected={stage} view={stepper} />}
+
+      {data !== null && stepper !== null && (
+        <TranscriptCard
+          controlsPoll={controlsPoll}
+          mayContribute={mayContribute}
+          onClearStage={() => selectStage(null)}
+          runId={id}
+          runLive={data.head.live}
+          send={steer}
+          stage={stage}
+          stageLabel={stepper.steps.find((step) => step.key === stage)?.label ?? null}
+          stream={transcript}
+        />
+      )}
     </main>
   );
 }

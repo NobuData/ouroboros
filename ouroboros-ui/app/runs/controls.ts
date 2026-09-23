@@ -54,7 +54,30 @@ export const SUBMIT_UNREACHABLE = "The control could not be sent. Nothing was qu
 export const CONTROL_NOT_ALLOWED_CODE = "control_not_allowed";
 
 /** The sentence beside {@link CONTROL_NOT_ALLOWED_CODE}. */
-export const CONTROL_NOT_ALLOWED = "Only pause, resume and abort can be sent from here.";
+export const CONTROL_NOT_ALLOWED = "Only pause, resume, abort and steer can be sent from here.";
+
+/** The code a steer with no text, or too much, is refused with before calling out. */
+export const STEER_INVALID_CODE = "control_payload_invalid";
+
+/** The sentence beside {@link STEER_INVALID_CODE}. */
+export const STEER_INVALID = "A steer needs between 1 and 4096 characters of text.";
+
+/** The longest steer the service accepts (`run_controls_payload_shape`). */
+export const MAX_STEER_LENGTH = 4096;
+
+/**
+ * A steer's text as it is sent: trimmed, and only when there is some and not too much.
+ *
+ * @param value What arrived.
+ * @returns The trimmed text, or `null`.
+ */
+export function steerText(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+
+  const text = value.trim();
+
+  return text === "" || text.length > MAX_STEER_LENGTH ? null : text;
+}
 
 /** The code a submission that never reached the service is answered with. */
 export const CONTROL_UNREACHABLE_CODE = "control_unreachable";

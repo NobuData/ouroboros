@@ -258,6 +258,8 @@ ouroboros-ui/
 │   │   │                    #   + controls() / submitControl() — the head's control queue · #310
 │   │   ├── run-console.ts   #   readRunConsole() — the same read, answered for the console's poll
 │   │   ├── run-controls.ts  #   readRunControls() — the chips' read, 2 s while a control is on its way · #310
+│   │   ├── run-events.ts    #   readRunEvents() — one page of the transcript's tail, at the service's cadence · #312
+│   │   ├── runs/[id]/events/route.ts # GET /api/runs/{id}/events?after= — the transcript's tail, on this origin
 │   │   ├── run-transcript.ts #  readRunTranscript() — AP.2's JSONL export, streamed through · #310
 │   │   ├── runs/[id]/controls/route.ts # GET /api/runs/{id}/controls — the chips' poll, on this origin
 │   │   ├── runs/[id]/transcript.jsonl/route.ts # GET — the take-over's transcript link, on this origin
@@ -377,6 +379,12 @@ ouroboros-ui/
 │   │   ├── run-head.tsx     #   the eyebrow, the linked headline and the five-element meta row
 │   │   ├── stepper.ts       #   the stage timeline's rules: five treatments, captions, the stored note, ?stage= · #311
 │   │   ├── run-stepper.tsx  #   the timeline card: node buttons, glowing segments, its own scroll box
+│   │   ├── transcript.ts    #   the transcript's rules: actor chips, diffs, results, meters, elision, steers · #312
+│   │   ├── transcript-poll.ts # the tail's reader and guard
+│   │   ├── transcript-stream.ts # exact resume from the cursor, bounded to 500 held entries
+│   │   ├── use-transcript.ts #  where the stream meets React
+│   │   ├── transcript-card.tsx # the card: entries, follow/lock scrolling, streaming pill, Raw JSONL
+│   │   ├── steer-box.tsx    #   the steering input, its reasons, and R9's caption
 │   │   ├── controls.ts      #   the controls' rules: paused from acks, the toggle, the delivery chips · #310
 │   │   ├── controls-poll.ts #   the chips' reader and guard
 │   │   ├── control-actions.ts # submitRunControl() — pause, resume, abort; the Server Action
@@ -3338,8 +3346,8 @@ disabled would reasonably expect to draft and be refused on the first click.
 [`docs/mockups/10-run-detail.html`](../docs/mockups/10-run-detail.html)'s **page head**, read from
 `GET /api/v1/runs/{id}` ([#304](https://github.com/NobuData/ouroboros/issues/304)) and polled at
 the shared I.8 cadence through `/api/runs/:id`. The [run controls](#run-controls) sit beside it
-(AQ.2, #310); the [stage timeline](#stage-timeline) sits beneath it (AQ.3, #311), and the
-transcript and cards are AQ.4–AQ.5 (#312–#313).
+(AQ.2, #310); the [stage timeline](#stage-timeline) sits beneath it (AQ.3, #311), then the
+[agent transcript](#agent-transcript) (AQ.4, #312); the cards are AQ.5 (#313).
 
 ```
 Dashboard / Loop #1847
@@ -3392,14 +3400,56 @@ active node.
 
 **Each node is a button.** Pressing one filters to that stage and writes `?stage=<stageKey>` with
 `history.replaceState`, so the filtered view is shareable and survives a reload; pressing it
-again clears it. The page validates the value against the run's stages. The transcript that
-consumes it is AQ.4 (#312).
+again clears it. The page validates the value against the run's stages, and the
+[agent transcript](#agent-transcript) filters by the same value.
 
 **Motion is optional and the strip scrolls in its own box.** The active node pulses only while
 the run is live and only under `prefers-reduced-motion: no-preference`; without motion a static
 ring still reads as active, and treatments cross-fade on a poll's change the same way. Eight
 nodes do not fit a phone, so `.run-timeline__scroll` scrolls sideways and, on first paint, is
 moved (never the pane) to centre the active node.
+
+### Agent transcript
+
+Mockup 10's `c-7` card ([#312](https://github.com/NobuData/ouroboros/issues/312)), read from
+`GET /api/v1/runs/{id}/events?after=` through `/api/runs/:id/events`:
+
+```
+AGENT TRANSCRIPT (● streaming)                                        [Raw JSONL ↗]
+14:04:40  TOOL  edit_file  drivers/can/telemetry_buf.c
+          − static struct k_fifo tel_fifo;
+          + K_MSGQ_DEFINE(tel_msgq, …);
+14:12:19  TOOL  run_tests  twister -T tests/telemetry --load-profile     ← live
+          running… 47/63 cases  ▓▓▓▓▓▓▓░░░
+[ Steer the loop — e.g. "prefer a fix inside the ISR; do not touch the test timeouts" ] [Send]
+Steering nudges the current attempt without pausing it.
+```
+
+**Typed, not a log** (decision R3). The chip is the actor — `PLAN` faint, `TOOL` accent with its
+tag, a model entry violet and named by its model id, `GATE` warn, `USER`, `SYSTEM` — and every
+treatment is a field read, never a sentence parsed: a diff is `payload.hunks` drawn in the code
+view's err/ok palette, a result's hue is its stored `severity`, a meter is `payload.progress`
+divided here. A payload nobody recognises is left out rather than guessed at. An **elision
+marker** is a dashed, italic `SYSTEM` entry stating how many entries and bytes the cap refused,
+and between which instants.
+
+**Streaming** is [`transcript-stream.ts`](app/runs/transcript-stream.ts): exact resume from the
+last `seq`, an immediate re-ask while `hasMore`, a stop once a finished run is read to its end,
+and at most 500 entries held — the card says how many earlier ones left (*Raw JSONL has all of
+them*). New entries are appended and memoised, never redrawn. While the reader is at the end
+the well follows the tail; scrolling up stops it and offers **Jump to latest**, and the browser's
+scroll anchoring keeps their place as old entries leave. The well scrolls on its own and a wide
+diff scrolls inside its block, so the pane never moves sideways. The `streaming` pill is the
+page's `live` flag, and the live entry — the newest, while its payload says it is running —
+pulses only while the run is live. A screen reader hears one polite sentence per poll counting
+what arrived.
+
+**Steering** posts a `steer` control through the run controls' Server Action (owner, admin or
+member). The reader's words appear at once as a `USER` entry with its delivery chip; the
+service mirrors the steer into the transcript, the mirror replaces the optimistic entry, and the
+chip follows it to *acknowledged — steering applied to attempt N*. On a terminal run, or for a
+viewer, the box is disabled and says why. The caption is decision **R9**'s: it does not mention
+Slack until the ChatOps integration (#318) makes it true.
 
 ### Run controls
 

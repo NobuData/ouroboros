@@ -23,6 +23,11 @@
  *   `canceled`, which the page shows without a reload while the driver reports `aborted` —
  *   and the stage timeline draws the stage it died on as failed (#311).
  *
+ * And the agent transcript ([#312](https://github.com/NobuData/ouroboros/issues/312)): the seeded
+ * nine screenshot in both palettes, and a steer typed into a simulated run that comes back as
+ * the service's own `user` entry, acknowledged — with the box closed, and saying why, once the
+ * run has ended.
+ *
  * And a second run, for the stage timeline ([#311](https://github.com/NobuData/ouroboros/issues/311)):
  * a stage handing over to the next on a poll, a pressed node filtering in the address and
  * surviving a reload, and — at phone width, in both palettes — a strip that scrolls in its own
@@ -53,6 +58,9 @@ const TIMELINE_SPEED = 10;
 
 /** How long one stage may take to hand over to the next, at that speed, polled at 15 s. */
 const STAGE_TIMEOUT_MS = 90 * 1000;
+
+/** The seeded run mockup 10 is drawn from — `R__dev_seed_dashboard.sql`'s #482. */
+const SEEDED_RUN_ID = "5eed0009-0000-4000-8000-000000000482";
 
 /** The branch `control-responsive` opens its run on. */
 const BRANCH = "loop/482-canbus-flake-controls";
@@ -335,5 +343,99 @@ test.describe("the stage timeline, against the simulated-run driver (#311)", () 
     });
     expect(aborted.status).toBe(202);
     expect((await simulation.finished).output).toContain("control-responsive: aborted");
+  });
+});
+
+/**
+ * The agent transcript card (#312).
+ *
+ * @param page The run console.
+ * @returns The card — visible only, for the streaming copy's reason above.
+ */
+function transcript(page: Page) {
+  return page.getByRole("region", { name: "Agent transcript" }).filter({ visible: true });
+}
+
+test.describe("the agent transcript (#312)", () => {
+  test("draws the seeded nine in both palettes", async ({ context, page }) => {
+    await signIn(context, SEED_OWNER.id);
+    await selectWorkspace(context, SEED_TENANT.slug);
+    await page.goto(`/runs/${SEEDED_RUN_ID}`);
+
+    const card = transcript(page);
+    const entries = card.getByRole("region", { name: "Transcript entries" }).getByRole("article");
+    await expect(entries).toHaveCount(9);
+    await expect(entries.nth(2)).toContainText("CLAUDE-FABLE-5");
+    await expect(entries.nth(4)).toContainText("2 passed, 1 flaked → retrying under load profile");
+    await expect(entries.nth(8)).toContainText("running… 47/63 cases");
+    await expect(card).not.toContainText(/slack/i);
+
+    // The printed times are the seed's offsets from `now()`, different on every run: masked.
+    // Two shots per palette, because the well follows the tail: its head (the first entries,
+    // with *Jump to latest* offered), then its tail — together, all nine.
+    const mask = [card.locator(".run-entry__time")];
+    const well = card.locator(".run-transcript__scroll");
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+
+      await well.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      await expect(card.getByRole("button", { name: "Jump to latest ↓" })).toBeVisible();
+      await expect(card).toHaveScreenshot(`run-transcript-head-${theme}.png`, { mask });
+
+      await card.getByRole("button", { name: "Jump to latest ↓" }).click();
+      await expect(card.getByRole("button", { name: "Jump to latest ↓" })).toHaveCount(0);
+      await expect(card).toHaveScreenshot(`run-transcript-tail-${theme}.png`, { mask });
+    }
+  });
+
+  test("round-trips a steer, and closes the box once the run has ended", async ({
+    context,
+    page,
+  }) => {
+    test.setTimeout(LEG_TIMEOUT_MS);
+    const simulation = await startSimulation("control-responsive", SPEED);
+
+    try {
+      await signIn(context, SEED_OWNER.id);
+      await selectWorkspace(context, SEED_TENANT.slug);
+      await page.goto(`/runs/${simulation.runId}`);
+
+      const card = transcript(page);
+      const input = card.getByRole("textbox", { name: "Steer the loop" });
+      await expect(input).toBeEnabled();
+      await expect(card.getByText("streaming")).toBeVisible();
+
+      const text = `use a ring buffer — e2e ${Date.now()}`;
+      await input.fill(text);
+      await card.getByRole("button", { name: "Send" }).click();
+
+      const users = card
+        .locator(".run-entry")
+        .filter({ has: page.locator(".run-entry__actor--user") });
+      await expect(users.filter({ hasText: text })).toHaveCount(1);
+      await expect(users.filter({ hasText: text })).toContainText(
+        /Steer · (sending|sent|received|acknowledged)/,
+      );
+      await expect(users.filter({ hasText: text })).toContainText("Steer · acknowledged", {
+        timeout: ACK_TIMEOUT_MS,
+      });
+      await expect(users.filter({ hasText: text })).not.toHaveClass(/run-entry--optimistic/);
+      await expect(input).toHaveValue("");
+
+      const aborted = await controlsAs(context, "POST", simulation.runId, {
+        kind: "abort",
+        confirmation: String(simulation.loopSeq),
+      });
+      expect(aborted.status).toBe(202);
+
+      await expect(input).toBeDisabled({ timeout: ACK_TIMEOUT_MS * 2 });
+      await expect(card).toContainText("This run has ended, so there is no loop left to steer.");
+      await expect(card.getByText("streaming")).toHaveCount(0);
+      expect((await simulation.finished).output).toContain("control-responsive: aborted");
+    } finally {
+      simulation.stop();
+    }
   });
 });

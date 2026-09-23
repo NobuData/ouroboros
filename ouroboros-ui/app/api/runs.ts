@@ -24,6 +24,15 @@ export type RunWallClock = components["schemas"]["RunWallClock"];
 /** The repository the run's issue lives in, as GitHub names it. */
 export type RunRepository = components["schemas"]["RunRepository"];
 
+/** One page of the transcript's tail (AP.2) — what the transcript card appends (#312). */
+export type RunEventsPage = components["schemas"]["RunEventsPage"];
+
+/** One transcript entry. */
+export type RunEventEntry = components["schemas"]["RunEventEntry"];
+
+/** What an elision marker accounts for. */
+export type RunEventElision = components["schemas"]["RunEventElision"];
+
 /** One control on a run's queue — what the head's delivery chip reads (#306). */
 export type RunControl = components["schemas"]["RunControl"];
 
@@ -78,6 +87,31 @@ export const runs = {
    */
   async console(id: string, client: ApiClient = api(), signal?: AbortSignal): Promise<RunConsole> {
     return unwrap(await client.GET("/api/v1/runs/{id}", { params: { path: { id } }, signal }));
+  },
+
+  /**
+   * Read the transcript past a cursor — the tail the transcript card polls
+   * ([#312](https://github.com/NobuData/ouroboros/issues/312)).
+   *
+   * @param id The run's id.
+   * @param after The last `seq` the reader holds; `0` for the start.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @param signal Aborts the read — the poll route's timeout.
+   * @returns The page: the entries after the cursor, the next cursor, and the run's liveness.
+   * @throws ApiError `404 run_not_found` for a run that is not this workspace's.
+   */
+  async events(
+    id: string,
+    after: number,
+    client: ApiClient = api(),
+    signal?: AbortSignal,
+  ): Promise<RunEventsPage> {
+    return unwrap(
+      await client.GET("/api/v1/runs/{id}/events", {
+        params: { path: { id }, query: { after } },
+        signal,
+      }),
+    );
   },
 
   /**

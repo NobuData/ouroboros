@@ -106,6 +106,27 @@ describe("the stage filter (#311)", () => {
   });
 });
 
+describe("steering (#312)", () => {
+  it("is open to a member, and closed to a viewer", async () => {
+    const member = membership({ roles: ["member"] });
+    requireWorkspace.mockResolvedValue({
+      session: { user: sessionUser(), memberships: [member], tenantSuggestion: null },
+      membership: member,
+    });
+    const view = await open();
+    expect(screen.getByRole("textbox", { name: "Steer the loop" })).toBeEnabled();
+    view.unmount();
+
+    const viewer = membership({ roles: ["viewer"] });
+    requireWorkspace.mockResolvedValue({
+      session: { user: sessionUser(), memberships: [viewer], tenantSuggestion: null },
+      membership: viewer,
+    });
+    await open();
+    expect(screen.getByRole("textbox", { name: "Steer the loop" })).toBeDisabled();
+  });
+});
+
 describe("the run controls (#310)", () => {
   /**
    * Sign in holding these roles.

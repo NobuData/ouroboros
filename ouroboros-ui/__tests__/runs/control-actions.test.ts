@@ -5,6 +5,8 @@ import {
   CONTROL_NOT_ALLOWED,
   CONTROL_NOT_ALLOWED_CODE,
   CONTROL_UNREACHABLE_CODE,
+  STEER_INVALID,
+  STEER_INVALID_CODE,
   SUBMIT_UNREACHABLE,
 } from "@/app/runs/controls";
 
@@ -67,14 +69,52 @@ describe("submitRunControl", () => {
     expect(submitControl.mock.calls[0]![1]).toEqual({ kind: "pause" });
   });
 
-  it("refuses a steer or anything else before calling out — steering has its own box", async () => {
-    for (const kind of ["steer", "delete", undefined]) {
+  it("refuses any other kind before calling out", async () => {
+    for (const kind of ["delete", "retry", undefined]) {
       const outcome = await submitRunControl(SEEDED_RUN_ID, { kind } as never);
 
       expect(outcome).toEqual({ ok: false, status: 422, code: CONTROL_NOT_ALLOWED_CODE, reason: CONTROL_NOT_ALLOWED });
     }
     expect(await submitRunControl(SEEDED_RUN_ID, null as never)).toMatchObject({ ok: false, code: CONTROL_NOT_ALLOWED_CODE });
     expect(submitControl).not.toHaveBeenCalled();
+  });
+
+  it("queues a steer with its text trimmed — what the service mirrors into the transcript (#312)", async () => {
+    const queued = runControl({ kind: "steer", hasPayload: true });
+    submitControl.mockResolvedValue(queued);
+
+    const outcome = await submitRunControl(SEEDED_RUN_ID, {
+      kind: "steer",
+      payload: "  prefer a fix inside the ISR  ",
+      idempotencyKey: "k-9",
+    });
+
+    expect(submitControl).toHaveBeenCalledExactlyOnceWith(SEEDED_RUN_ID, {
+      kind: "steer",
+      payload: "prefer a fix inside the ISR",
+      idempotencyKey: "k-9",
+    });
+    expect(outcome).toEqual({ ok: true, control: queued });
+  });
+
+  it("refuses a steer with no text, or too much, before calling out", async () => {
+    for (const payload of ["", "   ", "x".repeat(4097), 42, undefined]) {
+      expect(await submitRunControl(SEEDED_RUN_ID, { kind: "steer", payload } as never)).toEqual({
+        ok: false,
+        status: 422,
+        code: STEER_INVALID_CODE,
+        reason: STEER_INVALID,
+      });
+    }
+    expect(submitControl).not.toHaveBeenCalled();
+  });
+
+  it("never sends a payload on anything but a steer", async () => {
+    submitControl.mockResolvedValue(runControl());
+
+    await submitRunControl(SEEDED_RUN_ID, { kind: "pause", payload: "hello" } as never);
+
+    expect(submitControl.mock.calls[0]![1]).toEqual({ kind: "pause" });
   });
 
   it("refuses a run id that is not a uuid before putting it in a path", async () => {
