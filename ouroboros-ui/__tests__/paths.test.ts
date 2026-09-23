@@ -14,10 +14,13 @@ import {
   RETURN_TO_PARAM,
   ROUTING_MATRIX_HASH,
   ROUTING_RULES_HASH,
+  RUNS_PATH,
+  RUN_ORIGIN_PARAM,
   SETTINGS_PATH,
   SOURCES_PATH,
   WORKFLOWS_PATH,
   loginPath,
+  runPath,
   safeReturnTo,
   workflowPath,
 } from "@/app/paths";
@@ -103,6 +106,16 @@ describe("the paths themselves", () => {
 
   it("encode a workflow's slug, because a segment built from a value is built from input", () => {
     expect(workflowPath("a/b?c")).toBe("/workflows/a%2Fb%3Fc");
+  });
+
+  it("address one run's console, carrying where it was opened from (#309)", () => {
+    expect(RUNS_PATH).toBe("/runs");
+    expect(runPath("5eed")).toBe("/runs/5eed");
+    expect(runPath("5eed", "build-farm")).toBe(`/runs/5eed?${RUN_ORIGIN_PARAM}=build-farm`);
+  });
+
+  it("encode a run's id and its origin, because both are values from input", () => {
+    expect(runPath("a/b?c", "x&y=z")).toBe("/runs/a%2Fb%3Fc?from=x%26y%3Dz");
   });
 
   it("give each Models surface a segment of its own", () => {

@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
-import { ISSUES_PATH, WORKFLOWS_PATH } from "@/app/paths";
+import { ISSUES_PATH, RUNS_PATH, WORKFLOWS_PATH } from "@/app/paths";
 import {
   ACTIVITY_NOT_READ,
   NOT_READ,
@@ -17,6 +17,7 @@ import {
   engineStatus,
   failed,
   healthReport,
+  SEEDED_RUNS,
   read,
   readings,
 } from "../helpers/dashboard";
@@ -221,7 +222,12 @@ describe("the page head's actions", () => {
     render(<DashboardScreen readings={readings()} />);
 
     // …and the head's *Edit workflows*, since #147 built the studio it names.
-    expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
+    // …and each active loop's issue, since #309 built the run console it opens.
+    const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
+    const consoles = hrefs.filter((href) => href?.startsWith(`${RUNS_PATH}/`));
+
+    expect(consoles).toHaveLength(SEEDED_RUNS.length);
+    expect(hrefs.filter((href) => !consoles.includes(href))).toEqual([
       WORKFLOWS_PATH,
       ISSUES_PATH,
       ISSUES_PATH,

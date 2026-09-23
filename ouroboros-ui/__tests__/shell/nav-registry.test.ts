@@ -6,6 +6,7 @@ import {
   registerNavEntry,
   setNavBadge,
   setNavCapabilities,
+  setNavOrigin,
   subscribeNavRegistry,
 } from "@/app/shell/nav-registry";
 
@@ -216,6 +217,52 @@ describe("granted capabilities", () => {
     setNavCapabilities(["models.read"]);
 
     expect(navRegistry().capabilities).toEqual([]);
+  });
+});
+
+describe("the contextual origin", () => {
+  it("starts empty", () => {
+    expect(navRegistry().origin).toBeNull();
+  });
+
+  it("is published, and withdrawn by the handle it hands back", () => {
+    const withdraw = setNavOrigin("build-farm");
+    expect(navRegistry().origin).toBe("build-farm");
+
+    withdraw();
+    expect(navRegistry().origin).toBeNull();
+  });
+
+  it("lets a stale handle clear nothing once a newer origin replaced it", () => {
+    const older = setNavOrigin("dashboard");
+    const newer = setNavOrigin("build-farm");
+
+    older();
+    expect(navRegistry().origin).toBe("build-farm");
+
+    newer();
+    expect(navRegistry().origin).toBeNull();
+  });
+
+  it("notifies nobody when republished unchanged", () => {
+    const withdraw = setNavOrigin("dashboard");
+    const listener = vi.fn();
+    const stop = subscribeNavRegistry(listener);
+
+    const again = setNavOrigin("dashboard");
+    expect(listener).not.toHaveBeenCalled();
+
+    stop();
+    again();
+    withdraw();
+  });
+
+  it("is refused outside the browser, for the reason counts are", () => {
+    vi.stubGlobal("window", undefined);
+
+    setNavOrigin("dashboard")();
+
+    expect(navRegistry().origin).toBeNull();
   });
 });
 

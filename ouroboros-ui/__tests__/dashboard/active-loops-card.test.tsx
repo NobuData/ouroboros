@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ActiveLoopsCard } from "@/app/dashboard/active-loops-card";
 import { NO_VALUE } from "@/app/dashboard/view";
+import { runPath } from "@/app/paths";
 
 import {
   READ_AT,
@@ -344,16 +345,15 @@ describe("a row the service could not describe completely", () => {
 });
 
 describe("what the table does not pretend", () => {
-  it("links no row to a run console that does not exist", () => {
-    // #49's first acceptance criterion is *no dead nav links*, and the design system asks
-    // that a surface which is not ready be labelled rather than left dead. The cell says
-    // what is missing instead.
+  it("links each row's issue to its run console, keeping the dashboard as the origin", () => {
+    // #309's amendment to #82: the console exists, so the issue cell is the way in, and
+    // `?from=dashboard` keeps the sidebar's Dashboard entry lit there.
     card();
 
-    expect(within(region()).queryAllByRole("link")).toHaveLength(0);
-    expect(rows()[0]!.querySelector(".dash-run__issue")?.getAttribute("title")).toMatch(
-      /not built yet/,
-    );
+    const links = within(region()).getAllByRole("link");
+    expect(links).toHaveLength(rows().length);
+    expect(links[0]).toHaveAttribute("href", runPath(activeRun().id, "dashboard"));
+    expect(links[0]).toHaveTextContent(`#${activeRun().issueNumber}`);
   });
 
   it("puts nothing in a row that the run did not report", () => {

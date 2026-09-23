@@ -12,6 +12,7 @@ import { cx } from "@/app/ui/class-names";
 import { trapTab } from "./focus-trap";
 import {
   type NavEntry,
+  activeNavId,
   isActiveRoute,
   navGroup,
   navStatus,
@@ -86,7 +87,7 @@ const GROUPS: readonly { readonly group: "primary" | "secondary"; readonly foot:
  */
 export function SidebarNav() {
   const pathname = usePathname();
-  const { entries, badges, capabilities } = useNavRegistry();
+  const { entries, badges, capabilities, origin } = useNavRegistry();
   const { choice, drawerOpen } = useSidebar();
 
   /** Whether the viewport puts the sidebar below its two breakpoints. */
@@ -112,6 +113,12 @@ export function SidebarNav() {
   const stops = visible.filter((entry) => navStatus(entry) === "live");
 
   /**
+   * The row that is lit: the entry the URL is under, or — on a contextual surface such as the
+   * run console, which has no entry of its own — the entry it was opened from (#309).
+   */
+  const activeId = activeNavId(pathname, stops, origin);
+
+  /**
    * Which row holds the tab stop.
    *
    * The one the arrows moved to; failing that the entry for the current URL, so Tab lands
@@ -120,7 +127,7 @@ export function SidebarNav() {
    */
   const tabStop =
     stops.find((entry) => entry.id === roving)?.id ??
-    stops.find((entry) => isActiveRoute(pathname, entry.route))?.id ??
+    activeId ??
     stops[0]?.id;
 
   /**
@@ -266,7 +273,13 @@ export function SidebarNav() {
                 <li key={entry.id}>
                   <NavRow
                     entry={entry}
-                    pathname={pathname}
+                    current={
+                      entry.id !== activeId
+                        ? undefined
+                        : isActiveRoute(pathname, entry.route)
+                          ? "page"
+                          : "true"
+                    }
                     badge={
                       entry.badgeSource === undefined
                         ? null
@@ -312,8 +325,12 @@ export function SidebarNav() {
 interface NavRowProps {
   /** The entry to draw. */
   readonly entry: NavEntry;
-  /** The current path, used to decide the active row. */
-  readonly pathname: string;
+  /**
+   * Whether this row is the lit one, as `aria-current` says it: `"page"` when the URL is under
+   * its route, `"true"` when it is lit as the origin of a contextual surface — the reader is
+   * *in* that module without being on its page — and `undefined` otherwise.
+   */
+  readonly current: "page" | "true" | undefined;
   /** The count its badge shows, or `null` when no source has published one. */
   readonly badge: number | null;
   /** Whether this row is the one in the tab order — see the roving stop above. */
@@ -340,7 +357,7 @@ interface NavRowProps {
  * @param props See {@link NavRowProps}.
  * @returns The row.
  */
-function NavRow({ entry, pathname, badge, tabStop, onNavigate }: NavRowProps) {
+function NavRow({ entry, current, badge, tabStop, onNavigate }: NavRowProps) {
   const Icon = entry.icon;
   const icon = <Icon className="shell-nav__icon" size={18} aria-hidden />;
   const label = <span className="shell-nav__label">{entry.label}</span>;
@@ -375,14 +392,14 @@ function NavRow({ entry, pathname, badge, tabStop, onNavigate }: NavRowProps) {
     );
   }
 
-  const active = isActiveRoute(pathname, entry.route);
+  const active = current !== undefined;
 
   return (
     <Link
       className={cx("shell-nav__item", active && "shell-nav__item--active")}
       href={entry.route}
       title={entry.label}
-      aria-current={active ? "page" : undefined}
+      aria-current={current}
       // The ring's membership and its one tab stop. The attribute is what the key handler
       // reads back, so what the keyboard walks and what was rendered cannot come apart.
       data-nav-id={entry.id}

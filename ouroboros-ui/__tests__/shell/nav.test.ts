@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { DASHBOARD_PATH, MODELS_PATH, PROVIDERS_PATH } from "@/app/paths";
 import {
+  activeNavId,
   isActiveRoute,
   navGroup,
   navStatus,
@@ -172,5 +173,30 @@ describe("isActiveRoute", () => {
     expect(isActiveRoute("/models/", "/models")).toBe(true);
     expect(isActiveRoute("//", "/")).toBe(true);
     expect(isActiveRoute("/", "/issues")).toBe(false);
+  });
+});
+
+describe("activeNavId", () => {
+  const entries = [
+    navEntry({ id: "dashboard", route: "/dashboard" }),
+    navEntry({ id: "build-farm", route: "/build-farm" }),
+  ];
+
+  it("lights the entry whose route the path is under", () => {
+    expect(activeNavId("/build-farm", entries, null)).toBe("build-farm");
+    expect(activeNavId("/dashboard/x", entries, null)).toBe("dashboard");
+  });
+
+  it("lights the origin on a contextual surface no entry claims (#309)", () => {
+    expect(activeNavId("/runs/abc", entries, "build-farm")).toBe("build-farm");
+    expect(activeNavId("/runs/abc", entries, null)).toBeUndefined();
+  });
+
+  it("never lets an origin outvote the entry the path is actually under", () => {
+    expect(activeNavId("/dashboard", entries, "build-farm")).toBe("dashboard");
+  });
+
+  it("lights nothing for an origin naming no entry it was given", () => {
+    expect(activeNavId("/runs/abc", entries, "settings")).toBeUndefined();
   });
 });

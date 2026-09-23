@@ -172,6 +172,32 @@ export function isActiveRoute(pathname: string, route: string): boolean {
 }
 
 /**
+ * Which entry the sidebar highlights for a path.
+ *
+ * The entry whose route the path is under ({@link isActiveRoute}), first; failing that the
+ * **origin** a contextual surface published — the run console has no entry of its own
+ * ([#309](https://github.com/NobuData/ouroboros/issues/309)), so the module it was opened from
+ * stays lit. A route match always wins, so an origin that outlived its surface cannot light a
+ * second entry beside the right one.
+ *
+ * @param pathname The current path.
+ * @param entries The entries that could be highlighted.
+ * @param origin The published origin's entry id, or `null`. An id naming no entry in
+ *   `entries` highlights nothing.
+ * @returns The id of the entry to highlight, or `undefined` for none.
+ */
+export function activeNavId(
+  pathname: string,
+  entries: readonly NavEntry[],
+  origin: string | null,
+): string | undefined {
+  const matched = entries.find((entry) => isActiveRoute(pathname, entry.route));
+  if (matched !== undefined) return matched.id;
+
+  return entries.find((entry) => entry.id === origin)?.id;
+}
+
+/**
  * Drop trailing slashes from a path.
  *
  * @param value The path.

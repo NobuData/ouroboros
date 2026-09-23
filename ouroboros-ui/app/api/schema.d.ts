@@ -13859,6 +13859,15 @@ export interface components {
             title: string;
             /** Format: date-time */
             startedAt: string | null;
+            /**
+             * Format: uuid
+             * @description The loop run the build belongs to, or `null` for a build no loop opened
+             *     (decision B6). What the *Current job* cell links to the run console by
+             *     ([#309](https://github.com/NobuData/ouroboros/issues/309)).
+             *
+             *     **Added in 0.37.2.**
+             */
+            runId: string | null;
         };
         /**
          * FarmLiveBuild

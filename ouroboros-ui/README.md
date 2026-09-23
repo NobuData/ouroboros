@@ -254,6 +254,8 @@ ouroboros-ui/
 │   │   │                    #   + createPool() / updatePool() / deletePool() — the pool writes · #259
 │   │   │                    #   + log() — one page of a build's log, from an offset · #261
 │   │   ├── farm-page.ts     #   readFarmPage() — the same read, answered for the farm's poll
+│   │   ├── runs.ts          #   runs.console() — GET /api/v1/runs/{id}, mockup 10 in one snapshot · #309
+│   │   ├── run-console.ts   #   readRunConsole() — the same read, answered for the console's poll
 │   │   ├── farm-log.ts      #   readFarmLog() — a log page for the live card's stream, at its own cadence
 │   │   ├── farm/route.ts    #   GET /api/farm — that poll, on this origin
 │   │   ├── farm/jobs/[id]/log/route.ts # GET /api/farm/jobs/{id}/log?after= — that stream, on this origin
@@ -303,7 +305,7 @@ ouroboros-ui/
 │   │   ├── runners.ts       #   every judgement the runners table makes — pure, flat rows · #257
 │   │   ├── runners-card.tsx #   the RUNNERS card: the live table, the grouping, the keyboard
 │   │   ├── runner-cells.tsx #   its cells, memoised over primitives — a poll re-renders what moved
-│   │   ├── job-sheet.tsx    #   what a current-job cell opens until the run console (#309) exists
+│   │   ├── job-sheet.tsx    #   what a current-job cell opens for a build no loop opened — others link to /runs/:id (#309)
 │   │   ├── lifecycle.ts     #   every judgement of the ⋯ menu: what it offers, to whom, and its words — pure · #260
 │   │   ├── lifecycle-actions.ts # the Server Actions: drain, undrain, the guarded remove — refusals as values
 │   │   ├── use-lifecycle.ts #   what is being asked, what is in flight, what was refused
@@ -361,6 +363,15 @@ ouroboros-ui/
 │   │   ├── planning-skeleton.tsx # the loading state, at the real grid's geometry
 │   │   └── planning-screen.tsx # the page head and the four cards
 │   ├── providers/           # mockup 07's Audit log action and the sheet behind it · #225
+│   ├── runs/                # mockup 10's run console: frame, breadcrumb, watermark and head · #309
+│   │   ├── view.ts          #   every judgement the head makes — eyebrow, headline, tracker URL, status, anchored elapsed
+│   │   ├── origin.ts        #   ?from= read against an allow-list — which module stays lit, where the breadcrumb leads
+│   │   ├── console-poll.ts  #   the loop's reader and guard, at the shared I.8 cadence
+│   │   ├── data.ts          #   readRun() — the first paint: found, missing (notFound) or failed (banner)
+│   │   ├── copy-branch.tsx  #   the mono branch name and its copy control, announced in words
+│   │   ├── run-head.tsx     #   the eyebrow, the linked headline and the five-element meta row
+│   │   ├── run-skeleton.tsx #   the loading state, at the head's own geometry
+│   │   └── run-screen.tsx   #   the contextual frame: breadcrumb, banners, head — polled
 │   ├── settings/            # the settings section's frame and tab row — mockup 17 · #141
 │   │   ├── view.ts          #   the eight tabs, two live (Sources, Farm tokens); the eyebrow
 │   │   └── settings-frame.tsx #  the head, the tab row, and the page beneath
@@ -1006,11 +1017,11 @@ after the fetches, and puts it in `DashboardReadings.readAt` — two cards readi
 clocks could disagree about what time it is, and a clock read inside a component is a clock no
 test can pin.
 
-**Nothing in the card is a link yet.** The rows will open the run console, which is mockup 10;
-`Open run console →` and `+N more running →` will go to #49's placeholder routes. None of
-those exists, so all three are labelled with what is missing rather than pointed at a `404` —
-the same treatment the sidebar gives the eight destinations nobody has built, and the same reason: #49's own first
-criterion is *no dead nav links*.
+**Each row's issue opens its run console** — `/runs/:id?from=dashboard`
+([#309](https://github.com/NobuData/ouroboros/issues/309), see [Run console](#run-console)).
+`Open run console →` and `+N more running →` name the full list of runs rather than one run, and
+that list is still unbuilt, so both stay labelled with what is missing rather than pointed at a
+`404` — #49's own first criterion is *no dead nav links*.
 
 ### The loop pulse: three meters, two windows, and the page's one write
 
@@ -2818,10 +2829,11 @@ runner has left the fleet is dropped so the table is never unreachable.
 **What cannot act yet says so.** `Health history →` waits for
 [#266](https://github.com/NobuData/ouroboros/issues/266): an inert *soon* control that navigates
 nowhere. Each row's `⋯` was one too, until [#260](https://github.com/NobuData/ouroboros/issues/260)
-built [the menu it opens](#runner-actions-and-job-submission). The **current-job cell** opens a **job sheet** ([`job-sheet.tsx`](app/farm/job-sheet.tsx))
-over what the page already knows — the run console it will link to is
-[#309](https://github.com/NobuData/ouroboros/issues/309), and the payload carries no run to link to
-until [#300](https://github.com/NobuData/ouroboros/issues/300). The sheet is held by the *job*, so it
+built [the menu it opens](#runner-actions-and-job-submission). The **current-job cell** links to the build's run console —
+`/runs/:id?from=build-farm` ([#309](https://github.com/NobuData/ouroboros/issues/309)) — when the
+job's `runId` names the loop run that opened it. A build submitted by hand belongs to no run
+(decision B6), so its cell opens a **job sheet** ([`job-sheet.tsx`](app/farm/job-sheet.tsx)) over
+what the page already knows instead. The sheet is held by the *job*, so it
 closes itself when the build ends rather than becoming a sheet about the next one. The mockup's
 `· helios-firmware` is not drawn: the payload's job reference carries no repository.
 
@@ -3304,6 +3316,45 @@ the contract is not — `PlanningBatchCreate.targetSourceId` is required and
 that stays on screen, keeps its prompt, and is plain about what it needs. The note says a draft is
 *filed* against a tracker rather than *pushed* to one, because a reader told only that push is
 disabled would reasonably expect to draft and be refused on the first click.
+
+## Run console
+
+`/runs/:id` ([#309](https://github.com/NobuData/ouroboros/issues/309)) is
+[`docs/mockups/10-run-detail.html`](../docs/mockups/10-run-detail.html)'s **page head**, read from
+`GET /api/v1/runs/{id}` ([#304](https://github.com/NobuData/ouroboros/issues/304)) and polled at
+the shared I.8 cadence through `/api/runs/:id`. The stepper, transcript, cards and run controls
+are AQ.2–AQ.5 (#310–#313), which mount beneath it.
+
+```
+Dashboard / Loop #1847
+[ Simulated run. This run was opened by the simulated-run driver … ]   ← only when head.simulated
+RUN CONSOLE · LOOP #1847
+#482 — Fix flaky CAN-bus telemetry test                                  ← links to the tracker
+(● coding) (standard-fix v14) (claude-fable-5)  elapsed 12m 40s  branch loop/482-canbus-flake ⧉
+```
+
+**A contextual surface.** The route has no sidebar entry of its own
+(`docs/DESIGN_SYSTEM_APP_SHELL.md`). Links carry the module they came from in `?from=`
+(`runPath` in [`paths.ts`](app/paths.ts)); the page reads it against an allow-list
+([`origin.ts`](app/runs/origin.ts) — dashboard, build farm, issues, workflows; anything else is
+the dashboard), publishes it with `setNavOrigin`, and the sidebar lights that entry — with
+`aria-current="true"` rather than `"page"` — **only while no entry's route matches**. A
+breadcrumb leads back to it. The page adds no chrome, so the header and sidebar stay put while
+the pane scrolls.
+
+**Elapsed is anchored, not accumulated.** A live run renders `now − startedAt` from the shared
+one-second clock (the dashboard's `Elapsed`), floored at the server's own figure; nothing is
+counted, so a refresh, a tab restore and a slow poll all land on the same number. A finished run
+shows its stated duration.
+
+**Everything else is read, not decided.** The status pill is the run's status (pulsing only while
+`head.live`), the tag is the workflow and its pinned version, the model pill is the run's model,
+and the branch has a copy control that announces its outcome in words. The headline links to the
+issue on GitHub from `head.repository` — runs are keyed on a GitHub repository today, and a
+Jira, Linear or GitLab ticket's URL needs the contract to carry it — and is plain text when the
+repository is missing. A run
+another workspace owns, or an id that is not a uuid, is the not-found page; a failed read is the
+retry banner, keeping the last answer on screen.
 
 ## Workflow Studio
 

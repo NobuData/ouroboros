@@ -181,6 +181,7 @@ const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
       label: "zephyr build",
       title: "Add OTA rollback on failed checksum",
       startedAt: "2026-09-19T13:58:19.000Z",
+      runId: null,
     },
   },
   {
@@ -220,6 +221,7 @@ const SEEDED_RUNNERS: readonly Partial<FarmRunner>[] = [
       label: "HIL test rig",
       title: "Overnight HIL sweep on rig-02",
       startedAt: "2026-09-19T09:42:00.000Z",
+      runId: null,
     },
   },
   {

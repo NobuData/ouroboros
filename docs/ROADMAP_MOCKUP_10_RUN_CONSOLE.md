@@ -784,7 +784,7 @@ via the #16 tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AQ.1 | #309 | 🟡 Open | ouroboros-ui: [AQ.1] Run route, head & meta row | `/runs/:id` frame, live meta, links from dashboard/farm | mvp, runs, ui, design | N (after #41, AP.2, BA-D.5) | Y | S | ouroboros-ui |
+| AQ.1 | #309 | 🟢 Done | ouroboros-ui: [AQ.1] Run route, head & meta row | `/runs/:id` frame, live meta, links from dashboard/farm | mvp, runs, ui, design | N (after #41, AP.2, BA-D.5) | Y | S | ouroboros-ui |
 | AQ.2 | #310 | 🟡 Open | ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over) | Action row with confirmation, ack states, branch-handoff dialog | mvp, runs, ui | N (after AQ.1, AP.4) | Y | M | ouroboros-ui |
 | AQ.3 | #311 | 🟡 Open | ouroboros-ui: [AQ.3] Stage timeline stepper | Done/active/pending nodes, attempt chips, gate-return notes | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
 | AQ.4 | #312 | 🟡 Open | ouroboros-ui: [AQ.4] Agent transcript & steering | Streaming entries, actor chips, diff blocks, live entry, steer input | mvp, runs, ui, design | N (after AQ.1, AP.4) | Y | L | ouroboros-ui |
@@ -793,7 +793,7 @@ via the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue AQ.1 — ouroboros-ui: [AQ.1] Run route, head & meta row
 
-> **GitHub issue:** #309 · **Status:** 🟡 Open · **Parent epic:** #296
+> **GitHub issue:** #309 · **Status:** 🟢 Done · **Parent epic:** #296
 
 - **Problem Statement:** The console's frame: loop-numbered eyebrow, ticket
   headline, live meta row — and the incoming links (dashboard active-loops
@@ -817,6 +817,22 @@ Run Console · Loop #1847
 #482 — Fix flaky CAN-bus telemetry test          [Pause loop][Take over in IDE][Abort run]
 (●coding)(standard-fix v14)(claude-fable-5) elapsed 12m 41s · loop/482-canbus-flake ⧉
 ```
+
+> **Delivered as `ouroboros-ui/app/runs/` and `/runs/[id]`, plus one additive contract field.
+> Three decisions the scope above left open:**
+>
+> 1. **The headline links to GitHub only.** Runs are keyed on `github_repo_id` + `issue_number`,
+>    and `RunConsole` (#304) carries the repository as GitHub names it but no ticket
+>    `external_key` or tracker URL — so the link is `github.com/{owner}/{name}/issues/{n}`,
+>    plain text when `head.repository` is omitted. The non-GitHub-tracker criterion needs the
+>    contract to carry the canonical ticket's URL and is left for that change.
+> 2. **The farm link needed the job's run.** `RunnerJobRef` gained a nullable `runId`
+>    (`build_jobs.run_id`), ouroboros-rest **0.37.2** (additive). A cell with a run links to
+>    `/runs/:id?from=build-farm`; a hand-submitted build (decision B6) keeps the job sheet.
+> 3. **The contextual origin is `?from=`.** Links carry the originating sidebar entry's id; the
+>    page reads it against an allow-list and publishes it with `setNavOrigin`, and the sidebar
+>    lights that entry only while no route matches. Elapsed reuses the dashboard's anchored
+>    `Elapsed` (`now − startedAt`, floored at the server's figure).
 
 ### Issue AQ.2 — ouroboros-ui: [AQ.2] Run controls (pause · abort · take-over)
 

@@ -47,6 +47,11 @@ export interface NavRegistry {
   readonly badges: Readonly<Record<string, number>>;
   /** What the reader has been granted. Empty until something publishes a set. */
   readonly capabilities: readonly string[];
+  /**
+   * The entry a contextual surface was opened from, by id, or `null` — see
+   * {@link setNavOrigin}.
+   */
+  readonly origin: string | null;
 }
 
 /** The registered entries, by id. A Map, so registration order is recoverable and a
@@ -58,6 +63,9 @@ const badges = new Map<string, number>();
 
 /** The granted capabilities, as published. Replaced wholesale, never edited. */
 let capabilities: readonly string[] = Object.freeze([]);
+
+/** The entry a contextual surface on screen was opened from, or `null`. */
+let origin: string | null = null;
 
 /** Everyone waiting to hear that one of the three above moved. */
 const listeners = new Set<() => void>();
@@ -229,6 +237,38 @@ export function setNavCapabilities(granted: readonly string[]): void {
 }
 
 /**
+ * Name the entry a contextual surface was opened from, so it stays highlighted there.
+ *
+ * A contextual surface — the run console ([#309](https://github.com/NobuData/ouroboros/issues/309))
+ * — has no entry of its own (`docs/DESIGN_SYSTEM_APP_SHELL.md`), so no entry's route matches
+ * its URL and the sidebar would go dark. The surface publishes where it was opened from, and
+ * `activeNavId` (`app/shell/nav.ts`) lights that entry **only while no route matches**: an
+ * origin left behind can never outvote the page the reader is actually on.
+ *
+ * Reader-scoped for {@link setNavBadge}'s reason: which page one reader came from is not
+ * something the next request's sidebar may inherit.
+ *
+ * @param id The originating entry's {@link NavEntry.id}, or `null` for none.
+ * @returns The way to withdraw it. Withdrawing is a no-op once somebody else has published a
+ *   different origin, so a surface unmounting after the next one mounted cannot clear the
+ *   newer answer.
+ */
+export function setNavOrigin(id: string | null): () => void {
+  if (!readerScoped()) return () => {};
+
+  if (origin !== id) {
+    origin = id;
+    changed();
+  }
+
+  return () => {
+    if (origin !== id || id === null) return;
+    origin = null;
+    changed();
+  };
+}
+
+/**
  * The registry as it stands.
  *
  * @returns A frozen snapshot whose identity is **stable until something changes**, which is
@@ -239,6 +279,7 @@ export function navRegistry(): NavRegistry {
     entries: Object.freeze(orderNavEntries([...entries.values()])),
     badges: Object.freeze(Object.fromEntries(badges)),
     capabilities,
+    origin,
   });
 
   return snapshot;

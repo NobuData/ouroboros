@@ -69,7 +69,23 @@ describe("a runner", () => {
       label: "zephyr build",
       title: "Add OTA rollback on failed checksum",
       startedAt: "2026-09-19T11:56:19.000Z",
+      runId: null,
     });
+  });
+
+  it("carries the loop run a current job belongs to, so the cell can link to its console", () => {
+    // #309: the farm's *Current job* cell opens the run console, and `build_jobs.run_id` is
+    // the only fact that says which run a build is for. A build no loop opened stays `null`.
+    const runId = "7f000009-0000-4000-8000-000000000001";
+    const resource = runnerResource({
+      runner: runner(),
+      poolName: "pool-a",
+      queueDepth: 0,
+      currentJob: buildJob({ status: "running", run_id: runId }),
+      certificate: undefined,
+    });
+
+    expect(resource.currentJob?.runId).toBe(runId);
   });
 
   it("prints em-dashes for an offline machine rather than zeros", () => {

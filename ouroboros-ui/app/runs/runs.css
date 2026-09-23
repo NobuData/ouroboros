@@ -1,0 +1,192 @@
+/*
+ * The run console (#309) — mockup 10's page frame and head.
+ *
+ * The mockup is docs/mockups/10-run-detail.html over docs/mockups/assets/ouroboros.css. What is
+ * taken from it is the page head: the eyebrow, the headline and the meta row. What is not is the
+ * topbar — this page renders inside the app shell (#41) as a contextual surface, and it adds no
+ * fixed or sticky chrome of its own, so the header and the sidebar stay put while the pane
+ * scrolls. A breadcrumb orients the reader instead (docs/DESIGN_SYSTEM_APP_SHELL.md).
+ *
+ * The pill, the tag, the eyebrow and the banner are the primitives in app/ui/. Held to the two
+ * rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a token from
+ * app/tokens.css, which is what makes both palettes one sheet, and every length is a token or a
+ * rem, which is what makes the 125% font-scale step correct.
+ */
+
+/* ---------- the page frame ---------- */
+
+/*
+ * The pane is the scroll container and already centres the measure (app/shell/shell.css), so
+ * this contributes the gutter rhythm and nothing else — the build farm's own.
+ */
+.run {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+/* ---------- the breadcrumb ---------- */
+
+.run__crumbs {
+  margin-bottom: var(--sp-8);
+  font-size: var(--t-xs);
+  color: var(--ink-mut);
+}
+
+.run__crumb-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The separator is drawn, not written, so a screen reader reads the trail as a list. */
+.run__crumb + .run__crumb::before {
+  content: "/";
+  margin-right: var(--sp-3);
+  color: var(--ink-faint);
+}
+
+.run__crumb-link {
+  color: var(--ink-dim);
+  text-decoration: none;
+}
+
+.run__crumb-link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* ---------- the banners ---------- */
+
+.run__banner {
+  margin-bottom: var(--sp-8);
+}
+
+/*
+ * Decision R4's watermark. The model hue rather than a warning: a simulated run is not a
+ * problem, it is a different kind of run, and every card below inherits the context.
+ */
+.run__simulated {
+  margin: 0 0 var(--sp-8);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--model-line);
+  border-radius: var(--r-md);
+  background: var(--model-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.run__simulated-headline {
+  font-weight: 600;
+  color: var(--model);
+}
+
+/* ---------- the head ---------- */
+
+.run-head {
+  margin-bottom: var(--sp-10);
+}
+
+.run-head__title {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  line-height: var(--lh-snug);
+  text-wrap: balance;
+}
+
+.run-head__link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.run-head__link:hover {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+/* The mockup's `row` with `margin-top: 8px; flex-wrap: wrap` — wraps rather than overflows. */
+.run-head__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+}
+
+/* The mockup's `mono small muted`. */
+.run-head__mono {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  color: var(--ink-mut);
+}
+
+/* The clock ticks: tabular digits keep `12m 09s` → `12m 10s` from jittering. */
+.run-head__elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
+.run-head__branch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* A long branch breaks rather than pushing the row wider than a phone. */
+.run-head__branch-name {
+  overflow-wrap: anywhere;
+}
+
+.run-head__copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--sp-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-xs);
+  background: none;
+  color: var(--ink-mut);
+  cursor: pointer;
+}
+
+.run-head__copy:hover {
+  border-color: var(--line);
+  color: var(--accent);
+}
+
+.run-head__copy-status {
+  font-size: var(--t-xs);
+  color: var(--ink-mut);
+}
+
+/* ---------- the skeleton ---------- */
+
+.run-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin-top: var(--sp-2);
+}
+
+.run-skeleton__bar {
+  display: block;
+  max-width: 100%;
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The headline's `--t-2xl` line. */
+.run-skeleton__bar--title {
+  width: 26rem;
+  height: var(--sp-11);
+}
+
+/* The meta row's pills. */
+.run-skeleton__bar--meta {
+  width: 32rem;
+}

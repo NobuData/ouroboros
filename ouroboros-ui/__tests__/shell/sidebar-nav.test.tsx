@@ -18,6 +18,7 @@ import {
   registerNavEntry,
   setNavBadge,
   setNavCapabilities,
+  setNavOrigin,
 } from "@/app/shell/nav-registry";
 import { SIDEBAR_ID } from "@/app/shell/regions";
 import { SidebarNav } from "@/app/shell/sidebar-nav";
@@ -307,6 +308,29 @@ describe("the active entry", () => {
       expect(screen.getByRole("link", { name: "Workflows" })).toHaveAttribute("aria-current", "page");
       unmount();
     }
+  });
+
+  it("keeps the originating module lit on a contextual surface with no entry of its own (#309)", () => {
+    // The run console publishes where it was opened from; the sidebar lights that entry
+    // rather than going dark, and says so as "current", not as the page.
+    undo.push(setNavOrigin("build-farm"));
+    path.current = "/runs/5eed0009-0000-4000-8000-000000000482";
+    const { container } = render(<SidebarNav />);
+
+    const active = container.querySelectorAll(".shell-nav__item--active");
+    expect(active).toHaveLength(1);
+    expect(active[0]).toHaveTextContent("Build Farm");
+    expect(screen.getByRole("link", { name: "Build Farm" })).toHaveAttribute("aria-current", "true");
+    expect(screen.queryByRole("link", { current: "page" })).toBeNull();
+  });
+
+  it("lets the route win over a published origin", () => {
+    undo.push(setNavOrigin("build-farm"));
+    const { container } = render(<SidebarNav />);
+
+    const active = container.querySelectorAll(".shell-nav__item--active");
+    expect(active).toHaveLength(1);
+    expect(active[0]).toHaveTextContent("Dashboard");
   });
 
   it("lights Issues on its own route, now that #115 has built the screen", () => {
