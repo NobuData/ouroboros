@@ -234,7 +234,7 @@ assigned. Complexity chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AS.1 | #324 | 🟢 Done | ouroboros-db: [AS.1] Test runs, suites & cases schema | Per-attempt results tree with retry truth (T1/T2) | mvp, tests, db | N (after AO.1, AH.1) | Y | M | ouroboros-db |
 | AS.2 | #325 | 🟢 Done | ouroboros-db: [AS.2] HIL measurements schema | Structured trials/measurements/limits for physical tests | mvp, tests, db | N (after AS.1) | Y | S | ouroboros-db |
-| AS.3 | #326 | 🟡 Open | ouroboros-db: [AS.3] Case history, flake scores & quarantine | Durable case identity, occurrence history, watching states | mvp, tests, db | N (after AS.1) | Y | M | ouroboros-db |
+| AS.3 | #326 | 🟢 Done | ouroboros-db: [AS.3] Case history, flake scores & quarantine | Durable case identity, occurrence history, watching states | mvp, tests, db | N (after AS.1) | Y | M | ouroboros-db |
 | AS.4 | #327 | 🟡 Open | ouroboros-db: [AS.4] Classifications, PR intents & artifacts meta | Mark-&-route records, gating intents, artifact registry | mvp, tests, db | N (after AS.1) | Y | M | ouroboros-db |
 | AS.5 | #328 | 🟡 Open | ouroboros-db: [AS.5] Test-results seeds — mockup-11 parity + probes | Build 1→3 story, suites, HIL rows, flake case; ci checks | mvp, tests, db, ci | N (after AS.2–AS.4, #24) | Y | M | ouroboros-db, .github |
 
@@ -315,7 +315,7 @@ hil: {procedure: "power-cycler kills 24V rail at 40/60/80%…",
 
 ### Issue AS.3 — ouroboros-db: [AS.3] Case history, flake scores & quarantine
 
-> **GitHub issue:** #326 · **Status:** 🟡 Open · **Parent epic:** #320
+> **GitHub issue:** #326 · **Status:** 🟢 Done · **Parent epic:** #320
 
 - **Problem Statement:** Flake truth needs memory: per-case occurrence
   history across builds/runs, a score, and the `watching` state

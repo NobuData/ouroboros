@@ -18012,6 +18012,556 @@ select pg_temp.must_hold(
   'and the V053 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- V054 — case history, flake scores and quarantine (#326, AS.3)
+-- ===========================================================================
+--
+-- Mockup 11's `flaky · passed on retry 2/3 · quarantine watching`, from occurrences. One
+-- telemetry case ran in six attempts across two loops of the same repository: loop #465
+-- (passed, flaky, passed) and loop #482 (flaky, passed, flaky — Build 3 being
+-- `["failed", "failed", "passed"]`, the strip's "passed on retry 2/3"). A steady case passed
+-- throughout and was skipped once. Asserted: occurrences are derived from their cases and
+-- accumulate across attempts and runs; flake score v1 reproduces 0.5263 over six and lands the
+-- telemetry case `watching`; the window, the skip rule and the formula version are honoured;
+-- transitions are constrained and `state_changed_at` moves only with state; a score needs
+-- history; a window read is index-only; and the scorer's runs are observable.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v054',  'Flake Works',       'flake-works',       now()),
+  ('org-v054b', 'Other Flake Works', 'other-flake-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a5410000-0000-0000-0000-00000000000a', 'org-v054',  'flake-works',       true),
+  ('a5410000-0000-0000-0000-00000000000b', 'org-v054b', 'other-flake-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a541f000-0000-0000-0000-00000000000a', 'a5410000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a541f000-0000-0000-0000-00000000000b', 'a5410000-0000-0000-0000-00000000000b',
+   'helios-firmware', true, 'main'),
+  ('a541f000-0000-0000-0000-00000000000c', 'a5410000-0000-0000-0000-00000000000a',
+   'helios-telemetry', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a5420000-0000-0000-0000-000000000465', 'org-v054', 'a541f000-0000-0000-0000-00000000000a',
+     465, 'Refactor telemetry buffer allocation', 'feature-loop', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '3 days'),
+    ('a5420000-0000-0000-0000-000000000482', 'org-v054', 'a541f000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '40 minutes'),
+    ('a5420000-0000-0000-0000-000000000900', 'org-v054b', 'a541f000-0000-0000-0000-00000000000b',
+     900, 'Elsewhere', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '1 hour');
+
+-- Attempt ids: …0<run><attempt>.
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status, started_at) values
+  ('a5430000-0000-0000-0000-000000004651', 'org-v054', 'a5420000-0000-0000-0000-000000000465', 1, 'complete', now() - interval '3 days'),
+  ('a5430000-0000-0000-0000-000000004652', 'org-v054', 'a5420000-0000-0000-0000-000000000465', 2, 'complete', now() - interval '3 days' + interval '1 hour'),
+  ('a5430000-0000-0000-0000-000000004653', 'org-v054', 'a5420000-0000-0000-0000-000000000465', 3, 'complete', now() - interval '3 days' + interval '2 hours'),
+  ('a5430000-0000-0000-0000-000000004821', 'org-v054', 'a5420000-0000-0000-0000-000000000482', 1, 'complete', now() - interval '40 minutes'),
+  ('a5430000-0000-0000-0000-000000004822', 'org-v054', 'a5420000-0000-0000-0000-000000000482', 2, 'complete', now() - interval '25 minutes'),
+  ('a5430000-0000-0000-0000-000000004823', 'org-v054', 'a5420000-0000-0000-0000-000000000482', 3, 'running',  now() - interval '10 minutes'),
+  ('a5430000-0000-0000-0000-000000009001', 'org-v054b', 'a5420000-0000-0000-0000-000000000900', 1, 'running', now() - interval '1 hour');
+
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind)
+select ('a5440000-0000-0000-0000-00000000' || s)::uuid, o, ('a5430000-0000-0000-0000-00000000' || s)::uuid,
+       'telemetry integration', 'qemu_cortex_m3', 'sim'
+  from (values ('4651', 'org-v054'), ('4652', 'org-v054'), ('4653', 'org-v054'),
+               ('4821', 'org-v054'), ('4822', 'org-v054'), ('4823', 'org-v054'),
+               ('9001', 'org-v054b')) v(s, o);
+
+-- Case ids: …0<run><attempt><n>. n = 1 the telemetry case, 2 the steady case.
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retries, retry_outcomes)
+  values
+    ('a5450000-0000-0000-0000-000000046511', 'org-v054', 'a5440000-0000-0000-0000-000000004651', 'ring buffer drains under burst', 'telemetry', 'passed', 0, '["passed"]'),
+    ('a5450000-0000-0000-0000-000000046521', 'org-v054', 'a5440000-0000-0000-0000-000000004652', 'ring buffer drains under burst', 'telemetry', 'flaky',  1, '["failed", "passed"]'),
+    ('a5450000-0000-0000-0000-000000046531', 'org-v054', 'a5440000-0000-0000-0000-000000004653', 'ring buffer drains under burst', 'telemetry', 'passed', 0, '["passed"]'),
+    ('a5450000-0000-0000-0000-000000048211', 'org-v054', 'a5440000-0000-0000-0000-000000004821', 'ring buffer drains under burst', 'telemetry', 'flaky',  1, '["error", "passed"]'),
+    ('a5450000-0000-0000-0000-000000048221', 'org-v054', 'a5440000-0000-0000-0000-000000004822', 'ring buffer drains under burst', 'telemetry', 'passed', 0, '["passed"]'),
+    ('a5450000-0000-0000-0000-000000048231', 'org-v054', 'a5440000-0000-0000-0000-000000004823', 'ring buffer drains under burst', 'telemetry', 'flaky',  2, '["failed", "failed", "passed"]'),
+    ('a5450000-0000-0000-0000-000000046512', 'org-v054', 'a5440000-0000-0000-0000-000000004651', 'frame counter is monotonic', 'telemetry', 'passed', 0, '["passed"]'),
+    ('a5450000-0000-0000-0000-000000046522', 'org-v054', 'a5440000-0000-0000-0000-000000004652', 'frame counter is monotonic', 'telemetry', 'passed', 0, '["passed"]'),
+    ('a5450000-0000-0000-0000-000000046532', 'org-v054', 'a5440000-0000-0000-0000-000000004653', 'frame counter is monotonic', 'telemetry', 'passed', 0, '["passed"]'),
+    ('a5450000-0000-0000-0000-000000048212', 'org-v054', 'a5440000-0000-0000-0000-000000004821', 'frame counter is monotonic', 'telemetry', 'passed', 0, '["passed"]'),
+    ('a5450000-0000-0000-0000-000000048222', 'org-v054', 'a5440000-0000-0000-0000-000000004822', 'frame counter is monotonic', 'telemetry', 'passed', 0, '["passed"]'),
+    ('a5450000-0000-0000-0000-000000048232', 'org-v054', 'a5440000-0000-0000-0000-000000004823', 'frame counter is monotonic', 'telemetry', 'skipped', 0, '["skipped"]'),
+    ('a5450000-0000-0000-0000-000000090011', 'org-v054b', 'a5440000-0000-0000-0000-000000009001', 'ring buffer drains under burst', 'telemetry', 'flaky', 1, '["failed", "passed"]');
+
+-- The parse-time hook's write: the case and nothing else.
+insert into ouroboros.test_case_history (organization_id, test_case_id)
+select organization_id, id from ouroboros.test_cases where id::text like 'a5450000-%';
+
+-- --- occurrences are derived from their cases -------------------------------------------------
+select pg_temp.must_hold(
+  (select h.case_key = c.case_key
+          and h.test_run_id = 'a5430000-0000-0000-0000-000000004823'
+          and h.github_repo_id = 'a541f000-0000-0000-0000-00000000000a'
+          and h.status = 'flaky' and h.retries = 2 and h.pass_on_retry
+          and h.observed_at = (select started_at from ouroboros.test_runs
+                                where id = 'a5430000-0000-0000-0000-000000004823')
+     from ouroboros.test_case_history h
+     join ouroboros.test_cases c on c.id = h.test_case_id
+    where h.test_case_id = 'a5450000-0000-0000-0000-000000048231'),
+  'Build 3''s occurrence takes its key, attempt, repository, retries 2 and pass-on-retry from its case');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_case_history (organization_id, test_case_id, status)
+    values ('org-v054', 'a5450000-0000-0000-0000-000000048231', 'passed')$$,
+  'an occurrence cannot claim an outcome its case does not have', 'test_case_history_agrees_with_case');
+
+delete from ouroboros.test_case_history where test_case_id = 'a5450000-0000-0000-0000-000000048221';
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_case_history (organization_id, test_case_id, github_repo_id)
+    values ('org-v054', 'a5450000-0000-0000-0000-000000048221', 'a541f000-0000-0000-0000-00000000000c')$$,
+  'an occurrence cannot claim another repository', 'test_case_history_agrees_with_case');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_case_history (organization_id, test_case_id, pass_on_retry)
+    values ('org-v054', 'a5450000-0000-0000-0000-000000048221', true)$$,
+  'a clean pass is not a pass on retry', 'test_case_history_pass_on_retry');
+
+insert into ouroboros.test_case_history (organization_id, test_case_id)
+  values ('org-v054', 'a5450000-0000-0000-0000-000000048221');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_case_history (organization_id, test_case_id)
+    values ('org-v054', 'a5450000-0000-0000-0000-000000048231')$$,
+  'a case has one occurrence', 'test_case_history_case_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_case_history (organization_id, test_case_id)
+    values ('org-v054', 'a5450000-0000-0000-0000-000000090011')$$,
+  'an occurrence cannot name another workspace''s case', 'test_case_history_test_case_fk');
+
+-- --- pass-on-retry accumulates across attempts and across runs --------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 3
+          and count(distinct h.test_run_id) = 3
+          and count(distinct t.run_id) = 2
+     from ouroboros.test_case_history h
+     join ouroboros.test_runs t on t.id = h.test_run_id
+    where h.organization_id = 'org-v054'
+      and h.case_key = (select case_key from ouroboros.test_cases
+                         where id = 'a5450000-0000-0000-0000-000000048231')
+      and h.pass_on_retry),
+  'three passes on retry accumulate on one case_key across three attempts of two runs');
+
+-- The same case on a second platform in one attempt is a second occurrence of the same key.
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind) values
+  ('a5440000-0000-0000-0000-000000014823', 'org-v054', 'a5430000-0000-0000-0000-000000004823',
+   'telemetry integration', 'native_sim', 'sim');
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retry_outcomes)
+  values ('a5450000-0000-0000-0000-000000148231', 'org-v054', 'a5440000-0000-0000-0000-000000014823',
+          'ring buffer drains under burst', 'telemetry', 'passed', '["passed"]');
+insert into ouroboros.test_case_history (organization_id, test_case_id)
+  values ('org-v054', 'a5450000-0000-0000-0000-000000148231');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and count(distinct case_key) = 1
+     from ouroboros.test_case_history
+    where test_run_id = 'a5430000-0000-0000-0000-000000004823'
+      and test_case_id in ('a5450000-0000-0000-0000-000000048231', 'a5450000-0000-0000-0000-000000148231')),
+  'two platforms in one attempt are two occurrences of one case_key');
+
+-- An occurrence is a projection of its case: a re-parse that replaces the case takes it along.
+delete from ouroboros.test_suites where id = 'a5440000-0000-0000-0000-000000014823';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_case_history
+    where test_case_id = 'a5450000-0000-0000-0000-000000148231'),
+  'an occurrence leaves with its case');
+
+-- --- flake score v1, reproducible --------------------------------------------------------------
+--
+-- Newest first: F P F P F P. Weights 0.9^0 … 0.9^5; the flaky ones are ranks 0, 2 and 4, so
+-- score = (1 + 0.81 + 0.6561) / (1 + 0.9 + 0.81 + 0.729 + 0.6561 + 0.59049) = 1 / 1.9 → 0.5263.
+select pg_temp.must_hold(
+  (select score = 0.5263 and window_runs = 6
+     from ouroboros.flake_score('org-v054',
+            (select case_key from ouroboros.test_cases where id = 'a5450000-0000-0000-0000-000000048231'), 1)),
+  'the telemetry case scores 0.5263 over six occurrences');
+
+select pg_temp.must_hold(
+  (select count(distinct (s.score, s.window_runs)) = 1
+     from generate_series(1, 3) g
+     cross join lateral ouroboros.flake_score('org-v054',
+            (select case_key from ouroboros.test_cases where id = 'a5450000-0000-0000-0000-000000048231'), 1) s),
+  'the same occurrences always produce the same number');
+
+-- As of the day after loop #465: P F P → 0.9 / (1 + 0.9 + 0.81) = 0.3321.
+select pg_temp.must_hold(
+  (select score = 0.3321 and window_runs = 3
+     from ouroboros.flake_score('org-v054',
+            (select case_key from ouroboros.test_cases where id = 'a5450000-0000-0000-0000-000000048231'), 1,
+            now() - interval '2 days')),
+  'as_of scores only what had been observed by then');
+
+select pg_temp.must_hold(
+  (select score = 0 and window_runs = 5
+     from ouroboros.flake_score('org-v054',
+            (select case_key from ouroboros.test_cases where id = 'a5450000-0000-0000-0000-000000048232'), 1)),
+  'a skipped case never ran, so the steady case is five clean observations, not six');
+
+select pg_temp.must_hold(
+  (select score = 0 and window_runs = 0
+     from ouroboros.flake_score('org-v054', repeat('0', 64), 1)),
+  'a case never observed scores 0 over nothing');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.flake_score('org-v054', repeat('0', 64), 99)),
+  'there is no score under a formula that does not exist');
+
+-- The window: a three-occurrence formula sees F P F → (1 + 0.81) / (1 + 0.9 + 0.81) = 0.6679.
+insert into ouroboros.flake_score_formulas
+    (version, window_size, decay, watch_at, clear_below, min_observations, description)
+  values (2, 3, 0.9, 0.25, 0.10, 3, 'fixture: v1 with a window of three');
+
+select pg_temp.must_hold(
+  (select score = 0.6679 and window_runs = 3
+     from ouroboros.flake_score('org-v054',
+            (select case_key from ouroboros.test_cases where id = 'a5450000-0000-0000-0000-000000048231'), 2)),
+  'the window holds window_size occurrences, newest first');
+
+select pg_temp.must_reject(
+  $$update ouroboros.flake_score_formulas set watch_at = 0.3 where version = 1$$,
+  'a published formula is never re-tuned in place', 'flake_score_formulas_frozen');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_score_formulas
+      (version, window_size, decay, watch_at, clear_below, min_observations, description)
+    values (3, 20, 0.9, 0.10, 0.25, 3, 'inverted')$$,
+  'clear_below cannot exceed watch_at', 'flake_score_formulas_thresholds');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_score_formulas
+      (version, window_size, decay, watch_at, clear_below, min_observations, description)
+    values (3, 20, 0, 0.25, 0.10, 3, 'no weight')$$,
+  'a decay of 0 weighs nothing', 'flake_score_formulas_decay');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_score_formulas
+      (version, window_size, decay, watch_at, clear_below, min_observations, description)
+    values (3, 5, 0.9, 0.25, 0.10, 6, 'unreachable')$$,
+  'a formula cannot ask for more observations than its window holds', 'flake_score_formulas_min_observations');
+
+-- --- the next state: thresholds, hysteresis, and quarantine left alone ------------------------
+select pg_temp.must_hold(
+  ouroboros.flake_state_next(1, null, 0.5263, 6) = 'watching'
+  and ouroboros.flake_state_next(1, null, 0, 5) = 'healthy'
+  and ouroboros.flake_state_next(1, 'watching', 0.15, 6) = 'watching'
+  and ouroboros.flake_state_next(1, 'healthy', 0.15, 6) = 'healthy'
+  and ouroboros.flake_state_next(1, 'watching', 0.05, 6) = 'healthy'
+  and ouroboros.flake_state_next(1, null, 0.9, 2) = 'healthy'
+  and ouroboros.flake_state_next(1, 'watching', 0, 2) = 'watching'
+  and ouroboros.flake_state_next(1, 'quarantined', 0, 20) = 'quarantined'
+  and ouroboros.flake_state_next(99, null, 0.5, 6) is null,
+  'watching at 0.25, healthy below 0.10, unchanged between or under three observations, quarantine never the scorer''s');
+
+-- --- the mockup's case, at watching, with the occurrences that justify it ---------------------
+insert into ouroboros.flake_scores
+    (organization_id, github_repo_id, case_key, score, window_runs, formula_version, state,
+     last_scored_at, state_changed_at)
+select 'org-v054', 'a541f000-0000-0000-0000-00000000000a', c.case_key, s.score, s.window_runs, 1,
+       ouroboros.flake_state_next(1, null, s.score, s.window_runs),
+       now(), now() - interval '1 day'
+  from ouroboros.test_cases c
+  cross join lateral ouroboros.flake_score('org-v054', c.case_key, 1) s
+ where c.id in ('a5450000-0000-0000-0000-000000048231', 'a5450000-0000-0000-0000-000000048232');
+
+select pg_temp.must_hold(
+  (select f.state = 'watching' and f.score = 0.5263 and f.window_runs = 6 and f.formula_version = 1
+          and (select count(*) from ouroboros.test_case_history h
+                where h.organization_id = f.organization_id and h.case_key = f.case_key
+                  and h.pass_on_retry) = 3
+          and (select h.retries from ouroboros.test_case_history h
+                where h.test_case_id = 'a5450000-0000-0000-0000-000000048231') = 2
+     from ouroboros.flake_scores f
+     join ouroboros.test_cases c on c.case_key = f.case_key
+    where c.id = 'a5450000-0000-0000-0000-000000048231'),
+  'the telemetry case is watching at 0.5263 under formula 1, justified by three passes on retry — Build 3''s on retry 2');
+
+select pg_temp.must_hold(
+  (select f.state = 'healthy' and f.score = 0
+     from ouroboros.flake_scores f
+     join ouroboros.test_cases c on c.case_key = f.case_key
+    where c.id = 'a5450000-0000-0000-0000-000000048232'),
+  'the steady case is healthy');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.flake_scores
+    where organization_id = 'org-v054' and state <> 'healthy'),
+  'the strip''s flaky count reads 1');
+
+-- --- formula_version is stamped on every score ------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 2 and bool_and(formula_version = 1) from ouroboros.flake_scores
+    where organization_id = 'org-v054'),
+  'every score row names the formula that produced it');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scores
+      (organization_id, github_repo_id, case_key, score, window_runs, formula_version)
+    values ('org-v054', 'a541f000-0000-0000-0000-00000000000a',
+            (select case_key from ouroboros.test_cases where id = 'a5450000-0000-0000-0000-000000048231'),
+            0.5, 6, null)$$,
+  'a score without a formula version is refused');
+
+select pg_temp.must_reject(
+  $$update ouroboros.flake_scores set formula_version = 99 where organization_id = 'org-v054'$$,
+  'a score cannot name a formula that does not exist', 'flake_scores_formula_version_fkey');
+
+-- --- a score is of an observed case, in its own repository and workspace ----------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scores
+      (organization_id, github_repo_id, case_key, score, window_runs, formula_version)
+    values ('org-v054', 'a541f000-0000-0000-0000-00000000000a', repeat('0', 64), 0, 0, 1)$$,
+  'a case never observed cannot be scored', 'flake_scores_has_history');
+
+select pg_temp.must_reject(
+  $$update ouroboros.flake_scores set github_repo_id = 'a541f000-0000-0000-0000-00000000000c'
+     where organization_id = 'org-v054'$$,
+  'a score is filed under the repository its case was observed in', 'flake_scores_has_history');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scores
+      (organization_id, github_repo_id, case_key, score, window_runs, formula_version)
+    values ('org-v054b', 'a541f000-0000-0000-0000-00000000000b',
+            (select case_key from ouroboros.test_cases where id = 'a5450000-0000-0000-0000-000000048231'),
+            0.5, 6, 1)$$,
+  'another workspace has no history of this case to score', 'flake_scores_has_history');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scores
+      (organization_id, github_repo_id, case_key, score, window_runs, formula_version)
+    values ('org-v054', 'a541f000-0000-0000-0000-00000000000a',
+            (select case_key from ouroboros.test_cases where id = 'a5450000-0000-0000-0000-000000048231'),
+            0.5, 6, 1)$$,
+  'a case has one score per workspace', 'flake_scores_case_key');
+
+select pg_temp.must_reject(
+  $$update ouroboros.flake_scores set score = 1.5 where organization_id = 'org-v054'$$,
+  'a score is in [0, 1]', 'flake_scores_score_range');
+
+select pg_temp.must_reject(
+  $$update ouroboros.flake_scores set state = 'ignored' where organization_id = 'org-v054'$$,
+  'the states are healthy, watching and quarantined', 'flake_scores_state');
+
+-- --- transitions, and state_changed_at moving only with state ---------------------------------
+--
+-- Both rows were written with state_changed_at a day ago.
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scores
+      (organization_id, github_repo_id, case_key, score, window_runs, formula_version, state)
+    select 'org-v054b', 'a541f000-0000-0000-0000-00000000000b', case_key, 1, 1, 1, 'quarantined'
+      from ouroboros.test_cases where id = 'a5450000-0000-0000-0000-000000090011'$$,
+  'a case is watched before it is quarantined', 'flake_scores_state_transition');
+
+update ouroboros.flake_scores f
+   set score = 0.5, window_runs = 6, last_scored_at = now()
+  from ouroboros.test_cases c
+ where c.id = 'a5450000-0000-0000-0000-000000048231' and f.case_key = c.case_key;
+
+select pg_temp.must_hold(
+  (select f.state_changed_at = now() - interval '1 day'
+     from ouroboros.flake_scores f
+     join ouroboros.test_cases c on c.case_key = f.case_key
+    where c.id = 'a5450000-0000-0000-0000-000000048231'),
+  're-scoring without a change of state leaves state_changed_at where it was');
+
+select pg_temp.must_reject(
+  $$update ouroboros.flake_scores f set state_changed_at = now()
+      from ouroboros.test_cases c
+     where c.id = 'a5450000-0000-0000-0000-000000048231' and f.case_key = c.case_key$$,
+  'state_changed_at does not move without a change of state', 'flake_scores_state_changed_at');
+
+select pg_temp.must_reject(
+  $$update ouroboros.flake_scores f set state = 'quarantined'
+      from ouroboros.test_cases c
+     where c.id = 'a5450000-0000-0000-0000-000000048232' and f.case_key = c.case_key$$,
+  'a healthy case is not quarantined without being watched', 'flake_scores_state_transition');
+
+update ouroboros.flake_scores f set state = 'quarantined'
+  from ouroboros.test_cases c
+ where c.id = 'a5450000-0000-0000-0000-000000048231' and f.case_key = c.case_key;
+
+select pg_temp.must_hold(
+  (select f.state = 'quarantined' and f.state_changed_at = now()
+     from ouroboros.flake_scores f
+     join ouroboros.test_cases c on c.case_key = f.case_key
+    where c.id = 'a5450000-0000-0000-0000-000000048231'),
+  'watching → quarantined is storable, and stamps state_changed_at');
+
+select pg_temp.must_reject(
+  $$update ouroboros.flake_scores f set state = 'healthy'
+      from ouroboros.test_cases c
+     where c.id = 'a5450000-0000-0000-0000-000000048231' and f.case_key = c.case_key$$,
+  'a quarantined case is released through watching, not straight to healthy', 'flake_scores_state_transition');
+
+update ouroboros.flake_scores f set state = 'watching'
+  from ouroboros.test_cases c
+ where c.id = 'a5450000-0000-0000-0000-000000048231' and f.case_key = c.case_key;
+
+update ouroboros.flake_scores f set state = 'healthy'
+  from ouroboros.test_cases c
+ where c.id = 'a5450000-0000-0000-0000-000000048231' and f.case_key = c.case_key;
+
+update ouroboros.flake_scores f set state = 'watching'
+  from ouroboros.test_cases c
+ where c.id = 'a5450000-0000-0000-0000-000000048232' and f.case_key = c.case_key;
+
+select pg_temp.must_hold(
+  (select array_agg(f.state order by c.id) = array['healthy', 'watching']
+          and bool_and(f.state_changed_at = now())
+     from ouroboros.flake_scores f
+     join ouroboros.test_cases c on c.case_key = f.case_key
+    where c.id in ('a5450000-0000-0000-0000-000000048231', 'a5450000-0000-0000-0000-000000048232')),
+  'quarantined → watching → healthy and healthy → watching are the drawn moves');
+
+-- --- a window read is index-only ---------------------------------------------------------------
+set local enable_seqscan = off;
+set local enable_bitmapscan = off;
+
+select pg_temp.must_use_index(
+  $$select observed_at, status, retries, pass_on_retry
+      from ouroboros.test_case_history
+     where organization_id = 'org-v054' and case_key = repeat('a', 64)
+     order by observed_at desc
+     limit 20$$,
+  'test_case_history_recent_idx');
+
+select pg_temp.must_use_index(
+  $$select observed_at, status, retries, pass_on_retry
+      from ouroboros.test_case_history
+     where organization_id = 'org-v054' and case_key = repeat('a', 64)
+     order by observed_at desc
+     limit 20$$,
+  'Index Only Scan');
+
+select pg_temp.must_use_index(
+  $$select started_at, status, duration_ms from ouroboros.flake_scorer_runs
+     where organization_id = 'org-v054' order by started_at desc limit 1$$,
+  'flake_scorer_runs_recent_idx');
+
+set local enable_bitmapscan = on;
+set local enable_seqscan = on;
+
+-- --- drift between an occurrence and its case --------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_case_history_drift),
+  'every occurrence agrees with its case');
+
+update ouroboros.test_cases set status = 'failed', retries = 0, retry_outcomes = '["failed"]'
+ where id = 'a5450000-0000-0000-0000-000000048221';
+
+select pg_temp.must_hold(
+  (select array_agg(test_case_id) = array['a5450000-0000-0000-0000-000000048221'::uuid]
+     from ouroboros.test_case_history_drift),
+  'a case rewritten after its occurrence was taken is listed as drift');
+
+update ouroboros.test_cases set status = 'passed', retries = 0, retry_outcomes = '["passed"]'
+ where id = 'a5450000-0000-0000-0000-000000048221';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_case_history_drift),
+  'and the drift clears when the two agree again');
+
+-- --- the scorer is observable ------------------------------------------------------------------
+insert into ouroboros.flake_scorer_runs (id, organization_id, formula_version, started_at) values
+  ('a5460000-0000-0000-0000-000000000001', 'org-v054', 1, now() - interval '5 seconds');
+
+select pg_temp.must_hold(
+  (select status = 'running' and finished_at is null and duration_ms is null
+     from ouroboros.flake_scorer_runs where id = 'a5460000-0000-0000-0000-000000000001'),
+  'a scorer pass in progress has no duration yet');
+
+update ouroboros.flake_scorer_runs
+   set status = 'complete', finished_at = started_at + interval '1234 milliseconds',
+       cases_scored = 2, state_changes = 1
+ where id = 'a5460000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select duration_ms = 1234 and cases_scored = 2 and state_changes = 1
+     from ouroboros.flake_scorer_runs where id = 'a5460000-0000-0000-0000-000000000001'),
+  'a finished pass records its duration, cases scored and state changes');
+
+select pg_temp.must_raise(
+  $$update ouroboros.flake_scorer_runs set duration_ms = 1
+     where id = 'a5460000-0000-0000-0000-000000000001'$$,
+  '428C9', 'a duration is generated from the timestamps, never written');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scorer_runs (organization_id, formula_version, finished_at)
+    values ('org-v054', 1, now())$$,
+  'a running pass has not finished', 'flake_scorer_runs_finished');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scorer_runs (organization_id, formula_version, status, started_at, finished_at)
+    values ('org-v054', 1, 'complete', now(), now() - interval '1 minute')$$,
+  'a pass finishes after it starts', 'flake_scorer_runs_finished_after_start');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scorer_runs (organization_id, formula_version, status, finished_at)
+    values ('org-v054', 1, 'error', now())$$,
+  'a failed pass says why', 'flake_scorer_runs_error');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scorer_runs
+      (organization_id, formula_version, status, finished_at, cases_scored, state_changes)
+    values ('org-v054', 1, 'complete', now(), 1, 2)$$,
+  'a pass cannot change more states than it scored', 'flake_scorer_runs_counts');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.flake_scorer_runs (organization_id, formula_version) values ('org-v054', 99)$$,
+  'a pass applies a formula that exists', 'flake_scorer_runs_formula_version_fkey');
+
+-- --- lifecycle and grants ------------------------------------------------------------------------
+delete from ouroboros.runs where id = 'a5420000-0000-0000-0000-000000000465';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_case_history
+    where test_run_id in ('a5430000-0000-0000-0000-000000004651',
+                          'a5430000-0000-0000-0000-000000004652',
+                          'a5430000-0000-0000-0000-000000004653')),
+  'occurrences leave with their run');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.test_case_history', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.test_case_history', 'insert')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.test_case_history', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.test_case_history', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.flake_score_formulas', 'select')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.flake_score_formulas', 'insert')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.flake_score_formulas', 'update')
+   and has_table_privilege('ouroboros_app', 'ouroboros.flake_scores', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.flake_scores', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.flake_scores', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.flake_scores', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.flake_scorer_runs', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.flake_scorer_runs', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.flake_scorer_runs', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.test_case_history_drift', 'select')
+   and has_function_privilege('ouroboros_app',
+         'ouroboros.flake_score(text, text, integer, timestamptz)', 'execute')
+   and has_function_privilege('ouroboros_app',
+         'ouroboros.flake_state_next(integer, text, numeric, integer)', 'execute'),
+  'the parser writes occurrences once, the scorer writes scores and its runs, and formulas are read-only');
+
+-- --- teardown ------------------------------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v054', 'org-v054b');
+delete from ouroboros.flake_score_formulas where version = 2;
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_case_history where organization_id like 'org-v054%')
+  and (select count(*) = 0 from ouroboros.flake_scores where organization_id like 'org-v054%')
+  and (select count(*) = 0 from ouroboros.flake_scorer_runs where organization_id like 'org-v054%')
+  and (select array_agg(version) = array[1] from ouroboros.flake_score_formulas),
+  'and the V054 fixture leaves nothing behind but formula 1');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
