@@ -303,6 +303,53 @@
 # existing `must_reject`s stay green and the coverage assertion is demonstrably the only thing
 # standing between a widened vocabulary and a console that draws nothing for it.
 #
+# #328 (AS.5) adds the **test results**' — the rules mockup 11's seeded page stands on, and the
+# vocabularies it has to draw. Its argument is #302's, one page on: the five results tables carry
+# several hundred assertions already, and every one of the rules below is something AT.* reads
+# without re-checking.
+#
+#   AS.5 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   attempt status vocabulary coverage           widen test_runs_status by one word
+#   suite kind vocabulary coverage               widen test_suites_kind
+#   case status vocabulary coverage              widen test_cases_status
+#   classification class vocabulary coverage     widen failure_classifications_class
+#   classification actor vocabulary coverage     widen failure_classifications_actor
+#   artifact kind vocabulary coverage            widen test_artifacts_kind
+#   HIL verdict agrees with value and limit      drop hil_measurements_verdict_consistent
+#   case_key stable across attempts              rewrite test_cases_derive_case_key() to hash the attempt
+#   stored totals equal recomputed totals        rewrite test_results_count_drift to report nothing
+#   retention dates present                      alter retained_until drop not null
+#   retention dates sane                         drop test_artifacts_retained_after_created
+#   no confidence for human or heuristic         drop failure_classifications_confidence_model_only
+#   coverage counts on coverage reports (V059)   drop test_artifacts_coverage_counts
+#
+# **The six widenings add words no fixture in constraints.sql plants** — `cancelled`, `emulated`,
+# `xfail`, `env_config`, `pipeline`, `screenshot` — so the existing `must_reject`s stay green and
+# AS.5's coverage assertion is shown to be the only thing between a widened vocabulary and a page
+# that draws nothing for it.
+#
+# Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **`case_key`'s
+# stability** is not one constraint: it is the derivation trigger, and dropping it would make every
+# derived insert fail its not-null long before the assertion about stability. The rewrite keeps the
+# trigger and feeds it the attempt, which is exactly the regression the assertion exists for — a
+# key that differs per build — and V051's *one case_key across Build 1, 2 and 3* is what catches
+# it. **The count-drift view** is arithmetic, like `token_usage_daily`: the rewrite inverts its
+# comparison, so it reports every agreeing row as drift, and V051's *stored totals equal a
+# recompute* goes red. Both read the current definition from the catalogue and raise if the
+# expression they aim at is gone.
+#
+# Three of the six widenings are caught **before** AS.5's coverage assertion, by V055's own
+# roster — *all four classes, the three actors, all six artifact kinds … are the whole
+# vocabulary*, which #327 wrote out as literals — so their marker is that assertion's rather than
+# AS.5's. That is still the right red: the rule that went is the vocabulary, and the assertion that
+# says so names it. AS.5's coverage assertions for those three stand behind the roster, and are
+# what would catch the widening if the roster were ever relaxed into a `must_reject`.
+#
+# **The null retention date** is caught by the assertion AS.5 adds for it: no section above asked
+# whether an artifact may be registered without one, because the column's `not null` made the
+# question look answered.
+#
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
 #   ouroboros-db/tests/verify-constraint-probes.sh --runner docker
@@ -459,7 +506,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console, #328 test results\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -1260,6 +1307,113 @@ expect_red 'a stage may record the same attempt twice' \
 expect_red "a run's change-set may hold one path twice" \
   'there is no unique or exclusion constraint matching the ON CONFLICT specification' \
   'alter table ouroboros.run_files drop constraint run_files_run_path_key;'
+
+# ---------------------------------------------------------------------------
+# The test results' rules (#328: six vocabularies, the verdict, case_key stability, the totals,
+# the retention dates, the actors' confidence, and V059's coverage counts).
+#
+# Each fails quietly if lost. A widened vocabulary is a status, a radio or an artifact the page
+# draws nothing for; a verdict that may disagree with its numbers is a FAIL pill nobody can
+# explain; a key that changes per build splits one flaky case into three healthy ones; drift the
+# view no longer reports is a strip that lies until somebody recounts by hand; an undated or
+# back-dated artifact is one the sweep never collects; a percentage on a heuristic is a number
+# nobody measured; and a coverage report without counts is a percentage nobody can compute.
+# ---------------------------------------------------------------------------
+
+expect_red 'the timeline may grow a fourth attempt status' \
+  'every attempt status the timeline may draw is one this fixture reaches' \
+  "alter table ouroboros.test_runs drop constraint test_runs_status,
+   add constraint test_runs_status
+     check (status in ('running', 'complete', 'error', 'cancelled'));"
+
+expect_red 'a suite may be of a third kind' \
+  'every suite kind the wall-time split has a half for' \
+  "alter table ouroboros.test_suites drop constraint test_suites_kind,
+   add constraint test_suites_kind check (kind in ('sim', 'physical', 'emulated'));"
+
+expect_red 'a case may rest in a sixth status' \
+  'every case status the suites card counts is one a case here has' \
+  "alter table ouroboros.test_cases drop constraint test_cases_status,
+   add constraint test_cases_status
+     check (status in ('passed', 'failed', 'flaky', 'skipped', 'error', 'xfail'));"
+
+expect_red 'Mark & Route may grow a fifth radio' \
+  'all four classes, the three actors, all six artifact kinds .* are the whole vocabulary' \
+  "alter table ouroboros.failure_classifications drop constraint failure_classifications_class,
+   add constraint failure_classifications_class
+     check (class in ('product_bug', 'test_update', 'flake_retry', 'infra_rig', 'env_config'));"
+
+expect_red 'a classification may come from a fourth kind of actor' \
+  'all four classes, the three actors, all six artifact kinds .* are the whole vocabulary' \
+  "alter table ouroboros.failure_classifications drop constraint failure_classifications_actor,
+   add constraint failure_classifications_actor
+     check (actor in ('human', 'heuristic', 'model', 'pipeline'));"
+
+expect_red 'the artifacts card may grow a seventh kind' \
+  'all four classes, the three actors, all six artifact kinds .* are the whole vocabulary' \
+  "alter table ouroboros.test_artifacts drop constraint test_artifacts_kind,
+   add constraint test_artifacts_kind
+     check (kind in ('junit', 'hil', 'coverage', 'log', 'capture', 'other', 'screenshot'));"
+
+expect_red 'a HIL verdict may disagree with its value and limit' \
+  'a max measurement over its limit cannot be stored as a pass .*hil_measurements_verdict_consistent did not fire' \
+  'alter table ouroboros.hil_measurements drop constraint hil_measurements_verdict_consistent;'
+
+# A function rewrite — see the header. It raises rather than mutating nothing if V051's
+# derivation is no longer spelt the way it aims at.
+case_key_rewrite="
+do \$probe\$
+declare
+  body text := pg_get_functiondef('ouroboros.test_cases_derive_case_key()'::regprocedure);
+  aimed text := 'ouroboros.test_case_key(r.github_repo_id, s.name, new.classname, new.name)';
+begin
+  if position(aimed in body) = 0 then
+    raise exception 'test_cases_derive_case_key() no longer carries the derivation this probe aims at';
+  end if;
+  execute replace(body, aimed,
+                  'ouroboros.test_case_key(r.github_repo_id, s.name || t.attempt_seq, new.classname, new.name)');
+end
+\$probe\$;"
+
+expect_red 'a case_key may change from one build to the next' \
+  'the flaky telemetry case has one case_key across Build 1, 2 and 3' \
+  "$case_key_rewrite"
+
+# A view rewrite, for `token_usage_daily`'s reason — see the header.
+count_drift_rewrite="
+set local search_path = ouroboros, public;
+do \$probe\$
+declare
+  def text := pg_get_viewdef('ouroboros.test_results_count_drift'::regclass);
+begin
+  if position('IS DISTINCT FROM' in def) = 0 then
+    raise exception 'test_results_count_drift no longer compares with IS DISTINCT FROM';
+  end if;
+  execute 'create or replace view ouroboros.test_results_count_drift as '
+          || replace(def, 'IS DISTINCT FROM', 'IS NOT DISTINCT FROM');
+end
+\$probe\$;"
+
+expect_red 'the drift view may stop reporting stored totals that disagree' \
+  'every attempt.s and every suite.s stored totals equal a recompute from its cases' \
+  "$count_drift_rewrite"
+
+expect_red 'an artifact may be registered without a retention date' \
+  'an artifact always carries its retention date .*statement was accepted' \
+  'alter table ouroboros.test_artifacts alter column retained_until drop not null;'
+
+expect_red 'an artifact may be retained until before it existed' \
+  'an artifact is not retained until before it existed .*test_artifacts_retained_after_created did not fire' \
+  'alter table ouroboros.test_artifacts drop constraint test_artifacts_retained_after_created;'
+
+expect_red 'a human or a heuristic may carry a confidence' \
+  'a human decision carries no confidence .*failure_classifications_confidence_model_only did not fire' \
+  'alter table ouroboros.failure_classifications
+     drop constraint failure_classifications_confidence_model_only;'
+
+expect_red 'a coverage report may be registered without its counts' \
+  'a coverage artifact carries the counts its report parsed to .*test_artifacts_coverage_counts did not fire' \
+  'alter table ouroboros.test_artifacts drop constraint test_artifacts_coverage_counts;'
 
 
 printf '\n'

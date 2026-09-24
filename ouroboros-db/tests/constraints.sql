@@ -19071,27 +19071,28 @@ select pg_temp.must_hold(
   'a criterion-level waiver names no cases');
 
 -- --- artifacts: the card, from data ------------------------------------------------------------
+-- The coverage row carries its parsed counts, which V059 (#328) requires of a coverage artifact.
 insert into ouroboros.test_artifacts
     (id, organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum,
-     retained_until, truncated, truncation_note)
+     retained_until, truncated, truncation_note, lines_covered, lines_total)
   values
     ('a55b0000-0000-0000-0000-000000000001', 'org-v055', 'a5530000-0000-0000-0000-000000004823',
      'junit-build3.xml', 'junit', 48213,
      '{"driver": "local", "key": "org-v055/482/3/junit-build3.xml"}',
-     'sha256:' || repeat('a', 64), now() + interval '30 days', false, null),
+     'sha256:' || repeat('a', 64), now() + interval '30 days', false, null, null, null),
     ('a55b0000-0000-0000-0000-000000000002', 'org-v055', 'a5530000-0000-0000-0000-000000004823',
      'rig-capture-estop.csv', 'capture', 2202010,
      '{"driver": "local", "key": "org-v055/482/3/rig-capture-estop.csv"}',
-     'sha256:' || repeat('b', 64), now() + interval '30 days', false, null),
+     'sha256:' || repeat('b', 64), now() + interval '30 days', false, null, null, null),
     ('a55b0000-0000-0000-0000-000000000003', 'org-v055', 'a5530000-0000-0000-0000-000000004823',
      'serial-console.log', 'log', 10485760,
      '{"driver": "local", "key": "org-v055/482/3/serial-console.log"}',
      'sha256:' || repeat('c', 64), now() + interval '30 days', true,
-     'truncated at the 10 MiB per-file cap (upload manifest)'),
+     'truncated at the 10 MiB per-file cap (upload manifest)', null, null),
     ('a55b0000-0000-0000-0000-000000000004', 'org-v055', 'a5530000-0000-0000-0000-000000004823',
      'coverage.info', 'coverage', 91822,
      '{"driver": "s3", "key": "org-v055/482/3/coverage.info"}',
-     'sha256:' || repeat('d', 64), now() + interval '30 days', false, null);
+     'sha256:' || repeat('d', 64), now() + interval '30 days', false, null, 4475, 5120);
 
 -- Build 1's capture, uploaded 31 days ago on a 30-day policy.
 insert into ouroboros.test_artifacts
@@ -21010,6 +21011,321 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.pr_merge_plans where id::text like 'a58c0000-%')
   and (select count(*) = 0 from ouroboros.audit_events where organization_id like 'org-v058%'),
   'and the V058 fixture leaves nothing behind');
+
+-- ===========================================================================
+-- V059 — the coverage summary on a coverage artifact, and the per-attempt delta (#328, AS.5)
+-- ===========================================================================
+--
+-- Mockup 11's `coverage 87.4% (+0.6%)`, as arithmetic. A coverage artifact carries the two
+-- counts its report parses to and nothing derived from them; `test_run_coverage` divides, and
+-- takes the delta against the previous attempt of the same run that has coverage. Asserted: the
+-- counts are required exactly on a coverage artifact and are sane; the view reproduces 86.8%,
+-- 87.4% and +0.6 from counts alone; a first attempt has no delta; a tombstone still counts;
+-- the counts are frozen with the file; and the app role may read the view.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v059', 'Coverage Works', 'coverage-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a5910000-0000-0000-0000-00000000000a', 'org-v059', 'coverage-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a591f000-0000-0000-0000-00000000000a', 'a5910000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('a5920000-0000-0000-0000-000000000482', 'org-v059', 'a591f000-0000-0000-0000-00000000000a',
+          482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'building', 'Test', 6, 8, now() - interval '1 hour');
+
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status, started_at) values
+  ('a5930000-0000-0000-0000-000000004821', 'org-v059', 'a5920000-0000-0000-0000-000000000482', 1, 'complete', now() - interval '50 minutes'),
+  ('a5930000-0000-0000-0000-000000004822', 'org-v059', 'a5920000-0000-0000-0000-000000000482', 2, 'complete', now() - interval '30 minutes'),
+  ('a5930000-0000-0000-0000-000000004823', 'org-v059', 'a5920000-0000-0000-0000-000000000482', 3, 'running',  now() - interval '10 minutes');
+
+-- --- the counts are required exactly on a coverage artifact, and sane -------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts
+      (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v059', 'a5930000-0000-0000-0000-000000004822', 'coverage.info', 'coverage', 100,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('a', 64), now() + interval '30 days')$$,
+  'a coverage artifact carries the counts its report parsed to', 'test_artifacts_coverage_counts');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts
+      (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until,
+       lines_covered, lines_total)
+    values ('org-v059', 'a5930000-0000-0000-0000-000000004822', 'junit.xml', 'junit', 100,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('a', 64), now() + interval '30 days',
+            1, 2)$$,
+  'and only a coverage artifact carries them', 'test_artifacts_coverage_counts');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts
+      (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until,
+       lines_covered, lines_total)
+    values ('org-v059', 'a5930000-0000-0000-0000-000000004822', 'coverage.info', 'coverage', 100,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('a', 64), now() + interval '30 days',
+            6, 5)$$,
+  'a report cannot cover more lines than it instruments', 'test_artifacts_coverage_counts_sane');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts
+      (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until,
+       lines_covered, lines_total)
+    values ('org-v059', 'a5930000-0000-0000-0000-000000004822', 'coverage.info', 'coverage', 100,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('a', 64), now() + interval '30 days',
+            0, 0)$$,
+  'an empty report has no percentage, so it is refused rather than read as zero',
+  'test_artifacts_coverage_counts_sane');
+
+-- --- the view divides: 86.8% on Build 2, 87.4% (+0.6) on Build 3 -------------------------------
+--
+-- Build 3's report is split in two, as a per-module report would be — the attempt's coverage is
+-- the sum, not either file's. Build 1 has no coverage at all.
+insert into ouroboros.test_artifacts
+    (id, organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum,
+     retained_until, lines_covered, lines_total)
+  values
+    ('a59b0000-0000-0000-0000-000000000002', 'org-v059', 'a5930000-0000-0000-0000-000000004822',
+     'coverage.info', 'coverage', 90112, '{"driver": "local", "key": "org-v059/482/2/coverage.info"}',
+     'sha256:' || repeat('b', 64), now() + interval '30 days', 4444, 5120),
+    ('a59b0000-0000-0000-0000-000000000031', 'org-v059', 'a5930000-0000-0000-0000-000000004823',
+     'coverage-drivers.info', 'coverage', 50112, '{"driver": "local", "key": "org-v059/482/3/a"}',
+     'sha256:' || repeat('c', 64), now() + interval '30 days', 2475, 2820),
+    ('a59b0000-0000-0000-0000-000000000032', 'org-v059', 'a5930000-0000-0000-0000-000000004823',
+     'coverage-app.info', 'coverage', 40112, '{"driver": "local", "key": "org-v059/482/3/b"}',
+     'sha256:' || repeat('d', 64), now() + interval '30 days', 2000, 2300);
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s:%s', attempt_seq, percent,
+                           coalesce(previous_attempt_seq::text, '-'), coalesce(delta::text, '-'))
+                    order by attempt_seq)
+     from ouroboros.test_run_coverage
+    where run_id = 'a5920000-0000-0000-0000-000000000482')
+    = array['2:86.8:-:-', '3:87.4:2:0.6'],
+  'Build 2 covers 86.8% with nothing to compare against, and Build 3 covers 87.4% — +0.6 against Build 2, summed over both of its reports');
+
+-- The delta is taken from the ratios and rounded once, not from two rounded percentages.
+select pg_temp.must_hold(
+  (select delta = round(100.0 * 4475 / 5120 - 100.0 * 4444 / 5120, 1)
+     from ouroboros.test_run_coverage where test_run_id = 'a5930000-0000-0000-0000-000000004823'),
+  'the delta is the difference of the unrounded ratios, rounded once');
+
+-- --- a tombstone still counts; the counts are frozen ------------------------------------------
+update ouroboros.test_artifacts set expired_at = now()
+ where id = 'a59b0000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select percent = 86.8 from ouroboros.test_run_coverage
+    where test_run_id = 'a5930000-0000-0000-0000-000000004822'),
+  'an expired coverage report still states what it measured — expiry deletes the bytes, not the fact');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_artifacts set lines_covered = 4500
+     where id = 'a59b0000-0000-0000-0000-000000000031'$$,
+  'a report''s counts describe the uploaded file and are frozen with it', 'test_artifacts_frozen');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.test_run_coverage', 'select'),
+  'the application role reads the coverage view');
+
+delete from ouroboros.organization where "id" = 'org-v059';
+
+-- ===========================================================================
+-- AS.5 — the test results vocabularies, covered rather than merely closed (#328)
+-- ===========================================================================
+--
+-- AO.5's argument (#302), one mockup on. The V051–V055 sections refuse a word outside each
+-- vocabulary; nothing notices one that **grows**. A fourth attempt status, a sixth case status,
+-- a fifth classification radio or a seventh artifact kind would change what mockup 11 has to draw
+-- and leave every assertion above green, because a `must_reject` aimed at a word still outside the
+-- set keeps passing. So each vocabulary is read out of `pg_constraint` by `pg_temp.vocabulary`
+-- (AO.5's helper) and the fixture below is required to have written every value of it.
+--
+-- The vocabularies are AS.5's scope: attempt status, suite kind and results format, case status,
+-- classification class and actor, artifact kind, and a HIL measurement's limit kind and verdict.
+--
+-- The section also carries the one rule AS.5 names that no section above asserts — **an
+-- artifact always carries its retention date** — so tests/verify-constraint-probes.sh has an
+-- assertion to watch go red when the column is relaxed. The other rules it names are probed
+-- through the assertions the V051, V053 and V055 sections already make: the verdict against its
+-- limit, `case_key` across attempts, stored totals against the recompute, a retention date after
+-- its upload, and no confidence on a human or heuristic decision.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-as5', 'Results Vocab Works', 'results-vocab-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a5a00000-0000-0000-0000-00000000000a', 'Ken S', 'ken@results-vocab-works.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a5a10000-0000-0000-0000-00000000000a', 'org-as5', 'results-vocab-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a5a1f000-0000-0000-0000-00000000000a', 'a5a10000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('a5a20000-0000-0000-0000-000000000482', 'org-as5', 'a5a1f000-0000-0000-0000-00000000000a',
+          482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'building', 'Test', 6, 8, now() - interval '1 hour');
+
+-- --- three attempts, one per status -------------------------------------------------------------
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status, started_at) values
+  ('a5a30000-0000-0000-0000-000000000001', 'org-as5', 'a5a20000-0000-0000-0000-000000000482', 1, 'complete', now() - interval '50 minutes'),
+  ('a5a30000-0000-0000-0000-000000000002', 'org-as5', 'a5a20000-0000-0000-0000-000000000482', 2, 'error',    now() - interval '30 minutes'),
+  ('a5a30000-0000-0000-0000-000000000003', 'org-as5', 'a5a20000-0000-0000-0000-000000000482', 3, 'running',  now() - interval '10 minutes');
+
+-- --- a sim suite from JUnit and a physical suite from the HIL results file ------------------------
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind, results_format, meta)
+  values ('a5a40000-0000-0000-0000-000000000001', 'org-as5', 'a5a30000-0000-0000-0000-000000000003',
+          'telemetry integration', 'qemu_cortex_m3', 'sim', 'junit', '{}'),
+         ('a5a40000-0000-0000-0000-000000000002', 'org-as5', 'a5a30000-0000-0000-0000-000000000003',
+          'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil',
+          '{"bench": "CAN bus + motor + power-cycler"}');
+
+-- --- one case per status ------------------------------------------------------------------------
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retries, retry_outcomes)
+  values
+    ('a5a50000-0000-0000-0000-000000000001', 'org-as5', 'a5a40000-0000-0000-0000-000000000001',
+     'frame counter is monotonic', 'telemetry', 'passed', 0, '["passed"]'),
+    ('a5a50000-0000-0000-0000-000000000002', 'org-as5', 'a5a40000-0000-0000-0000-000000000001',
+     'ring buffer drains under burst', 'telemetry', 'flaky', 2, '["failed", "failed", "passed"]'),
+    ('a5a50000-0000-0000-0000-000000000003', 'org-as5', 'a5a40000-0000-0000-0000-000000000001',
+     'batch flush on shutdown', 'telemetry', 'skipped', 0, '["skipped"]'),
+    ('a5a50000-0000-0000-0000-000000000004', 'org-as5', 'a5a40000-0000-0000-0000-000000000001',
+     'mqtt publish after reconnect', 'telemetry', 'error', 0, '["error"]'),
+    ('a5a50000-0000-0000-0000-000000000005', 'org-as5', 'a5a40000-0000-0000-0000-000000000002',
+     'overshoot_under_load', 'tests/hil/test_estop_release.py', 'failed', 0, '["failed"]'),
+    ('a5a50000-0000-0000-0000-000000000006', 'org-as5', 'a5a40000-0000-0000-0000-000000000002',
+     'frame_order_under_load', 'tests/hil/test_can_frame_order.py', 'passed', 0, '["passed"]');
+
+-- --- measurements: both limit directions, both verdicts -----------------------------------------
+insert into ouroboros.hil_measurements
+    (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+  values
+    ('org-as5', 'a5a50000-0000-0000-0000-000000000005', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+     'overshoot_pct', 2.4, '%', 2.0, 'max', 'fail'),
+    ('org-as5', 'a5a50000-0000-0000-0000-000000000006', 'traffic generator floods bus at 900 kbit/s for 60s',
+     'reordered_frames', 0, 'count', 0, 'max', 'pass'),
+    ('org-as5', 'a5a50000-0000-0000-0000-000000000006', 'traffic generator floods bus at 900 kbit/s for 60s',
+     'frames_seen', 1000000, 'count', 999000, 'min', 'pass'),
+    ('org-as5', 'a5a50000-0000-0000-0000-000000000005', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+     'trials_completed', 2, 'count', 3, 'min', 'fail');
+
+-- --- four classes, three actors — each an honest pairing ----------------------------------------
+--
+-- Four decisions on two failing cases, so the later decision on each supersedes the earlier one —
+-- which is how a case gathers more than one — and every actor appears with the shape V055 holds
+-- it to: a heuristic names its rule and carries no percentage, a model may carry one, a human
+-- names its author and carries none.
+--
+-- One statement each: the supersede is an AFTER trigger, and in a multi-row insert those fire at
+-- the end of the statement — so the first row's would find the second already current and try to
+-- supersede the later decision with the earlier one, which V055 refuses.
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, actor, rule_id, confidence, created_by, created_at)
+  values ('a5a60000-0000-0000-0000-000000000001', 'org-as5', 'a5a50000-0000-0000-0000-000000000005',
+          'product_bug', 'heuristic', 'hil.limit_exceeded', null, null, now() - interval '9 minutes');
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, actor, rule_id, confidence, created_by, created_at)
+  values ('a5a60000-0000-0000-0000-000000000002', 'org-as5', 'a5a50000-0000-0000-0000-000000000005',
+          'infra_rig', 'model', null, 41, null, now() - interval '8 minutes');
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, actor, rule_id, confidence, created_by, created_at)
+  values ('a5a60000-0000-0000-0000-000000000003', 'org-as5', 'a5a50000-0000-0000-0000-000000000002',
+          'flake_retry', 'heuristic', 'retry.passed_after_failure', null, null, now() - interval '7 minutes');
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, actor, rule_id, confidence, created_by, created_at)
+  values ('a5a60000-0000-0000-0000-000000000004', 'org-as5', 'a5a50000-0000-0000-0000-000000000002',
+          'test_update', 'human', null, null, 'a5a00000-0000-0000-0000-00000000000a', now() - interval '6 minutes');
+
+-- --- six artifacts, one per kind ----------------------------------------------------------------
+insert into ouroboros.test_artifacts
+    (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until,
+     lines_covered, lines_total)
+select 'org-as5', 'a5a30000-0000-0000-0000-000000000003', a.name, a.kind, a.size_bytes,
+       jsonb_build_object('driver', 'local', 'key', 'org-as5/482/3/' || a.name),
+       'sha256:' || encode(sha256(convert_to(a.name, 'UTF8')), 'hex'),
+       now() + interval '30 days',
+       case when a.kind = 'coverage' then 4475 end, case when a.kind = 'coverage' then 5120 end
+  from (values ('junit-build3.xml', 'junit', 48213), ('ouro-hil-results.json', 'hil', 6120),
+               ('coverage.info', 'coverage', 91822), ('serial-console.log', 'log', 184320),
+               ('rig-capture-estop.csv', 'capture', 2202010), ('build-env.txt', 'other', 812)
+       ) as a (name, kind, size_bytes);
+
+-- --- every vocabulary, covered ------------------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.test_runs', 'test_runs_status')
+    = (select array_agg(distinct status order by status) from ouroboros.test_runs
+        where organization_id = 'org-as5'),
+  'every attempt status the timeline may draw is one this fixture reaches — a fourth would turn this red for the ticket that added it');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.test_suites', 'test_suites_kind')
+    = (select array_agg(distinct kind order by kind) from ouroboros.test_suites
+        where organization_id = 'org-as5')
+  and pg_temp.vocabulary('ouroboros.test_suites', 'test_suites_results_format')
+    = (select array_agg(distinct results_format order by results_format) from ouroboros.test_suites
+        where organization_id = 'org-as5'),
+  'every suite kind the wall-time split has a half for, and every results format the physical card reads, is covered');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.test_cases', 'test_cases_status')
+    = (select array_agg(distinct status order by status) from ouroboros.test_cases
+        where organization_id = 'org-as5'),
+  'every case status the suites card counts is one a case here has — a sixth would turn this red rather than fall out of the totals');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.failure_classifications', 'failure_classifications_class')
+    = (select array_agg(distinct class order by class) from ouroboros.failure_classifications
+        where organization_id = 'org-as5'),
+  'every classification class is a radio somebody has picked');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.failure_classifications', 'failure_classifications_actor')
+    = (select array_agg(distinct actor order by actor) from ouroboros.failure_classifications
+        where organization_id = 'org-as5'),
+  'and every actor is one whose affix the card knows how to draw');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.test_artifacts', 'test_artifacts_kind')
+    = (select array_agg(distinct kind order by kind) from ouroboros.test_artifacts
+        where organization_id = 'org-as5'),
+  'every artifact kind the artifacts card lists is one an attempt has uploaded');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.hil_measurements', 'hil_measurements_limit_kind')
+    = (select array_agg(distinct limit_kind order by limit_kind) from ouroboros.hil_measurements
+        where organization_id = 'org-as5')
+  and pg_temp.vocabulary('ouroboros.hil_measurements', 'hil_measurements_verdict')
+    = (select array_agg(distinct verdict order by verdict) from ouroboros.hil_measurements
+        where organization_id = 'org-as5'),
+  'both limit directions and both verdicts are measured — each verdict here is the one its own value and limit give');
+
+-- --- retention dates are present -----------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts
+      (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum)
+    values ('org-as5', 'a5a30000-0000-0000-0000-000000000003', 'undated.log', 'log', 1,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('e', 64))$$,
+  'an artifact always carries its retention date — the sweep and the card both read it');
+
+select pg_temp.must_hold(
+  (select bool_and(retained_until > created_at) and count(*) = 6
+     from ouroboros.test_artifacts where organization_id = 'org-as5'),
+  'and every artifact here is retained until after it was uploaded');
+
+delete from ouroboros.organization where "id" = 'org-as5';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_runs where organization_id = 'org-as5')
+  and (select count(*) = 0 from ouroboros.test_artifacts where organization_id = 'org-as5'),
+  'and the AS.5 fixture leaves nothing behind');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

@@ -4003,5 +4003,227 @@ select pg_temp.must_hold(
    and (select count(*) = 0 from ouroboros.run_controls),
   'only #482 has a console, and nothing has been asked of any loop — the control queue is empty');
 
+-- ===========================================================================
+-- R__dev_seed_test_results.sql — mockup 11's test results for run #482 (#328, AS.5)
+-- ===========================================================================
+--
+-- The page, number by number, recomputed from the rows rather than read back from the seed: the
+-- attempts' totals against a recount of their cases, `▲ 12` as a difference, the verdict against
+-- its value and limit, the comparative against Build 1's row, the flake state against AS.3's
+-- formula, and the coverage delta against two reports' line counts. The counts are exact —
+-- ci/db migrates this database twice before it runs this file, so *exactly* is the idempotency
+-- assertion as well.
+
+-- --- one #482 universe --------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 3
+          and bool_and(run.id = '5eed0009-0000-4000-8000-000000000482'
+                       and run.loop_seq = 1847 and run.branch_name = 'loop/482-canbus-flake')
+     from ouroboros.test_runs attempt
+     join ouroboros.runs run on run.id = attempt.run_id
+    where run.issue_number = 482),
+  'the three attempts belong to the dashboard''s #482 — Loop #1847 on loop/482-canbus-flake — and to no second #482');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runs where issue_number = 482),
+  'there is one run #482 in the database');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s', attempt.attempt_seq, attempt.status,
+                           coalesce(attempt.commit_sha, '-')) order by attempt.attempt_seq)
+     from ouroboros.test_runs attempt
+     join ouroboros.runs run on run.id = attempt.run_id
+    where run.issue_number = 482)
+    = array['1:complete:a3f19c2', '2:complete:c81d4e7', '3:running:f42b9a0'],
+  'Build 1 at a3f19c2 and Build 2 are complete, and Build 3 at f42b9a0 is running');
+
+-- Every attempt is inside its run and none is in the future — the clock the header argues.
+select pg_temp.must_hold(
+  (select bool_and(attempt.started_at > run.started_at and attempt.started_at < now())
+     from ouroboros.test_runs attempt
+     join ouroboros.runs run on run.id = attempt.run_id
+    where attempt.id::text like '5eed0031%'),
+  'every seeded attempt starts inside its run and before now');
+
+select pg_temp.must_hold(
+  (select wall_ms = sim_ms + physical_ms and wall_ms = 372000 and sim_ms = 240000
+          and attempt.started_at + make_interval(secs => wall_ms / 1000)
+              = run.started_at + interval '12 minutes 40 seconds'
+     from ouroboros.test_runs attempt
+     join ouroboros.runs run on run.id = attempt.run_id
+    where run.issue_number = 482 and attempt.attempt_seq = 3),
+  'Build 3''s 6m 12s is 4m sim plus 2m 12s physical, and ends at the 12m 40s the console draws');
+
+-- --- the head, the strip and the timeline -------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s/%s:%s:%s', attempt.passed, attempt.total, attempt.failed, attempt.flaky)
+                    order by attempt.attempt_seq)
+     from ouroboros.test_runs attempt
+     join ouroboros.runs run on run.id = attempt.run_id
+    where run.issue_number = 482)
+    = array['49/63:14:0', '61/63:2:0', '61/63:1:1'],
+  'Build 1 is 49/63 with 14 failed, Build 2 61/63 with 2, and Build 3 61 passed, 1 failed, 1 flaky of 63');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_results_count_drift drift
+    where drift.test_run_id::text like '5eed0031%'),
+  'and every stored total is a recount of the cases — nothing seeded disagrees with the counting view');
+
+select pg_temp.must_hold(
+  (select latest.passed - first.passed = 12
+     from ouroboros.test_runs latest
+     join ouroboros.test_runs first on first.run_id = latest.run_id and first.attempt_seq = 1
+     join ouroboros.runs run on run.id = latest.run_id
+    where run.issue_number = 482 and latest.attempt_seq = 3),
+  'the head''s ▲ 12 is a difference of two attempts'' passed counts, never a stored figure');
+
+-- --- the suites card ----------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s|%s|%s|%s/%s', suite.name, suite.platform, suite.kind,
+                           suite.passed, suite.total) order by suite.id)
+     from ouroboros.test_suites suite
+     join ouroboros.test_runs attempt on attempt.id = suite.test_run_id
+     join ouroboros.runs run on run.id = attempt.run_id
+    where run.issue_number = 482 and attempt.attempt_seq = 3)
+    = array['unit · drivers|native_sim|sim|24/24',
+            'telemetry integration|qemu_cortex_m3|sim|18/19',
+            'motor control|qemu_cortex_m3|sim|12/12',
+            'OTA update|native_sim|sim|6/6',
+            'PHYSICAL · HIL rig|rig:helios-rig-02|physical|1/2'],
+  'the five suites, on the mockup''s platforms, read 24/24, 18/19, 12/12, 6/6 and 1/2');
+
+select pg_temp.must_hold(
+  (select mode.bench = 'CAN bus + motor + power-cycler' and mode.mode = 'measured'
+          and mode.results_format = 'hil'
+     from ouroboros.hil_suite_modes mode
+     join ouroboros.test_runs attempt on attempt.id = mode.test_run_id
+     join ouroboros.runs run on run.id = attempt.run_id
+    where run.issue_number = 482 and attempt.attempt_seq = 3),
+  'the rig suite names its bench and every case it ran is measured');
+
+-- --- the failing HIL case -----------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select measurement.value = (select max((trial ->> 'overshoot_pct')::numeric)
+                                 from jsonb_array_elements(measurement.trials) trial)
+          and jsonb_array_length(measurement.trials) = 3
+          and measurement.limit_kind = 'max'
+          and measurement.verdict = ouroboros.hil_verdict(measurement.value, measurement.limit_value,
+                                                          measurement.limit_kind)
+          and measurement.verdict = 'fail'
+          and measurement.context is null
+          and measurement.value = 2.4 and measurement.limit_value = 2.0 and measurement.unit = '%'
+          and case_row.classname || '::' || case_row.name
+              = 'tests/hil/test_estop_release.py::overshoot_under_load'
+          and measurement.procedure = 'dyno bench releases e-stop under 2 Nm load, 3 trials'
+     from ouroboros.hil_measurements measurement
+     join ouroboros.test_cases case_row on case_row.id = measurement.test_case_id
+    where case_row.id = '5eed0033-0000-4000-8000-000048230501'),
+  'Build 3''s overshoot is the worst of three trials, 2.4% against a 2.0% maximum, and fails because the verdict function says so');
+
+select pg_temp.must_hold(
+  (select case_row.status = 'failed'
+          and case_row.failure ->> 'message' = 'AssertionError: max overshoot 2.4% > limit 2.0%'
+          and (select count(*) from regexp_matches(case_row.failure ->> 'log_excerpt', '\[rig\] trial \d', 'g')) = 3
+     from ouroboros.test_cases case_row
+    where case_row.id = '5eed0033-0000-4000-8000-000048230501'),
+  'and its failure payload carries the assertion and the three trials of the rig log');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s', attempt.attempt_seq, measurement.value,
+                           coalesce(measurement.context, '-')) order by attempt.attempt_seq)
+     from ouroboros.hil_measurements measurement
+     join ouroboros.test_cases case_row  on case_row.id = measurement.test_case_id
+     join ouroboros.test_suites suite    on suite.id = case_row.test_suite_id
+     join ouroboros.test_runs attempt    on attempt.id = suite.test_run_id
+    where measurement.metric = 'reordered_frames')
+    = array['1:37:-', '2:0:was 37 in build 1', '3:0:was 37 in build 1'],
+  'the frame-order measurement reads 0 reordered frames, was 37 in build 1 — composed from Build 1''s row');
+
+-- --- the flaky telemetry case -------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select case_row.status = 'flaky' and case_row.retries = 2
+          and case_row.retry_outcomes = '["failed", "failed", "passed"]'::jsonb
+     from ouroboros.test_cases case_row
+    where case_row.id = '5eed0033-0000-4000-8000-000048230203'),
+  'Build 3''s telemetry case passed on retry 2 of 3');
+
+select pg_temp.must_hold(
+  (select count(distinct history.case_key) = 1 and count(*) = 4
+          and count(distinct attempt.run_id) = 2
+     from ouroboros.test_case_history history
+     join ouroboros.test_runs attempt on attempt.id = history.test_run_id
+    where history.case_key = (select case_key from ouroboros.test_cases
+                               where id = '5eed0033-0000-4000-8000-000048230203')),
+  'its case_key is the same in #479 and in all three of #482''s attempts — four occurrences of one identity');
+
+select pg_temp.must_hold(
+  (select score.score = computed.score and score.window_runs = computed.window_runs
+          and score.formula_version = 1
+          and score.state = ouroboros.flake_state_next(1, null, computed.score, computed.window_runs)
+          and score.state = 'watching'
+     from ouroboros.flake_scores score
+     cross join lateral ouroboros.flake_score(score.organization_id, score.case_key, 1) computed
+    where score.id = '5eed0036-0000-4000-8000-000000000482'),
+  'and its stored score is what flake score v1 computes from those occurrences today, which puts it at watching');
+
+select pg_temp.must_hold(
+  (select count(*) = 208 from ouroboros.test_case_history where id::text like '5eed0035%')
+   and (select count(*) = 208 from ouroboros.test_cases where id::text like '5eed0033%')
+   and (select count(*) = 0 from ouroboros.test_case_history_drift),
+  'every seeded case has exactly one occurrence, and none has drifted from its case');
+
+-- --- Mark & Route and the PR toggles ------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+          and bool_and(classification.actor = 'heuristic' and classification.confidence is null
+                       and classification.rule_id is not null and classification.class = 'product_bug'
+                       and classification.routed is null and classification.superseded_by is null
+                       and classification.test_case_id = '5eed0033-0000-4000-8000-000048230501')
+     from ouroboros.failure_classifications classification
+    where classification.id::text like '5eed0037%'),
+  'one heuristic hint on Build 3''s overshoot: a product bug, a named rule, no confidence, nothing routed');
+
+select pg_temp.must_hold(
+  (select intent.block_until_green and intent.auto_rerun_physical
+          and intent.updated_by = '5eed0003-0000-4000-8000-000000000001'
+     from ouroboros.run_pr_intents intent
+     join ouroboros.runs run on run.id = intent.run_id
+    where run.issue_number = 482),
+  'Block PR until green and auto re-run physical are both on, set by Ken');
+
+-- --- the artifacts card -------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s', artifact.name, artifact.kind) order by artifact.id)
+     from ouroboros.test_artifacts artifact
+     join ouroboros.test_runs attempt on attempt.id = artifact.test_run_id
+    where attempt.id = '5eed0031-0000-4000-8000-000000004823')
+    = array['junit-build3.xml:junit', 'rig-capture-estop.csv:capture',
+            'serial-console.log:log', 'coverage.info:coverage'],
+  'Build 3 uploaded the four artifacts the card lists');
+
+select pg_temp.must_hold(
+  (select round(artifact.size_bytes / 1048576.0, 1) = 2.1
+     from ouroboros.test_artifacts artifact
+    where artifact.id::text like '5eed0038%' and artifact.name = 'rig-capture-estop.csv'),
+  'the rig capture is 2.1 MB');
+
+select pg_temp.must_hold(
+  (select count(*) = 5
+          and bool_and(artifact.retained_until - artifact.created_at = interval '30 days')
+          and bool_and(artifact.created_at < now() and artifact.retained_until > now())
+          and bool_and(artifact.expired_at is null)
+     from ouroboros.test_artifacts artifact
+    where artifact.id::text like '5eed0038%'),
+  'every artifact is retained 30 days from an upload in the past, so none has expired whenever the seed was applied');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s', coverage.attempt_seq, coverage.percent,
+                           coalesce(coverage.delta::text, '-')) order by coverage.attempt_seq)
+     from ouroboros.test_run_coverage coverage
+     join ouroboros.runs run on run.id = coverage.run_id
+    where run.issue_number = 482)
+    = array['2:86.8:-', '3:87.4:0.6'],
+  'coverage computes to 86.8% on Build 2 and 87.4% (+0.6%) on Build 3, from line counts');
+
 \o
 \echo 'seed.sql: all assertions passed'
