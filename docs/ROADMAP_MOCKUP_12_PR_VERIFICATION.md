@@ -236,7 +236,7 @@ every issue assigned. Complexity chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AW.1 | #352 | 🟡 Open | ouroboros-db: [AW.1] Pull requests & revisions schema | Host-mirrored PRs with revision history + attempt links (V1/V4) | mvp, pr, db | N (after AO.1, WF-Q.1) | Y | M | ouroboros-db |
+| AW.1 | #352 | 🟢 Done | ouroboros-db: [AW.1] Pull requests & revisions schema | Host-mirrored PRs with revision history + attempt links (V1/V4) | mvp, pr, db | N (after AO.1, WF-Q.1) | Y | M | ouroboros-db |
 | AW.2 | #353 | 🟡 Open | ouroboros-db: [AW.2] Gate definitions & revision snapshots | Declarative gates, provider results, evidence refs (V2) | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
 | AW.3 | #354 | 🟡 Open | ouroboros-db: [AW.3] Criteria, evidence links & review thread | Claims with typed evidence, waiver render refs, thread entries | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
 | AW.4 | #355 | 🟡 Open | ouroboros-db: [AW.4] Merge plans & auto-merge intents | Policy snapshot, action toggles, armed-intent state, audit refs | mvp, pr, db | N (after AW.1) | Y | S | ouroboros-db |
@@ -244,7 +244,7 @@ every issue assigned. Complexity chips: **XS · S · M · L**.
 
 ### Issue AW.1 — ouroboros-db: [AW.1] Pull requests & revisions schema
 
-> **GitHub issue:** #352 · **Status:** 🟡 Open · **Parent epic:** #348
+> **GitHub issue:** #352 · **Status:** 🟢 Done · **Parent epic:** #348
 
 - **Problem Statement:** The page scopes everything to a PR and a revision;
   neither exists as an entity (decision V1), and revisions must map to run
