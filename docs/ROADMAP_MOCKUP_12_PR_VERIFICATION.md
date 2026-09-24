@@ -238,7 +238,7 @@ every issue assigned. Complexity chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AW.1 | #352 | 🟢 Done | ouroboros-db: [AW.1] Pull requests & revisions schema | Host-mirrored PRs with revision history + attempt links (V1/V4) | mvp, pr, db | N (after AO.1, WF-Q.1) | Y | M | ouroboros-db |
 | AW.2 | #353 | 🟢 Done | ouroboros-db: [AW.2] Gate definitions & revision snapshots | Declarative gates, provider results, evidence refs (V2) | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
-| AW.3 | #354 | 🟡 Open | ouroboros-db: [AW.3] Criteria, evidence links & review thread | Claims with typed evidence, waiver render refs, thread entries | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
+| AW.3 | #354 | 🟢 Done | ouroboros-db: [AW.3] Criteria, evidence links & review thread | Claims with typed evidence, waiver render refs, thread entries | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
 | AW.4 | #355 | 🟡 Open | ouroboros-db: [AW.4] Merge plans & auto-merge intents | Policy snapshot, action toggles, armed-intent state, audit refs | mvp, pr, db | N (after AW.1) | Y | S | ouroboros-db |
 | AW.5 | #356 | 🟡 Open | ouroboros-db: [AW.5] PR seeds — mockup-12 parity + probes | The #514 story across two revisions; ci constraint checks | mvp, pr, db, ci | N (after AW.2–AW.4, #24) | Y | M | ouroboros-db, .github |
 
@@ -317,7 +317,7 @@ results(rev2): 5×green · model_review: pending│unavailable · human: not_req
 
 ### Issue AW.3 — ouroboros-db: [AW.3] Criteria, evidence links & review thread
 
-> **GitHub issue:** #354 · **Status:** 🟡 Open · **Parent epic:** #348
+> **GitHub issue:** #354 · **Status:** 🟢 Done · **Parent epic:** #348
 
 - **Problem Statement:** The criteria matrix and the review thread need
   durable rows: quoted claims with typed evidence, and thread entries with

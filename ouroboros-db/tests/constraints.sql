@@ -19869,6 +19869,682 @@ select pg_temp.must_hold(
   'and the V056 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- V057 — criteria, evidence links and the review thread (#354, AW.3)
+-- ===========================================================================
+--
+-- Mockup 12's acceptance-criteria matrix and review thread as rows. PR #514's five claims from
+-- issue #482: four verified by typed evidence of every kind — a test case, a hunk of Revision
+-- 2's diff, a HIL measurement, an analysis note and an uploaded artifact — and the thermal claim
+-- waived by run #482's AS.4 waiver. Its thread is the self-review, the second opinion on
+-- Revision 1 that was blocking and is resolved, and the policy bot: 3 entries · 0 open. Beside
+-- it, run #483's waiver, sandbox PR #77 (no loop) and another workspace's rows are there to be
+-- refused, and every reference kind is shown to refuse a dangling id.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v057',  'Criteria Works',       'criteria-works',       now()),
+  ('org-v057b', 'Other Criteria Works', 'other-criteria-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a5700000-0000-0000-0000-00000000000a', 'Ken S', 'ken@criteria-works.dev', true);
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a5700000-0000-0000-0000-0000000000a1', 'org-v057', 'github', 'GitHub · criteria-works');
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a5710000-0000-0000-0000-00000000000a', 'org-v057',  'criteria-works',       true),
+  ('a5710000-0000-0000-0000-00000000000b', 'org-v057b', 'other-criteria-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a571f000-0000-0000-0000-00000000000a', 'a5710000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a571f000-0000-0000-0000-00000000000b', 'a5710000-0000-0000-0000-00000000000b',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a5720000-0000-0000-0000-000000000482', 'org-v057', 'a571f000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'review', 'Review', 7, 8, now() - interval '1 hour'),
+    ('a5720000-0000-0000-0000-000000000483', 'org-v057', 'a571f000-0000-0000-0000-00000000000a',
+     483, 'Tighten OTA rollback', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '30 minutes'),
+    ('a5720000-0000-0000-0000-000000000900', 'org-v057b', 'a571f000-0000-0000-0000-00000000000b',
+     900, 'Elsewhere', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '10 minutes');
+
+-- --- what the evidence cites ------------------------------------------------------------------
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status) values
+  ('a5730000-0000-0000-0000-000000000004', 'org-v057',  'a5720000-0000-0000-0000-000000000482', 4, 'complete'),
+  ('a5730000-0000-0000-0000-000000000900', 'org-v057b', 'a5720000-0000-0000-0000-000000000900', 1, 'complete');
+
+insert into ouroboros.test_suites
+    (id, organization_id, test_run_id, name, platform, kind, results_format)
+  values
+    ('a5740000-0000-0000-0000-000000000041', 'org-v057',  'a5730000-0000-0000-0000-000000000004',
+     'unit · telemetry', 'native_sim', 'sim', 'junit'),
+    ('a5740000-0000-0000-0000-000000000042', 'org-v057',  'a5730000-0000-0000-0000-000000000004',
+     'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil'),
+    ('a5740000-0000-0000-0000-000000000900', 'org-v057b', 'a5730000-0000-0000-0000-000000000900',
+     'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil');
+
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retry_outcomes)
+  values
+    ('a5750000-0000-0000-0000-000000000041', 'org-v057',  'a5740000-0000-0000-0000-000000000041',
+     'test_frame_order_under_load', 'telemetry', 'passed', '["passed"]'),
+    ('a5750000-0000-0000-0000-000000000042', 'org-v057',  'a5740000-0000-0000-0000-000000000042',
+     'Motor overshoot on e-stop release', 'hil', 'passed', '["passed"]'),
+    ('a5750000-0000-0000-0000-000000000900', 'org-v057b', 'a5740000-0000-0000-0000-000000000900',
+     'Motor overshoot on e-stop release', 'hil', 'passed', '["passed"]');
+
+insert into ouroboros.hil_measurements
+    (id, organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+  values
+    ('a5760000-0000-0000-0000-000000000042', 'org-v057',  'a5750000-0000-0000-0000-000000000042',
+     'dyno bench releases e-stop under 2 Nm load', 'overshoot_pct', 1.7, '%', 2.0, 'max', 'pass'),
+    ('a5760000-0000-0000-0000-000000000900', 'org-v057b', 'a5750000-0000-0000-0000-000000000900',
+     'dyno bench releases e-stop under 2 Nm load', 'overshoot_pct', 1.7, '%', 2.0, 'max', 'pass');
+
+insert into ouroboros.test_artifacts
+    (id, organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+  values
+    ('a5770000-0000-0000-0000-000000000004', 'org-v057', 'a5730000-0000-0000-0000-000000000004',
+     'stack-usage.txt', 'other', 4096,
+     '{"driver": "local", "key": "org-v057/482/4/stack-usage.txt"}',
+     'sha256:' || repeat('a', 64), now() + interval '30 days'),
+    ('a5770000-0000-0000-0000-000000000900', 'org-v057b', 'a5730000-0000-0000-0000-000000000900',
+     'stack-usage.txt', 'other', 4096,
+     '{"driver": "local", "key": "org-v057b/900/1/stack-usage.txt"}',
+     'sha256:' || repeat('b', 64), now() + interval '30 days');
+
+-- The thermal waiver on #482 (a criterion-level waiver: no cases), and one on #483.
+insert into ouroboros.pr_waivers (id, organization_id, run_id, author, reason) values
+  ('a5780000-0000-0000-0000-000000000482', 'org-v057', 'a5720000-0000-0000-0000-000000000482',
+   'a5700000-0000-0000-0000-00000000000a', 'rig runs at 22°C only — thermal chamber not in bench'),
+  ('a5780000-0000-0000-0000-000000000483', 'org-v057', 'a5720000-0000-0000-0000-000000000483',
+   'a5700000-0000-0000-0000-00000000000a', 'OTA rig offline');
+
+-- --- the PRs and their revisions -----------------------------------------------------------------
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, additions, deletions, changed_files, run_id)
+  values
+    ('a57a0000-0000-0000-0000-000000000514', 'org-v057', 'a5700000-0000-0000-0000-0000000000a1',
+     514, 'https://github.com/criteria-works/helios-firmware/pull/514',
+     'can: fix flaky telemetry frame order under ISR load',
+     'loop/482-canbus-flake', 'main', 68, 15, 3, 'a5720000-0000-0000-0000-000000000482'),
+    ('a57a0000-0000-0000-0000-000000000077', 'org-v057', 'a5700000-0000-0000-0000-0000000000a1',
+     77, 'https://github.com/criteria-works/helios-firmware/pull/77',
+     'docs: sandbox change', 'sandbox/docs', 'main', 4, 1, 1, null);
+
+-- Revision 1 touched only the driver; Revision 2 is the mockup's three files.
+insert into ouroboros.pr_revisions (id, pr_id, revision_seq, head_sha, pushed_at, files) values
+  ('a57b0000-0000-0000-0000-000000000001', 'a57a0000-0000-0000-0000-000000000514', 1, '3f9c2ae',
+   now() - interval '40 minutes',
+   '[{"path": "drivers/can/telemetry_buf.c", "additions": 30, "deletions": 10}]'),
+  ('a57b0000-0000-0000-0000-000000000002', 'a57a0000-0000-0000-0000-000000000514', 2, 'b7e41d0',
+   now() - interval '25 minutes',
+   '[{"path": "drivers/can/telemetry_buf.c", "additions": 38, "deletions": 12},
+     {"path": "drivers/can/isr_fastpath.c", "additions": 9, "deletions": 3},
+     {"path": "tests/telemetry/test_frame_order.c", "additions": 21, "deletions": 0}]'),
+  ('a57b0000-0000-0000-0000-000000000077', 'a57a0000-0000-0000-0000-000000000077', 1, 'd0c5a11',
+   now() - interval '20 minutes',
+   '[{"path": "docs/README.md", "additions": 4, "deletions": 1}]');
+
+-- --- the five claims of issue #482 ----------------------------------------------------------------
+-- Criterion ids: …0514<n>, n the matrix row. Inserted unverified; the thermal one waived.
+insert into ouroboros.pr_criteria (id, pr_id, claim, source, status, waiver_ref, sort_order, created_by)
+  values
+    ('a57c0000-0000-0000-0000-000000005141', 'a57a0000-0000-0000-0000-000000000514',
+     'Telemetry frames must arrive in ISR order under load', 'plan', 'unverified', null, 1,
+     'a5700000-0000-0000-0000-00000000000a'),
+    ('a57c0000-0000-0000-0000-000000005142', 'a57a0000-0000-0000-0000-000000000514',
+     'No regression in e-stop response envelope', 'plan', 'unverified', null, 2,
+     'a5700000-0000-0000-0000-00000000000a'),
+    ('a57c0000-0000-0000-0000-000000005143', 'a57a0000-0000-0000-0000-000000000514',
+     'Fix must not mask real ordering bugs in tests', 'plan', 'unverified', null, 3,
+     'a5700000-0000-0000-0000-00000000000a'),
+    ('a57c0000-0000-0000-0000-000000005144', 'a57a0000-0000-0000-0000-000000000514',
+     'Zero heap allocation in ISR fast path', 'manual', 'unverified', null, 4,
+     'a5700000-0000-0000-0000-00000000000a'),
+    ('a57c0000-0000-0000-0000-000000005145', 'a57a0000-0000-0000-0000-000000000514',
+     'Flake must not reappear across temperature range', 'plan', 'waived',
+     'a5780000-0000-0000-0000-000000000482', 5, 'a5700000-0000-0000-0000-00000000000a');
+
+-- --- a criterion cannot be verified with no evidence -------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_criteria set status = 'verified'
+     where id = 'a57c0000-0000-0000-0000-000000005141'$$,
+  'a criterion cannot be marked verified before any evidence is cited', 'pr_criteria_verified_has_evidence');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source, status)
+    values ('a57a0000-0000-0000-0000-000000000514', 'Boots', 'manual', 'verified')$$,
+  'nor inserted verified', 'pr_criteria_verified_has_evidence');
+
+-- --- the evidence, one row per cited thing — every kind ---------------------------------------
+-- Evidence ids: …0514<row><n>, so id order is the line's order.
+insert into ouroboros.pr_criteria_evidence
+    (id, criterion_id, kind, test_case_id, hil_measurement_id, test_artifact_id,
+     revision_id, hunk_path, hunk_line_start, hunk_line_end, display_text)
+  values
+    ('a57d0000-0000-0000-0000-000000051411', 'a57c0000-0000-0000-0000-000000005141', 'test_case',
+     'a5750000-0000-0000-0000-000000000041', null, null, null, null, null, null,
+     'test_frame_order_under_load (10⁶ frames, 0 reordered)'),
+    ('a57d0000-0000-0000-0000-000000051412', 'a57c0000-0000-0000-0000-000000005141', 'hunk',
+     null, null, null, 'a57b0000-0000-0000-0000-000000000002', 'drivers/can/telemetry_buf.c', 41, 66,
+     'hunk telemetry_buf.c:41–66'),
+    ('a57d0000-0000-0000-0000-000000051421', 'a57c0000-0000-0000-0000-000000005142', 'hil_measurement',
+     null, 'a5760000-0000-0000-0000-000000000042', null, null, null, null, null,
+     'HIL overshoot 1.7% vs 2.0% limit (was 2.4% in rev 1)'),
+    ('a57d0000-0000-0000-0000-000000051431', 'a57c0000-0000-0000-0000-000000005143', 'hunk',
+     null, null, null, 'a57b0000-0000-0000-0000-000000000002', 'tests/telemetry/test_frame_order.c', 1, 21,
+     'test asserts on seq gaps, not sleep-based'),
+    ('a57d0000-0000-0000-0000-000000051441', 'a57c0000-0000-0000-0000-000000005144', 'analysis_note',
+     null, null, null, 'a57b0000-0000-0000-0000-000000000002', null, null, null,
+     'static K_MSGQ_DEFINE'),
+    ('a57d0000-0000-0000-0000-000000051442', 'a57c0000-0000-0000-0000-000000005144', 'build_artifact',
+     null, null, 'a5770000-0000-0000-0000-000000000004', null, null, null, null,
+     'stack analysis clean');
+
+update ouroboros.pr_criteria set status = 'verified'
+ where id in ('a57c0000-0000-0000-0000-000000005141', 'a57c0000-0000-0000-0000-000000005142',
+              'a57c0000-0000-0000-0000-000000005143', 'a57c0000-0000-0000-0000-000000005144');
+
+-- --- the matrix, reproduced from rows ------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s|%s|%s', c.claim,
+                           coalesce((select string_agg(e.display_text, ' · ' order by e.id)
+                                       from ouroboros.pr_criteria_evidence e
+                                      where e.criterion_id = c.id),
+                                    w.reason),
+                           c.status)
+                    order by c.sort_order)
+     from ouroboros.pr_criteria c
+     left join ouroboros.pr_waivers w on w.id = c.waiver_ref
+    where c.pr_id = 'a57a0000-0000-0000-0000-000000000514')
+  = array['Telemetry frames must arrive in ISR order under load|test_frame_order_under_load (10⁶ frames, 0 reordered) · hunk telemetry_buf.c:41–66|verified',
+          'No regression in e-stop response envelope|HIL overshoot 1.7% vs 2.0% limit (was 2.4% in rev 1)|verified',
+          'Fix must not mask real ordering bugs in tests|test asserts on seq gaps, not sleep-based|verified',
+          'Zero heap allocation in ISR fast path|static K_MSGQ_DEFINE · stack analysis clean|verified',
+          'Flake must not reappear across temperature range|rig runs at 22°C only — thermal chamber not in bench|waived'],
+  'the matrix''s five rows, in order — the waived thermal row rendering its AS.4 waiver''s reason');
+
+select pg_temp.must_hold(
+  (select array_agg(distinct kind order by kind)
+          = array['analysis_note', 'build_artifact', 'hil_measurement', 'hunk', 'test_case']
+     from ouroboros.pr_criteria_evidence e
+     join ouroboros.pr_criteria c on c.id = e.criterion_id
+    where c.pr_id = 'a57a0000-0000-0000-0000-000000000514'),
+  'the fixture cites evidence of every kind');
+
+select pg_temp.must_hold(
+  (select m.value = 1.7 and m.limit_value = 2.0
+     from ouroboros.pr_criteria_evidence e
+     join ouroboros.hil_measurements m on m.id = e.hil_measurement_id
+    where e.id = 'a57d0000-0000-0000-0000-000000051421'),
+  'the e-stop row joins to the measurement it quotes');
+
+-- --- the vocabularies are closed ----------------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.pr_criteria', 'pr_criteria_source')
+    = array['extracted', 'manual', 'plan']
+  and pg_temp.vocabulary('ouroboros.pr_criteria', 'pr_criteria_status')
+    = array['unverified', 'verified', 'waived']
+  and pg_temp.vocabulary('ouroboros.pr_criteria_evidence', 'pr_criteria_evidence_kind')
+    = array['analysis_note', 'build_artifact', 'hil_measurement', 'hunk', 'test_case']
+  and pg_temp.vocabulary('ouroboros.pr_thread_entries', 'pr_thread_entries_author_kind')
+    = array['human', 'model', 'policy_bot']
+  and pg_temp.vocabulary('ouroboros.pr_thread_entries', 'pr_thread_entries_tag')
+    = array['policy', 'second opinion', 'self-review'],
+  'source, status, evidence kind, author_kind and tag are CHECK-constrained vocabularies');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source)
+    values ('a57a0000-0000-0000-0000-000000000514', 'Boots', 'ai')$$,
+  'a claim''s source is plan, manual or extracted', 'pr_criteria_source');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source)
+    values ('a57a0000-0000-0000-0000-000000000514', 'Boots', 'extracted')$$,
+  'and extracted is reserved until AZ.2', 'pr_criteria_source_extracted_reserved');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source, status)
+    values ('a57a0000-0000-0000-0000-000000000514', 'Boots', 'manual', 'done')$$,
+  'a status is unverified, verified or waived', 'pr_criteria_status');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source)
+    values ('a57a0000-0000-0000-0000-000000000514', '  ', 'manual')$$,
+  'a claim says something', 'pr_criteria_claim_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source, sort_order)
+    values ('a57a0000-0000-0000-0000-000000000514', 'Boots', 'manual', -1)$$,
+  'and has a non-negative position', 'pr_criteria_sort_order_non_negative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_case_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'ci_check',
+            'a5750000-0000-0000-0000-000000000041', 'x')$$,
+  'an evidence kind is one of the five', 'pr_criteria_evidence_kind');
+
+-- --- waivers ----------------------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source, status)
+    values ('a57a0000-0000-0000-0000-000000000514', 'Boots', 'manual', 'waived')$$,
+  'a waived criterion names its waiver', 'pr_criteria_waiver_iff_waived');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source, waiver_ref)
+    values ('a57a0000-0000-0000-0000-000000000514', 'Boots', 'manual',
+            'a5780000-0000-0000-0000-000000000482')$$,
+  'and only a waived one does', 'pr_criteria_waiver_iff_waived');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source, status, waiver_ref)
+    values ('a57a0000-0000-0000-0000-000000000514', 'Boots', 'manual', 'waived',
+            'a5780000-0000-0000-0000-000000000483')$$,
+  'the waiver is one of the PR''s own run — not #483''s', 'pr_criteria_waiver_of_pr_run');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source, status, waiver_ref)
+    values ('a57a0000-0000-0000-0000-000000000077', 'Boots', 'manual', 'waived',
+            'a5780000-0000-0000-0000-000000000482')$$,
+  'and a PR no loop opened has no run to have waived anything', 'pr_criteria_waiver_of_pr_run');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source, status, waiver_ref)
+    values ('a57a0000-0000-0000-0000-000000000514', 'Boots', 'manual', 'waived',
+            'a5700000-0000-0000-0000-0000000000ff')$$,
+  'a waiver that does not exist cannot be named', 'pr_criteria_waiver_ref_fkey');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.pr_waivers where id = 'a5780000-0000-0000-0000-000000000482'$$,
+  'and a waived criterion pins its waiver in place', 'pr_criteria_waiver_ref_fkey');
+
+-- --- a dangling reference is rejected at write, for every kind --------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_case_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'test_case',
+            'a5700000-0000-0000-0000-0000000000ff', 'test_renamed_away')$$,
+  'a test_case reference names a real case', 'pr_criteria_evidence_test_case_id_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, hil_measurement_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005142', 'hil_measurement',
+            'a5700000-0000-0000-0000-0000000000ff', 'overshoot 0%')$$,
+  'a hil_measurement reference names a real measurement', 'pr_criteria_evidence_hil_measurement_id_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_artifact_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005144', 'build_artifact',
+            'a5700000-0000-0000-0000-0000000000ff', 'stack analysis clean')$$,
+  'a build_artifact reference names a real artifact', 'pr_criteria_evidence_test_artifact_id_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence
+      (criterion_id, kind, revision_id, hunk_path, hunk_line_start, hunk_line_end, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'hunk', 'a5700000-0000-0000-0000-0000000000ff',
+            'drivers/can/telemetry_buf.c', 41, 66, 'hunk telemetry_buf.c:41–66')$$,
+  'a hunk names a real revision', 'pr_criteria_evidence_revision_id_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, revision_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005144', 'analysis_note',
+            'a5700000-0000-0000-0000-0000000000ff', 'static K_MSGQ_DEFINE')$$,
+  'and so does an analysis note', 'pr_criteria_evidence_revision_id_fkey');
+
+-- --- a hunk is validated against the revision's files snapshot, not accepted as free text ----------
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence
+      (criterion_id, kind, revision_id, hunk_path, hunk_line_start, hunk_line_end, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'hunk', 'a57b0000-0000-0000-0000-000000000002',
+            'drivers/can/telemetry_fifo.c', 41, 66, 'hunk telemetry_fifo.c:41–66')$$,
+  'a hunk''s path is a file the revision changed', 'pr_criteria_evidence_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence
+      (criterion_id, kind, revision_id, hunk_path, hunk_line_start, hunk_line_end, display_text)
+    values ('a57c0000-0000-0000-0000-000000005143', 'hunk', 'a57b0000-0000-0000-0000-000000000001',
+            'tests/telemetry/test_frame_order.c', 1, 21, 'test asserts on seq gaps')$$,
+  'in that revision — Revision 1 never touched the test file', 'pr_criteria_evidence_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence
+      (criterion_id, kind, revision_id, hunk_path, hunk_line_start, hunk_line_end, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'hunk', 'a57b0000-0000-0000-0000-000000000077',
+            'docs/README.md', 1, 4, 'hunk README.md:1–4')$$,
+  'and a revision of the criterion''s own PR', 'pr_criteria_evidence_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, revision_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005144', 'analysis_note',
+            'a57b0000-0000-0000-0000-000000000077', 'static K_MSGQ_DEFINE')$$,
+  'as is an analysis note''s', 'pr_criteria_evidence_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence
+      (criterion_id, kind, revision_id, hunk_path, hunk_line_start, hunk_line_end, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'hunk', 'a57b0000-0000-0000-0000-000000000002',
+            'drivers/can/telemetry_buf.c', 0, 66, 'hunk telemetry_buf.c:0–66')$$,
+  'a hunk''s range starts at line 1', 'pr_criteria_evidence_hunk_range');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence
+      (criterion_id, kind, revision_id, hunk_path, hunk_line_start, hunk_line_end, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'hunk', 'a57b0000-0000-0000-0000-000000000002',
+            'drivers/can/telemetry_buf.c', 66, 41, 'hunk telemetry_buf.c:66–41')$$,
+  'and ends no earlier than it starts', 'pr_criteria_evidence_hunk_range');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, revision_id, hunk_path, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'hunk', 'a57b0000-0000-0000-0000-000000000002',
+            'drivers/can/telemetry_buf.c', 'hunk telemetry_buf.c')$$,
+  'a hunk carries its range', 'pr_criteria_evidence_kind_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'hunk', 'telemetry_buf.c:41–66')$$,
+  'free text is not a hunk', 'pr_criteria_evidence_kind_shape');
+
+-- --- evidence is of the PR's own workspace -------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_case_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'test_case',
+            'a5750000-0000-0000-0000-000000000900', 'someone else''s case')$$,
+  'a test case of another workspace is refused', 'pr_criteria_evidence_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, hil_measurement_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005142', 'hil_measurement',
+            'a5760000-0000-0000-0000-000000000900', 'someone else''s overshoot')$$,
+  'as is a measurement', 'pr_criteria_evidence_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_artifact_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005144', 'build_artifact',
+            'a5770000-0000-0000-0000-000000000900', 'someone else''s stack analysis')$$,
+  'and an artifact', 'pr_criteria_evidence_resolves');
+
+-- --- evidence carries exactly its kind's references ---------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_case_id, revision_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'test_case', 'a5750000-0000-0000-0000-000000000041',
+            'a57b0000-0000-0000-0000-000000000002', 'test_frame_order_under_load')$$,
+  'a test_case row carries no revision', 'pr_criteria_evidence_kind_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_case_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005142', 'hil_measurement',
+            'a5750000-0000-0000-0000-000000000042', 'overshoot 1.7%')$$,
+  'a hil_measurement row names a measurement, not a case', 'pr_criteria_evidence_kind_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, display_text)
+    values ('a57c0000-0000-0000-0000-000000005144', 'build_artifact', 'stack analysis clean')$$,
+  'a build_artifact row names its artifact', 'pr_criteria_evidence_kind_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, display_text)
+    values ('a57c0000-0000-0000-0000-000000005144', 'analysis_note', 'static K_MSGQ_DEFINE')$$,
+  'an analysis note names the revision it read', 'pr_criteria_evidence_kind_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_case_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'test_case',
+            'a5750000-0000-0000-0000-000000000041', ' ')$$,
+  'evidence has a line to render', 'pr_criteria_evidence_display_text_bounded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_case_id, display_text)
+    values ('a57c0000-0000-0000-0000-000000005141', 'test_case',
+            'a5750000-0000-0000-0000-000000000041', repeat('x', 513))$$,
+  'and one bounded line', 'pr_criteria_evidence_display_text_bounded');
+
+-- --- evidence is cited, never rewritten; a criterion stays on its PR ------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_criteria_evidence set display_text = 'looks fine'
+     where id = 'a57d0000-0000-0000-0000-000000051411'$$,
+  'evidence cannot be rewritten', 'pr_criteria_evidence_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_criteria set pr_id = 'a57a0000-0000-0000-0000-000000000077'
+     where id = 'a57c0000-0000-0000-0000-000000005141'$$,
+  'a criterion cannot be moved to another PR', 'pr_criteria_pr_frozen');
+
+-- --- when the evidence goes, verified goes with the last of it -----------------------------------
+delete from ouroboros.pr_criteria_evidence where id = 'a57d0000-0000-0000-0000-000000051412';
+
+select pg_temp.must_hold(
+  (select status = 'verified' from ouroboros.pr_criteria where id = 'a57c0000-0000-0000-0000-000000005141'),
+  'uncited one of two, a criterion stays verified on the rest');
+
+-- A re-parse replaces the HIL case: the measurement goes with it, and so does its citation.
+delete from ouroboros.test_cases where id = 'a5750000-0000-0000-0000-000000000042';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_criteria_evidence where id = 'a57d0000-0000-0000-0000-000000051421')
+  and (select status = 'unverified' from ouroboros.pr_criteria where id = 'a57c0000-0000-0000-0000-000000005142'),
+  'evidence leaves with the row it cited, and a criterion left with none is no longer verified');
+
+-- --- the review thread ----------------------------------------------------------------------------
+insert into ouroboros.pr_thread_entries
+    (id, pr_id, revision_id, author_kind, author_name, tag, body, blocking, resolved, simulated, created_at)
+  values
+    ('a57e0000-0000-0000-0000-000000000001', 'a57a0000-0000-0000-0000-000000000514',
+     'a57b0000-0000-0000-0000-000000000002', 'model', 'claude-fable-5', 'self-review',
+     'ISR path is allocation-free; verified priority ceiling unchanged. Sequence counter wraps at 65535 with gap-tolerant comparison in the drain loop.',
+     false, true, true, now() - interval '10 minutes'),
+    ('a57e0000-0000-0000-0000-000000000002', 'a57a0000-0000-0000-0000-000000000514',
+     'a57b0000-0000-0000-0000-000000000001', 'model', 'cursor/composer-2', 'second opinion',
+     'PID velocity sample now lags by one telemetry period — measurable overshoot risk on hard e-stop.',
+     true, false, true, now() - interval '30 minutes');
+
+select pg_temp.must_hold(
+  (select (entry_count, open_count) = (2, 1)
+     from ouroboros.pr_thread_summary('a57a0000-0000-0000-0000-000000000514')),
+  'the second opinion on Revision 1 is blocking and open');
+
+update ouroboros.pr_thread_entries
+   set resolved = true,
+       resolution_body = 'Addressed in attempt 4 — sampling decoupled from telemetry drain.'
+ where id = 'a57e0000-0000-0000-0000-000000000002';
+
+insert into ouroboros.pr_thread_entries
+    (id, pr_id, author_kind, author_name, tag, body, created_at)
+  values
+    ('a57e0000-0000-0000-0000-000000000003', 'a57a0000-0000-0000-0000-000000000514',
+     'policy_bot', 'ouroboros policy bot', 'policy',
+     'Auto-merge eligible: standard-fix policy — no human review required for effort ≤ M with all gates green.',
+     now() - interval '5 minutes');
+
+select pg_temp.must_hold(
+  (select (entry_count, open_count) = (3, 0)
+     from ouroboros.pr_thread_summary('a57a0000-0000-0000-0000-000000000514')),
+  '3 entries · 0 open — derived from blocking and not resolved');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s|%s|%s|%s', t.author_name,
+                           t.tag || coalesce(' · rev ' || v.revision_seq, ''),
+                           case when t.blocking and t.resolved then 'was blocking'
+                                when t.blocking then 'blocking' else '' end,
+                           coalesce(t.resolution_body, ''))
+                    order by t.author_name)
+     from ouroboros.pr_thread_entries t
+     left join ouroboros.pr_revisions v on v.id = t.revision_id
+    where t.pr_id = 'a57a0000-0000-0000-0000-000000000514' and t.author_kind <> 'policy_bot')
+  = array['claude-fable-5|self-review · rev 2||',
+          'cursor/composer-2|second opinion · rev 1|was blocking|Addressed in attempt 4 — sampling decoupled from telemetry drain.'],
+  'the was-blocking → resolved arc is representable with its resolving reply');
+
+select pg_temp.must_hold(
+  (select (author_kind, tag, blocking, resolved, simulated) = ('policy_bot', 'policy', false, false, false)
+     from ouroboros.pr_thread_entries where id = 'a57e0000-0000-0000-0000-000000000003'),
+  'and the policy bot''s entry is neither blocking nor open');
+
+select pg_temp.must_hold(
+  (select (entry_count, open_count) = (0, 0)
+     from ouroboros.pr_thread_summary('a5700000-0000-0000-0000-0000000000ff')),
+  'the summary is one row of zeros for a PR with no thread');
+
+-- --- provenance: no unwatermarked model entry ------------------------------------------------------
+select pg_temp.must_hold(
+  (select bool_and(simulated) from ouroboros.pr_thread_entries where author_kind = 'model'),
+  'every model-authored entry carries the simulated watermark');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_thread_entries (pr_id, author_kind, author_name, tag, body)
+    values ('a57a0000-0000-0000-0000-000000000514', 'model', 'cursor/composer-2', 'second opinion',
+            'An objection nobody raised')$$,
+  'a model entry cannot be seeded without the simulated watermark until AZ.1', 'pr_thread_entries_model_simulated');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_thread_entries set simulated = false
+     where id = 'a57e0000-0000-0000-0000-000000000001'$$,
+  'nor have it taken off', 'pr_thread_entries_lifecycle');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_thread_entries (pr_id, author_kind, author_name, tag, body, simulated)
+    values ('a57a0000-0000-0000-0000-000000000514', 'bot', 'x', 'policy', 'y', true)$$,
+  'an author is a model, the policy bot or a human', 'pr_thread_entries_author_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_thread_entries (pr_id, author_kind, author_name, tag, body)
+    values ('a57a0000-0000-0000-0000-000000000514', 'human', 'Ken S', 'nit', 'y')$$,
+  'a tag is self-review, second opinion or policy', 'pr_thread_entries_tag');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_thread_entries (pr_id, author_kind, author_id, author_name, tag, body, simulated)
+    values ('a57a0000-0000-0000-0000-000000000514', 'model', 'a5700000-0000-0000-0000-00000000000a',
+            'Ken S', 'self-review', 'y', true)$$,
+  'only a human entry names an Ouroboros user', 'pr_thread_entries_author_id_human');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_thread_entries (pr_id, author_kind, author_name, tag, body)
+    values ('a57a0000-0000-0000-0000-000000000514', 'human', ' ', 'second opinion', 'y')$$,
+  'an entry names its author', 'pr_thread_entries_author_name_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_thread_entries (pr_id, author_kind, author_name, tag, body)
+    values ('a57a0000-0000-0000-0000-000000000514', 'human', 'Ken S', 'second opinion', '')$$,
+  'and says something', 'pr_thread_entries_body_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_thread_entries (pr_id, author_kind, author_name, tag, body, resolution_body)
+    values ('a57a0000-0000-0000-0000-000000000514', 'human', 'Ken S', 'second opinion', 'y', 'fixed')$$,
+  'a resolving reply is only on a resolved entry', 'pr_thread_entries_resolution_when_resolved');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_thread_entries (pr_id, revision_id, author_kind, author_name, tag, body)
+    values ('a57a0000-0000-0000-0000-000000000514', 'a57b0000-0000-0000-0000-000000000077',
+            'human', 'Ken S', 'second opinion', 'y')$$,
+  'an entry''s revision is one of its own PR', 'pr_thread_entries_revision_of_pr');
+
+-- A human entry, by an Ouroboros user.
+insert into ouroboros.pr_thread_entries (id, pr_id, author_kind, author_id, author_name, tag, body, blocking)
+  values ('a57e0000-0000-0000-0000-000000000004', 'a57a0000-0000-0000-0000-000000000077', 'human',
+          'a5700000-0000-0000-0000-00000000000a', 'Ken S', 'second opinion', 'Link the style guide.', true);
+
+-- --- the lifecycle is one-way ---------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_thread_entries set blocking = false
+     where id = 'a57e0000-0000-0000-0000-000000000002'$$,
+  '"was blocking" cannot be erased by clearing the flag', 'pr_thread_entries_lifecycle');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_thread_entries set resolved = false, resolution_body = null
+     where id = 'a57e0000-0000-0000-0000-000000000002'$$,
+  'a resolution is not taken back', 'pr_thread_entries_lifecycle');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_thread_entries set resolution_body = 'Never mind.'
+     where id = 'a57e0000-0000-0000-0000-000000000002'$$,
+  'and its resolving reply is fixed', 'pr_thread_entries_lifecycle');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_thread_entries set body = 'Looks fine.'
+     where id = 'a57e0000-0000-0000-0000-000000000002'$$,
+  'what was said stays said', 'pr_thread_entries_lifecycle');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_thread_entries set author_kind = 'human', simulated = false
+     where id = 'a57e0000-0000-0000-0000-000000000002'$$,
+  'and so does who said it', 'pr_thread_entries_lifecycle');
+
+update ouroboros.pr_thread_entries set blocking = true
+ where id = 'a57e0000-0000-0000-0000-000000000003';
+
+select pg_temp.must_hold(
+  (select (entry_count, open_count) = (3, 1)
+     from ouroboros.pr_thread_summary('a57a0000-0000-0000-0000-000000000514')),
+  'an entry may be raised to blocking later, and is then open');
+
+-- --- grants -----------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.pr_criteria', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_criteria', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_criteria', 'update')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_criteria', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_criteria_evidence', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_criteria_evidence', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_criteria_evidence', 'delete')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pr_criteria_evidence', 'update')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_thread_entries', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_thread_entries', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_thread_entries', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pr_thread_entries', 'delete')
+   and has_function_privilege('ouroboros_app', 'ouroboros.pr_thread_summary(uuid)', 'execute'),
+  'criteria are CRUD, evidence is cited and uncited but never rewritten, thread entries are appended and resolved but never deleted');
+
+-- --- lifecycles ---------------------------------------------------------------------------------------
+delete from ouroboros."user" where "id" = 'a5700000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select author_id is null and author_name = 'Ken S'
+     from ouroboros.pr_thread_entries where id = 'a57e0000-0000-0000-0000-000000000004')
+  and (select count(*) = 0 from ouroboros.pr_criteria
+        where pr_id = 'a57a0000-0000-0000-0000-000000000514' and created_by is not null),
+  'removing a person releases their authorship and keeps what they wrote');
+
+delete from ouroboros.pr_revisions where id = 'a57b0000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select revision_id is null and blocking and resolved
+     from ouroboros.pr_thread_entries where id = 'a57e0000-0000-0000-0000-000000000002'),
+  'a revision''s removal releases the entries about it, and the arc survives');
+
+delete from ouroboros.pr_revisions where id = 'a57b0000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_criteria_evidence
+    where criterion_id in ('a57c0000-0000-0000-0000-000000005143', 'a57c0000-0000-0000-0000-000000005144')
+      and kind in ('hunk', 'analysis_note'))
+  and (select array_agg(status::text order by sort_order)
+              = array['verified', 'unverified', 'unverified', 'verified', 'waived']
+         from ouroboros.pr_criteria where pr_id = 'a57a0000-0000-0000-0000-000000000514'),
+  'a revision takes its hunks and notes with it, and only the criteria left with no evidence lose verified');
+
+delete from ouroboros.pull_requests where id = 'a57a0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_criteria where pr_id = 'a57a0000-0000-0000-0000-000000000514')
+  and (select count(*) = 0 from ouroboros.pr_criteria_evidence where id::text like 'a57d0000-%')
+  and (select count(*) = 0 from ouroboros.pr_thread_entries where pr_id = 'a57a0000-0000-0000-0000-000000000514'),
+  'a PR takes its criteria, their evidence and its thread with it');
+
+-- --- teardown ------------------------------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v057', 'org-v057b');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_criteria where id::text like 'a57c0000-%')
+  and (select count(*) = 0 from ouroboros.pr_thread_entries where id::text like 'a57e0000-%')
+  and (select count(*) = 0 from ouroboros.pull_requests where organization_id like 'org-v057%'),
+  'and the V057 fixture leaves nothing behind');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
