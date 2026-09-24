@@ -795,6 +795,22 @@
 > and `state_changed_at` moves only on an actual change. `quarantined` is storable now and does
 > nothing yet. The migration header documents it as a **soft signal**: reported distinctly,
 > never hidden, never blocking. `flake_scorer_runs` records each nightly scorer pass.
+>
+> `V055` ([#327](https://github.com/NobuData/ouroboros/issues/327)) adds the rows behind mockup
+> 11's **Mark & Route** and **Artifacts** cards (decisions **T7** and **T8**, option **3-A**).
+> `failure_classifications` records one decision about one failing case occurrence: the
+> `class`, the correction `note`, the `actor` (`human`, `heuristic` or `model`), the author and
+> `routed`, a receipt of what was dispatched. A heuristic must name its `rule_id`, and only a
+> model may carry a `confidence`. The receipt must name a real steer or re-run job of the case's
+> own run, and it is written once. Re-classifying supersedes the current decision through
+> `superseded_by` and keeps the old one, and nothing else about a decision can change.
+> `run_pr_intents` stores the two PR toggles and `pr_waivers` stores waivers, each with an
+> author, a required reason and the waived `case_key`s. Both are **intents, not gates**: nothing
+> enforces them until mockup 12's PR plane (#358, #359, #360) consumes them. `test_artifacts`
+> is the artifact registry. `storage_ref` is `{driver, key}`, so moving from the local volume
+> to S3 is a row update. `retained_until` drives the retention sweep, `expired_at` is a
+> tombstone that is kept rather than deleted, and a truncated upload carries its
+> `truncation_note`.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -2008,6 +2024,7 @@ ouroboros-db/
 │   ├── V052__pull_requests.sql         # pull_requests (host-mirrored, state graph) and pr_revisions (one per push, attempt link by sha) — #352
 │   ├── V053__hil_measurements.sql      # hil_measurements (value vs limit, verdict held to it, composed comparative) and test_suites.results_format — #325
 │   ├── V054__case_history_flake_scores.sql # test_case_history (occurrences by case_key), versioned flake score formulas, flake_scores (healthy/watching/quarantined) and scorer runs — #326
+│   ├── V055__classifications_pr_intents_artifacts.sql # failure_classifications (actor honesty, receipts, supersession), run_pr_intents and pr_waivers (intents, not gates), test_artifacts (retention, tombstones) — #327
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2084,6 +2101,10 @@ outside this module alters it.
 | `flake_score_formulas` | `V054` | Every flake score formula, by `version`: `window_size`, `decay`, `watch_at`, `clear_below`, `min_observations` and a description | Version 1 ships with the migration (20, 0.9, 0.25, 0.10, 3); frozen once written (`flake_score_formulas_frozen`), so a re-tuning is a new version; `0 < decay <= 1`, `0 <= clear_below <= watch_at <= 1`; read-only to `ouroboros_app` |
 | `flake_scores` | `V054` | The current flake score and state of each case per workspace: `score`, `window_runs`, `formula_version`, `state`, `last_scored_at` and `state_changed_at` | `(organization_id, case_key)` unique; `score` is in [0, 1]; the case must have an occurrence in the workspace, in `github_repo_id` (`flake_scores_has_history`); `state` is `healthy\|watching\|quarantined`, never inserted as `quarantined`, and moves only `healthy ↔ watching ↔ quarantined` (`flake_scores_state_transition`); `state_changed_at` is set on an actual change and refused otherwise; `quarantined` is a soft signal (reported distinctly, never blocking), not consumed until AV.3 and mockup 12 |
 | `flake_scorer_runs` | `V054` | One row per scorer pass per workspace: `formula_version`, `status`, `started_at`, `finished_at`, a generated `duration_ms`, `cases_scored`, `state_changes` and `error` | `status` is `running\|complete\|error`, and only a running pass is unfinished; an `error` pass carries its reason; `state_changes <= cases_scored`; indexed for *the last run* per workspace |
+| `failure_classifications` | `V055` | One Mark & Route decision about one failing case occurrence ([#327](https://github.com/NobuData/ouroboros/issues/327), AS.4, decision **T7**): `class`, correction `note`, `actor`, `rule_id` or `confidence`, the `routed` dispatch receipt, `created_by`, `created_at` and `superseded_by` | Composite reference onto `test_cases (id, organization_id)` with cascade, and the case must be `failed`, `error` or `flaky`; `class` is `product_bug\|test_update\|flake_retry\|infra_rig` and `actor` is `human\|heuristic\|model`; `rule_id` is required exactly for `heuristic`; `confidence` (0–100) is allowed only for `model`; a `human` decision names `created_by` at insert (set null later if the person is removed); `routed` is null or an object with at least one of `control_id` (a `run_controls` row of the case's run), `rerun_job_id` (a `build_jobs` row of the workspace and of the case's run) and `target_attempt` (≥ 1), checked by the `security definer` `failure_classifications_routed_valid()` and written once; a new row supersedes the case's current one (`failure_classifications_supersede`), so each case has one current decision and keeps the earlier ones; only `routed`, `superseded_by` and a nulled `created_by` ever change (`failure_classifications_frozen`); `ouroboros_app` inserts, updates only `routed` and `superseded_by`, and never deletes |
+| `run_pr_intents` | `V055` | The PR toggles of one run (decision **T8**): `block_until_green`, `auto_rerun_physical`, `updated_by` and `updated_at` | Keyed by `run_id`, a composite reference onto `runs` with cascade; **intents, not gates**: nothing in the schema reads them, and the activation point is documented on the table (the gate engine #358 and the merge re-check #360) |
+| `pr_waivers` | `V055` | *Waive & annotate PR*: `author`, `reason`, the waived `case_keys`, `annotation_state` and `created_at` | `reason` is not null and not blank; `author` is required at insert; every `case_key` is a case of one of the run's attempts, and an empty list waives a criterion rather than cases; `annotation_state` is only `pending_pr_plane` until #359 posts annotations; append-only to `ouroboros_app` |
+| `test_artifacts` | `V055` | One file an attempt uploaded (option **3-A**): `name`, `kind`, `size_bytes`, `storage_ref`, `checksum`, `retained_until`, `expired_at`, `truncated` and `truncation_note` | Composite reference onto `test_runs` with cascade; `(test_run_id, name)` unique; `kind` is `junit\|hil\|coverage\|log\|capture\|other`; `storage_ref` is `{"driver", "key"}`, with the driver as data (`local`, `s3`, …); `checksum` is `<algorithm>:<hex>`; `truncation_note` is present exactly when `truncated`; `test_artifacts_retention_idx` serves the sweep (`expired_at is null`, by `retained_until`); only `storage_ref`, `retained_until` and `expired_at` change, and nothing changes after expiry (`test_artifacts_lifecycle`); `ouroboros_app` cannot delete, so expiry is a tombstone |
 | `test_cases` | `V051` | One test case's result, retries included — `case_key` (decision **T2**), `status`, `retries`, the ordered `retry_outcomes`, `duration_ms`, the `failure` payload (`message`, `log_excerpt`, `path`) and a parser-specific `meta` | `case_key` is `ouroboros.test_case_key(repo, suite, classname, name)`, derived when written null and refused when it disagrees (`test_cases_case_key_derived`), unique per suite and indexed with `organization_id` for case-history joins; `status` is `passed\|failed\|flaky\|skipped\|error`; `retry_outcomes` has `retries + 1` entries and agrees with `status` (`ouroboros.test_case_outcomes_valid()`); `failure`'s three keys are text when present |
 | `test_suite_counts_computed`, `test_run_counts_computed` | `V051` | Each suite's and each attempt's counts **computed** from its cases — the one definition of counting | Views, so they enforce nothing; `ouroboros.test_run_recount(test_run_id)` writes the stored figures from them, and the parser calls it on every parse |
 | `test_results_count_drift` | `V051` | Every attempt or suite whose stored `[total, passed, failed, flaky, skipped]` differ from the recompute | A view; **empty is the invariant**, and `tests/constraints.sql` asserts it for every attempt of its fixture |
@@ -2450,6 +2471,7 @@ test runs, suites & cases schema [#324](https://github.com/NobuData/ouroboros/is
 pull requests & revisions schema [#352](https://github.com/NobuData/ouroboros/issues/352) *(done)* ·
 HIL measurements schema [#325](https://github.com/NobuData/ouroboros/issues/325) *(done)* ·
 case history, flake scores & quarantine [#326](https://github.com/NobuData/ouroboros/issues/326) *(done)* ·
+classifications, PR intents & artifacts meta [#327](https://github.com/NobuData/ouroboros/issues/327) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
