@@ -17079,6 +17079,510 @@ select pg_temp.must_hold(
   'and the V051 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- V052 — pull requests and revisions, the host-mirrored PR and its pushes (#352, AW.1)
+-- ===========================================================================
+--
+-- Mockup 12's `#514` story as rows: a GitHub-mirrored PR opened by loop #482, closing a
+-- Jira-sourced canonical ticket, with Revision 1 at 3f9c2ae (blocked) and Revision 2 at
+-- b7e41d0 (verifying) — each linked by commit sha to the implement attempt that produced it —
+-- and the three-file changed-files snapshot. Beside it, a sandbox PR no loop opened.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v052',  'PR Works',    'pr-works',    now()),
+  ('org-v052b', 'Other Works', 'other-works', now());
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('5a200000-0000-0000-0000-00000000000a', 'org-v052',  'github', 'GitHub · pr-works'),
+  ('5a200000-0000-0000-0000-00000000000b', 'org-v052',  'jira',   'Jira · HEL'),
+  ('5a200000-0000-0000-0000-00000000000c', 'org-v052b', 'github', 'GitHub · other'),
+  ('5a200000-0000-0000-0000-00000000000d', 'org-v052',  'gitlab', 'GitLab · pr-works');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('5a210000-0000-0000-0000-000000000142', 'org-v052', '5a200000-0000-0000-0000-00000000000b',
+     '10142', 'HEL-142', 'https://pr-works.atlassian.net/browse/HEL-142',
+     'Fix flaky CAN-bus telemetry test', 'open', now(), now()),
+    ('5a210000-0000-0000-0000-000000000482', 'org-v052', '5a200000-0000-0000-0000-00000000000a',
+     '482', '#482', 'https://github.com/pr-works/helios-firmware/issues/482',
+     'Fix flaky CAN-bus telemetry test', 'open', now(), now()),
+    ('5a210000-0000-0000-0000-000000000900', 'org-v052b', '5a200000-0000-0000-0000-00000000000c',
+     '900', '#900', 'https://github.com/other/fw/issues/900', 'Other', 'open', now(), now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('5a220000-0000-0000-0000-00000000000a', 'org-v052',  'pr-works', true),
+  ('5a220000-0000-0000-0000-00000000000b', 'org-v052b', 'other',    true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('5a230000-0000-0000-0000-00000000000a', '5a220000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('5a230000-0000-0000-0000-00000000000b', '5a220000-0000-0000-0000-00000000000b',
+   'fw', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at, branch_name)
+  values
+    ('5a240000-0000-0000-0000-000000000482', 'org-v052', '5a230000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'review', 'Review', 7, 8, now() - interval '1 hour', 'loop/482-canbus-flake'),
+    ('5a240000-0000-0000-0000-000000000483', 'org-v052', '5a230000-0000-0000-0000-00000000000a',
+     483, 'Another loop', 'standard-fix', 'claude-fable-5',
+     'coding', 'Implement', 4, 8, now() - interval '10 minutes', 'loop/483'),
+    ('5a240000-0000-0000-0000-000000000900', 'org-v052b', '5a230000-0000-0000-0000-00000000000b',
+     900, 'Other', 'standard-fix', 'claude-fable-5',
+     'coding', 'Implement', 4, 8, now() - interval '10 minutes', 'loop/900');
+
+-- Implement attempt 3 pushed 3f9c2ae (Revision 1); the correction round, attempt 4, pushed
+-- b7e41d0 (Revision 2).
+insert into ouroboros.run_stages
+    (id, run_id, stage_key, stage_label, "position", attempt, status, started_at, finished_at)
+  values
+    ('5a250000-0000-0000-0000-000000000001', '5a240000-0000-0000-0000-000000000482',
+     'implement', 'Implement', 4, 1, 'failed',
+     now() - interval '58 minutes', now() - interval '55 minutes'),
+    ('5a250000-0000-0000-0000-000000000002', '5a240000-0000-0000-0000-000000000482',
+     'implement', 'Implement', 4, 2, 'failed',
+     now() - interval '54 minutes', now() - interval '51 minutes'),
+    ('5a250000-0000-0000-0000-000000000003', '5a240000-0000-0000-0000-000000000482',
+     'implement', 'Implement', 4, 3, 'failed',
+     now() - interval '50 minutes', now() - interval '40 minutes'),
+    ('5a250000-0000-0000-0000-000000000004', '5a240000-0000-0000-0000-000000000482',
+     'implement', 'Implement', 4, 4, 'succeeded',
+     now() - interval '35 minutes', now() - interval '25 minutes'),
+    ('5a250000-0000-0000-0000-000000000483', '5a240000-0000-0000-0000-000000000483',
+     'implement', 'Implement', 4, 1, 'active', now() - interval '5 minutes', null);
+
+insert into ouroboros.run_commits (run_id, sha, message, seq, committed_at)
+  values ('5a240000-0000-0000-0000-000000000482', '3f9c2ae',
+          'can: assign frame seq in ISR before enqueue', 1, now() - interval '41 minutes'),
+         ('5a240000-0000-0000-0000-000000000482', 'b7e41d0',
+          'can: decouple PID sampling from telemetry drain', 2, now() - interval '26 minutes');
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, additions, deletions, changed_files, run_id, ticket_id)
+  values
+    ('5a260000-0000-0000-0000-000000000514', 'org-v052', '5a200000-0000-0000-0000-00000000000a',
+     514, 'https://github.com/pr-works/helios-firmware/pull/514',
+     'can: fix flaky telemetry frame order under ISR load',
+     'loop/482-canbus-flake', 'main', 68, 15, 3,
+     '5a240000-0000-0000-0000-000000000482', '5a210000-0000-0000-0000-000000000142'),
+    -- A sandbox PR nobody's loop opened, closing a GitHub-sourced ticket.
+    ('5a260000-0000-0000-0000-000000000077', 'org-v052', '5a200000-0000-0000-0000-00000000000a',
+     77, 'https://github.com/pr-works/helios-firmware/pull/77',
+     'docs: sandbox change', 'sandbox/docs', 'main', 4, 1, 1,
+     null, '5a210000-0000-0000-0000-000000000482');
+
+-- --- the two-revision #514 story -----------------------------------------------------------
+update ouroboros.pull_requests set state = 'verifying'
+ where id = '5a260000-0000-0000-0000-000000000514';
+
+insert into ouroboros.pr_revisions
+    (id, pr_id, revision_seq, head_sha, pushed_at, run_stage_id, files, diff_excerpt)
+  values ('5a270000-0000-0000-0000-000000000001', '5a260000-0000-0000-0000-000000000514',
+          1, '3f9c2ae', now() - interval '40 minutes', '5a250000-0000-0000-0000-000000000003',
+          '[{"path": "drivers/can/telemetry.c", "additions": 41, "deletions": 9},
+            {"path": "drivers/can/telemetry.h", "additions": 6, "deletions": 1}]',
+          '@@ -118,7 +118,9 @@ static void can_isr(...)');
+
+update ouroboros.pull_requests set state = 'blocked'
+ where id = '5a260000-0000-0000-0000-000000000514';
+
+insert into ouroboros.pr_revisions
+    (id, pr_id, revision_seq, head_sha, pushed_at, run_stage_id, files, diff_excerpt)
+  values ('5a270000-0000-0000-0000-000000000002', '5a260000-0000-0000-0000-000000000514',
+          2, 'b7e41d0', now() - interval '25 minutes', '5a250000-0000-0000-0000-000000000004',
+          '[{"path": "drivers/can/telemetry.c", "additions": 48, "deletions": 11},
+            {"path": "drivers/can/telemetry.h", "additions": 6, "deletions": 1},
+            {"path": "tests/integration/telemetry/test_frame_order.c", "additions": 14, "deletions": 3}]',
+          '@@ -118,7 +118,9 @@ static void can_isr(...)');
+
+update ouroboros.pull_requests set state = 'verifying'
+ where id = '5a260000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select state = 'verifying' and external_number = 514 and head_branch = 'loop/482-canbus-flake'
+          and base_branch = 'main' and additions = 68 and deletions = 15 and changed_files = 3
+     from ouroboros.pull_requests where id = '5a260000-0000-0000-0000-000000000514'),
+  'the page head: PR #514, loop/482-canbus-flake → main, +68 −15 · 3 files, verifying');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s', revision_seq, head_sha) order by revision_seq)
+          = array['1:3f9c2ae', '2:b7e41d0']
+     from ouroboros.pr_revisions where pr_id = '5a260000-0000-0000-0000-000000000514'),
+  'Revision 1 remains queryable after Revision 2 lands');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s %s/%s', f ->> 'path', f ->> 'additions', f ->> 'deletions')
+                    order by f ->> 'path')
+          = array['drivers/can/telemetry.c 48/11', 'drivers/can/telemetry.h 6/1',
+                  'tests/integration/telemetry/test_frame_order.c 14/3']
+     from ouroboros.pr_revisions, jsonb_array_elements(files) f
+    where id = '5a270000-0000-0000-0000-000000000002'),
+  'the changed-files card''s three rows, with their counts');
+
+select pg_temp.must_hold(
+  (select sum((f ->> 'additions')::int) = 68 and sum((f ->> 'deletions')::int) = 15
+     from ouroboros.pr_revisions, jsonb_array_elements(files) f
+    where id = '5a270000-0000-0000-0000-000000000002'),
+  'and they sum to the head''s +68 −15');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at)
+    values ('5a260000-0000-0000-0000-000000000514', 2, 'c0ffee1', now())$$,
+  'a PR has one Revision 2', 'pr_revisions_pr_seq_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'b7e41d0', now())$$,
+  'one head sha is one revision', 'pr_revisions_pr_sha_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at)
+    values ('5a260000-0000-0000-0000-000000000514', 0, 'c0ffee1', now())$$,
+  'revisions count from 1', 'pr_revisions_revision_seq_positive');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'HEAD', now())$$,
+  'a head sha is hex', 'pr_revisions_head_sha_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_revisions set head_sha = 'c0ffee1'
+     where id = '5a270000-0000-0000-0000-000000000001'$$,
+  'a push that happened cannot be rewritten', 'pr_revisions_history_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_revisions set revision_seq = 3
+     where id = '5a270000-0000-0000-0000-000000000001'$$,
+  'nor renumbered', 'pr_revisions_history_frozen');
+
+-- --- the files snapshot and the excerpt are bounded ---------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, files)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'c0ffee1', now(),
+            '[{"path": "a.c", "additions": "41", "deletions": 0}]')$$,
+  'a file count is a number', 'pr_revisions_files');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, files)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'c0ffee1', now(),
+            '[{"path": "a.c", "additions": -1, "deletions": 0}]')$$,
+  'and never negative', 'pr_revisions_files');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, files)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'c0ffee1', now(),
+            '[{"path": "a.c", "additions": 1.5, "deletions": 0}]')$$,
+  'and whole', 'pr_revisions_files');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, files)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'c0ffee1', now(),
+            '[{"path": "a.c", "additions": 1, "deletions": 0},
+              {"path": "a.c", "additions": 2, "deletions": 0}]')$$,
+  'one row per path', 'pr_revisions_files');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, files)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'c0ffee1', now(),
+            '[{"path": " ", "additions": 1, "deletions": 0}]')$$,
+  'every row names a path', 'pr_revisions_files');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, files)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'c0ffee1', now(), '{"a.c": 1}')$$,
+  'the snapshot is a list', 'pr_revisions_files');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, diff_excerpt)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'c0ffee1', now(), repeat('x', 16385))$$,
+  'the diff excerpt is a bounded sample', 'pr_revisions_diff_excerpt_bounded');
+
+-- --- the attempt link is a match by commit sha (V4) ---------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s#%s:%s', revision_seq, head_sha, stage_key, attempt,
+                           commit_message is not null)
+                    order by revision_seq)
+          = array['1:3f9c2ae:implement#3:t', '2:b7e41d0:implement#4:t']
+     from ouroboros.pr_revision_attempts
+    where pr_id = '5a260000-0000-0000-0000-000000000514'),
+  'Revision 1 → attempt 3 and Revision 2 → the correction round''s attempt 4, joined through the commit sha');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, run_stage_id)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'c0ffee1', now(),
+            '5a250000-0000-0000-0000-000000000004')$$,
+  'a revision cannot link an attempt whose run never reported its head sha',
+  'pr_revisions_attempt_by_sha');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, run_stage_id)
+    values ('5a260000-0000-0000-0000-000000000514', 3, 'c0ffee1', now(),
+            '5a250000-0000-0000-0000-000000000483')$$,
+  'nor an attempt of a different run', 'pr_revisions_attempt_by_sha');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, run_stage_id)
+    values ('5a260000-0000-0000-0000-000000000077', 1, '3f9c2ae', now(),
+            '5a250000-0000-0000-0000-000000000003')$$,
+  'nor can a PR no loop opened claim a loop''s attempt', 'pr_revisions_attempt_by_sha');
+
+-- --- a PR no loop opened is a full citizen ------------------------------------------------
+insert into ouroboros.pr_revisions (pr_id, revision_seq, head_sha, pushed_at, files)
+  values ('5a260000-0000-0000-0000-000000000077', 1, 'd0c5a11', now(),
+          '[{"path": "README.md", "additions": 4, "deletions": 1}]');
+
+update ouroboros.pull_requests set state = 'verifying'
+ where id = '5a260000-0000-0000-0000-000000000077';
+
+select pg_temp.must_hold(
+  (select p.run_id is null and p.state = 'verifying'
+          and a.run_commit_id is null and a.run_stage_id is null and a.revision_seq = 1
+     from ouroboros.pull_requests p
+     join ouroboros.pr_revision_attempts a on a.pr_id = p.id
+    where p.id = '5a260000-0000-0000-0000-000000000077'),
+  'a PR with no run holds revisions and moves through verification like any other');
+
+-- --- the ticket link is tracker-agnostic -----------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s', p.external_number, s.kind, t.external_key)
+                    order by p.external_number)
+          = array['77:github:#482', '514:jira:HEL-142']
+     from ouroboros.pull_requests p
+     join ouroboros.tickets t on t.id = p.ticket_id
+     join ouroboros.ticket_sources s on s.id = t.source_id
+    where p.organization_id = 'org-v052'),
+  'a Jira-sourced ticket links through ticket_id exactly as a GitHub one does');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set ticket_id = '5a210000-0000-0000-0000-000000000900'
+     where id = '5a260000-0000-0000-0000-000000000514'$$,
+  'a PR cannot close another workspace''s ticket', 'pull_requests_ticket_in_organization');
+
+-- --- the mirror's identity and its source ----------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.pull_requests
+      (organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+    values ('org-v052', '5a200000-0000-0000-0000-00000000000a', 514,
+            'https://github.com/pr-works/helios-firmware/pull/514', 'dup', 'x', 'main')$$,
+  'the same PR cannot be mirrored twice', 'pull_requests_source_number_key');
+
+insert into ouroboros.pull_requests
+    (organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+  values ('org-v052', '5a200000-0000-0000-0000-00000000000d', 514,
+          'https://gitlab.com/pr-works/helios-firmware/-/merge_requests/514', 'mr', 'x', 'main');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.pull_requests
+    where organization_id = 'org-v052' and external_number = 514),
+  'while #514 on a different host is a different PR');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pull_requests
+      (organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+    values ('org-v052', '5a200000-0000-0000-0000-00000000000b', 1,
+            'https://pr-works.atlassian.net/1', 't', 'x', 'main')$$,
+  'a Jira project has no pull requests', 'pull_requests_source_is_git_host');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pull_requests
+      (organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+    values ('org-v052', '5a200000-0000-0000-0000-00000000000c', 1,
+            'https://github.com/other/fw/pull/1', 't', 'x', 'main')$$,
+  'a PR cannot be mirrored from another workspace''s source',
+  'pull_requests_source_in_organization');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set run_id = '5a240000-0000-0000-0000-000000000900'
+     where id = '5a260000-0000-0000-0000-000000000077'$$,
+  'a PR cannot name another workspace''s run', 'pull_requests_run_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pull_requests
+      (organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+    values ('org-v052', '5a200000-0000-0000-0000-00000000000a', 0,
+            'https://github.com/pr-works/helios-firmware/pull/0', 't', 'x', 'main')$$,
+  'PR numbers count from 1', 'pull_requests_external_number_positive');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pull_requests
+      (organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+    values ('org-v052', '5a200000-0000-0000-0000-00000000000a', 9,
+            'javascript:alert(1)', 't', 'x', 'main')$$,
+  'the PR''s link is a web address', 'pull_requests_external_url_http');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pull_requests
+      (organization_id, source_id, external_number, external_url, title, head_branch, base_branch)
+    values ('org-v052', '5a200000-0000-0000-0000-00000000000a', 9,
+            'https://github.com/pr-works/helios-firmware/pull/9', 't', ' ', 'main')$$,
+  'both branches are named', 'pull_requests_branches_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set additions = -1
+     where id = '5a260000-0000-0000-0000-000000000514'$$,
+  'the host''s counts are never negative', 'pull_requests_counts_non_negative');
+
+-- --- the state machine ------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'shipped'
+     where id = '5a260000-0000-0000-0000-000000000514'$$,
+  'a PR state is one of the six', 'pull_requests_state');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pull_requests
+      (organization_id, source_id, external_number, external_url, title, head_branch, base_branch, state)
+    values ('org-v052', '5a200000-0000-0000-0000-00000000000a', 9,
+            'https://github.com/pr-works/helios-firmware/pull/9', 't', 'x', 'main', 'armed')$$,
+  'nothing is mirrored in already armed', 'pull_requests_state_transition');
+
+-- #77 is verifying; #514 is verifying. Walk the graph's refusals first.
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'open'
+     where id = '5a260000-0000-0000-0000-000000000514'$$,
+  'verification does not go back to open', 'pull_requests_state_transition');
+
+update ouroboros.pull_requests set state = 'blocked'
+ where id = '5a260000-0000-0000-0000-000000000077';
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'armed'
+     where id = '5a260000-0000-0000-0000-000000000077'$$,
+  'a blocked PR cannot be armed — armed is reached only from verifying',
+  'pull_requests_state_transition');
+
+update ouroboros.pull_requests set state = 'verifying'
+ where id = '5a260000-0000-0000-0000-000000000077';
+
+select pg_temp.must_hold(
+  (select state = 'verifying' from ouroboros.pull_requests
+    where id = '5a260000-0000-0000-0000-000000000077'),
+  'blocked → verifying: a new revision re-verifies');
+
+-- #514: verifying → armed → verifying (a disarm) → armed → merged.
+update ouroboros.pull_requests set state = 'armed'
+ where id = '5a260000-0000-0000-0000-000000000514';
+update ouroboros.pull_requests set state = 'verifying'
+ where id = '5a260000-0000-0000-0000-000000000514';
+update ouroboros.pull_requests set state = 'armed'
+ where id = '5a260000-0000-0000-0000-000000000514';
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'blocked'
+     where id = '5a260000-0000-0000-0000-000000000514'$$,
+  'an armed PR is disarmed to verifying, not straight to blocked',
+  'pull_requests_state_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'merged'
+     where id = '5a260000-0000-0000-0000-000000000514'$$,
+  'a merged PR carries its merge time', 'pull_requests_merged_at_when_merged');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set merged_by = 'octocat'
+     where id = '5a260000-0000-0000-0000-000000000514'$$,
+  'only a merged PR has a merger', 'pull_requests_merged_by_when_merged');
+
+update ouroboros.pull_requests
+   set state = 'merged', merged_at = now(), merged_by = 'kensuenobu'
+ where id = '5a260000-0000-0000-0000-000000000514';
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'open'
+     where id = '5a260000-0000-0000-0000-000000000514'$$,
+  'merged is terminal — not even a reopen', 'pull_requests_state_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'closed', merged_at = null, merged_by = null
+     where id = '5a260000-0000-0000-0000-000000000514'$$,
+  'nor a close', 'pull_requests_state_transition');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.pr_revisions
+    where pr_id = '5a260000-0000-0000-0000-000000000514'),
+  'and both revisions survive the merge');
+
+-- #77: a close and a reopen on the host, then a merge made on the host from open.
+update ouroboros.pull_requests set state = 'closed'
+ where id = '5a260000-0000-0000-0000-000000000077';
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'verifying'
+     where id = '5a260000-0000-0000-0000-000000000077'$$,
+  'a closed PR is reopened before it is verified again', 'pull_requests_state_transition');
+
+update ouroboros.pull_requests set state = 'open'
+ where id = '5a260000-0000-0000-0000-000000000077';
+update ouroboros.pull_requests set state = 'merged', merged_at = now()
+ where id = '5a260000-0000-0000-0000-000000000077';
+
+select pg_temp.must_hold(
+  (select state = 'merged' and merged_by is null from ouroboros.pull_requests
+    where id = '5a260000-0000-0000-0000-000000000077'),
+  'a merge made on the host is mirrored from open, and a merger the host does not name is null');
+
+insert into ouroboros.pull_requests
+    (organization_id, source_id, external_number, external_url, title, head_branch, base_branch,
+     state, merged_at)
+  values ('org-v052', '5a200000-0000-0000-0000-00000000000a', 12,
+          'https://github.com/pr-works/helios-firmware/pull/12', 'old', 'x', 'main',
+          'merged', now() - interval '30 days');
+
+select pg_temp.must_hold(
+  (select state = 'merged' from ouroboros.pull_requests
+    where organization_id = 'org-v052' and external_number = 12),
+  'and a PR first mirrored after it merged arrives merged');
+
+-- --- lifecycles --------------------------------------------------------------------------------
+delete from ouroboros.run_stages where id = '5a250000-0000-0000-0000-000000000003';
+
+select pg_temp.must_hold(
+  (select run_stage_id is null and head_sha = '3f9c2ae' from ouroboros.pr_revisions
+    where id = '5a270000-0000-0000-0000-000000000001'),
+  'losing a stage row releases the attempt link and keeps the revision');
+
+delete from ouroboros.tickets where id = '5a210000-0000-0000-0000-000000000142';
+
+select pg_temp.must_hold(
+  (select ticket_id is null from ouroboros.pull_requests
+    where id = '5a260000-0000-0000-0000-000000000514'),
+  'losing the ticket releases the link and keeps the PR');
+
+delete from ouroboros.runs where id = '5a240000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select run_id is null and organization_id = 'org-v052' from ouroboros.pull_requests
+    where id = '5a260000-0000-0000-0000-000000000514'),
+  'losing the run releases run_id alone and keeps the PR');
+
+delete from ouroboros.ticket_sources where id = '5a200000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_revisions
+    where id::text like '5a270000-%'),
+  'removing the git-host source removes its mirrored PRs and their revisions');
+
+-- --- grants ---------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.pull_requests', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pull_requests', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pull_requests', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pull_requests', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_revisions', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pr_revisions', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_revision_attempts', 'select'),
+  'the sync and the plane write PRs and revisions; neither deletes them');
+
+-- --- teardown ----------------------------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v052', 'org-v052b');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pull_requests where organization_id like 'org-v052%'),
+  'and the V052 fixture leaves nothing behind');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

@@ -1498,7 +1498,7 @@ the blockquote above that records what it did and what it did differently.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 263 | **AS.1** | ✅ [#324](https://github.com/NobuData/ouroboros/issues/324) | Test runs, suites & cases schema | ouroboros-db | M | AH.1, AO.1 |
-| 264 | **AW.1** | [#352](https://github.com/NobuData/ouroboros/issues/352) | Pull requests & revisions schema | ouroboros-db | M | Q.1, AO.1 |
+| 264 | **AW.1** | ✅ [#352](https://github.com/NobuData/ouroboros/issues/352) | Pull requests & revisions schema | ouroboros-db | M | Q.1, AO.1 |
 | 265 | **AS.2** | [#325](https://github.com/NobuData/ouroboros/issues/325) | HIL measurements schema | ouroboros-db | S | AS.1 |
 | 266 | **AS.3** | [#326](https://github.com/NobuData/ouroboros/issues/326) | Case history, flake scores & quarantine | ouroboros-db | M | AS.1 |
 | 267 | **AS.4** | [#327](https://github.com/NobuData/ouroboros/issues/327) | Classifications, PR intents & artifacts meta | ouroboros-db | M | AS.1 |

@@ -752,6 +752,20 @@
 > and `test_results_count_drift` lists anything that disagrees. `run_check_reconciliation` maps
 > them onto the dashboard's `checks_passed/checks_total` — see
 > [Test results and the dashboard's check counts](#test-results-and-the-dashboards-check-counts).
+>
+> `V052` ([#352](https://github.com/NobuData/ouroboros/issues/352)) opens the **PR
+> Verification** domain (mockup 12): `pull_requests`, the git host's PR mirrored from a
+> git-host `ticket_sources` row, and `pr_revisions`, one row per push. Ownership is split
+> (decision **V1**). The host owns the content — title, branches, counts and merge — which only
+> the SPI sync ([#357](https://github.com/NobuData/ouroboros/issues/357)) writes; the migration
+> header lists those columns. Ouroboros owns `run_id` (nullable until a loop opens the PR),
+> `ticket_id` (the canonical ticket, so any tracker links the same way) and the revision's
+> attempt link. `state` follows a graph enforced in the database: `merged` is terminal,
+> `armed` is reached only from `verifying`, `armed → verifying` is a disarm, `blocked →
+> verifying` is a new revision re-verifying, and a merge, close or reopen made on the host is
+> mirrored. Each push is kept, so Revision 1 stays inspectable after Revision 2. A revision's
+> `run_stage_id` is accepted only when its `head_sha` is a commit the PR's run reported
+> (decision **V4**), and `pr_revision_attempts` joins the three.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -1962,6 +1976,7 @@ ouroboros-db/
 │   ├── V049__run_ingest_receipts.sql   # the ingestion contract's memory between requests: one receipt per answered submission, and the two counters it advances — #303
 │   ├── V050__run_controls_delivery.sql # runs.status gains canceled (an aborted run), and run_controls gains the steer's remember flag — #306
 │   ├── V051__test_results.sql          # test_runs → test_suites → test_cases per build attempt, durable case_key, retry truth, recount and DASH reconciliation — #324
+│   ├── V052__pull_requests.sql         # pull_requests (host-mirrored, state graph) and pr_revisions (one per push, attempt link by sha) — #352
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2034,6 +2049,9 @@ outside this module alters it.
 | `test_suite_counts_computed`, `test_run_counts_computed` | `V051` | Each suite's and each attempt's counts **computed** from its cases — the one definition of counting | Views, so they enforce nothing; `ouroboros.test_run_recount(test_run_id)` writes the stored figures from them, and the parser calls it on every parse |
 | `test_results_count_drift` | `V051` | Every attempt or suite whose stored `[total, passed, failed, flaky, skipped]` differ from the recompute | A view; **empty is the invariant**, and `tests/constraints.sql` asserts it for every attempt of its fixture |
 | `run_check_reconciliation` | `V051` | A run's dashboard `checks_passed/checks_total` beside its latest complete attempt's `passed/total`, with `agrees` | A view — see [Test results and the dashboard's check counts](#test-results-and-the-dashboards-check-counts) |
+| `pull_requests` | `V052` | A PR mirrored from its git host ([#352](https://github.com/NobuData/ouroboros/issues/352), AW.1, decision **V1**) — mockup 12's head: number, link, title, `head → base` branches, `+additions −deletions · changed_files`, merge, and the verification `state` | `(source_id, external_number)` unique, so one PR cannot be mirrored twice; the source is a `github`, `gitlab` or `custom` ticket source of the same workspace; **sync-owned** columns (`source_id`, `external_number`, `external_url`, `title`, `head_branch`, `base_branch`, `additions`, `deletions`, `changed_files`, `merged_at`, `merged_by`) are written only by the SPI sync and never edited locally; `run_id` is nullable and a **composite** reference onto `runs (id, organization_id)`, released with `on delete set null (run_id)`; `ticket_id` is the canonical ticket of the same workspace; `state` is `open\|verifying\|blocked\|armed\|merged\|closed` and moves only along `pull_requests_state_transition`'s graph — `merged` terminal, `armed` only from `verifying`, nothing inserted `armed`; `merged_at` is set exactly when merged; `ouroboros_app` may not delete |
+| `pr_revisions` | `V052` | One push to a PR — mockup 12's *Revision 1 · 3f9c2ae* and *Revision 2 · b7e41d0* — with the changed-files snapshot, a bounded diff excerpt and the run attempt it carries (decision **V4**) | `(pr_id, revision_seq)` and `(pr_id, head_sha)` unique; `head_sha` is 7–40 hex; `pr_id`, `revision_seq`, `head_sha` and `pushed_at` are frozen once written; `files` is an array of `{path, additions, deletions}` with whole non-negative counts, one per path; `diff_excerpt` is at most 16384 characters; `run_stage_id` is accepted only when the PR's run owns the stage **and reported `head_sha` in `run_commits`**; `ouroboros_app` may not delete |
+| `pr_revision_attempts` | `V052` | Each revision with the run commit its sha matches and the stage attempt it links — the revision strip's *Revision 1 → Correction round · attempt 4 → Revision 2* as a join | A view; commit and stage columns are null for a PR no loop opened |
 | `queue_items` | `V009` | What the loop will do next — the ordered, estimable per-organization issue queue | `position` unique per organization and **deferrable**, so a reorder swaps inside a transaction; `(organization_id, issue_number)` unique, so an issue queues once; `effort` is one of `xs\|s\|m\|l\|xl`; the item's repository must belong to the item's organization |
 | `token_usage` | `V010`, routing attribution `V020` | What the loop has spent — one append-only event per provider call, not one total per organization. Since `V020` it is also what mockup 06's routing matrix is computed from: `task_kind` says which routed kind of work a call served and `latency_ms` how long it took, so `$/run avg` and `p50 latency` are aggregates here rather than numbers stored on a route (decision **M7**) | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization. `task_kind` is shaped as `task_kinds.name` is but is deliberately **not** a foreign key (decision **F8**, as `runs.workflow_tag`): a ledger row records what happened, and retiring a kind must neither block, delete nor rewrite the history routed under it. `latency_ms` is non-negative, and **both are nullable, which is the point** — null is *not routed* and *not timed*, so an aggregate over none of either is null and the matrix renders the em-dash `M7` requires instead of a fabricated `$0.00` and `0.0s`; zero is permitted on `latency_ms` because a local daemon on loopback really answers inside a millisecond |
 | `workspace_settings` | `V011`, `V041` | Org-scoped typed product settings — the auto-merge switch, and since [#250](https://github.com/NobuData/ouroboros/issues/250) the `runner_bearer_fallback` switch that decides whether a machine may enrol in the farm without a client certificate (default **false**, so a deployment that never considers the question never has the weaker path) | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
@@ -2390,6 +2408,7 @@ issue estimates schema [#100](https://github.com/NobuData/ouroboros/issues/100) 
 workflow & version schema [#132](https://github.com/NobuData/ouroboros/issues/132) *(done)* ·
 studio dev seeds [#136](https://github.com/NobuData/ouroboros/issues/136) *(done)* ·
 test runs, suites & cases schema [#324](https://github.com/NobuData/ouroboros/issues/324) *(done)* ·
+pull requests & revisions schema [#352](https://github.com/NobuData/ouroboros/issues/352) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
