@@ -1502,7 +1502,7 @@ the blockquote above that records what it did and what it did differently.
 | 265 | **AS.2** | ✅ [#325](https://github.com/NobuData/ouroboros/issues/325) | HIL measurements schema | ouroboros-db | S | AS.1 |
 | 266 | **AS.3** | ✅ [#326](https://github.com/NobuData/ouroboros/issues/326) | Case history, flake scores & quarantine | ouroboros-db | M | AS.1 |
 | 267 | **AS.4** | ✅ [#327](https://github.com/NobuData/ouroboros/issues/327) | Classifications, PR intents & artifacts meta | ouroboros-db | M | AS.1 |
-| 268 | **AW.2** | [#353](https://github.com/NobuData/ouroboros/issues/353) | Gate definitions & revision snapshots | ouroboros-db | M | AW.1 |
+| 268 | **AW.2** | ✅ [#353](https://github.com/NobuData/ouroboros/issues/353) | Gate definitions & revision snapshots | ouroboros-db | M | AW.1 |
 | 269 | **AW.3** | [#354](https://github.com/NobuData/ouroboros/issues/354) | Criteria, evidence links & review thread | ouroboros-db | M | AW.1 |
 | 270 | **AW.4** | [#355](https://github.com/NobuData/ouroboros/issues/355) | Merge plans & auto-merge intents | ouroboros-db | S | AW.1 |
 | 271 | **AX.1** | [#357](https://github.com/NobuData/ouroboros/issues/357) | SPI PR capability & GitHub implementation | ouroboros-rest | L | Q.3, AL.2 |

@@ -237,7 +237,7 @@ every issue assigned. Complexity chips: **XS · S · M · L**.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AW.1 | #352 | 🟢 Done | ouroboros-db: [AW.1] Pull requests & revisions schema | Host-mirrored PRs with revision history + attempt links (V1/V4) | mvp, pr, db | N (after AO.1, WF-Q.1) | Y | M | ouroboros-db |
-| AW.2 | #353 | 🟡 Open | ouroboros-db: [AW.2] Gate definitions & revision snapshots | Declarative gates, provider results, evidence refs (V2) | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
+| AW.2 | #353 | 🟢 Done | ouroboros-db: [AW.2] Gate definitions & revision snapshots | Declarative gates, provider results, evidence refs (V2) | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
 | AW.3 | #354 | 🟡 Open | ouroboros-db: [AW.3] Criteria, evidence links & review thread | Claims with typed evidence, waiver render refs, thread entries | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
 | AW.4 | #355 | 🟡 Open | ouroboros-db: [AW.4] Merge plans & auto-merge intents | Policy snapshot, action toggles, armed-intent state, audit refs | mvp, pr, db | N (after AW.1) | Y | S | ouroboros-db |
 | AW.5 | #356 | 🟡 Open | ouroboros-db: [AW.5] PR seeds — mockup-12 parity + probes | The #514 story across two revisions; ci constraint checks | mvp, pr, db, ci | N (after AW.2–AW.4, #24) | Y | M | ouroboros-db, .github |
@@ -288,7 +288,7 @@ erDiagram
 
 ### Issue AW.2 — ouroboros-db: [AW.2] Gate definitions & revision snapshots
 
-> **GitHub issue:** #353 · **Status:** 🟡 Open · **Parent epic:** #348
+> **GitHub issue:** #353 · **Status:** 🟢 Done · **Parent epic:** #348
 
 - **Problem Statement:** "5 of 7 green" must be declarative, provider-fed,
   and historically inspectable per revision (decision V2).
