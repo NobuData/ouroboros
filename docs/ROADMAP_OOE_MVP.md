@@ -1504,7 +1504,7 @@ the blockquote above that records what it did and what it did differently.
 | 267 | **AS.4** | ✅ [#327](https://github.com/NobuData/ouroboros/issues/327) | Classifications, PR intents & artifacts meta | ouroboros-db | M | AS.1 |
 | 268 | **AW.2** | ✅ [#353](https://github.com/NobuData/ouroboros/issues/353) | Gate definitions & revision snapshots | ouroboros-db | M | AW.1 |
 | 269 | **AW.3** | ✅ [#354](https://github.com/NobuData/ouroboros/issues/354) | Criteria, evidence links & review thread | ouroboros-db | M | AW.1 |
-| 270 | **AW.4** | [#355](https://github.com/NobuData/ouroboros/issues/355) | Merge plans & auto-merge intents | ouroboros-db | S | AW.1 |
+| 270 | **AW.4** | ✅ [#355](https://github.com/NobuData/ouroboros/issues/355) | Merge plans & auto-merge intents | ouroboros-db | S | AW.1 |
 | 271 | **AX.1** | [#357](https://github.com/NobuData/ouroboros/issues/357) | SPI PR capability & GitHub implementation | ouroboros-rest | L | Q.3, AL.2 |
 | 272 | **AS.5** | [#328](https://github.com/NobuData/ouroboros/issues/328) | Test-results seeds — mockup-11 parity + probes | ouroboros-db, .github | M | 3.6, AS.2, AS.4 |
 | 273 | **AT.1** | [#329](https://github.com/NobuData/ouroboros/issues/329) | Result parser SPI (JUnit · HIL · coverage) | ouroboros-rest | L | AS.2 |

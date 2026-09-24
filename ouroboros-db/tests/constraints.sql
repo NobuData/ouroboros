@@ -20545,6 +20545,473 @@ select pg_temp.must_hold(
   'and the V057 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- V058 — merge plans and the armed "merge when all gates green" intent (#355, AW.4)
+-- ===========================================================================
+--
+-- Mockup 12's Merge plan card as a row. PR #514 closes GitHub issue #482: its plan is squash ·
+-- delete branch, a templated message ending "Closes #482.", close and comment on, back-annotate
+-- off. It is armed by Ken against Revision 2, disarmed by a failed re-check when the head moves,
+-- re-armed, and merged — recording the sha, the token identity really used and the actions that
+-- really ran. PR #88 closes Jira's PROJ-142 and PR #77 closes nothing, so the template is shown
+-- to be tracker-agnostic. Every arm, disarm, edit and merge is asserted to leave an audit row,
+-- and a [bot] identity is asserted to be refused.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v058',  'Merge Works',       'merge-works',       now()),
+  ('org-v058b', 'Other Merge Works', 'other-merge-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a5800000-0000-0000-0000-00000000000a', 'Ken S', 'ken@merge-works.dev', true);
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config) values
+  ('a5800000-0000-0000-0000-0000000000a1', 'org-v058', 'github', 'GitHub · merge-works',
+   '{"login": "merge-works", "repos": ["helios-firmware"]}'),
+  ('a5800000-0000-0000-0000-0000000000a2', 'org-v058', 'jira', 'Jira · PROJ',
+   '{"base_url": "https://merge-works.atlassian.net", "project_keys": ["PROJ"]}');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a5810000-0000-0000-0000-000000000482', 'org-v058', 'a5800000-0000-0000-0000-0000000000a1',
+     '482', '#482', 'https://github.com/merge-works/helios-firmware/issues/482',
+     'Fix flaky CAN-bus telemetry test', 'open', now() - interval '3 days', now()),
+    ('a5810000-0000-0000-0000-000000000142', 'org-v058', 'a5800000-0000-0000-0000-0000000000a2',
+     'PROJ-142', 'PROJ-142', 'https://merge-works.atlassian.net/browse/PROJ-142',
+     'Watchdog telemetry missing from nightly export', 'open', now() - interval '2 days', now());
+
+insert into ouroboros.planning_epics (id, organization_id, name, sort_order) values
+  ('a5820000-0000-0000-0000-00000000ee01', 'org-v058',  'OTA hardening',         1),
+  ('a5820000-0000-0000-0000-00000000ee02', 'org-v058',  'BLE provisioning v2',   2),
+  ('a5820000-0000-0000-0000-00000000ee09', 'org-v058b', 'Somebody else''s lane', 1);
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, additions, deletions, changed_files, ticket_id)
+  values
+    ('a58a0000-0000-0000-0000-000000000514', 'org-v058', 'a5800000-0000-0000-0000-0000000000a1',
+     514, 'https://github.com/merge-works/helios-firmware/pull/514',
+     'fix(can): preserve ISR frame order in telemetry path',
+     'loop/482-canbus-flake', 'main', 68, 15, 3, 'a5810000-0000-0000-0000-000000000482'),
+    ('a58a0000-0000-0000-0000-000000000088', 'org-v058', 'a5800000-0000-0000-0000-0000000000a1',
+     88, 'https://github.com/merge-works/helios-firmware/pull/88',
+     'fix(export): keep watchdog rows', 'fix/proj-142', 'main', 5, 2, 1,
+     'a5810000-0000-0000-0000-000000000142'),
+    ('a58a0000-0000-0000-0000-000000000077', 'org-v058', 'a5800000-0000-0000-0000-0000000000a1',
+     77, 'https://github.com/merge-works/helios-firmware/pull/77',
+     'docs: sandbox change', 'sandbox/docs', 'main', 4, 1, 1, null);
+
+insert into ouroboros.pr_revisions (id, pr_id, revision_seq, head_sha, pushed_at) values
+  ('a58b0000-0000-0000-0000-000000000001', 'a58a0000-0000-0000-0000-000000000514', 1, '3f9c2ae',
+   now() - interval '40 minutes'),
+  ('a58b0000-0000-0000-0000-000000000002', 'a58a0000-0000-0000-0000-000000000514', 2, 'b7e41d0',
+   now() - interval '25 minutes'),
+  ('a58b0000-0000-0000-0000-000000000003', 'a58a0000-0000-0000-0000-000000000514', 3, 'c81d3e4',
+   now() - interval '5 minutes'),
+  ('a58b0000-0000-0000-0000-000000000077', 'a58a0000-0000-0000-0000-000000000077', 1, 'd0c5a11',
+   now() - interval '20 minutes');
+
+-- --- the commit-message template: Closes #N from the canonical ticket, whatever the tracker ---------
+select pg_temp.must_hold(
+  ouroboros.pr_merge_closes_trailer('a58a0000-0000-0000-0000-000000000514') = 'Closes #482.'
+  and ouroboros.pr_merge_closes_trailer('a58a0000-0000-0000-0000-000000000088') = 'Closes PROJ-142.'
+  and ouroboros.pr_merge_closes_trailer('a58a0000-0000-0000-0000-000000000077') is null,
+  'the trailer is the canonical ticket''s own key — #482 on GitHub, PROJ-142 on Jira — and absent with no ticket');
+
+select pg_temp.must_hold(
+  ouroboros.pr_merge_commit_message_template('a58a0000-0000-0000-0000-000000000514')
+    = E'fix(can): preserve ISR frame order in telemetry path\n\nCloses #482.'
+  and ouroboros.pr_merge_commit_message_template('a58a0000-0000-0000-0000-000000000077')
+    = 'docs: sandbox change'
+  and ouroboros.pr_merge_commit_message_template('a5800000-0000-0000-0000-0000000000ff') is null,
+  'the template is the title, then the trailer when there is one');
+
+-- --- the plans: materialized, with the message filled from the template -------------------------
+insert into ouroboros.pr_merge_plans (id, pr_id, strategy, delete_branch) values
+  ('a58c0000-0000-0000-0000-000000000514', 'a58a0000-0000-0000-0000-000000000514', 'squash', true),
+  ('a58c0000-0000-0000-0000-000000000088', 'a58a0000-0000-0000-0000-000000000088', 'rebase', false);
+
+select pg_temp.must_hold(
+  (select (strategy, delete_branch, commit_message, close_ticket, comment_evidence, back_annotate_epic,
+           epic_id, armed, merged_result)
+          is not distinct from
+          ('squash'::text, true, E'fix(can): preserve ISR frame order in telemetry path\n\nCloses #482.'::text,
+           true, true, false, null::uuid, false, null::jsonb)
+     from ouroboros.pr_merge_plans where id = 'a58c0000-0000-0000-0000-000000000514'),
+  'the card''s defaults: squash · delete branch, the templated message, close and comment on, back-annotate off, not armed');
+
+select pg_temp.must_hold(
+  (select commit_message = E'fix(export): keep watchdog rows\n\nCloses PROJ-142.'
+     from ouroboros.pr_merge_plans where id = 'a58c0000-0000-0000-0000-000000000088'),
+  'a Jira-ticketed PR''s plan closes PROJ-142 the same way');
+
+-- --- the plan round-trips: an edited message and all three toggles, the epic FK included ------------
+update ouroboros.pr_merge_plans
+   set commit_message = E'fix(can): preserve ISR frame order in telemetry path\n\nReplace k_fifo drain with static K_MSGQ + seq numbers;\ndecouple PID velocity sampling from drain. Closes #482.',
+       back_annotate_epic = true,
+       epic_id = 'a5820000-0000-0000-0000-00000000ee01',
+       updated_by = 'a5800000-0000-0000-0000-00000000000a'
+ where id = 'a58c0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select commit_message like '%decouple PID velocity sampling from drain. Closes #482.'
+          and back_annotate_epic and e.name = 'OTA hardening'
+     from ouroboros.pr_merge_plans m
+     join ouroboros.planning_epics e on e.id = m.epic_id
+    where m.id = 'a58c0000-0000-0000-0000-000000000514'),
+  'the edited message and the back-annotation toggle with its epic read back');
+
+update ouroboros.pr_merge_plans
+   set back_annotate_epic = false, epic_id = null, updated_by = 'a5800000-0000-0000-0000-00000000000a'
+ where id = 'a58c0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select array_agg(detail ->> 'fields' order by detail ->> 'fields')
+          = array['["back_annotate_epic", "commit_message", "epic_id"]',
+                  '["back_annotate_epic", "epic_id"]']
+          and bool_and(actor_id = 'a5800000-0000-0000-0000-00000000000a')
+     from ouroboros.audit_events
+    where subject_type = 'pr_merge_plan' and subject_id = 'a58c0000-0000-0000-0000-000000000514'
+      and action = 'pr_merge_plan.edited'),
+  'every edit writes an audit row naming its editor and the fields it changed');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.audit_events
+    where subject_type = 'pr_merge_plan' and detail::text like '%K_MSGQ%'),
+  'and the commit message itself never reaches the trail');
+
+-- --- vocabularies and plan rules ------------------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.pr_merge_plans', 'pr_merge_plans_strategy')
+    = array['merge', 'rebase', 'squash'],
+  'the strategy is squash, merge or rebase');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set strategy = 'fast-forward'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'and nothing else', 'pr_merge_plans_strategy');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_merge_plans (pr_id) values ('a58a0000-0000-0000-0000-000000000514')$$,
+  'a PR has one merge plan', 'pr_merge_plans_pr_key');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set pr_id = 'a58a0000-0000-0000-0000-000000000077'
+     where id = 'a58c0000-0000-0000-0000-000000000088'$$,
+  'and a plan stays with its PR', 'pr_merge_plans_pr_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set commit_message = '  '
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'a commit message says something', 'pr_merge_plans_commit_message_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set back_annotate_epic = true
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'back-annotation names its epic', 'pr_merge_plans_back_annotate_has_epic');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set epic_id = 'a5820000-0000-0000-0000-00000000ee09'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'an epic of the PR''s own workspace', 'pr_merge_plans_epic_in_organization');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set epic_id = 'a5800000-0000-0000-0000-0000000000ff'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'that exists', 'pr_merge_plans_epic_id_fkey');
+
+-- An epic deleted from under an unmerged plan takes the toggle with it.
+update ouroboros.pr_merge_plans
+   set back_annotate_epic = true, epic_id = 'a5820000-0000-0000-0000-00000000ee02'
+ where id = 'a58c0000-0000-0000-0000-000000000088';
+delete from ouroboros.planning_epics where id = 'a5820000-0000-0000-0000-00000000ee02';
+
+select pg_temp.must_hold(
+  (select epic_id is null and not back_annotate_epic
+     from ouroboros.pr_merge_plans where id = 'a58c0000-0000-0000-0000-000000000088'),
+  'deleting the epic switches back-annotation off rather than leaving it pointing at nothing');
+
+-- --- arming records actor, time and the revision ------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set armed = true, armed_by = 'a5800000-0000-0000-0000-00000000000a'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'an arm without a time or revision is not an arm', 'pr_merge_plans_armed_complete');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = true, armed_at = now(), armed_against_revision_id = 'a58b0000-0000-0000-0000-000000000002'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'arming names who armed it', 'pr_merge_plans_armed_by_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = true, armed_at = now(), armed_by = 'a5800000-0000-0000-0000-00000000000a',
+           armed_against_revision_id = 'a58b0000-0000-0000-0000-000000000077'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'and a revision of this PR', 'pr_merge_plans_armed_revision_of_pr');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set armed_by = 'a5800000-0000-0000-0000-00000000000a'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'a disarmed plan carries no stale arm', 'pr_merge_plans_armed_complete');
+
+update ouroboros.pr_merge_plans
+   set armed = true, armed_at = now() - interval '14 minutes',
+       armed_by = 'a5800000-0000-0000-0000-00000000000a',
+       armed_against_revision_id = 'a58b0000-0000-0000-0000-000000000002'
+ where id = 'a58c0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select armed and armed_by = 'a5800000-0000-0000-0000-00000000000a' and armed_at is not null
+          and v.head_sha = 'b7e41d0'
+     from ouroboros.pr_merge_plans m
+     join ouroboros.pr_revisions v on v.id = m.armed_against_revision_id
+    where m.id = 'a58c0000-0000-0000-0000-000000000514'),
+  'arming records who, when, and the revision — b7e41d0 — it was armed against');
+
+-- --- a failed re-check disarms, and says why --------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set disarm_reason = 'head moved'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'an armed plan has no disarm reason', 'pr_merge_plans_disarm_reason_when_disarmed');
+
+update ouroboros.pr_merge_plans
+   set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+       disarm_reason = 'head moved: c81d3e4 is not the armed b7e41d0'
+ where id = 'a58c0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select not armed and disarm_reason = 'head moved: c81d3e4 is not the armed b7e41d0'
+     from ouroboros.pr_merge_plans where id = 'a58c0000-0000-0000-0000-000000000514'),
+  'the failed re-check''s reason is on the plan for the card to read');
+
+-- Re-armed against the new head; the reason goes with the new arm.
+update ouroboros.pr_merge_plans
+   set armed = true, armed_at = now() - interval '2 minutes', disarm_reason = null,
+       armed_by = 'a5800000-0000-0000-0000-00000000000a',
+       armed_against_revision_id = 'a58b0000-0000-0000-0000-000000000003'
+ where id = 'a58c0000-0000-0000-0000-000000000514';
+
+-- --- the merge result: sha, identity, actions ---------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set merged_result = '{"sha": "9a1f0c2", "identity_used": "pat:ken-token", "actions_executed": [], "merged_at": "2026-09-24T14:35:00Z"}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'a merged plan is no longer armed', 'pr_merge_plans_merged_not_armed');
+
+-- V3: while merges are token-based, a [bot] identity is refused.
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+           merged_result = '{"sha": "9a1f0c2", "identity_used": "ouroboros-app[bot]", "actions_executed": [], "merged_at": "2026-09-24T14:35:00Z"}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'the merge cannot claim ouroboros-app[bot] while it was made with a token', 'pr_merge_plans_identity_not_bot');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+           merged_result = '{"sha": "9a1f0c2", "identity_used": "Ouroboros-App[BOT]", "actions_executed": [], "merged_at": "2026-09-24T14:35:00Z"}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'in any capitalisation', 'pr_merge_plans_identity_not_bot');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+           merged_result = '{"sha": "9a1f0c2", "identity_used": "pat:ken-token", "actions_executed": ["back_annotate_epic"], "merged_at": "2026-09-24T14:35:00Z"}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'an executed action is one the plan had switched on', 'pr_merge_plans_merged_result_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+           merged_result = '{"sha": "9a1f0c2", "identity_used": "pat:ken-token", "actions_executed": ["close_ticket", "close_ticket"], "merged_at": "2026-09-24T14:35:00Z"}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'and ran once', 'pr_merge_plans_merged_result_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+           merged_result = '{"sha": "9a1f0c2", "identity_used": "pat:ken-token", "actions_executed": ["rebased"], "merged_at": "2026-09-24T14:35:00Z"}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'and is a known action', 'pr_merge_plans_merged_result_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+           merged_result = '{"sha": "9a1f0c2", "identity_used": "pat:ken-token", "actions_executed": []}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'a result says when it merged', 'pr_merge_plans_merged_result_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+           merged_result = '{}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'and an empty result is not one', 'pr_merge_plans_merged_result_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+           merged_result = '{"sha": "main", "identity_used": "pat:ken-token", "actions_executed": [], "merged_at": "2026-09-24T14:35:00Z"}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'the sha is a commit sha', 'pr_merge_plans_merged_result_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+           merged_result = '{"sha": "9a1f0c2", "identity_used": " ", "actions_executed": [], "merged_at": "2026-09-24T14:35:00Z"}'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'and the identity is named', 'pr_merge_plans_merged_result_shape');
+
+-- The merge fires: the token identity really used, and the three actions that really ran.
+update ouroboros.pr_merge_plans
+   set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+       merged_result = '{"sha": "9a1f0c2", "identity_used": "pat:ken-token",
+                         "actions_executed": ["close_ticket", "comment_evidence", "delete_branch"],
+                         "merged_at": "2026-09-24T14:35:00Z"}'
+ where id = 'a58c0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select merged_result ->> 'sha' = '9a1f0c2'
+          and merged_result ->> 'identity_used' = 'pat:ken-token'
+          and merged_result -> 'actions_executed' = '["close_ticket", "comment_evidence", "delete_branch"]'
+     from ouroboros.pr_merge_plans where id = 'a58c0000-0000-0000-0000-000000000514'),
+  'merged_result captures the sha, the identity used and which configured actions ran');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set strategy = 'merge'
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'a merged plan is final', 'pr_merge_plans_merged_final');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set merged_result = jsonb_set(merged_result, '{identity_used}', '"pat:someone-else"')
+     where id = 'a58c0000-0000-0000-0000-000000000514'$$,
+  'and so is who it merged as', 'pr_merge_plans_merged_final');
+
+-- --- every arm, disarm, edit and merge wrote an audit row ---------------------------------------------
+select pg_temp.must_hold(
+  -- By count: one transaction gives every row the same occurred_at.
+  (select array_agg(action order by action)
+          = array['pr_merge_plan.armed', 'pr_merge_plan.armed', 'pr_merge_plan.disarmed',
+                  'pr_merge_plan.edited', 'pr_merge_plan.edited', 'pr_merge_plan.merged']
+     from ouroboros.audit_events
+    where subject_type = 'pr_merge_plan' and subject_id = 'a58c0000-0000-0000-0000-000000000514'
+      and organization_id = 'org-v058'),
+  'the plan''s trail: two edits, arm, disarm, re-arm, merge');
+
+select pg_temp.must_hold(
+  (select actor_id = 'a5800000-0000-0000-0000-00000000000a'
+          and detail ->> 'revision_id' = 'a58b0000-0000-0000-0000-000000000002'
+     from ouroboros.audit_events
+    where subject_id = 'a58c0000-0000-0000-0000-000000000514' and action = 'pr_merge_plan.armed'
+      and detail ->> 'revision_id' = 'a58b0000-0000-0000-0000-000000000002'),
+  'the arm row names who armed and the revision');
+
+select pg_temp.must_hold(
+  (select actor_id is null and (detail ->> 'recheck_failed')::boolean
+          and detail ->> 'revision_id' = 'a58b0000-0000-0000-0000-000000000002'
+          and not (detail ? 'disarm_reason')
+     from ouroboros.audit_events
+    where subject_id = 'a58c0000-0000-0000-0000-000000000514' and action = 'pr_merge_plan.disarmed'),
+  'a re-check''s disarm has no person behind it, and says so');
+
+select pg_temp.must_hold(
+  (select actor_id is null and detail ->> 'sha' = '9a1f0c2'
+          and detail ->> 'identity_used' = 'pat:ken-token'
+          and detail -> 'actions_executed' = '["close_ticket", "comment_evidence", "delete_branch"]'
+          and (detail ->> 'was_armed')::boolean
+          and detail ->> 'armed_revision_id' = 'a58b0000-0000-0000-0000-000000000003'
+     from ouroboros.audit_events
+    where subject_id = 'a58c0000-0000-0000-0000-000000000514' and action = 'pr_merge_plan.merged'),
+  'the merge row records what landed, as whom, what ran and what it was armed against');
+
+-- A manual disarm on #88 names the person.
+insert into ouroboros.pr_revisions (id, pr_id, revision_seq, head_sha, pushed_at) values
+  ('a58b0000-0000-0000-0000-000000000088', 'a58a0000-0000-0000-0000-000000000088', 1, 'e1f2a3b',
+   now() - interval '3 minutes');
+
+update ouroboros.pr_merge_plans
+   set armed = true, armed_at = now(), armed_by = 'a5800000-0000-0000-0000-00000000000a',
+       armed_against_revision_id = 'a58b0000-0000-0000-0000-000000000088'
+ where id = 'a58c0000-0000-0000-0000-000000000088';
+
+update ouroboros.pr_merge_plans
+   set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+       updated_by = 'a5800000-0000-0000-0000-00000000000a'
+ where id = 'a58c0000-0000-0000-0000-000000000088';
+
+select pg_temp.must_hold(
+  (select actor_id = 'a5800000-0000-0000-0000-00000000000a' and not (detail ->> 'recheck_failed')::boolean
+     from ouroboros.audit_events
+    where subject_id = 'a58c0000-0000-0000-0000-000000000088' and action = 'pr_merge_plan.disarmed'),
+  'a manual disarm names the person who disarmed');
+
+-- --- grants ---------------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.pr_merge_plans', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_merge_plans', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_merge_plans', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pr_merge_plans', 'delete')
+   and has_function_privilege('ouroboros_app', 'ouroboros.pr_merge_commit_message_template(uuid)', 'execute')
+   and has_function_privilege('ouroboros_app', 'ouroboros.pr_merge_closes_trailer(uuid)', 'execute')
+   and not (select bool_or(prosecdef) from pg_proc
+             where pronamespace = 'ouroboros'::regnamespace and proname like 'pr_merge_%'),
+  'a plan is written and updated but never deleted, and nothing in V058 runs as its owner');
+
+-- The trail is written as the application too: arm, disarm and merge under ouroboros_app.
+set local role ouroboros_app;
+
+update ouroboros.pr_merge_plans
+   set armed = true, armed_at = now(), armed_by = 'a5800000-0000-0000-0000-00000000000a',
+       armed_against_revision_id = 'a58b0000-0000-0000-0000-000000000088'
+ where id = 'a58c0000-0000-0000-0000-000000000088';
+
+update ouroboros.pr_merge_plans
+   set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+       merged_result = '{"sha": "0badc0d", "identity_used": "pat:ken-token", "actions_executed": ["close_ticket"], "merged_at": "2026-09-24T15:00:00Z"}'
+ where id = 'a58c0000-0000-0000-0000-000000000088';
+
+select pg_temp.must_raise(
+  $$delete from ouroboros.pr_merge_plans where id = 'a58c0000-0000-0000-0000-000000000088'$$,
+  '42501', 'the application cannot delete a plan');
+
+reset role;
+
+select pg_temp.must_hold(
+  (select count(*) filter (where action = 'pr_merge_plan.armed') = 2
+          and count(*) filter (where action = 'pr_merge_plan.merged') = 1
+     from ouroboros.audit_events
+    where subject_id = 'a58c0000-0000-0000-0000-000000000088'),
+  'the application role''s arm and merge left their audit rows');
+
+-- --- lifecycles -------------------------------------------------------------------------------------------
+delete from ouroboros."user" where "id" = 'a5800000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.pr_merge_plans
+    where pr_id in ('a58a0000-0000-0000-0000-000000000514', 'a58a0000-0000-0000-0000-000000000088')
+      and updated_by is null)
+  and (select count(*) = 0 from ouroboros.audit_events
+        where subject_type = 'pr_merge_plan' and actor_id = 'a5800000-0000-0000-0000-00000000000a'),
+  'removing a person releases their name from merged plans and the trail, and keeps both');
+
+delete from ouroboros.pull_requests where id = 'a58a0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_merge_plans where id = 'a58c0000-0000-0000-0000-000000000514')
+  and (select count(*) > 0 from ouroboros.audit_events
+        where subject_id = 'a58c0000-0000-0000-0000-000000000514'),
+  'a PR takes its plan with it, and the audit trail outlives both');
+
+-- --- teardown ---------------------------------------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v058', 'org-v058b');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_merge_plans where id::text like 'a58c0000-%')
+  and (select count(*) = 0 from ouroboros.audit_events where organization_id like 'org-v058%'),
+  'and the V058 fixture leaves nothing behind');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
