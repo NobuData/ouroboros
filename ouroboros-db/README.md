@@ -842,6 +842,25 @@
 > the R4 `simulated` watermark. `blocking` and `resolved` can be raised but never lowered, and
 > `resolution_body` holds the resolving reply. `pr_thread_summary(pr_id)` computes
 > `N entries · M open`, where an entry is open when it is `blocking and not resolved`.
+>
+> `V058` ([#355](https://github.com/NobuData/ouroboros/issues/355)) adds mockup 12's **Merge
+> plan** card and its *Merge when all gates green* intent (decision **V3**). `pr_merge_plans` is
+> one row per PR and holds:
+> - `strategy` (`squash`, `merge` or `rebase`) and `delete_branch`.
+> - An editable `commit_message`. When a plan is written without one, it is filled from
+>   `pr_merge_commit_message_template(pr_id)`: the PR title plus `Closes <key>.` from the
+>   canonical ticket, so `Closes #482.` on GitHub and `Closes PROJ-142.` on Jira.
+> - Three action toggles. Back-annotation points at a planning epic in the same workspace and
+>   switches off if that epic is deleted.
+>
+> Arming records `armed_by`, `armed_at` and **`armed_against_revision_id`** (a revision of the same
+> PR) for the executor's TOCTOU re-check. A failed re-check disarms the plan and leaves a
+> `disarm_reason` for the card to show. `merged_result` is exactly `{sha, identity_used,
+> actions_executed, merged_at}`, and each executed action must be one the plan had switched on.
+> **`identity_used` can't claim a `[bot]` identity**: until the GitHub App lands (AZ.4), every
+> merge uses a person's token. A merged plan is final. Every arm, disarm, edit and merge writes an
+> `audit_events` row in the AD.4 shape, and the commit message and disarm reason never go into
+> the trail.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -2058,6 +2077,7 @@ ouroboros-db/
 │   ├── V055__classifications_pr_intents_artifacts.sql # failure_classifications (actor honesty, receipts, supersession), run_pr_intents and pr_waivers (intents, not gates), test_artifacts (retention, tombstones) — #327
 │   ├── V056__pr_gates.sql            # pr_gate_definitions (declarative, custom:*, provenance) and pr_gate_results (per-revision snapshots, six verdicts, typed evidence refs), latest view and x-of-y aggregate — #353
 │   ├── V057__pr_criteria_thread.sql  # pr_criteria (plan/manual provenance, verified needs evidence, waived via AS.4), pr_criteria_evidence (typed refs resolved at write, hunks against the files snapshot) and pr_thread_entries (author provenance, simulated model rows, one-way blocking → resolved), open-count summary — #354
+│   ├── V058__pr_merge_plans.sql      # pr_merge_plans (strategy, templated Closes #N message, toggles + epic, armed-against-revision intent, disarm reason, merged_result with no [bot] identity while token-based) and its audit trail — #355
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2151,6 +2171,7 @@ outside this module alters it.
 | `pr_criteria` | `V057` | One claim of the ticket in mockup 12's *Does the PR do what the ticket says?* matrix ([#354](https://github.com/NobuData/ouroboros/issues/354), AW.3, decision **V6**): `claim`, provenance `source`, `status`, `waiver_ref`, `sort_order`, `created_by` | `source` is `plan\|manual\|extracted`, and `extracted` is reserved and refused until AZ.2; `status` is `unverified\|verified\|waived`; `verified` requires at least one evidence row, and a criterion drops back to `unverified` when its last one goes; `waived` exactly when `waiver_ref` is set, and the waiver must be one of the PR's own run and cannot be deleted from under it; `pr_id` frozen; cascades from the PR |
 | `pr_criteria_evidence` | `V057` | One typed reference showing a criterion holds, and the `display_text` mono line the matrix renders | `kind` is `test_case\|hil_measurement\|hunk\|analysis_note\|build_artifact`, and exactly that kind's reference columns are set; `test_case_id`, `hil_measurement_id` and `test_artifact_id` are foreign keys to rows of the PR's workspace; `revision_id` is a revision of the criterion's PR; a hunk's `hunk_path` is in that revision's `files` snapshot, with `1 ≤ hunk_line_start ≤ hunk_line_end`; every reference cascades; never updated; `display_text` is at most 512 characters |
 | `pr_thread_entries` | `V057` | One entry of mockup 12's review thread: `author_kind`, `author_name`, `tag`, `body`, the `blocking` → `resolved` lifecycle with `resolution_body`, and R4's `simulated` watermark | `author_kind` is `model\|policy_bot\|human`, and only a human entry has an `author_id`; `tag` is `self-review\|second opinion\|policy`; a `model` entry must be `simulated` until AZ.1; `blocking` and `resolved` are one-way, and `resolution_body` is only on a resolved entry and is fixed after it; the revision is one of the entry's PR; `ouroboros.pr_thread_summary(pr_id)` gives `entry_count` and `open_count` (blocking and not resolved); `ouroboros_app` may not delete |
+| `pr_merge_plans` | `V058` | How a PR will be merged ([#355](https://github.com/NobuData/ouroboros/issues/355), AW.4, decision **V3**) — mockup 12's *Merge plan* card and the armed *Merge when all gates green* intent: `strategy`, `delete_branch`, `commit_message`, `close_ticket`, `comment_evidence`, `back_annotate_epic` + `epic_id`, `armed` / `armed_by` / `armed_at` / `armed_against_revision_id`, `disarm_reason`, `merged_result`, `updated_by` | `pr_id` unique (1:1) and frozen; `strategy` is `squash\|merge\|rebase`; `commit_message` defaults to `pr_merge_commit_message_template(pr_id)` (title + `Closes <external_key>.`); back-annotation needs an epic of the PR's workspace and falls off when the epic is deleted before merge; an armed plan has `armed_at` and a revision of its own PR, and names `armed_by` when armed; a disarmed one carries no arm columns; `disarm_reason` only when disarmed; `merged_result` is exactly `{sha, identity_used, actions_executed, merged_at}` with only switched-on actions, **never a `[bot]` identity** (`pr_merge_plans_identity_not_bot`) and never while armed; a merged plan is final; every arm, disarm, edit and merge writes an `audit_events` row; `ouroboros_app` may not delete |
 | `queue_items` | `V009` | What the loop will do next — the ordered, estimable per-organization issue queue | `position` unique per organization and **deferrable**, so a reorder swaps inside a transaction; `(organization_id, issue_number)` unique, so an issue queues once; `effort` is one of `xs\|s\|m\|l\|xl`; the item's repository must belong to the item's organization |
 | `token_usage` | `V010`, routing attribution `V020` | What the loop has spent — one append-only event per provider call, not one total per organization. Since `V020` it is also what mockup 06's routing matrix is computed from: `task_kind` says which routed kind of work a call served and `latency_ms` how long it took, so `$/run avg` and `p50 latency` are aggregates here rather than numbers stored on a route (decision **M7**) | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization. `task_kind` is shaped as `task_kinds.name` is but is deliberately **not** a foreign key (decision **F8**, as `runs.workflow_tag`): a ledger row records what happened, and retiring a kind must neither block, delete nor rewrite the history routed under it. `latency_ms` is non-negative, and **both are nullable, which is the point** — null is *not routed* and *not timed*, so an aggregate over none of either is null and the matrix renders the em-dash `M7` requires instead of a fabricated `$0.00` and `0.0s`; zero is permitted on `latency_ms` because a local daemon on loopback really answers inside a millisecond |
 | `workspace_settings` | `V011`, `V041` | Org-scoped typed product settings — the auto-merge switch, and since [#250](https://github.com/NobuData/ouroboros/issues/250) the `runner_bearer_fallback` switch that decides whether a machine may enrol in the farm without a client certificate (default **false**, so a deployment that never considers the question never has the weaker path) | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
@@ -2513,6 +2534,7 @@ case history, flake scores & quarantine [#326](https://github.com/NobuData/ourob
 classifications, PR intents & artifacts meta [#327](https://github.com/NobuData/ouroboros/issues/327) *(done)* ·
 gate definitions & revision snapshots [#353](https://github.com/NobuData/ouroboros/issues/353) *(done)* ·
 criteria, evidence links & review thread [#354](https://github.com/NobuData/ouroboros/issues/354) *(done)* ·
+merge plans & auto-merge intents [#355](https://github.com/NobuData/ouroboros/issues/355) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
