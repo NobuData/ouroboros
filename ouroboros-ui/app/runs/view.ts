@@ -34,6 +34,9 @@ export const COPIED_BRANCH = "Branch name copied";
 /** What the copy control announces when the browser refused the clipboard. */
 export const COPY_BRANCH_FAILED = "Could not copy the branch name";
 
+/** The pull request link's text on a merged run — `PR #512`. */
+export const PR_LINK_PREFIX = "PR";
+
 /** What stands in the meta row while the run has no branch yet. */
 export const NO_BRANCH = "no branch yet";
 
@@ -126,6 +129,33 @@ export interface RunHeadView {
   readonly simulated: boolean;
   /** *Elapsed*. */
   readonly elapsed: RunElapsed;
+  /**
+   * The pull request a merged run opened — the one thing anyone wants from the page once it has
+   * landed (#314) — or `null` for any other run, or when there is no URL to build.
+   */
+  readonly pullRequest: RunPullRequest | null;
+}
+
+/** The meta row's pull request link. */
+export interface RunPullRequest {
+  /** `PR #512`. */
+  readonly label: string;
+  /** Its page on GitHub. */
+  readonly url: string;
+}
+
+/**
+ * The pull request link, for a merged run.
+ *
+ * @param snapshot The run console snapshot.
+ * @returns The link, or `null` unless the run merged and its pull request can be addressed.
+ */
+export function runPullRequest(snapshot: RunConsole): RunPullRequest | null {
+  if (snapshot.run.status !== "merged") return null;
+
+  const url = pullRequestUrl(snapshot.head.repository, snapshot.run.prNumber);
+
+  return url === null ? null : { label: `${PR_LINK_PREFIX} #${snapshot.run.prNumber}`, url };
 }
 
 /**
@@ -160,6 +190,29 @@ export function runHeadline(issueNumber: number, issueTitle: string): string {
 }
 
 /**
+ * One numbered page of a repository on GitHub — an issue or a pull request.
+ *
+ * @param repository The repository, or `undefined` when the service could not read it.
+ * @param kind Which page: `issues` or `pull`.
+ * @param number The issue's or the pull request's number.
+ * @returns The URL with each segment encoded, or `null` when there is no repository or the
+ *   number is not a positive integer — a missing link rather than a guessed one.
+ */
+function githubPage(
+  repository: RunRepository | undefined,
+  kind: "issues" | "pull",
+  number: number | null,
+): string | null {
+  if (repository === undefined || number === null) return null;
+  if (!Number.isInteger(number) || number < 1) return null;
+
+  return (
+    `https://github.com/${encodeURIComponent(repository.owner)}/` +
+    `${encodeURIComponent(repository.name)}/${kind}/${number}`
+  );
+}
+
+/**
  * Where the headline links: the issue on its tracker.
  *
  * Runs are keyed on a GitHub repository and an issue number today, and the run console's
@@ -176,13 +229,21 @@ export function trackerUrl(
   repository: RunRepository | undefined,
   issueNumber: number,
 ): string | null {
-  if (repository === undefined) return null;
-  if (!Number.isInteger(issueNumber) || issueNumber < 1) return null;
+  return githubPage(repository, "issues", issueNumber);
+}
 
-  return (
-    `https://github.com/${encodeURIComponent(repository.owner)}/` +
-    `${encodeURIComponent(repository.name)}/issues/${issueNumber}`
-  );
+/**
+ * Where a run's pull request is — GitHub's pull page, for {@link trackerUrl}'s reason.
+ *
+ * @param repository The repository, or `undefined` when the service could not read it.
+ * @param prNumber The pull request's number, or `null`.
+ * @returns The URL with each segment encoded, or `null` when either half is missing.
+ */
+export function pullRequestUrl(
+  repository: RunRepository | undefined,
+  prNumber: number | null,
+): string | null {
+  return githubPage(repository, "pull", prNumber);
 }
 
 /**
@@ -241,5 +302,6 @@ export function runHead(snapshot: RunConsole): RunHeadView {
     branch: head.branchName,
     simulated: head.simulated,
     elapsed: runElapsed(snapshot),
+    pullRequest: runPullRequest(snapshot),
   };
 }

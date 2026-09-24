@@ -15,6 +15,9 @@ import { NO_BRANCH, type RunHeadView } from "./view";
  * *elapsed*, and the branch with its copy control. Every value is `view.ts`'s; this file only
  * draws.
  *
+ * A merged run adds a sixth: the pull request it opened (#314), which is what a reader wants from
+ * the page once the run has landed.
+ *
  * The run controls the mockup puts beside the head (*Pause loop*, *Take over in IDE*, *Abort
  * run*) are AQ.2's ([#310](https://github.com/NobuData/ouroboros/issues/310)): the screen
  * decides whether the reader may see them and hands them in as `actions`, which sit to the
@@ -65,6 +68,16 @@ export function RunHead({
             <span className="run-head__mono">{NO_BRANCH}</span>
           ) : (
             <CopyBranch branch={view.branch} />
+          )}
+          {view.pullRequest !== null && (
+            <a
+              className="run-head__pr"
+              href={view.pullRequest.url}
+              rel="noopener noreferrer"
+              target="_blank"
+            >
+              {view.pullRequest.label} ↗
+            </a>
           )}
         </div>
       </div>

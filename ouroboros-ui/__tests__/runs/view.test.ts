@@ -9,6 +9,8 @@ import {
   runElapsed,
   runHead,
   runHeadline,
+  pullRequestUrl,
+  runPullRequest,
   trackerUrl,
   workflowCaption,
 } from "@/app/runs/view";
@@ -39,6 +41,34 @@ describe("the seeded head", () => {
     expect(view.trackerUrl).toBe("https://github.com/acme/helios-firmware/issues/482");
     expect(view.simulated).toBe(false);
     expect(view.loopLabel).toBe("Loop #1847");
+    expect(view.pullRequest).toBeNull();
+  });
+});
+
+describe("the pull request link (#314)", () => {
+  it("is offered once the run has merged", () => {
+    const merged = runConsole({ run: { status: "merged", prNumber: 512 }, head: { live: false } });
+
+    expect(runPullRequest(merged)).toEqual({
+      label: "PR #512",
+      url: "https://github.com/acme/helios-firmware/pull/512",
+    });
+    expect(runHead(merged).pullRequest).toEqual(runPullRequest(merged));
+  });
+
+  it("is not offered by any run that has not merged, even one that opened a pull request", () => {
+    const statuses: RunStatus[] = ["coding", "building", "review", "needs_human", "failed", "canceled"];
+
+    for (const status of statuses) {
+      expect(runPullRequest(runConsole({ run: { status, prNumber: 512 } }))).toBeNull();
+    }
+  });
+
+  it("is not offered without a number or a repository to build it from", () => {
+    expect(runPullRequest(runConsole({ run: { status: "merged", prNumber: null } }))).toBeNull();
+    expect(
+      runPullRequest(runConsole({ run: { status: "merged", prNumber: 512 }, head: { repository: undefined } })),
+    ).toBeNull();
   });
 });
 
@@ -137,5 +167,24 @@ describe("elapsed", () => {
       live: false,
       seconds: SEEDED_ELAPSED_SECONDS,
     });
+  });
+});
+
+describe("pullRequestUrl", () => {
+  const repository = { owner: "acme", name: "helios-firmware" };
+
+  it("is the pull request's page on GitHub", () => {
+    expect(pullRequestUrl(repository, 512)).toBe("https://github.com/acme/helios-firmware/pull/512");
+  });
+
+  it("encodes each segment", () => {
+    expect(pullRequestUrl({ owner: "a/b", name: "c d" }, 1)).toBe("https://github.com/a%2Fb/c%20d/pull/1");
+  });
+
+  it("is null without a repository or a number, or for a number that is not one", () => {
+    expect(pullRequestUrl(undefined, 512)).toBeNull();
+    expect(pullRequestUrl(repository, null)).toBeNull();
+    expect(pullRequestUrl(repository, 0)).toBeNull();
+    expect(pullRequestUrl(repository, 1.5)).toBeNull();
   });
 });

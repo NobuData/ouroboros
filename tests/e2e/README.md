@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and twelve amended in since:
+deployment. Five legs from the issue, and thirteen amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -35,6 +35,7 @@ deployment. Five legs from the issue, and twelve amended in since:
 | 15 | [`specs/planning.spec.ts`](specs/planning.spec.ts) | Mockup 09's four cards and its gantt against the planning seed, in both palettes — and the longest chain in the product, in one traversal: an outline planned by the engine into sized drafts, one deselected, pushed to a **sandbox tracker** with one creation refused mid-batch, the issues *and their native dependencies and epic parent* read back **through the tracker's own API**, ordinary sync adopting each of them as exactly one canonical ticket, a **Resume push** that leaves the tracker holding the intended issues and not one more, and the small ones landing on the **dashboard's** queue card; plus a bar moved and an epic round-tripped, the *Blocked* meter shifting because the push wired real dependencies, and a member who may draft and may not push |
 | 16 | [`specs/farm.spec.ts`](specs/farm.spec.ts) | Mockup 08 against the farm seed in both palettes — and **the first chain that leaves the stack's language and its network**: a fresh workspace walked from *no pools* to *no runners, enrol first* to a live row by **pasting the page's copied command, verbatim, into a bare machine**, where a real Go agent installs itself over TLS, enrols with a single-use token against a farm CA made a second earlier, and connects out over mTLS through a certificate-forwarding gateway; a token revoked in the browser **refused by the control plane in its own words**; a drain that round-trips on the agent's heartbeat; and the machine killed with `SIGKILL`, its row flipping to `offline` *because nothing is heartbeating* — plus a stale-data banner over a refused poll, a member served everything and offered nothing, and the shell at 125%. The build → live log → stats test is written and **parked** on [#991](https://github.com/NobuData/ouroboros/issues/991) |
 | 17 | [`specs/runs.spec.ts`](specs/runs.spec.ts) | Mockup 10's run controls against **a run that really answers them**: the simulated-run driver (#307), started on the host, opens a run through the ingestion contract, and the leg presses **Pause loop** until the chip reads *acknowledged* and the button becomes **Resume**, resumes it the same way, double-clicks Pause into exactly one queued control, takes the run over (the branch's commands, the JSONL export, the #316 limitation), shows a member none of it and has the service refuse their direct call, has a forged abort confirmation refused with `422`, and aborts the run for real — the page going `canceled` without a reload, the timeline drawing the stage it died on as failed, and the driver reporting `aborted`; and (#311) a stage timeline that moves on the poll, filters by stage in the address across a reload, and at phone width in both palettes scrolls in its own box while the pane does not; and (#312) the seeded transcript's nine entries screenshot in both palettes, and a steer typed into a live simulated run that comes back as the service's own `user` entry, *acknowledged*, with the box closed and saying why once the run has ended; and (#313) the seeded right column — three files, two commits, both meters, `forge-02 reserved`, four guardrail marks under a computed `clean` pill — screenshot in both palettes, and at phone width a pane that never scrolls sideways |
+| 18 | [`specs/run-console.spec.ts`](specs/run-console.spec.ts) | **The Run Console MVP gate (#314)** — the whole stack moving together against a run that is genuinely moving: a finished seeded run (`#474`, merged) screenshot in both palettes with its outcome pill, frozen elapsed, pull-request link and closed steering; the driver's `482-gate-return` watched as its stepper advances, its transcript appends, a steer typed mid-attempt comes back *acknowledged*, guardrail verdicts render and a pause and resume both reach *acknowledged*; a second run aborted through the typed confirmation into the terminal state, and its JSONL export carrying the simulated watermark on every line; and the shell's promises on the console — fixed chrome under a pane scroll, the origin's sidebar entry lit, the 125% step |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -234,6 +235,32 @@ API. What can be put back is put back — the tracker is reset, the workspace's 
 removed, the lane it moved is moved back and the epic it edited is restored —
 and `support/planning.ts` carries the table of what is not and why.
 
+Leg 18 is [#314](https://github.com/NobuData/ouroboros/issues/314)'s — AQ.6, **the Run Console
+milestone's MVP gate**. Leg 17 certifies the console's parts where each was built; this certifies
+them together, against the simulated-run driver (#307) reporting through the real ingestion
+contract, in about forty-five seconds of the suite's ten minutes. Its three live tests are a
+parity pair of a *finished* run (mockup 10 draws only a live one, which leg 17's pairs already
+photograph), the `482-gate-return` scenario watched end to end, and a second scenario aborted into
+the terminal state; the fourth holds the console to the shell's promises at the 125% step.
+
+**Each layer under it was broken on purpose, and the leg went red naming it.** The ticket asks for
+the leg to fail meaningfully "by disabling ingestion, control delivery and guardrail evaluation in
+turn". Those are three code paths inside `rest`, so — for the routing pair's reason (§ *Verifying
+the suite still asserts something*) — the automated pair is `db`, and the three were stubbed by
+hand in `ouroboros-rest`, rebuilt into the stack, and the leg run against each:
+
+| stubbed in `ouroboros-rest` | red | the message the log carries |
+|---|---|---|
+| ingestion — `IngestRepository.appendEvents` stores nothing | the live test; the abort test at the export | *transcript entries must arrive and append — the ingestion contract stores what the driver reports* |
+| control delivery — `ControlsService.fetch` hands the driver nothing | the live test at the steer's ack; the abort test at `canceled` | *the control must be acknowledged — control delivery hands it to the driver at a safe boundary* |
+| guardrail evaluation — `GuardrailsService.evaluate` writes no verdict | the live test only | *guardrail verdicts must render — the control plane evaluates every reported change-set* |
+
+The seeded parity pair and the shell test stayed green under all three — neither reads anything
+the driver reports — which is what makes the red ones evidence rather than collateral. Repeat it
+with the recipe the farm leg used: stub, `up -d --build rest`, recreate `ui` (it shares `rest`'s
+network namespace), restore the source at once, `grep` the stub in `/app/ouroboros-rest/dist`, run
+the spec, rebuild clean and `grep` for none.
+
 Leg 16 is [#262](https://github.com/NobuData/ouroboros/issues/262)'s — AI.7, mockup 08's MVP gate —
 and it is different in kind from the fifteen before it. They certify a UI against services in the
 same compose stack, written in the same language. This one certifies a chain that crosses a
@@ -321,12 +348,12 @@ yarn e2e specs/engine.spec.ts          # one leg
 
 From the repository root, `yarn e2e` is the same thing.
 
-**Leg 17 needs [uv](https://docs.astral.sh/uv/) on the machine running the suite.** Its run is
+**Legs 17 and 18 need [uv](https://docs.astral.sh/uv/) on the machine running the suite.** Their runs are
 opened by the simulated-run driver, which is development-only — not in the engine image — so
 `support/simulator.ts` runs it on the host as `uv run python -m ouroboros_simulator`, against
 REST on `localhost:4000`, presenting the simulator secret `docker-compose.e2e.yml` gives
 `rest`. `uv sync --locked` in `ouroboros-engine` once beforehand saves the leg resolving Python
-inside its own budget; CI does exactly that.
+inside their own budget; CI does exactly that.
 
 **Leg 8 is a separate command**, because it is a separate gate with a separate budget:
 
@@ -427,7 +454,7 @@ tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16 and 17's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17 and 18's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
@@ -441,7 +468,7 @@ tests/e2e/
 │   ├── compose.ts              # stopping and starting the one service a spec may stop (leg 10)
 │   ├── farm.ts                 # what mockup 08 renders, the fresh workspace the real chain runs in, and what leg 16 leaves
 │   ├── farm-runner.ts          # the build machine's three verbs: a fresh one, a pasted line, a pulled plug (leg 16)
-│   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (leg 17)
+│   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (legs 17, 18)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
 │   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
@@ -541,6 +568,10 @@ row). The words around them are asserted as text, as patterns, for the same reas
 *does* photograph is the point of it — all five status archetypes on one table, which is only still
 true on a running stack because the seed's live heartbeats are dated ahead.
 
+Leg 18's pair is the whole console of the seeded **merged** run `#474` through a 1920 × 1400
+window, and it needs no mask: every figure on a finished run is final — the elapsed is its cycle
+(`11m 00s`), the pull request is `#512`, and nothing ticks. That is the point of photographing it.
+
 Leg 12's pair is of the **canvas region alone** rather than the page —
 `studio-canvas-{light,dark}` in [`specs/studio.spec.ts`](specs/studio.spec.ts), through a
 1920 × 1400 window the leg asserts the canvas fits whole. The studio's head says *Last edited 2h
@@ -587,10 +618,11 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9, 10, 11, 12, 13, 14, 15 and 16's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+Legs 6, 9, 10, 11, 12, 13, 14, 15, 16, 17 and 18's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
 --update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts`,
 `specs/issues.spec.ts`, `specs/studio.spec.ts`, `specs/code-editor.spec.ts`,
-`specs/registry.spec.ts`, `specs/planning.spec.ts` or `specs/farm.spec.ts` — at step 2. The precondition is the same,
+`specs/registry.spec.ts`, `specs/planning.spec.ts`, `specs/farm.spec.ts`, `specs/runs.spec.ts` or
+`specs/run-console.spec.ts` — at step 2. The precondition is the same,
 and it is the same seed.
 
 **Leg 15's pair has one more precondition, and it is the same volume rule its whole file lives
@@ -719,5 +751,6 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#311](https://github.com/NobuData/ouroboros/issues/311) — leg 17's stage timeline
 - [#312](https://github.com/NobuData/ouroboros/issues/312) — leg 17's agent transcript and steering
 - [#313](https://github.com/NobuData/ouroboros/issues/313) — leg 17's changes, resources and guardrails cards
+- [#314](https://github.com/NobuData/ouroboros/issues/314) — leg 18, the run console's states and the Run Console MVP gate
 - [#306](https://github.com/NobuData/ouroboros/issues/306) — the control queue leg 17's presses travel through
 - [#307](https://github.com/NobuData/ouroboros/issues/307) — the simulated-run driver that acknowledges them

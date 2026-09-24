@@ -789,7 +789,7 @@ via the #16 tokens (both themes; the mockup is dark-only).
 | AQ.3 | #311 | 🟢 Done | ouroboros-ui: [AQ.3] Stage timeline stepper | Done/active/pending nodes, attempt chips, gate-return notes | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
 | AQ.4 | #312 | 🟢 Done | ouroboros-ui: [AQ.4] Agent transcript & steering | Streaming entries, actor chips, diff blocks, live entry, steer input | mvp, runs, ui, design | N (after AQ.1, AP.4) | Y | L | ouroboros-ui |
 | AQ.5 | #313 | 🟢 Done | ouroboros-ui: [AQ.5] Changes, resources & guardrails cards | The three right-column cards from computed payloads | mvp, runs, ui, design | N (after AQ.1) | Y | M | ouroboros-ui |
-| AQ.6 | #314 | 🟡 Open | ouroboros-ui: [AQ.6] Console states & e2e leg | Terminal/queued/error states, watermark, themes, simulated e2e | mvp, runs, ui, ci | N (after AQ.2–AQ.5) | Y | M | ouroboros-ui, .github |
+| AQ.6 | #314 | 🟢 Done | ouroboros-ui: [AQ.6] Console states & e2e leg | Terminal/queued/error states, watermark, themes, simulated e2e | mvp, runs, ui, ci | N (after AQ.2–AQ.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue AQ.1 — ouroboros-ui: [AQ.1] Run route, head & meta row
 
@@ -1029,7 +1029,7 @@ GUARDRAILS (clean)  ✓ paths ✓ no CI ✓ secrets ○ review not required — 
 
 ### Issue AQ.6 — ouroboros-ui: [AQ.6] Console states & e2e leg
 
-> **GitHub issue:** #314 · **Status:** 🟡 Open · **Parent epic:** #296
+> **GitHub issue:** #314 · **Status:** 🟢 Done · **Parent epic:** #296
 
 - **Problem Statement:** Runs end (merged/failed/canceled), queue, and
   error; and the whole console must certify end-to-end against a live
@@ -1052,6 +1052,32 @@ GUARDRAILS (clean)  ✓ paths ✓ no CI ✓ secrets ○ review not required — 
 ```
 e2e: parity ✓ · live scenario (stepper·transcript·steer·guardrails) ✓ · pause/abort ✓ · export ✓
 ```
+
+> **Delivered as `ouroboros-ui/app/runs/states.ts` + `ingest-lag-banner.tsx`, `run-missing.tsx`, the
+> whole-page `run-skeleton.tsx`, and e2e leg 18 (`tests/e2e/specs/run-console.spec.ts`). Five
+> decisions the scope above left open:**
+>
+> 1. **Ingest lag is two minutes of no activity on a live, started run.** Activity is the newest of
+>    a transcript entry, a stage attempt starting or finishing, a commit, and the run's start
+>    (`INGEST_LAG_AFTER_SECONDS = 120`). The banner is DASH-I.7's box and names the last-updated
+>    time; it cannot tell *paused* or *thinking* from *stalled*, so its reason names all three. A
+>    queued or ended run never gets it, and a failed refresh's banner takes its slot.
+> 2. **Queued is live with no attempt started** (or no stage reported). The stepper already drew
+>    that as all pending; the transcript now says the run is queued instead of that nothing was
+>    written.
+> 3. **Only a merged run links its pull request** (`PR #512 ↗`, GitHub's pull page from
+>    `head.repository` and `run.prNumber`) — a failed or canceled run that opened one does not.
+>    The frozen elapsed, the outcome pill, the closed steering and the quiet `streaming` pill were
+>    already true of a finished run (#309, #312) and are asserted here.
+> 4. **A missing run is the console's own not-found page**, inside the shell, which cannot say
+>    whether the run is absent or another workspace's because the service answers both the same.
+>    The skeleton now covers the stepper, the transcript and the three cards (its head bars also
+>    moved under the eyebrow, where #309 had put them beside it).
+> 5. **The layer breakages are spot checks, the automated pair is `db`** — the routing pair's
+>    reasoning. Ingestion, control delivery and guardrail evaluation were each stubbed in
+>    `ouroboros-rest`; the live test went red naming the layer every time, and the seeded parity
+>    and shell tests stayed green (tests/e2e/README.md records the table). The leg adds about
+>    45 s to the suite.
 
 ---
 
@@ -1354,4 +1380,5 @@ console's six vocabularies to *covered* rather than merely *closed*. **Epic AO i
 Next is **#303** ([AP.1] the ingestion contract), which
 is the piece with reach beyond this roadmap: it is the one door every executor,
 simulated or real, reports through, and #91's unbuilt scope is delivered inside it.
-The MVP closes at **#314**, the e2e leg that drives a live simulated run.
+The MVP closed at **#314**, the e2e leg that drives a live simulated run — **the Run Console MVP
+is complete**; what remains is Epic AR's v2 (#315–#319).

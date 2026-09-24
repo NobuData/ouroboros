@@ -65,6 +65,9 @@
 #   db        runs.spec.ts        the run the console controls is opened through the real
 #                                 ingestion contract, rows and all: with the database stopped
 #                                 the driver cannot open one, and says so (#310)
+#   db        run-console.spec.ts the console's MVP gate reads a seeded run and a live one out of
+#                                 the run tables: with the database stopped nobody can sign in
+#                                 to read either, and the driver cannot open its run (#314)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -587,6 +590,13 @@ expect_red farm-gateway farm.spec.ts "the log streamed" "streams a real build"
 # `ouroboros-rest`'s ingestion contract, so with the database stopped there is no run to
 # control, and the leg goes red at its first step naming the driver rather than a timeout.
 expect_red db runs.spec.ts "the simulator (exited|opened no run)"
+
+# The run console's MVP gate (#314). `db` for the reason every pair above uses it; the leg's
+# three layer breakages — ingestion, control delivery, guardrail evaluation — are code paths
+# inside `rest`, verified by hand and recorded in tests/e2e/README.md rather than automated,
+# for the routing pair's reason: a switch that makes the service lie is worse to ship than a
+# check somebody repeats.
+expect_red db run-console.spec.ts "sign-in for .* answered 5[0-9][0-9]|the simulator (exited|opened no run)"
 
 printf '\n'
 if check_summary; then

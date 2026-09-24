@@ -398,7 +398,10 @@ ouroboros-ui/
 │   │   ├── run-controls.tsx #   Pause loop / Take over in IDE / Abort run, with their chips
 │   │   ├── abort-dialog.tsx #   the typed-confirmation danger dialog
 │   │   ├── takeover-dialog.tsx # decision R7's hand-off: branch, commands, links, #316 note
-│   │   ├── run-skeleton.tsx #   the loading state, at the head's own geometry
+│   │   ├── states.ts        #   the states besides mid-flight: queued, ingest lag, the merged run's PR · #314
+│   │   ├── ingest-lag-banner.tsx # "No new activity since 14:02" — DASH-I.7's banner for a quiet live run
+│   │   ├── run-missing.tsx  #   the not-found page for a run this workspace cannot see
+│   │   ├── run-skeleton.tsx #   the loading state: head, stepper, transcript and the three cards, at their geometry
 │   │   └── run-screen.tsx   #   the contextual frame: breadcrumb, banners, head — polled
 │   ├── settings/            # the settings section's frame and tab row — mockup 17 · #141
 │   │   ├── view.ts          #   the eight tabs, two live (Sources, Farm tokens); the eyebrow
@@ -3353,7 +3356,8 @@ disabled would reasonably expect to draft and be refused on the first click.
 the shared I.8 cadence through `/api/runs/:id`. The [run controls](#run-controls) sit beside it
 (AQ.2, #310); the [stage timeline](#stage-timeline) sits beneath it (AQ.3, #311), then the
 [agent transcript](#agent-transcript) (AQ.4, #312), with the [right column](#right-column)
-(AQ.5, #313) beside it.
+(AQ.5, #313) beside it. Every [state besides mid-flight](#console-states) — ended, queued, gone
+quiet, loading, missing — is AQ.6's (#314).
 
 ```
 Dashboard / Loop #1847
@@ -3385,6 +3389,25 @@ Jira, Linear or GitLab ticket's URL needs the contract to carry it — and is pl
 repository is missing. A run
 another workspace owns, or an id that is not a uuid, is the not-found page; a failed read is the
 retry banner, keeping the last answer on screen.
+
+### Console states
+
+Mockup 10 draws one state: a healthy run mid-flight. AQ.6
+([#314](https://github.com/NobuData/ouroboros/issues/314)) draws the rest
+([`states.ts`](app/runs/states.ts)), all in both palettes:
+
+| State | What the page does |
+|---|---|
+| **Ended** (merged · failed · canceled) | Elapsed **freezes** at the stated duration; the pill takes the outcome's hue and stops pulsing; the `streaming` pill goes; steering is disabled with the reason printed; the controls go. A **merged** run's meta row adds `PR #512 ↗`, its pull request on GitHub — no other outcome does. |
+| **Queued** (live, no stage started) | The stepper draws every stage pending, and the empty transcript says it is queued rather than that nothing has been written. |
+| **Gone quiet** (ingest lag) | A live, started run with no new activity — transcript entry, stage attempt start or finish, commit — for **two minutes** (`INGEST_LAG_AFTER_SECONDS`) gets DASH-I.7's banner: *No new activity since 14:02 — the run's events have gone quiet*, and why that may be (paused, working on something long, or ingestion stalled). *Check again* asks the service now, and the next activity clears it. A failed refresh's banner takes precedence — it says the same thing for a stronger reason — and a queued or ended run never gets it. |
+| **Simulated** | #309's watermark, at the frame, in every state. |
+| **Member / viewer** | A member may steer and sees no pause, abort or take-over; a viewer reads and is told why they cannot steer. |
+| **Loading** | [`loading.tsx`](<app/(app)/runs/[id]/loading.tsx>) — skeletons for the head, the stepper, the transcript and the three cards, at their own geometry and hidden from the accessibility tree. |
+| **Error** | A run that could not be read is the retry banner with nothing drawn it does not have; a run that does not exist (or is another workspace's — the service answers both the same) is [`not-found.tsx`](<app/(app)/runs/[id]/not-found.tsx>), the console's own page with the way back to the dashboard. |
+
+The e2e suite's leg 18 (`tests/e2e/specs/run-console.spec.ts`) certifies the whole console against
+a live simulated run — the milestone's MVP gate.
 
 ### Stage timeline
 
