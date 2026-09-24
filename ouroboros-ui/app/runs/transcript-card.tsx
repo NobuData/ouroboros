@@ -5,6 +5,7 @@ import {
   type UIEvent,
   memo,
   useCallback,
+  useEffect,
   useId,
   useLayoutEffect,
   useMemo,
@@ -20,6 +21,7 @@ import { type HeadControl, type SubmitOutcome, submitRunControl } from "./contro
 import { type DeliveryChip, controlKey } from "./controls";
 import { type ControlsPollOptions, controlsUrl, createControlsPoll } from "./controls-poll";
 import { transcriptUrl } from "./handoff";
+import { QUEUED_ENTRIES } from "./states";
 import { SteerBox } from "./steer-box";
 import {
   ENTRIES_LABEL,
@@ -72,6 +74,16 @@ export interface TranscriptCardProps {
   readonly controlsPoll?: ControlsPollOptions;
   /** How to send a steer. Defaults to the Server Action. */
   readonly send?: SteerSender;
+  /**
+   * Whether the run is queued — live, with no stage started (#314). An empty transcript then says
+   * why it is empty rather than that nothing has been written.
+   */
+  readonly queued?: boolean;
+  /**
+   * Hear the newest held entry's `ts` (or `null`) whenever it changes — what the screen's
+   * ingest-lag banner (#314) measures from.
+   */
+  readonly onNewest?: (at: string | null) => void;
 }
 
 /** Each actor's chip class — written out, so the sheet's audit can see every one rendered. */
@@ -122,6 +134,7 @@ const RESULT_CLASS: Readonly<Record<NonNullable<EntryView["result"]>["tone"], st
  * **Honest about liveness.** The `streaming` pill is the page's `live` flag and nothing else, so
  * it goes quiet with the run; the live entry's meter pulses only while the run is live. A screen
  * reader hears one polite sentence per poll counting what arrived — never the entries read out.
+ * A queued run's empty well says it is queued (#314), not merely that nothing has been written.
  *
  * **Steering** posts a `steer` control and draws the reader's words at once as a `USER` entry
  * carrying the delivery chip; the service's mirror of the steer replaces it when it arrives, and
@@ -140,6 +153,8 @@ export function TranscriptCard({
   stream,
   controlsPoll,
   send = submitRunControl,
+  queued = false,
+  onNewest,
 }: TranscriptCardProps) {
   const titleId = useId();
   const { view, refresh } = useTranscript(runId, stream);
@@ -154,6 +169,10 @@ export function TranscriptCard({
   );
 
   const live = view.live ?? runLive;
+  const newestAt = view.entries.at(-1)?.ts ?? null;
+
+  useEffect(() => onNewest?.(newestAt), [newestAt, onNewest]);
+
   const shown = filterEntries(view.entries, stage);
   const liveKey = liveSeq(view.entries);
 
@@ -287,7 +306,7 @@ export function TranscriptCard({
         >
           {view.dropped > 0 && <p className="run-transcript__dropped">{droppedText(view.dropped)}</p>}
           {entries.length === 0 ? (
-            <p className="run-transcript__empty">{view.loaded ? NO_ENTRIES : LOADING_ENTRIES}</p>
+            <p className="run-transcript__empty">{!view.loaded ? LOADING_ENTRIES : queued ? QUEUED_ENTRIES : NO_ENTRIES}</p>
           ) : (
             <ol className="run-transcript__list">
               {entries.map((entry) => (

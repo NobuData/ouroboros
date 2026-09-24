@@ -178,6 +178,18 @@
   color: var(--accent);
 }
 
+/* A merged run's pull request (#314) — the mockup's mono meta, in the link hue. */
+.run-head__pr {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.run-head__pr:hover {
+  text-decoration: underline;
+}
+
 .run-head__copy-status {
   font-size: var(--t-xs);
   color: var(--ink-mut);
@@ -1334,4 +1346,69 @@ a.run-changes__sha:focus-visible {
 /* The meta row's pills. */
 .run-skeleton__bar--meta {
   width: 32rem;
+}
+
+/*
+ * The rest of the page (#314): the timeline's row of nodes, the transcript's well and the right
+ * column's three cards, each at its region's own geometry, in the page's own 7/5 grid.
+ */
+/* The regions below the head, hidden from the accessibility tree as one. */
+.run-skeleton__region {
+  min-width: 0;
+}
+
+.run-skeleton__timeline {
+  margin-bottom: var(--sp-10);
+}
+
+.run-skeleton__steps {
+  display: flex;
+  gap: var(--sp-6);
+  margin-top: var(--sp-6);
+  overflow: hidden;
+}
+
+.run-skeleton__step {
+  flex: 0 0 auto;
+  width: var(--sp-10);
+  height: var(--sp-10);
+  border-radius: var(--r-round);
+  background: var(--raised);
+}
+
+.run-skeleton__transcript {
+  min-width: 0;
+}
+
+.run-skeleton__well {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin-top: var(--sp-6);
+  padding: var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.run-skeleton__card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+/* A card head's title. */
+.run-skeleton__bar--heading {
+  width: 10rem;
+}
+
+/* One transcript entry. */
+.run-skeleton__bar--line {
+  width: 100%;
+}
+
+/* One row of a right-column card. */
+.run-skeleton__bar--row {
+  width: 100%;
+  height: var(--sp-5);
 }

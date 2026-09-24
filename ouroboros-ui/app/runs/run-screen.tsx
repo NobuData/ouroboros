@@ -14,12 +14,14 @@ import { type RunPollOptions, createRunPoll, runUrl } from "./console-poll";
 import type { ControlsPollOptions } from "./controls-poll";
 import type { RunOrigin } from "./origin";
 import { GuardrailsCard } from "./guardrails-card";
+import { IngestLagBanner } from "./ingest-lag-banner";
 import { ResourcesCard } from "./resources-card";
 import { type ControlSender, RunControls } from "./run-controls";
 import { RunHead } from "./run-head";
 import { RunStepper } from "./run-stepper";
 import { type SteerSender, TranscriptCard } from "./transcript-card";
 import type { TranscriptStreamOptions } from "./transcript-stream";
+import { isQueued } from "./states";
 import { runStepper, selectedStage, withStage } from "./stepper";
 import {
   BREADCRUMB_LABEL,
@@ -72,6 +74,13 @@ import "./runs.css";
  * 7/5 split, and under it on a narrow one. Each card is drawn from the same snapshot as the
  * head, so a poll moves all of them together.
  *
+ * **The states besides mid-flight** ([#314](https://github.com/NobuData/ouroboros/issues/314)). A
+ * finished run freezes its elapsed, quiets its pill and the transcript's, closes steering with the
+ * reason printed and, once merged, links its pull request. A queued run's transcript says it is
+ * queued. And a live run whose events have gone quiet gets the ingest-lag banner, naming when the
+ * page last heard anything — unless a failed refresh already has the banner slot, since that
+ * banner says the same thing for a stronger reason.
+ *
  * @param props.initialStage The `?stage=` the page was opened with, or `null`.
  * @param props.mayControl Whether the reader may pause, abort or take over — owner or admin.
  *   `false` when absent, erring the way `mayAdminister` does.
@@ -122,6 +131,7 @@ export function RunScreen({
   const stepper = data === null ? null : runStepper(data);
 
   const [requestedStage, setRequestedStage] = useState<string | null>(initialStage);
+  const [newestEntryAt, setNewestEntryAt] = useState<string | null>(null);
   const stage = stepper === null ? null : selectedStage(requestedStage, stepper.steps);
 
   /**
@@ -162,6 +172,10 @@ export function RunScreen({
         />
       )}
 
+      {error === null && data !== null && data.head.live && (
+        <IngestLagBanner newestEntryAt={newestEntryAt} onRetry={refresh} snapshot={data} />
+      )}
+
       {view?.simulated && (
         <p className="run__simulated" role="note">
           <span className="run__simulated-headline">{SIMULATED_HEADLINE}</span>{" "}
@@ -197,6 +211,8 @@ export function RunScreen({
               controlsPoll={controlsPoll}
               mayContribute={mayContribute}
               onClearStage={() => selectStage(null)}
+              onNewest={setNewestEntryAt}
+              queued={isQueued(data)}
               runId={id}
               runLive={data.head.live}
               send={steer}
