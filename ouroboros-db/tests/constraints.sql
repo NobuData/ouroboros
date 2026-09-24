@@ -14463,12 +14463,15 @@ select pg_temp.must_hold(
    -- somebody has to edit this line to stop being true. #299 wrote it as *one*; #301 added
    -- `run_controls_audit()`, for the same reason and with the same posture — asserted in that
    -- migration's own section — and amended this assertion rather than deleting it, because a
-   -- list is only a backstop while it is closed.
-   and (select array_agg(proname::text order by proname) = array['run_controls_audit',
+   -- list is only a backstop while it is closed. #327 added
+   -- `failure_classifications_routed_valid()` the same way: a receipt check that must read the
+   -- farm's jobs on the writer's behalf, asserted in V055's section.
+   and (select array_agg(proname::text order by proname) = array['failure_classifications_routed_valid',
+                                                                 'run_controls_audit',
                                                                  'run_events_append']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it and #301''s control audit are the only two functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit and #327''s receipt check are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -18560,6 +18563,747 @@ select pg_temp.must_hold(
   and (select count(*) = 0 from ouroboros.flake_scorer_runs where organization_id like 'org-v054%')
   and (select array_agg(version) = array[1] from ouroboros.flake_score_formulas),
   'and the V054 fixture leaves nothing behind but formula 1');
+
+-- ===========================================================================
+-- V055 — classifications, PR intents and the artifact registry (#327, AS.4)
+-- ===========================================================================
+--
+-- Mockup 11's Mark & Route and Artifacts cards as rows. Run #482's Build 3 has a flaky
+-- telemetry case, a failed e-stop case, an errored rig case, a passing case and a skipped one;
+-- run #483 and another workspace's run #900 are there to be refused. Asserted: a classification
+-- captures the whole card (class, note, actor, rule or confidence, and a receipt of what was
+-- dispatched); confidence belongs to the model alone and a heuristic carries its rule; a
+-- receipt names a real control or job of the case's own run and is written once;
+-- re-classifying supersedes and keeps the prior decision; a waiver needs an author, a reason
+-- and cases of its run; the PR intents are stored and nothing reads them; the artifacts render
+-- from data, move between storage drivers as a row update, expire to a tombstone that stays
+-- distinguishable from a missing row, and say why they were truncated; every vocabulary is
+-- closed; and the grants keep all of it append-only where it has to be.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v055',  'Route Works',       'route-works',       now()),
+  ('org-v055b', 'Other Route Works', 'other-route-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a5500000-0000-0000-0000-00000000000a', 'Ken S',    'ken@route-works.dev',    true),
+  ('a5500000-0000-0000-0000-00000000000b', 'Temp Dev', 'temp@route-works.dev',   true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a5510000-0000-0000-0000-00000000000a', 'org-v055',  'route-works',       true),
+  ('a5510000-0000-0000-0000-00000000000b', 'org-v055b', 'other-route-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a551f000-0000-0000-0000-00000000000a', 'a5510000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a551f000-0000-0000-0000-00000000000b', 'a5510000-0000-0000-0000-00000000000b',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a5520000-0000-0000-0000-000000000482', 'org-v055', 'a551f000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '40 minutes'),
+    ('a5520000-0000-0000-0000-000000000483', 'org-v055', 'a551f000-0000-0000-0000-00000000000a',
+     483, 'Tighten OTA rollback', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '20 minutes'),
+    ('a5520000-0000-0000-0000-000000000900', 'org-v055b', 'a551f000-0000-0000-0000-00000000000b',
+     900, 'Elsewhere', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '10 minutes');
+
+-- Attempt ids: …0<run tail><attempt>.
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status) values
+  ('a5530000-0000-0000-0000-000000004821', 'org-v055',  'a5520000-0000-0000-0000-000000000482', 1, 'complete'),
+  ('a5530000-0000-0000-0000-000000004823', 'org-v055',  'a5520000-0000-0000-0000-000000000482', 3, 'running'),
+  ('a5530000-0000-0000-0000-000000004831', 'org-v055',  'a5520000-0000-0000-0000-000000000483', 1, 'complete'),
+  ('a5530000-0000-0000-0000-000000009001', 'org-v055b', 'a5520000-0000-0000-0000-000000000900', 1, 'complete');
+
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind) values
+  ('a5540000-0000-0000-0000-000000004821', 'org-v055',  'a5530000-0000-0000-0000-000000004821', 'unit · telemetry', 'native_sim', 'sim'),
+  ('a5540000-0000-0000-0000-000000004823', 'org-v055',  'a5530000-0000-0000-0000-000000004823', 'unit · telemetry', 'native_sim', 'sim'),
+  ('a5540000-0000-0000-0000-000000004831', 'org-v055',  'a5530000-0000-0000-0000-000000004831', 'unit · telemetry', 'native_sim', 'sim'),
+  ('a5540000-0000-0000-0000-000000009001', 'org-v055b', 'a5530000-0000-0000-0000-000000009001', 'unit · telemetry', 'native_sim', 'sim');
+
+-- Case ids: …0<attempt><n> in #482; …0831 in #483; …0900 in the other workspace.
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retries, retry_outcomes)
+  values
+    ('a5550000-0000-0000-0000-000000000011', 'org-v055', 'a5540000-0000-0000-0000-000000004821',
+     'telemetry_under_load', 'telemetry', 'failed', 0, '["failed"]'),
+    ('a5550000-0000-0000-0000-000000000031', 'org-v055', 'a5540000-0000-0000-0000-000000004823',
+     'telemetry_under_load', 'telemetry', 'flaky', 2, '["failed", "failed", "passed"]'),
+    ('a5550000-0000-0000-0000-000000000032', 'org-v055', 'a5540000-0000-0000-0000-000000004823',
+     'estop_overshoot', 'motor', 'failed', 0, '["failed"]'),
+    ('a5550000-0000-0000-0000-000000000033', 'org-v055', 'a5540000-0000-0000-0000-000000004823',
+     'crc_roundtrip', 'boot', 'passed', 0, '["passed"]'),
+    ('a5550000-0000-0000-0000-000000000034', 'org-v055', 'a5540000-0000-0000-0000-000000004823',
+     'ble_scan', 'radio', 'skipped', 0, '["skipped"]'),
+    ('a5550000-0000-0000-0000-000000000035', 'org-v055', 'a5540000-0000-0000-0000-000000004823',
+     'rig_power_cycle', 'rig', 'error', 0, '["error"]'),
+    ('a5550000-0000-0000-0000-000000000831', 'org-v055', 'a5540000-0000-0000-0000-000000004831',
+     'ota_rollback', 'boot', 'failed', 0, '["failed"]'),
+    ('a5550000-0000-0000-0000-000000000900', 'org-v055b', 'a5540000-0000-0000-0000-000000009001',
+     'telemetry_under_load', 'telemetry', 'failed', 0, '["failed"]');
+
+-- steer#88 on #482, and a steer on #483 that a #482 receipt must not be able to name.
+insert into ouroboros.run_controls (id, run_id, kind, payload, expires_at) values
+  ('a5560000-0000-0000-0000-000000000088', 'a5520000-0000-0000-0000-000000000482', 'steer',
+   'Keep k_msgq, but move PID velocity sampling off the telemetry path', now() + interval '5 minutes'),
+  ('a5560000-0000-0000-0000-000000000483', 'a5520000-0000-0000-0000-000000000483', 'steer',
+   'Elsewhere', now() + interval '5 minutes');
+
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('a5570000-0000-0000-0000-00000000000a', 'org-v055',  'pool-a', 'shell'),
+  ('a5570000-0000-0000-0000-00000000000b', 'org-v055b', 'pool-a', 'shell');
+
+-- A re-run of #482, a job of #483, a job with no run, and a job in the other workspace.
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, run_id, github_repo_id, git_ref, label, title,
+     executor, command)
+  values
+    ('a5580000-0000-0000-0000-000000004824', 'org-v055', 1, 'a5570000-0000-0000-0000-00000000000a',
+     'a5520000-0000-0000-0000-000000000482', 'a551f000-0000-0000-0000-00000000000a',
+     'loop/482', 'test', 'Re-run failed', 'shell', 'twister'),
+    ('a5580000-0000-0000-0000-000000004831', 'org-v055', 2, 'a5570000-0000-0000-0000-00000000000a',
+     'a5520000-0000-0000-0000-000000000483', 'a551f000-0000-0000-0000-00000000000a',
+     'loop/483', 'test', 'Build 1', 'shell', 'twister'),
+    ('a5580000-0000-0000-0000-000000000999', 'org-v055', 3, 'a5570000-0000-0000-0000-00000000000a',
+     null, 'a551f000-0000-0000-0000-00000000000a',
+     'main', 'test', 'Ad hoc', 'shell', 'twister'),
+    ('a5580000-0000-0000-0000-000000009001', 'org-v055b', 1, 'a5570000-0000-0000-0000-00000000000b',
+     'a5520000-0000-0000-0000-000000000900', 'a551f000-0000-0000-0000-00000000000b',
+     'loop/900', 'test', 'Build 1', 'shell', 'twister');
+
+-- --- the vocabularies are closed ---------------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.failure_classifications', 'failure_classifications_class')
+    = array['flake_retry', 'infra_rig', 'product_bug', 'test_update']
+  and pg_temp.vocabulary('ouroboros.failure_classifications', 'failure_classifications_actor')
+    = array['heuristic', 'human', 'model']
+  and pg_temp.vocabulary('ouroboros.test_artifacts', 'test_artifacts_kind')
+    = array['capture', 'coverage', 'hil', 'junit', 'log', 'other']
+  and pg_temp.vocabulary('ouroboros.pr_waivers', 'pr_waivers_annotation_state')
+    = array['pending_pr_plane'],
+  'all four classes, the three actors, all six artifact kinds and the one annotation state are the whole vocabulary');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, created_by)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000032', 'wontfix', 'human', 'a5500000-0000-0000-0000-00000000000a')$$,
+  'a class is one of the four radios', 'failure_classifications_class');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000032', 'product_bug', 'oracle')$$,
+  'an actor is human, heuristic or model', 'failure_classifications_actor');
+
+-- --- the whole card, as one row --------------------------------------------------------------
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, note, actor, created_by)
+  values
+    ('a5590000-0000-0000-0000-000000000001', 'org-v055', 'a5550000-0000-0000-0000-000000000032',
+     'product_bug', 'Keep k_msgq, but move PID velocity sampling off the telemetry path',
+     'human', 'a5500000-0000-0000-0000-00000000000a');
+
+-- Dispatched: steer#88, correction round into attempt 4.
+update ouroboros.failure_classifications
+   set routed = '{"control_id": "a5560000-0000-0000-0000-000000000088", "target_attempt": 4}'
+ where id = 'a5590000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select (class, note, actor, rule_id, confidence, routed, created_by, superseded_by)
+          is not distinct from
+          ('product_bug'::text, 'Keep k_msgq, but move PID velocity sampling off the telemetry path'::text,
+           'human'::text, null::text, null::numeric,
+           '{"control_id": "a5560000-0000-0000-0000-000000000088", "target_attempt": 4}'::jsonb,
+           'a5500000-0000-0000-0000-00000000000a'::text, null::uuid)
+     from ouroboros.failure_classifications where id = 'a5590000-0000-0000-0000-000000000001'),
+  'a classification captures the card: class, note, actor, author and what was dispatched');
+
+-- A heuristic hint (option 5-A): a rule, no percentage. A model pick: a percentage, no rule.
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, actor, rule_id)
+  values
+    ('a5590000-0000-0000-0000-000000000031', 'org-v055', 'a5550000-0000-0000-0000-000000000031',
+     'flake_retry', 'heuristic', 'pass-on-retry');
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, actor, confidence, routed)
+  values
+    ('a5590000-0000-0000-0000-000000000035', 'org-v055', 'a5550000-0000-0000-0000-000000000035',
+     'infra_rig', 'model', 84,
+     '{"rerun_job_id": "a5580000-0000-0000-0000-000000004824"}');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s', actor, coalesce(rule_id, '-'), coalesce(confidence::text, '-'))
+                    order by actor)
+     from ouroboros.failure_classifications where organization_id = 'org-v055')
+  = array['heuristic:pass-on-retry:-', 'human:-:-', 'model:-:84'],
+  'the card''s affix reads off the row: a heuristic with its rule, a model with its percentage, a human with neither');
+
+-- --- confidence is the model's alone; a heuristic carries its rule -----------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, confidence, created_by)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000032', 'product_bug', 'human', 90, 'a5500000-0000-0000-0000-00000000000a')$$,
+  'a human decision carries no confidence', 'failure_classifications_confidence_model_only');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, rule_id, confidence)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000031', 'flake_retry', 'heuristic', 'pass-on-retry', 84)$$,
+  'a heuristic carries no invented percentage', 'failure_classifications_confidence_model_only');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000031', 'flake_retry', 'heuristic')$$,
+  'a heuristic names the rule that picked it', 'failure_classifications_rule_id_heuristic_only');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, rule_id, confidence)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000035', 'infra_rig', 'model', 'rig-taxonomy', 70)$$,
+  'only a heuristic carries a rule', 'failure_classifications_rule_id_heuristic_only');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, rule_id)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000031', 'flake_retry', 'heuristic', '   ')$$,
+  'a rule id is not blank', 'failure_classifications_rule_id_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, confidence)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000035', 'infra_rig', 'model', 100.5)$$,
+  'a confidence is at most 100', 'failure_classifications_confidence_range');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, confidence)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000035', 'infra_rig', 'model', -1)$$,
+  'a confidence is at least 0', 'failure_classifications_confidence_range');
+
+-- --- a classification is about a failing case, by somebody -----------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, created_by)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000032', 'product_bug', 'human', null)$$,
+  'a human decision names its author', 'failure_classifications_human_author');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, created_by)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000033', 'product_bug', 'human', 'a5500000-0000-0000-0000-00000000000a')$$,
+  'a passed case has nothing to classify', 'failure_classifications_case_failing');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, created_by)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000034', 'test_update', 'human', 'a5500000-0000-0000-0000-00000000000a')$$,
+  'a skipped case has nothing to classify', 'failure_classifications_case_failing');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, created_by)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000900', 'product_bug', 'human', 'a5500000-0000-0000-0000-00000000000a')$$,
+  'a classification names only a case of its own workspace', 'failure_classifications_test_case_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, note, actor, created_by)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000032', 'product_bug', '  ', 'human', 'a5500000-0000-0000-0000-00000000000a')$$,
+  'a correction note is absent or says something', 'failure_classifications_note_shape');
+
+-- --- the receipt: real, of this run, written once --------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '{}'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a receipt with nothing on it is not a receipt', 'failure_classifications_routed_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '{"control_id": "steer#88"}'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a control id is a uuid', 'failure_classifications_routed_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '{"target_attempt": 0}'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a target attempt is a Build N, N >= 1', 'failure_classifications_routed_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '{"target_attempt": 2.5}'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a target attempt is a whole number', 'failure_classifications_routed_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '["a5560000-0000-0000-0000-000000000088"]'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a receipt is an object', 'failure_classifications_routed_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '{"control_id": "a5560000-0000-0000-0000-000000000483"}'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a receipt cannot name another run''s control', 'failure_classifications_routed_exists');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '{"control_id": "a5560000-0000-0000-0000-00000000ffff"}'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a receipt cannot name a control that was never queued', 'failure_classifications_routed_exists');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '{"rerun_job_id": "a5580000-0000-0000-0000-000000004831"}'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a receipt cannot name another run''s job', 'failure_classifications_routed_exists');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '{"rerun_job_id": "a5580000-0000-0000-0000-000000009001"}'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a receipt cannot name another workspace''s job', 'failure_classifications_routed_exists');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, confidence, routed)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000035', 'infra_rig', 'model', 60,
+            '{"control_id": "a5560000-0000-0000-0000-000000000483"}')$$,
+  'a receipt written at insert is checked too', 'failure_classifications_routed_exists');
+
+update ouroboros.failure_classifications
+   set routed = '{"rerun_job_id": "a5580000-0000-0000-0000-000000000999", "target_attempt": 4, "runner": "helios-rig-02"}'
+ where id = 'a5590000-0000-0000-0000-000000000031';
+
+select pg_temp.must_hold(
+  (select routed ->> 'runner' = 'helios-rig-02' from ouroboros.failure_classifications
+    where id = 'a5590000-0000-0000-0000-000000000031'),
+  'a job with no run of its own is a workspace job and can be routed to, with extra detail riding along');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = '{"target_attempt": 5}'
+     where id = 'a5590000-0000-0000-0000-000000000001'$$,
+  'a receipt is written once', 'failure_classifications_routed_once');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set routed = null
+     where id = 'a5590000-0000-0000-0000-000000000001'$$,
+  'and cannot be taken back', 'failure_classifications_routed_once');
+
+-- --- the decision itself is never rewritten ----------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set class = 'flake_retry'
+     where id = 'a5590000-0000-0000-0000-000000000001'$$,
+  'the class of a recorded decision cannot be changed in place', 'failure_classifications_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set note = 'something else'
+     where id = 'a5590000-0000-0000-0000-000000000001'$$,
+  'nor its note', 'failure_classifications_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set created_by = 'a5500000-0000-0000-0000-00000000000b'
+     where id = 'a5590000-0000-0000-0000-000000000001'$$,
+  'nor its author', 'failure_classifications_frozen');
+
+-- --- re-classifying keeps the audit trail -------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, created_by, superseded_by)
+    values ('org-v055', 'a5550000-0000-0000-0000-000000000032', 'test_update', 'human',
+            'a5500000-0000-0000-0000-00000000000a', 'a5590000-0000-0000-0000-000000000001')$$,
+  'a new classification is born current', 'failure_classifications_superseded_on_insert');
+
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, note, actor, created_by)
+  values
+    ('a5590000-0000-0000-0000-000000000002', 'org-v055', 'a5550000-0000-0000-0000-000000000032',
+     'test_update', 'The limit moved with the new gains; update the test', 'human',
+     'a5500000-0000-0000-0000-00000000000b');
+-- The service's path, as the service: a re-classification and its receipt by the application
+-- role, whose only updates are the column grants, and which cannot read the farm's jobs itself.
+set local role ouroboros_app;
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, actor, rule_id)
+  values
+    ('a5590000-0000-0000-0000-000000000003', 'org-v055', 'a5550000-0000-0000-0000-000000000032',
+     'flake_retry', 'heuristic', 'pass-on-retry');
+update ouroboros.failure_classifications
+   set routed = '{"rerun_job_id": "a5580000-0000-0000-0000-000000004824"}'
+ where id = 'a5590000-0000-0000-0000-000000000003';
+reset role;
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s→%s', right(id::text, 1), coalesce(right(superseded_by::text, 1), 'current'))
+                    order by id)
+     from ouroboros.failure_classifications
+    where test_case_id = 'a5550000-0000-0000-0000-000000000032')
+  = array['1→2', '2→3', '3→current'],
+  're-classifying supersedes the current decision and keeps every earlier one, in order');
+
+select pg_temp.must_hold(
+  (select class = 'product_bug' and routed ? 'control_id'
+          and note = 'Keep k_msgq, but move PID velocity sampling off the telemetry path'
+     from ouroboros.failure_classifications where id = 'a5590000-0000-0000-0000-000000000001'),
+  'the superseded decision is kept exactly as it was, receipt and all');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from (
+     select test_case_id from ouroboros.failure_classifications
+      where organization_id = 'org-v055' and superseded_by is null
+      group by test_case_id having count(*) > 1) t),
+  'every case has at most one current decision');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set superseded_by = 'a5590000-0000-0000-0000-000000000003'
+     where id = 'a5590000-0000-0000-0000-000000000001'$$,
+  'a superseded decision stays superseded by what replaced it', 'failure_classifications_supersede_once');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set superseded_by = 'a5590000-0000-0000-0000-000000000035'
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a decision is superseded only by one about the same case', 'failure_classifications_supersede_same_case');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set superseded_by = id
+     where id = 'a5590000-0000-0000-0000-000000000031'$$,
+  'a decision does not supersede itself', 'failure_classifications_not_self_superseded');
+
+-- An author can be forgotten; the decision stays.
+delete from ouroboros."user" where "id" = 'a5500000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  (select created_by is null and class = 'test_update'
+     from ouroboros.failure_classifications where id = 'a5590000-0000-0000-0000-000000000002'),
+  'removing the author keeps their decision');
+
+-- The current decision and the history are one index read.
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select * from ouroboros.failure_classifications
+     where test_case_id = 'a5550000-0000-0000-0000-000000000032' order by created_at$$,
+  'failure_classifications_test_case_idx');
+set local enable_seqscan = on;
+
+-- --- PR intents: stored, and read by nothing ----------------------------------------------------
+insert into ouroboros.run_pr_intents
+    (run_id, organization_id, block_until_green, auto_rerun_physical, updated_by)
+  values
+    ('a5520000-0000-0000-0000-000000000482', 'org-v055', true, false,
+     'a5500000-0000-0000-0000-00000000000a');
+
+update ouroboros.run_pr_intents set auto_rerun_physical = true
+ where run_id = 'a5520000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select block_until_green and auto_rerun_physical from ouroboros.run_pr_intents
+    where run_id = 'a5520000-0000-0000-0000-000000000482'),
+  'both toggles persist');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_pr_intents (run_id, organization_id)
+    values ('a5520000-0000-0000-0000-000000000482', 'org-v055')$$,
+  'a run has one set of toggles', 'run_pr_intents_pkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_pr_intents (run_id, organization_id)
+    values ('a5520000-0000-0000-0000-000000000900', 'org-v055')$$,
+  'toggles name only a run of their own workspace', 'run_pr_intents_run_fk');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from pg_proc p
+     join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'ouroboros' and p.prosrc ~ 'run_pr_intents|block_until_green')
+  and (select count(*) = 0 from pg_views
+        where schemaname = 'ouroboros' and definition ~ 'run_pr_intents|block_until_green')
+  and obj_description('ouroboros.run_pr_intents'::regclass, 'pg_class') ~ 'INTENTS, NOT GATES'
+  and col_description('ouroboros.run_pr_intents'::regclass, 3) ~ '#358',
+  'nothing in the schema reads an intent as a gate, and the activation point is documented on it');
+
+-- --- waivers: authored, reasoned, of this run's cases -------------------------------------------
+insert into ouroboros.pr_waivers (id, organization_id, run_id, author, reason, case_keys)
+  select 'a55a0000-0000-0000-0000-000000000001', 'org-v055', 'a5520000-0000-0000-0000-000000000482',
+         'a5500000-0000-0000-0000-00000000000a', 'Thermal chamber unavailable until Thursday',
+         array_agg(case_key order by id)
+    from ouroboros.test_cases
+   where id in ('a5550000-0000-0000-0000-000000000011', 'a5550000-0000-0000-0000-000000000031');
+
+select pg_temp.must_hold(
+  (select annotation_state = 'pending_pr_plane' and cardinality(case_keys) = 2
+     from ouroboros.pr_waivers where id = 'a55a0000-0000-0000-0000-000000000001'),
+  'a waiver records its cases across the run''s attempts and awaits the PR plane');
+
+select pg_temp.must_raise(
+  $$insert into ouroboros.pr_waivers (organization_id, run_id, author, reason)
+    values ('org-v055', 'a5520000-0000-0000-0000-000000000482', 'a5500000-0000-0000-0000-00000000000a', null)$$,
+  '23502', 'a waiver cannot be created without a reason');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_waivers (organization_id, run_id, author, reason)
+    values ('org-v055', 'a5520000-0000-0000-0000-000000000482', 'a5500000-0000-0000-0000-00000000000a', '   ')$$,
+  'nor with a blank one', 'pr_waivers_reason_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_waivers (organization_id, run_id, reason)
+    values ('org-v055', 'a5520000-0000-0000-0000-000000000482', 'Chamber down')$$,
+  'a waiver names its author', 'pr_waivers_author_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_waivers (organization_id, run_id, author, reason, case_keys)
+    select 'org-v055', 'a5520000-0000-0000-0000-000000000482', 'a5500000-0000-0000-0000-00000000000a',
+           'Chamber down', array[case_key]
+      from ouroboros.test_cases where id = 'a5550000-0000-0000-0000-000000000831'$$,
+  'a waiver names only cases of its run', 'pr_waivers_case_keys_of_run');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_waivers (organization_id, run_id, author, reason, case_keys)
+    values ('org-v055', 'a5520000-0000-0000-0000-000000000482', 'a5500000-0000-0000-0000-00000000000a',
+            'Chamber down', array['telemetry_under_load'])$$,
+  'a case is named by its case_key', 'pr_waivers_case_keys_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_waivers (organization_id, run_id, author, reason, case_keys)
+    values ('org-v055', 'a5520000-0000-0000-0000-000000000482', 'a5500000-0000-0000-0000-00000000000a',
+            'Chamber down', array[null::text])$$,
+  'a null case is not a case', 'pr_waivers_case_keys_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_waivers (organization_id, run_id, author, reason, annotation_state)
+    values ('org-v055', 'a5520000-0000-0000-0000-000000000482', 'a5500000-0000-0000-0000-00000000000a',
+            'Chamber down', 'posted')$$,
+  'nothing is posted before the PR plane can post it', 'pr_waivers_annotation_state');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_waivers (organization_id, run_id, author, reason)
+    values ('org-v055', 'a5520000-0000-0000-0000-000000000900', 'a5500000-0000-0000-0000-00000000000a', 'Chamber down')$$,
+  'a waiver names only a run of its own workspace', 'pr_waivers_run_fk');
+
+insert into ouroboros.pr_waivers (organization_id, run_id, author, reason)
+  values ('org-v055', 'a5520000-0000-0000-0000-000000000482', 'a5500000-0000-0000-0000-00000000000a',
+          'Criterion waived: soak test not required for docs-only follow-up');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.pr_waivers where run_id = 'a5520000-0000-0000-0000-000000000482'),
+  'a criterion-level waiver names no cases');
+
+-- --- artifacts: the card, from data ------------------------------------------------------------
+insert into ouroboros.test_artifacts
+    (id, organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum,
+     retained_until, truncated, truncation_note)
+  values
+    ('a55b0000-0000-0000-0000-000000000001', 'org-v055', 'a5530000-0000-0000-0000-000000004823',
+     'junit-build3.xml', 'junit', 48213,
+     '{"driver": "local", "key": "org-v055/482/3/junit-build3.xml"}',
+     'sha256:' || repeat('a', 64), now() + interval '30 days', false, null),
+    ('a55b0000-0000-0000-0000-000000000002', 'org-v055', 'a5530000-0000-0000-0000-000000004823',
+     'rig-capture-estop.csv', 'capture', 2202010,
+     '{"driver": "local", "key": "org-v055/482/3/rig-capture-estop.csv"}',
+     'sha256:' || repeat('b', 64), now() + interval '30 days', false, null),
+    ('a55b0000-0000-0000-0000-000000000003', 'org-v055', 'a5530000-0000-0000-0000-000000004823',
+     'serial-console.log', 'log', 10485760,
+     '{"driver": "local", "key": "org-v055/482/3/serial-console.log"}',
+     'sha256:' || repeat('c', 64), now() + interval '30 days', true,
+     'truncated at the 10 MiB per-file cap (upload manifest)'),
+    ('a55b0000-0000-0000-0000-000000000004', 'org-v055', 'a5530000-0000-0000-0000-000000004823',
+     'coverage.info', 'coverage', 91822,
+     '{"driver": "s3", "key": "org-v055/482/3/coverage.info"}',
+     'sha256:' || repeat('d', 64), now() + interval '30 days', false, null);
+
+-- Build 1's capture, uploaded 31 days ago on a 30-day policy.
+insert into ouroboros.test_artifacts
+    (id, organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum,
+     retained_until, created_at)
+  values
+    ('a55b0000-0000-0000-0000-000000000011', 'org-v055', 'a5530000-0000-0000-0000-000000004821',
+     'rig-capture-estop.csv', 'capture', 2097152,
+     '{"driver": "local", "key": "org-v055/482/1/rig-capture-estop.csv"}',
+     'sha256:' || repeat('e', 64), now() - interval '1 day', now() - interval '31 days');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s · %s · %s · %sd%s', name, kind, pg_size_pretty(size_bytes),
+                           extract(day from retained_until - created_at),
+                           case when truncated then ' · truncated: ' || truncation_note else '' end)
+                    order by name)
+     from ouroboros.test_artifacts where test_run_id = 'a5530000-0000-0000-0000-000000004823')
+  = array['coverage.info · coverage · 90 kB · 30d',
+          'junit-build3.xml · junit · 47 kB · 30d',
+          'rig-capture-estop.csv · capture · 2150 kB · 30d',
+          'serial-console.log · log · 10 MB · 30d · truncated: truncated at the 10 MiB per-file cap (upload manifest)'],
+  'the artifacts card renders from data: names, kinds, sizes, 30-day retention and the truncation note');
+
+-- --- storage is data ----------------------------------------------------------------------------
+update ouroboros.test_artifacts
+   set storage_ref = '{"driver": "s3", "key": "org-v055/482/3/junit-build3.xml", "bucket": "ouro-artifacts"}'
+ where id = 'a55b0000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select array_agg(distinct storage_ref ->> 'driver' order by storage_ref ->> 'driver')
+     from ouroboros.test_artifacts where organization_id = 'org-v055')
+  = array['local', 's3'],
+  'local-volume and S3 artifacts sit side by side, and moving one is a row update');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.log', 'log', 1,
+            '{"driver": "local"}', 'sha256:' || repeat('f', 64), now() + interval '30 days')$$,
+  'a storage ref has a key', 'test_artifacts_storage_ref_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.log', 'log', 1,
+            '{"driver": "S3!", "key": "k"}', 'sha256:' || repeat('f', 64), now() + interval '30 days')$$,
+  'a driver is a lowercase identifier', 'test_artifacts_storage_ref_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.log', 'log', 1,
+            '"local:x.log"', 'sha256:' || repeat('f', 64), now() + interval '30 days')$$,
+  'a storage ref is an object', 'test_artifacts_storage_ref_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.log', 'log', 1,
+            '{"driver": "local", "key": "k"}', 'abc123', now() + interval '30 days')$$,
+  'a checksum names its algorithm and is hex', 'test_artifacts_checksum_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.bin', 'binary', 1,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('f', 64), now() + interval '30 days')$$,
+  'an artifact kind is one of the six', 'test_artifacts_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.log', 'log', -1,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('f', 64), now() + interval '30 days')$$,
+  'a size is not negative', 'test_artifacts_size_non_negative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'junit-build3.xml', 'junit', 1,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('f', 64), now() + interval '30 days')$$,
+  'an attempt uploads a name once', 'test_artifacts_test_run_name_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000009001', 'x.log', 'log', 1,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('f', 64), now() + interval '30 days')$$,
+  'an artifact names only an attempt of its own workspace', 'test_artifacts_test_run_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.log', 'log', 1,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('f', 64), now() - interval '1 day')$$,
+  'an artifact is not retained until before it existed', 'test_artifacts_retained_after_created');
+
+-- --- truncation says why -------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until, truncated)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.log', 'log', 1,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('f', 64), now() + interval '30 days', true)$$,
+  'a truncated upload carries its note', 'test_artifacts_truncation_note');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until, truncation_note)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.log', 'log', 1,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('f', 64), now() + interval '30 days', 'cut')$$,
+  'only a truncated upload carries one', 'test_artifacts_truncation_note');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_artifacts (organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until, truncated, truncation_note)
+    values ('org-v055', 'a5530000-0000-0000-0000-000000004823', 'x.log', 'log', 1,
+            '{"driver": "local", "key": "k"}', 'sha256:' || repeat('f', 64), now() + interval '30 days', true, ' ')$$,
+  'and the note says something', 'test_artifacts_truncation_note');
+
+-- --- retention drives the sweep, and expiry is a tombstone ------------------------------------
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id from ouroboros.test_artifacts where expired_at is null and retained_until <= now()$$,
+  'test_artifacts_retention_idx');
+set local enable_seqscan = on;
+
+select pg_temp.must_hold(
+  (select array_agg(id) from ouroboros.test_artifacts
+    where organization_id = 'org-v055' and expired_at is null and retained_until <= now())
+  = array['a55b0000-0000-0000-0000-000000000011'::uuid],
+  'the sweep finds exactly the artifact whose retention has passed');
+
+update ouroboros.test_artifacts set retained_until = retained_until + interval '60 days'
+ where id = 'a55b0000-0000-0000-0000-000000000002';
+
+-- The sweep: bytes gone, row kept.
+update ouroboros.test_artifacts set expired_at = now()
+ where organization_id = 'org-v055' and expired_at is null and retained_until <= now();
+
+select pg_temp.must_hold(
+  (select expired_at is not null from ouroboros.test_artifacts
+    where test_run_id = 'a5530000-0000-0000-0000-000000004821' and name = 'rig-capture-estop.csv')
+  and not exists (select 1 from ouroboros.test_artifacts
+                   where test_run_id = 'a5530000-0000-0000-0000-000000004821'
+                     and name = 'never-uploaded.bin'),
+  'an expired artifact is a tombstone row, distinguishable from one that never existed');
+
+select pg_temp.must_hold(
+  (select storage_ref ->> 'key' = 'org-v055/482/1/rig-capture-estop.csv'
+     from ouroboros.test_artifacts where id = 'a55b0000-0000-0000-0000-000000000011'),
+  'the tombstone keeps where the bytes were, for the audit');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_artifacts set expired_at = null
+     where id = 'a55b0000-0000-0000-0000-000000000011'$$,
+  'an expired artifact does not come back', 'test_artifacts_tombstone_final');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_artifacts set retained_until = now() + interval '30 days'
+     where id = 'a55b0000-0000-0000-0000-000000000011'$$,
+  'nor is its retention extended', 'test_artifacts_tombstone_final');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_artifacts set name = 'renamed.xml'
+     where id = 'a55b0000-0000-0000-0000-000000000001'$$,
+  'what was uploaded is not rewritten', 'test_artifacts_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_artifacts set truncated = false, truncation_note = null
+     where id = 'a55b0000-0000-0000-0000-000000000003'$$,
+  'nor is a truncation forgotten', 'test_artifacts_frozen');
+
+-- --- lifecycle and grants ------------------------------------------------------------------------
+delete from ouroboros.test_cases where id = 'a5550000-0000-0000-0000-000000000032';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.failure_classifications
+    where test_case_id = 'a5550000-0000-0000-0000-000000000032'),
+  'a case''s whole decision history leaves with it');
+
+delete from ouroboros.test_runs where id = 'a5530000-0000-0000-0000-000000004821';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_artifacts
+    where test_run_id = 'a5530000-0000-0000-0000-000000004821'),
+  'artifacts leave with their attempt');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.failure_classifications', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.failure_classifications', 'insert')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.failure_classifications', 'update')
+   and has_column_privilege('ouroboros_app', 'ouroboros.failure_classifications', 'routed', 'update')
+   and has_column_privilege('ouroboros_app', 'ouroboros.failure_classifications', 'superseded_by', 'update')
+   and not has_column_privilege('ouroboros_app', 'ouroboros.failure_classifications', 'class', 'update')
+   and not has_column_privilege('ouroboros_app', 'ouroboros.failure_classifications', 'note', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.failure_classifications', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.run_pr_intents', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.run_pr_intents', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.run_pr_intents', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'insert')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.test_artifacts', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.test_artifacts', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.test_artifacts', 'delete')
+   and (select prosecdef
+               and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+               and not has_function_privilege('public', oid, 'execute')
+               and has_function_privilege('ouroboros_app', oid, 'execute')
+          from pg_proc
+         where proname = 'failure_classifications_routed_valid'
+           and pronamespace = 'ouroboros'::regnamespace),
+  'decisions are appended and receipted, waivers are append-only, artifacts are tombstoned rather than deleted, and the receipt check runs as its owner with its search_path pinned and execute kept from public');
+
+-- --- teardown ------------------------------------------------------------------------------------
+-- Jobs first: V040's build_jobs_run_fk cannot null a run it names.
+delete from ouroboros.build_jobs where organization_id in ('org-v055', 'org-v055b');
+delete from ouroboros.organization where "id" in ('org-v055', 'org-v055b');
+delete from ouroboros."user" where "id" = 'a5500000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.failure_classifications where organization_id like 'org-v055%')
+  and (select count(*) = 0 from ouroboros.run_pr_intents where organization_id like 'org-v055%')
+  and (select count(*) = 0 from ouroboros.pr_waivers where organization_id like 'org-v055%')
+  and (select count(*) = 0 from ouroboros.test_artifacts where organization_id like 'org-v055%'),
+  'and the V055 fixture leaves nothing behind');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
