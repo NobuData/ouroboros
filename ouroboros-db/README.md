@@ -738,6 +738,20 @@
 > this* flag (the #412 amendment, decision K5). It is steer-only, false unless set, and frozen
 > at insert: `run_controls_transition()` is replaced with the flag added to its two row
 > comparisons.
+>
+> `V051` ([#324](https://github.com/NobuData/ouroboros/issues/324)) opens the **Test
+> Results** domain (mockup 11): `test_runs` → `test_suites` → `test_cases`, **one results tree
+> per build attempt** (decision **T1**) — `(run_id, attempt_seq)` is the Build 1 · 2 · 3
+> ordinal, and each attempt names the farm job that produced it. `case_key` is the **durable
+> case identity** (decision **T2**): `ouroboros.test_case_key()` hashes repository, suite,
+> classname and name, and a trigger derives it when a writer leaves it null and refuses one
+> that disagrees, so a re-parse, a later attempt or another run of the same repository cannot
+> produce a different key. `retry_outcomes` keeps every attempt's outcome, so *passed first
+> time* and *passed on retry 2 of 3* are different rows. The totals are the one deliberate
+> denormalisation: `ouroboros.test_run_recount()` rewrites them from the cases on every parse,
+> and `test_results_count_drift` lists anything that disagrees. `run_check_reconciliation` maps
+> them onto the dashboard's `checks_passed/checks_total` — see
+> [Test results and the dashboard's check counts](#test-results-and-the-dashboards-check-counts).
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -1947,6 +1961,7 @@ ouroboros-db/
 │   ├── V048__run_guardrails_and_controls.sql # guardrail_evaluations with evidence that never carries the value, and the durable run_controls queue — #301
 │   ├── V049__run_ingest_receipts.sql   # the ingestion contract's memory between requests: one receipt per answered submission, and the two counters it advances — #303
 │   ├── V050__run_controls_delivery.sql # runs.status gains canceled (an aborted run), and run_controls gains the steer's remember flag — #306
+│   ├── V051__test_results.sql          # test_runs → test_suites → test_cases per build attempt, durable case_key, retry truth, recount and DASH reconciliation — #324
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2013,6 +2028,12 @@ outside this module alters it.
 | `guardrail_evaluations` | `V048` | The four verdicts mockup 10's *Guardrails* card draws, one row per evaluation ([#301](https://github.com/NobuData/ouroboros/issues/301), AO.4, decision **R5**) — history rather than state | `check` is one of `allowed_paths\|ci_config\|secrets\|review_required` and `verdict` one of `pass\|fail\|not_applicable\|pending`, where `not_applicable` is a **third** answer rather than a pass because *this did not apply to you* and *you were checked and were fine* are different things to tell somebody; `evidence` **cannot hold secret material** — its keys are closed by CHECK to `{path, line, rule_id, glob, detail}`, each is typed and shaped (`line` is a *number*, `path` carries the same grammar `run_files.path` does, `rule_id` is the ruleset's own hyphenated vocabulary), and no string value may contain an unbroken twenty-character alphanumeric run; a `pending` verdict carries no evidence, so the card cannot draw last time's offending path under this time's spinner; re-evaluation **appends**, and `v_run_guardrails_latest` is the card's read |
 | `run_controls` | `V048`, `remember` added `V050` | The durable, ack-tracked queue behind *Pause loop*, *Abort run* and the steering box ([#301](https://github.com/NobuData/ouroboros/issues/301), AO.4, decision **R6**) | `kind` is one of `pause\|resume\|abort\|steer` and only `steer` carries a `payload`; `state` is one of `pending\|delivered\|acked\|expired\|rejected` and moves **forward only** along the five edges R6's diagram draws, enforced by `run_controls_transition()` — which also makes a terminal row refuse *every* update and freezes the run, kind, payload, requester, request time, TTL and idempotency key at insert, with one exception that is the foreign key's own: `requested_by` going from a person to null, so *what was asked cannot be rewritten; who asked can be forgotten*; `expires_at` is `not null` with no default, because a control with no expiry would sit pending for ever and be invisible to the sweep that exists for it; `(run_id, idempotency_key)` unique, so a duplicate submission is a no-op; and every write emits an `audit_events` row whose body is four fields — three closed vocabularies and a boolean — so the steer text has nowhere to go; `remember` (`V050`, [#306](https://github.com/NobuData/ouroboros/issues/306)) is the steer's explicit *remember this* flag — steer-only, false unless set, and frozen at insert with the rest of what was asked |
 | `run_ingest_receipts` | `V049` | One row per answered ingestion submission ([#303](https://github.com/NobuData/ouroboros/issues/303), AP.1, decision **R2**) — the ledger behind *"replaying any write with the same idempotency key is a no-op that returns the original result"* | `(organization_id, operation, idempotency_key)` unique, scoped by **workspace** rather than by run because `run.create`'s key is checked before its run exists, and with `operation` in the key so an executor numbering its submissions per kind does not have its first event batch answered with its first stage transition's result; `operation` is closed to the six routes `openapi.internal.yaml` publishes; `request_digest` is sixty-four lower-case hex characters, which is what makes a stored response safe — a key reused with a *different* body is refused rather than answered with the first body's result; `response` is an object, because a replay hands it straight back as a response body; append-only to the application by grant, and rows leave with their run |
+| `test_runs` | `V051` | One **results tree per build attempt** ([#324](https://github.com/NobuData/ouroboros/issues/324), AS.1, decision **T1**) — mockup 11's Build 1 · 2 · 3, with the attempt's commit, stored totals, the wall / sim / physical split, `status` and `parse_warnings` | `(run_id, attempt_seq)` unique and `attempt_seq ≥ 1`; `run_id` and `build_job_id` are **composite** references onto `(id, organization_id)`, so an attempt names only its own workspace's run and job; the job is released with `on delete set null (build_job_id)` so results outlive a pruned job, a job produces at most one attempt, and a job attributed to a run must be this attempt's run (`test_runs_build_job_same_run`); `status` is one of `running\|complete\|error`; `total = passed + failed + flaky + skipped`, where `failed` counts `failed` and `error` cases; the split is all null or all set with `wall_ms = sim_ms + physical_ms`; `commit_sha` is 7–40 hex digits; `run_id` and `attempt_seq` are frozen once written, because the run's repository feeds every `case_key` beneath it; `ouroboros_app` may not delete an attempt |
+| `test_suites` | `V051` | One suite on one platform within an attempt — a row of mockup 11's suites card, with its counts and a `meta` object that holds a rig's bench description | `(test_run_id, name, platform)` unique, which is also the index the suites card reads through; `platform` is a lowercase board/simulator tag or `rig:<name>`, and a `rig:` platform is always `kind = 'physical'`; `kind` is `sim\|physical`; counts sum like `test_runs`'; `name` is frozen once written because it feeds every `case_key` in the suite |
+| `test_cases` | `V051` | One test case's result, retries included — `case_key` (decision **T2**), `status`, `retries`, the ordered `retry_outcomes`, `duration_ms`, the `failure` payload (`message`, `log_excerpt`, `path`) and a parser-specific `meta` | `case_key` is `ouroboros.test_case_key(repo, suite, classname, name)`, derived when written null and refused when it disagrees (`test_cases_case_key_derived`), unique per suite and indexed with `organization_id` for case-history joins; `status` is `passed\|failed\|flaky\|skipped\|error`; `retry_outcomes` has `retries + 1` entries and agrees with `status` (`ouroboros.test_case_outcomes_valid()`); `failure`'s three keys are text when present |
+| `test_suite_counts_computed`, `test_run_counts_computed` | `V051` | Each suite's and each attempt's counts **computed** from its cases — the one definition of counting | Views, so they enforce nothing; `ouroboros.test_run_recount(test_run_id)` writes the stored figures from them, and the parser calls it on every parse |
+| `test_results_count_drift` | `V051` | Every attempt or suite whose stored `[total, passed, failed, flaky, skipped]` differ from the recompute | A view; **empty is the invariant**, and `tests/constraints.sql` asserts it for every attempt of its fixture |
+| `run_check_reconciliation` | `V051` | A run's dashboard `checks_passed/checks_total` beside its latest complete attempt's `passed/total`, with `agrees` | A view — see [Test results and the dashboard's check counts](#test-results-and-the-dashboards-check-counts) |
 | `queue_items` | `V009` | What the loop will do next — the ordered, estimable per-organization issue queue | `position` unique per organization and **deferrable**, so a reorder swaps inside a transaction; `(organization_id, issue_number)` unique, so an issue queues once; `effort` is one of `xs\|s\|m\|l\|xl`; the item's repository must belong to the item's organization |
 | `token_usage` | `V010`, routing attribution `V020` | What the loop has spent — one append-only event per provider call, not one total per organization. Since `V020` it is also what mockup 06's routing matrix is computed from: `task_kind` says which routed kind of work a call served and `latency_ms` how long it took, so `$/run avg` and `p50 latency` are aggregates here rather than numbers stored on a route (decision **M7**) | Token counts and costs cannot go negative; `cost_cents` is nullable and null means **unpriced** ([#92](https://github.com/NobuData/ouroboros/issues/92) prices it) — never defaulted to 0; `provider` is stored folded, so the card counts providers rather than spellings; `run_id` is nullable and **sets null** rather than cascading, because deleting a run does not un-spend money; the usage's run must belong to the usage's organization. `task_kind` is shaped as `task_kinds.name` is but is deliberately **not** a foreign key (decision **F8**, as `runs.workflow_tag`): a ledger row records what happened, and retiring a kind must neither block, delete nor rewrite the history routed under it. `latency_ms` is non-negative, and **both are nullable, which is the point** — null is *not routed* and *not timed*, so an aggregate over none of either is null and the matrix renders the em-dash `M7` requires instead of a fabricated `$0.00` and `0.0s`; zero is permitted on `latency_ms` because a local daemon on loopback really answers inside a millisecond |
 | `workspace_settings` | `V011`, `V041` | Org-scoped typed product settings — the auto-merge switch, and since [#250](https://github.com/NobuData/ouroboros/issues/250) the `runner_bearer_fallback` switch that decides whether a machine may enrol in the farm without a client certificate (default **false**, so a deployment that never considers the question never has the weaker path) | One row per organization, as a primary key, which is also what the settings upsert conflicts on; **absent while every setting is at its default** — read through `workspace_settings_effective`, never directly; `auto_merge_on_checks` is `not null default false`, so the switch has two positions and absence of the row is the only "unset"; `updated_by` references `"user"` and **sets null** rather than cascading, because deleting the person who flipped a switch must not turn it back off |
@@ -2199,6 +2220,58 @@ tenant pointer. It is a nullable foreign key to `organization` with `on delete s
 and both halves of that are deliberate — see
 [The tenant pointer](#the-tenant-pointer) below.
 
+### Test results and the dashboard's check counts
+
+Mockup 02's `checks_passed/checks_total` (`V008`, [#64](https://github.com/NobuData/ouroboros/issues/64))
+and mockup 11's `61/63 passed` (`V051`, [#324](https://github.com/NobuData/ouroboros/issues/324))
+report the same fact on two surfaces. `ouroboros.run_check_reconciliation` maps one onto the
+other so they cannot disagree unnoticed. It compares each run with its **latest complete
+attempt**: `passed` maps to `checks_passed` and `total` maps to `checks_total`. A running or
+errored attempt is not a finished count, so it is skipped. A run with no complete attempt does
+not appear.
+
+```sql
+-- Runs whose dashboard check counts disagree with their test results.
+select run_id, checks_passed, checks_total, attempt_seq, test_passed, test_total
+  from ouroboros.run_check_reconciliation
+ where organization_id = $1
+   and not agrees;
+```
+
+`failed` on `test_runs` counts `failed` **and** `error` cases, so `total = passed + failed +
+flaky + skipped` always holds. A flaky case is not counted as passed, and that is why mockup 11
+reads `61/63` with one failure and one flake.
+
+The stored totals are a cache of the cases. Whatever writes cases calls
+`ouroboros.test_run_recount(test_run_id)` afterwards, and `ouroboros.test_results_count_drift`
+must stay empty:
+
+```sql
+select * from ouroboros.test_results_count_drift;  -- no rows
+```
+
+The Build Analyzer's unique-failure attribution
+([#512](https://github.com/NobuData/ouroboros/issues/512)) reads per-build, per-platform
+failure sets from the same rows. `case_key` does not include the platform, so the same case run
+on two platforms shares a key:
+
+```sql
+-- Failures in one attempt that only one platform caught.
+select s.platform, c.case_key, c.name
+  from ouroboros.test_cases c
+  join ouroboros.test_suites s on s.id = c.test_suite_id
+ where s.test_run_id = $1
+   and c.status in ('failed', 'error')
+   and not exists (
+         select 1
+           from ouroboros.test_cases o
+           join ouroboros.test_suites os on os.id = o.test_suite_id
+          where os.test_run_id = s.test_run_id
+            and os.platform <> s.platform
+            and o.case_key = c.case_key
+            and o.status in ('failed', 'error'));
+```
+
 ### The two generations of user table
 
 A closed chapter, kept because its reasoning still governs the shape of what remains.
@@ -2316,6 +2389,7 @@ GitHub issue cache schema [#99](https://github.com/NobuData/ouroboros/issues/99)
 issue estimates schema [#100](https://github.com/NobuData/ouroboros/issues/100) *(done)* ·
 workflow & version schema [#132](https://github.com/NobuData/ouroboros/issues/132) *(done)* ·
 studio dev seeds [#136](https://github.com/NobuData/ouroboros/issues/136) *(done)* ·
+test runs, suites & cases schema [#324](https://github.com/NobuData/ouroboros/issues/324) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
