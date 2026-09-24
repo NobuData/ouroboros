@@ -75,6 +75,7 @@ import type {
   WebhookOutcome,
   WriteCapableProvider,
 } from "../ticket-source.provider";
+import { NO_PR_CAPABILITIES } from "../ticket-source.pr";
 import {
   MAX_IDEMPOTENCY_KEY,
   READ_ONLY_WRITE_CAPABILITIES,
@@ -131,7 +132,7 @@ export type InMemoryStatus = (typeof IN_MEMORY_STATUSES)[number];
 const CLOSED_STATUSES: readonly InMemoryStatus[] = ["done", "wont_do"];
 
 /** The HTTP status the tracker refuses with for each class — what `classifyHttpStatus` reads back. */
-const REFUSAL_STATUS: Readonly<Record<TicketSourceErrorClass, number>> = Object.freeze({
+export const REFUSAL_STATUS: Readonly<Record<TicketSourceErrorClass, number>> = Object.freeze({
   auth: 401,
   permission: 403,
   validation: 422,
@@ -1025,6 +1026,7 @@ export class InMemoryTicketSourceProvider implements TicketSourceProvider {
       labels: true,
       bidirectionalWrites: false,
       write: READ_ONLY_WRITE_CAPABILITIES,
+      pr: NO_PR_CAPABILITIES,
     };
   }
 

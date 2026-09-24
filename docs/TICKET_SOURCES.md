@@ -104,7 +104,7 @@ store a row.
 
 ### `capabilities()`
 
-Three flags and a write declaration, all required. `false` is an answer; a partial record would
+Three flags, a write declaration and a PR declaration, all required. `false` is an answer; a partial record would
 let a capability be *unmentioned*, and every consumer would then have to decide what an absent
 flag means.
 
@@ -114,6 +114,7 @@ flag means.
 | `labels` | whether the concept of a label exists at your tracker at all — **not** whether a given ticket has any. It is the difference between an empty chip-set because nothing matched and one because there is nothing to match. |
 | `bidirectionalWrites` | whether you implement `WriteCapableProvider`. Always equal to `write.createTicket`; the registry refuses a disagreement at boot. |
 | `write` | which writes — `{ createTicket, nativeDependencies, epicMapping, milestones }`. A read-only provider answers `READ_ONLY_WRITE_CAPABILITIES`. See [§ 7a](#7a-writing-back-optional). |
+| `pr` | what it can do with pull requests — `{ pullRequests, create, mergeStrategies, reviews, events }`. A ticket tracker answers `NO_PR_CAPABILITIES`. See [§ 7b](#7b-pull-requests-optional). |
 
 They must be **stable**: two calls answer equal values. A capability that changed between two
 renders would show an affordance that then failed.
@@ -581,6 +582,105 @@ the ticket, and the epic's `epic_tickets` row.
 `pushAffordance` from `capabilities.write`. A read-only kind renders its push control
 **disabled with `reason` as the tooltip** — never a push that fails on click.
 
+## 7b. Pull requests (optional)
+
+AX.1 ([#357](https://github.com/NobuData/ouroboros/issues/357)) — the SPI's **third capability
+family**, on the same recipe as writes: the members are on `PrCapableProvider`, a caller reaches
+them through `supportsPullRequests`, and the gate engine and merge executor (#358–#361) ask what a
+provider can do rather than which provider it is. GitLab merge requests (AZ.3,
+[#373](https://github.com/NobuData/ouroboros/issues/373)) are an implementation against the same
+suites, not a parallel subsystem.
+
+```ts
+capabilities().pr = {
+  pullRequests: boolean;                              // the gate: every flag below is off when this is
+  create: boolean;                                    // else createPR answers null
+  mergeStrategies: ("merge" | "squash" | "rebase")[]; // the host's advertised list
+  reviews: boolean;                                   // else requestReview answers null
+  events: "poll" | "webhook" | "none";                // poll for now; webhook reserved for #122
+};
+
+createPR(context, { branch, base, title, body })   → { number, url } | null
+getPR(context, n)                                  → PullRequestSnapshot
+syncPR(context, n, knownHeadSha)                   → { pr, revision | null }
+mergePR(context, n, { strategy, message, deleteBranch }) → { sha, alreadyMerged, branchDeleted, closures[] }
+commentPR(context, n, { key, body })               → { commentId, mode: "created" | "edited" | "unchanged" }
+requestReview(context, n, user)                    → { requested[] } | null
+prEvents(context, cursor)                          → { events[], nextCursor, hasMore }
+```
+
+The registry refuses at boot a declaration that disagrees with the seven members, the reserved
+`webhook` mode, and **a kind that is not a git host** (`github`, `gitlab`, `custom`) declaring PRs —
+V052's `pull_requests_source_is_git_host` would refuse every row it synced.
+
+**Merge through the host, never around it.** Pushing our own merge commits would bypass branch
+protection, merge queues, required checks and the host's audit trail. `mergePR` asks the host; a
+host that refuses (checks red, protection unmet) is a classified `validation` refusal.
+
+**A strategy the host does not advertise is refused before any request.** Call
+`assertAdvertisedStrategy(capabilities().pr, strategy)` first thing in `mergePR`; the kit counts the
+host's requests to prove nothing was sent.
+
+**Revisions are detected by head-sha change, never by time.** `syncPR` is handed the head of the
+latest revision the mirror holds and answers a revision — with the `{path, additions, deletions}`
+file snapshot `pr_revisions.files` stores and a diff sample bounded at 16 KiB (`diffExcerptOf`) —
+exactly when the head differs. A comment moves a PR's stamp and is not a push.
+
+**Comments are edited, not re-posted** (decision V9). A published comment carries
+`<!-- ouroboros:pr-comment <key> -->` on its own last line (`withPrCommentMarker`); publish finds the
+comment carrying the key's marker (`hasPrCommentMarker`) and edits it.
+
+**Issue closure is verified after the merge, not assumed.** Parse the merge message and the PR
+description with `closingReferences` and read each issue back. Keyword closing silently fails
+across repositories and on a merge into a non-default branch; report those as
+`{ closed: false, detail }` rather than failing a merge that already happened.
+
+**Every member is idempotent** — `createPR` answers the open PR for the same branch and base,
+`mergePR` of a merged PR merges nothing (`alreadyMerged: true`), `requestReview` asks once.
+
+### The per-host mapping
+
+PR semantics genuinely differ per host; the flags and this table are how the difference is
+carried, rather than a `switch (kind)` in the gate engine.
+
+| SPI | GitHub (AX.1, shipped) | GitLab (AZ.3, #373) |
+|---|---|---|
+| `pullRequests` | pull requests | merge requests |
+| `create` | `POST …/pulls` | `POST …/merge_requests` |
+| `mergeStrategies` | `merge`, `squash`, `rebase` — the merge endpoint's `merge_method`; a repository that switched one off answers `405` | `merge` (merge commit), `squash` (`squash: true`), `rebase` (fast-forward after `…/rebase`) — per the project's merge method |
+| `reviews` | requested reviewers — `POST …/pulls/{n}/requested_reviewers` | reviewers; **approvals are not reviews**, and approval rules are the project's |
+| `events` | `poll` over `GET …/issues?since=…&sort=updated&direction=asc` (PRs only) | `poll` over `GET …/merge_requests?updated_after=…` |
+| comment | issue comments — `POST`/`PATCH …/issues/…/comments` | MR notes |
+| closing keywords | `Closes #N` on a merge into the default branch, same repository | `Closes #N` on a merge into the default branch, per project setting |
+| branch delete | `DELETE …/git/refs/heads/{b}`; a fork's branch is left alone | `should_remove_source_branch` |
+
+### GitHub, the first PR host (AX.1)
+
+`providers/github.pr.ts` implements every member over K.3's client — no Octokit import, the same
+seam as the rest of the provider — and declares
+`{ pullRequests: true, create: true, mergeStrategies: ["merge", "squash", "rebase"], reviews: true, events: "poll" }`.
+The PR plane of a source is its **push target** (the first enabled repository): V052 keys a PR by
+`(source_id, external_number)`, and a number is only unique within one repository.
+
+| Member | GitHub |
+|---|---|
+| `createPR` | `GET …/pulls?head=owner:branch&base=…&state=open`, else `POST …/pulls` |
+| `getPR` / `syncPR` | `GET …/pulls/{n}`; when the head moved, every page of `GET …/pulls/{n}/files`. `pushedAt` is the PR's `updated_at` — GitHub reports no push time |
+| `mergePR` | strategy gate (no request) → `GET …/pulls/{n}` → `PUT …/pulls/{n}/merge` with the message's first line as `commit_title` and the rest as `commit_message` → `DELETE …/git/refs/heads/{b}` (`422` = already gone) → `GET …/issues/{N}` per closing reference |
+| `commentPR` | `GET …/issues/{n}/comments`, then `PATCH …/issues/comments/{id}` or `POST …/issues/{n}/comments` |
+| `requestReview` | `POST …/pulls/{n}/requested_reviewers` |
+| `prEvents` | inclusive `since` cursor — a PR on the last instant repeats rather than being skipped; `syncPR` is idempotent |
+
+### The PR sync
+
+`src/modules/pull-requests/pr-sync.service.ts` is the SPI's first PR consumer, and imports no
+provider. `sync(org, source, n)` reads the source inside the asking workspace, hands the provider
+the mirror's latest head, and writes **one transaction** with the PR row locked: V052's sync-owned
+columns, `state` by rule (`pr-sync.state.ts` — the host's `open`/`closed`/`merged` without undoing
+`verifying`/`blocked`/`armed`, walking `closed → open → merged` for a reopen it missed), and the
+next `pr_revisions` row when the head moved (`on conflict (pr_id, head_sha) do nothing`). An
+unchanged PR is not updated.
+
 ---
 
 ## 8. Writing one
@@ -764,6 +864,46 @@ milestone and returned the first one's id would pass a check on answers alone.
 in-memory writer — every feature; fallback links with no milestones and `epicMapping: "none"`; and
 native epics.
 
+### The PR suites
+
+A provider that declares `pr.pullRequests` also takes `describeTicketSourcePrConformance` from
+[`conformance.pr.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/conformance.pr.fixture.ts).
+The harness is a **sandbox**: `push` is a commit, `openIssue` files an issue, `ledger` reads what the
+host holds.
+
+```ts
+describeTicketSourcePrConformance("YourHostProvider", () => ({
+  provider, context,
+  base: "main",
+  push: (branch, files) => sandbox.push(branch, files),   // answers the commit sha
+  open: (branch, title) => sandbox.open(branch, title),   // for a host with create: false
+  openIssue: () => sandbox.openIssue(),
+  foreignReference: "acme/other#7",                       // a close the host cannot make
+  reviewer: "mara-okafor",
+  ledger: () => sandbox.ledger(),                         // prs, comments, merged, branches, requests
+  refuse: { auth: …, permission: …, validation: …, rate_limit: …, not_found: …, upstream: … },
+  recover: () => sandbox.recover(),
+}));
+```
+
+| leg | what it asserts |
+|---|---|
+| declaration | coherent, and agrees with the seven members |
+| round trip | push → `createPR` twice is one PR → revision 1 → no revision on an unchanged head → push again → **revision 2** with the summed file counts |
+| strategy gate | every unadvertised strategy is `validation` with **no request sent** |
+| merge | squash + delete branch: branch gone, `Closes #N` verified closed, the foreign reference reported not closed with a reason; a retry merges nothing |
+| comments | re-publish **edits** — created, unchanged, edited, one comment per key |
+| reviews | asked once however often, or `null` when not declared |
+| events | a pushed PR is on the next poll; every event names a PR the host holds |
+| error taxonomy | one refusal per class, all six, for `getPR`, `syncPR`, `mergePR`, `commentPR`, `prEvents` |
+| rollback | a refused comment or merge leaves nothing behind; the retry lands once |
+| credentials | nothing reachable from the provider holds the credential |
+
+`providers/in-memory.pr-conformance.spec.ts` runs the suites against the in-memory git host
+(`in-memory.pr.fixture.ts`, the fake the gate engine and merge executor test on) in two
+declarations, and `providers/github.pr-conformance.spec.ts` against the real GitHub provider over a
+recorded repository.
+
 **Registering a provider without taking the kit fails the build.** `conformance.fixture.spec.ts`
 reads `ticket-sources.module.ts` and requires `providers/<name>.conformance.spec.ts` for every
 provider it imports.
@@ -825,6 +965,11 @@ So that you do not reimplement any of it:
 | [`providers/github.mapping.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.mapping.ts) | its `mapTicket`, testable with no network |
 | [`conformance.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/conformance.fixture.ts) | the conformance kit (Q.5) — `describeTicketSourceConformance` and the checks it is built from |
 | [`conformance.write.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/conformance.write.fixture.ts) | the write suites (AL.2) — `describeTicketSourceWriteConformance` |
+| [`ticket-source.pr.ts`](../ouroboros-rest/src/modules/ticket-sources/ticket-source.pr.ts) | the PR declaration and values (AX.1); the strategy gate, the V9 comment marker, closing-keyword parsing |
+| [`conformance.pr.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/conformance.pr.fixture.ts) | the PR suites (AX.1) — `describeTicketSourcePrConformance` |
+| [`providers/github.pr.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/github.pr.ts) | GitHub's PR members, over K.3's client |
+| [`providers/in-memory.pr.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/in-memory.pr.fixture.ts) | the in-memory git host and PR provider |
+| [`pull-requests/pr-sync.service.ts`](../ouroboros-rest/src/modules/pull-requests/pr-sync.service.ts) | the PR sync into V052's `pull_requests` and `pr_revisions` |
 | [`providers/in-memory.provider.fixture.ts`](../ouroboros-rest/src/modules/ticket-sources/providers/in-memory.provider.fixture.ts) | the in-memory tracker and provider the kit and the core intake harness run on |
 | [`V030__canonical_tickets.sql`](../ouroboros-db/migrations/V030__canonical_tickets.sql) | `ticket_sources`, `tickets`, `ticket_sources_public` |
 | [`V031__ticket_source_status_reason.sql`](../ouroboros-db/migrations/V031__ticket_source_status_reason.sql) | `status_reason` |

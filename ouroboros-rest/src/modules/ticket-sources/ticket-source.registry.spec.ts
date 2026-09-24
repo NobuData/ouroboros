@@ -12,7 +12,13 @@ import {
   InMemoryTracker,
   InMemoryWriteTicketSourceProvider,
 } from "./providers/in-memory.provider.fixture";
-import { supportsWrites, type TicketSourceProvider } from "./ticket-source.provider";
+import { InMemoryPrHost, InMemoryPrTicketSourceProvider } from "./providers/in-memory.pr.fixture";
+import { NO_PR_CAPABILITIES } from "./ticket-source.pr";
+import {
+  supportsPullRequests,
+  supportsWrites,
+  type TicketSourceProvider,
+} from "./ticket-source.provider";
 import { READ_ONLY_WRITE_CAPABILITIES } from "./ticket-source.write";
 import {
   TICKET_SOURCE_PROVIDERS,
@@ -241,6 +247,51 @@ describe("TicketSourceRegistry", () => {
     ]);
 
     expect(supportsWrites(registry.get("jira"))).toBe(true);
+  });
+
+  it("stops the process at boot when a provider declares pull requests and has no PR members", async () => {
+    // AX.1 (#357): the gate engine and merge executor narrow on `pr.pullRequests`, so a flag
+    // without the seven members is a merge that fails with a TypeError behind a guard that said
+    // it was safe.
+    const liar: TicketSourceProvider = {
+      ...scriptedProvider(),
+      capabilities: () => ({
+        ...NO_CAPABILITIES,
+        pr: {
+          ...NO_PR_CAPABILITIES,
+          pullRequests: true,
+          mergeStrategies: ["squash"],
+          events: "poll",
+        },
+      }),
+    };
+
+    await expect(registryOf([liar])).rejects.toThrow(
+      'Provider "github" declares PR capabilities that disagree: pr.pullRequests is true but ' +
+        "createPR, getPR, syncPR, mergePR, commentPR, requestReview, prEvents is absent",
+    );
+  });
+
+  it("stops the process at boot when a tracker that is not a git host declares pull requests", async () => {
+    // V052's `pull_requests_source_is_git_host` would refuse every row such a provider synced.
+    const jira = new InMemoryPrTicketSourceProvider(new InMemoryTracker(), new InMemoryPrHost(), {
+      kind: "jira",
+    });
+
+    await expect(registryOf([jira])).rejects.toThrow(
+      'Provider "jira" declares PR capabilities that disagree: a jira source is not a git host, ' +
+        "and V052 mirrors PRs from git hosts only",
+    );
+  });
+
+  it("accepts a git host whose PR flags and members agree", async () => {
+    const registry = await registryOf([
+      new InMemoryPrTicketSourceProvider(new InMemoryTracker(), new InMemoryPrHost(), {
+        kind: "gitlab",
+      }),
+    ]);
+
+    expect(supportsPullRequests(registry.get("gitlab"))).toBe(true);
   });
 
   it("stops the process at boot when a provider has no schema member at all", async () => {

@@ -10551,13 +10551,16 @@ export interface components {
         /**
          * TicketSourceCapabilities
          * @description What a provider can do — its own `capabilities()`, copied onto the catalog entry
-         *     unchanged. Three flags and a write declaration, all present: a total shape, so no client
-         *     has to decide what an absent flag means. `webhooks` says whether the provider accepts
-         *     deliveries; `labels` whether the concept exists at the tracker at all (the difference
-         *     between an empty chip-set because nothing matched and one because there is nothing to
-         *     match); `bidirectionalWrites` whether it can create tickets, always equal to
-         *     `write.createTicket`; `write` which writes
-         *     ([#278](https://github.com/NobuData/ouroboros/issues/278)).
+         *     unchanged. Three flags, a write declaration and a PR declaration, all present: a total
+         *     shape, so no client has to decide what an absent flag means. `webhooks` says whether the
+         *     provider accepts deliveries; `labels` whether the concept exists at the tracker at all
+         *     (the difference between an empty chip-set because nothing matched and one because there
+         *     is nothing to match); `bidirectionalWrites` whether it can create tickets, always equal
+         *     to `write.createTicket`; `write` which writes
+         *     ([#278](https://github.com/NobuData/ouroboros/issues/278)); `pr` what it can do with
+         *     pull requests ([#357](https://github.com/NobuData/ouroboros/issues/357)).
+         *
+         *     **`pr` added in 0.37.3.**
          */
         TicketSourceCapabilities: {
             /** @example false */
@@ -10567,6 +10570,42 @@ export interface components {
             /** @example false */
             bidirectionalWrites: boolean;
             write: components["schemas"]["TicketSourceWriteCapabilities"];
+            pr: components["schemas"]["TicketSourcePrCapabilities"];
+        };
+        /**
+         * TicketSourcePrCapabilities
+         * @description What a provider can do with pull requests — the SPI's third capability family
+         *     ([#357](https://github.com/NobuData/ouroboros/issues/357)). `pullRequests` gates the
+         *     rest: when it is `false` (every ticket tracker), `create` and `reviews` are `false`,
+         *     `mergeStrategies` is empty and `events` is `none` — the server refuses to boot a provider
+         *     that says otherwise, or a tracker that is not a git host declaring PRs. `create` says
+         *     whether a PR can be opened; `mergeStrategies` is the host's advertised list, and a merge
+         *     with any other strategy is refused before the host is asked; `reviews` whether a review
+         *     can be requested; `events` how changes are learned — `poll` for now, `webhook` being
+         *     reserved for the GitHub App ([#122](https://github.com/NobuData/ouroboros/issues/122)).
+         *
+         *     **Added in 0.37.3.**
+         */
+        TicketSourcePrCapabilities: {
+            /** @example false */
+            pullRequests: boolean;
+            /** @example false */
+            create: boolean;
+            /**
+             * @example [
+             *       "merge",
+             *       "squash",
+             *       "rebase"
+             *     ]
+             */
+            mergeStrategies: ("merge" | "squash" | "rebase")[];
+            /** @example false */
+            reviews: boolean;
+            /**
+             * @example poll
+             * @enum {string}
+             */
+            events: "poll" | "webhook" | "none";
         };
         /**
          * TicketSourceEpicMapping
@@ -18446,6 +18485,17 @@ export interface operations {
                      *               "nativeDependencies": true,
                      *               "epicMapping": "parent_issue",
                      *               "milestones": true
+                     *             },
+                     *             "pr": {
+                     *               "pullRequests": true,
+                     *               "create": true,
+                     *               "mergeStrategies": [
+                     *                 "merge",
+                     *                 "squash",
+                     *                 "rebase"
+                     *               ],
+                     *               "reviews": true,
+                     *               "events": "poll"
                      *             }
                      *           },
                      *           "push": {

@@ -45,6 +45,7 @@ import type {
   WebhookCapableProvider,
   WebhookOutcome,
 } from "./ticket-source.provider";
+import { NO_PR_CAPABILITIES } from "./ticket-source.pr";
 import { READ_ONLY_WRITE_CAPABILITIES } from "./ticket-source.write";
 
 /** The workspace every unit suite here syncs for. */
@@ -187,6 +188,7 @@ export const NO_CAPABILITIES: TicketSourceCapabilities = Object.freeze({
   labels: false,
   bidirectionalWrites: false,
   write: READ_ONLY_WRITE_CAPABILITIES,
+  pr: NO_PR_CAPABILITIES,
 });
 
 /**

@@ -95,11 +95,36 @@
  * removes a ticket from somebody's tracker, and a rollback that did would be the one write whose
  * mistake cannot be undone by hand. The write suites' *rollback* case asks the opposite of a
  * delete — that a refused write leaves nothing behind to clean up.
+ *
+ * ---------------------------------------------------------------------------
+ * **Pull requests are the third family, on the same recipe.**
+ *
+ * AX.1 ([#357](https://github.com/NobuData/ouroboros/issues/357)): {@link PrCapableProvider} is a
+ * sub-interface, {@link supportsPullRequests} its guard, and {@link TicketSourceCapabilities.pr} the
+ * declaration — `pullRequests` the gate, merge strategies, reviews and the event mode the detail.
+ * One pluggability contract for three families, so GitLab merge requests (AZ.3,
+ * [#373](https://github.com/NobuData/ouroboros/issues/373)) are an implementation against the same
+ * conformance suites rather than a parallel subsystem. Every provider that shipped before it keeps
+ * compiling with one added line — `pr: NO_PR_CAPABILITIES`. See `ticket-source.pr.ts`.
  */
 
 import type { TicketSourceKind, TicketState } from "../db/schema";
 import type { TicketSourceConfigSchema } from "./ticket-source.config";
 import type { TicketSourceErrorClass } from "./ticket-source.errors";
+import {
+  prCapabilityViolations,
+  type CreatePrInput,
+  type MergePrInput,
+  type MergePrResult,
+  type PrCommentInput,
+  type PrCommentResult,
+  type PrEventPage,
+  type PrRef,
+  type PrSyncResult,
+  type PullRequestSnapshot,
+  type ReviewRequestResult,
+  type TicketSourcePrCapabilities,
+} from "./ticket-source.pr";
 import {
   writeCapabilityViolations,
   type DependencyLinkResult,
@@ -160,6 +185,14 @@ export interface TicketSourceCapabilities {
    * the flags and for the rule that every one of them is off when `createTicket` is.
    */
   readonly write: TicketSourceWriteCapabilities;
+  /**
+   * What this provider can do with pull requests — AX.1's declaration
+   * ([#357](https://github.com/NobuData/ouroboros/issues/357)).
+   *
+   * A ticket tracker answers `NO_PR_CAPABILITIES`. See `ticket-source.pr.ts` for the flags and for
+   * the rule that every one of them is off when `pullRequests` is.
+   */
+  readonly pr: TicketSourcePrCapabilities;
 }
 
 /**
@@ -756,4 +789,192 @@ export function supportsWebhooks(
   provider: TicketSourceProvider,
 ): provider is WebhookCapableProvider {
   return provider.capabilities().webhooks;
+}
+
+/**
+ * A git host's provider: it can open, sync, merge and comment on pull requests.
+ *
+ * AX.1's ([#357](https://github.com/NobuData/ouroboros/issues/357)) extension, on
+ * {@link WriteCapableProvider}'s recipe: a sub-interface, so `registry.get(kind).mergePR(…)` does not
+ * compile without {@link supportsPullRequests} in front of it, and the gate engine and merge
+ * executor ask what a provider can do rather than which provider it is.
+ *
+ * **Every member is idempotent** — a create finds the open PR for its branch first, a merge of a
+ * merged PR merges nothing, a comment edits the one its key published — and **every member throws
+ * `TicketSourceError`** on a refusal, classified the write-side way (`permission`, `validation` and
+ * `rate_limit` included). The PR plane's repository is the source's push target: V052 keys a PR by
+ * `(source_id, external_number)`, and a number is only unique within one repository.
+ *
+ * The context is the sync members' {@link TicketSyncContext}: a stored source, opened for the length
+ * of one call, whose credential the provider must not keep.
+ */
+export interface PrCapableProvider extends TicketSourceProvider {
+  /**
+   * @returns The flags, with `pr.pullRequests` narrowed to `true` — so a provider claiming this
+   *   interface while declaring no PRs fails to compile.
+   */
+  capabilities(): TicketSourceCapabilities & {
+    readonly pr: TicketSourcePrCapabilities & { readonly pullRequests: true };
+  };
+
+  /**
+   * Open a PR — or answer the open one already proposing this branch into this base.
+   *
+   * Used by AZ.5 ([#375](https://github.com/NobuData/ouroboros/issues/375)) for loop-created PRs.
+   *
+   * @param context - The source, opened.
+   * @param input - The branches, title and description.
+   * @returns The PR; the same one on every call for the same branch and base. `null` when
+   *   `pr.create` is false.
+   * @throws {TicketSourceError} On a refusal; `validation` for a blank title or branch, or a branch
+   *   proposed into itself.
+   */
+  createPR(context: TicketSyncContext, input: CreatePrInput): Promise<PrRef | null>;
+
+  /**
+   * One PR as its host reports it now.
+   *
+   * @param context - The source, opened.
+   * @param prNumber - The PR's number.
+   * @returns The snapshot.
+   * @throws {TicketSourceError} On a refusal; `not_found` for a number the host does not have.
+   */
+  getPR(context: TicketSyncContext, prNumber: number): Promise<PullRequestSnapshot>;
+
+  /**
+   * One PR, and the push the caller has not seen yet — **revision detection by head-sha change**.
+   *
+   * @param context - The source, opened.
+   * @param prNumber - The PR's number.
+   * @param knownHeadSha - The head sha of the latest revision the caller holds, or null for none.
+   * @returns The snapshot, and a revision with the file snapshot the changed-files card needs when
+   *   the head differs from `knownHeadSha`. Calling it again with the new sha answers no revision.
+   * @throws {TicketSourceError} On a refusal.
+   */
+  syncPR(
+    context: TicketSyncContext,
+    prNumber: number,
+    knownHeadSha: string | null,
+  ): Promise<PrSyncResult>;
+
+  /**
+   * Ask the host to merge a PR — never merge around it (see `ticket-source.pr.ts`).
+   *
+   * @param context - The source, opened.
+   * @param prNumber - The PR's number.
+   * @param input - The strategy, the message and whether to delete the branch.
+   * @returns What happened, with every issue the message or description closes by keyword
+   *   **verified after the merge**. A PR already merged is not merged again.
+   * @throws {TicketSourceError} `validation` for a strategy `pr.mergeStrategies` does not list —
+   *   **before any request is sent** — a blank message, or a closed PR; the host's refusal (checks
+   *   red, protection unmet), classified, otherwise.
+   */
+  mergePR(
+    context: TicketSyncContext,
+    prNumber: number,
+    input: MergePrInput,
+  ): Promise<MergePrResult>;
+
+  /**
+   * Publish a comment on a PR — **edited, not re-posted**, under the same key (decision V9).
+   *
+   * @param context - The source, opened.
+   * @param prNumber - The PR's number.
+   * @param comment - The key and the Markdown.
+   * @returns The comment's id — the same for every publish under one key — and how it landed.
+   * @throws {TicketSourceError} On a refusal; `validation` for a blank body or a bad key.
+   */
+  commentPR(
+    context: TicketSyncContext,
+    prNumber: number,
+    comment: PrCommentInput,
+  ): Promise<PrCommentResult>;
+
+  /**
+   * Ask somebody to review a PR.
+   *
+   * @param context - The source, opened.
+   * @param prNumber - The PR's number.
+   * @param user - The host login to ask.
+   * @returns Who is asked now; asking twice asks once. `null` when `pr.reviews` is false — GitLab's
+   *   approvals are not GitHub's reviews, and a host without them is a configuration, not a crash.
+   * @throws {TicketSourceError} On a refusal; `validation` for a blank login.
+   */
+  requestReview(
+    context: TicketSyncContext,
+    prNumber: number,
+    user: string,
+  ): Promise<ReviewRequestResult | null>;
+
+  /**
+   * What changed since a cursor — the MVP's poll (`pr.events: 'poll'`).
+   *
+   * @param context - The source, opened.
+   * @param cursor - Exactly what this provider last returned, or null to start from the beginning.
+   * @returns The changes, oldest first, and where to resume. A PR changed after the cursor is on a
+   *   page before the loop runs dry; one may repeat, because `syncPR` is idempotent.
+   * @throws {TicketSourceError} On a refusal.
+   */
+  prEvents(context: TicketSyncContext, cursor: string | null): Promise<PrEventPage>;
+}
+
+/** The members {@link PrCapableProvider} adds, as values — what the registry checks. */
+export const PR_MEMBERS = [
+  "createPR",
+  "getPR",
+  "syncPR",
+  "mergePR",
+  "commentPR",
+  "requestReview",
+  "prEvents",
+] as const satisfies readonly (keyof PrCapableProvider)[];
+
+/**
+ * Whether a provider has pull requests — and, for the compiler, that its PR members are there.
+ *
+ * The check is the **flag**, for {@link supportsWebhooks}' reason.
+ *
+ * @param provider - Any provider.
+ * @returns `true` when it declares `pr.pullRequests`.
+ */
+export function supportsPullRequests(
+  provider: TicketSourceProvider,
+): provider is PrCapableProvider {
+  return provider.capabilities().pr.pullRequests;
+}
+
+/**
+ * Everything wrong with how a provider's PR declaration agrees with itself and its members.
+ *
+ * What `TicketSourceRegistry` refuses at boot and the conformance kit reports — the declaration's
+ * own coherence, then the flag against the seven members in both directions.
+ *
+ * @param provider - Any provider.
+ * @returns The violations.
+ */
+export function prMemberViolations(provider: TicketSourceProvider): string[] {
+  const capabilities = provider.capabilities() as Partial<TicketSourceCapabilities>;
+  const shape = prCapabilityViolations(capabilities.pr);
+
+  if (shape.length > 0) {
+    return shape;
+  }
+
+  const declared = (capabilities.pr as TicketSourcePrCapabilities).pullRequests;
+  const members = provider as unknown as Record<string, unknown>;
+  const missing = PR_MEMBERS.filter((member) => typeof members[member] !== "function");
+  const present = PR_MEMBERS.filter((member) => typeof members[member] === "function");
+
+  if (declared && missing.length > 0) {
+    return [`pr.pullRequests is true but ${missing.join(", ")} is absent`];
+  }
+
+  if (!declared && present.length > 0) {
+    return [
+      `pr.pullRequests is false but ${present.join(", ")} is present — an unreachable PR member ` +
+        "is a declaration somebody forgot to update",
+    ];
+  }
+
+  return [];
 }

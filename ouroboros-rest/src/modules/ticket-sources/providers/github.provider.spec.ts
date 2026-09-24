@@ -120,6 +120,14 @@ describe("the GitHub ticket source provider", () => {
         epicMapping: "parent_issue",
         milestones: true,
       },
+      // AX.1 (#357): every merge strategy, reviews, and a poll — the webhook slot waits for #122.
+      pr: {
+        pullRequests: true,
+        create: true,
+        mergeStrategies: ["merge", "squash", "rebase"],
+        reviews: true,
+        events: "poll",
+      },
     });
     expect(provider.capabilities()).toStrictEqual(provider.capabilities());
     expect(supportsWrites(provider)).toBe(true);
