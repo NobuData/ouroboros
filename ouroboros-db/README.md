@@ -766,6 +766,19 @@
 > mirrored. Each push is kept, so Revision 1 stays inspectable after Revision 2. A revision's
 > `run_stage_id` is accepted only when its `head_sha` is a commit the PR's run reported
 > (decision **V4**), and `pr_revision_attempts` joins the three.
+>
+> `V053` ([#325](https://github.com/NobuData/ouroboros/issues/325)) adds `hil_measurements`,
+> the rows behind mockup 11's **Physical tests** card (option **2-A**). Each row is one metric a
+> rig measured on a physical case: the procedure (the what-it-did line), ordered `trials`, a
+> numeric `value` with its `unit`, a `limit_value` with a `limit_kind` of `max` or `min`, and a
+> `verdict`. A CHECK holds the verdict to the numbers: `max` passes when `value <= limit_value`
+> and `min` passes when `value >= limit_value`. `context` is the `(was 37 in build 1)`
+> comparative. A trigger composes it from the latest earlier attempt whose value for the same
+> case and metric differs. It is null when there is none, and a typed value that disagrees is
+> refused. `test_suites` gains `results_format` (`junit` by default, or `hil`). A physical
+> JUnit-only suite is **degraded** and carries no measurements. `hil_suite_modes` tells it apart
+> from an **incomplete** `hil` suite that lost some. The rig's bench description is
+> `test_suites.meta.bench`.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -1977,6 +1990,7 @@ ouroboros-db/
 │   ├── V050__run_controls_delivery.sql # runs.status gains canceled (an aborted run), and run_controls gains the steer's remember flag — #306
 │   ├── V051__test_results.sql          # test_runs → test_suites → test_cases per build attempt, durable case_key, retry truth, recount and DASH reconciliation — #324
 │   ├── V052__pull_requests.sql         # pull_requests (host-mirrored, state graph) and pr_revisions (one per push, attempt link by sha) — #352
+│   ├── V053__hil_measurements.sql      # hil_measurements (value vs limit, verdict held to it, composed comparative) and test_suites.results_format — #325
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2045,6 +2059,9 @@ outside this module alters it.
 | `run_ingest_receipts` | `V049` | One row per answered ingestion submission ([#303](https://github.com/NobuData/ouroboros/issues/303), AP.1, decision **R2**) — the ledger behind *"replaying any write with the same idempotency key is a no-op that returns the original result"* | `(organization_id, operation, idempotency_key)` unique, scoped by **workspace** rather than by run because `run.create`'s key is checked before its run exists, and with `operation` in the key so an executor numbering its submissions per kind does not have its first event batch answered with its first stage transition's result; `operation` is closed to the six routes `openapi.internal.yaml` publishes; `request_digest` is sixty-four lower-case hex characters, which is what makes a stored response safe — a key reused with a *different* body is refused rather than answered with the first body's result; `response` is an object, because a replay hands it straight back as a response body; append-only to the application by grant, and rows leave with their run |
 | `test_runs` | `V051` | One **results tree per build attempt** ([#324](https://github.com/NobuData/ouroboros/issues/324), AS.1, decision **T1**) — mockup 11's Build 1 · 2 · 3, with the attempt's commit, stored totals, the wall / sim / physical split, `status` and `parse_warnings` | `(run_id, attempt_seq)` unique and `attempt_seq ≥ 1`; `run_id` and `build_job_id` are **composite** references onto `(id, organization_id)`, so an attempt names only its own workspace's run and job; the job is released with `on delete set null (build_job_id)` so results outlive a pruned job, a job produces at most one attempt, and a job attributed to a run must be this attempt's run (`test_runs_build_job_same_run`); `status` is one of `running\|complete\|error`; `total = passed + failed + flaky + skipped`, where `failed` counts `failed` and `error` cases; the split is all null or all set with `wall_ms = sim_ms + physical_ms`; `commit_sha` is 7–40 hex digits; `run_id` and `attempt_seq` are frozen once written, because the run's repository feeds every `case_key` beneath it; `ouroboros_app` may not delete an attempt |
 | `test_suites` | `V051` | One suite on one platform within an attempt — a row of mockup 11's suites card, with its counts and a `meta` object that holds a rig's bench description | `(test_run_id, name, platform)` unique, which is also the index the suites card reads through; `platform` is a lowercase board/simulator tag or `rig:<name>`, and a `rig:` platform is always `kind = 'physical'`; `kind` is `sim\|physical`; counts sum like `test_runs`'; `name` is frozen once written because it feeds every `case_key` in the suite |
+| `test_suites.results_format` | `V053` | Whether a suite's results came from JUnit alone or from `ouro-hil-results.json` ([#325](https://github.com/NobuData/ouroboros/issues/325)) | `junit` (default) or `hil`; a `hil` suite is `kind = 'physical'`; frozen once written; `meta.bench`, the rig's bench description, is text when present |
+| `hil_measurements` | `V053` | One metric a rig measured on a physical case ([#325](https://github.com/NobuData/ouroboros/issues/325), AS.2, option **2-A**) — a measured line of mockup 11's *Physical tests* card: `procedure`, ordered `trials`, `metric`, `value`, `unit`, `limit_value`, `limit_kind`, `verdict` and the `context` comparative | Composite reference onto `test_cases (id, organization_id)` with cascade; `(test_case_id, metric)` unique; the case must be in a `results_format = 'hil'` suite (`hil_measurements_case_is_hil`); every measurement of a case shares one `procedure`; `trials` is an array of objects; `metric` is a lowercase identifier and `unit` 1–16 non-space characters; `value` and `limit_value` are finite; `limit_kind` is `max\|min` and `verdict` `pass\|fail`, and `verdict` must equal `ouroboros.hil_verdict(value, limit_value, limit_kind)` (inclusive on both kinds); `context` is composed by `hil_measurements_compose_context` from the latest earlier attempt of the same run whose value for the same `case_key` and metric differs, is null when there is none, and anything else is refused |
+| `hil_suite_modes` | `V053` | Every physical suite with its platform, `bench` and a `mode` | A view: `degraded` (JUnit only, render plain cases with a hint), `incomplete` (a `hil` suite with a case that ran but has no measurement) or `measured` |
 | `test_cases` | `V051` | One test case's result, retries included — `case_key` (decision **T2**), `status`, `retries`, the ordered `retry_outcomes`, `duration_ms`, the `failure` payload (`message`, `log_excerpt`, `path`) and a parser-specific `meta` | `case_key` is `ouroboros.test_case_key(repo, suite, classname, name)`, derived when written null and refused when it disagrees (`test_cases_case_key_derived`), unique per suite and indexed with `organization_id` for case-history joins; `status` is `passed\|failed\|flaky\|skipped\|error`; `retry_outcomes` has `retries + 1` entries and agrees with `status` (`ouroboros.test_case_outcomes_valid()`); `failure`'s three keys are text when present |
 | `test_suite_counts_computed`, `test_run_counts_computed` | `V051` | Each suite's and each attempt's counts **computed** from its cases — the one definition of counting | Views, so they enforce nothing; `ouroboros.test_run_recount(test_run_id)` writes the stored figures from them, and the parser calls it on every parse |
 | `test_results_count_drift` | `V051` | Every attempt or suite whose stored `[total, passed, failed, flaky, skipped]` differ from the recompute | A view; **empty is the invariant**, and `tests/constraints.sql` asserts it for every attempt of its fixture |
@@ -2409,6 +2426,7 @@ workflow & version schema [#132](https://github.com/NobuData/ouroboros/issues/13
 studio dev seeds [#136](https://github.com/NobuData/ouroboros/issues/136) *(done)* ·
 test runs, suites & cases schema [#324](https://github.com/NobuData/ouroboros/issues/324) *(done)* ·
 pull requests & revisions schema [#352](https://github.com/NobuData/ouroboros/issues/352) *(done)* ·
+HIL measurements schema [#325](https://github.com/NobuData/ouroboros/issues/325) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
