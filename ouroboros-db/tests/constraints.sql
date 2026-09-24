@@ -17583,6 +17583,435 @@ select pg_temp.must_hold(
   'and the V052 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- V053 — HIL measurements: procedures, trials and measured values against limits (#325, AS.2)
+-- ===========================================================================
+--
+-- Mockup 11's Physical tests card as rows. Run #482 has three attempts on rig:helios-rig-02:
+-- the CAN frame-order case measured 37 reordered frames in Build 1 and 0 in Builds 2 and 3, and
+-- Build 3 carries all four of the card's rows. A second physical suite in Build 3 came from
+-- JUnit alone. Asserted: the four rows render from data with units, limits and the
+-- `(was 37 in build 1)` comparative; the verdict agrees with value-vs-limit for max and min;
+-- the comparative is absent without history and cannot be typed; degraded and incomplete
+-- suites are told apart; trials keep their order; and the rig is readable from the suite.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v053',  'HIL Works',       'hil-works',       now()),
+  ('org-v053b', 'Other HIL Works', 'other-hil-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a5310000-0000-0000-0000-00000000000a', 'org-v053', 'hil-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a531f000-0000-0000-0000-00000000000a', 'a5310000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a5320000-0000-0000-0000-000000000482', 'org-v053', 'a531f000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '40 minutes');
+
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status) values
+  ('a5330000-0000-0000-0000-000000000001', 'org-v053', 'a5320000-0000-0000-0000-000000000482', 1, 'complete'),
+  ('a5330000-0000-0000-0000-000000000002', 'org-v053', 'a5320000-0000-0000-0000-000000000482', 2, 'complete'),
+  ('a5330000-0000-0000-0000-000000000003', 'org-v053', 'a5320000-0000-0000-0000-000000000482', 3, 'running');
+
+-- The rig's suite in each attempt (…0001–0003), a JUnit-only rig in Build 3 (…0010) and a
+-- sim suite (…0020).
+insert into ouroboros.test_suites
+    (id, organization_id, test_run_id, name, platform, kind, results_format, meta)
+  values
+    ('a5340000-0000-0000-0000-000000000001', 'org-v053', 'a5330000-0000-0000-0000-000000000001',
+     'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil',
+     '{"bench": "CAN bus + motor + power-cycler"}'),
+    ('a5340000-0000-0000-0000-000000000002', 'org-v053', 'a5330000-0000-0000-0000-000000000002',
+     'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil',
+     '{"bench": "CAN bus + motor + power-cycler"}'),
+    ('a5340000-0000-0000-0000-000000000003', 'org-v053', 'a5330000-0000-0000-0000-000000000003',
+     'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil',
+     '{"bench": "CAN bus + motor + power-cycler"}'),
+    ('a5340000-0000-0000-0000-000000000010', 'org-v053', 'a5330000-0000-0000-0000-000000000003',
+     'PHYSICAL · legacy rig', 'rig:legacy-rig-01', 'physical', 'junit',
+     '{"bench": "power-cycler only"}'),
+    ('a5340000-0000-0000-0000-000000000020', 'org-v053', 'a5330000-0000-0000-0000-000000000003',
+     'unit · drivers', 'native_sim', 'sim', 'junit', '{}');
+
+-- Case ids: …0<attempt><n>. n = 1 power loss, 2 CAN, 3 motor, 4 BLE; …0310 the legacy case.
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retry_outcomes)
+  values
+    ('a5350000-0000-0000-0000-000000000012', 'org-v053', 'a5340000-0000-0000-0000-000000000001',
+     'CAN bus frame order under 90% load', 'hil', 'failed', '["failed"]'),
+    ('a5350000-0000-0000-0000-000000000022', 'org-v053', 'a5340000-0000-0000-0000-000000000002',
+     'CAN bus frame order under 90% load', 'hil', 'passed', '["passed"]'),
+    ('a5350000-0000-0000-0000-000000000031', 'org-v053', 'a5340000-0000-0000-0000-000000000003',
+     'Power-loss mid-flash recovery', 'hil', 'passed', '["passed"]'),
+    ('a5350000-0000-0000-0000-000000000032', 'org-v053', 'a5340000-0000-0000-0000-000000000003',
+     'CAN bus frame order under 90% load', 'hil', 'passed', '["passed"]'),
+    ('a5350000-0000-0000-0000-000000000033', 'org-v053', 'a5340000-0000-0000-0000-000000000003',
+     'Motor overshoot on e-stop release', 'hil', 'failed', '["failed"]'),
+    ('a5350000-0000-0000-0000-000000000034', 'org-v053', 'a5340000-0000-0000-0000-000000000003',
+     'BLE beacon in dual-slot-corrupt state', 'hil', 'passed', '["passed"]'),
+    ('a5350000-0000-0000-0000-000000000310', 'org-v053', 'a5340000-0000-0000-0000-000000000010',
+     'Power-loss mid-flash recovery', 'legacy', 'passed', '["passed"]'),
+    ('a5350000-0000-0000-0000-000000000320', 'org-v053', 'a5340000-0000-0000-0000-000000000020',
+     'case_01', 'drivers', 'passed', '["passed"]');
+
+-- Written attempt by attempt, as the parser does; context is left null throughout.
+insert into ouroboros.hil_measurements
+    (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+  values
+    ('org-v053', 'a5350000-0000-0000-0000-000000000012',
+     'traffic generator floods bus at 900 kbit/s for 60s', 'reordered_frames', 37, 'count', 0, 'max', 'fail');
+insert into ouroboros.hil_measurements
+    (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+  values
+    ('org-v053', 'a5350000-0000-0000-0000-000000000022',
+     'traffic generator floods bus at 900 kbit/s for 60s', 'reordered_frames', 0, 'count', 0, 'max', 'pass');
+insert into ouroboros.hil_measurements
+    (organization_id, test_case_id, procedure, trials, metric, value, unit, limit_value, limit_kind, verdict)
+  values
+    ('org-v053', 'a5350000-0000-0000-0000-000000000031',
+     'power-cycler kills 24V rail at 40 / 60 / 80% of OTA write',
+     '[{"cut_at_pct": 40, "booted": true}, {"cut_at_pct": 60, "booted": true}, {"cut_at_pct": 80, "booted": true}]',
+     'recovered_boots', 3, 'count', 3, 'min', 'pass'),
+    ('org-v053', 'a5350000-0000-0000-0000-000000000031',
+     'power-cycler kills 24V rail at 40 / 60 / 80% of OTA write',
+     '[{"cut_at_pct": 40, "fallback_ms": 398}, {"cut_at_pct": 60, "fallback_ms": 412}, {"cut_at_pct": 80, "fallback_ms": 405}]',
+     'slot_b_fallback_ms', 412, 'ms', 500, 'max', 'pass'),
+    ('org-v053', 'a5350000-0000-0000-0000-000000000032',
+     'traffic generator floods bus at 900 kbit/s for 60s', '[]',
+     'reordered_frames', 0, 'count', 0, 'max', 'pass'),
+    ('org-v053', 'a5350000-0000-0000-0000-000000000033',
+     'dyno bench releases e-stop under 2 Nm load, 3 trials',
+     '[{"trial": 1, "overshoot_pct": 1.9}, {"trial": 2, "overshoot_pct": 2.1}, {"trial": 3, "overshoot_pct": 2.4, "note": "settle 412ms"}]',
+     'overshoot_pct', 2.4, '%', 2.0, 'max', 'fail'),
+    ('org-v053', 'a5350000-0000-0000-0000-000000000034',
+     'both firmware slots checksum-corrupted deliberately, cold boot', '[]',
+     'recovery_beacon_s', 1.8, 's', 3, 'max', 'pass');
+
+-- --- the card, from data -------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s | %s | %s | %s %s%s vs %s %s%s | %s',
+                           c.name, m.verdict, m.procedure, m.metric,
+                           m.value, m.unit, m.limit_kind, m.limit_value, m.unit,
+                           coalesce(m.context, '-'))
+                    order by c.name, m.metric)
+     from ouroboros.hil_measurements m
+     join ouroboros.test_cases c on c.id = m.test_case_id
+    where c.test_suite_id = 'a5340000-0000-0000-0000-000000000003')
+  = array[
+      'BLE beacon in dual-slot-corrupt state | pass | both firmware slots checksum-corrupted deliberately, cold boot | recovery_beacon_s 1.8s vs max 3s | -',
+      'CAN bus frame order under 90% load | pass | traffic generator floods bus at 900 kbit/s for 60s | reordered_frames 0count vs max 0count | was 37 in build 1',
+      'Motor overshoot on e-stop release | fail | dyno bench releases e-stop under 2 Nm load, 3 trials | overshoot_pct 2.4% vs max 2.0% | -',
+      'Power-loss mid-flash recovery | pass | power-cycler kills 24V rail at 40 / 60 / 80% of OTA write | recovered_boots 3count vs min 3count | -',
+      'Power-loss mid-flash recovery | pass | power-cycler kills 24V rail at 40 / 60 / 80% of OTA write | slot_b_fallback_ms 412ms vs max 500ms | -'],
+  'all four of the mockup''s physical rows render from data, with units, limits and the comparative');
+
+select pg_temp.must_hold(
+  (select value = 2.4 and limit_value = 2.0 and pg_typeof(value) = 'numeric'::regtype
+     from ouroboros.hil_measurements where metric = 'overshoot_pct'),
+  'overshoot 2.4% vs limit 2.0% is a comparison of numbers, not a formatted string');
+
+-- --- the verdict is its numbers' -----------------------------------------------------------
+select pg_temp.must_hold(
+  (select bool_and(verdict = ouroboros.hil_verdict(value, limit_value, limit_kind))
+     from ouroboros.hil_measurements where organization_id = 'org-v053'),
+  'every stored verdict agrees with its value against its limit');
+
+select pg_temp.must_hold(
+  (select array_agg(ouroboros.hil_verdict(v, l, k) order by k, v)
+     from (values ('max', 1.9, 2.0), ('max', 2.0, 2.0), ('max', 2.1, 2.0),
+                  ('min', 2.9, 3.0), ('min', 3.0, 3.0), ('min', 3.1, 3.0)) t(k, v, l))
+  = array['pass', 'pass', 'fail', 'fail', 'pass', 'pass'],
+  'max passes at or under its limit and min at or over it — both inclusive');
+
+select pg_temp.must_hold(
+  ouroboros.hil_verdict(1, 2, 'between') is null and ouroboros.hil_verdict(null, 2, 'max') is null,
+  'an unknown direction or a missing number gives no verdict at all');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'settle_ms', 412, 'ms', 400, 'max', 'pass')$$,
+  'a max measurement over its limit cannot be stored as a pass', 'hil_measurements_verdict_consistent');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'settle_ms', 400, 'ms', 400, 'max', 'fail')$$,
+  'a max measurement on its limit cannot be stored as a fail', 'hil_measurements_verdict_consistent');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000031', 'power-cycler kills 24V rail at 40 / 60 / 80% of OTA write',
+            'recovered_boots_total', 2, 'count', 3, 'min', 'pass')$$,
+  'a min measurement under its limit cannot be stored as a pass', 'hil_measurements_verdict_consistent');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000031', 'power-cycler kills 24V rail at 40 / 60 / 80% of OTA write',
+            'recovered_boots_total', 3, 'count', 3, 'min', 'fail')$$,
+  'a min measurement on its limit cannot be stored as a fail', 'hil_measurements_verdict_consistent');
+
+select pg_temp.must_reject(
+  $$update ouroboros.hil_measurements set value = 1.8
+     where test_case_id = 'a5350000-0000-0000-0000-000000000033'$$,
+  'moving the value across its limit without the verdict is refused', 'hil_measurements_verdict_consistent');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'settle_ms', 'NaN', 'ms', 400, 'max', 'fail')$$,
+  'NaN is not a measurement', 'hil_measurements_value_finite');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'settle_ms', 400, 'ms', 'Infinity', 'max', 'pass')$$,
+  'an infinite limit is no limit', 'hil_measurements_value_finite');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'settle_ms', 400, 'ms', 400, 'below', 'pass')$$,
+  'a limit points max or min', 'hil_measurements_limit_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'settle_ms', 400, 'ms', 400, 'max', 'ok')$$,
+  'a verdict is pass or fail', 'hil_measurements_verdict');
+
+-- --- the comparative -----------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select context is null from ouroboros.hil_measurements
+    where test_case_id = 'a5350000-0000-0000-0000-000000000012'),
+  'Build 1 has no prior attempt, so its comparative is absent');
+
+select pg_temp.must_hold(
+  (select context = 'was 37 in build 1' from ouroboros.hil_measurements
+    where test_case_id = 'a5350000-0000-0000-0000-000000000022'),
+  'Build 2 compares with Build 1');
+
+select pg_temp.must_hold(
+  (select context = 'was 37 in build 1' from ouroboros.hil_measurements
+    where test_case_id = 'a5350000-0000-0000-0000-000000000032'),
+  'Build 3 skips Build 2''s unchanged 0 and compares with the 37 in Build 1');
+
+select pg_temp.must_hold(
+  (select bool_and(context is null) from ouroboros.hil_measurements
+    where test_case_id in ('a5350000-0000-0000-0000-000000000031',
+                           'a5350000-0000-0000-0000-000000000033',
+                           'a5350000-0000-0000-0000-000000000034')),
+  'a metric first measured in Build 3 has no comparative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.hil_measurements set context = 'was 3.1% in build 1'
+     where test_case_id = 'a5350000-0000-0000-0000-000000000033'$$,
+  'a comparative with no history behind it cannot be written', 'hil_measurements_context_composed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.hil_measurements set context = 'was 12 in build 2'
+     where test_case_id = 'a5350000-0000-0000-0000-000000000032'$$,
+  'a comparative that disagrees with history cannot be written', 'hil_measurements_context_composed');
+
+update ouroboros.hil_measurements set context = 'was 37 in build 1'
+ where test_case_id = 'a5350000-0000-0000-0000-000000000032';
+
+select pg_temp.must_hold(
+  ouroboros.hil_format_value(2.90, '%') = '2.9%'
+    and ouroboros.hil_format_value(412, 'ms') = '412ms'
+    and ouroboros.hil_format_value(37, 'count') = '37',
+  'a comparative prints the value with its unit, and a count bare');
+
+-- --- degraded mode -------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s:%s/%s', platform, results_format, mode, measured, ran)
+                    order by platform)
+     from ouroboros.hil_suite_modes where test_run_id = 'a5330000-0000-0000-0000-000000000003')
+  = array['rig:helios-rig-02:hil:measured:4/4', 'rig:legacy-rig-01:junit:degraded:0/1'],
+  'a JUnit-only physical suite is valid and reads as degraded; the sim suite is not listed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000310', 'power-cycler kills 24V rail',
+            'recovered_boots', 3, 'count', 3, 'min', 'pass')$$,
+  'a JUnit-degraded suite never carries measurements', 'hil_measurements_case_is_hil');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000320', 'n/a',
+            'x', 1, 'ms', 2, 'max', 'pass')$$,
+  'a sim case carries no measurements', 'hil_measurements_case_is_hil');
+
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retry_outcomes)
+  values
+    ('a5350000-0000-0000-0000-000000000035', 'org-v053', 'a5340000-0000-0000-0000-000000000003',
+     'Brown-out during flash erase', 'hil', 'skipped', '["skipped"]');
+
+select pg_temp.must_hold(
+  (select mode = 'measured' from ouroboros.hil_suite_modes
+    where test_suite_id = 'a5340000-0000-0000-0000-000000000003'),
+  'a skipped case never ran, so it is not a missing measurement');
+
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retry_outcomes)
+  values
+    ('a5350000-0000-0000-0000-000000000036', 'org-v053', 'a5340000-0000-0000-0000-000000000003',
+     'Watchdog under CAN storm', 'hil', 'passed', '["passed"]');
+
+select pg_temp.must_hold(
+  (select mode = 'incomplete' and measured = 4 and ran = 5 from ouroboros.hil_suite_modes
+    where test_suite_id = 'a5340000-0000-0000-0000-000000000003'),
+  'a hil suite whose case ran without a measurement reads as incomplete, not degraded');
+
+delete from ouroboros.test_cases where id in ('a5350000-0000-0000-0000-000000000035',
+                                              'a5350000-0000-0000-0000-000000000036');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_suites set results_format = 'junit'
+     where id = 'a5340000-0000-0000-0000-000000000003'$$,
+  'a hil suite cannot be relabelled JUnit to hide its measurements', 'test_suites_results_format_frozen');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind, results_format)
+    values ('org-v053', 'a5330000-0000-0000-0000-000000000003', 'sim hil', 'native_sim', 'sim', 'hil')$$,
+  'only a physical suite comes from ouro-hil-results.json', 'test_suites_hil_is_physical');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind, results_format)
+    values ('org-v053', 'a5330000-0000-0000-0000-000000000003', 'x', 'rig:x', 'physical', 'xml')$$,
+  'results come from junit or hil', 'test_suites_results_format');
+
+-- --- trials --------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select trials = '[{"trial": 1, "overshoot_pct": 1.9}, {"trial": 2, "overshoot_pct": 2.1}, {"trial": 3, "overshoot_pct": 2.4, "note": "settle 412ms"}]'::jsonb
+          and array(select (e ->> 'trial')::int from jsonb_array_elements(trials) with ordinality a(e, i) order by i)
+              = array[1, 2, 3]
+     from ouroboros.hil_measurements where metric = 'overshoot_pct'),
+  'trials round-trip in the order they ran');
+
+select pg_temp.must_hold(
+  (select array(select (e ->> 'cut_at_pct')::int from jsonb_array_elements(trials) with ordinality a(e, i) order by i)
+          = array[40, 60, 80]
+     from ouroboros.hil_measurements where metric = 'slot_b_fallback_ms'),
+  'the 40 / 60 / 80% cuts come back as 40, 60, 80');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, trials, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            '{"trial": 1}', 'settle_ms', 400, 'ms', 400, 'max', 'pass')$$,
+  'trials are a list', 'hil_measurements_trials_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, trials, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            '[1.9, 2.1]', 'settle_ms', 400, 'ms', 400, 'max', 'pass')$$,
+  'each trial is a record', 'hil_measurements_trials_shape');
+
+-- --- the rig, from the suite alone ---------------------------------------------------------
+select pg_temp.must_hold(
+  (select platform = 'rig:helios-rig-02' and kind = 'physical'
+          and meta ->> 'bench' = 'CAN bus + motor + power-cycler'
+     from ouroboros.test_suites where id = 'a5340000-0000-0000-0000-000000000003'),
+  'the rig platform tag and bench description are read from the suite alone');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind, meta)
+    values ('org-v053', 'a5330000-0000-0000-0000-000000000003', 'x', 'rig:x', 'physical', '{"bench": ["CAN"]}')$$,
+  'a bench description is text', 'test_suites_meta_bench_text');
+
+-- --- shape --------------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'a different procedure',
+            'settle_ms', 400, 'ms', 400, 'max', 'pass')$$,
+  'a case has one what-it-did line', 'hil_measurements_procedure_agrees');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'overshoot_pct', 2.4, '%', 2.0, 'max', 'fail')$$,
+  'a case measures a metric once', 'hil_measurements_case_metric_key');
+
+-- A case with no measurements yet, so no sibling's procedure is compared first.
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retry_outcomes)
+  values
+    ('a5350000-0000-0000-0000-000000000037', 'org-v053', 'a5340000-0000-0000-0000-000000000003',
+     'Unmeasured', 'hil', 'passed', '["passed"]');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000037', '  ',
+            'settle_ms', 400, 'ms', 400, 'max', 'pass')$$,
+  'a procedure says what the rig did', 'hil_measurements_procedure_present');
+
+delete from ouroboros.test_cases where id = 'a5350000-0000-0000-0000-000000000037';
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'Settle Time', 400, 'ms', 400, 'max', 'pass')$$,
+  'a metric is an identifier', 'hil_measurements_metric_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'settle_ms', 400, '', 400, 'max', 'pass')$$,
+  'a measurement has a unit', 'hil_measurements_unit_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.hil_measurements
+      (organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+    values ('org-v053b', 'a5350000-0000-0000-0000-000000000033', 'dyno bench releases e-stop under 2 Nm load, 3 trials',
+            'settle_ms', 400, 'ms', 400, 'max', 'pass')$$,
+  'a measurement cannot name another workspace''s case', 'hil_measurements_test_case_fk');
+
+-- --- lifecycle and grants ------------------------------------------------------------------
+delete from ouroboros.test_cases where id = 'a5350000-0000-0000-0000-000000000031';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.hil_measurements
+    where test_case_id = 'a5350000-0000-0000-0000-000000000031'),
+  'a case''s measurements leave with it');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.hil_measurements', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.hil_measurements', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.hil_measurements', 'update')
+   and has_table_privilege('ouroboros_app', 'ouroboros.hil_measurements', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.hil_suite_modes', 'select'),
+  'the parser writes and re-parses measurements, and the card reads suite modes');
+
+-- --- teardown ------------------------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v053', 'org-v053b');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.hil_measurements where organization_id like 'org-v053%'),
+  'and the V053 fixture leaves nothing behind');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
