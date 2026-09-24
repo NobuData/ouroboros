@@ -779,6 +779,22 @@
 > JUnit-only suite is **degraded** and carries no measurements. `hil_suite_modes` tells it apart
 > from an **incomplete** `hil` suite that lost some. The rig's bench description is
 > `test_suites.meta.bench`.
+>
+> `V054` ([#326](https://github.com/NobuData/ouroboros/issues/326)) adds the memory behind
+> mockup 11's **Flaky** stat, `passed on retry 2/3 · quarantine watching` (option **4-A**,
+> decision **T5**). `test_case_history` has one occurrence per test case per attempt. It is
+> keyed on the durable `case_key`, and everything but the case is derived from the case by a
+> trigger, so pass-on-retry occurrences accumulate across attempts and runs.
+> `flake_score_formulas` versions the score, and published versions are frozen. Formula 1 takes
+> the latest 20 non-skipped occurrences, newest first, weights them `0.9^i` and divides the
+> weighted passes-on-retry by the total weight. `ouroboros.flake_score()` computes it, so the
+> same occurrences always produce the same number. `flake_scores` holds one score per case per
+> workspace, stamped with its `formula_version`. Its `state` is `healthy`, `watching` or
+> `quarantined`, and `ouroboros.flake_state_next()` picks it: watching at 0.25, healthy below
+> 0.10, unchanged in between. Only the moves `healthy ↔ watching ↔ quarantined` are allowed,
+> and `state_changed_at` moves only on an actual change. `quarantined` is storable now and does
+> nothing yet. The migration header documents it as a **soft signal**: reported distinctly,
+> never hidden, never blocking. `flake_scorer_runs` records each nightly scorer pass.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -1991,6 +2007,7 @@ ouroboros-db/
 │   ├── V051__test_results.sql          # test_runs → test_suites → test_cases per build attempt, durable case_key, retry truth, recount and DASH reconciliation — #324
 │   ├── V052__pull_requests.sql         # pull_requests (host-mirrored, state graph) and pr_revisions (one per push, attempt link by sha) — #352
 │   ├── V053__hil_measurements.sql      # hil_measurements (value vs limit, verdict held to it, composed comparative) and test_suites.results_format — #325
+│   ├── V054__case_history_flake_scores.sql # test_case_history (occurrences by case_key), versioned flake score formulas, flake_scores (healthy/watching/quarantined) and scorer runs — #326
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2062,6 +2079,11 @@ outside this module alters it.
 | `test_suites.results_format` | `V053` | Whether a suite's results came from JUnit alone or from `ouro-hil-results.json` ([#325](https://github.com/NobuData/ouroboros/issues/325)) | `junit` (default) or `hil`; a `hil` suite is `kind = 'physical'`; frozen once written; `meta.bench`, the rig's bench description, is text when present |
 | `hil_measurements` | `V053` | One metric a rig measured on a physical case ([#325](https://github.com/NobuData/ouroboros/issues/325), AS.2, option **2-A**) — a measured line of mockup 11's *Physical tests* card: `procedure`, ordered `trials`, `metric`, `value`, `unit`, `limit_value`, `limit_kind`, `verdict` and the `context` comparative | Composite reference onto `test_cases (id, organization_id)` with cascade; `(test_case_id, metric)` unique; the case must be in a `results_format = 'hil'` suite (`hil_measurements_case_is_hil`); every measurement of a case shares one `procedure`; `trials` is an array of objects; `metric` is a lowercase identifier and `unit` 1–16 non-space characters; `value` and `limit_value` are finite; `limit_kind` is `max\|min` and `verdict` `pass\|fail`, and `verdict` must equal `ouroboros.hil_verdict(value, limit_value, limit_kind)` (inclusive on both kinds); `context` is composed by `hil_measurements_compose_context` from the latest earlier attempt of the same run whose value for the same `case_key` and metric differs, is null when there is none, and anything else is refused |
 | `hil_suite_modes` | `V053` | Every physical suite with its platform, `bench` and a `mode` | A view: `degraded` (JUnit only, render plain cases with a hint), `incomplete` (a `hil` suite with a case that ran but has no measurement) or `measured` |
+| `test_case_history` | `V054` | One occurrence per test case per attempt ([#326](https://github.com/NobuData/ouroboros/issues/326), AS.3): `case_key`, `test_run_id`, `github_repo_id`, `status`, `retries`, `pass_on_retry` and `observed_at` | Composite references onto `test_cases` and `test_runs` with cascade; `test_case_id` unique; everything but the case is derived from it by `test_case_history_derive` and refused when it disagrees (`test_case_history_agrees_with_case`); `observed_at` defaults to the attempt's `started_at`; `pass_on_retry = (status = 'flaky')`; `test_case_history_recent_idx` on `(organization_id, case_key, observed_at desc)` includes the scored columns, so a window read is index-only; `ouroboros_app` inserts and never updates or deletes |
+| `test_case_history_drift` | `V054` | Every occurrence whose `status` or `retries` no longer match its case | A view; empty is the invariant |
+| `flake_score_formulas` | `V054` | Every flake score formula, by `version`: `window_size`, `decay`, `watch_at`, `clear_below`, `min_observations` and a description | Version 1 ships with the migration (20, 0.9, 0.25, 0.10, 3); frozen once written (`flake_score_formulas_frozen`), so a re-tuning is a new version; `0 < decay <= 1`, `0 <= clear_below <= watch_at <= 1`; read-only to `ouroboros_app` |
+| `flake_scores` | `V054` | The current flake score and state of each case per workspace: `score`, `window_runs`, `formula_version`, `state`, `last_scored_at` and `state_changed_at` | `(organization_id, case_key)` unique; `score` is in [0, 1]; the case must have an occurrence in the workspace, in `github_repo_id` (`flake_scores_has_history`); `state` is `healthy\|watching\|quarantined`, never inserted as `quarantined`, and moves only `healthy ↔ watching ↔ quarantined` (`flake_scores_state_transition`); `state_changed_at` is set on an actual change and refused otherwise; `quarantined` is a soft signal (reported distinctly, never blocking), not consumed until AV.3 and mockup 12 |
+| `flake_scorer_runs` | `V054` | One row per scorer pass per workspace: `formula_version`, `status`, `started_at`, `finished_at`, a generated `duration_ms`, `cases_scored`, `state_changes` and `error` | `status` is `running\|complete\|error`, and only a running pass is unfinished; an `error` pass carries its reason; `state_changes <= cases_scored`; indexed for *the last run* per workspace |
 | `test_cases` | `V051` | One test case's result, retries included — `case_key` (decision **T2**), `status`, `retries`, the ordered `retry_outcomes`, `duration_ms`, the `failure` payload (`message`, `log_excerpt`, `path`) and a parser-specific `meta` | `case_key` is `ouroboros.test_case_key(repo, suite, classname, name)`, derived when written null and refused when it disagrees (`test_cases_case_key_derived`), unique per suite and indexed with `organization_id` for case-history joins; `status` is `passed\|failed\|flaky\|skipped\|error`; `retry_outcomes` has `retries + 1` entries and agrees with `status` (`ouroboros.test_case_outcomes_valid()`); `failure`'s three keys are text when present |
 | `test_suite_counts_computed`, `test_run_counts_computed` | `V051` | Each suite's and each attempt's counts **computed** from its cases — the one definition of counting | Views, so they enforce nothing; `ouroboros.test_run_recount(test_run_id)` writes the stored figures from them, and the parser calls it on every parse |
 | `test_results_count_drift` | `V051` | Every attempt or suite whose stored `[total, passed, failed, flaky, skipped]` differ from the recompute | A view; **empty is the invariant**, and `tests/constraints.sql` asserts it for every attempt of its fixture |
@@ -2427,6 +2449,7 @@ studio dev seeds [#136](https://github.com/NobuData/ouroboros/issues/136) *(done
 test runs, suites & cases schema [#324](https://github.com/NobuData/ouroboros/issues/324) *(done)* ·
 pull requests & revisions schema [#352](https://github.com/NobuData/ouroboros/issues/352) *(done)* ·
 HIL measurements schema [#325](https://github.com/NobuData/ouroboros/issues/325) *(done)* ·
+case history, flake scores & quarantine [#326](https://github.com/NobuData/ouroboros/issues/326) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
