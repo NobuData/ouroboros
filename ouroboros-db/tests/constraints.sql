@@ -16424,6 +16424,661 @@ select pg_temp.must_hold(
   'and the V050 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- V051 — test runs, suites and cases: one results tree per build attempt (#324, AS.1)
+-- ===========================================================================
+--
+-- Mockup 11's three-build story as rows: Build 1 · 49/63 · 14 failed at a3f19c2, Build 2 ·
+-- 61/63 · 2 failed, and Build 3 running the failed set with partial results — five suites with
+-- the mockup's sizes and platform tags. Every acceptance criterion is asserted against it:
+-- stored totals equal the recompute for every attempt, case_key is stable across re-parse,
+-- attempts and runs, retry_outcomes tells passed-first-time from passed-on-retry, the wall
+-- split sums, the DASH reconciliation agrees on this data, and `rig:*` round-trips.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v051',  'Test Results Works', 'test-results-works', now()),
+  ('org-v051b', 'Other Works',        'other-works',        now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a5100000-0000-0000-0000-00000000000a', 'org-v051',  'test-results-works', true),
+  ('a5100000-0000-0000-0000-00000000000b', 'org-v051b', 'other-works',        true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a51f0000-0000-0000-0000-00000000000a', 'a5100000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a51f0000-0000-0000-0000-00000000000c', 'a5100000-0000-0000-0000-00000000000a',
+   'helios-bootloader', true, 'main'),
+  ('a51f0000-0000-0000-0000-00000000000b', 'a5100000-0000-0000-0000-00000000000b',
+   'other-firmware', true, 'main');
+
+-- #482 is the page's run; #483 is a second run of the same repository, and #490 a run of a
+-- different repository — the two case_key scoping fixtures.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a5200000-0000-0000-0000-000000000482', 'org-v051', 'a51f0000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '40 minutes'),
+    ('a5200000-0000-0000-0000-000000000483', 'org-v051', 'a51f0000-0000-0000-0000-00000000000a',
+     483, 'Tighten OTA rollback', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '20 minutes'),
+    ('a5200000-0000-0000-0000-000000000490', 'org-v051', 'a51f0000-0000-0000-0000-00000000000c',
+     490, 'Bootloader CRC', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '10 minutes'),
+    ('a5200000-0000-0000-0000-000000000900', 'org-v051b', 'a51f0000-0000-0000-0000-00000000000b',
+     900, 'Other', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '10 minutes');
+
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('a5300000-0000-0000-0000-00000000000a', 'org-v051',  'pool-a', 'shell'),
+  ('a5300000-0000-0000-0000-00000000000b', 'org-v051b', 'pool-a', 'shell');
+
+-- One farm job per build attempt of #482, one for #483, and one in the other workspace.
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, run_id, github_repo_id, git_ref, label, title,
+     executor, command)
+  values
+    ('a5400000-0000-0000-0000-000000000001', 'org-v051', 1,
+     'a5300000-0000-0000-0000-00000000000a', 'a5200000-0000-0000-0000-000000000482',
+     'a51f0000-0000-0000-0000-00000000000a', 'loop/482', 'test', 'Build 1', 'shell', 'twister'),
+    ('a5400000-0000-0000-0000-000000000002', 'org-v051', 2,
+     'a5300000-0000-0000-0000-00000000000a', 'a5200000-0000-0000-0000-000000000482',
+     'a51f0000-0000-0000-0000-00000000000a', 'loop/482', 'test', 'Build 2', 'shell', 'twister'),
+    ('a5400000-0000-0000-0000-000000000003', 'org-v051', 3,
+     'a5300000-0000-0000-0000-00000000000a', 'a5200000-0000-0000-0000-000000000482',
+     'a51f0000-0000-0000-0000-00000000000a', 'loop/482', 'test', 'Build 3', 'shell', 'twister'),
+    ('a5400000-0000-0000-0000-000000000004', 'org-v051', 4,
+     'a5300000-0000-0000-0000-00000000000a', 'a5200000-0000-0000-0000-000000000483',
+     'a51f0000-0000-0000-0000-00000000000a', 'loop/483', 'test', 'Build 1', 'shell', 'twister'),
+    ('a5400000-0000-0000-0000-000000000009', 'org-v051b', 1,
+     'a5300000-0000-0000-0000-00000000000b', 'a5200000-0000-0000-0000-000000000900',
+     'a51f0000-0000-0000-0000-00000000000b', 'loop/900', 'test', 'Build 1', 'shell', 'twister');
+
+insert into ouroboros.test_runs
+    (id, organization_id, run_id, build_job_id, attempt_seq, commit_sha, status,
+     wall_ms, sim_ms, physical_ms, started_at)
+  values
+    ('a5500000-0000-0000-0000-000000000001', 'org-v051', 'a5200000-0000-0000-0000-000000000482',
+     'a5400000-0000-0000-0000-000000000001', 1, 'a3f19c2', 'complete',
+     398000, 266000, 132000, now() - interval '35 minutes'),
+    ('a5500000-0000-0000-0000-000000000002', 'org-v051', 'a5200000-0000-0000-0000-000000000482',
+     'a5400000-0000-0000-0000-000000000002', 2, 'c81d0e4', 'complete',
+     372000, 240000, 132000, now() - interval '20 minutes'),
+    ('a5500000-0000-0000-0000-000000000003', 'org-v051', 'a5200000-0000-0000-0000-000000000482',
+     'a5400000-0000-0000-0000-000000000003', 3, 'f42b9a0', 'running',
+     null, null, null, now() - interval '2 minutes');
+
+-- The five suites of mockup 11's card, in both complete attempts. The failure columns are how
+-- many of each suite's leading cases failed in Build 1 and Build 2 — 14 and 2 in total.
+create temporary table v051_suites (name, classname, platform, kind, size, b1_failed, b2_failed) on commit drop as
+  values ('unit · drivers',        'drivers',   'native_sim',        'sim',      24, 1, 0),
+         ('telemetry integration', 'telemetry', 'qemu_cortex_m3',    'sim',      19, 7, 1),
+         ('motor control',         'motor',     'qemu_cortex_m3',    'sim',      12, 5, 0),
+         ('OTA update',            'ota',       'native_sim',        'sim',       6, 0, 0),
+         ('PHYSICAL · HIL rig',    'hil',       'rig:helios-rig-02', 'physical',  2, 1, 1);
+
+insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind, meta)
+select t.organization_id, t.id, d.name, d.platform, d.kind,
+       case when d.kind = 'physical'
+            then '{"bench": "CAN bus + motor + power-cycler"}'::jsonb
+            else '{}'::jsonb end
+  from ouroboros.test_runs t
+  cross join v051_suites d
+ where t.run_id = 'a5200000-0000-0000-0000-000000000482';
+
+-- case_key is left null throughout: the database derives it.
+insert into ouroboros.test_cases
+    (organization_id, test_suite_id, name, classname, status, retries, retry_outcomes,
+     duration_ms, failure)
+select s.organization_id, s.id, 'case_' || lpad(n::text, 2, '0'), d.classname,
+       case when n <= f.failed then 'failed' else 'passed' end,
+       0,
+       case when n <= f.failed then '["failed"]' else '["passed"]' end::jsonb,
+       100 * n,
+       case when n <= f.failed
+            then jsonb_build_object('message', 'assertion failed',
+                                    'log_excerpt', 'expected 0, got 1',
+                                    'path', 'tests/' || d.classname || '/case_' || n)
+       end
+  from ouroboros.test_suites s
+  join ouroboros.test_runs t on t.id = s.test_run_id
+  join v051_suites d on d.name = s.name
+  cross join lateral (select case t.attempt_seq when 1 then d.b1_failed else d.b2_failed end) f(failed)
+  cross join lateral generate_series(1, d.size) n
+ where t.attempt_seq in (1, 2)
+   and t.run_id = 'a5200000-0000-0000-0000-000000000482';
+
+-- Build 3 is running the failed set: so far the telemetry case has passed on retry 2 of 3
+-- and the HIL overshoot has failed again.
+insert into ouroboros.test_cases
+    (organization_id, test_suite_id, name, classname, status, retries, retry_outcomes,
+     duration_ms, failure)
+select s.organization_id, s.id, 'case_01', d.classname, c.status, c.retries, c.outcomes::jsonb,
+       c.duration_ms, c.failure::jsonb
+  from ouroboros.test_suites s
+  join v051_suites d on d.name = s.name
+  join (values ('telemetry integration', 'flaky',  2, '["failed", "failed", "passed"]', 3100, null),
+               ('PHYSICAL · HIL rig',    'failed', 0, '["failed"]', 44000,
+                '{"message": "AssertionError: max overshoot 2.4% > limit 2.0%", "log_excerpt": "trial 3/3: settle 412ms", "path": "tests/hil/test_estop_release.py::overshoot_under_load"}'))
+       c(suite, status, retries, outcomes, duration_ms, failure) on c.suite = s.name
+ where s.test_run_id = 'a5500000-0000-0000-0000-000000000003';
+
+select ouroboros.test_run_recount(id)
+  from ouroboros.test_runs where run_id = 'a5200000-0000-0000-0000-000000000482';
+
+-- --- the three-build story ---------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s/%s:%s', attempt_seq, commit_sha, passed, total, failed)
+                    order by attempt_seq)
+     = array['1:a3f19c2:49/63:14', '2:c81d0e4:61/63:2', '3:f42b9a0:0/2:1']
+     from ouroboros.test_runs where run_id = 'a5200000-0000-0000-0000-000000000482'),
+  'the attempts timeline reads Build 1 · 49/63 · 14 failed → Build 2 · 61/63 · 2 failed → Build 3');
+
+select pg_temp.must_hold(
+  (select status = 'running' and total = 2 and flaky = 1 and failed = 1 and wall_ms is null
+     from ouroboros.test_runs where id = 'a5500000-0000-0000-0000-000000000003'),
+  'Build 3 is running with partial results — two cases so far, and no wall time yet');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s|%s|%s/%s', name, platform, passed, total) order by name)
+     = array['OTA update|native_sim|6/6', 'PHYSICAL · HIL rig|rig:helios-rig-02|1/2',
+             'motor control|qemu_cortex_m3|12/12', 'telemetry integration|qemu_cortex_m3|18/19',
+             'unit · drivers|native_sim|24/24']
+     from ouroboros.test_suites where test_run_id = 'a5500000-0000-0000-0000-000000000002'),
+  'Build 2''s suites card: five rows, the mockup''s counts and platform tags');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_runs (organization_id, run_id, attempt_seq)
+    values ('org-v051', 'a5200000-0000-0000-0000-000000000482', 2)$$,
+  'a run has one Build 2', 'test_runs_run_attempt_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_runs (organization_id, run_id, attempt_seq)
+    values ('org-v051', 'a5200000-0000-0000-0000-000000000482', 0)$$,
+  'attempts count from Build 1', 'test_runs_attempt_seq_positive');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_runs (organization_id, run_id, attempt_seq, status)
+    values ('org-v051', 'a5200000-0000-0000-0000-000000000482', 4, 'passed')$$,
+  'an attempt is running, complete or error', 'test_runs_status');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_runs (organization_id, run_id, attempt_seq, commit_sha)
+    values ('org-v051', 'a5200000-0000-0000-0000-000000000482', 4, 'HEAD~1')$$,
+  'commit_sha is a hex sha, not a ref', 'test_runs_commit_sha_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_runs (organization_id, run_id, attempt_seq, parse_warnings)
+    values ('org-v051', 'a5200000-0000-0000-0000-000000000482', 4, '{"w": 1}')$$,
+  'parse_warnings is a list', 'test_runs_parse_warnings_array');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_runs (organization_id, run_id, attempt_seq)
+    values ('org-v051', 'a5200000-0000-0000-0000-000000000900', 1)$$,
+  'a test run cannot name another workspace''s run', 'test_runs_run_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_runs (organization_id, run_id, build_job_id, attempt_seq)
+    values ('org-v051', 'a5200000-0000-0000-0000-000000000482',
+            'a5400000-0000-0000-0000-000000000009', 4)$$,
+  'a test run cannot name another workspace''s build job', 'test_runs_build_job_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_runs (organization_id, run_id, build_job_id, attempt_seq)
+    values ('org-v051', 'a5200000-0000-0000-0000-000000000482',
+            'a5400000-0000-0000-0000-000000000004', 4)$$,
+  'a test run cannot name a build job attributed to a different run',
+  'test_runs_build_job_same_run');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_runs (organization_id, run_id, build_job_id, attempt_seq)
+    values ('org-v051', 'a5200000-0000-0000-0000-000000000482',
+            'a5400000-0000-0000-0000-000000000002', 4)$$,
+  'a build job produces at most one attempt', 'test_runs_build_job_key');
+
+-- --- stored totals equal the recompute, for every attempt ---------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_results_count_drift d
+     join ouroboros.test_runs t on t.id = d.test_run_id
+    where t.organization_id = 'org-v051'),
+  'every attempt''s and every suite''s stored totals equal a recompute from its cases');
+
+select pg_temp.must_hold(
+  (select bool_and(t.total = c.total and t.passed = c.passed and t.failed = c.failed
+                   and t.flaky = c.flaky and t.skipped = c.skipped)
+          and count(*) = 3
+     from ouroboros.test_runs t
+     join ouroboros.test_run_counts_computed c on c.test_run_id = t.id
+    where t.run_id = 'a5200000-0000-0000-0000-000000000482'),
+  'and the comparison is made for all three attempts, not vacuously');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_runs set passed = 50
+     where id = 'a5500000-0000-0000-0000-000000000001'$$,
+  'total is passed + failed + flaky + skipped', 'test_runs_totals_sum');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_suites set passed = passed + 1
+     where test_run_id = 'a5500000-0000-0000-0000-000000000001' and name = 'OTA update'$$,
+  'and so is a suite''s', 'test_suites_totals_sum');
+
+-- Drift that keeps the sum is what the view exists to catch: one pass relabelled a failure.
+update ouroboros.test_runs set passed = 48, failed = 15
+ where id = 'a5500000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select stored = array[63, 48, 15, 0, 0] and computed = array[63, 49, 14, 0, 0]
+     from ouroboros.test_results_count_drift
+    where test_run_id = 'a5500000-0000-0000-0000-000000000001' and level = 'run'),
+  'test_results_count_drift reports stored figures that disagree with the cases');
+
+-- A re-parse adds a case; recount is what brings the stored figures back.
+insert into ouroboros.test_cases (organization_id, test_suite_id, name, classname, status, retry_outcomes)
+select organization_id, id, 'case_late', 'ota', 'skipped', '["skipped"]'
+  from ouroboros.test_suites
+ where test_run_id = 'a5500000-0000-0000-0000-000000000001' and name = 'OTA update';
+
+select ouroboros.test_run_recount('a5500000-0000-0000-0000-000000000001');
+
+select pg_temp.must_hold(
+  (select total = 64 and passed = 49 and failed = 14 and skipped = 1
+     from ouroboros.test_runs where id = 'a5500000-0000-0000-0000-000000000001')
+  and (select count(*) = 0 from ouroboros.test_results_count_drift
+        where test_run_id = 'a5500000-0000-0000-0000-000000000001'),
+  'test_run_recount() rewrites the attempt and its suites from the cases');
+
+delete from ouroboros.test_cases where name = 'case_late';
+select ouroboros.test_run_recount('a5500000-0000-0000-0000-000000000001');
+
+-- --- error counts as failed ---------------------------------------------------------------
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status)
+  values ('a5500000-0000-0000-0000-000000000483', 'org-v051',
+          'a5200000-0000-0000-0000-000000000483', 1, 'error');
+
+-- #483's attempt also carries the Build Analyzer fixture: one suite on two platforms.
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind) values
+  ('a5600000-0000-0000-0000-000000000001', 'org-v051', 'a5500000-0000-0000-0000-000000000483',
+   'telemetry integration', 'native_sim', 'sim'),
+  ('a5600000-0000-0000-0000-000000000002', 'org-v051', 'a5500000-0000-0000-0000-000000000483',
+   'telemetry integration', 'qemu_cortex_m3', 'sim');
+
+insert into ouroboros.test_cases
+    (organization_id, test_suite_id, name, classname, status, retry_outcomes, failure)
+  values
+    ('org-v051', 'a5600000-0000-0000-0000-000000000001', 'case_01', 'telemetry', 'failed', '["failed"]',
+     '{"message": "timeout"}'),
+    ('org-v051', 'a5600000-0000-0000-0000-000000000001', 'case_02', 'telemetry', 'passed', '["passed"]', null),
+    ('org-v051', 'a5600000-0000-0000-0000-000000000002', 'case_01', 'telemetry', 'failed', '["failed"]',
+     '{"message": "timeout"}'),
+    ('org-v051', 'a5600000-0000-0000-0000-000000000002', 'case_02', 'telemetry', 'error', '["error"]',
+     '{"message": "segfault"}');
+
+select ouroboros.test_run_recount('a5500000-0000-0000-0000-000000000483');
+
+select pg_temp.must_hold(
+  (select total = 4 and passed = 1 and failed = 3
+     from ouroboros.test_runs where id = 'a5500000-0000-0000-0000-000000000483'),
+  'an errored case counts as failed, so the totals still sum');
+
+-- --- case_key is durable (decision T2) ----------------------------------------------------
+create temporary table v051_keys on commit drop as
+select t.attempt_seq, s.name as suite, c.name, c.case_key
+  from ouroboros.test_cases c
+  join ouroboros.test_suites s on s.id = c.test_suite_id
+  join ouroboros.test_runs t on t.id = s.test_run_id
+ where t.run_id = 'a5200000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select count(distinct case_key) = 1 and count(*) = 3
+     from v051_keys where suite = 'telemetry integration' and name = 'case_01'),
+  'the flaky telemetry case has one case_key across Build 1, 2 and 3');
+
+select pg_temp.must_hold(
+  (select case_key = ouroboros.test_case_key('a51f0000-0000-0000-0000-00000000000a',
+                                             'telemetry integration', 'telemetry', 'case_01')
+          and case_key ~ '^[0-9a-f]{64}$'
+     from v051_keys where attempt_seq = 1 and suite = 'telemetry integration' and name = 'case_01'),
+  'and it is the documented recipe — sha256 of repo, suite, classname and name');
+
+select pg_temp.must_hold(
+  (select count(distinct case_key) = 63 from v051_keys where attempt_seq = 2),
+  'the 63 cases of an attempt have 63 distinct keys');
+
+-- Re-parse: the same XML written again produces the same key.
+delete from ouroboros.test_cases c
+ using ouroboros.test_suites s
+ where s.id = c.test_suite_id and s.test_run_id = 'a5500000-0000-0000-0000-000000000002';
+
+insert into ouroboros.test_cases
+    (organization_id, test_suite_id, name, classname, status, retries, retry_outcomes, duration_ms)
+select s.organization_id, s.id, 'case_' || lpad(n::text, 2, '0'), d.classname,
+       case when n <= d.b2_failed then 'failed' else 'passed' end, 0,
+       case when n <= d.b2_failed then '["failed"]' else '["passed"]' end::jsonb, 100 * n
+  from ouroboros.test_suites s
+  join v051_suites d on d.name = s.name
+  cross join lateral generate_series(1, d.size) n
+ where s.test_run_id = 'a5500000-0000-0000-0000-000000000002';
+
+select ouroboros.test_run_recount('a5500000-0000-0000-0000-000000000002');
+
+select pg_temp.must_hold(
+  (select count(*) = 63 and bool_and(k.case_key = c.case_key)
+     from v051_keys k
+     join ouroboros.test_suites s on s.test_run_id = 'a5500000-0000-0000-0000-000000000002'
+                                 and s.name = k.suite
+     join ouroboros.test_cases c on c.test_suite_id = s.id and c.name = k.name
+    where k.attempt_seq = 2),
+  're-parsing Build 2 from the same XML reproduces every one of its 63 case_keys');
+
+select pg_temp.must_hold(
+  (select c.case_key = (select case_key from v051_keys
+                         where attempt_seq = 1 and suite = 'telemetry integration' and name = 'case_01')
+     from ouroboros.test_cases c
+    where c.test_suite_id = 'a5600000-0000-0000-0000-000000000001' and c.name = 'case_01'),
+  'a separate run of the same repository sees the same case under the same key');
+
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq)
+  values ('a5500000-0000-0000-0000-000000000490', 'org-v051',
+          'a5200000-0000-0000-0000-000000000490', 1);
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind)
+  values ('a5600000-0000-0000-0000-000000000490', 'org-v051',
+          'a5500000-0000-0000-0000-000000000490', 'telemetry integration', 'qemu_cortex_m3', 'sim');
+insert into ouroboros.test_cases (organization_id, test_suite_id, name, classname, status, retry_outcomes)
+  values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'case_01', 'telemetry', 'passed', '["passed"]');
+
+select pg_temp.must_hold(
+  (select c.case_key <> (select case_key from v051_keys
+                          where attempt_seq = 1 and suite = 'telemetry integration' and name = 'case_01')
+     from ouroboros.test_cases c
+    where c.test_suite_id = 'a5600000-0000-0000-0000-000000000490'),
+  'while the same names in another repository are a different case — the key is scoped per repo');
+
+select pg_temp.must_hold(
+  ouroboros.test_case_key('a51f0000-0000-0000-0000-00000000000a', 'a b', 'c', 'd')
+    <> ouroboros.test_case_key('a51f0000-0000-0000-0000-00000000000a', 'a', 'b c', 'd'),
+  'the separator keeps shifted boundaries between the parts from colliding');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases
+      (organization_id, test_suite_id, case_key, name, classname, status, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', repeat('0', 64),
+            'case_02', 'telemetry', 'passed', '["passed"]')$$,
+  'a supplied case_key that disagrees with its derivation is refused',
+  'test_cases_case_key_derived');
+
+insert into ouroboros.test_cases
+    (organization_id, test_suite_id, case_key, name, classname, status, retry_outcomes)
+  values ('org-v051', 'a5600000-0000-0000-0000-000000000490',
+          ouroboros.test_case_key('a51f0000-0000-0000-0000-00000000000c',
+                                  'telemetry integration', null, 'case_02'),
+          'case_02', null, 'passed', '["passed"]');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.test_cases
+    where test_suite_id = 'a5600000-0000-0000-0000-000000000490' and name = 'case_02'),
+  'while a parser that computes the recipe itself — null classname included — is accepted');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_cases set name = 'case_renamed'
+     where test_suite_id = 'a5600000-0000-0000-0000-000000000490' and name = 'case_01'$$,
+  'renaming a case without its new key would leave the old identity on it',
+  'test_cases_case_key_derived');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_suites set name = 'telemetry'
+     where id = 'a5600000-0000-0000-0000-000000000490'$$,
+  'a suite''s name feeds every case_key in it, so it is fixed', 'test_suites_identity_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_runs set run_id = 'a5200000-0000-0000-0000-000000000483'
+     where id = 'a5500000-0000-0000-0000-000000000490'$$,
+  'a test run''s run feeds its repository into every key, so it is fixed',
+  'test_runs_identity_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_runs set attempt_seq = 9
+     where id = 'a5500000-0000-0000-0000-000000000001'$$,
+  'and Build 1 stays Build 1', 'test_runs_identity_frozen');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases
+      (organization_id, test_suite_id, name, classname, status, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'case_01', 'telemetry',
+            'passed', '["passed"]')$$,
+  'a case appears once per suite', 'test_cases_suite_case_key');
+
+-- --- retry_outcomes is the retry truth -----------------------------------------------------
+select pg_temp.must_hold(
+  (select retries = 0 and retry_outcomes = '["passed"]'
+     from ouroboros.test_cases c join ouroboros.test_suites s on s.id = c.test_suite_id
+    where s.test_run_id = 'a5500000-0000-0000-0000-000000000002'
+      and s.name = 'telemetry integration' and c.name = 'case_02')
+  and
+  (select status = 'flaky' and retries = 2 and retry_outcomes = '["failed", "failed", "passed"]'
+     from ouroboros.test_cases c join ouroboros.test_suites s on s.id = c.test_suite_id
+    where s.test_run_id = 'a5500000-0000-0000-0000-000000000003'
+      and s.name = 'telemetry integration' and c.name = 'case_01'),
+  'passed first time is ["passed"]; passed on retry 2 of 3 is ["failed", "failed", "passed"]');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retries, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'passed', 1, '["failed", "passed"]')$$,
+  'a case that needed a retry did not pass first time — it is flaky', 'test_cases_retry_outcomes');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retries, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'flaky', 0, '["passed"]')$$,
+  'a flaky case has an earlier failure on record', 'test_cases_retry_outcomes');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retries, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'flaky', 2, '["failed", "passed"]')$$,
+  'there is one outcome per attempt — retries + 1 of them', 'test_cases_retry_outcomes');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retries, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'failed', 1, '["failed", "passed"]')$$,
+  'a failed case''s last attempt failed', 'test_cases_retry_outcomes');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retries, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'failed', 0, '["timeout"]')$$,
+  'an outcome is passed, failed, error or skipped', 'test_cases_retry_outcomes');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retries, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'passed', 0, '{"0": "passed"}')$$,
+  'retry_outcomes is an ordered list', 'test_cases_retry_outcomes');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retries, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'skipped', 1, '["skipped", "skipped"]')$$,
+  'a case that never ran was never retried', 'test_cases_retry_outcomes');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'timeout', '["failed"]')$$,
+  'a case is passed, failed, flaky, skipped or error', 'test_cases_status');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retries, retry_outcomes)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'passed', -1, '[]')$$,
+  'retries is never negative', 'test_cases_retries_non_negative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retry_outcomes, failure)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'failed', '["failed"]',
+            '{"message": 42}')$$,
+  'a failure payload''s message, log excerpt and path are text', 'test_cases_failure_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retry_outcomes, meta)
+    values ('org-v051', 'a5600000-0000-0000-0000-000000000490', 'x', 'passed', '["passed"]', '[]')$$,
+  'a case''s meta is an object', 'test_cases_meta_object');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_cases (organization_id, test_suite_id, name, status, retry_outcomes)
+    values ('org-v051b', 'a5600000-0000-0000-0000-000000000490', 'x', 'passed', '["passed"]')$$,
+  'a case cannot be filed under another workspace''s suite', 'test_cases_test_suite_fk');
+
+-- --- the wall / sim / physical split -----------------------------------------------------
+select pg_temp.must_hold(
+  (select wall_ms = 372000 and sim_ms = 240000 and physical_ms = 132000
+          and wall_ms = sim_ms + physical_ms
+     from ouroboros.test_runs where id = 'a5500000-0000-0000-0000-000000000002'),
+  '6m 12s · 4m sim · 2m 12s physical is stored, and sums');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_runs set physical_ms = 100000
+     where id = 'a5500000-0000-0000-0000-000000000002'$$,
+  'a split whose parts do not add up to the wall time is refused', 'test_runs_duration_split');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_runs set wall_ms = 60000
+     where id = 'a5500000-0000-0000-0000-000000000003'$$,
+  'and so is a wall time with no split beside it', 'test_runs_duration_split');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_runs set wall_ms = 0, sim_ms = 10, physical_ms = -10
+     where id = 'a5500000-0000-0000-0000-000000000003'$$,
+  'no part of the split is negative', 'test_runs_durations_non_negative');
+
+-- --- platform tags round-trip ------------------------------------------------------------
+select pg_temp.must_hold(
+  (select platform = 'rig:helios-rig-02' and kind = 'physical'
+          and meta ->> 'bench' = 'CAN bus + motor + power-cycler'
+     from ouroboros.test_suites
+    where test_run_id = 'a5500000-0000-0000-0000-000000000002' and name = 'PHYSICAL · HIL rig'),
+  'rig:helios-rig-02 round-trips, with its bench description in meta');
+
+select pg_temp.must_hold(
+  (select array_agg(distinct platform order by platform)
+     = array['native_sim', 'qemu_cortex_m3', 'rig:helios-rig-02']
+     from ouroboros.test_suites where test_run_id = 'a5500000-0000-0000-0000-000000000001'),
+  'and so do native_sim and qemu_cortex_m3');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind)
+    values ('org-v051', 'a5500000-0000-0000-0000-000000000490', 'hil', 'rig:helios-rig-02', 'sim')$$,
+  'a rig is physical', 'test_suites_rig_is_physical');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind)
+    values ('org-v051', 'a5500000-0000-0000-0000-000000000490', 'hil', 'Helios Rig 02', 'physical')$$,
+  'a platform is a tag, not a sentence', 'test_suites_platform_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind)
+    values ('org-v051', 'a5500000-0000-0000-0000-000000000490', 'hil', 'native_sim', 'hil')$$,
+  'a suite is sim or physical', 'test_suites_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind)
+    values ('org-v051', 'a5500000-0000-0000-0000-000000000490', 'telemetry integration',
+            'qemu_cortex_m3', 'sim')$$,
+  'a suite appears once per platform in an attempt', 'test_suites_run_name_platform_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.test_suites (organization_id, test_run_id, name, platform, kind)
+    values ('org-v051b', 'a5500000-0000-0000-0000-000000000490', 'x', 'native_sim', 'sim')$$,
+  'a suite cannot be filed under another workspace''s attempt', 'test_suites_test_run_fk');
+
+-- --- the DASH reconciliation (#64) -------------------------------------------------------
+update ouroboros.runs set checks_passed = 61, checks_total = 63
+ where id = 'a5200000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select agrees and attempt_seq = 2 and test_passed = 61 and test_total = 63
+     from ouroboros.run_check_reconciliation
+    where run_id = 'a5200000-0000-0000-0000-000000000482'),
+  'the dashboard''s 61/63 reconciles with the latest complete attempt — Build 2, not running Build 3');
+
+update ouroboros.runs set checks_passed = 60, checks_total = 63
+ where id = 'a5200000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select not agrees from ouroboros.run_check_reconciliation
+    where run_id = 'a5200000-0000-0000-0000-000000000482'),
+  'and a dashboard count that disagrees is reported, not hidden');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.run_check_reconciliation
+    where run_id in ('a5200000-0000-0000-0000-000000000483',
+                     'a5200000-0000-0000-0000-000000000490')),
+  'a run with no complete attempt has nothing to reconcile');
+
+-- --- per-build, per-platform failure sets (#512's unique-failure attribution) -----------
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s', s.platform, c.name) order by s.platform, c.name)
+     = array['qemu_cortex_m3:case_02']
+     from ouroboros.test_cases c
+     join ouroboros.test_suites s on s.id = c.test_suite_id
+    where s.test_run_id = 'a5500000-0000-0000-0000-000000000483'
+      and c.status in ('failed', 'error')
+      and not exists (
+            select 1
+              from ouroboros.test_cases o
+              join ouroboros.test_suites os on os.id = o.test_suite_id
+             where os.test_run_id = s.test_run_id
+               and os.platform <> s.platform
+               and o.case_key = c.case_key
+               and o.status in ('failed', 'error'))),
+  'the failures only one platform caught in a build are queryable — the same case_key across platforms');
+
+-- --- indexes -----------------------------------------------------------------------------
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select id from ouroboros.test_runs
+     where run_id = 'a5200000-0000-0000-0000-000000000482' order by attempt_seq$$,
+  'test_runs_run_attempt_key');
+select pg_temp.must_use_index(
+  $$select id from ouroboros.test_suites where test_run_id = 'a5500000-0000-0000-0000-000000000002'$$,
+  'test_suites_run_name_platform_key');
+select pg_temp.must_use_index(
+  $$select id from ouroboros.test_cases
+     where case_key = repeat('a', 64) and organization_id = 'org-v051'$$,
+  'test_cases_case_history_idx');
+set local enable_seqscan = on;
+
+-- --- lifecycles --------------------------------------------------------------------------
+delete from ouroboros.build_jobs where id = 'a5400000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select build_job_id is null and organization_id = 'org-v051' and total = 63
+     from ouroboros.test_runs where id = 'a5500000-0000-0000-0000-000000000001'),
+  'pruning a build job keeps its results and releases only the job reference');
+
+-- The jobs are detached first: V040's build_jobs_run_fk is an unqualified `set null` on a
+-- composite key, so deleting a run a job still names fails on its own account.
+delete from ouroboros.build_jobs where run_id = 'a5200000-0000-0000-0000-000000000482';
+delete from ouroboros.runs where id = 'a5200000-0000-0000-0000-000000000482';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_runs
+    where run_id = 'a5200000-0000-0000-0000-000000000482')
+  and (select count(*) = 0 from ouroboros.test_suites
+        where test_run_id::text like 'a5500000-0000-0000-0000-00000000000_'),
+  'deleting a run takes its attempts, suites and cases with it');
+
+-- --- grants ------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.test_runs', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.test_runs', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.test_runs', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.test_runs', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.test_suites', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.test_cases', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.test_results_count_drift', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.run_check_reconciliation', 'select'),
+  'the parser can write and re-parse results, and an attempt leaves only with its run');
+
+-- --- teardown ----------------------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v051', 'org-v051b');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_runs where id::text like 'a5500000-%'),
+  'and the V051 fixture leaves nothing behind');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
