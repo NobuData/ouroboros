@@ -14465,13 +14465,16 @@ select pg_temp.must_hold(
    -- migration's own section — and amended this assertion rather than deleting it, because a
    -- list is only a backstop while it is closed. #327 added
    -- `failure_classifications_routed_valid()` the same way: a receipt check that must read the
-   -- farm's jobs on the writer's behalf, asserted in V055's section.
+   -- farm's jobs on the writer's behalf, asserted in V055's section. #353 added
+   -- `pr_gate_evidence_ref_resolves()` for the same reason — a Build gate's evidence names a
+   -- farm job — asserted in V056's section.
    and (select array_agg(proname::text order by proname) = array['failure_classifications_routed_valid',
+                                                                 'pr_gate_evidence_ref_resolves',
                                                                  'run_controls_audit',
                                                                  'run_events_append']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit and #327''s receipt check are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check and #353''s evidence resolver are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -19304,6 +19307,566 @@ select pg_temp.must_hold(
   and (select count(*) = 0 from ouroboros.pr_waivers where organization_id like 'org-v055%')
   and (select count(*) = 0 from ouroboros.test_artifacts where organization_id like 'org-v055%'),
   'and the V055 fixture leaves nothing behind');
+
+-- ===========================================================================
+-- V056 — gate definitions and per-revision verdict snapshots (#353, AW.2)
+-- ===========================================================================
+--
+-- Mockup 12's Verification gates card as rows. PR #514 carries the seven gates of its pinned
+-- policy. Revision 1 (3f9c2ae) is blocked with test_suite and physical_hil red; Revision 2
+-- (b7e41d0) is five green, model_review unavailable and human_approval not_required — 5 of 7
+-- green, not merge-ready. Every evidence line links to a real build job, test run, HIL
+-- measurement or guardrail evaluation. Beside it, sandbox PR #77 carries a custom:* advisory
+-- gate and a waived one, and another workspace's test run is there to be refused.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v056',  'Gate Works',       'gate-works',       now()),
+  ('org-v056b', 'Other Gate Works', 'other-gate-works', now());
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a5600000-0000-0000-0000-00000000000a', 'org-v056', 'github', 'GitHub · gate-works');
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a5610000-0000-0000-0000-00000000000a', 'org-v056',  'gate-works',       true),
+  ('a5610000-0000-0000-0000-00000000000b', 'org-v056b', 'other-gate-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a561f000-0000-0000-0000-00000000000a', 'a5610000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a561f000-0000-0000-0000-00000000000b', 'a5610000-0000-0000-0000-00000000000b',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a5620000-0000-0000-0000-000000000482', 'org-v056', 'a561f000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'review', 'Review', 7, 8, now() - interval '1 hour'),
+    ('a5620000-0000-0000-0000-000000000900', 'org-v056b', 'a561f000-0000-0000-0000-00000000000b',
+     900, 'Elsewhere', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '10 minutes');
+
+-- --- the evidence the providers composed their lines from ------------------------------------
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('a5630000-0000-0000-0000-00000000000a', 'org-v056', 'forge', 'shell');
+
+-- forge-01's zephyr.elf build. No run named, so the teardown need not detach it.
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, github_repo_id, git_ref, label, title, executor, command)
+  values
+    ('a5640000-0000-0000-0000-000000000001', 'org-v056', 1, 'a5630000-0000-0000-0000-00000000000a',
+     'a561f000-0000-0000-0000-00000000000a', 'loop/482-canbus-flake', 'build', 'zephyr.elf',
+     'shell', 'west build');
+
+-- Attempts 3 (Revision 1) and 4 (Revision 2), and another workspace's attempt.
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status) values
+  ('a5650000-0000-0000-0000-000000000003', 'org-v056',  'a5620000-0000-0000-0000-000000000482', 3, 'complete'),
+  ('a5650000-0000-0000-0000-000000000004', 'org-v056',  'a5620000-0000-0000-0000-000000000482', 4, 'complete'),
+  ('a5650000-0000-0000-0000-000000000900', 'org-v056b', 'a5620000-0000-0000-0000-000000000900', 1, 'complete');
+
+insert into ouroboros.test_suites
+    (id, organization_id, test_run_id, name, platform, kind, results_format)
+  values
+    ('a5660000-0000-0000-0000-000000000003', 'org-v056', 'a5650000-0000-0000-0000-000000000003',
+     'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil'),
+    ('a5660000-0000-0000-0000-000000000004', 'org-v056', 'a5650000-0000-0000-0000-000000000004',
+     'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil');
+
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retry_outcomes)
+  values
+    ('a5670000-0000-0000-0000-000000000003', 'org-v056', 'a5660000-0000-0000-0000-000000000003',
+     'Motor overshoot on e-stop release', 'hil', 'failed', '["failed"]'),
+    ('a5670000-0000-0000-0000-000000000004', 'org-v056', 'a5660000-0000-0000-0000-000000000004',
+     'Motor overshoot on e-stop release', 'hil', 'passed', '["passed"]');
+
+insert into ouroboros.hil_measurements
+    (id, organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+  values
+    ('a5680000-0000-0000-0000-000000000003', 'org-v056', 'a5670000-0000-0000-0000-000000000003',
+     'dyno bench releases e-stop under 2 Nm load', 'overshoot_pct', 3.1, '%', 2.0, 'max', 'fail'),
+    ('a5680000-0000-0000-0000-000000000004', 'org-v056', 'a5670000-0000-0000-0000-000000000004',
+     'dyno bench releases e-stop under 2 Nm load', 'overshoot_pct', 1.7, '%', 2.0, 'max', 'pass');
+
+insert into ouroboros.guardrail_evaluations (id, run_id, "check", verdict) values
+  ('a5690000-0000-0000-0000-000000000001', 'a5620000-0000-0000-0000-000000000482', 'secrets', 'pass');
+
+-- --- the PR and its two revisions ----------------------------------------------------------------
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, additions, deletions, changed_files, run_id)
+  values
+    ('a56a0000-0000-0000-0000-000000000514', 'org-v056', 'a5600000-0000-0000-0000-00000000000a',
+     514, 'https://github.com/gate-works/helios-firmware/pull/514',
+     'can: fix flaky telemetry frame order under ISR load',
+     'loop/482-canbus-flake', 'main', 68, 15, 3, 'a5620000-0000-0000-0000-000000000482'),
+    ('a56a0000-0000-0000-0000-000000000077', 'org-v056', 'a5600000-0000-0000-0000-00000000000a',
+     77, 'https://github.com/gate-works/helios-firmware/pull/77',
+     'docs: sandbox change', 'sandbox/docs', 'main', 4, 1, 1, null);
+
+insert into ouroboros.pr_revisions (id, pr_id, revision_seq, head_sha, pushed_at) values
+  ('a56b0000-0000-0000-0000-000000000001', 'a56a0000-0000-0000-0000-000000000514', 1, '3f9c2ae',
+   now() - interval '40 minutes'),
+  ('a56b0000-0000-0000-0000-000000000002', 'a56a0000-0000-0000-0000-000000000514', 2, 'b7e41d0',
+   now() - interval '25 minutes'),
+  ('a56b0000-0000-0000-0000-000000000077', 'a56a0000-0000-0000-0000-000000000077', 1, 'd0c5a11',
+   now() - interval '20 minutes');
+
+-- --- the seven definitions, materialized from the pinned policy -------------------------------
+-- Definition ids: …00514<n>, n the card's row.
+insert into ouroboros.pr_gate_definitions (id, pr_id, gate_key, source, required, sort_order, label)
+  values
+    ('a56c0000-0000-0000-0000-000000005141', 'a56a0000-0000-0000-0000-000000000514',
+     'build',           'standard-fix@v14 pin', true, 1, 'Build'),
+    ('a56c0000-0000-0000-0000-000000005142', 'a56a0000-0000-0000-0000-000000000514',
+     'test_suite',      'standard-fix@v14 pin', true, 2, 'Test suite'),
+    ('a56c0000-0000-0000-0000-000000005143', 'a56a0000-0000-0000-0000-000000000514',
+     'physical_hil',    'standard-fix@v14 pin', true, 3, 'Physical HIL'),
+    ('a56c0000-0000-0000-0000-000000005144', 'a56a0000-0000-0000-0000-000000000514',
+     'diff_vs_plan',    'standard-fix@v14 pin', true, 4, 'Diff-vs-plan conformance'),
+    ('a56c0000-0000-0000-0000-000000005145', 'a56a0000-0000-0000-0000-000000000514',
+     'secrets_license', 'org config',           true, 5, 'Secrets & license scan'),
+    ('a56c0000-0000-0000-0000-000000005146', 'a56a0000-0000-0000-0000-000000000514',
+     'model_review',    'routing vote rule · security label', true, 6, 'Second-model review'),
+    ('a56c0000-0000-0000-0000-000000005147', 'a56a0000-0000-0000-0000-000000000514',
+     'human_approval',  'standard-fix@v14 pin', true, 7, 'Human approval');
+
+-- --- Revision 1: blocked, two red -------------------------------------------------------------
+insert into ouroboros.pr_gate_results
+    (definition_id, revision_id, verdict, evidence, evidence_ref, evaluated_at, provider_version)
+  values
+    ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000001', 'green',
+     'forge-01 · zephyr.elf · FLASH 43.4%',
+     '{"kind": "build_job", "id": "a5640000-0000-0000-0000-000000000001"}',
+     now() - interval '38 minutes', 'gate-build@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005142', 'a56b0000-0000-0000-0000-000000000001', 'red',
+     '61/63 · 2 failed',
+     '{"kind": "test_run", "id": "a5650000-0000-0000-0000-000000000003"}',
+     now() - interval '37 minutes', 'gate-test-suite@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005143', 'a56b0000-0000-0000-0000-000000000001', 'red',
+     'overshoot 3.1% > 2.0% · rig helios-rig-02',
+     '{"kind": "hil_measurement", "id": "a5680000-0000-0000-0000-000000000003"}',
+     now() - interval '37 minutes', 'gate-hil@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005144', 'a56b0000-0000-0000-0000-000000000001', 'green',
+     'all hunks map to planned files · 0 out-of-scope edits', null,
+     now() - interval '38 minutes', 'gate-diff-vs-plan@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005145', 'a56b0000-0000-0000-0000-000000000001', 'green',
+     'clean',
+     '{"kind": "guardrail_evaluation", "id": "a5690000-0000-0000-0000-000000000001"}',
+     now() - interval '38 minutes', 'gate-secrets-license@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005146', 'a56b0000-0000-0000-0000-000000000001', 'unavailable',
+     'arrives with the provider stack', null,
+     now() - interval '38 minutes', 'gate-model-review@0.0.0'),
+    ('a56c0000-0000-0000-0000-000000005147', 'a56b0000-0000-0000-0000-000000000001', 'not_required',
+     'not required by policy', null,
+     now() - interval '38 minutes', 'gate-human-approval@1.0.0');
+
+-- --- Revision 2: the test suite is evaluated twice — pending, then green -----------------------
+insert into ouroboros.pr_gate_results
+    (definition_id, revision_id, verdict, evidence, evidence_ref, evaluated_at, provider_version)
+  values
+    ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000002', 'green',
+     'forge-01 · zephyr.elf · FLASH 43.5%',
+     '{"kind": "build_job", "id": "a5640000-0000-0000-0000-000000000001"}',
+     now() - interval '22 minutes', 'gate-build@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005142', 'a56b0000-0000-0000-0000-000000000002', 'pending',
+     'attempt 4 running', null,
+     now() - interval '22 minutes', 'gate-test-suite@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005142', 'a56b0000-0000-0000-0000-000000000002', 'green',
+     '63/63 after attempt 4',
+     '{"kind": "test_run", "id": "a5650000-0000-0000-0000-000000000004"}',
+     now() - interval '15 minutes', 'gate-test-suite@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005143', 'a56b0000-0000-0000-0000-000000000002', 'green',
+     'overshoot 1.7% ≤ 2.0% · rig helios-rig-02',
+     '{"kind": "hil_measurement", "id": "a5680000-0000-0000-0000-000000000004"}',
+     now() - interval '15 minutes', 'gate-hil@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005144', 'a56b0000-0000-0000-0000-000000000002', 'green',
+     'all hunks map to planned files · 0 out-of-scope edits', null,
+     now() - interval '22 minutes', 'gate-diff-vs-plan@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005145', 'a56b0000-0000-0000-0000-000000000002', 'green',
+     'clean',
+     '{"kind": "guardrail_evaluation", "id": "a5690000-0000-0000-0000-000000000001"}',
+     now() - interval '22 minutes', 'gate-secrets-license@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000005146', 'a56b0000-0000-0000-0000-000000000002', 'unavailable',
+     'arrives with the provider stack', null,
+     now() - interval '22 minutes', 'gate-model-review@0.0.0'),
+    ('a56c0000-0000-0000-0000-000000005147', 'a56b0000-0000-0000-0000-000000000002', 'not_required',
+     'not required by policy', null,
+     now() - interval '22 minutes', 'gate-human-approval@1.0.0');
+
+-- --- the card, reproduced from rows --------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s|%s|%s', label, verdict, coalesce(evidence, '')) order by sort_order, gate_key)
+          = array['Build|green|forge-01 · zephyr.elf · FLASH 43.5%',
+                  'Test suite|green|63/63 after attempt 4',
+                  'Physical HIL|green|overshoot 1.7% ≤ 2.0% · rig helios-rig-02',
+                  'Diff-vs-plan conformance|green|all hunks map to planned files · 0 out-of-scope edits',
+                  'Secrets & license scan|green|clean',
+                  'Second-model review|unavailable|arrives with the provider stack',
+                  'Human approval|not_required|not required by policy']
+     from ouroboros.pr_gate_results_latest
+    where revision_id = 'a56b0000-0000-0000-0000-000000000002'),
+  'Revision 2''s card: the mockup''s seven rows, in order, with their evidence lines');
+
+select pg_temp.must_hold(
+  (select (required_count, green_count, red_count, satisfied_count, merge_ready)
+          = (7, 5, 0, 6, false)
+     from ouroboros.pr_gate_aggregate('a56b0000-0000-0000-0000-000000000002')),
+  'Revision 2 is 5 / 7 green — human_approval not_required satisfies the merge, model_review unavailable does not');
+
+select pg_temp.must_hold(
+  (select (required_count, green_count, red_count, satisfied_count, merge_ready)
+          = (7, 3, 2, 4, false)
+     from ouroboros.pr_gate_aggregate('a56b0000-0000-0000-0000-000000000001')),
+  'Revision 1''s snapshot survives Revision 2: 2 gates red');
+
+select pg_temp.must_hold(
+  (select array_agg(gate_key order by gate_key) = array['physical_hil', 'test_suite']
+     from ouroboros.pr_gate_results_latest
+    where revision_id = 'a56b0000-0000-0000-0000-000000000001' and verdict = 'red'),
+  'and the two red gates are test_suite and physical_hil');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.pr_gate_aggregate('a56b0000-0000-0000-0000-000000000002')),
+  'the aggregate is one row');
+
+-- --- re-evaluation appends; the latest view returns one row per gate per revision ------------
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.pr_gate_results
+    where definition_id = 'a56c0000-0000-0000-0000-000000005142'
+      and revision_id = 'a56b0000-0000-0000-0000-000000000002'),
+  'the test suite''s pending evaluation is kept beside its green one');
+
+select pg_temp.must_hold(
+  (select count(*) = 14 and count(distinct (definition_id, revision_id)) = 14
+     from ouroboros.pr_gate_results_latest
+    where pr_id = 'a56a0000-0000-0000-0000-000000000514'),
+  'the latest view returns exactly one row per gate per revision');
+
+select pg_temp.must_hold(
+  (select verdict = 'green' and evidence = '63/63 after attempt 4'
+     from ouroboros.pr_gate_results_latest
+    where definition_id = 'a56c0000-0000-0000-0000-000000005142'
+      and revision_id = 'a56b0000-0000-0000-0000-000000000002'),
+  'and the row it returns is the newest evaluation');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results
+      (definition_id, revision_id, verdict, evaluated_at, provider_version)
+    select definition_id, revision_id, 'red', evaluated_at, 'gate-test-suite@1.0.0'
+      from ouroboros.pr_gate_results
+     where definition_id = 'a56c0000-0000-0000-0000-000000005142'
+       and revision_id = 'a56b0000-0000-0000-0000-000000000002' and verdict = 'green'$$,
+  'one evaluation per gate, revision and instant', 'pr_gate_results_evaluation_key');
+
+-- --- the vocabularies: six verdicts, unavailable is not pending ------------------------------
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.pr_gate_results', 'pr_gate_results_verdict')
+    = array['green', 'not_required', 'pending', 'red', 'unavailable', 'waived'],
+  'all six verdicts are the whole vocabulary');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.pr_gate_definitions', 'pr_gate_definitions_gate_key')
+    = array['^custom:[a-z0-9][a-z0-9_.-]{0,62}$', 'build', 'diff_vs_plan', 'human_approval',
+            'model_review', 'physical_hil', 'secrets_license', 'test_suite'],
+  'the seven built-in gate keys and the custom:* pattern are the whole key vocabulary');
+
+select pg_temp.must_hold(
+  (select verdict = 'unavailable' and verdict <> 'pending'
+     from ouroboros.pr_gate_results_latest
+    where definition_id = 'a56c0000-0000-0000-0000-000000005146'
+      and revision_id = 'a56b0000-0000-0000-0000-000000000002'),
+  'model_review is stored and read back as unavailable — never folded into pending');
+
+-- Swap Revision 2's unavailable for pending: the verdict reads differently, the aggregate the same.
+insert into ouroboros.pr_gate_results
+    (definition_id, revision_id, verdict, evidence, evaluated_at, provider_version)
+  values ('a56c0000-0000-0000-0000-000000005146', 'a56b0000-0000-0000-0000-000000000002', 'pending',
+          'cursor/composer-2 voting…', now() - interval '5 minutes', 'gate-model-review@1.0.0');
+
+select pg_temp.must_hold(
+  (select verdict = 'pending' from ouroboros.pr_gate_results_latest
+    where definition_id = 'a56c0000-0000-0000-0000-000000005146'
+      and revision_id = 'a56b0000-0000-0000-0000-000000000002')
+  and (select count(*) = 1 from ouroboros.pr_gate_results
+        where definition_id = 'a56c0000-0000-0000-0000-000000005146'
+          and revision_id = 'a56b0000-0000-0000-0000-000000000002' and verdict = 'unavailable')
+  and (select (green_count, satisfied_count, merge_ready) = (5, 6, false)
+         from ouroboros.pr_gate_aggregate('a56b0000-0000-0000-0000-000000000002')),
+  'pending and unavailable are distinct rows, and neither satisfies the merge');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005146', 'a56b0000-0000-0000-0000-000000000002',
+            'waiting', 'gate-model-review@1.0.0')$$,
+  'a verdict is one of the six', 'pr_gate_results_verdict');
+
+-- The vote lands: model_review green → 6 / 7 green, 7 satisfied, merge-ready.
+insert into ouroboros.pr_gate_results
+    (definition_id, revision_id, verdict, evidence, evaluated_at, provider_version)
+  values ('a56c0000-0000-0000-0000-000000005146', 'a56b0000-0000-0000-0000-000000000002', 'green',
+          'cursor/composer-2 approve', now() - interval '1 minute', 'gate-model-review@1.0.0');
+
+select pg_temp.must_hold(
+  (select (required_count, green_count, red_count, satisfied_count, merge_ready)
+          = (7, 6, 0, 7, true)
+     from ouroboros.pr_gate_aggregate('a56b0000-0000-0000-0000-000000000002')),
+  'with model_review green, not_required human approval lets the merge through at 6 / 7 green');
+
+-- --- custom gates, advisory gates and waivers — PR #77 ---------------------------------------
+insert into ouroboros.pr_gate_definitions (id, pr_id, gate_key, source, required, sort_order, label)
+  values
+    ('a56c0000-0000-0000-0000-000000000771', 'a56a0000-0000-0000-0000-000000000077',
+     'build',           'org config', true,  1, 'Build'),
+    ('a56c0000-0000-0000-0000-000000000772', 'a56a0000-0000-0000-0000-000000000077',
+     'custom:coverage', 'org config', false, 2, 'Coverage'),
+    ('a56c0000-0000-0000-0000-000000000773', 'a56a0000-0000-0000-0000-000000000077',
+     'custom:docs.lint-v2', 'org config', true, 3, 'Docs lint');
+
+select pg_temp.must_hold(
+  (select (required_count, green_count, satisfied_count, merge_ready) = (2, 0, 0, false)
+     from ouroboros.pr_gate_aggregate('a56b0000-0000-0000-0000-000000000077')),
+  'a required gate with no result yet is not satisfied');
+
+insert into ouroboros.pr_gate_results
+    (definition_id, revision_id, verdict, evidence, evaluated_at, provider_version)
+  values
+    ('a56c0000-0000-0000-0000-000000000771', 'a56b0000-0000-0000-0000-000000000077', 'green',
+     'docs only · no build', now() - interval '10 minutes', 'gate-build@1.0.0'),
+    ('a56c0000-0000-0000-0000-000000000772', 'a56b0000-0000-0000-0000-000000000077', 'red',
+     'coverage 61% < 80%', now() - interval '10 minutes', 'gate-coverage@0.1.0'),
+    ('a56c0000-0000-0000-0000-000000000773', 'a56b0000-0000-0000-0000-000000000077', 'waived',
+     'waived by Ken S', now() - interval '10 minutes', 'gate-docs-lint@0.1.0');
+
+select pg_temp.must_hold(
+  (select (required_count, green_count, red_count, satisfied_count, merge_ready) = (2, 1, 0, 2, true)
+     from ouroboros.pr_gate_aggregate('a56b0000-0000-0000-0000-000000000077')),
+  'a custom:* gate needs no migration; waived satisfies the merge; an advisory red gate does not count');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_definitions (pr_id, gate_key, source, label)
+    values ('a56a0000-0000-0000-0000-000000000077', 'coverage', 'org config', 'Coverage')$$,
+  'a gate kind outside the seven needs the custom: prefix', 'pr_gate_definitions_gate_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_definitions (pr_id, gate_key, source, label)
+    values ('a56a0000-0000-0000-0000-000000000077', 'custom:Coverage', 'org config', 'Coverage')$$,
+  'and a lowercase name', 'pr_gate_definitions_gate_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_definitions (pr_id, gate_key, source, label)
+    values ('a56a0000-0000-0000-0000-000000000077', 'custom:', 'org config', 'Nothing')$$,
+  'and a name at all', 'pr_gate_definitions_gate_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_definitions (pr_id, gate_key, source, label)
+    values ('a56a0000-0000-0000-0000-000000000514', 'build', 'org config', 'Build again')$$,
+  'a PR has each gate once', 'pr_gate_definitions_pr_gate_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_definitions (pr_id, gate_key, source, label)
+    values ('a56a0000-0000-0000-0000-000000000077', 'test_suite', ' ', 'Test suite')$$,
+  'a definition records where it came from', 'pr_gate_definitions_source_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_definitions (pr_id, gate_key, source, label)
+    values ('a56a0000-0000-0000-0000-000000000077', 'test_suite', 'org config', '')$$,
+  'and has a label to render', 'pr_gate_definitions_label_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_definitions (pr_id, gate_key, source, label, sort_order)
+    values ('a56a0000-0000-0000-0000-000000000077', 'test_suite', 'org config', 'Test suite', -1)$$,
+  'and a non-negative position', 'pr_gate_definitions_sort_order_non_negative');
+
+-- --- provenance --------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s', gate_key, source) order by sort_order)
+          = array['build:standard-fix@v14 pin', 'test_suite:standard-fix@v14 pin',
+                  'physical_hil:standard-fix@v14 pin', 'diff_vs_plan:standard-fix@v14 pin',
+                  'secrets_license:org config', 'model_review:routing vote rule · security label',
+                  'human_approval:standard-fix@v14 pin']
+     from ouroboros.pr_gate_definitions where pr_id = 'a56a0000-0000-0000-0000-000000000514'),
+  '"why does this PR have this gate?" is answered by each definition''s source');
+
+-- --- a definition's identity is fixed; its requirement is not ---------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_gate_definitions set gate_key = 'custom:build'
+     where id = 'a56c0000-0000-0000-0000-000000005141'$$,
+  'a definition cannot be re-keyed under its results', 'pr_gate_definitions_identity_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_gate_definitions set pr_id = 'a56a0000-0000-0000-0000-000000000514'
+     where id = 'a56c0000-0000-0000-0000-000000000773'$$,
+  'nor moved to another PR', 'pr_gate_definitions_identity_frozen');
+
+update ouroboros.pr_gate_definitions set required = true, source = 'org config · request review'
+ where id = 'a56c0000-0000-0000-0000-000000000772';
+
+select pg_temp.must_hold(
+  (select (required_count, satisfied_count, merge_ready) = (3, 2, false)
+     from ouroboros.pr_gate_aggregate('a56b0000-0000-0000-0000-000000000077')),
+  'flipping a gate to required puts it in the denominator — and its red now holds the merge');
+
+-- --- a result's revision is its definition's PR's ----------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000077',
+            'green', 'gate-build@1.0.0')$$,
+  'a result cannot pair #514''s gate with #77''s revision', 'pr_gate_results_revision_of_pr');
+
+-- --- evidence links resolve --------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(distinct r.evidence_ref ->> 'kind' order by r.evidence_ref ->> 'kind')
+          = array['build_job', 'guardrail_evaluation', 'hil_measurement', 'test_run']
+     from ouroboros.pr_gate_results r
+     join ouroboros.pr_gate_definitions d on d.id = r.definition_id
+    where d.pr_id = 'a56a0000-0000-0000-0000-000000000514' and r.evidence_ref is not null),
+  'the fixture links evidence of every resolvable kind');
+
+select pg_temp.must_hold(
+  (select bool_and(case r.evidence_ref ->> 'kind'
+                     when 'build_job' then exists (
+                       select 1 from ouroboros.build_jobs j where j.id = (r.evidence_ref ->> 'id')::uuid)
+                     when 'test_run' then exists (
+                       select 1 from ouroboros.test_runs t where t.id = (r.evidence_ref ->> 'id')::uuid)
+                     when 'hil_measurement' then exists (
+                       select 1 from ouroboros.hil_measurements m where m.id = (r.evidence_ref ->> 'id')::uuid)
+                     when 'guardrail_evaluation' then exists (
+                       select 1 from ouroboros.guardrail_evaluations g where g.id = (r.evidence_ref ->> 'id')::uuid)
+                     else false
+                   end)
+     from ouroboros.pr_gate_results r
+    where r.evidence_ref is not null),
+  'and every stored evidence_ref names a real row of its kind''s table');
+
+select pg_temp.must_hold(
+  (select m.value = 1.7 and m.limit_value = 2.0 and m.verdict = 'pass'
+     from ouroboros.pr_gate_results_latest l
+     join ouroboros.hil_measurements m on m.id = (l.evidence_ref ->> 'id')::uuid
+    where l.definition_id = 'a56c0000-0000-0000-0000-000000005143'
+      and l.revision_id = 'a56b0000-0000-0000-0000-000000000002'),
+  'the Physical HIL line joins to the measurement it quotes');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005146', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            '{"kind": "vote", "id": "a5600000-0000-0000-0000-0000000000ff"}', 'gate-model-review@1.0.0')$$,
+  'a vote cannot be linked until AZ.1 gives it a table', 'pr_gate_results_evidence_ref_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005147', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            '{"kind": "approval", "id": "a5600000-0000-0000-0000-0000000000ff"}', 'gate-human-approval@1.0.0')$$,
+  'nor an approval until AX.5 does', 'pr_gate_results_evidence_ref_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            '{"kind": "build_job", "id": "a5600000-0000-0000-0000-0000000000ff"}', 'gate-build@1.0.0')$$,
+  'an evidence link names a row that exists', 'pr_gate_results_evidence_ref_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            '{"kind": "build_job", "id": "a5650000-0000-0000-0000-000000000004"}', 'gate-build@1.0.0')$$,
+  'of the kind it claims', 'pr_gate_results_evidence_ref_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005142', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            '{"kind": "test_run", "id": "a5650000-0000-0000-0000-000000000900"}', 'gate-test-suite@1.0.0')$$,
+  'and of the PR''s own workspace', 'pr_gate_results_evidence_ref_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            '{"kind": "build_job", "id": "a5640000-0000-0000-0000-000000000001", "note": "x"}',
+            'gate-build@1.0.0')$$,
+  'an evidence link is exactly {kind, id}', 'pr_gate_results_evidence_ref_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            '{"kind": "ci_check", "id": "a5640000-0000-0000-0000-000000000001"}', 'gate-build@1.0.0')$$,
+  'of a known kind', 'pr_gate_results_evidence_ref_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            '{"kind": "build_job", "id": "forge-01"}', 'gate-build@1.0.0')$$,
+  'whose id is a uuid', 'pr_gate_results_evidence_ref_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            '["build_job", "a5640000-0000-0000-0000-000000000001"]', 'gate-build@1.0.0')$$,
+  'and an object, not a list', 'pr_gate_results_evidence_ref_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, evidence, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000001', 'green',
+            repeat('x', 513), 'gate-build@1.0.0')$$,
+  'the evidence line is one bounded line', 'pr_gate_results_evidence_bounded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results (definition_id, revision_id, verdict, provider_version)
+    values ('a56c0000-0000-0000-0000-000000005141', 'a56b0000-0000-0000-0000-000000000001', 'green', ' ')$$,
+  'a verdict names the provider that gave it', 'pr_gate_results_provider_version_present');
+
+-- --- an unknown revision, and a PR with no gates --------------------------------------------------
+select pg_temp.must_hold(
+  (select (required_count, green_count, satisfied_count, merge_ready) = (0, 0, 0, false)
+     from ouroboros.pr_gate_aggregate('a5600000-0000-0000-0000-0000000000ff')),
+  'an unmaterialized gate set is never merge-ready');
+
+-- --- grants ---------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.pr_gate_definitions', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_gate_definitions', 'insert')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_gate_definitions', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pr_gate_definitions', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_gate_results', 'select')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_gate_results', 'insert')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pr_gate_results', 'update')
+   and not has_table_privilege('ouroboros_app', 'ouroboros.pr_gate_results', 'delete')
+   and has_table_privilege('ouroboros_app', 'ouroboros.pr_gate_results_latest', 'select')
+   and has_function_privilege('ouroboros_app', 'ouroboros.pr_gate_aggregate(uuid)', 'execute')
+   and (select prosecdef
+               and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+               and not has_function_privilege('public', oid, 'execute')
+               and has_function_privilege('ouroboros_app', oid, 'execute')
+          from pg_proc
+         where proname = 'pr_gate_evidence_ref_resolves'
+           and pronamespace = 'ouroboros'::regnamespace),
+  'definitions are materialized and re-synced but never deleted, results are append-only, and the evidence resolver runs as its owner with its search_path pinned and execute kept from public');
+
+-- --- lifecycles -------------------------------------------------------------------------------------
+delete from ouroboros.pr_revisions where id = 'a56b0000-0000-0000-0000-000000000077';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_gate_results
+    where revision_id = 'a56b0000-0000-0000-0000-000000000077')
+  and (select count(*) = 3 from ouroboros.pr_gate_definitions
+        where pr_id = 'a56a0000-0000-0000-0000-000000000077'),
+  'a revision takes its snapshot with it, and leaves the gate set');
+
+delete from ouroboros.pull_requests where id = 'a56a0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_gate_definitions
+    where pr_id = 'a56a0000-0000-0000-0000-000000000514')
+  and (select count(*) = 0 from ouroboros.pr_gate_results
+        where definition_id::text like 'a56c0000-%-00000000514_'),
+  'a PR takes its gates and their results with it');
+
+-- --- teardown ------------------------------------------------------------------------------------
+delete from ouroboros.build_jobs where organization_id in ('org-v056', 'org-v056b');
+delete from ouroboros.organization where "id" in ('org-v056', 'org-v056b');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_gate_definitions where id::text like 'a56c0000-%')
+  and (select count(*) = 0 from ouroboros.pull_requests where organization_id like 'org-v056%'),
+  'and the V056 fixture leaves nothing behind');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
