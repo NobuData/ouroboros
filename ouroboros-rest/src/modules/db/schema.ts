@@ -1423,6 +1423,110 @@ export interface RunCommitsTable {
 }
 
 /**
+ * `pull_requests.state` — where a mirrored PR stands (V052, [#352](https://github.com/NobuData/ouroboros/issues/352)).
+ *
+ * Shared by rule: the host reports `open`, `merged` and `closed`, and the verification plane
+ * refines an open PR into `verifying`, `blocked` and `armed`. `pull_requests_state_transition` holds
+ * every write to V052's graph, and `merged` is terminal.
+ */
+export type PullRequestState = "open" | "verifying" | "blocked" | "armed" | "merged" | "closed";
+
+/** The six, in the order `pull_requests_state` declares them. */
+export const PULL_REQUEST_STATES = [
+  "open",
+  "verifying",
+  "blocked",
+  "armed",
+  "merged",
+  "closed",
+] as const satisfies readonly PullRequestState[];
+
+/**
+ * `ouroboros.pull_requests` — a PR mirrored from its git host (V052, decision **V1**).
+ *
+ * The host owns the content: everything from `source_id` to `merged_by` is **sync-owned**, written
+ * only by the SPI PR sync (AX.1, [#357](https://github.com/NobuData/ouroboros/issues/357)) and never
+ * edited locally. Ouroboros owns `run_id` and `ticket_id`. The application role may insert and
+ * update, never delete — a mirror leaves with its source.
+ */
+export interface PullRequestsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** The git-host source it is mirrored from — `github`, `gitlab` or `custom`. */
+  source_id: string;
+  /** The host's number — `#514`. Unique per source. */
+  external_number: number;
+  /** The PR's page on the host. */
+  external_url: string;
+  /** Sync-owned. Changing it is an SPI call to the host; the next sync brings it back. */
+  title: string;
+  /** The branch it merges from. */
+  head_branch: string;
+  /** The branch it merges into. */
+  base_branch: string;
+  /** Lines added across the PR, as the host reports. `default 0`. */
+  additions: Generated<number>;
+  /** Lines deleted across the PR, as the host reports. `default 0`. */
+  deletions: Generated<number>;
+  /** Files changed across the PR, as the host reports. `default 0`. */
+  changed_files: Generated<number>;
+  /** When the host merged it — set exactly when `state` is `merged`. */
+  merged_at: Date | null;
+  /** The host login that merged it; only on a merged PR. */
+  merged_by: string | null;
+  /** See {@link PullRequestState}. `default 'open'`. */
+  state: Generated<PullRequestState>;
+  /** The loop that opened it — null until a loop opens one (AZ.5, #375). */
+  run_id: string | null;
+  /** The canonical ticket it closes. */
+  ticket_id: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * One file of a revision's snapshot — the changed-files card's row, and one element of
+ * `pr_revisions.files`. `ouroboros.pr_revision_files_valid()` holds the column to this shape.
+ */
+export interface PrRevisionFile {
+  /** Repository-relative, non-blank, one entry per path. */
+  path: string;
+  /** Lines added, a whole number ≥ 0. */
+  additions: number;
+  /** Lines deleted, a whole number ≥ 0. */
+  deletions: number;
+}
+
+/**
+ * `ouroboros.pr_revisions` — one push to a PR (V052, decisions **V1** and **V4**): the page's
+ * *Revision 1 · 2*.
+ *
+ * Unique by `(pr_id, revision_seq)` and by `(pr_id, head_sha)`. `pr_id`, `revision_seq`, `head_sha`
+ * and `pushed_at` are frozen once written (`pr_revisions_history_frozen`); `files` and
+ * `diff_excerpt` may still be filled in by a later sync.
+ */
+export interface PrRevisionsTable {
+  id: Generated<string>;
+  pr_id: string;
+  /** Revision 1, 2 — the push's ordinal within the PR. */
+  revision_seq: number;
+  /** The head after the push, 7–40 lowercase hex. */
+  head_sha: string;
+  /** When the host saw the push. */
+  pushed_at: Date;
+  /**
+   * The changed-files card's rows. Typed rather than `unknown` because a CHECK closes the shape;
+   * written through `JSON.stringify`, as every jsonb write here is.
+   */
+  files: ColumnType<PrRevisionFile[], string | undefined, string>;
+  /** A bounded diff sample — at most 16384 characters. */
+  diff_excerpt: string | null;
+  /** The run attempt whose commit this is (decision V4) — matched by sha, never asserted. */
+  run_stage_id: string | null;
+  created_at: Stamped;
+}
+
+/**
  * `guardrail_evaluations.check` — which of the card's four rows a verdict is (V048, decision
  * **R5**).
  *
@@ -4380,6 +4484,8 @@ export interface Database {
   run_events: RunEventsTable;
   run_files: RunFilesTable;
   run_commits: RunCommitsTable;
+  pull_requests: PullRequestsTable;
+  pr_revisions: PrRevisionsTable;
   guardrail_evaluations: GuardrailEvaluationsTable;
   run_controls: RunControlsTable;
   run_ingest_receipts: RunIngestReceiptsTable;
@@ -4584,6 +4690,37 @@ export const TABLE_COLUMNS = {
     "created_at",
   ],
   run_commits: ["id", "run_id", "sha", "message", "seq", "committed_at", "reported_at"],
+  pull_requests: [
+    "id",
+    "organization_id",
+    "source_id",
+    "external_number",
+    "external_url",
+    "title",
+    "head_branch",
+    "base_branch",
+    "additions",
+    "deletions",
+    "changed_files",
+    "merged_at",
+    "merged_by",
+    "state",
+    "run_id",
+    "ticket_id",
+    "created_at",
+    "updated_at",
+  ],
+  pr_revisions: [
+    "id",
+    "pr_id",
+    "revision_seq",
+    "head_sha",
+    "pushed_at",
+    "files",
+    "diff_excerpt",
+    "run_stage_id",
+    "created_at",
+  ],
   guardrail_evaluations: [
     "id",
     "run_id",
@@ -5269,6 +5406,16 @@ export type NewRunFile = Insertable<RunFilesTable>;
 export type RunCommit = Selectable<RunCommitsTable>;
 /** The columns an `insert` into `ouroboros.run_commits` may carry. */
 export type NewRunCommit = Insertable<RunCommitsTable>;
+
+/** A mirrored PR, as a `select` returns it. */
+export type PullRequest = Selectable<PullRequestsTable>;
+/** The columns an `insert` into `ouroboros.pull_requests` may carry. */
+export type NewPullRequest = Insertable<PullRequestsTable>;
+
+/** A PR revision, as a `select` returns it. */
+export type PrRevision = Selectable<PrRevisionsTable>;
+/** The columns an `insert` into `ouroboros.pr_revisions` may carry. */
+export type NewPrRevision = Insertable<PrRevisionsTable>;
 
 /** A guardrail verdict, as a `select` returns it. */
 export type GuardrailEvaluation = Selectable<GuardrailEvaluationsTable>;

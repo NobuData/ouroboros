@@ -371,7 +371,12 @@ describe("TABLE_COLUMNS", () => {
     // and `change_set_seq`, and both are counters the ingestion contract advances, so a mirror
     // that missed either would type-check a write the database would then refuse or, worse,
     // accept against a stale number.
-    expect(TABLE_NAMES).toHaveLength(63);
+    //
+    // The sixty-fourth and sixty-fifth are V052's `pull_requests` and `pr_revisions`, mirrored by
+    // AX.1 (#357) — whose SPI PR sync is the only writer of their sync-owned columns. The files
+    // snapshot is the second typed jsonb column in the file, `PrRevisionFile[]`, for
+    // `GuardrailEvidence`'s reason: `pr_revision_files_valid()` closes its shape by CHECK.
+    expect(TABLE_NAMES).toHaveLength(65);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

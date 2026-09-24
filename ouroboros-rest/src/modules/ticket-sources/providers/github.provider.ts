@@ -11,6 +11,8 @@
  * errors          ─▶ rate limit → "rate limited until 14:20 UTC" (honest)
  * writes (AL.3)   ─▶ createTicket · linkDependency · ensureMilestone · ensureEpicContainer ·
  *                    attachToEpic — see `github.write.ts`
+ * PRs (AX.1)      ─▶ createPR · getPR · syncPR · mergePR · commentPR · requestReview ·
+ *                    prEvents — see `github.pr.ts`
  * ```
  *
  * ---------------------------------------------------------------------------
@@ -67,7 +69,20 @@ import {
   type TicketSourceReadErrorClass,
 } from "../ticket-source.errors";
 import type {
+  CreatePrInput,
+  MergePrInput,
+  MergePrResult,
+  PrCommentInput,
+  PrCommentResult,
+  PrEventPage,
+  PrRef,
+  PrSyncResult,
+  PullRequestSnapshot,
+  ReviewRequestResult,
+} from "../ticket-source.pr";
+import type {
   CanonicalTicket,
+  PrCapableProvider,
   TicketPage,
   TicketSourceCapabilities,
   TicketSourceValidation,
@@ -90,6 +105,7 @@ import {
   isPullRequest,
   mapGithubIssue,
 } from "./github.mapping";
+import { GITHUB_PR_CAPABILITIES, GithubPullRequests } from "./github.pr";
 import { GITHUB_WRITE_CAPABILITIES, GithubWriter, pushTarget } from "./github.write";
 
 /**
@@ -158,7 +174,7 @@ export interface RepoWalk {
  * credential is not among them.
  */
 @Injectable()
-export class GithubTicketSourceProvider implements WriteCapableProvider {
+export class GithubTicketSourceProvider implements WriteCapableProvider, PrCapableProvider {
   /** V030's `ticket_sources.kind` value this provider answers for. */
   readonly kind = "github" as const;
 
@@ -183,17 +199,21 @@ export class GithubTicketSourceProvider implements WriteCapableProvider {
    *   ([#141](https://github.com/NobuData/ouroboros/issues/141)) and the registry refuses a flag
    *   that disagrees with the member, so claiming it here would fail at boot. Writes yes — AL.3's
    *   ([#279](https://github.com/NobuData/ouroboros/issues/279)) {@link GITHUB_WRITE_CAPABILITIES}:
-   *   native dependencies, milestones, and epics as parent issues.
+   *   native dependencies, milestones, and epics as parent issues. Pull requests yes — AX.1's
+   *   ([#357](https://github.com/NobuData/ouroboros/issues/357)) {@link GITHUB_PR_CAPABILITIES}:
+   *   every merge strategy, reviews, and a poll.
    */
   capabilities(): TicketSourceCapabilities & {
     readonly bidirectionalWrites: true;
     readonly write: typeof GITHUB_WRITE_CAPABILITIES;
+    readonly pr: typeof GITHUB_PR_CAPABILITIES;
   } {
     return {
       webhooks: false,
       labels: true,
       bidirectionalWrites: true,
       write: GITHUB_WRITE_CAPABILITIES,
+      pr: GITHUB_PR_CAPABILITIES,
     };
   }
 
@@ -413,6 +433,138 @@ export class GithubTicketSourceProvider implements WriteCapableProvider {
     mirror: EpicMirrorRef,
   ): Promise<void> {
     return this.writing(context, (writer) => writer.attachToEpic(ticket, mirror));
+  }
+
+  /**
+   * Open a PR in the source's push target, or answer the open one for this branch and base.
+   *
+   * @param context - The source, opened.
+   * @param input - The branches, title and description.
+   * @returns The PR. Never null: GitHub creates PRs.
+   * @throws {TicketSourceError} On a refusal, classified the write-side way.
+   */
+  createPR(context: TicketSyncContext, input: CreatePrInput): Promise<PrRef | null> {
+    return this.pulling(context, (pulls) => pulls.createPR(input));
+  }
+
+  /**
+   * One PR as GitHub reports it now.
+   *
+   * @param context - The source, opened.
+   * @param prNumber - Its number.
+   * @returns The snapshot.
+   * @throws {TicketSourceError} On a refusal; `not_found` for a number GitHub does not have.
+   */
+  getPR(context: TicketSyncContext, prNumber: number): Promise<PullRequestSnapshot> {
+    return this.pulling(context, (pulls) => pulls.getPR(prNumber));
+  }
+
+  /**
+   * One PR, and a revision when its head moved.
+   *
+   * @param context - The source, opened.
+   * @param prNumber - Its number.
+   * @param knownHeadSha - The caller's latest head, or null.
+   * @returns The snapshot and, when the head moved, the revision with its file snapshot.
+   * @throws {TicketSourceError} On a refusal.
+   */
+  syncPR(
+    context: TicketSyncContext,
+    prNumber: number,
+    knownHeadSha: string | null,
+  ): Promise<PrSyncResult> {
+    return this.pulling(context, (pulls) => pulls.syncPR(prNumber, knownHeadSha));
+  }
+
+  /**
+   * Ask GitHub to merge a PR, delete its branch, and verify its closing keywords.
+   *
+   * @param context - The source, opened.
+   * @param prNumber - Its number.
+   * @param input - The strategy, message and branch deletion.
+   * @returns What happened.
+   * @throws {TicketSourceError} `validation` for a strategy GitHub is not declared to offer, before
+   *   any request; GitHub's refusal, classified, otherwise.
+   */
+  mergePR(
+    context: TicketSyncContext,
+    prNumber: number,
+    input: MergePrInput,
+  ): Promise<MergePrResult> {
+    return this.pulling(context, (pulls) => pulls.mergePR(prNumber, input));
+  }
+
+  /**
+   * Publish a comment, editing the one an earlier publish under the same key left.
+   *
+   * @param context - The source, opened.
+   * @param prNumber - The PR.
+   * @param comment - The key and the Markdown.
+   * @returns The comment's id and how it landed.
+   * @throws {TicketSourceError} On a refusal; `validation` for a blank body or a bad key.
+   */
+  commentPR(
+    context: TicketSyncContext,
+    prNumber: number,
+    comment: PrCommentInput,
+  ): Promise<PrCommentResult> {
+    return this.pulling(context, (pulls) => pulls.commentPR(prNumber, comment));
+  }
+
+  /**
+   * Ask a login to review a PR.
+   *
+   * @param context - The source, opened.
+   * @param prNumber - The PR.
+   * @param user - The login.
+   * @returns Who is asked. Never null: GitHub has reviews.
+   * @throws {TicketSourceError} On a refusal; `validation` for something that is not a login.
+   */
+  requestReview(
+    context: TicketSyncContext,
+    prNumber: number,
+    user: string,
+  ): Promise<ReviewRequestResult | null> {
+    return this.pulling(context, (pulls) => pulls.requestReview(prNumber, user));
+  }
+
+  /**
+   * Every PR changed since a cursor.
+   *
+   * @param context - The source, opened.
+   * @param cursor - What this member last answered, or null.
+   * @returns The events, oldest first.
+   * @throws {TicketSourceError} On a refusal.
+   */
+  prEvents(context: TicketSyncContext, cursor: string | null): Promise<PrEventPage> {
+    return this.pulling(context, (pulls) => pulls.prEvents(cursor));
+  }
+
+  /**
+   * Run one PR operation against the source's push target, classifying whatever it throws.
+   *
+   * @param context - The source, opened.
+   * @param operation - The operation, given a PR client for this call alone.
+   * @returns What the operation answered.
+   * @throws {TicketSourceError} Every failure, through {@link asTicketSourceWriteError} — a merge or
+   *   a comment is a write, and a `403` is a token without the scope to make it.
+   */
+  private async pulling<T>(
+    context: TicketSyncContext,
+    operation: (pulls: GithubPullRequests) => Promise<T>,
+  ): Promise<T> {
+    try {
+      const settings = readGithubConfig(context.config);
+      const client = new GithubClient(
+        context.organizationId,
+        this.octokit(tokenOf(context)),
+        this.budget,
+      );
+
+      return await operation(new GithubPullRequests(client, pushTarget(settings)));
+    } catch (error) {
+      throw asTicketSourceWriteError(error);
+    }
   }
 
   /**

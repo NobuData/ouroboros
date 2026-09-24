@@ -36,6 +36,7 @@ import { SettingsModule } from "../settings/settings.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
 import { PlanningModule } from "../planning/planning.module";
+import { PullRequestsModule } from "../pull-requests/pull-requests.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { AppController } from "./app.controller";
@@ -355,6 +356,10 @@ export class AppModule {
         // After `TicketSourcesModule`, which it imports for the registry and the credential it
         // opens; it declares no route until AL.4 (#280), so its position carries no routing rule.
         PlanningModule,
+        // AX.1 ([#357](https://github.com/NobuData/ouroboros/issues/357)) — the PR plane's SPI sync
+        // into V052's mirror. After `TicketSourcesModule` for the same reasons as the push; it
+        // declares no route yet, so its position carries no routing rule.
+        PullRequestsModule,
         // M.4 ([#113](https://github.com/NobuData/ouroboros/issues/113)) — the intake screen's
         // API surface, and the first routes over anything the sync wrote. After the two
         // modules it imports; the rest of Epic M's controllers land in it.

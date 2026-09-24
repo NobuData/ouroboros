@@ -285,6 +285,66 @@ describe("the ticket source boundary", () => {
     expect(result.exitCode).toBe(0);
   });
 
+  it("fails the build on the PR sync importing the GitHub provider, because it syncs through the SPI only", () => {
+    // AX.1's (#357) boundary, as a tree: the PR plane is core, and core reaches a host through the
+    // registry. The gate engine and merge executor land in the same module and inherit it.
+    const result = cruiseFixture({
+      [A_PROVIDER]: A_PROVIDER_SOURCE,
+      "src/modules/pull-requests/pr-sync.service.ts":
+        'import { GithubTicketSourceProvider } from "../ticket-sources/providers/github.provider";\n\n' +
+        "export const a = GithubTicketSourceProvider;\n",
+    });
+
+    expect(result.output).toContain("ticket-source-core-imports-the-spi-only");
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  it("fails the build on Octokit imported by the GitHub PR implementation, because the seam is one file", () => {
+    // AX.1's criterion — *"no Octokit import outside the provider package"* — read the strict way
+    // Q.3 read it: `github.pr.ts` reaches GitHub through K.3's client like the rest of the provider.
+    const result = cruiseFixture({
+      "src/modules/ticket-sources/providers/github.pr.ts":
+        'import { Octokit } from "@octokit/rest";\n\nexport const client = Octokit;\n',
+    });
+
+    expect(result.output).toContain("no-octokit-outside-the-seam");
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  it("fails the build on a PR-plane suite reaching for GitHub, because it runs on the fake host", () => {
+    const result = cruiseFixture({
+      [A_PROVIDER]: A_PROVIDER_SOURCE,
+      "src/modules/github/github.fixture.ts": "export const httpError = 1;\n",
+      "src/modules/pull-requests/pr-sync.service.spec.ts":
+        'import { GithubTicketSourceProvider } from "../ticket-sources/providers/github.provider";\n\n' +
+        "export const a = GithubTicketSourceProvider;\n",
+      "src/modules/pull-requests/pr-sync.integration-spec.ts":
+        'import { httpError } from "../github/github.fixture";\n\nexport const a = httpError;\n',
+    });
+
+    for (const file of ["pr-sync.service.spec.ts", "pr-sync.integration-spec.ts"]) {
+      expect(result.output).toMatch(
+        new RegExp(
+          `ticket-source-core-tests-run-on-the-fake: src/modules/pull-requests/${file.replaceAll(".", "\\.")}`,
+        ),
+      );
+    }
+
+    expect(result.exitCode).not.toBe(0);
+  });
+
+  it("allows the PR plane's suites to run on the in-memory host", () => {
+    const result = cruiseFixture({
+      "src/modules/ticket-sources/providers/in-memory.pr.fixture.ts": "export const Host = 1;\n",
+      "src/modules/pull-requests/pr-sync.service.spec.ts":
+        'import { Host } from "../ticket-sources/providers/in-memory.pr.fixture";\n\n' +
+        "export const a = Host;\n",
+    });
+
+    expect(result.output).toContain("no dependency violations found");
+    expect(result.exitCode).toBe(0);
+  });
+
   it("is what `yarn lint` runs, or none of the above is a build failure", () => {
     // The other half of the criterion — *"fails CI"*. Rules that CI does not execute are a
     // file, not a gate.

@@ -51,6 +51,12 @@
  * reason one SPI extension over: a write declaration that is incoherent — `milestones` without
  * `createTicket` — or that disagrees with the five write members is refused here, through
  * {@link writeMemberViolations}, so the push service's `supportsWrites` can trust the flag.
+ *
+ * AX.1 ([#357](https://github.com/NobuData/ouroboros/issues/357)) adds the fourth and fifth: a PR
+ * declaration that is incoherent or disagrees with the seven PR members is refused through
+ * {@link prMemberViolations}, and one declared by a kind that is not a git host is refused against
+ * {@link PR_HOST_KINDS} — V052's `pull_requests_source_is_git_host` would refuse every row such a
+ * provider synced, and boot is the cheaper place to learn that.
  */
 
 import { Inject, Injectable } from "@nestjs/common";
@@ -59,11 +65,21 @@ import { TICKET_SOURCE_KINDS, type TicketSourceKind } from "../db/schema";
 import { InvalidRequestError, NotImplementedError } from "../errors/error.envelope";
 import { sourceSchemaViolations } from "./ticket-source.config";
 import {
+  prMemberViolations,
   supportsWebhooks,
   writeMemberViolations,
   type TicketSourceProvider,
   type WebhookCapableProvider,
 } from "./ticket-source.provider";
+
+/**
+ * The kinds that may declare pull requests — V052's git hosts. A Jira or Linear project has none.
+ */
+export const PR_HOST_KINDS: readonly TicketSourceKind[] = Object.freeze([
+  "github",
+  "gitlab",
+  "custom",
+]);
 
 /**
  * The DI token the registered providers are injected under.
@@ -175,6 +191,25 @@ export class TicketSourceRegistry {
         throw new Error(
           `Provider "${provider.kind}" declares write capabilities that disagree: ` +
             writeViolations.join("; "),
+        );
+      }
+
+      // AX.1's assertions: the gate engine and merge executor narrow on the PR flag, so it must
+      // agree with the declaration and the members — and only a git host may declare it.
+      const prViolations = prMemberViolations(provider);
+
+      if (prViolations.length === 0 && provider.capabilities().pr.pullRequests) {
+        if (!PR_HOST_KINDS.includes(provider.kind)) {
+          prViolations.push(
+            `a ${provider.kind} source is not a git host, and V052 mirrors PRs from git hosts only`,
+          );
+        }
+      }
+
+      if (prViolations.length > 0) {
+        throw new Error(
+          `Provider "${provider.kind}" declares PR capabilities that disagree: ` +
+            prViolations.join("; "),
         );
       }
 

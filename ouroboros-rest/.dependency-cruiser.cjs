@@ -153,9 +153,10 @@ module.exports = {
         "wrong reason. GitHub's suites live beside the provider in providers/. Three Q.4 " +
         "suites are exempt because they name GitHub on purpose: the management API's " +
         "(sources.*), the module's wiring spec, and the config dialect's, whose gate admits " +
-        "the real GitHub schema.",
+        "the real GitHub schema. The PR plane's suites (src/modules/pull-requests/, AX.1 #357) " +
+        "are held to the same rule: the gate engine and merge executor test on the fake host.",
       from: {
-        path: "^src/modules/ticket-sources/[^/]+(\\.spec|-spec|\\.fixture)\\.ts$",
+        path: "^src/modules/(ticket-sources/[^/]+|pull-requests/.+)(\\.spec|-spec|\\.fixture)\\.ts$",
         pathNot:
           "^src/modules/ticket-sources/" +
           "(sources\\.[^/]+|ticket-sources\\.module\\.spec\\.ts|ticket-source\\.config\\.spec\\.ts)$",

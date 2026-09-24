@@ -74,6 +74,7 @@ import {
   type TicketSourceReadErrorClass,
 } from "./ticket-source.errors";
 import {
+  prMemberViolations,
   supportsWebhooks,
   writeMemberViolations,
   type CanonicalTicket,
@@ -430,6 +431,10 @@ export function capabilityViolations(provider: TicketSourceProvider): string[] {
   // AL.2's (#278) declaration: coherent on its own, and in agreement with the summary flag and the
   // five write members — the same sentences the registry refuses a provider with at boot.
   violations.push(...writeMemberViolations(provider));
+
+  // AX.1's (#357) declaration, on the same terms — see `conformance.pr.fixture.ts` for the suites a
+  // provider declaring pull requests also takes.
+  violations.push(...prMemberViolations(provider));
 
   return violations;
 }

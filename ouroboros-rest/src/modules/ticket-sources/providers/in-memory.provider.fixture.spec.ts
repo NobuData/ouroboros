@@ -1,6 +1,7 @@
 import { retainedStrings } from "../conformance.fixture";
 import { TicketSourceError } from "../ticket-source.errors";
 import { supportsWebhooks, supportsWrites } from "../ticket-source.provider";
+import { NO_PR_CAPABILITIES } from "../ticket-source.pr";
 import { READ_ONLY_WRITE_CAPABILITIES } from "../ticket-source.write";
 import {
   IN_MEMORY_PAGE_SIZE,
@@ -449,6 +450,7 @@ describe("InMemoryWebhookTicketSourceProvider", () => {
       labels: true,
       bidirectionalWrites: false,
       write: READ_ONLY_WRITE_CAPABILITIES,
+      pr: NO_PR_CAPABILITIES,
     });
     expect(supportsWebhooks(provider)).toBe(true);
     expect(supportsWebhooks(new InMemoryTicketSourceProvider(new InMemoryTracker()))).toBe(false);
@@ -559,6 +561,7 @@ describe("InMemoryWriteTicketSourceProvider", () => {
         epicMapping: "parent_issue",
         milestones: true,
       },
+      pr: NO_PR_CAPABILITIES,
     });
     expect(supportsWrites(provider)).toBe(true);
     expect(supportsWrites(new InMemoryTicketSourceProvider(new InMemoryTracker()))).toBe(false);

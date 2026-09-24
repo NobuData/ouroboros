@@ -58,13 +58,23 @@ export function formField(
   return { required: false, ...NOTHING_SET, ...over };
 }
 
-/** The write declaration and push affordance every read-only provider's entry carries. */
+/**
+ * The write declaration, PR declaration and push affordance every read-only provider's entry
+ * carries — no writes and no pull requests (#357's `NO_PR_CAPABILITIES`).
+ */
 const READ_ONLY = {
   write: {
     createTicket: false,
     nativeDependencies: false,
     epicMapping: "none",
     milestones: false,
+  },
+  pr: {
+    pullRequests: false,
+    create: false,
+    mergeStrategies: [],
+    reviews: false,
+    events: "none",
   },
   push: {
     enabled: false,
@@ -83,6 +93,7 @@ export function githubEntry(): TicketSourceCatalogEntry {
       labels: true,
       bidirectionalWrites: false,
       write: READ_ONLY.write,
+      pr: { ...READ_ONLY.pr, mergeStrategies: [] },
     },
     push: READ_ONLY.push,
     fields: [
@@ -143,6 +154,7 @@ export function fakeEntry(): TicketSourceCatalogEntry {
       labels: false,
       bidirectionalWrites: false,
       write: READ_ONLY.write,
+      pr: { ...READ_ONLY.pr, mergeStrategies: [] },
     },
     push: READ_ONLY.push,
     fields: [
