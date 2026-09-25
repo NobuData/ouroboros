@@ -10,3 +10,8 @@ coverage/
 # the two checks at odds — and the authoritative document, which Prettier *does* format,
 # is the YAML beside it.
 openapi.json
+
+# The result parser's fixture matrix (#329): uploaded reports held byte for byte — one is
+# deliberately cut mid-document, which Prettier would refuse or "repair" — and the golden
+# file its suite writes.
+src/modules/test-results/fixtures/

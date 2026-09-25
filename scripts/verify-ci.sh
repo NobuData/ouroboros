@@ -281,6 +281,12 @@ check_route ouroboros-engine/openapi.yaml 'engine.yml rest.yml'
 check_route docs/mockups/05-workflow-code.html 'rest.yml'
 check_route docs/mockups/04-workflow-builder.html ''
 
+# The ninth (#329). The HIL results contract has one reader today — ci/rest's result parser, which
+# embeds the schema and holds its copy to v1.json and to expected.json's verdicts. The runner
+# that uploads it (#330) validates nothing, so ci/runner is not routed here until it does.
+check_route schemas/hil-results/v1.json 'rest.yml'
+check_route schemas/hil-results/fixtures/expected.json 'rest.yml'
+
 # …and no further. The rest of the module is ci/rest's business alone, which is what
 # keeps the data tier out of every controller change.
 check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'

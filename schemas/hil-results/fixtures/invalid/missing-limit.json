@@ -1,0 +1,17 @@
+{
+  "schema": "ouro-hil-results",
+  "schema_version": 1,
+  "rig": "bench-1",
+  "suites": [
+    {
+      "name": "power",
+      "cases": [
+        {
+          "name": "brownout_recovery",
+          "procedure": "power-cycler drops VCC to 2.7 V for 50 ms",
+          "measurements": [{ "metric": "reboot_ms", "value": 180, "unit": "ms", "direction": "max" }]
+        }
+      ]
+    }
+  ]
+}

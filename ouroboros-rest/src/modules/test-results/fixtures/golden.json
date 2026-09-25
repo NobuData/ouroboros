@@ -1,0 +1,1152 @@
+{
+  "about": "Every fixture's parse output and its tree under retry-twice. Regenerate with: OURO_UPDATE_GOLDENS=1 yarn jest src/modules/test-results/parsers.spec.ts",
+  "cases": {
+    "twister": {
+      "parser": "junit",
+      "output": {
+        "suites": [
+          {
+            "name": "unit · drivers",
+            "platform": "native_sim",
+            "kind": "sim",
+            "format": "junit",
+            "durationMs": 12500,
+            "meta": {
+              "properties": {
+                "version": "v3.7.0"
+              }
+            },
+            "cases": [
+              {
+                "name": "frame_encode_standard_id",
+                "classname": "drivers.can",
+                "outcomes": ["passed"],
+                "durationMs": 41,
+                "failure": null,
+                "meta": {}
+              },
+              {
+                "name": "bus_off_recovery",
+                "classname": "drivers.can",
+                "outcomes": ["failed"],
+                "durationMs": 300,
+                "failure": {
+                  "message": "assert bus_state == ACTIVE",
+                  "log_excerpt": "zassert failed at can_api.c:212\nbus_state = 2"
+                },
+                "meta": {}
+              },
+              {
+                "name": "break_detect",
+                "classname": "drivers.uart",
+                "outcomes": ["skipped"],
+                "durationMs": 20,
+                "failure": null,
+                "meta": {}
+              },
+              {
+                "name": "dma_scan_order",
+                "classname": "drivers.adc",
+                "outcomes": ["error"],
+                "durationMs": 500,
+                "failure": {
+                  "message": "timeout",
+                  "log_excerpt": "adc: waiting for DMA..."
+                },
+                "meta": {}
+              }
+            ]
+          },
+          {
+            "name": "telemetry integration",
+            "platform": "qemu_cortex_m3",
+            "kind": "sim",
+            "format": "junit",
+            "durationMs": 11300,
+            "meta": {},
+            "cases": [
+              {
+                "name": "frame_order_under_isr_load",
+                "classname": "telemetry.can",
+                "outcomes": ["failed", "passed"],
+                "durationMs": 4200,
+                "failure": {
+                  "message": "frame 812 before 811",
+                  "log_excerpt": "expected seq 811, got 812"
+                },
+                "meta": {}
+              },
+              {
+                "name": "reconnect_backoff",
+                "classname": "telemetry.mqtt",
+                "outcomes": ["failed", "failed"],
+                "durationMs": 3000,
+                "failure": {
+                  "message": "backoff 900ms exceeds 800ms"
+                },
+                "meta": {}
+              },
+              {
+                "name": "wraparound",
+                "classname": "telemetry.ring",
+                "outcomes": ["failed", "passed"],
+                "durationMs": 2100,
+                "failure": {
+                  "message": "head != tail"
+                },
+                "meta": {}
+              },
+              {
+                "name": "rx_fifo_high_water",
+                "classname": "telemetry.can",
+                "outcomes": ["failed", "error", "passed"],
+                "durationMs": 2000,
+                "failure": {
+                  "message": "overrun"
+                },
+                "meta": {}
+              }
+            ]
+          },
+          {
+            "name": "PHYSICAL · HIL rig",
+            "platform": "rig:helios-rig-02",
+            "kind": "physical",
+            "format": "junit",
+            "durationMs": 132000,
+            "meta": {},
+            "cases": [
+              {
+                "name": "estop_release_overshoot",
+                "classname": "hil.motor",
+                "outcomes": ["failed"],
+                "durationMs": 80000,
+                "failure": {
+                  "message": "overshoot 2.4% > 2.0%"
+                },
+                "meta": {}
+              },
+              {
+                "name": "bus_flood_frame_order",
+                "classname": "hil.can",
+                "outcomes": ["passed"],
+                "durationMs": 52000,
+                "failure": null,
+                "meta": {}
+              }
+            ]
+          }
+        ],
+        "coverage": [],
+        "warnings": []
+      },
+      "tree": [
+        {
+          "name": "unit · drivers",
+          "platform": "native_sim",
+          "kind": "sim",
+          "format": "junit",
+          "durationMs": 12500,
+          "meta": {
+            "properties": {
+              "version": "v3.7.0"
+            }
+          },
+          "cases": [
+            {
+              "name": "frame_encode_standard_id",
+              "classname": "drivers.can",
+              "status": "passed",
+              "retries": 0,
+              "outcomes": ["passed"],
+              "durationMs": 41,
+              "failure": null,
+              "meta": {}
+            },
+            {
+              "name": "bus_off_recovery",
+              "classname": "drivers.can",
+              "status": "failed",
+              "retries": 0,
+              "outcomes": ["failed"],
+              "durationMs": 300,
+              "failure": {
+                "message": "assert bus_state == ACTIVE",
+                "log_excerpt": "zassert failed at can_api.c:212\nbus_state = 2"
+              },
+              "meta": {}
+            },
+            {
+              "name": "break_detect",
+              "classname": "drivers.uart",
+              "status": "skipped",
+              "retries": 0,
+              "outcomes": ["skipped"],
+              "durationMs": 20,
+              "failure": null,
+              "meta": {}
+            },
+            {
+              "name": "dma_scan_order",
+              "classname": "drivers.adc",
+              "status": "error",
+              "retries": 0,
+              "outcomes": ["error"],
+              "durationMs": 500,
+              "failure": {
+                "message": "timeout",
+                "log_excerpt": "adc: waiting for DMA..."
+              },
+              "meta": {}
+            }
+          ]
+        },
+        {
+          "name": "telemetry integration",
+          "platform": "qemu_cortex_m3",
+          "kind": "sim",
+          "format": "junit",
+          "durationMs": 11300,
+          "meta": {},
+          "cases": [
+            {
+              "name": "frame_order_under_isr_load",
+              "classname": "telemetry.can",
+              "status": "flaky",
+              "retries": 1,
+              "outcomes": ["failed", "passed"],
+              "durationMs": 4200,
+              "failure": {
+                "message": "frame 812 before 811",
+                "log_excerpt": "expected seq 811, got 812"
+              },
+              "meta": {}
+            },
+            {
+              "name": "reconnect_backoff",
+              "classname": "telemetry.mqtt",
+              "status": "failed",
+              "retries": 1,
+              "outcomes": ["failed", "failed"],
+              "durationMs": 3000,
+              "failure": {
+                "message": "backoff 900ms exceeds 800ms"
+              },
+              "meta": {}
+            },
+            {
+              "name": "wraparound",
+              "classname": "telemetry.ring",
+              "status": "flaky",
+              "retries": 1,
+              "outcomes": ["failed", "passed"],
+              "durationMs": 2100,
+              "failure": {
+                "message": "head != tail"
+              },
+              "meta": {}
+            },
+            {
+              "name": "rx_fifo_high_water",
+              "classname": "telemetry.can",
+              "status": "flaky",
+              "retries": 2,
+              "outcomes": ["failed", "error", "passed"],
+              "durationMs": 2000,
+              "failure": {
+                "message": "overrun"
+              },
+              "meta": {}
+            }
+          ]
+        },
+        {
+          "name": "PHYSICAL · HIL rig",
+          "platform": "rig:helios-rig-02",
+          "kind": "physical",
+          "format": "junit",
+          "durationMs": 132000,
+          "meta": {},
+          "cases": [
+            {
+              "name": "estop_release_overshoot",
+              "classname": "hil.motor",
+              "status": "failed",
+              "retries": 0,
+              "outcomes": ["failed"],
+              "durationMs": 80000,
+              "failure": {
+                "message": "overshoot 2.4% > 2.0%"
+              },
+              "meta": {}
+            },
+            {
+              "name": "bus_flood_frame_order",
+              "classname": "hil.can",
+              "status": "passed",
+              "retries": 0,
+              "outcomes": ["passed"],
+              "durationMs": 52000,
+              "failure": null,
+              "meta": {}
+            }
+          ]
+        }
+      ]
+    },
+    "pytest": {
+      "parser": "junit",
+      "output": {
+        "suites": [
+          {
+            "name": "pytest",
+            "platform": "unknown",
+            "kind": "sim",
+            "format": "junit",
+            "durationMs": 1022,
+            "meta": {
+              "attributes": {
+                "hostname": "ci-runner-7"
+              }
+            },
+            "cases": [
+              {
+                "name": "test_rollback_on_bad_checksum",
+                "classname": "tests.test_ota",
+                "outcomes": ["passed"],
+                "durationMs": 210,
+                "failure": null,
+                "meta": {}
+              },
+              {
+                "name": "test_resume_partial",
+                "classname": "tests.test_ota",
+                "outcomes": ["failed"],
+                "durationMs": 512,
+                "failure": {
+                  "message": "AssertionError: assert 3 == 4",
+                  "log_excerpt": "def test_resume_partial():\n>       assert chunks == 4\nE       AssertionError: assert 3 == 4\n\ntests/test_ota.py:81: AssertionError",
+                  "path": "tests/test_ota.py:77"
+                },
+                "meta": {}
+              },
+              {
+                "name": "test_ed25519_signature",
+                "classname": "tests.test_ota",
+                "outcomes": ["skipped"],
+                "durationMs": 0,
+                "failure": null,
+                "meta": {}
+              },
+              {
+                "name": "test_slot_select[slot-b]",
+                "classname": "tests.test_ota",
+                "outcomes": ["passed"],
+                "durationMs": 300,
+                "failure": null,
+                "meta": {
+                  "properties": {
+                    "owner": "ota"
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "coverage": [],
+        "warnings": [
+          {
+            "code": "junit_platform_missing",
+            "file": "pytest.xml",
+            "message": "Suite \"pytest\" names no platform; its cases are recorded under \"unknown\"."
+          }
+        ]
+      },
+      "tree": [
+        {
+          "name": "pytest",
+          "platform": "unknown",
+          "kind": "sim",
+          "format": "junit",
+          "durationMs": 1022,
+          "meta": {
+            "attributes": {
+              "hostname": "ci-runner-7"
+            }
+          },
+          "cases": [
+            {
+              "name": "test_rollback_on_bad_checksum",
+              "classname": "tests.test_ota",
+              "status": "passed",
+              "retries": 0,
+              "outcomes": ["passed"],
+              "durationMs": 210,
+              "failure": null,
+              "meta": {}
+            },
+            {
+              "name": "test_resume_partial",
+              "classname": "tests.test_ota",
+              "status": "failed",
+              "retries": 0,
+              "outcomes": ["failed"],
+              "durationMs": 512,
+              "failure": {
+                "message": "AssertionError: assert 3 == 4",
+                "log_excerpt": "def test_resume_partial():\n>       assert chunks == 4\nE       AssertionError: assert 3 == 4\n\ntests/test_ota.py:81: AssertionError",
+                "path": "tests/test_ota.py:77"
+              },
+              "meta": {}
+            },
+            {
+              "name": "test_ed25519_signature",
+              "classname": "tests.test_ota",
+              "status": "skipped",
+              "retries": 0,
+              "outcomes": ["skipped"],
+              "durationMs": 0,
+              "failure": null,
+              "meta": {}
+            },
+            {
+              "name": "test_slot_select[slot-b]",
+              "classname": "tests.test_ota",
+              "status": "passed",
+              "retries": 0,
+              "outcomes": ["passed"],
+              "durationMs": 300,
+              "failure": null,
+              "meta": {
+                "properties": {
+                  "owner": "ota"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "truncatedXml": {
+      "parser": "junit",
+      "output": {
+        "suites": [
+          {
+            "name": "unit · drivers",
+            "platform": "native_sim",
+            "kind": "sim",
+            "format": "junit",
+            "durationMs": 12500,
+            "meta": {
+              "properties": {
+                "version": "v3.7.0"
+              }
+            },
+            "cases": [
+              {
+                "name": "frame_encode_standard_id",
+                "classname": "drivers.can",
+                "outcomes": ["passed"],
+                "durationMs": 41,
+                "failure": null,
+                "meta": {}
+              },
+              {
+                "name": "bus_off_recovery",
+                "classname": "drivers.can",
+                "outcomes": ["failed"],
+                "durationMs": 300,
+                "failure": {
+                  "message": "assert bus_state == ACTIVE",
+                  "log_excerpt": "zassert failed at can_api.c:212\nbus_state = 2"
+                },
+                "meta": {}
+              },
+              {
+                "name": "break_detect",
+                "classname": "drivers.uart",
+                "outcomes": ["skipped"],
+                "durationMs": 20,
+                "failure": null,
+                "meta": {}
+              },
+              {
+                "name": "dma_scan_order",
+                "classname": "drivers.adc",
+                "outcomes": ["error"],
+                "durationMs": 500,
+                "failure": {
+                  "message": "timeout",
+                  "log_excerpt": "adc: waiting for DMA..."
+                },
+                "meta": {}
+              }
+            ]
+          },
+          {
+            "name": "telemetry integration",
+            "platform": "qemu_cortex_m3",
+            "kind": "sim",
+            "format": "junit",
+            "durationMs": 11300,
+            "meta": {},
+            "cases": []
+          }
+        ],
+        "coverage": [],
+        "warnings": [
+          {
+            "code": "xml_truncated",
+            "file": "truncated.xml",
+            "message": "The report ends mid-document (28:84: unclosed tag: flakyFailure); every element that closed is kept.",
+            "at": "line 28"
+          }
+        ]
+      },
+      "tree": [
+        {
+          "name": "unit · drivers",
+          "platform": "native_sim",
+          "kind": "sim",
+          "format": "junit",
+          "durationMs": 12500,
+          "meta": {
+            "properties": {
+              "version": "v3.7.0"
+            }
+          },
+          "cases": [
+            {
+              "name": "frame_encode_standard_id",
+              "classname": "drivers.can",
+              "status": "passed",
+              "retries": 0,
+              "outcomes": ["passed"],
+              "durationMs": 41,
+              "failure": null,
+              "meta": {}
+            },
+            {
+              "name": "bus_off_recovery",
+              "classname": "drivers.can",
+              "status": "failed",
+              "retries": 0,
+              "outcomes": ["failed"],
+              "durationMs": 300,
+              "failure": {
+                "message": "assert bus_state == ACTIVE",
+                "log_excerpt": "zassert failed at can_api.c:212\nbus_state = 2"
+              },
+              "meta": {}
+            },
+            {
+              "name": "break_detect",
+              "classname": "drivers.uart",
+              "status": "skipped",
+              "retries": 0,
+              "outcomes": ["skipped"],
+              "durationMs": 20,
+              "failure": null,
+              "meta": {}
+            },
+            {
+              "name": "dma_scan_order",
+              "classname": "drivers.adc",
+              "status": "error",
+              "retries": 0,
+              "outcomes": ["error"],
+              "durationMs": 500,
+              "failure": {
+                "message": "timeout",
+                "log_excerpt": "adc: waiting for DMA..."
+              },
+              "meta": {}
+            }
+          ]
+        },
+        {
+          "name": "telemetry integration",
+          "platform": "qemu_cortex_m3",
+          "kind": "sim",
+          "format": "junit",
+          "durationMs": 11300,
+          "meta": {},
+          "cases": []
+        }
+      ]
+    },
+    "malformedXml": {
+      "parser": "junit",
+      "output": {
+        "suites": [
+          {
+            "name": "motor control",
+            "platform": "qemu_cortex_m3",
+            "kind": "sim",
+            "format": "junit",
+            "durationMs": 300,
+            "meta": {},
+            "cases": [
+              {
+                "name": "integral_windup_clamp",
+                "classname": "motor.pid",
+                "outcomes": ["passed"],
+                "durationMs": 200,
+                "failure": null,
+                "meta": {}
+              },
+              {
+                "name": "derivative_kick",
+                "classname": "motor.pid",
+                "outcomes": ["passed"],
+                "durationMs": 100,
+                "failure": null,
+                "meta": {}
+              }
+            ]
+          }
+        ],
+        "coverage": [],
+        "warnings": [
+          {
+            "code": "xml_malformed",
+            "file": "malformed.xml",
+            "message": "The report is not well-formed XML (6:82: unexpected close tag.); every element before it is kept.",
+            "at": "line 6"
+          }
+        ]
+      },
+      "tree": [
+        {
+          "name": "motor control",
+          "platform": "qemu_cortex_m3",
+          "kind": "sim",
+          "format": "junit",
+          "durationMs": 300,
+          "meta": {},
+          "cases": [
+            {
+              "name": "integral_windup_clamp",
+              "classname": "motor.pid",
+              "status": "passed",
+              "retries": 0,
+              "outcomes": ["passed"],
+              "durationMs": 200,
+              "failure": null,
+              "meta": {}
+            },
+            {
+              "name": "derivative_kick",
+              "classname": "motor.pid",
+              "status": "passed",
+              "retries": 0,
+              "outcomes": ["passed"],
+              "durationMs": 100,
+              "failure": null,
+              "meta": {}
+            }
+          ]
+        }
+      ]
+    },
+    "hilValid": {
+      "parser": "hil",
+      "output": {
+        "suites": [
+          {
+            "name": "PHYSICAL · HIL rig",
+            "platform": "rig:helios-rig-02",
+            "kind": "physical",
+            "format": "hil",
+            "durationMs": 80000,
+            "meta": {
+              "bench": "CAN bus + motor + power-cycler"
+            },
+            "cases": [
+              {
+                "name": "estop_release_overshoot",
+                "classname": "hil.motor",
+                "outcomes": ["failed"],
+                "durationMs": 80000,
+                "failure": {
+                  "message": "overshoot_pct 2.4% vs max 2%"
+                },
+                "meta": {},
+                "hil": {
+                  "procedure": "dyno bench releases e-stop under 2 Nm load, 3 trials",
+                  "measurements": [
+                    {
+                      "metric": "overshoot_pct",
+                      "value": 2.4,
+                      "unit": "%",
+                      "limitValue": 2,
+                      "limitKind": "max",
+                      "verdict": "fail",
+                      "trials": [
+                        {
+                          "trial": 1,
+                          "torque_nm": 2,
+                          "peak_rpm": 1225.2,
+                          "overshoot_pct": 2.1
+                        },
+                        {
+                          "trial": 2,
+                          "torque_nm": 2,
+                          "peak_rpm": 1228.8,
+                          "overshoot_pct": 2.4
+                        },
+                        {
+                          "trial": 3,
+                          "torque_nm": 2,
+                          "peak_rpm": 1227.6,
+                          "overshoot_pct": 2.3
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "bus_flood_frame_order",
+                "classname": "hil.can",
+                "outcomes": ["passed"],
+                "durationMs": null,
+                "failure": null,
+                "meta": {},
+                "hil": {
+                  "procedure": "traffic generator floods bus at 900 kbit/s for 60s",
+                  "measurements": [
+                    {
+                      "metric": "reordered_frames",
+                      "value": 0,
+                      "unit": "count",
+                      "limitValue": 0,
+                      "limitKind": "max",
+                      "verdict": "pass",
+                      "trials": [
+                        {
+                          "trial": 1,
+                          "bitrate_kbit": 900,
+                          "frames": 1000000,
+                          "reordered_frames": 0
+                        }
+                      ]
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "brownout_recovery",
+                "classname": null,
+                "outcomes": ["passed"],
+                "durationMs": null,
+                "failure": null,
+                "meta": {},
+                "hil": {
+                  "procedure": "power-cycler drops VCC to 2.7 V for 50 ms",
+                  "measurements": [
+                    {
+                      "metric": "reboot_ms",
+                      "value": 180,
+                      "unit": "ms",
+                      "limitValue": 250,
+                      "limitKind": "max",
+                      "verdict": "pass",
+                      "trials": []
+                    },
+                    {
+                      "metric": "retained_frames_pct",
+                      "value": 98,
+                      "unit": "%",
+                      "limitValue": 95,
+                      "limitKind": "min",
+                      "verdict": "pass",
+                      "trials": []
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ],
+        "coverage": [],
+        "warnings": []
+      },
+      "tree": [
+        {
+          "name": "PHYSICAL · HIL rig",
+          "platform": "rig:helios-rig-02",
+          "kind": "physical",
+          "format": "hil",
+          "durationMs": 80000,
+          "meta": {
+            "bench": "CAN bus + motor + power-cycler"
+          },
+          "cases": [
+            {
+              "name": "estop_release_overshoot",
+              "classname": "hil.motor",
+              "status": "failed",
+              "retries": 0,
+              "outcomes": ["failed"],
+              "durationMs": 80000,
+              "failure": {
+                "message": "overshoot_pct 2.4% vs max 2%"
+              },
+              "meta": {},
+              "hil": {
+                "procedure": "dyno bench releases e-stop under 2 Nm load, 3 trials",
+                "measurements": [
+                  {
+                    "metric": "overshoot_pct",
+                    "value": 2.4,
+                    "unit": "%",
+                    "limitValue": 2,
+                    "limitKind": "max",
+                    "verdict": "fail",
+                    "trials": [
+                      {
+                        "trial": 1,
+                        "torque_nm": 2,
+                        "peak_rpm": 1225.2,
+                        "overshoot_pct": 2.1
+                      },
+                      {
+                        "trial": 2,
+                        "torque_nm": 2,
+                        "peak_rpm": 1228.8,
+                        "overshoot_pct": 2.4
+                      },
+                      {
+                        "trial": 3,
+                        "torque_nm": 2,
+                        "peak_rpm": 1227.6,
+                        "overshoot_pct": 2.3
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "bus_flood_frame_order",
+              "classname": "hil.can",
+              "status": "passed",
+              "retries": 0,
+              "outcomes": ["passed"],
+              "durationMs": null,
+              "failure": null,
+              "meta": {},
+              "hil": {
+                "procedure": "traffic generator floods bus at 900 kbit/s for 60s",
+                "measurements": [
+                  {
+                    "metric": "reordered_frames",
+                    "value": 0,
+                    "unit": "count",
+                    "limitValue": 0,
+                    "limitKind": "max",
+                    "verdict": "pass",
+                    "trials": [
+                      {
+                        "trial": 1,
+                        "bitrate_kbit": 900,
+                        "frames": 1000000,
+                        "reordered_frames": 0
+                      }
+                    ]
+                  }
+                ]
+              }
+            },
+            {
+              "name": "brownout_recovery",
+              "classname": null,
+              "status": "passed",
+              "retries": 0,
+              "outcomes": ["passed"],
+              "durationMs": null,
+              "failure": null,
+              "meta": {},
+              "hil": {
+                "procedure": "power-cycler drops VCC to 2.7 V for 50 ms",
+                "measurements": [
+                  {
+                    "metric": "reboot_ms",
+                    "value": 180,
+                    "unit": "ms",
+                    "limitValue": 250,
+                    "limitKind": "max",
+                    "verdict": "pass",
+                    "trials": []
+                  },
+                  {
+                    "metric": "retained_frames_pct",
+                    "value": 98,
+                    "unit": "%",
+                    "limitValue": 95,
+                    "limitKind": "min",
+                    "verdict": "pass",
+                    "trials": []
+                  }
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "hilInvalid": {
+      "parser": "hil",
+      "output": {
+        "suites": [
+          {
+            "name": "PHYSICAL · HIL rig",
+            "platform": "rig:helios-rig-02",
+            "kind": "physical",
+            "format": "hil",
+            "durationMs": null,
+            "meta": {},
+            "cases": [
+              {
+                "name": "estop_release_overshoot",
+                "classname": "hil.motor",
+                "outcomes": ["failed"],
+                "durationMs": null,
+                "failure": {
+                  "message": "overshoot_pct 2.4% vs max 2%"
+                },
+                "meta": {},
+                "hil": {
+                  "procedure": "dyno bench releases e-stop under 2 Nm load, 3 trials",
+                  "measurements": [
+                    {
+                      "metric": "overshoot_pct",
+                      "value": 2.4,
+                      "unit": "%",
+                      "limitValue": 2,
+                      "limitKind": "max",
+                      "verdict": "fail",
+                      "trials": []
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "brownout_recovery",
+                "classname": "hil.power",
+                "outcomes": ["error"],
+                "durationMs": null,
+                "failure": null,
+                "meta": {},
+                "hil": {
+                  "procedure": "power-cycler drops VCC to 2.7 V for 50 ms",
+                  "measurements": []
+                }
+              }
+            ]
+          }
+        ],
+        "coverage": [],
+        "warnings": [
+          {
+            "code": "hil_schema_invalid",
+            "file": "hil-invalid.json",
+            "message": "The bench was dropped: /bench must be string.",
+            "at": "/bench"
+          },
+          {
+            "code": "hil_measurement_incomplete",
+            "file": "hil-invalid.json",
+            "message": "A measurement was dropped: /suites/0/cases/0/measurements/1 must have required property 'limit'.",
+            "at": "/suites/0/cases/0/measurements/1"
+          },
+          {
+            "code": "hil_measurement_incomplete",
+            "file": "hil-invalid.json",
+            "message": "A measurement was dropped: /suites/0/cases/0/measurements/2/unit must match pattern \"^\\S{1,16}$\".",
+            "at": "/suites/0/cases/0/measurements/2"
+          },
+          {
+            "code": "hil_schema_invalid",
+            "file": "hil-invalid.json",
+            "message": "A case was dropped: /suites/0/cases/1 must have required property 'procedure'.",
+            "at": "/suites/0/cases/1"
+          },
+          {
+            "code": "hil_measurement_incomplete",
+            "file": "hil-invalid.json",
+            "message": "A measurement was dropped: /suites/0/cases/2/measurements/0/metric must match pattern \"^[a-z][a-z0-9_]*$\".",
+            "at": "/suites/0/cases/2/measurements/0"
+          },
+          {
+            "code": "hil_schema_invalid",
+            "file": "hil-invalid.json",
+            "message": "A suite was dropped: /suites/1 must have required property 'name'.",
+            "at": "/suites/1"
+          },
+          {
+            "code": "hil_measurement_incomplete",
+            "file": "hil-invalid.json",
+            "message": "Metric \"overshoot_pct\" is measured twice on case \"estop_release_overshoot\"; the second is dropped.",
+            "at": "/suites/0/cases/0/measurements/3"
+          }
+        ]
+      },
+      "tree": [
+        {
+          "name": "PHYSICAL · HIL rig",
+          "platform": "rig:helios-rig-02",
+          "kind": "physical",
+          "format": "hil",
+          "durationMs": null,
+          "meta": {},
+          "cases": [
+            {
+              "name": "estop_release_overshoot",
+              "classname": "hil.motor",
+              "status": "failed",
+              "retries": 0,
+              "outcomes": ["failed"],
+              "durationMs": null,
+              "failure": {
+                "message": "overshoot_pct 2.4% vs max 2%"
+              },
+              "meta": {},
+              "hil": {
+                "procedure": "dyno bench releases e-stop under 2 Nm load, 3 trials",
+                "measurements": [
+                  {
+                    "metric": "overshoot_pct",
+                    "value": 2.4,
+                    "unit": "%",
+                    "limitValue": 2,
+                    "limitKind": "max",
+                    "verdict": "fail",
+                    "trials": []
+                  }
+                ]
+              }
+            },
+            {
+              "name": "brownout_recovery",
+              "classname": "hil.power",
+              "status": "error",
+              "retries": 0,
+              "outcomes": ["error"],
+              "durationMs": null,
+              "failure": null,
+              "meta": {},
+              "hil": {
+                "procedure": "power-cycler drops VCC to 2.7 V for 50 ms",
+                "measurements": []
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "hilUnknownVersion": {
+      "parser": "hil",
+      "output": {
+        "suites": [],
+        "coverage": [],
+        "warnings": [
+          {
+            "code": "hil_schema_version_unknown",
+            "file": "hil-unknown-version.json",
+            "message": "schema_version 2 is not one this build reads (it reads 1); none of it is kept.",
+            "at": "/schema_version"
+          }
+        ]
+      },
+      "tree": []
+    },
+    "hilTruncated": {
+      "parser": "hil",
+      "output": {
+        "suites": [],
+        "coverage": [],
+        "warnings": [
+          {
+            "code": "hil_json_malformed",
+            "file": "ouro-hil-results-truncated.json",
+            "message": "The HIL document is not JSON (Unterminated string in JSON at position 104 (line 1 column 105)); none of it is kept."
+          }
+        ]
+      },
+      "tree": []
+    },
+    "lcov": {
+      "parser": "coverage",
+      "output": {
+        "suites": [],
+        "coverage": [
+          {
+            "file": "lcov.info",
+            "linesCovered": 107,
+            "linesTotal": 124
+          }
+        ],
+        "warnings": []
+      },
+      "tree": []
+    },
+    "cobertura": {
+      "parser": "coverage",
+      "output": {
+        "suites": [],
+        "coverage": [
+          {
+            "file": "cobertura.xml",
+            "linesCovered": 874,
+            "linesTotal": 1000
+          }
+        ],
+        "warnings": []
+      },
+      "tree": []
+    },
+    "coberturaNoSummary": {
+      "parser": "coverage",
+      "output": {
+        "suites": [],
+        "coverage": [
+          {
+            "file": "cobertura-no-summary.xml",
+            "linesCovered": 2,
+            "linesTotal": 4
+          }
+        ],
+        "warnings": [
+          {
+            "code": "xml_truncated",
+            "file": "cobertura-no-summary.xml",
+            "message": "The coverage report is cut short (7:0: unclosed tag: lines)."
+          }
+        ]
+      },
+      "tree": []
+    },
+    "lcovEmpty": {
+      "parser": "coverage",
+      "output": {
+        "suites": [],
+        "coverage": [],
+        "warnings": [
+          {
+            "code": "coverage_unreadable",
+            "file": "lcov-empty.info",
+            "message": "The coverage report gave no line counts; it contributes nothing to the percentage."
+          }
+        ]
+      },
+      "tree": []
+    },
+    "unrecognized": {
+      "parser": null,
+      "output": null,
+      "tree": null
+    }
+  }
+}

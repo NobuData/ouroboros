@@ -376,7 +376,11 @@ describe("TABLE_COLUMNS", () => {
     // AX.1 (#357) — whose SPI PR sync is the only writer of their sync-owned columns. The files
     // snapshot is the second typed jsonb column in the file, `PrRevisionFile[]`, for
     // `GuardrailEvidence`'s reason: `pr_revision_files_valid()` closes its shape by CHECK.
-    expect(TABLE_NAMES).toHaveLength(65);
+    //
+    // The sixty-sixth to seventieth are V051's `test_runs`, `test_suites` and `test_cases`,
+    // V053's `hil_measurements` and V059's `test_run_coverage` view, mirrored by AT.1 (#329) —
+    // the result parser that writes the tree and reads the prior attempt's coverage.
+    expect(TABLE_NAMES).toHaveLength(70);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -558,7 +562,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(8);
+    expect(READ_ONLY_VIEWS).toHaveLength(9);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {

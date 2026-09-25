@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- A twister-style report with every retry marker the parser reads (#329). -->
+<testsuites>
+  <testsuite name="unit · drivers" time="12.5" tests="4" failures="1" errors="1" skipped="1">
+    <properties>
+      <property name="platform" value="native_sim"/>
+      <property name="version" value="v3.7.0"/>
+    </properties>
+    <testcase classname="drivers.can" name="frame_encode_standard_id" time="0.041"/>
+    <testcase classname="drivers.can" name="bus_off_recovery" time="0.300">
+      <failure message="assert bus_state == ACTIVE" type="failure">zassert failed at can_api.c:212
+bus_state = 2</failure>
+    </testcase>
+    <testcase classname="drivers.uart" name="break_detect" time="0.020">
+      <skipped message="filtered: no uart loopback"/>
+    </testcase>
+    <testcase classname="drivers.adc" name="dma_scan_order" time="0.500">
+      <error message="timeout" type="error"/>
+      <system-out>adc: waiting for DMA...</system-out>
+    </testcase>
+  </testsuite>
+  <testsuite name="telemetry integration" time="11.3">
+    <properties>
+      <property name="platform" value="qemu_cortex_m3"/>
+    </properties>
+    <!-- Failed once, then passed: a surefire-style flaky marker. -->
+    <testcase classname="telemetry.can" name="frame_order_under_isr_load" time="4.2">
+      <flakyFailure message="frame 812 before 811" type="AssertionError"><![CDATA[expected seq 811, got 812]]></flakyFailure>
+    </testcase>
+    <!-- Failed, and its rerun failed too. -->
+    <testcase classname="telemetry.mqtt" name="reconnect_backoff" time="3.0">
+      <failure message="backoff 900ms exceeds 800ms"/>
+      <rerunFailure message="backoff 910ms exceeds 800ms"/>
+    </testcase>
+    <!-- A harness that writes each attempt as its own element: failed, then passed. -->
+    <testcase classname="telemetry.ring" name="wraparound" time="1.0">
+      <failure message="head != tail"/>
+    </testcase>
+    <testcase classname="telemetry.ring" name="wraparound" time="1.1"/>
+    <!-- Passed on its third attempt. -->
+    <testcase classname="telemetry.can" name="rx_fifo_high_water" time="2.0">
+      <flakyFailure message="overrun"/>
+      <flakyError message="bus error"/>
+    </testcase>
+  </testsuite>
+  <testsuite name="PHYSICAL · HIL rig" time="132">
+    <properties>
+      <property name="platform" value="rig:helios-rig-02"/>
+    </properties>
+    <testcase classname="hil.motor" name="estop_release_overshoot" time="80">
+      <failure message="overshoot 2.4% &gt; 2.0%"/>
+    </testcase>
+    <testcase classname="hil.can" name="bus_flood_frame_order" time="52"/>
+  </testsuite>
+</testsuites>

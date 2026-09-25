@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites><testsuite name="pytest" errors="0" failures="1" skipped="1" tests="4" time="1.022" timestamp="2026-09-24T10:00:00.000000" hostname="ci-runner-7"><testcase classname="tests.test_ota" name="test_rollback_on_bad_checksum" file="tests/test_ota.py" line="42" time="0.210" /><testcase classname="tests.test_ota" name="test_resume_partial" file="tests/test_ota.py" line="77" time="0.512"><failure message="AssertionError: assert 3 == 4">def test_resume_partial():
+&gt;       assert chunks == 4
+E       AssertionError: assert 3 == 4
+
+tests/test_ota.py:81: AssertionError</failure><system-out>downloading chunk 3</system-out></testcase><testcase classname="tests.test_ota" name="test_ed25519_signature" file="tests/test_ota.py" line="101" time="0.000"><skipped type="pytest.skip" message="no crypto backend">tests/test_ota.py:101: no crypto backend</skipped></testcase><testcase classname="tests.test_ota" name="test_slot_select[slot-b]" file="tests/test_ota.py" line="120" time="0.300"><properties><property name="owner" value="ota" /></properties></testcase></testsuite></testsuites>

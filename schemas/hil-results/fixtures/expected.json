@@ -1,0 +1,12 @@
+{
+  "about": "Every document under valid/ and invalid/, and whether schemas/hil-results/v1.json accepts it. ouroboros-rest's hil.schema.spec.ts holds its embedded copy to these verdicts. An invalid document is not refused whole by the parser: the smallest enclosing measurement, case or suite is dropped with a warning (docs/TEST_RESULTS_INGEST.md).",
+  "cases": [
+    { "document": "valid/helios-rig.json", "valid": true, "about": "Mockup 11's rig: three cases, four measurements, trials, a bench." },
+    { "document": "valid/minimal.json", "valid": true, "about": "The envelope alone — a rig that ran nothing." },
+    { "document": "invalid/unknown-version.json", "valid": false, "about": "A schema_version this build does not read — hil_schema_version_unknown." },
+    { "document": "invalid/missing-limit.json", "valid": false, "about": "A measurement with no limit — hil_measurement_incomplete." },
+    { "document": "invalid/bad-direction.json", "valid": false, "about": "A direction other than max or min — hil_measurement_incomplete." },
+    { "document": "invalid/rig-shape.json", "valid": false, "about": "A rig name that cannot be a platform tag — the document is dropped (hil_schema_invalid)." },
+    { "document": "invalid/no-procedure.json", "valid": false, "about": "A case with no what-it-did line — the case is dropped (hil_schema_invalid)." }
+  ]
+}

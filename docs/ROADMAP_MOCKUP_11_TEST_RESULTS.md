@@ -433,7 +433,7 @@ seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AT.1 | #329 | 🟡 Open | ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage) | Format detection, normalized tree, retry/flake extraction | mvp, tests, rest | N (after AS.2) | Y | L | ouroboros-rest |
+| AT.1 | #329 ✅ | 🟢 Done | ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage) | Format detection, normalized tree, retry/flake extraction | mvp, tests, rest | N (after AS.2) | Y | L | ouroboros-rest |
 | AT.2 | #330 | 🟡 Open | ouroboros-runner: [AT.2] Job artifact & result upload | Job-scoped multipart upload path, quotas, store driver (T4) | mvp, tests, build-farm | N (after AG.4, AH.2) | Y | M | ouroboros-runner, ouroboros-rest |
 | AT.3 | #331 | 🟡 Open | ouroboros-rest: [AT.3] Flake scorer & quarantine service | Retry-truth marking, history scoring, nightly candidates | mvp, tests, rest | N (after AS.3, AT.1) | Y | M | ouroboros-rest |
 | AT.4 | #332 | 🟡 Open | ouroboros-rest: [AT.4] Classification & routing service | Heuristic hints, classify API, correction/re-run dispatch (T6/T7) | mvp, tests, rest, runs | N (after AS.4, AP.4, AH.4) | Y | L | ouroboros-rest |
@@ -442,7 +442,7 @@ seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail
 
 ### Issue AT.1 — ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage)
 
-> **GitHub issue:** #329 · **Status:** 🟡 Open · **Parent epic:** #321
+> **GitHub issue:** #329 ✅ · **Status:** 🟢 Done · **Parent epic:** #321
 
 - **Problem Statement:** Uploaded files must become the AS tree — with retry
   truth, HIL structure, and coverage summaries — via a format-pluggable
@@ -471,6 +471,20 @@ uploads{junit.xml, hil.json, lcov.info} ─▶ detect ─▶ parse ─▶ normal
   junit rerun markers + DSL flakes:"retry-once" ─▶ case.status: flaky (sanctioned)
   re-parse(attempt) ─▶ transactional replace (idempotent)
 ```
+
+- **Landed as** ([docs/TEST_RESULTS_INGEST.md](TEST_RESULTS_INGEST.md)):
+  - **The flake policy is a parse input.** The pinned DSL has no `flakes:` key yet (P.2 shipped
+    none), so `parseAttempt` takes `flakePolicy` (`none | retry-once | retry-twice | retry-<n>`,
+    default `none`, under which nothing is flaky). Attempts past the budget are cut from
+    `retry_outcomes` into `meta.unsanctioned_outcomes`, and the status comes from the last
+    sanctioned attempt.
+  - **The trigger is a service API.** #330 calls `TestResultIngestService.parseAttempt` with the
+    manifest's files. Coverage counts are returned rather than stored, because V059 freezes them
+    on the coverage `test_artifacts` row that #330 inserts.
+  - **Re-parse upserts by durable key** (suite name+platform, `case_key`, metric) and deletes
+    whatever is stale, rather than deleting and re-inserting. Case ids are stable, so V055
+    classifications and V057 evidence, which cascade from a case, survive a retried upload.
+  - The HIL schema is published at `schemas/hil-results/v1.json` and watched by ci/rest.
 
 ### Issue AT.2 — ouroboros-runner: [AT.2] Job artifact & result upload
 

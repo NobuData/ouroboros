@@ -1,0 +1,56 @@
+{
+  "schema": "ouro-hil-results",
+  "schema_version": 1,
+  "rig": "helios-rig-02",
+  "bench": "CAN bus + motor + power-cycler",
+  "suites": [
+    {
+      "name": "PHYSICAL · HIL rig",
+      "cases": [
+        {
+          "classname": "hil.motor",
+          "name": "estop_release_overshoot",
+          "procedure": "dyno bench releases e-stop under 2 Nm load, 3 trials",
+          "duration_ms": 80000,
+          "measurements": [
+            {
+              "metric": "overshoot_pct",
+              "value": 2.4,
+              "unit": "%",
+              "limit": 2.0,
+              "direction": "max",
+              "trials": [
+                { "trial": 1, "torque_nm": 2.0, "peak_rpm": 1225.2, "overshoot_pct": 2.1 },
+                { "trial": 2, "torque_nm": 2.0, "peak_rpm": 1228.8, "overshoot_pct": 2.4 },
+                { "trial": 3, "torque_nm": 2.0, "peak_rpm": 1227.6, "overshoot_pct": 2.3 }
+              ]
+            }
+          ]
+        },
+        {
+          "classname": "hil.can",
+          "name": "bus_flood_frame_order",
+          "procedure": "traffic generator floods bus at 900 kbit/s for 60s",
+          "measurements": [
+            {
+              "metric": "reordered_frames",
+              "value": 0,
+              "unit": "count",
+              "limit": 0,
+              "direction": "max",
+              "trials": [{ "trial": 1, "bitrate_kbit": 900, "frames": 1000000, "reordered_frames": 0 }]
+            }
+          ]
+        },
+        {
+          "name": "brownout_recovery",
+          "procedure": "power-cycler drops VCC to 2.7 V for 50 ms",
+          "measurements": [
+            { "metric": "reboot_ms", "value": 180, "unit": "ms", "limit": 250, "direction": "max" },
+            { "metric": "retained_frames_pct", "value": 98, "unit": "%", "limit": 95, "direction": "min" }
+          ]
+        }
+      ]
+    }
+  ]
+}

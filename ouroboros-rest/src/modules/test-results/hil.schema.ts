@@ -1,0 +1,152 @@
+/**
+ * `schemas/hil-results/v1.json` — the `ouro-hil-results.json` contract (option **2-A**), embedded
+ * so the parser needs no file read at run time (`rootDir` is `src`, so the JSON cannot be imported).
+ *
+ * **The published file is the contract and this is its copy.** `hil.schema.spec.ts` fails when the
+ * two differ, so an edit to one without the other is a red suite rather than two validators that
+ * quietly disagree.
+ */
+
+/** The schema, as JSON Schema 2020-12. */
+export const HIL_RESULTS_SCHEMA = {
+  $schema: "https://json-schema.org/draft/2020-12/schema",
+  $id: "https://ouroboros.build/schemas/hil-results/v1.json",
+  title: "Ouroboros HIL results (ouro-hil-results.json), version 1",
+  description:
+    "What a hardware-in-the-loop rig uploads beside its JUnit report (#329, option 2-A): the physical measurements JUnit cannot express — a value, a unit, a limit and its direction — per test case, grouped by suite. The parser in ouroboros-rest (AT.1) turns it into V051 test_suites (results_format hil, platform rig:<rig>) and V053 hil_measurements. A document that fails this schema is not refused whole: the smallest enclosing measurement, case or suite is dropped and an ingest warning names it. The verdict is never uploaded — it is computed from value, limit and direction. See docs/TEST_RESULTS_INGEST.md.",
+  type: "object",
+  required: ["schema", "schema_version", "rig", "suites"],
+  properties: {
+    schema: {
+      description: "Names the document, so a JSON file of another kind is never mistaken for one.",
+      const: "ouro-hil-results",
+    },
+    schema_version: {
+      description:
+        "Which version of this schema the document is written against. A version the parser does not know is an ingest warning (hil_schema_version_unknown), never a guess.",
+      const: 1,
+    },
+    rig: {
+      description:
+        "The rig's name — the suite platform becomes rig:<rig>, so it follows V051's test_suites_platform_shape.",
+      type: "string",
+      pattern: "^[A-Za-z0-9][A-Za-z0-9._-]*$",
+      maxLength: 120,
+    },
+    bench: {
+      description:
+        "What is on the bench — stored as test_suites.meta.bench and printed beside the rig.",
+      type: "string",
+      minLength: 1,
+      maxLength: 500,
+    },
+    suites: {
+      type: "array",
+      items: {
+        $ref: "#/$defs/suite",
+      },
+    },
+  },
+  $defs: {
+    suite: {
+      description:
+        "One suite on the rig. Merged with a JUnit suite of the same name on the same rig, so its cases keep their JUnit retry truth and gain their measurements.",
+      type: "object",
+      required: ["name", "cases"],
+      properties: {
+        name: {
+          $ref: "#/$defs/non_blank",
+        },
+        cases: {
+          type: "array",
+          items: {
+            $ref: "#/$defs/case",
+          },
+        },
+      },
+    },
+    case: {
+      description: "One physical test case. Matched to its JUnit case by (classname, name).",
+      type: "object",
+      required: ["name", "procedure", "measurements"],
+      properties: {
+        name: {
+          $ref: "#/$defs/non_blank",
+        },
+        classname: {
+          $ref: "#/$defs/non_blank",
+        },
+        status: {
+          description:
+            "The case's outcome when the rig knows it. Absent: failed when any measurement fails, passed when all pass, error when none survived validation.",
+          enum: ["passed", "failed", "error", "skipped"],
+        },
+        duration_ms: {
+          type: "integer",
+          minimum: 0,
+        },
+        procedure: {
+          description:
+            "What the rig physically did — the card's what-it-did line (hil_measurements.procedure).",
+          $ref: "#/$defs/non_blank",
+        },
+        measurements: {
+          type: "array",
+          items: {
+            $ref: "#/$defs/measurement",
+          },
+        },
+      },
+    },
+    measurement: {
+      description: "One metric measured on the case — a measured line of the Physical tests card.",
+      type: "object",
+      required: ["metric", "value", "unit", "limit", "direction"],
+      properties: {
+        metric: {
+          description:
+            "A lowercase identifier, unique within the case — overshoot_pct, reordered_frames.",
+          type: "string",
+          pattern: "^[a-z][a-z0-9_]*$",
+        },
+        value: {
+          description: "The measured value the verdict is taken on.",
+          type: "number",
+        },
+        unit: {
+          description: "%, ms, s, count — at most sixteen characters with no whitespace.",
+          type: "string",
+          pattern: "^\\S{1,16}$",
+        },
+        limit: {
+          description: "The limit value is compared against, in the same unit.",
+          type: "number",
+        },
+        direction: {
+          description:
+            "max: value must not exceed limit. min: value must reach limit. Both inclusive.",
+          enum: ["max", "min"],
+        },
+        trials: {
+          description: "The trials the value came from, in the order they ran.",
+          type: "array",
+          items: {
+            type: "object",
+          },
+        },
+      },
+    },
+    non_blank: {
+      type: "string",
+      minLength: 1,
+      maxLength: 500,
+      pattern: "\\S",
+    },
+  },
+} as const;
+
+/** The only `schema_version` this build reads. */
+export const HIL_SCHEMA_VERSION = 1;
+
+/** The `schema` value that names a HIL document. */
+export const HIL_SCHEMA_NAME = "ouro-hil-results";

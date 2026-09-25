@@ -1,0 +1,17 @@
+TN:
+SF:src/drivers/can.c
+FN:12,can_init
+FNDA:4,can_init
+DA:12,4
+DA:13,4
+DA:20,0
+LF:120
+LH:104
+end_of_record
+TN:
+SF:src/telemetry/ring.c
+DA:5,9
+DA:6,9
+DA:7,0
+DA:9,3
+end_of_record

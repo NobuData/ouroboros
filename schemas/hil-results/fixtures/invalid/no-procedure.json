@@ -1,0 +1,6 @@
+{
+  "schema": "ouro-hil-results",
+  "schema_version": 1,
+  "rig": "bench-1",
+  "suites": [{ "name": "power", "cases": [{ "name": "brownout_recovery", "measurements": [] }] }]
+}

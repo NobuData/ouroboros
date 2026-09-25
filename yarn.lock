@@ -10157,6 +10157,7 @@ __metadata:
     prettier: "npm:^3"
     reflect-metadata: "npm:^0.2"
     rxjs: "npm:^7"
+    saxes: "npm:^6"
     supertest: "npm:^7"
     testcontainers: "npm:^12"
     ts-jest: "npm:^29"
@@ -11295,7 +11296,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"saxes@npm:^6.0.0":
+"saxes@npm:^6, saxes@npm:^6.0.0":
   version: 6.0.0
   resolution: "saxes@npm:6.0.0"
   dependencies:

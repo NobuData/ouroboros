@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<testsuites>
+  <testsuite name="motor control">
+    <properties><property name="platform" value="qemu_cortex_m3"/></properties>
+    <testcase classname="motor.pid" name="integral_windup_clamp" time="0.2"/>
+    <testcase classname="motor.pid" name="derivative_kick" time="0.1"></testcases>
+    <testcase classname="motor.pid" name="never_reached" time="0.1"/>
+  </testsuite>
+</testsuites>
