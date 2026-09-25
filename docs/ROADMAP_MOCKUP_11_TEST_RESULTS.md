@@ -236,7 +236,7 @@ assigned. Complexity chips: **XS · S · M · L**.
 | AS.2 | #325 | 🟢 Done | ouroboros-db: [AS.2] HIL measurements schema | Structured trials/measurements/limits for physical tests | mvp, tests, db | N (after AS.1) | Y | S | ouroboros-db |
 | AS.3 | #326 | 🟢 Done | ouroboros-db: [AS.3] Case history, flake scores & quarantine | Durable case identity, occurrence history, watching states | mvp, tests, db | N (after AS.1) | Y | M | ouroboros-db |
 | AS.4 | #327 | 🟢 Done | ouroboros-db: [AS.4] Classifications, PR intents & artifacts meta | Mark-&-route records, gating intents, artifact registry | mvp, tests, db | N (after AS.1) | Y | M | ouroboros-db |
-| AS.5 | #328 | 🟡 Open | ouroboros-db: [AS.5] Test-results seeds — mockup-11 parity + probes | Build 1→3 story, suites, HIL rows, flake case; ci checks | mvp, tests, db, ci | N (after AS.2–AS.4, #24) | Y | M | ouroboros-db, .github |
+| AS.5 | #328 | 🟢 Done | ouroboros-db: [AS.5] Test-results seeds — mockup-11 parity + probes | Build 1→3 story, suites, HIL rows, flake case; ci checks | mvp, tests, db, ci | N (after AS.2–AS.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue AS.1 — ouroboros-db: [AS.1] Test runs, suites & cases schema
 
@@ -371,7 +371,7 @@ pr_intents: {block_until_green: true, waivers: []}   artifacts: junit-build3.xml
 
 ### Issue AS.5 — ouroboros-db: [AS.5] Test-results seeds — mockup-11 parity + probes
 
-> **GitHub issue:** #328 · **Status:** 🟡 Open · **Parent epic:** #320
+> **GitHub issue:** #328 · **Status:** 🟢 Done · **Parent epic:** #320
 
 - **Problem Statement:** Design review needs the exact Build 1→3 story with
   every card populated, without running the pipeline.
@@ -396,6 +396,36 @@ pr_intents: {block_until_green: true, waivers: []}   artifacts: junit-build3.xml
 seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail (2.4%>2.0%)
        flaky case (retry 2/3, watching) · 4 artifacts · coverage 87.4% +0.6
 ```
+
+> **Delivered as `R__dev_seed_test_results.sql`, `V059__test_coverage_summary.sql`, a `seed.sql`
+> section, an AS.5 section of `constraints.sql` and thirteen probes in
+> `verify-constraint-probes.sh`.** Every figure the page prints is computed from rows: totals by
+> recount, `▲ 12` as Build 3's passed minus Build 1's, the verdict by `hil_verdict()` from the
+> worst trial, `(was 37 in build 1)` by V053's trigger, `watching` by flake formula 1
+> (0.5028 over four occurrences), and `87.4% (+0.6%)` by V059's `test_run_coverage` from line
+> counts — the schema had no place for a coverage summary, so V059 adds `lines_covered` and
+> `lines_total` to a coverage artifact. Five things the mockup, the issue and the existing seeds
+> disagreed on were decided on #328 rather than guessed:
+>
+> 1. **The clocks.** #302 draws `#482` 12m 40s in with its build stage pending; mockup 11 draws
+>    three builds over 46 minutes. #302's page is kept, and the attempts sit inside the run —
+>    Build 1 at 4m 41s, Build 2 at 5m 35s, Build 3 at 6m 28s — so Build 3's 6m 12s ends at the
+>    instant #302 draws. The shas are mockup 11's, on the attempts; `build_job_id` stays null
+>    (decision B6), and the rig lives on the suite's platform and bench.
+> 2. **`▲ 12 vs build 2`** computes as Build 3 (61) against Build 1 (49); the label names the
+>    wrong build.
+> 3. **The flaky pass is Build 3's.** Build 2's `2 failed` are the overshoot and the telemetry
+>    case, so the telemetry case's pass on retry 2/3 is the re-run of the failed set, and Build 3
+>    carries Build 2's other 61 passes forward.
+> 4. **The HIL suite has two cases**, as the suites card's `1/2` says: the overshoot and the frame
+>    order. The physical card's other two rows are not seeded.
+> 5. **The flaky history spans `#479` and `#482`**, the two `helios-firmware` runs — `case_key`
+>    hashes the repository, and `#465` is in `helios-telemetry`. `#479`'s attempt is `running`, so
+>    `run_check_reconciliation` does not compare it; `#482`'s row reads `agrees = false`, because
+>    #68 gives a live run no check counts.
+>
+> Of the thirteen probes, six widen a vocabulary; three of those are caught first by V055's
+> hard-coded roster rather than AS.5's coverage assertion, which the script's header records.
 
 ---
 
