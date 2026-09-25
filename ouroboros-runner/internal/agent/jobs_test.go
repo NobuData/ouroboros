@@ -28,6 +28,8 @@ type fakeExecutor struct {
 	// prepare and execute replace the defaults when set.
 	prepare func(ctx context.Context, job exec.Job, progress exec.Progress) error
 	execute func(ctx context.Context, job exec.Job) (int, error)
+	// produce, when set, writes the job's output files into its workspace (#330).
+	produce func(workspace string) error
 
 	mu   sync.Mutex
 	seen []exec.Job
@@ -45,8 +47,13 @@ func (f *fakeExecutor) Prepare(ctx context.Context, job exec.Job, _ string, prog
 	return nil
 }
 
-func (f *fakeExecutor) Execute(ctx context.Context, job exec.Job, _ string, output exec.Output) (int, error) {
+func (f *fakeExecutor) Execute(ctx context.Context, job exec.Job, workspace string, output exec.Output) (int, error) {
 	_, _ = output.Stdout.Write([]byte("building\n"))
+	if f.produce != nil {
+		if err := f.produce(workspace); err != nil {
+			return -1, err
+		}
+	}
 	if f.execute != nil {
 		return f.execute(ctx, job)
 	}

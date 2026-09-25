@@ -255,6 +255,30 @@ type JobOfferPayload struct {
 	TimeoutS   int               `json:"timeout_s"`
 	ExpiresAt  string            `json:"expires_at"`
 	Attempt    int               `json:"attempt,omitempty"`
+	// Upload is where the job's results leave by — nil for a job with nowhere to upload to
+	// ([#330]). Its token is a credential: never log it.
+	//
+	// [#330]: https://github.com/NobuData/ouroboros/issues/330
+	Upload *JobUpload `json:"upload,omitempty"`
+}
+
+// JobUpload is `job.offer.upload`: the job-scoped HTTPS upload the job's results leave by
+// (decision T4) — never the control socket. The token is single-use and good for this one job.
+type JobUpload struct {
+	// Path is the upload's path on the control plane's origin; the agent resolves it against
+	// the URL it already dials, so a dispatch cannot send the token anywhere else.
+	Path string `json:"path"`
+	// Token is sent as `Authorization: Bearer <token>`. Never logged.
+	Token     string `json:"token"`
+	ExpiresAt string `json:"expires_at"`
+	// Globs is what to collect, relative to the job's working directory.
+	Globs []string `json:"globs"`
+	// MaxFileBytes is the per-file cap: a larger file is uploaded cut to it, as truncated.
+	MaxFileBytes int64 `json:"max_file_bytes"`
+	// MaxJobBytes is the per-job cap: files past it are listed as skipped.
+	MaxJobBytes int64 `json:"max_job_bytes"`
+	// MaxFiles is the most files one upload carries.
+	MaxFiles int `json:"max_files"`
 }
 
 // JobAcceptPayload is an offer taken. It names the offer's envelope id as well as the

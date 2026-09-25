@@ -5,6 +5,7 @@ import {
   DomainError,
   INTERNAL_ERROR_MESSAGE,
   InvalidRequestError,
+  PayloadTooLargeError,
   MethodNotAllowedError,
   NotImplementedError,
   NotFoundError,
@@ -54,6 +55,7 @@ describe("a domain error", () => {
     [ConflictError, HttpStatus.CONFLICT],
     [MethodNotAllowedError, HttpStatus.METHOD_NOT_ALLOWED],
     [InvalidRequestError, HttpStatus.UNPROCESSABLE_ENTITY],
+    [PayloadTooLargeError, HttpStatus.PAYLOAD_TOO_LARGE],
     [NotImplementedError, HttpStatus.NOT_IMPLEMENTED],
     [TooManyRequestsError, HttpStatus.TOO_MANY_REQUESTS],
   ])("gives %p its own status", (Subclass, status) => {

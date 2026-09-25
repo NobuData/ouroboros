@@ -32,6 +32,12 @@ import {
   listenHost,
   loadConfiguration,
   type Configuration,
+  DEFAULT_ARTIFACT_DIR,
+  DEFAULT_ARTIFACT_MAX_FILE_BYTES,
+  DEFAULT_ARTIFACT_MAX_JOB_BYTES,
+  DEFAULT_ARTIFACT_QUOTA_BYTES,
+  DEFAULT_ARTIFACT_RETENTION_DAYS,
+  DEFAULT_ARTIFACT_S3_REGION,
 } from "./configuration";
 import { CLOUD_PROVIDER_KINDS } from "../internal/providers";
 import { DEVELOPMENT_ENVIRONMENT, testEnvironment } from "./configuration.fixture";
@@ -96,6 +102,15 @@ describe("the development defaults", () => {
       dashboardPollSeconds: DEFAULT_DASHBOARD_POLL_SECONDS,
       // AH.5's (#253) log budget, written out in the template at its default.
       farmLogBudgetBytes: DEFAULT_FARM_LOG_BUDGET_BYTES,
+      // AT.2's (#330) artifact store: the local volume, at its defaults. The S3 settings are
+      // absent until a deployment chooses the s3 driver.
+      artifactStore: "local",
+      artifactDir: DEFAULT_ARTIFACT_DIR,
+      artifactS3Region: DEFAULT_ARTIFACT_S3_REGION,
+      artifactQuotaBytes: DEFAULT_ARTIFACT_QUOTA_BYTES,
+      artifactMaxFileBytes: DEFAULT_ARTIFACT_MAX_FILE_BYTES,
+      artifactMaxJobBytes: DEFAULT_ARTIFACT_MAX_JOB_BYTES,
+      artifactRetentionDays: DEFAULT_ARTIFACT_RETENTION_DAYS,
       // Unset in the template, which is the posture every deployment that runs no local
       // model server is in — see `OURO_LOCAL_PROVIDER_URLS` below.
       localProviderUrls: {},
@@ -909,6 +924,89 @@ describe("OURO_FARM_LOG_BUDGET_BYTES", () => {
       `OURO_FARM_LOG_BUDGET_BYTES: expected between ${MIN_FARM_LOG_BUDGET_BYTES} and ` +
         `${MAX_FARM_LOG_BUDGET_BYTES} bytes`,
     );
+  });
+});
+
+describe("the artifact store variables (AT.2, #330)", () => {
+  /** The four settings the S3 driver needs, pointed at a MinIO. */
+  const S3 = {
+    OURO_ARTIFACT_STORE: "s3",
+    OURO_ARTIFACT_S3_ENDPOINT: "http://minio:9000",
+    OURO_ARTIFACT_S3_BUCKET: "ouroboros-artifacts",
+    OURO_ARTIFACT_S3_ACCESS_KEY_ID: "ouroboros",
+    OURO_ARTIFACT_S3_SECRET_ACCESS_KEY: "ouroboros-minio-secret",
+  };
+
+  it("switches to S3 by configuration alone, with the region defaulted", () => {
+    const configuration = loadConfiguration(testEnvironment(S3));
+
+    expect(configuration).toMatchObject({
+      artifactStore: "s3",
+      artifactS3Endpoint: "http://minio:9000",
+      artifactS3Bucket: "ouroboros-artifacts",
+      artifactS3Region: DEFAULT_ARTIFACT_S3_REGION,
+    });
+  });
+
+  it.each([
+    "OURO_ARTIFACT_S3_ENDPOINT",
+    "OURO_ARTIFACT_S3_BUCKET",
+    "OURO_ARTIFACT_S3_ACCESS_KEY_ID",
+    "OURO_ARTIFACT_S3_SECRET_ACCESS_KEY",
+  ])("refuses the s3 driver without %s, naming it", (variable) => {
+    const env = testEnvironment(S3);
+    delete env[variable];
+
+    expect(failureFor(env)).toContain(`${variable}: is required when OURO_ARTIFACT_STORE is s3`);
+  });
+
+  it("does not ask for the S3 settings while the store is the local volume", () => {
+    expect(loadConfiguration(testEnvironment({ OURO_ARTIFACT_STORE: "local" })).artifactStore).toBe(
+      "local",
+    );
+  });
+
+  it.each([
+    ["OURO_ARTIFACT_STORE", "gcs", "OURO_ARTIFACT_STORE"],
+    ["OURO_ARTIFACT_S3_ENDPOINT", "http://minio:9000/bucket", "expected the http(s) origin"],
+    ["OURO_ARTIFACT_S3_BUCKET", "Not_A_Bucket", "expected an S3 bucket name"],
+    ["OURO_ARTIFACT_S3_REGION", "US East", "expected a region name"],
+    ["OURO_ARTIFACT_QUOTA_BYTES", "10GiB", "expected between"],
+    ["OURO_ARTIFACT_MAX_FILE_BYTES", "1", "expected between"],
+    ["OURO_ARTIFACT_RETENTION_DAYS", "0", "expected between 1 and 3650 days"],
+  ])("refuses a malformed %s", (variable, value, message) => {
+    expect(failureFor(testEnvironment({ [variable]: value }))).toContain(message);
+  });
+
+  it("refuses a per-file cap larger than the per-job cap", () => {
+    expect(
+      failureFor(
+        testEnvironment({
+          OURO_ARTIFACT_MAX_FILE_BYTES: "2048",
+          OURO_ARTIFACT_MAX_JOB_BYTES: "1024",
+        }),
+      ),
+    ).toContain("OURO_ARTIFACT_MAX_JOB_BYTES: expected at least OURO_ARTIFACT_MAX_FILE_BYTES");
+  });
+
+  it("reads the caps, the quota and the retention as numbers", () => {
+    expect(
+      loadConfiguration(
+        testEnvironment({
+          OURO_ARTIFACT_DIR: "/var/lib/ouroboros/artifacts",
+          OURO_ARTIFACT_QUOTA_BYTES: "1048576",
+          OURO_ARTIFACT_MAX_FILE_BYTES: "2048",
+          OURO_ARTIFACT_MAX_JOB_BYTES: "4096",
+          OURO_ARTIFACT_RETENTION_DAYS: "7",
+        }),
+      ),
+    ).toMatchObject({
+      artifactDir: "/var/lib/ouroboros/artifacts",
+      artifactQuotaBytes: 1_048_576,
+      artifactMaxFileBytes: 2048,
+      artifactMaxJobBytes: 4096,
+      artifactRetentionDays: 7,
+    });
   });
 });
 

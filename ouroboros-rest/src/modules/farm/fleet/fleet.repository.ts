@@ -105,6 +105,7 @@ export interface PoolWrite {
   readonly autoscale_pref?: unknown;
   readonly tags?: unknown;
   readonly default_command?: string | null;
+  readonly artifact_globs?: unknown;
 }
 
 @Injectable()

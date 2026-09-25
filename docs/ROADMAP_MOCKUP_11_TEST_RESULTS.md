@@ -434,7 +434,7 @@ seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AT.1 | #329 ✅ | 🟢 Done | ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage) | Format detection, normalized tree, retry/flake extraction | mvp, tests, rest | N (after AS.2) | Y | L | ouroboros-rest |
-| AT.2 | #330 | 🟡 Open | ouroboros-runner: [AT.2] Job artifact & result upload | Job-scoped multipart upload path, quotas, store driver (T4) | mvp, tests, build-farm | N (after AG.4, AH.2) | Y | M | ouroboros-runner, ouroboros-rest |
+| AT.2 | #330 ✅ | 🟢 Done | ouroboros-runner: [AT.2] Job artifact & result upload | Job-scoped multipart upload path, quotas, store driver (T4) | mvp, tests, build-farm | N (after AG.4, AH.2) | Y | M | ouroboros-runner, ouroboros-rest |
 | AT.3 | #331 | 🟡 Open | ouroboros-rest: [AT.3] Flake scorer & quarantine service | Retry-truth marking, history scoring, nightly candidates | mvp, tests, rest | N (after AS.3, AT.1) | Y | M | ouroboros-rest |
 | AT.4 | #332 | 🟡 Open | ouroboros-rest: [AT.4] Classification & routing service | Heuristic hints, classify API, correction/re-run dispatch (T6/T7) | mvp, tests, rest, runs | N (after AS.4, AP.4, AH.4) | Y | L | ouroboros-rest |
 | AT.5 | #333 | 🟡 Open | ouroboros-rest: [AT.5] Test-results read APIs & artifact serving | Page payloads, attempt timelines, artifact downloads, retention | mvp, tests, rest | N (after AT.1, AS.4) | Y | M | ouroboros-rest |
@@ -488,7 +488,7 @@ uploads{junit.xml, hil.json, lcov.info} ─▶ detect ─▶ parse ─▶ normal
 
 ### Issue AT.2 — ouroboros-runner: [AT.2] Job artifact & result upload
 
-> **GitHub issue:** #330 · **Status:** 🟡 Open · **Parent epic:** #321
+> **GitHub issue:** #330 ✅ · **Status:** 🟢 Done · **Parent epic:** #321
 
 - **Problem Statement:** Results live on the runner when a job finishes;
   they must reach the store safely (decision T4) without abusing the
@@ -516,6 +516,34 @@ uploads{junit.xml, hil.json, lcov.info} ─▶ detect ─▶ parse ─▶ normal
 job finish ─▶ collect globs ─▶ POST /internal/jobs/:id/artifacts (single-use token)
   ─▶ quota ✓ · checksum ✓ ─▶ ArtifactStore(local|s3) ─▶ manifest complete ─▶ parse (AT.1)
 ```
+
+- **Landed as** ([`ouroboros-rest` README § Build artifacts](../ouroboros-rest/README.md#build-artifacts),
+  [RUNNER_PROTOCOL.md § 4.3](RUNNER_PROTOCOL.md#the-artifact-upload),
+  [TEST_RESULTS_INGEST.md § 9](TEST_RESULTS_INGEST.md#9-the-upload-that-feeds-it-330)):
+  - **The route is `POST /api/v1/farm/jobs/:id/artifacts`, not `/internal/…`.** `/internal/*` is
+    the engine's surface, behind the shared secret, and `HOSTING.md` forbids exposing it — a farm
+    host included — so a runner could never reach it. The upload sits beside the runner's socket
+    and registration routes, `@AllowAnonymous()` and authenticated by the token alone.
+  - **The token rides `job.offer.upload`** (protocol line 1, optional like `attempt`): a path on
+    the control plane's own origin — the agent resolves it, so no offer can aim the token at
+    another host — the `ouro_upl_…` token, its expiry, the globs and the caps. Minted fresh with
+    every offer, stored as its SHA-256 in V060's `build_job_artifact_uploads`, closed by the
+    accepted upload. Only a run-attributed job gets one: without a run there is no attempt.
+  - **Every token failure is one opaque `401`**; the right token after its upload closed is `409
+    farm_artifact_upload_closed`, which is how an agent whose response was lost learns it landed.
+    A corrupted upload is `422 farm_artifact_checksum_mismatch` and keeps nothing.
+  - **Quota, caps and retention are configuration** (`OURO_ARTIFACT_QUOTA_BYTES`,
+    `_MAX_FILE_BYTES`, `_MAX_JOB_BYTES`, `_RETENTION_DAYS`), one limit counted per workspace. The
+    receipt — manifest and warnings, V060 — is `build_jobs`' result linkage, for AT.5 and AU.7 to
+    render; the page itself is theirs.
+  - **Globs**: the built-in result set, then `runner_pools.artifact_globs` (pool CRUD's
+    `artifactGlobs`) and the submission's `artifacts`, snapshotted onto `build_jobs.artifact_globs`.
+  - **The S3 driver is SigV4 by hand, not the AWS SDK**, and MinIO is `pgsty/minio` — MinIO Inc. no
+    longer publishes `minio/minio`. The store contract runs unchanged against the local volume and
+    a real MinIO (Testcontainers), and so does the whole upload integration suite.
+  - **Retries resend the whole collection.** The service keeps nothing from an attempt it did not
+    accept, so what the agent carries across retries is the collection and its checksums, not a
+    byte offset.
 
 ### Issue AT.3 — ouroboros-rest: [AT.3] Flake scorer & quarantine service
 

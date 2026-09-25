@@ -290,9 +290,22 @@ services:
       OURO_FARM_PUBLIC_URL: https://farm-gateway
       OURO_FARM_RELEASES_DIR: /runner-releases
       OURO_FARM_CLIENT_CERT_HEADER: x-ouro-client-cert
+      # The artifact store (issue #330, option 3-A). The local volume by default — the volume
+      # below, at the image's own /app/.artifacts, which is OURO_ARTIFACT_DIR's default resolved
+      # against the working directory — and MinIO when a developer starts the `minio` profile and
+      # sets OURO_ARTIFACT_STORE=s3: the swap is configuration only. The endpoint is a literal, a
+      # container's view, for the reason every address here is; the bucket and the credentials
+      # are interpolated like every other credential.
+      OURO_ARTIFACT_STORE: ${OURO_ARTIFACT_STORE:-local}
+      OURO_ARTIFACT_S3_ENDPOINT: http://minio:9000
+      OURO_ARTIFACT_S3_BUCKET: ${OURO_ARTIFACT_S3_BUCKET:-ouroboros-artifacts}
+      OURO_ARTIFACT_S3_ACCESS_KEY_ID: ${OURO_ARTIFACT_S3_ACCESS_KEY_ID:-ouroboros}
+      OURO_ARTIFACT_S3_SECRET_ACCESS_KEY: ${OURO_ARTIFACT_S3_SECRET_ACCESS_KEY:-ouroboros-dev-minio-secret}
     volumes:
       # Read-only: `rest` serves a release, it never writes one.
       - ouroboros-runner-releases:/runner-releases:ro
+      # Uploaded build artifacts, when the store is the local volume (#330).
+      - ouroboros-artifacts:/app/.artifacts
     ports:
       # Loopback only, for the same reason the database is: this stack carries
       # development secrets, and Docker's default would publish them to every machine on
@@ -417,6 +430,42 @@ services:
       - ollama
 
   # ---------------------------------------------------------------------------
+  # The `minio` profile (issue #330) — an S3-compatible artifact store, optional. The local
+  # volume is the default because a single-node deployment should not need object storage;
+  # this is what a deployment that scales horizontally flips to, and what a developer starts
+  # to see the swap work: `docker compose --profile full --profile minio up` with
+  # OURO_ARTIFACT_STORE=s3.
+  #
+  # `pgsty/minio` is the community-maintained build of MinIO's AGPL server — MinIO Inc. no
+  # longer publishes `minio/minio` — pinned to the release the REST integration suite proves
+  # the driver against (src/modules/farm/artifacts/minio.fixture.ts). The driver never creates a
+  # bucket, so the entrypoint makes the one `rest` writes to: in this MinIO a top-level
+  # directory of the data volume is a bucket.
+  # ---------------------------------------------------------------------------
+  minio:
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    entrypoint: ["sh", "-c", "mkdir -p /data/${OURO_ARTIFACT_S3_BUCKET:-ouroboros-artifacts} && exec minio server /data"]
+    environment:
+      MINIO_ROOT_USER: ${OURO_ARTIFACT_S3_ACCESS_KEY_ID:-ouroboros}
+      MINIO_ROOT_PASSWORD: ${OURO_ARTIFACT_S3_SECRET_ACCESS_KEY:-ouroboros-dev-minio-secret}
+    ports:
+      # Loopback only, like every published port here.
+      - "127.0.0.1:9000:9000"
+    volumes:
+      - ouroboros-minio-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9000/minio/health/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+      start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - minio
+
+  # ---------------------------------------------------------------------------
   # The `runner` profile (issue #262, amending #55) — three services that turn this stack
   # into one a real build machine can enrol in. tests/e2e's farm leg is what they were built
   # for, and they are here rather than in its override because a developer working on the
@@ -505,3 +554,8 @@ volumes:
   ouroboros-runner-releases:
   # The farm gateway's CA **certificate** — never a key — on its way to the runner machine.
   ouroboros-farm-ca:
+  # Uploaded build artifacts on the local volume (#330). Named so `down` keeps them — they are
+  # what the test-results page's artifacts card links to — and `down -v` drops them.
+  ouroboros-artifacts:
+  # The `minio` profile's object store (#330).
+  ouroboros-minio-data:

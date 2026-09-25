@@ -55,6 +55,7 @@ const POOL: RunnerPool = {
   autoscale_pref: {},
   tags: [],
   default_command: null,
+  artifact_globs: [],
   created_at: FIXTURE_NOW,
   updated_at: FIXTURE_NOW,
 };

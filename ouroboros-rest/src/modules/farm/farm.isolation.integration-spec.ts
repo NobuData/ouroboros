@@ -52,8 +52,8 @@ import type { BuildJobResource } from "./dispatch/jobs.resources";
  *     suite that only read the status.
  *   * **Collections** — the route names nothing and answers with whatever the caller may see.
  *     The claim is that the answer contains nothing of the other workspace.
- *   * **Unsessioned** — the four routes in `SHIPPED_PUBLIC_SURFACE` (registration, renewal, and
- *     the installer's two). They take no workspace, so "refuse the neighbour" is not the claim
+ *   * **Unsessioned** — the five routes in `SHIPPED_PUBLIC_SURFACE` (registration, renewal, the
+ *     artifact upload, and the installer's two). They take no workspace, so "refuse the neighbour" is not the claim
  *     and asserting it would be theatre. What is asserted instead is the property that makes
  *     them safe to expose: **the credential decides the workspace, and the tenant header cannot
  *     move it.** A token minted in B enrols into B while the caller shouts `A` in the header.
@@ -536,7 +536,7 @@ describe("organization isolation, on every farm route", () => {
 
     // ---------------------------------------------------------------- unsessioned
     //
-    // These four name no workspace, so the claim is not "the neighbour is refused" but "the
+    // These five name no workspace, so the claim is not "the neighbour is refused" but "the
     // credential decides, and the header cannot argue". Asserting a refusal here would be
     // asserting something untrue about a route an unenrolled machine has to be able to reach.
     [`POST ${FARM}/registrations`]: {
@@ -592,6 +592,33 @@ describe("organization isolation, on every farm route", () => {
       },
     },
 
+    [`POST ${FARM}/jobs/:id/artifacts`]: {
+      about: "admits only the job's own upload token, whatever workspace the header names",
+      check: async (self, other) => {
+        // The job in the path and the token its offer carried decide everything (#330); a tenant
+        // header is not read, and a token no offer minted opens neither workspace's job.
+        for (const jobId of [self.jobId, other.jobId]) {
+          const response = await api
+            .anonymous("post", `${FARM}/jobs/${jobId}/artifacts`)
+            .set(TENANT_HEADER, self.workspace.id)
+            .set("authorization", "Bearer ouro_upl_not-a-token-any-offer-carried")
+            .set("content-type", "multipart/form-data; boundary=x")
+            .send("--x--\r\n")
+            .expect(401);
+
+          expect(bodyOf<Refusal>(response).code).toBe("farm_artifact_upload_refused");
+        }
+
+        const { rows } = await api.sql.query(
+          `select 1 from ouroboros.test_artifacts a
+             join ouroboros.test_runs t on t.id = a.test_run_id
+            where t.build_job_id in ($1, $2)`,
+          [self.jobId, other.jobId],
+        );
+        expect(rows).toEqual([]);
+      },
+    },
+
     [`GET ${INSTALL_SCRIPT_PATH}`]: {
       about: "is the same public script whoever asks, because it reads no workspace",
       check: async (self, other) => {
@@ -629,7 +656,7 @@ describe("organization isolation, on every farm route", () => {
 
   it("agrees with the guard surface about which farm routes are unsessioned", () => {
     // The three kinds above are only meaningful if "unsessioned" means what the guard means by
-    // it. This holds the four routes whose claim is the credential's, not the header's, to the
+    // it. This holds the five routes whose claim is the credential's, not the header's, to the
     // list the session guard actually exempts — so a route that quietly became public would not
     // keep its neighbour-is-refused claim.
     const unsessioned = farmRoutes().filter((signature) =>
@@ -640,6 +667,7 @@ describe("organization isolation, on every farm route", () => {
       [
         `POST ${FARM}/registrations`,
         `POST ${FARM}/registrations/renewal`,
+        `POST ${FARM}/jobs/:id/artifacts`,
         `GET ${INSTALL_SCRIPT_PATH}`,
         `GET ${RELEASE_FILE_PATH}`,
       ].sort(),

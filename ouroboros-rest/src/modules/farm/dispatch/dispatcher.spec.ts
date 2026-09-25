@@ -1,15 +1,22 @@
 import { Logger } from "@nestjs/common";
 import { SchedulerRegistry } from "@nestjs/schedule";
 
+import type { OfferUploads } from "../artifacts/upload.service";
 import { AgentSessions, type FrameContext } from "../gateway/agent.sessions";
 import { FakeSocket, drain, fixtureFrame } from "../gateway/gateway.fixture";
 import { GatewayMetrics } from "../gateway/gateway.metrics";
 import { OFFER_ACK_MS } from "../gateway/gateway.policy";
 import { decode, type Envelope, type MessageType } from "../protocol/protocol";
+import type { JobUpload } from "../protocol/protocol.messages";
 import { uuidOf, wireId } from "../protocol/ulid";
 import { JOB, ORG, OTHER_RUNNER, RUNNER, buildJob } from "./dispatch.fixture";
 import type { DispatchGate } from "./dispatch.gate";
-import { DECLINE_COOLDOWN_MS, LOST_RUNNER_AFTER_MS, OFFER_RECLAIM_MS } from "./dispatch.policy";
+import {
+  DECLINE_COOLDOWN_MS,
+  JOB_TIMEOUT_S,
+  LOST_RUNNER_AFTER_MS,
+  OFFER_RECLAIM_MS,
+} from "./dispatch.policy";
 import type { Candidate, DispatchRepository, Placement, WaitingJob } from "./dispatch.repository";
 import { DeclineMemory, DispatchService } from "./dispatcher";
 import { JobCompletions, type JobCompleted } from "./job.completions";
@@ -31,6 +38,17 @@ const WAITING: WaitingJob = {
 
 /** The job's wire id. */
 const WIRE = wireId("job", JOB);
+
+/** An upload a run-attributed job's offer carries (#330). */
+const UPLOAD: JobUpload = {
+  path: `/api/v1/farm/jobs/${JOB}/artifacts`,
+  token: "ouro_upl_Yk3vQm9ZtR2wXa7LpN4sD8fH1jC6bE0uGiKoMq5TyVw",
+  expires_at: "2026-09-19T14:00:15.000Z",
+  globs: ["**/junit*.xml"],
+  max_file_bytes: 67108864,
+  max_job_bytes: 268435456,
+  max_files: 256,
+};
 
 /**
  * A candidate runner.
@@ -108,6 +126,7 @@ describe("the dispatcher", () => {
   let completions: JobCompletions;
   let completed: JobCompleted[];
   let gate: jest.Mocked<DispatchGate>;
+  let uploads: jest.Mocked<OfferUploads>;
   let dispatcher: DispatchService;
 
   beforeEach(() => {
@@ -132,6 +151,8 @@ describe("the dispatcher", () => {
       completed.push(event);
     });
     gate = { admits: jest.fn().mockResolvedValue(true) };
+    // A job attributed to no run has nowhere to upload to — the fixture's default.
+    uploads = { forOffer: jest.fn().mockResolvedValue(undefined) };
     dispatcher = new DispatchService(
       repository as unknown as DispatchRepository,
       sessions,
@@ -139,6 +160,7 @@ describe("the dispatcher", () => {
       gate,
       new SchedulerRegistry(),
       () => now,
+      uploads,
     );
     dispatcher.onApplicationBootstrap();
   });
@@ -177,6 +199,53 @@ describe("the dispatcher", () => {
         expires_at: new Date(now.getTime() + OFFER_ACK_MS).toISOString(),
       });
       expect(offer.payload).not.toHaveProperty("attempt");
+    });
+
+    it("carries no upload for a job with nowhere to upload to", async () => {
+      const { session, socket } = connect();
+
+      await dispatcher.kick();
+      await session.flushed();
+
+      expect(socket.last("job.offer").payload).not.toHaveProperty("upload");
+    });
+
+    it("mints the job's upload token with the offer, valid for the answer window and the run (#330)", async () => {
+      const { session, socket } = connect();
+      uploads.forOffer.mockResolvedValue(UPLOAD);
+
+      await dispatcher.kick();
+      await session.flushed();
+
+      expect(uploads.forOffer).toHaveBeenCalledWith(
+        expect.objectContaining({ id: JOB, runner_id: RUNNER }),
+        now,
+        OFFER_ACK_MS + JOB_TIMEOUT_S * 1000,
+      );
+      expect(socket.last("job.offer").payload.upload).toEqual(UPLOAD);
+    });
+
+    it("mints a fresh token for each offer of a job, so the runner that did not take it holds a dead one", async () => {
+      repository.candidates.mockResolvedValue([candidate(RUNNER), candidate(OTHER_RUNNER)]);
+      jest.spyOn(sessions, "offer").mockImplementationOnce(() => undefined);
+      uploads.forOffer.mockResolvedValue(UPLOAD);
+      connect(RUNNER);
+      const other = connect(OTHER_RUNNER);
+
+      await dispatcher.kick();
+      await other.session.flushed();
+
+      expect(uploads.forOffer).toHaveBeenCalledTimes(2);
+    });
+
+    it("puts the job back rather than offer it without somewhere for its results to go", async () => {
+      const { socket } = connect();
+      uploads.forOffer.mockRejectedValue(new Error("the database went away"));
+
+      await dispatcher.kick();
+
+      expect(repository.release).toHaveBeenCalledWith(ORG, RUNNER, JOB);
+      expect(socket.sent).toHaveLength(0);
     });
 
     it("offers a retry with the attempt it is", async () => {

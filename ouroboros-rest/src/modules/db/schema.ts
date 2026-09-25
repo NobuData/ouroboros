@@ -4223,6 +4223,11 @@ export interface RunnerPoolsTable {
   default_command: string | null;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * Files every build of this pool uploads beyond the built-in result set (V060,
+   * [#330](https://github.com/NobuData/ouroboros/issues/330)) — a JSON array of relative globs.
+   */
+  artifact_globs: Generated<unknown>;
 }
 
 /** `runners.status` — what the fleet last **observed** (V040). */
@@ -4421,6 +4426,11 @@ export interface BuildJobsTable {
   log_swept_at: Date | null;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * The pool's artifact globs plus the submission's own, snapshotted at submit (V060,
+   * [#330](https://github.com/NobuData/ouroboros/issues/330)) — a JSON array of relative globs.
+   */
+  artifact_globs: Generated<unknown>;
 }
 
 /**
@@ -4619,6 +4629,62 @@ export interface HilMeasurementsTable {
   created_at: Stamped;
 }
 
+/** `test_artifacts.kind` — what an uploaded file is (V055, [#327](https://github.com/NobuData/ouroboros/issues/327)). */
+export type TestArtifactKind = "junit" | "hil" | "coverage" | "log" | "capture" | "other";
+
+/**
+ * `ouroboros.test_artifacts` — one file an attempt uploaded (V055, option **3-A**; coverage counts
+ * V059). Written by the job-scoped upload (AT.2, [#330](https://github.com/NobuData/ouroboros/issues/330)).
+ * Only `storage_ref`, `retained_until` and `expired_at` may change afterwards
+ * (`test_artifacts_lifecycle`), and no `delete` is granted: expiry is a tombstone.
+ */
+export interface TestArtifactsTable {
+  id: Generated<string>;
+  organization_id: string;
+  test_run_id: string;
+  /** Unique per attempt; the path the agent collected it at, relative to the working directory. */
+  name: string;
+  kind: TestArtifactKind;
+  /** `bigint`, so a string when read. */
+  size_bytes: ColumnType<string, string | number, never>;
+  /** `{"driver": "local" | "s3", "key": "…"}`. */
+  storage_ref: ColumnType<unknown, string, string>;
+  /** `sha256:<64 hex>`. */
+  checksum: string;
+  retained_until: Date;
+  expired_at: Date | null;
+  truncated: Generated<boolean>;
+  /** Present exactly when `truncated`. */
+  truncation_note: string | null;
+  created_at: Generated<Date>;
+  /** Present exactly on a `coverage` artifact (V059). */
+  lines_covered: ColumnType<string | null, number | null | undefined, never>;
+  lines_total: ColumnType<string | null, number | null | undefined, never>;
+}
+
+/**
+ * `ouroboros.build_job_artifact_uploads` — the job-scoped upload's token ledger while open, and its
+ * receipt once closed (V060, [#330](https://github.com/NobuData/ouroboros/issues/330)): the attempt
+ * it filled, the manifest of every collected file and the job warnings. `build_jobs`' result
+ * linkage. Frozen once `closed_at` is set (`build_job_artifact_uploads_lifecycle`).
+ */
+export interface BuildJobArtifactUploadsTable {
+  build_job_id: string;
+  organization_id: string;
+  /** SHA-256 of the single-use upload token, lowercase hex. The token itself is never stored. */
+  token_hash: string;
+  minted_at: Generated<Date>;
+  expires_at: Date;
+  closed_at: Date | null;
+  test_run_id: string | null;
+  /** A JSON array of manifest entries; null while open. */
+  manifest: ColumnType<unknown, string | null | undefined, string | null>;
+  /** A JSON array of job warnings. */
+  warnings: ColumnType<unknown[], string | undefined, string>;
+  /** `bigint`, so a string when read. */
+  stored_bytes: ColumnType<string, string | number | undefined, string | number>;
+}
+
 /**
  * `ouroboros.test_run_coverage` — one row per attempt with a coverage artifact (V059,
  * [#328](https://github.com/NobuData/ouroboros/issues/328)): the summed line counts, the
@@ -4700,6 +4766,8 @@ export interface Database {
   test_suites: TestSuitesTable;
   test_cases: TestCasesTable;
   hil_measurements: HilMeasurementsTable;
+  test_artifacts: TestArtifactsTable;
+  build_job_artifact_uploads: BuildJobArtifactUploadsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -5245,6 +5313,7 @@ export const TABLE_COLUMNS = {
     "default_command",
     "created_at",
     "updated_at",
+    "artifact_globs",
   ],
   runners: [
     "id",
@@ -5340,6 +5409,7 @@ export const TABLE_COLUMNS = {
     "log_swept_at",
     "created_at",
     "updated_at",
+    "artifact_globs",
   ],
   build_log_chunks: [
     "id",
@@ -5428,6 +5498,35 @@ export const TABLE_COLUMNS = {
     "verdict",
     "context",
     "created_at",
+  ],
+  test_artifacts: [
+    "id",
+    "organization_id",
+    "test_run_id",
+    "name",
+    "kind",
+    "size_bytes",
+    "storage_ref",
+    "checksum",
+    "retained_until",
+    "expired_at",
+    "truncated",
+    "truncation_note",
+    "created_at",
+    "lines_covered",
+    "lines_total",
+  ],
+  build_job_artifact_uploads: [
+    "build_job_id",
+    "organization_id",
+    "token_hash",
+    "minted_at",
+    "expires_at",
+    "closed_at",
+    "test_run_id",
+    "manifest",
+    "warnings",
+    "stored_bytes",
   ],
   planning_epic_progress: [
     "epic_id",

@@ -132,6 +132,27 @@ export interface JobOfferPayload {
   readonly expires_at: string;
   /** Which attempt of the build this job is — absent on a first attempt (#252). */
   readonly attempt?: number;
+  /** Where the job's results leave by — absent for a job with nowhere to upload to (#330). */
+  readonly upload?: JobUpload;
+}
+
+/**
+ * `job.offer.upload` — the job-scoped artifact upload (#330, decision T4). Results leave by HTTPS,
+ * never by this socket; `token` is single-use, scoped to the one job, and never logged.
+ */
+export interface JobUpload {
+  /** The upload's path on the control plane's origin — the agent resolves it itself. */
+  readonly path: string;
+  /** Sent as `Authorization: Bearer <token>`. */
+  readonly token: string;
+  readonly expires_at: string;
+  /** What to collect, relative to the job's working directory. */
+  readonly globs: readonly string[];
+  /** A larger file is uploaded cut to this, and listed as truncated. */
+  readonly max_file_bytes: number;
+  /** Past this, files are listed as skipped. */
+  readonly max_job_bytes: number;
+  readonly max_files: number;
 }
 
 /** `job.accept` — taken. */

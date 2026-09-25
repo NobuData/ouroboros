@@ -972,6 +972,15 @@ location = /api/v1/farm/agent {
   proxy_read_timeout 120s;
   proxy_pass http://ouroboros-rest:4000;
 }
+# A build job's artifact upload (#330, § 7.8): the body is the job's artifacts, so the 1 MiB
+# default would refuse it — allow the per-job cap plus framing, stream it through unbuffered,
+# and give the answer minutes, not seconds.
+location ~ ^/api/v1/farm/jobs/[0-9a-f-]+/artifacts$ {
+  client_max_body_size    300m;
+  proxy_request_buffering off;
+  proxy_read_timeout      900s;
+  proxy_pass http://ouroboros-rest:4000;
+}
 ```
 
 ```yaml
@@ -1023,7 +1032,35 @@ The secret is an AD.1 envelope like everything else, returned exactly once at en
 secret and an `mtls` runner has none, in both directions — the exact mirror of
 `runners_cert_serial_with_mtls`.
 
-### 7.8 What this section does not cover
+### 7.8 The artifact upload token
+
+A job's results leave its runner by a job-scoped HTTPS request — `POST
+/api/v1/farm/jobs/:id/artifacts` ([#330](https://github.com/NobuData/ouroboros/issues/330),
+decision T4) — and not by the agent's socket, so they need a credential of their own. A runner is a
+machine in somebody's lab, and it should never hold one broader than the job it is doing. So the
+credential is the narrowest one that works:
+
+| Property | How |
+|---|---|
+| **Minted with the offer** | Dispatch mints a fresh `ouro_upl_…` token (32 random bytes) each time it offers a job, and sends it once, in `job.offer.upload`. A re-offer mints a new one, so the runner that did not take the job holds a dead token |
+| **Stored as a hash** | `build_job_artifact_uploads.token_hash` is its SHA-256; the token itself is written nowhere. 32 random bytes need no salt and no stretching — there is nothing to guess |
+| **Job-scoped** | It is checked against the ledger of the job in the path, and only that one. Another job's token is refused |
+| **Single use** | The accepted upload closes the ledger in the transaction that registers its files. A replay writes nothing |
+| **Short-lived** | It expires with the job: its answer window, its wall-clock budget, and an hour for the upload |
+| **Outbound-only** | The offer names a *path*, which the agent resolves against the control plane it already dials. A dispatch cannot aim the token at another host |
+| **Never logged** | Neither the agent nor the control plane logs it, and a refusal carries no detail |
+
+**Every token failure is one `401 farm_artifact_upload_refused`** with no detail — missing, wrong,
+another job's, expired or superseded — on § 7.1's argument for enrollment tokens. The one
+distinction made is `409 farm_artifact_upload_closed`, for the *right* token presented after its
+upload closed: it tells nobody anything they did not already hold, and it is what lets an agent
+whose first response was lost learn that its upload landed.
+
+The route is `@AllowAnonymous()` in the sense § 7 uses throughout: no session, and a credential
+named in the handler. It lives under `/api/v1/farm/`, where runners already connect, and **not**
+under `/internal/` — the engine's surface, which a farm host must never expose.
+
+### 7.9 What this section does not cover
 
 - **The gateway itself** — sessions, presence, heartbeat ingest — is AH.3
   ([#251](https://github.com/NobuData/ouroboros/issues/251)), shipped in

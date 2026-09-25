@@ -247,3 +247,50 @@ func deref(p *int) any {
 	}
 	return *p
 }
+
+// TestRunGivesBeforeCleanupTheWorkspaceBeforeItIsRemoved is the moment a job's artifacts are
+// collected (#330): after the command, with its files still on disk, and before the cleanup
+// policy removes them — for a failure as for a success.
+func TestRunGivesBeforeCleanupTheWorkspaceBeforeItIsRemoved(t *testing.T) {
+	t.Parallel()
+	for _, code := range []int{0, 2} {
+		var seen []string
+		runner := &Runner{Workspaces: &Workspaces{Root: filepath.Join(t.TempDir(), "work")}}
+		runner.BeforeCleanup = func(workspace string, result Result) {
+			if _, err := os.Stat(workspace); err != nil {
+				t.Errorf("the workspace was gone before the hook: %v", err)
+			}
+			seen = append(seen, result.Outcome)
+		}
+		executor := &scripted{execute: func(context.Context) (int, error) { return code, nil }}
+		job := Job{ID: jobID(1), Kind: conn.ExecutorShell, Command: []string{"make"}, Workdir: "/", Env: []string{}, Timeout: time.Minute}
+
+		result := runner.Run(context.Background(), executor, job, Output{}, &recorder{})
+
+		if len(seen) != 1 || seen[0] != result.Outcome {
+			t.Errorf("exit %d: the hook saw %v; the result is %s", code, seen, result.Outcome)
+		}
+		if _, err := os.Stat(result.Workspace); !os.IsNotExist(err) {
+			t.Errorf("exit %d: the workspace survived cleanup: %v", code, err)
+		}
+	}
+}
+
+// TestRunCallsNoHookWithoutAWorkspace: a job whose workspace could not be created has nothing
+// to collect.
+func TestRunCallsNoHookWithoutAWorkspace(t *testing.T) {
+	t.Parallel()
+	blocker := filepath.Join(t.TempDir(), "file")
+	if err := os.WriteFile(blocker, nil, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	called := false
+	runner := &Runner{Workspaces: &Workspaces{Root: blocker}, BeforeCleanup: func(string, Result) { called = true }}
+	job := Job{ID: jobID(1), Kind: conn.ExecutorShell, Command: []string{"make"}, Workdir: "/", Env: []string{}, Timeout: time.Minute}
+
+	result := runner.Run(context.Background(), &scripted{}, job, Output{}, &recorder{})
+
+	if result.Outcome != conn.OutcomeErrored || called {
+		t.Fatalf("outcome %s, hook called %v", result.Outcome, called)
+	}
+}

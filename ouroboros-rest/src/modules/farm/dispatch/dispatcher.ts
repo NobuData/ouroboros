@@ -56,6 +56,7 @@ import { OFFER_ACK_MS } from "../gateway/gateway.policy";
 import type { Envelope } from "../protocol/protocol";
 import type { CancelReason } from "../protocol/protocol.messages";
 import { uuidOf, wireId } from "../protocol/ulid";
+import { FARM_OFFER_UPLOADS, type OfferUploads } from "../artifacts/upload.service";
 import { FARM_DISPATCH_GATE, type DispatchGate } from "./dispatch.gate";
 import {
   DECLINE_COOLDOWN_MS,
@@ -154,6 +155,7 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
    * @param gate - Whether a workspace may be dispatched to at all (#489's seam).
    * @param scheduler - Nest's registry, so the timer has a name.
    * @param now - The gateway's clock — the one `last_seen_at` is written with.
+   * @param uploads - Where an offer's single-use artifact upload token is minted (#330).
    */
   constructor(
     private readonly repository: DispatchRepository,
@@ -162,6 +164,7 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
     @Inject(FARM_DISPATCH_GATE) private readonly gate: DispatchGate,
     private readonly scheduler: SchedulerRegistry,
     @Inject(GATEWAY_CLOCK) private readonly now: GatewayClock,
+    @Inject(FARM_OFFER_UPLOADS) private readonly uploads: OfferUploads,
   ) {}
 
   /** Listen to the agents' answers, and start the loop. */
@@ -377,6 +380,11 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
   /**
    * Send an offer for a job just placed, or put the job back if it cannot be sent.
    *
+   * The offer carries the job's artifact upload (#330) — a single-use token minted here, so a job
+   * offered again gets a fresh one and the runner that did not take it holds a dead token. A token
+   * that cannot be minted is an offer that cannot be sent: results with nowhere to go would be
+   * dropped silently, so the job waits for the next pass instead.
+   *
    * @param placed - The job, offered in the database.
    * @param at - When it was placed.
    * @returns Whether the offer is in the runner's session.
@@ -387,10 +395,13 @@ export class DispatchService implements OnApplicationBootstrap, OnApplicationShu
     let sent: string | undefined;
 
     try {
+      const payload = offerPayload(placed, new Date(at.getTime() + OFFER_ACK_MS));
+      const upload = await this.uploads.forOffer(job, at, OFFER_ACK_MS + payload.timeout_s * 1000);
+
       sent = this.sessions.offer(
         job.organization_id,
         runnerId,
-        offerPayload(placed, new Date(at.getTime() + OFFER_ACK_MS)),
+        upload ? { ...payload, upload } : payload,
       );
     } catch (error) {
       // An offer this gateway would refuse to send is a record it cannot dispatch; the log is

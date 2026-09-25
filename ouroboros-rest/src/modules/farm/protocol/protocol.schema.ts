@@ -112,6 +112,10 @@ export const PATTERNS = {
   job: /^job_[0-9A-HJKMNP-TV-Z]{26}$/,
   commit: /^[0-9a-f]{40}$/,
   timestamp: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$/,
+  /** A path on the control plane's own origin — absolute, and never `//host` (#330). */
+  uploadPath: /^\/[A-Za-z0-9._~%-][A-Za-z0-9._~%/-]*$/,
+  /** An upload token: characters a header carries verbatim (#330). */
+  uploadToken: /^[A-Za-z0-9._~-]+$/,
 } as const;
 
 /** The ceiling on a `log.chunk`'s decoded bytes — `$defs/limits` in `v1.json`. */
@@ -432,6 +436,39 @@ export const SPECS: Readonly<Record<string, MessageSpec>> = {
       timestamp("expires_at"),
       // Added inside line 1 (#252): absent means a first attempt.
       { name: "attempt", kinds: Kind.Integer, min: 1, optional: true },
+      // Added inside line 1 (#330): absent for a job with nowhere to upload to.
+      {
+        name: "upload",
+        kinds: Kind.Object,
+        optional: true,
+        fields: [
+          {
+            name: "path",
+            kinds: Kind.String,
+            pattern: PATTERNS.uploadPath,
+            minLen: 2,
+            maxLen: 512,
+          },
+          {
+            name: "token",
+            kinds: Kind.String,
+            pattern: PATTERNS.uploadToken,
+            minLen: 32,
+            maxLen: 256,
+          },
+          timestamp("expires_at"),
+          {
+            name: "globs",
+            kinds: Kind.Array,
+            minItems: 1,
+            maxItems: 128,
+            item: { name: "", kinds: Kind.String, minLen: 1, maxLen: 256 },
+          },
+          { name: "max_file_bytes", kinds: Kind.Integer, min: 1 },
+          { name: "max_job_bytes", kinds: Kind.Integer, min: 1 },
+          { name: "max_files", kinds: Kind.Integer, min: 1, max: 1000 },
+        ],
+      },
     ],
     extra: offerExtra,
   },

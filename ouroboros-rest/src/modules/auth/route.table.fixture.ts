@@ -105,6 +105,11 @@ export const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   // runner is somebody else's machine and holds no such secret.
   `POST ${API_BASE_PATH}/farm/registrations`,
   `POST ${API_BASE_PATH}/farm/registrations/renewal`,
+  // A build job's artifact upload (#330, AT.2, decision T4). The caller is the runner that ran
+  // the job, over HTTPS rather than its control socket, holding no session: what authenticates it
+  // is the single-use token its `job.offer` carried, scoped to the one job in the path and
+  // useless after the upload closes. Every token failure is one opaque 401.
+  `POST ${API_BASE_PATH}/farm/jobs/:id/artifacts`,
   // The runner installer and its release files (#248, AG.6). The reader is `curl` on a machine
   // about to become a runner, piping the script into a shell: it holds no session and could not
   // be given one. What they hand out is public by construction — a released script and binaries

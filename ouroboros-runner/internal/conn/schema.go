@@ -218,6 +218,17 @@ var specs = map[Type]*messageSpec{
 			timestampField("expires_at"),
 			// Added inside line 1 (#252): absent means a first attempt.
 			{name: "attempt", kinds: kindInteger, min: num(1), optional: true},
+			// Added inside line 1 (#330): absent for a job with nowhere to upload to.
+			{name: "upload", kinds: kindObject, optional: true, fields: []field{
+				{name: "path", kinds: kindString, pattern: uploadPathRe, minLen: 2, maxLen: 512},
+				{name: "token", kinds: kindString, pattern: uploadTokenRe, minLen: 32, maxLen: 256},
+				timestampField("expires_at"),
+				{name: "globs", kinds: kindArray, minItems: 1, maxItems: 128,
+					item: &field{kinds: kindString, minLen: 1, maxLen: 256}},
+				{name: "max_file_bytes", kinds: kindInteger, min: num(1)},
+				{name: "max_job_bytes", kinds: kindInteger, min: num(1)},
+				{name: "max_files", kinds: kindInteger, min: num(1), max: num(1000)},
+			}},
 		},
 		extra: offerExtra,
 	},

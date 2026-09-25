@@ -50,6 +50,13 @@ type Runner struct {
 	Workspaces *Workspaces
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
+	// BeforeCleanup, when set, is called with a finished job's workspace and result after its
+	// command has ended and before the cleanup policy removes the workspace — the one moment
+	// the job's output files still exist. The agent collects and uploads artifacts here
+	// ([#330]); the job's finish is not reported until it returns.
+	//
+	// [#330]: https://github.com/NobuData/ouroboros/issues/330
+	BeforeCleanup func(workspace string, result Result)
 }
 
 // Run runs one job to its end and reports how it ended. It never returns early: when it
@@ -163,9 +170,12 @@ func (r *Runner) errored(result Result, now func() time.Time, reason *Failure) R
 	return r.finish(result, now)
 }
 
-// finish stamps the end and applies the cleanup policy.
+// finish stamps the end, gives BeforeCleanup its moment, and applies the cleanup policy.
 func (r *Runner) finish(result Result, now func() time.Time) Result {
 	result.FinishedAt = now()
+	if r.BeforeCleanup != nil && result.Workspace != "" {
+		r.BeforeCleanup(result.Workspace, result)
+	}
 	result.Kept, result.CleanupErr = r.Workspaces.Finish(result.Workspace, result.Outcome)
 	return result
 }

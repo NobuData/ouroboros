@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.37.4",
+    "version": "0.37.5",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -17746,6 +17746,101 @@
         }
       }
     },
+    "/api/v1/farm/jobs/{id}/artifacts": {
+      "post": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "Upload a build job's artifacts — the runner's job-scoped HTTPS path",
+        "description": "How a build's results leave its runner ([#330](https://github.com/NobuData/ouroboros/issues/330),\nAT.2, decision **T4**). **Not the control WebSocket**: one large rig capture on the socket\nthat carries heartbeats degrades exactly the channel that decides whether a runner looks\nalive, so artifacts ride their own request.\n\n**No session.** The caller is the runner that ran the job, and what authenticates it is the\n**single-use upload token** its `job.offer` carried (`docs/RUNNER_PROTOCOL.md`,\n`job.offer.upload`), sent as `Authorization: Bearer ouro_upl_…`. The token is scoped to the\njob in the path, expires with the job, is re-minted if the job is offered again, and closes\nwith the first accepted upload. **Every token failure is one opaque `401`**; the right\ntoken presented again after its upload closed is `409 farm_artifact_upload_closed`, so a\nrunner whose first response was lost can tell its upload was recorded. Either way a replay\nwrites nothing.\n\n**The body** is `multipart/form-data`: first a `manifest` field — the agent's account of\nevery file it collected, each with its size and SHA-256, including files it cut to the\nper-file cap (`truncated`) and files it left behind (`skipped`, with a reason) — then one\n`file` part per sent file, its manifest name (a relative path) as the part's filename.\n\n**What happens to it.** Every file is streamed to the configured `ArtifactStore` (the local\nvolume, or S3/MinIO — `OURO_ARTIFACT_STORE`) and verified against its checksum; the result\nfiles are parsed into the job's attempt (AT.1, `docs/TEST_RESULTS_INGEST.md`); each stored\nfile becomes a `test_artifacts` row with its retention date; and the upload closes with a\nreceipt — every file `stored`, `truncated` or `skipped` — and the job warnings the page\nrenders. **A quota breach is a warning, never a failure**: a file the workspace's\n`OURO_ARTIFACT_QUOTA_BYTES` has no room for is skipped with `artifact_quota_exceeded`, and\nthe build is untouched. **A corrupted upload keeps nothing** and leaves the token open, so\nthe runner retries it.",
+        "operationId": "uploadBuildJobArtifacts",
+        "security": [],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "description": "The build job's id — the path the offer's `upload.path` names.",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/ArtifactUploadRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The upload is closed: its receipt, its warnings and the parsed attempt's counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ArtifactUploadReceipt"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`farm_artifact_upload_refused` — the token is missing, wrong, for another job, expired\nor superseded by a later offer. One answer for all of them, with no detail.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`farm_artifact_upload_closed` — the right token, for an upload already accepted: a\ntoken is single use. Or `farm_artifact_job_unattributed` — the job is attributed to no\nrun, so there is no attempt for its results.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "`farm_artifact_too_large` — a file is past the per-file cap, or the upload past the\nper-job cap, that the offer carried. `details.capBytes` names the cap.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`farm_artifact_checksum_mismatch` — a file's bytes do not hash to its manifest\nchecksum; `details.file`, `details.declared` and `details.actual` say which and how.\nOr `farm_artifact_manifest_invalid` — the body is not a manifest followed by exactly\nthe files it lists, or a file is not the size it declared. Nothing from the upload is\nkept, and the token stays open.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed, the artifact store included. Nothing\nfrom the upload is kept. The message is a constant and `details` is empty,\ndeliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/farm/registrations": {
       "post": {
         "tags": [
@@ -32815,6 +32910,16 @@
             "minLength": 1,
             "maxLength": 64,
             "description": "The short label the runners table prints beside the number. The pool's name when absent."
+          },
+          "artifacts": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Files this build uploads beyond its pool's `artifactGlobs` and the built-in result set\n(JUnit, `ouro-hil-results*.json`, lcov and cobertura) — globs relative to the working\ndirectory, such as `logs/serial-console.log`\n([#330](https://github.com/NobuData/ouroboros/issues/330)). Distinct; no leading `/`,\nno `..` segment, no backslash. Snapshotted onto the job with the pool's."
           }
         },
         "example": {
@@ -33412,6 +33517,195 @@
           }
         }
       },
+      "ArtifactUploadRequest": {
+        "type": "object",
+        "title": "ArtifactUploadRequest",
+        "description": "A job's artifact upload ([#330](https://github.com/NobuData/ouroboros/issues/330)) — the\n`manifest` field first, then one `file` part per file it lists.",
+        "required": [
+          "manifest"
+        ],
+        "properties": {
+          "manifest": {
+            "type": "string",
+            "description": "JSON, at most 1 MiB — `{\"schema_version\": 1, \"files\": [{\"name\", \"size_bytes\",\n\"checksum\": \"sha256:<hex>\", \"truncated\"?: {\"original_bytes\", \"note\"}}], \"skipped\":\n[{\"name\", \"size_bytes\", \"reason\", \"detail\"}]}`. `reason` is `job_cap`, `max_files`,\n`unreadable`, `not_regular_file` or `outside_workspace`."
+          },
+          "file": {
+            "type": "array",
+            "maxItems": 256,
+            "items": {
+              "type": "string",
+              "format": "binary"
+            },
+            "description": "The files, each part's filename its manifest name."
+          }
+        }
+      },
+      "ArtifactUploadEntry": {
+        "type": "object",
+        "title": "ArtifactUploadEntry",
+        "description": "One collected file, as the receipt records what happened to it.",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "status",
+          "size_bytes"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "The path it was collected at, relative to the working directory."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "stored",
+              "truncated",
+              "skipped"
+            ]
+          },
+          "size_bytes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Bytes stored — or, for a skipped file, the size the agent reported."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "junit",
+              "hil",
+              "coverage",
+              "log",
+              "capture",
+              "other"
+            ]
+          },
+          "checksum": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "artifact_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The `test_artifacts` row."
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "job_cap",
+              "max_files",
+              "unreadable",
+              "not_regular_file",
+              "outside_workspace",
+              "quota"
+            ],
+            "description": "Why a file was skipped — `quota` is the workspace's quota; the rest are the agent's."
+          },
+          "note": {
+            "type": "string",
+            "description": "How a file was truncated, or why it was skipped, in the agent's words."
+          }
+        }
+      },
+      "ArtifactUploadWarning": {
+        "type": "object",
+        "title": "ArtifactUploadWarning",
+        "description": "A job warning the test-results page renders — a quota breach is one, and is never a job\nfailure.",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "file",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "artifact_quota_exceeded",
+              "artifact_truncated",
+              "artifact_skipped"
+            ]
+          },
+          "file": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          }
+        }
+      },
+      "ArtifactUploadReceipt": {
+        "type": "object",
+        "title": "ArtifactUploadReceipt",
+        "description": "A closed upload ([#330](https://github.com/NobuData/ouroboros/issues/330)).",
+        "additionalProperties": false,
+        "required": [
+          "job",
+          "testRun",
+          "files",
+          "warnings",
+          "results"
+        ],
+        "properties": {
+          "job": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testRun": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The attempt the results were parsed into."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactUploadEntry"
+            }
+          },
+          "warnings": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ArtifactUploadWarning"
+            }
+          },
+          "results": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The parsed attempt's counts, or `null` when the upload carried no result file.",
+            "additionalProperties": false,
+            "required": [
+              "total",
+              "passed",
+              "failed",
+              "flaky",
+              "skipped",
+              "parseWarnings"
+            ],
+            "properties": {
+              "total": {
+                "type": "integer"
+              },
+              "passed": {
+                "type": "integer"
+              },
+              "failed": {
+                "type": "integer"
+              },
+              "flaky": {
+                "type": "integer"
+              },
+              "skipped": {
+                "type": "integer"
+              },
+              "parseWarnings": {
+                "type": "integer",
+                "description": "How many `test_runs.parse_warnings` the parse left."
+              }
+            }
+          }
+        }
+      },
       "RunnerPool": {
         "type": "object",
         "title": "RunnerPool",
@@ -33428,6 +33722,7 @@
           "envAllowlist",
           "tags",
           "defaultCommand",
+          "artifactGlobs",
           "autoscalePref",
           "runners"
         ],
@@ -33492,6 +33787,13 @@
               "null"
             ],
             "description": "What a submission that names no command falls back to, as the canonical rendering of\nan argv."
+          },
+          "artifactGlobs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Files every build of this pool uploads beyond the built-in result set — globs relative\nto the working directory, such as a rig pool's `captures/*.csv`\n([#330](https://github.com/NobuData/ouroboros/issues/330))."
           },
           "autoscalePref": {
             "type": "object",
@@ -33592,6 +33894,16 @@
             },
             "description": "argv, never a shell string — the same bound a build submission's command carries."
           },
+          "artifactGlobs": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Files every build of this pool uploads beyond the built-in result set\n([#330](https://github.com/NobuData/ouroboros/issues/330)). Distinct globs relative to\nthe working directory; no leading `/`, no `..` segment, no backslash."
+          },
           "autoscalePref": {
             "type": "object",
             "additionalProperties": false,
@@ -33689,6 +34001,16 @@
               "type": "string",
               "maxLength": 4096
             }
+          },
+          "artifactGlobs": {
+            "type": "array",
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 256
+            },
+            "description": "Replaces the pool's artifact globs ([#330](https://github.com/NobuData/ouroboros/issues/330));\n`[]` clears them. Builds already submitted keep the globs they snapshotted."
           },
           "autoscalePref": {
             "type": "object",

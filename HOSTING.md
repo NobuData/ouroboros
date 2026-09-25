@@ -174,6 +174,9 @@ image sets `NODE_ENV=production`, which makes it bind all interfaces. Health:
 | `OURO_FARM_CLIENT_CERT_HEADER` | `x-ouro-client-cert` | Only because the gateway terminates TLS. See [§ 4](#4-the-build-farm-gateway): set it **only** if that header can reach REST through your gateway and nowhere else |
 | `OURO_FARM_RELEASES_DIR` | `/runner-releases` | Mount a volume holding `ouroboros-runner` releases (one directory per version) |
 | `OURO_FARM_MIN_AGENT_VERSION` | e.g. `0.5.0` | Oldest agent version accepted |
+| `OURO_ARTIFACT_DIR` | *(leave unset)* | Where build jobs' uploaded artifacts are kept — test reports, rig captures, serial logs ([#330](https://github.com/NobuData/ouroboros/issues/330)). Unset, it is `/app/.artifacts` in the image, a directory the service user owns; **mount a volume** there, or they are lost with the container. Point it elsewhere only at a directory that user can write. Back it up with the database: the rows point at these files |
+| `OURO_ARTIFACT_STORE` | `local` · `s3` | `local` is that volume. A volume is one disk, so **if you run more than one REST replica, use `s3`** — S3 itself, or MinIO — with `OURO_ARTIFACT_S3_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY_ID` and `_SECRET_ACCESS_KEY` (secret). The bucket must exist; REST never creates one |
+| `OURO_ARTIFACT_QUOTA_BYTES` · `_MAX_FILE_BYTES` · `_MAX_JOB_BYTES` · `_RETENTION_DAYS` | 10 GiB · 64 MiB · 256 MiB · 30 | Per-workspace quota, per-file and per-job caps, retention. A full quota warns on the job; it never fails the build |
 
 **Optional:**
 
@@ -232,6 +235,7 @@ Forward **only** these paths to REST:
 | `/runner/*` | Agent release downloads |
 | `/api/v1/farm/registrations*` | Enrollment and certificate renewal |
 | `/api/v1/farm/agent` | The agent's WebSocket (needs upgrade headers and a read timeout well above the 10 s heartbeat) |
+| `POST /api/v1/farm/jobs/<id>/artifacts` | A finished job's artifact upload ([#330](https://github.com/NobuData/ouroboros/issues/330)). Authenticated by a single-use token from the job's offer. Needs a **body limit above the per-job cap** (nginx's 1 MiB default refuses every real upload), **unbuffered** request streaming, and a read timeout of minutes |
 
 Everything else on this hostname should answer 404. A working gateway is
 [`tests/e2e/fixtures/farm-gateway/nginx.conf`](tests/e2e/fixtures/farm-gateway/nginx.conf). In
@@ -259,6 +263,13 @@ server {
     proxy_set_header   Connection "upgrade";
     proxy_set_header   X-Ouro-Client-Cert $ssl_client_escaped_cert;
     proxy_read_timeout 120s;
+    proxy_pass http://rest:4000;
+  }
+  # Artifact uploads: the per-job cap (256 MiB by default) plus multipart framing.
+  location ~ ^/api/v1/farm/jobs/[0-9a-f-]+/artifacts$ {
+    client_max_body_size    300m;
+    proxy_request_buffering off;
+    proxy_read_timeout      900s;
     proxy_pass http://rest:4000;
   }
   location / { return 404; }
@@ -362,7 +373,10 @@ services:
       OURO_FARM_CLIENT_CERT_HEADER: x-ouro-client-cert
       OURO_FARM_RELEASES_DIR: /runner-releases
       OURO_FARM_MIN_AGENT_VERSION: 0.5.0
-    volumes: [ouroboros-runner-releases:/runner-releases:ro]
+    volumes:
+      - ouroboros-runner-releases:/runner-releases:ro
+      # Build artifacts (#330) — OURO_ARTIFACT_DIR's default in the image. Or set OURO_ARTIFACT_STORE=s3.
+      - ouroboros-artifacts:/app/.artifacts
     restart: unless-stopped
     # No `ports:` — REST is internal.
 
@@ -385,6 +399,7 @@ services:
 volumes:
   ouroboros-db-data:
   ouroboros-runner-releases:
+  ouroboros-artifacts:
 ```
 
 The development `docker-compose.yml` differs on purpose: it publishes REST and the UI on

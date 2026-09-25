@@ -144,6 +144,12 @@ type Config struct {
 	// CacheRoot is where each pool's compiler cache lives, `<state-dir>/cache`. Empty runs
 	// jobs with no cache directory and reports no ccache statistics.
 	CacheRoot string
+	// UploadAttempts and UploadRetryDelay pace a job's artifact upload retries ([#330]). Zero
+	// means the artifacts package's defaults; a suite shortens them.
+	//
+	// [#330]: https://github.com/NobuData/ouroboros/issues/330
+	UploadAttempts   int
+	UploadRetryDelay time.Duration
 	// LogInterval and LogDrainWait override the log shipper's throttle and drain bound, for
 	// tests. Zero means logship's defaults.
 	LogInterval  time.Duration

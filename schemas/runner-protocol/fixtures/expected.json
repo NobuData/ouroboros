@@ -129,6 +129,13 @@
       "diagnostics": []
     },
     {
+      "name": "job-offer-upload",
+      "about": "A job whose results leave by the job-scoped upload (#330): its path on the control plane's origin, the single-use token, the globs and the caps.",
+      "document": "valid/job-offer-upload.json",
+      "valid": true,
+      "diagnostics": []
+    },
+    {
       "name": "job-accept",
       "about": "Taken -- naming the offer envelope, so a re-offer cannot be answered twice.",
       "document": "valid/job-accept.json",
@@ -387,6 +394,18 @@
       "document": "invalid/job-offer-attempt-range.json",
       "valid": false,
       "diagnostics": [{ "code": "payload.field.range", "path": "/payload/attempt" }]
+    },
+    {
+      "name": "job-offer-upload-path",
+      "about": "An upload path that is scheme-relative (`//host/...`). Refused: the agent resolves the path against the origin it already dials, and a path that names another host would hand it the token.",
+      "document": "invalid/job-offer-upload-path.json",
+      "valid": false,
+      "diagnostics": [
+        {
+          "code": "payload.field.type",
+          "path": "/payload/upload/path"
+        }
+      ]
     },
     {
       "name": "job-cancel-reason-enum",

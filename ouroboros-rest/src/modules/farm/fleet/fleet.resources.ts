@@ -235,6 +235,8 @@ export interface PoolResource {
   readonly tags: unknown;
   /** The command a submission that names none falls back to. */
   readonly defaultCommand: string | null;
+  /** Files every build of this pool uploads beyond the built-in result set (#330). */
+  readonly artifactGlobs: unknown;
   /**
    * The mockup's *"Auto-scale to cloud when queue > 5"*.
    *
@@ -416,6 +418,7 @@ export function poolResource(view: PoolView): PoolResource {
     envAllowlist: pool.env_allowlist,
     tags: pool.tags,
     defaultCommand: pool.default_command,
+    artifactGlobs: pool.artifact_globs,
     autoscalePref: pool.autoscale_pref,
     runners: view.runners,
   };

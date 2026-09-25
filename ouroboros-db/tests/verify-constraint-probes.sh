@@ -1415,6 +1415,46 @@ expect_red 'a coverage report may be registered without its counts' \
   'a coverage artifact carries the counts its report parsed to .*test_artifacts_coverage_counts did not fire' \
   'alter table ouroboros.test_artifacts drop constraint test_artifacts_coverage_counts;'
 
+# #330 (AT.2) adds the **job-scoped artifact upload**'s ledger. Three rules the upload route
+# trusts without re-checking: a token is kept only as its hash, a closed upload is single use,
+# and an artifact glob cannot name a path outside the job's workspace.
+#
+#   AT.2 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   the upload token is stored as a hash         drop build_job_artifact_uploads_token_hash_shape
+#   a closed upload is single use                rewrite build_job_artifact_uploads_lifecycle() without it
+#   artifact globs stay inside the workspace     drop runner_pools_artifact_globs_shape
+#
+# The single-use rule is a rewrite rather than a drop, for `route_chain_intact()`'s reason: the
+# same trigger also holds a ledger to its job, and dropping it would be caught by that assertion
+# first — a red run naming the wrong rule. The rewrite keeps the ownership check and forgets only
+# that a closed receipt is final.
+
+upload_single_use_rewrite="create or replace function ouroboros.build_job_artifact_uploads_lifecycle()
+returns trigger language plpgsql as \$probe\$
+begin
+  if new.build_job_id is distinct from old.build_job_id
+     or new.organization_id is distinct from old.organization_id then
+    raise exception 'upload ledger % belongs to its job', old.build_job_id
+      using errcode = 'check_violation', constraint = 'build_job_artifact_uploads_frozen';
+  end if;
+  return new;
+end;
+\$probe\$;"
+
+expect_red 'an upload token may be stored as itself' \
+  'an upload token is stored as its SHA-256, never as itself .*build_job_artifact_uploads_token_hash_shape did not fire' \
+  'alter table ouroboros.build_job_artifact_uploads
+     drop constraint build_job_artifact_uploads_token_hash_shape;'
+
+expect_red 'a closed upload may be re-minted' \
+  'a closed upload is single use: its token cannot be re-minted .*statement was accepted' \
+  "$upload_single_use_rewrite"
+
+expect_red 'an artifact glob may name a path outside the workspace' \
+  'an artifact glob is relative, never absolute .*statement was accepted' \
+  'alter table ouroboros.runner_pools drop constraint runner_pools_artifact_globs_shape;'
+
 
 printf '\n'
 if check_summary; then

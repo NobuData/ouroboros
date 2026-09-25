@@ -70,6 +70,12 @@ func (l *Log) Stdout() io.Writer { return stream{l, conn.StreamStdout} }
 // Stderr is the writer for the job's standard error.
 func (l *Log) Stderr() io.Writer { return stream{l, conn.StreamStderr} }
 
+// Runner is the agent's own lines in the job's log — the `runner` stream, which the console
+// renders apart from the build's output: what happened to the job's artifacts ([#330]), say.
+//
+// [#330]: https://github.com/NobuData/ouroboros/issues/330
+func (l *Log) Runner() io.Writer { return stream{l, conn.StreamRunner} }
+
 // stream is one of a Log's two writers.
 type stream struct {
 	log  *Log

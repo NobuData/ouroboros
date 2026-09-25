@@ -121,8 +121,11 @@ func (w written) streamAt(offset int) string {
 func (w *written) write(t testing.TB, log *Log, name string, p []byte) {
 	t.Helper()
 	writer := log.Stdout()
-	if name == conn.StreamStderr {
+	switch name {
+	case conn.StreamStderr:
 		writer = log.Stderr()
+	case conn.StreamRunner:
+		writer = log.Runner()
 	}
 	n, err := writer.Write(p)
 	if n != len(p) || err != nil {

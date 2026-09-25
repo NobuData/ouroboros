@@ -78,6 +78,12 @@ linters:
 
     misspell:
       locale: UK
+      # "artifact" is the domain's word, not a spelling: it is the protocol's (`job.offer.upload`),
+      # the control plane's (`/farm/jobs/:id/artifacts`, `test_artifacts`) and the page's, and a
+      # British "artefact" here would be the one place the three disagreed (#330).
+      ignore-rules:
+        - artifact
+        - artifacts
 
   exclusions:
     rules:

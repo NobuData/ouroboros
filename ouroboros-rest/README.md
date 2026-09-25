@@ -254,6 +254,17 @@ service never starts half-configured.
 | `OURO_FARM_PUBLIC_URL` | The https origin runner machines reach this deployment at — what [the runner installer](#the-runner-installer) writes into `/install.sh` as the agent's `--server` ([#248](https://github.com/NobuData/ouroboros/issues/248)). Unset, `OURO_REST_URL` is used when it is https |     no — unset     | an https origin, such as `https://ouroboros.acme.dev`                       |
 | `OURO_FARM_RELEASES_DIR` | Where [the runner installer](#the-runner-installer) serves `ouroboros-runner` releases from — one directory per version, as `make release` writes them ([#248](https://github.com/NobuData/ouroboros/issues/248)). Unset, no installer is served |     no — unset     | a directory, such as `../ouroboros-runner/dist`                             |
 | `OURO_FARM_LOG_BUDGET_BYTES` | The bytes of finished builds' logs one workspace keeps — [build logs](#build-logs)' retention sweep removes the oldest finished jobs' logs, whole, until a workspace is under it ([#253](https://github.com/NobuData/ouroboros/issues/253)) |     no — `2147483648`     | a whole number of bytes, 1 MiB to 1 TiB |
+| `OURO_ARTIFACT_STORE` | Which driver keeps [build artifacts](#build-artifacts) ([#330](https://github.com/NobuData/ouroboros/issues/330)): the local volume, or any S3-compatible store (S3 or MinIO). The swap is configuration only |     no — `local`     | `local` or `s3` |
+| `OURO_ARTIFACT_DIR` | The local volume's directory, resolved against the working directory — `/app/.artifacts` in the image, which its user owns and a deployment mounts a volume at |     no — `.artifacts`     | a path |
+| `OURO_ARTIFACT_S3_ENDPOINT` | The S3-compatible endpoint, addressed path-style |     with `s3`     | an http(s) origin, no path |
+| `OURO_ARTIFACT_S3_BUCKET` | The bucket — which must already exist |     with `s3`     | an S3 bucket name |
+| `OURO_ARTIFACT_S3_REGION` | The region S3 requests are SigV4-signed for |     no — `us-east-1`     | a region name |
+| `OURO_ARTIFACT_S3_ACCESS_KEY_ID` | The S3 access key id |     with `s3`     | a string |
+| `OURO_ARTIFACT_S3_SECRET_ACCESS_KEY` | The S3 secret access key — **redacted** from the boot log |     with `s3`     | a string |
+| `OURO_ARTIFACT_QUOTA_BYTES` | Live artifact bytes one workspace keeps; a file past it is skipped with a job **warning**, never a failure |     no — `10737418240`     | 1 KiB to 1 PiB |
+| `OURO_ARTIFACT_MAX_FILE_BYTES` | The per-file cap each offer carries; larger files are sent cut to it, as truncated |     no — `67108864`     | 1 KiB to 64 GiB |
+| `OURO_ARTIFACT_MAX_JOB_BYTES` | The per-job cap each offer carries; files past it are listed as skipped |     no — `268435456`     | at least the per-file cap, ≤ 64 GiB |
+| `OURO_ARTIFACT_RETENTION_DAYS` | Days an artifact is kept — its `retained_until` |     no — `30`     | 1–3650 |
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
 | `OURO_WORKFLOW_SKILL_SUGGESTIONS` | Skill names the [stage catalog](#the-stage-catalog) suggests to the workflow inspector ([#145](https://github.com/NobuData/ouroboros/issues/145)) — advice, never an enumeration |     no — unset     | comma-separated names, each at most 128 characters, none listed twice |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
@@ -3576,6 +3587,71 @@ the policy per class through the `FARM_LOG_RETENTION` token, and its defaults re
 **Known limits.** The reorder buffer and the rate guard live in one process, so after a restart
 or a reconnect to another replica, a gap in flight is recorded as lost chunks rather than waited
 for.
+
+## Build artifacts
+
+> **Issue:** [#330](https://github.com/NobuData/ouroboros/issues/330) — *[AT.2] Job artifact &
+> result upload* · epic [#321](https://github.com/NobuData/ouroboros/issues/321) · decision **T4**,
+> option **3-A** · schema `V060` ·
+> [`docs/RUNNER_PROTOCOL.md` § 4.3](../docs/RUNNER_PROTOCOL.md#the-artifact-upload) ·
+> [`docs/TEST_RESULTS_INGEST.md` § 9](../docs/TEST_RESULTS_INGEST.md#9-the-upload-that-feeds-it-330)
+
+How a build's results get off its runner — `src/modules/farm/artifacts/`. **Not the control
+WebSocket**: a large rig capture on the socket that carries heartbeats degrades exactly the channel
+that decides whether a runner looks alive. So dispatch mints a single-use token with every offer of
+a run's build (`job.offer.upload`), and the agent uploads over HTTPS before it reports the finish.
+
+```
+dispatch ─▶ forOffer(job)   no run? no upload · mint ouro_upl_… ─▶ SHA-256 into the ledger (V060)
+agent    ─▶ POST /api/v1/farm/jobs/:id/artifacts   Bearer token · multipart: manifest, then files
+  token ✓ ─▶ manifest ✓ ─▶ caps ✓ ─▶ quota plan ─▶ stream each file: sha256 · size · head ─▶ store
+  ─▶ checksum ✓ ─▶ the attempt (test_runs) ─▶ parse the result files (AT.1)
+  ─▶ one transaction: test_artifacts rows · receipt (manifest + warnings) · attempt complete · token closed
+```
+
+| Route | Role | What it answers |
+|---|---|---|
+| `POST /api/v1/farm/jobs/:id/artifacts` | the runner, by the job's upload token — no session | `201` the receipt: every file `stored`, `truncated` or `skipped` with its reason, the job warnings, and the parsed attempt's counts. `401 farm_artifact_upload_refused` for every token failure (one answer, no detail); `409 farm_artifact_upload_closed` for the right token after its upload closed; `422 farm_artifact_checksum_mismatch` or `farm_artifact_manifest_invalid`; `413 farm_artifact_too_large` past a cap |
+
+**`/api/v1/farm/*`, not `/internal/*`.** The issue drew the route under `/internal`, but that is
+the engine's surface — behind the shared secret, and one a farm host must never expose
+(`HOSTING.md`). A runner is outside the network and already reaches `/api/v1/farm/`; the route is
+`@AllowAnonymous()` in `registration.controller.ts`'s sense — no session, and a credential named in
+the handler.
+
+**The `ArtifactStore` is an interface from day one.** `local.store.ts` is a directory (writes land
+in a temporary file and are renamed into place); `s3.store.ts` is S3 or MinIO, path-style, signed
+with a hand-written SigV4 (`sigv4.ts`, held to AWS's published example) rather than the AWS SDK.
+`OURO_ARTIFACT_STORE` picks one, and each row records `{driver, key}`. A local volume does not
+scale horizontally — two replicas do not share a disk — which is why the swap exists; migration
+tooling is AV.5 ([#347](https://github.com/NobuData/ouroboros/issues/347)).
+`artifact.store.contract.fixture.ts` is the one suite both drivers pass unchanged: in the unit
+suite against a temporary directory and an in-process S3 stand-in, and in the integration suite
+against the store the artifact store variables configure — the local volume, then a real MinIO
+(`minio.fixture.ts`, Testcontainers).
+
+**Nothing is dropped silently.** A file the agent cut to the per-file cap is stored with
+`truncated` and its note; a file it left behind, and a file the workspace's quota had no room for,
+are in the receipt as skipped, with the reason — and each is a job warning
+(`artifact_truncated`, `artifact_skipped`, `artifact_quota_exceeded`). **A quota breach never fails
+the build.** The receipt is `build_job_artifact_uploads`, `build_jobs`' result linkage, for the page
+to render (AT.5, [#333](https://github.com/NobuData/ouroboros/issues/333)).
+
+**A corrupted upload keeps nothing.** Every file is hashed as it streams to the store, and a
+mismatch, a malformed manifest or a store failure removes every object the request wrote and
+leaves the token open for the agent's retry. Objects are keyed `<org>/<job>/<request>/<name>`, so
+two requests racing with one token never write the same object; the closing transaction locks the
+ledger, and the loser is answered as a replay.
+
+**What a submission and a pool add.** `POST /api/v1/farm/jobs` takes `artifacts` — extra globs,
+such as `logs/serial-console.log` — and a pool's `artifactGlobs` (`captures/*.csv`) apply to all
+its builds; the job snapshots both at submit time. The offer adds the built-in result set first
+(`**/junit*.xml`, `**/ouro-hil-results*.json`, `**/lcov*.info`, `**/coverage*.xml`,
+`**/cobertura*.xml`), so the agent collects results before captures when the caps bite.
+
+**Known limits.** The quota is checked when an upload starts, so two uploads of one workspace in
+the same instant can together pass it by one upload. An upload is one request: a retry resends
+the whole collection, because the service keeps nothing from an attempt it did not accept.
 
 ## The farm page
 

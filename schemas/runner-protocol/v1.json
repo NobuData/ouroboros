@@ -386,6 +386,21 @@
           "description": "Which attempt of the build this job is: 2 for the automatic retry of an infrastructure failure (#252). The agent reports it back in `job.start` and `job.finish`. Optional only because it was added inside line 1 (docs/RUNNER_PROTOCOL.md section 3): absent means 1, and the gateway omits it on a first attempt.",
           "type": "integer",
           "minimum": 1
+        },
+        "upload": {
+          "description": "Where and how this job's results leave the agent (#330, decision T4): a job-scoped HTTPS upload, never this socket, because a large rig capture on the control channel degrades exactly the channel that decides whether a runner looks alive. Absent when the job has nothing to upload to -- a build no run is attributed to. Optional only because it was added inside line 1 (docs/RUNNER_PROTOCOL.md section 3). `token` is the one credential a dispatch carries: single-use, scoped to this job, useless after `expires_at` and never logged by either side.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path", "token", "expires_at", "globs", "max_file_bytes", "max_job_bytes", "max_files"],
+          "properties": {
+            "path": { "description": "The upload's path on the control plane's own origin -- the agent resolves it against the URL it already dials, so a dispatch cannot send the token to any other host. Absolute, and never `//`-prefixed.", "type": "string", "minLength": 2, "maxLength": 512, "pattern": "^/[A-Za-z0-9._~%-][A-Za-z0-9._~%/-]*$" },
+            "token": { "description": "The single-use upload token, sent as `Authorization: Bearer <token>`.", "type": "string", "minLength": 32, "maxLength": 256, "pattern": "^[A-Za-z0-9._~-]+$" },
+            "expires_at": { "$ref": "#/$defs/timestamp" },
+            "globs": { "description": "What to collect, relative to the job's working directory: the built-in result set, the pool's globs and the job's own. `**` matches any number of directories.", "type": "array", "minItems": 1, "maxItems": 128, "items": { "type": "string", "minLength": 1, "maxLength": 256 } },
+            "max_file_bytes": { "description": "The per-file cap. A larger file is uploaded cut to this many bytes and listed as truncated, never dropped silently.", "type": "integer", "minimum": 1 },
+            "max_job_bytes": { "description": "The per-job cap on everything uploaded. A file past it is listed as skipped, with the reason.", "type": "integer", "minimum": 1 },
+            "max_files": { "description": "The most files one upload carries. Matches past it are listed as skipped.", "type": "integer", "minimum": 1, "maximum": 1000 }
+          }
         }
       },
       "allOf": [
