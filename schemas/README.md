@@ -18,6 +18,12 @@ every consumer reads the same artifact rather than each inventing a parser.
 
 ```
 schemas/
+├── hil-results/
+│   ├── v1.json                  # the contract — $id: …/hil-results/v1.json, JSON Schema 2020-12
+│   └── fixtures/
+│       ├── expected.json        # every document below and whether v1.json accepts it
+│       ├── valid/
+│       └── invalid/
 ├── plan/
 │   ├── v0.json                  # the contract — $id: …/plan/v0.json, JSON Schema 2020-12
 │   └── fixtures/
@@ -64,6 +70,8 @@ schemas/
 | [`ouroboros-engine/src/ouroboros_engine/planning/`](../ouroboros-engine/src/ouroboros_engine/planning) | `POST /v0/plan` (AL.1) — the outline parser, which is the contract's first implementation | `tests/test_planning_golden.py` (every recorded case's batch verbatim, every response valid against `plan/v0.json`, and the schema and the pydantic models agreeing field for field) |
 | [`ouroboros-runner/internal/conn/`](../ouroboros-runner/internal/conn) | the Go agent's protocol codec and validator (AG.1) — the runner contract's first implementation | `protocol_test.go` (every case's diagnostics, code and path, in the contract's order; every transcript replayed; every message type and every code covered), `frame_test.go` (the encoder reproduces a committed frame byte for byte) and `limits_test.go` (the Go constants are the schema's published limits, and the two over-limit cases built from them) |
 | [`ouroboros-rest/src/modules/farm/protocol/`](../ouroboros-rest/src/modules/farm/protocol) | the farm gateway's protocol codec (AH.3, [#251](https://github.com/NobuData/ouroboros/issues/251)) — the runner contract's second implementation, a table-for-table port of the Go one | `protocol.spec.ts` (every case's diagnostics, code and path, in the contract's order; every transcript's frames decoded and held to their direction; every fixture named by a case; the TypeScript constants are the schema's published limits, and the two over-limit cases built from them), and `gateway/agent.gateway.integration-spec.ts`, which replays the session transcripts against the running gateway in both directions |
+| [`ouroboros-rest/src/modules/test-results/`](../ouroboros-rest/src/modules/test-results) | the result parser (AT.1, [#329](https://github.com/NobuData/ouroboros/issues/329)) — reads a rig's `ouro-hil-results.json` into V053's measurements, dropping only the smallest invalid element | `hil.schema.spec.ts` (the embedded copy is exactly `hil-results/v1.json`, and classifies every fixture as `expected.json` records) |
+| [`docs/TEST_RESULTS_INGEST.md`](../docs/TEST_RESULTS_INGEST.md) | the HIL results contract a person reads | Its worked example is `hil-results/fixtures/valid/helios-rig.json` |
 | [`docs/RUNNER_PROTOCOL.md`](../docs/RUNNER_PROTOCOL.md) | the runner wire contract a person reads | [`scripts/verify-runner-protocol.sh`](../scripts/verify-runner-protocol.sh) — every message type has a section, a fixture and a case; every example in the document is the committed fixture; every fixture is asserted against; the limits agree |
 
 `plan/v0.json` is here for a reason the workflow DSL's `$id` neighbour is not: **it is one
@@ -89,7 +97,7 @@ halves on the pull request that makes it. `ci/db` watches `workflow-dsl/v1.json`
 that file: its drift check validates the seeded workflow definitions against the schema, so a
 schema edit that leaves the seeds behind fails on the pull request that makes it rather than in
 the studio later. `ci/runner` and — since the farm gateway ([#251](https://github.com/NobuData/ouroboros/issues/251))
-made `ouroboros-rest` the contract's second implementation — `ci/rest` watch `runner-protocol/**`.
+made `ouroboros-rest` the contract's second implementation — `ci/rest` watch `runner-protocol/**`. `ci/rest` alone watches `hil-results/**` ([#329](https://github.com/NobuData/ouroboros/issues/329)): the result parser is its only reader until the runner's upload path validates what it sends.
 
 **Those filters name each contract rather than the directory**, and that changed when
 `runner-protocol/` arrived ([#243](https://github.com/NobuData/ouroboros/issues/243)): both

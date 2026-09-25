@@ -1,0 +1,64 @@
+{
+  "schema": "ouro-hil-results",
+  "schema_version": 1,
+  "rig": "helios-rig-02",
+  "bench": 42,
+  "suites": [
+    {
+      "name": "PHYSICAL · HIL rig",
+      "cases": [
+        {
+          "classname": "hil.motor",
+          "name": "estop_release_overshoot",
+          "procedure": "dyno bench releases e-stop under 2 Nm load, 3 trials",
+          "measurements": [
+            {
+              "metric": "overshoot_pct",
+              "value": 2.4,
+              "unit": "%",
+              "limit": 2.0,
+              "direction": "max"
+            },
+            { "metric": "settle_ms", "value": 310, "unit": "ms", "direction": "max" },
+            {
+              "metric": "peak_rpm",
+              "value": 1228.8,
+              "unit": "rev per min",
+              "limit": 1260,
+              "direction": "max"
+            },
+            {
+              "metric": "overshoot_pct",
+              "value": 2.1,
+              "unit": "%",
+              "limit": 2.0,
+              "direction": "max"
+            }
+          ]
+        },
+        {
+          "classname": "hil.can",
+          "name": "bus_flood_frame_order",
+          "measurements": [
+            {
+              "metric": "reordered_frames",
+              "value": 0,
+              "unit": "count",
+              "limit": 0,
+              "direction": "max"
+            }
+          ]
+        },
+        {
+          "classname": "hil.power",
+          "name": "brownout_recovery",
+          "procedure": "power-cycler drops VCC to 2.7 V for 50 ms",
+          "measurements": [
+            { "metric": "Reboot", "value": 180, "unit": "ms", "limit": 250, "direction": "max" }
+          ]
+        }
+      ]
+    },
+    { "cases": [] }
+  ]
+}

@@ -33,6 +33,11 @@ name: ouroboros-rest · ci
 # the unit suite, beside the Go agent's own parity test in ci/runner: a fixture edited without
 # this filter would run only one of the two halves, which is how they would quietly disagree.
 #
+# schemas/hil-results/** is here because of AT.1 (#329): the result parser embeds that contract
+# and its unit suite holds the embedded copy to v1.json and to every verdict in its expected.json.
+# An edit to the published schema that did not run this suite would leave the parser validating
+# rig uploads against the old rules.
+#
 # ouroboros-engine/openapi.yaml is here because of R.4 (#146). The engine stub every integration
 # suite talks to holds each request it receives and each answer it serves to that document, read
 # at test time. An engine contract change that ran only ci/engine would leave this module's stub —
@@ -61,6 +66,7 @@ on:
       - "schemas/workflow-dsl/**"
       - "schemas/plan/**"
       - "schemas/runner-protocol/**"
+      - "schemas/hil-results/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docs/mockups/10-run-detail.html"
@@ -83,6 +89,7 @@ on:
       - "schemas/workflow-dsl/**"
       - "schemas/plan/**"
       - "schemas/runner-protocol/**"
+      - "schemas/hil-results/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docs/mockups/10-run-detail.html"

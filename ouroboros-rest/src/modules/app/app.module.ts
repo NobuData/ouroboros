@@ -37,6 +37,7 @@ import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
 import { PlanningModule } from "../planning/planning.module";
 import { PullRequestsModule } from "../pull-requests/pull-requests.module";
+import { TestResultsModule } from "../test-results/test-results.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { AppController } from "./app.controller";
@@ -360,6 +361,9 @@ export class AppModule {
         // into V052's mirror. After `TicketSourcesModule` for the same reasons as the push; it
         // declares no route yet, so its position carries no routing rule.
         PullRequestsModule,
+        // AT.1 ([#329](https://github.com/NobuData/ouroboros/issues/329)) — the result parser SPI
+        // and parse orchestration over V051/V053's tree. No route; the upload path (#330) calls it.
+        TestResultsModule,
         // M.4 ([#113](https://github.com/NobuData/ouroboros/issues/113)) — the intake screen's
         // API surface, and the first routes over anything the sync wrote. After the two
         // modules it imports; the rest of Epic M's controllers land in it.

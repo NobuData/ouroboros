@@ -4076,6 +4076,11 @@ export interface WorkspaceSettingsEffectiveView {
  * is the one thing that table is shaped to prevent. A re-evaluation is a new row in
  * `guardrail_evaluations`, which {@link Database} also declares.
  *
+ * **`test_run_coverage` (V059, [#328](https://github.com/NobuData/ouroboros/issues/328)) is the
+ * ninth**: an aggregate with a window function, which PostgreSQL would refuse a write through.
+ * The percentage and delta are computed from `test_artifacts`' line counts; AT.1
+ * ([#329](https://github.com/NobuData/ouroboros/issues/329)) reads it for the prior attempt.
+ *
  * `schema.spec.ts` holds this list to the view interfaces above; `db.integration-spec.ts`
  * compares their columns against `information_schema` exactly as it does a table's, because a
  * view that lost a column breaks a query the same way a table that lost one does.
@@ -4089,6 +4094,7 @@ export const READ_ONLY_VIEWS = [
   "runs_with_stage",
   "run_events_jsonl",
   "v_run_guardrails_latest",
+  "test_run_coverage",
 ] as const;
 
 /**
@@ -4468,6 +4474,171 @@ export interface RunnerTerminalFramesTable {
   received_at: ColumnType<Date, Date | undefined, never>;
 }
 
+/** `test_runs.status` — where an attempt's results stand (V051, [#324](https://github.com/NobuData/ouroboros/issues/324)). */
+export type TestRunStatus = "running" | "complete" | "error";
+
+/**
+ * `ouroboros.test_runs` — one results tree per build attempt (V051, decision **T1**): mockup 11's
+ * *Build 1 · 2 · 3*.
+ *
+ * Unique by `(run_id, attempt_seq)`; `run_id` and `attempt_seq` are frozen once written
+ * (`test_runs_identity_frozen`). The five counts are a cache of `test_run_counts_computed`,
+ * rewritten by `ouroboros.test_run_recount()` after every parse (AT.1,
+ * [#329](https://github.com/NobuData/ouroboros/issues/329)). No `delete` is granted.
+ */
+export interface TestRunsTable {
+  id: Generated<string>;
+  organization_id: string;
+  run_id: string;
+  /** The farm job that produced it; null once the job is pruned. */
+  build_job_id: string | null;
+  /** Build 1 · 2 · 3 — the ordinal within its run, from 1. */
+  attempt_seq: number;
+  commit_sha: string | null;
+  total: Generated<number>;
+  passed: Generated<number>;
+  /** Cases with status `failed` **or** `error`. */
+  failed: Generated<number>;
+  flaky: Generated<number>;
+  skipped: Generated<number>;
+  /** Wall time — a `bigint`, so a `string`. All three null, or all set with wall = sim + physical. */
+  wall_ms: ColumnType<string | null, string | number | null | undefined, string | number | null>;
+  sim_ms: ColumnType<string | null, string | number | null | undefined, string | number | null>;
+  physical_ms: ColumnType<
+    string | null,
+    string | number | null | undefined,
+    string | number | null
+  >;
+  status: Generated<TestRunStatus>;
+  started_at: Generated<Date>;
+  /** What the parser could not read but did not refuse the report over — a JSON array. */
+  parse_warnings: ColumnType<unknown[], string | undefined, string>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `test_suites.kind` — which half of the wall-time split a suite belongs to (V051). */
+export type TestSuiteKind = "sim" | "physical";
+
+/** `test_suites.results_format` — JUnit alone, or `ouro-hil-results.json` (V053). */
+export type TestSuiteResultsFormat = "junit" | "hil";
+
+/**
+ * `ouroboros.test_suites` — one suite on one platform within an attempt (V051): a row of the
+ * suites card. Unique by `(test_run_id, name, platform)`; `name` and `results_format` are frozen.
+ */
+export interface TestSuitesTable {
+  id: Generated<string>;
+  organization_id: string;
+  test_run_id: string;
+  name: string;
+  /** `native_sim`, `qemu_cortex_m3`, `rig:helios-rig-02`. A `rig:` platform is always physical. */
+  platform: string;
+  kind: TestSuiteKind;
+  total: Generated<number>;
+  passed: Generated<number>;
+  failed: Generated<number>;
+  flaky: Generated<number>;
+  skipped: Generated<number>;
+  /** Parser-specific detail — a JSON object; a rig's bench is `meta.bench`. */
+  meta: ColumnType<Record<string, unknown>, string | undefined, string>;
+  created_at: Stamped;
+  results_format: Generated<TestSuiteResultsFormat>;
+}
+
+/** `test_cases.status` (V051). */
+export type TestCaseStatus = "passed" | "failed" | "flaky" | "skipped" | "error";
+
+/** One attempt's outcome in `test_cases.retry_outcomes` (V051). */
+export type TestAttemptOutcome = "passed" | "failed" | "error" | "skipped";
+
+/** `test_cases.failure` — each field optional, each a string when present (V051). */
+export interface TestCaseFailure {
+  message?: string;
+  log_excerpt?: string;
+  path?: string;
+}
+
+/**
+ * `ouroboros.test_cases` — one case's result within a suite (V051), retries included.
+ *
+ * `case_key` is the durable identity (decision **T2**): derived by `test_cases_derive_case_key`
+ * when written null, refused when it disagrees with `ouroboros.test_case_key()`.
+ */
+export interface TestCasesTable {
+  id: Generated<string>;
+  organization_id: string;
+  test_suite_id: string;
+  /** 64 lowercase hex digits. Optional on insert — the trigger derives it. */
+  case_key: ColumnType<string, string | null | undefined, string>;
+  name: string;
+  classname: string | null;
+  status: TestCaseStatus;
+  /** Re-attempts after the first. */
+  retries: Generated<number>;
+  /** Every attempt's outcome in order — `retries + 1` entries. */
+  retry_outcomes: ColumnType<TestAttemptOutcome[], string, string>;
+  /** A `bigint`, so a `string`. */
+  duration_ms: ColumnType<
+    string | null,
+    string | number | null | undefined,
+    string | number | null
+  >;
+  failure: ColumnType<TestCaseFailure | null, string | null | undefined, string | null>;
+  meta: ColumnType<Record<string, unknown>, string | undefined, string>;
+  created_at: Stamped;
+}
+
+/** `hil_measurements.limit_kind` (V053). */
+export type HilLimitKind = "max" | "min";
+
+/** `hil_measurements.verdict` (V053) — always `ouroboros.hil_verdict(value, limit_value, limit_kind)`. */
+export type HilVerdict = "pass" | "fail";
+
+/**
+ * `ouroboros.hil_measurements` — one metric measured on one physical case (V053,
+ * [#325](https://github.com/NobuData/ouroboros/issues/325)). Only a `results_format = 'hil'`
+ * suite's cases carry them. `value` and `limit_value` are `numeric`, so strings.
+ */
+export interface HilMeasurementsTable {
+  id: Generated<string>;
+  organization_id: string;
+  test_case_id: string;
+  /** The what-it-did line — the same for every measurement of a case. */
+  procedure: string;
+  /** Trial objects in the order they ran. */
+  trials: ColumnType<Record<string, unknown>[], string | undefined, string>;
+  metric: string;
+  value: ColumnType<string, string | number, string | number>;
+  unit: string;
+  limit_value: ColumnType<string, string | number, string | number>;
+  limit_kind: HilLimitKind;
+  verdict: HilVerdict;
+  /** "was 37 in build 1" — composed by the trigger when written null, never typed. */
+  context: ColumnType<string | null, null | undefined, null>;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.test_run_coverage` — one row per attempt with a coverage artifact (V059,
+ * [#328](https://github.com/NobuData/ouroboros/issues/328)): the summed line counts, the
+ * percentage to one decimal and the delta against the previous attempt with coverage. Read-only.
+ */
+export interface TestRunCoverageView {
+  test_run_id: string;
+  organization_id: string;
+  run_id: string;
+  attempt_seq: number;
+  /** `bigint` sums, so strings. */
+  lines_covered: string;
+  lines_total: string;
+  /** `numeric`, so a string. */
+  percent: string;
+  previous_attempt_seq: number | null;
+  /** `numeric` percentage points; null when there is no earlier attempt with coverage. */
+  delta: string | null;
+}
+
 export interface Database {
   user: UserTable;
   tenant_domains: TenantDomainsTable;
@@ -4525,6 +4696,10 @@ export interface Database {
   build_jobs: BuildJobsTable;
   build_log_chunks: BuildLogChunksTable;
   runner_terminal_frames: RunnerTerminalFramesTable;
+  test_runs: TestRunsTable;
+  test_suites: TestSuitesTable;
+  test_cases: TestCasesTable;
+  hil_measurements: HilMeasurementsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -4534,6 +4709,7 @@ export interface Database {
   runs_with_stage: RunsWithStageView;
   run_events_jsonl: RunEventsJsonlView;
   v_run_guardrails_latest: RunGuardrailsLatestView;
+  test_run_coverage: TestRunCoverageView;
 }
 
 /**
@@ -5186,6 +5362,73 @@ export const TABLE_COLUMNS = {
     "applied",
     "received_at",
   ],
+  test_runs: [
+    "id",
+    "organization_id",
+    "run_id",
+    "build_job_id",
+    "attempt_seq",
+    "commit_sha",
+    "total",
+    "passed",
+    "failed",
+    "flaky",
+    "skipped",
+    "wall_ms",
+    "sim_ms",
+    "physical_ms",
+    "status",
+    "started_at",
+    "parse_warnings",
+    "created_at",
+    "updated_at",
+  ],
+  test_suites: [
+    "id",
+    "organization_id",
+    "test_run_id",
+    "name",
+    "platform",
+    "kind",
+    "total",
+    "passed",
+    "failed",
+    "flaky",
+    "skipped",
+    "meta",
+    "created_at",
+    "results_format",
+  ],
+  test_cases: [
+    "id",
+    "organization_id",
+    "test_suite_id",
+    "case_key",
+    "name",
+    "classname",
+    "status",
+    "retries",
+    "retry_outcomes",
+    "duration_ms",
+    "failure",
+    "meta",
+    "created_at",
+  ],
+  hil_measurements: [
+    "id",
+    "organization_id",
+    "test_case_id",
+    "procedure",
+    "trials",
+    "metric",
+    "value",
+    "unit",
+    "limit_value",
+    "limit_kind",
+    "verdict",
+    "context",
+    "created_at",
+  ],
   planning_epic_progress: [
     "epic_id",
     "organization_id",
@@ -5301,6 +5544,17 @@ export const TABLE_COLUMNS = {
     "policy_ref",
     "evaluated_at",
     "change_set_seq",
+  ],
+  test_run_coverage: [
+    "test_run_id",
+    "organization_id",
+    "run_id",
+    "attempt_seq",
+    "lines_covered",
+    "lines_total",
+    "percent",
+    "previous_attempt_seq",
+    "delta",
   ],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
 
