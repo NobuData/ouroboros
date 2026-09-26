@@ -350,6 +350,32 @@
 # whether an artifact may be registered without one, because the column's `not null` made the
 # question look answered.
 #
+# #356 (AW.5) adds the **PR domain**'s — the rules mockup 12's seeded page stands on, one probe
+# per AW.5 `ci/db` scope bullet:
+#
+#   AW.5 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   PR state machine                             rewrite pull_requests_state_transition() to admit merged → open
+#   merge-plan state machine                     drop pr_merge_plans_armed_complete
+#   verdict vocabulary coverage (unavailable)    widen pr_gate_results_verdict by one word
+#   gate evidence resolves in its workspace      rewrite pr_gate_evidence_ref_resolves() to forget the workspace
+#   criterion evidence resolves                  drop the pr_criteria_evidence_resolves trigger
+#   one merge plan per PR                        drop pr_merge_plans_pr_key
+#   identity honesty                             drop pr_merge_plans_identity_not_bot
+#   verified requires evidence                   drop the pr_criteria_verified_has_evidence trigger
+#
+# **Every one is caught before constraints.sql reaches AW.5's own section**, by the V052 and
+# V056–V058 sections that #352–#355 wrote rule by rule — so each marker is that section's
+# assertion, which names the rule that went. AW.5's section stands behind them, and is what
+# covers each machine and each evidence kind from one PR's point of view.
+#
+# Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
+# is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
+# by the latter first, so the rewrite reads the function back from the catalogue and adds the one
+# forbidden edge, `merged → open`. **The evidence resolver** answers for four kinds and for the
+# workspace; the rewrite keeps every existence check and drops only the workspace, which is the
+# cross-tenant link a sync bug would write.
+#
 # Usage:
 #   ouroboros-db/tests/verify-constraint-probes.sh              # against OURO_DB_*'s server
 #   ouroboros-db/tests/verify-constraint-probes.sh --runner docker
@@ -506,7 +532,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console, #328 test results\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console, #328 test results, #356 PR domain\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -1454,6 +1480,84 @@ expect_red 'a closed upload may be re-minted' \
 expect_red 'an artifact glob may name a path outside the workspace' \
   'an artifact glob is relative, never absolute .*statement was accepted' \
   'alter table ouroboros.runner_pools drop constraint runner_pools_artifact_globs_shape;'
+
+# ---------------------------------------------------------------------------
+# The PR domain's rules (#356: the PR and merge-plan machines, the verdict vocabulary, evidence
+# resolution, one plan per PR, identity honesty, and verified-requires-evidence).
+#
+# Each fails quietly if lost. A reopened merge is a PR page that disagrees with the host forever;
+# an arm without its revision is a merge nobody can re-check; a seventh verdict is a gate row the
+# card draws nothing for; a cross-workspace citation is another tenant's build on this page; a
+# hunk of an untouched file is evidence that proves nothing; two plans are two answers to "how
+# will this merge"; a [bot] identity on a token merge misstates who is accountable; and a verified
+# claim with no evidence is the free-text matrix V6 exists to prevent.
+# ---------------------------------------------------------------------------
+
+pr_state_merged_reopens="set local search_path = ouroboros, public;
+do \$mutate\$
+declare
+  def text;
+begin
+  def := pg_get_functiondef('ouroboros.pull_requests_state_transition()'::regprocedure);
+  if position('(''closed'',    ''open'')' in def) = 0 then
+    raise exception 'pull_requests_state_transition() no longer lists closed → open';
+  end if;
+  execute replace(def, '(''closed'',    ''open'')', '(''closed'',    ''open''), (''merged'', ''open'')');
+end
+\$mutate\$;
+set local search_path = \"\$user\", public;"
+
+gate_evidence_any_workspace="create or replace function ouroboros.pr_gate_evidence_ref_resolves(p_organization_id text, p_ref jsonb)
+returns boolean language sql stable security definer set search_path = pg_catalog, ouroboros, pg_temp
+as \$probe\$
+  select case
+           when p_ref is null then true
+           when not ouroboros.pr_gate_evidence_ref_shaped(p_ref) then false
+           when p_ref ->> 'kind' = 'build_job' then exists (
+             select 1 from ouroboros.build_jobs j where j.id = (p_ref ->> 'id')::uuid)
+           when p_ref ->> 'kind' = 'test_run' then exists (
+             select 1 from ouroboros.test_runs t where t.id = (p_ref ->> 'id')::uuid)
+           when p_ref ->> 'kind' = 'hil_measurement' then exists (
+             select 1 from ouroboros.hil_measurements m where m.id = (p_ref ->> 'id')::uuid)
+           when p_ref ->> 'kind' = 'guardrail_evaluation' then exists (
+             select 1 from ouroboros.guardrail_evaluations g where g.id = (p_ref ->> 'id')::uuid)
+           else false
+         end
+\$probe\$;"
+
+expect_red 'a merged PR may be reopened' \
+  'merged is terminal — not even a reopen' \
+  "$pr_state_merged_reopens"
+
+expect_red 'a merge plan may be armed without saying when or against what' \
+  'an arm without a time or revision is not an arm .*pr_merge_plans_armed_complete did not fire' \
+  'alter table ouroboros.pr_merge_plans drop constraint pr_merge_plans_armed_complete;'
+
+expect_red 'a gate may answer with a seventh verdict' \
+  'all six verdicts are the whole vocabulary' \
+  "alter table ouroboros.pr_gate_results drop constraint pr_gate_results_verdict,
+   add constraint pr_gate_results_verdict
+     check (verdict in ('green', 'red', 'pending', 'waived', 'not_required', 'unavailable', 'skipped'));"
+
+expect_red "a gate may cite another workspace's row" \
+  'and of the PR.s own workspace .*pr_gate_results_evidence_ref_resolves did not fire' \
+  "$gate_evidence_any_workspace"
+
+expect_red 'a criterion may cite a hunk of a file the revision never touched' \
+  'a hunk.s path is a file the revision changed .*pr_criteria_evidence_resolves did not fire' \
+  'drop trigger pr_criteria_evidence_resolves on ouroboros.pr_criteria_evidence;'
+
+expect_red 'a PR may carry two merge plans' \
+  'a PR has one merge plan .*pr_merge_plans_pr_key did not fire' \
+  'alter table ouroboros.pr_merge_plans drop constraint pr_merge_plans_pr_key;'
+
+expect_red 'a token merge may claim a [bot] identity' \
+  'the merge cannot claim ouroboros-app\[bot\] while it was made with a token .*pr_merge_plans_identity_not_bot did not fire' \
+  'alter table ouroboros.pr_merge_plans drop constraint pr_merge_plans_identity_not_bot;'
+
+expect_red 'a criterion may be verified with no evidence' \
+  'a criterion cannot be marked verified before any evidence is cited .*pr_criteria_verified_has_evidence did not fire' \
+  'drop trigger pr_criteria_verified_has_evidence on ouroboros.pr_criteria;'
 
 
 printf '\n'

@@ -687,16 +687,19 @@ on conflict (id) do nothing;
 -- and 20 spend tokens no run caused. `cursor` has no run at all, which is what
 -- unattributed spend looks like.
 --
--- **The `claude-fable-5` event is 688 000 tokens and belongs to no run, which is #302's
--- (AO.5) doing.** It was 900 000 and was attributed to `#482`, from before that run had a
--- Resources card to answer for. Mockup 10 prints `212k / 400k budget` and `$1.14 / $2.50
--- cap` for it, and under decision **R8** those are a `sum` over this table rather than a
--- counter — so `#482`'s spend is four rows of its own in
+-- **The `claude-fable-5` event is 616 000 tokens and belongs to no run, which is #302's
+-- (AO.5) and #356's (AW.5) doing.** It was 900 000 and was attributed to `#482`, from before
+-- that run had a Resources card to answer for. Mockup 10 prints `212k / 400k budget` and
+-- `$1.14 / $2.50 cap` for it, and under decision **R8** those are a `sum` over this table
+-- rather than a counter — so `#482`'s spend is four rows of its own in
 -- R__dev_seed_run_console.sql, one per model stage, totalling exactly 212 000 tokens and
--- 114 cents. This row keeps the rest: 900 000 − 212 000 and 540 − 114, so the day still
--- holds 4.2M tokens and $18.60 across four providers and neither figure was moved to make
--- room for the other. A number that appears on two pages is computed twice from one
--- ledger, which is the whole of the rule this file is written under.
+-- 114 cents. Mockup 12's Spend card then reads `284k · $1.52` for the whole loop, so
+-- R__dev_seed_verification.sql adds two more rows of `#482`'s — the correction round's 31 000
+-- and the verification pass's 41 000, 19 cents each. This row keeps the rest:
+-- 900 000 − 212 000 − 72 000 and 540 − 114 − 38, so the day still holds 4.2M tokens and
+-- $18.60 across four providers and neither figure was moved to make room for the other. A
+-- number that appears on two pages is computed twice from one ledger, which is the whole of
+-- the rule this file is written under.
 --
 -- `occurred_at` is spread across the part of today that has already happened: the day's
 -- UTC midnight plus `n/13` of the time since. Every event is therefore inside the current
@@ -710,7 +713,7 @@ select ('5eed000b-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,
        seed.tokens_total / 5 * 4, seed.tokens_total / 5, seed.cost_cents,
        utc_day.day_start + (now() - utc_day.day_start) * (seed.n::double precision / 13)
   from (values
-         ( 1, 'anthropic', 'claude-fable-5',       688000, 426.0000, null),
+         ( 1, 'anthropic', 'claude-fable-5',       616000, 388.0000, null),
          ( 2, 'anthropic', 'claude-sonnet-5',      620000, 372.0000,  479),
          ( 3, 'anthropic', 'claude-haiku-4-5',     380000, 228.0000, null),
          ( 4, 'copilot',   'copilot/gpt-5-codex',  500000, 250.0000,  471),
