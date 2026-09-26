@@ -27,6 +27,10 @@ import {
   PROVIDER_ROTATED_EVENT,
   PROVIDER_TESTED_EVENT,
   PROVIDER_UPDATED_EVENT,
+  RUNNER_FLAGGED_EVENT,
+  TRIAGE_CLASSIFIED_EVENT,
+  TRIAGE_RERUN_REQUESTED_EVENT,
+  TRIAGE_WAIVED_EVENT,
 } from "./audit.events";
 
 /**
@@ -65,6 +69,10 @@ describe("the vocabulary", () => {
     // The last is AI.5's ([#260](https://github.com/NobuData/ouroboros/issues/260)): a build
     // submission runs somebody's command on the workspace's own hardware, and *who sent it*
     // is not on the job row.
+    //
+    // The last four are AT.4's ([#332](https://github.com/NobuData/ouroboros/issues/332)): a
+    // runner flagged with a health note, and the three Mark & Route decisions — classify,
+    // re-run, waive — each of which dispatches something or records a judgement.
     expect([...AUDIT_ACTIONS]).toEqual([
       "provider.added",
       "provider.revealed",
@@ -91,6 +99,10 @@ describe("the vocabulary", () => {
       "runner.pool_updated",
       "runner.pool_deleted",
       "runner.job_submitted",
+      "runner.flagged",
+      "triage.classified",
+      "triage.rerun_requested",
+      "triage.waived",
     ]);
   });
 
@@ -109,15 +121,15 @@ describe("the vocabulary", () => {
 
   it("files each event under a family somebody would think to filter on", () => {
     // Nine provider events, one credential-delivery event, three about the workspace's GitHub
-    // token and twelve about its build farm — its machines, the pools they run in and the
-    // builds sent to them. The
+    // token, thirteen about its build farm — its machines, the pools they run in and the
+    // builds sent to them — and three decisions about its failing tests (#332). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
     // `runner.` rather than a family of their own, so the fleet stays one question.
     const families = new Set(AUDIT_ACTIONS.map((action) => action.split(".")[0]));
 
-    expect([...families].sort()).toEqual(["credential", "github", "provider", "runner"]);
+    expect([...families].sort()).toEqual(["credential", "github", "provider", "runner", "triage"]);
   });
 
   it("exports every name individually as well as in the list", () => {
@@ -150,6 +162,10 @@ describe("the vocabulary", () => {
       RUNNER_POOL_UPDATED_EVENT,
       RUNNER_POOL_DELETED_EVENT,
       RUNNER_JOB_SUBMITTED_EVENT,
+      RUNNER_FLAGGED_EVENT,
+      TRIAGE_CLASSIFIED_EVENT,
+      TRIAGE_RERUN_REQUESTED_EVENT,
+      TRIAGE_WAIVED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

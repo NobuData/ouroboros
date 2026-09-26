@@ -49,6 +49,7 @@ function control(overrides: Partial<RunControl> = {}): RunControl {
     ack_detail: null,
     idempotency_key: "k",
     remember: false,
+    retry_stage: false,
     ...overrides,
   };
 }
@@ -69,13 +70,19 @@ function repository() {
     insertPending: jest.fn(
       (
         _trx: unknown,
-        submission: { kind: RunControl["kind"]; payload: string | null; remember: boolean },
+        submission: {
+          kind: RunControl["kind"];
+          payload: string | null;
+          remember: boolean;
+          retryStage: boolean;
+        },
       ) =>
         Promise.resolve(
           control({
             kind: submission.kind,
             payload: submission.payload,
             remember: submission.remember,
+            retry_stage: submission.retryStage,
           }),
         ),
     ),
@@ -190,6 +197,16 @@ describe("the control service", () => {
       });
 
       expect(answer.remember).toBe(true);
+    });
+
+    it("never makes an ordinary steer a correction round", async () => {
+      const answer = await service.submit(ORG, RUN_ID, MEMBER, { kind: "steer", payload: "x" });
+
+      expect(answer.retryStage).toBe(false);
+      expect(repo.insertPending).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ retryStage: false }),
+      );
     });
 
     it("sweeps the run before deciding anything is outstanding", async () => {
@@ -467,5 +484,96 @@ describe("the control service", () => {
 
     expect(await service.sweep()).toBe(4);
     expect(repo.sweep).toHaveBeenCalledWith(repo.db);
+  });
+});
+
+describe("a correction round (#332)", () => {
+  let repo: ReturnType<typeof repository>;
+  let service: ControlsService;
+
+  beforeEach(() => {
+    repo = repository();
+    service = new ControlsService(repo as unknown as ControlsRepository, CONFIG);
+  });
+
+  it("queues a steer that asks for the stage's next attempt, with the steer TTL", async () => {
+    const answer = await service.correctionRound(
+      ORG,
+      RUN_ID,
+      MEMBER,
+      "Keep k_msgq, but move PID velocity sampling off the telemetry path.",
+      "classification:1",
+    );
+
+    expect(answer).toEqual(
+      expect.objectContaining({ kind: "steer", state: "pending", retryStage: true }),
+    );
+    expect(repo.insertPending).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({
+        kind: "steer",
+        payload: "Keep k_msgq, but move PID velocity sampling off the telemetry path.",
+        retryStage: true,
+        remember: false,
+        ttlSeconds: 300,
+        idempotencyKey: "classification:1",
+      }),
+    );
+  });
+
+  it("puts the note in the transcript, marked as a correction round", async () => {
+    await service.correctionRound(ORG, RUN_ID, MEMBER, "move PID sampling");
+
+    expect(repo.appendUserEntry).toHaveBeenCalledWith({}, RUN_ID, {
+      body: "move PID sampling",
+      stageKey: "implement",
+      attempt: 2,
+      payload: {
+        controlId: CONTROL_ID,
+        requestedBy: { id: MEMBER.id, name: MEMBER.name },
+        correctionRound: true,
+      },
+    });
+  });
+
+  it("is held to the steer's role policy — a viewer may not queue one", async () => {
+    expect(await refusal(service.correctionRound(ORG, RUN_ID, VIEWER, "x"))).toBe("forbidden");
+    expect(repo.insertPending).not.toHaveBeenCalled();
+  });
+
+  it("refuses a note that is only whitespace", async () => {
+    expect(await refusal(service.correctionRound(ORG, RUN_ID, MEMBER, "   "))).toBe(
+      "control_payload_invalid",
+    );
+  });
+
+  it("is recorded as rejected on a finished run", async () => {
+    repo.lockRun.mockResolvedValue(run({ finished_at: new Date(), status: "canceled" }));
+
+    const answer = await service.correctionRound(ORG, RUN_ID, MEMBER, "too late");
+
+    expect(answer.state).toBe("rejected");
+    expect(repo.appendUserEntry).not.toHaveBeenCalled();
+  });
+
+  it("does not answer a replay of an ordinary steer under the same key", async () => {
+    repo.findByKey.mockResolvedValue(
+      control({ kind: "steer", payload: "same", retry_stage: false }),
+    );
+
+    expect(await refusal(service.correctionRound(ORG, RUN_ID, MEMBER, "same", "k"))).toBe(
+      "control_key_reused",
+    );
+  });
+
+  it("answers its own replay with the same control", async () => {
+    repo.findByKey.mockResolvedValue(
+      control({ id: "earlier", kind: "steer", payload: "same", retry_stage: true }),
+    );
+
+    const answer = await service.correctionRound(ORG, RUN_ID, MEMBER, "same", "k");
+
+    expect(answer.id).toBe("earlier");
+    expect(repo.insertPending).not.toHaveBeenCalled();
   });
 });

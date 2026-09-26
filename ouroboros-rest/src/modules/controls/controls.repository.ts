@@ -36,6 +36,11 @@ export interface ControlSubmission {
   /** The steering text; null for every other kind. */
   readonly payload: string | null;
   readonly remember: boolean;
+  /**
+   * A correction round (V061, [#332](https://github.com/NobuData/ouroboros/issues/332)): a steer
+   * that also asks the executor to start the current stage's next attempt. Steer-only.
+   */
+  readonly retryStage: boolean;
   /** `"user".id` of whoever asked. */
   readonly requestedBy: string;
   /** How long it is worth delivering, in seconds. Added to the database's `now()`. */
@@ -403,6 +408,7 @@ export class ControlsRepository {
         kind: control.kind,
         payload: control.payload,
         remember: control.remember,
+        retry_stage: control.retryStage,
         requested_by: control.requestedBy,
         expires_at: sql<Date>`now() + make_interval(secs => ${control.ttlSeconds})`,
         state: outcome.state,

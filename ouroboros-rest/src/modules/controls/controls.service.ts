@@ -107,17 +107,72 @@ export class ControlsService {
    * @throws {NotFoundError} `404 run_not_found` — absent, or another workspace's.
    * @throws {ConflictError} `409 control_key_reused`.
    */
-  async submit(
+  submit(
     organizationId: string,
     runId: string,
     requester: Requester,
     request: SubmitControlDto,
   ): Promise<RunControlResource> {
+    return this.queue(organizationId, runId, requester, request, false);
+  }
+
+  // --- the correction round (#332) --------------------------------------------------------
+
+  /**
+   * Queue a **correction round**: a steer carrying the note into the planning context, which
+   * also asks the executor to start the current stage's next attempt (V061, decision **T6**).
+   *
+   * This is the Mark & Route card's *Queue correction round → attempt N+1*, composed over the
+   * queue rather than beside it: the same role policy (a steer is a `member`'s), the same
+   * transcript entry, the same TTL, the same audit trigger. Only `retry_stage` differs.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param runId - The run whose stage is retried.
+   * @param requester - Who classified the failure.
+   * @param note - The correction note — the steer's text.
+   * @param idempotencyKey - Optional: the classification's own key, so a replay is one control.
+   * @returns The control, as {@link submit} answers it: `pending`, or `rejected` when the run
+   *   has already finished.
+   * @throws As {@link submit}.
+   */
+  correctionRound(
+    organizationId: string,
+    runId: string,
+    requester: Requester,
+    note: string,
+    idempotencyKey?: string,
+  ): Promise<RunControlResource> {
+    return this.queue(
+      organizationId,
+      runId,
+      requester,
+      { kind: "steer", payload: note, ...(idempotencyKey === undefined ? {} : { idempotencyKey }) },
+      true,
+    );
+  }
+
+  /**
+   * The one path {@link submit} and {@link correctionRound} share.
+   *
+   * @param organizationId - The workspace.
+   * @param runId - The run.
+   * @param requester - Who is asking.
+   * @param request - The kind, and whatever that kind carries.
+   * @param retryStage - Whether a steer is a correction round.
+   * @returns The control.
+   */
+  private async queue(
+    organizationId: string,
+    runId: string,
+    requester: Requester,
+    request: SubmitControlDto,
+    retryStage: boolean,
+  ): Promise<RunControlResource> {
     if (!mayRequest(request.kind, requester.roles)) {
       throw forbidden(requester.roles.join(","), CONTROL_ROLES[request.kind]);
     }
 
-    const submission = this.submission(runId, requester, request);
+    const submission = this.submission(runId, requester, request, retryStage);
 
     return this.controls.transaction(async (trx) => {
       const run = await this.controls.lockRun(trx, runId, organizationId);
@@ -175,6 +230,7 @@ export class ControlsService {
           payload: {
             controlId: queued.id,
             requestedBy: { id: requester.id, name: requester.name },
+            ...(queued.retry_stage ? { correctionRound: true } : {}),
           },
         });
       }
@@ -297,6 +353,7 @@ export class ControlsService {
    * @param runId - The run.
    * @param requester - Who is asking.
    * @param request - The request.
+   * @param retryStage - Whether a steer is a correction round.
    * @returns The submission.
    * @throws {InvalidRequestError} `422 control_payload_invalid` for a steer with no text, text on
    *   any other kind, or `remember` on anything but a steer.
@@ -305,6 +362,7 @@ export class ControlsService {
     runId: string,
     requester: Requester,
     request: SubmitControlDto,
+    retryStage: boolean,
   ): ControlSubmission {
     const { kind } = request;
 
@@ -331,6 +389,7 @@ export class ControlsService {
       kind,
       payload: kind === "steer" ? (request.payload ?? null) : null,
       remember: request.remember ?? false,
+      retryStage: kind === "steer" && retryStage,
       requestedBy: requester.id,
       ttlSeconds: ttlSeconds(kind, {
         control: this.config.runControlTtlSeconds,
@@ -355,6 +414,7 @@ function sameSubmission(earlier: RunControl, submission: ControlSubmission): boo
   return (
     earlier.kind === submission.kind &&
     earlier.payload === submission.payload &&
-    earlier.remember === submission.remember
+    earlier.remember === submission.remember &&
+    earlier.retry_stage === submission.retryStage
   );
 }

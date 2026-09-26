@@ -2,6 +2,7 @@ import { Logger } from "@nestjs/common";
 
 import type { AuditRecord } from "../../audit/audit.events";
 import type { AuditService } from "../../audit/audit.service";
+import type { TestSelection } from "../../db/schema";
 import { FarmAudit } from "../farm.audit";
 import { drain } from "../gateway/gateway.fixture";
 import { COMMIT, JOB, ORG, RUNNER, buildJob, jobView, runnerPool } from "./dispatch.fixture";
@@ -44,7 +45,10 @@ describe("build job submission and cancellation", () => {
   });
 
   let repository: jest.Mocked<
-    Pick<DispatchRepository, "pool" | "repository" | "submit" | "cancel" | "view" | "queueDepth">
+    Pick<
+      DispatchRepository,
+      "pool" | "repository" | "submit" | "cancel" | "view" | "queueDepth" | "candidates"
+    >
   >;
   let dispatcher: jest.Mocked<Pick<DispatchService, "kick" | "propagateCancel">>;
   let completed: JobCompleted[];
@@ -56,14 +60,23 @@ describe("build job submission and cancellation", () => {
     repository = {
       pool: jest.fn().mockResolvedValue(runnerPool()),
       repository: jest.fn().mockResolvedValue("7f000003-0000-4000-8000-000000000001"),
-      submit: jest
-        .fn()
-        .mockImplementation((submission: JobSubmission) =>
-          Promise.resolve(buildJob({ ...submission, id: JOB, number: 483 })),
+      submit: jest.fn().mockImplementation((submission: JobSubmission) =>
+        Promise.resolve(
+          buildJob({
+            ...submission,
+            test_selection:
+              typeof submission.test_selection === "string"
+                ? (JSON.parse(submission.test_selection) as TestSelection)
+                : null,
+            id: JOB,
+            number: 483,
+          }),
         ),
+      ),
       cancel: jest.fn(),
       view: jest.fn().mockResolvedValue(jobView()),
       queueDepth: jest.fn().mockResolvedValue(2),
+      candidates: jest.fn().mockResolvedValue([]),
     };
     dispatcher = { kick: jest.fn().mockResolvedValue(undefined), propagateCancel: jest.fn() };
     const completions = new JobCompletions();
@@ -268,6 +281,97 @@ describe("build job submission and cancellation", () => {
       expect(
         await refusal(jobs.submitForRun(ORG, "7f000009-0000-4000-8000-000000000001", REQUEST)),
       ).toMatchObject({ code: "farm_pool_disabled" });
+    });
+  });
+
+  describe("re-running an earlier build's test cases (#332)", () => {
+    const RUN = "5eed0009-0000-4000-8000-000000000482";
+    const SELECTION: TestSelection = {
+      scope: "failed",
+      test_run_id: "5eed0033-0000-4000-8000-000000000002",
+      case_keys: ["a".repeat(64), "b".repeat(64)],
+    };
+    const SOURCE = "7f000002-0000-4000-8000-000000000099";
+
+    it("copies the source's snapshot onto a new job carrying the case set", async () => {
+      repository.view.mockResolvedValueOnce(
+        jobView({
+          id: SOURCE,
+          artifact_globs: ["captures/*.csv"],
+          env: { BOARD: "helios" },
+          command: "make hil",
+        }),
+      );
+
+      await jobs.submitRerun(ORG, ACTOR, RUN, SOURCE, SELECTION, "Re-run failed (2)");
+
+      expect(repository.view).toHaveBeenNthCalledWith(1, ORG, SOURCE);
+      expect(written()).toEqual(
+        expect.objectContaining({
+          run_id: RUN,
+          title: "Re-run failed (2)",
+          command: "make hil",
+          env: { BOARD: "helios" },
+          artifact_globs: JSON.stringify(["captures/*.csv"]),
+          test_selection: JSON.stringify(SELECTION),
+          commit_sha: COMMIT,
+        }),
+      );
+      expect(written()).not.toHaveProperty("retry_of");
+      expect(dispatcher.kick).toHaveBeenCalledTimes(1);
+    });
+
+    it("is audited with the person as the actor, and the run", async () => {
+      await jobs.submitRerun(ORG, ACTOR, RUN, SOURCE, SELECTION, "Re-run failed (2)");
+
+      expect(trail).toEqual([
+        expect.objectContaining({
+          actorId: ACTOR,
+          action: "runner.job_submitted",
+          detail: expect.objectContaining({ runId: RUN }) as unknown,
+        }),
+      ]);
+    });
+
+    it("answers queued_no_eligible_runner when nothing can take it — never a success", async () => {
+      const { queueState, job } = await jobs.submitRerun(ORG, ACTOR, RUN, SOURCE, SELECTION, "t");
+
+      expect(job.status).toBe("queued");
+      expect(queueState).toBe("queued_no_eligible_runner");
+    });
+
+    it("answers queued_runner_available when dispatch has somewhere to place it", async () => {
+      repository.candidates.mockResolvedValue([
+        { id: RUNNER, name: "forge-01", held: 0, max_concurrency: 2 },
+      ]);
+
+      const { queueState } = await jobs.submitRerun(ORG, ACTOR, RUN, SOURCE, SELECTION, "t");
+
+      expect(queueState).toBe("queued_runner_available");
+    });
+
+    it("answers offered when dispatch placed it before the answer", async () => {
+      repository.view
+        .mockResolvedValueOnce(jobView())
+        .mockResolvedValueOnce(jobView({ status: "offered", runner_id: RUNNER }));
+
+      const { queueState } = await jobs.submitRerun(ORG, ACTOR, RUN, SOURCE, SELECTION, "t");
+
+      expect(queueState).toBe("offered");
+      expect(repository.candidates).not.toHaveBeenCalled();
+    });
+
+    it("refuses a source that is not this workspace's, and a disabled pool", async () => {
+      repository.view.mockResolvedValueOnce(undefined);
+      expect(await refusal(jobs.submitRerun(ORG, ACTOR, RUN, SOURCE, SELECTION, "t"))).toEqual(
+        expect.objectContaining({ code: "farm_job_not_found" }),
+      );
+
+      repository.pool.mockResolvedValue(runnerPool({ enabled: false }));
+      expect(await refusal(jobs.submitRerun(ORG, ACTOR, RUN, SOURCE, SELECTION, "t"))).toEqual(
+        expect.objectContaining({ code: "farm_pool_disabled" }),
+      );
+      expect(repository.submit).not.toHaveBeenCalled();
     });
   });
 

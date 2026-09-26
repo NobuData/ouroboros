@@ -79,6 +79,9 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `POST /internal/runs/:id/controls/:controlId/ack` (#306). A well-formed uuid, so a worker
   // holding the key reaches the handler rather than the pipe's 422.
   controlId: "c0000000-0000-4000-8000-000000000001",
+  // `POST /api/v1/test-runs/:id/cases/:caseId/classify` (#332). A well-formed uuid, so the
+  // guard's answer — not the pipe's 422 — is what this suite observes.
+  caseId: "5eed0035-0000-4000-8000-000000000001",
   // The planning surface's four (#272, #274, #280). Uuids everywhere but `:key`, which is a
   // draft's key within its batch and is free text to the router. **These were missing**: AL.4
   // landed `/planning/…` routes without revisiting this list, so every walk of the table threw

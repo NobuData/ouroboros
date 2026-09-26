@@ -261,6 +261,7 @@ export function runControl(over: RunControlOverrides = {}): RunControl {
     detail: null,
     hasPayload: false,
     remember: false,
+    retryStage: false,
     ...over,
   };
 }

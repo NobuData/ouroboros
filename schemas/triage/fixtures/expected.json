@@ -1,0 +1,89 @@
+{
+  "about": [
+    "The contract for POST /v0/triage (#332), recorded: one document per rule, which half of the",
+    "contract it is (the root response or $defs/triage_request), and whether v0.json accepts it.",
+    "",
+    "The MVP answers with heuristic rules and AV.1 (#343) with a model; both are held to the SAME",
+    "shape. Every invalid document breaks exactly one rule -- chief among them, a heuristic that",
+    "reports a confidence.",
+    "",
+    "Reviewed and frozen, not regenerated: a change here is a change to the contract."
+  ],
+  "cases": [
+    {
+      "document": "valid/request-hil-overshoot.json",
+      "def": "request",
+      "valid": true
+    },
+    {
+      "document": "valid/response-heuristic-flake.json",
+      "def": "response",
+      "valid": true
+    },
+    {
+      "document": "valid/response-heuristic-product-bug.json",
+      "def": "response",
+      "valid": true
+    },
+    {
+      "document": "valid/response-heuristic-unclear-requirements.json",
+      "def": "response",
+      "valid": true
+    },
+    {
+      "document": "valid/response-model-product-bug.json",
+      "def": "response",
+      "valid": true
+    },
+    {
+      "document": "invalid/request-case-key-not-hex.json",
+      "def": "request",
+      "valid": false
+    },
+    {
+      "document": "invalid/request-passed-case.json",
+      "def": "request",
+      "valid": false
+    },
+    {
+      "document": "invalid/request-without-flake-history.json",
+      "def": "request",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-heuristic-with-confidence.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-heuristic-with-narrative.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-heuristic-without-rule.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-model-confidence-over-100.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-model-without-confidence.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-other-contract.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-unknown-class.json",
+      "def": "response",
+      "valid": false
+    }
+  ]
+}

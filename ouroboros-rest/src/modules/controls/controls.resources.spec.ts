@@ -20,6 +20,7 @@ const STEER: RunControl = {
   ack_detail: "steering applied to attempt 2",
   idempotency_key: "k-1",
   remember: true,
+  retry_stage: false,
 };
 
 describe("the console's shape", () => {
@@ -37,6 +38,7 @@ describe("the console's shape", () => {
       detail: "steering applied to attempt 2",
       hasPayload: true,
       remember: true,
+      retryStage: false,
     });
   });
 
@@ -63,6 +65,15 @@ describe("the console's shape", () => {
   });
 });
 
+describe("a correction round (#332)", () => {
+  it("tells the console and the executor alike that the steer asks for the next attempt", () => {
+    const correction = { ...STEER, retry_stage: true };
+
+    expect(runControlResource(correction).retryStage).toBe(true);
+    expect(pendingControlResource(correction).retryStage).toBe(true);
+  });
+});
+
 describe("the executor's shape", () => {
   it("carries the steer text and the flag, and nothing about delivery", () => {
     expect(pendingControlResource(STEER)).toEqual({
@@ -70,6 +81,7 @@ describe("the executor's shape", () => {
       kind: "steer",
       payload: "prefer a fix inside the ISR",
       remember: true,
+      retryStage: false,
       requestedAt: "2026-09-22T10:00:00.000Z",
       expiresAt: "2026-09-22T10:05:00.000Z",
     });

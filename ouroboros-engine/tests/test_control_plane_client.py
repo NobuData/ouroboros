@@ -313,6 +313,17 @@ def test_a_fetch_reads_the_steer_text_and_keeps_the_order(
     assert fetched.controls[1].payload is None
 
 
+def test_a_fetch_reads_a_correction_round_and_defaults_it_off(
+    client: ControlPlaneClient,
+) -> None:
+    correction = {**STEER, "retryStage": True}
+    older = {k: v for k, v in STEER.items() if k != "remember"}
+
+    fetched = client.read_controls(200, {"controls": [correction, STEER, older]})
+
+    assert [control.retry_stage for control in fetched.controls] == [True, False, False]
+
+
 def test_an_empty_fetch_is_an_empty_list(client: ControlPlaneClient) -> None:
     assert client.read_controls(200, {"controls": []}).controls == []
 

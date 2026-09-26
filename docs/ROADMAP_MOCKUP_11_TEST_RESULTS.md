@@ -436,7 +436,7 @@ seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail
 | AT.1 | #329 ✅ | 🟢 Done | ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage) | Format detection, normalized tree, retry/flake extraction | mvp, tests, rest | N (after AS.2) | Y | L | ouroboros-rest |
 | AT.2 | #330 ✅ | 🟢 Done | ouroboros-runner: [AT.2] Job artifact & result upload | Job-scoped multipart upload path, quotas, store driver (T4) | mvp, tests, build-farm | N (after AG.4, AH.2) | Y | M | ouroboros-runner, ouroboros-rest |
 | AT.3 | #331 | 🟡 Open | ouroboros-rest: [AT.3] Flake scorer & quarantine service | Retry-truth marking, history scoring, nightly candidates | mvp, tests, rest | N (after AS.3, AT.1) | Y | M | ouroboros-rest |
-| AT.4 | #332 | 🟡 Open | ouroboros-rest: [AT.4] Classification & routing service | Heuristic hints, classify API, correction/re-run dispatch (T6/T7) | mvp, tests, rest, runs | N (after AS.4, AP.4, AH.4) | Y | L | ouroboros-rest |
+| AT.4 | #332 ✅ | 🟢 Done | ouroboros-rest: [AT.4] Classification & routing service | Heuristic hints, classify API, correction/re-run dispatch (T6/T7) | mvp, tests, rest, runs | N (after AS.4, AP.4, AH.4) | Y | L | ouroboros-rest |
 | AT.5 | #333 | 🟡 Open | ouroboros-rest: [AT.5] Test-results read APIs & artifact serving | Page payloads, attempt timelines, artifact downloads, retention | mvp, tests, rest | N (after AT.1, AS.4) | Y | M | ouroboros-rest |
 | AT.6 | #334 | 🟡 Open | ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios | Parser fixtures, routing compositions, AP.5 test scenarios | mvp, tests, rest, ci | N (after AT.2–AT.5, AP.5) | Y | M | ouroboros-rest, ouroboros-engine |
 
@@ -574,7 +574,7 @@ nightly ─▶ re-score ─▶ candidates[] (insights boundary)
 
 ### Issue AT.4 — ouroboros-rest: [AT.4] Classification & routing service
 
-> **GitHub issue:** #332 · **Status:** 🟡 Open · **Parent epic:** #321
+> **GitHub issue:** #332 · **Status:** 🟢 Done · **Parent epic:** #321
 
 - **Problem Statement:** Mark & Route must do real things (T6/T7): honest
   hints, recorded decisions, and dispatch into the loop and the farm.
@@ -608,6 +608,30 @@ hint: {product_bug, rule: "new-failure ∩ diff-paths", heuristic}
 classify(product_bug, note) ─▶ steer{note → attempt 4 context} + stage-retry ─▶ routed ✓
 re-run failed(2) ─▶ AH.4 job {suite filter} ─▶ Build 4 attempt
 ```
+
+> **Delivered as `ouroboros-rest/src/modules/triage/`, `V061__classification_routing.sql`,
+> `schemas/triage/v0.json` and the simulator's `correction-round` scenario.** Four things the
+> scope assumed existed did not, and were decided on #332 rather than guessed:
+>
+> 1. **The stage retry is a flag on the steer.** AP.4's queue had no retry request, so V061 adds
+>    `run_controls.retry_stage` — steer-only and frozen at insert, like V050's `remember`. One
+>    control carries the note and the retry, so the receipt's single `control_id` names the whole
+>    correction round; the executor acks naming the attempt it opens, and the simulated driver's
+>    `correction-round` scenario holds implement for it and starts attempt N+1 with the note.
+> 2. **The runner's health note is three columns** (`runners.health_note`, `…_noted_at`,
+>    `…_noted_by`) — informational, never read by dispatch; draining stays the administrator's
+>    separate action.
+> 3. **A re-run's case set is `build_jobs.test_selection`** (`{scope, test_run_id, case_keys}`),
+>    snapshotted on the job and carried by dispatch's automatic retry. The runner-side filter
+>    that reads it is not part of this issue.
+> 4. **No eligible runner is a queue state, not a refusal.** A re-run is always queued and
+>    answers `offered`, `queued_runner_available` or `queued_no_eligible_runner`.
+>
+> The #434 amendment is `failure_classifications.subtype` (`unclear_requirements`). The hints are
+> three rules evaluated in precedence order (`flake.pass_on_retry`, `infra.rig_error`,
+> `product.new_failure_in_diff`), each returning its verdict and reason, and are also answered in
+> `/v0/triage`'s response shape. `auto_rerun_physical` is stored as an intent; nothing yet acts on
+> it after a correction round completes.
 
 ### Issue AT.5 — ouroboros-rest: [AT.5] Test-results read APIs & artifact serving
 

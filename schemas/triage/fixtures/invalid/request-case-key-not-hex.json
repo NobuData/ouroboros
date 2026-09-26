@@ -1,0 +1,72 @@
+{
+  "contract": "triage/v0",
+  "case": {
+    "case_key": "pid_overshoot_under_load",
+    "name": "pid_overshoot_under_load",
+    "classname": "motor.control",
+    "suite": "PHYSICAL · HIL rig",
+    "platform": "rig:helios-rig-02",
+    "status": "failed",
+    "retry_outcomes": [
+      "failed"
+    ],
+    "failure": {
+      "message": "overshoot 2.4% > limit 2.0%",
+      "path": "drivers/motor/pid.c"
+    }
+  },
+  "hil_measurements": [
+    {
+      "metric": "overshoot_pct",
+      "value": 2.4,
+      "unit": "%",
+      "limit_value": 2.0,
+      "limit_kind": "max",
+      "verdict": "fail",
+      "trials": [
+        {
+          "n": 1,
+          "value": 2.3
+        },
+        {
+          "n": 2,
+          "value": 2.4
+        },
+        {
+          "n": 3,
+          "value": 2.4
+        }
+      ]
+    }
+  ],
+  "diff": {
+    "files": [
+      {
+        "path": "drivers/motor/pid.c",
+        "status": "modified",
+        "additions": 14,
+        "deletions": 3
+      },
+      {
+        "path": "drivers/can/telemetry_buf.c",
+        "status": "modified",
+        "additions": 38,
+        "deletions": 12
+      }
+    ],
+    "truncated": false
+  },
+  "prior_attempts": [
+    {
+      "attempt_seq": 1,
+      "outcome": "passed",
+      "commit_sha": "a3f19c2"
+    }
+  ],
+  "flake_history": {
+    "occurrences": 2,
+    "pass_on_retry": 0,
+    "score": 0.0,
+    "state": "healthy"
+  }
+}

@@ -53,12 +53,15 @@ class QueuedControl:
         refused_as: Answer the ack with ``409 control_not_delivered`` and this state:
             ``expired`` for an ack that came too late, ``acked`` for one whose first
             answer was lost.
+        retry_stage: A correction round (#332): a steer that also asks for the stage's
+            next attempt.
     """
 
     kind: str
     payload: str | None = None
     release_on: tuple[str, int] | None = None
     refused_as: str | None = None
+    retry_stage: bool = False
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -394,6 +397,7 @@ class FakeControlPlane:
                         "kind": c.kind,
                         "payload": c.payload,
                         "remember": False,
+                        "retryStage": c.retry_stage,
                         "requestedAt": "2026-09-22T14:04:40.000Z",
                         "expiresAt": "2026-09-22T14:09:40.000Z",
                     }
@@ -431,6 +435,7 @@ class FakeControlPlane:
                 "detail": detail,
                 "hasPayload": control.payload is not None,
                 "remember": False,
+                "retryStage": control.retry_stage,
             },
         )
 
