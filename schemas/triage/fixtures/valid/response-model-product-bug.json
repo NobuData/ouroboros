@@ -1,0 +1,19 @@
+{
+  "class": "product_bug",
+  "subtype": null,
+  "confidence": 84,
+  "narrative": "Moving PID velocity sampling onto the telemetry path added jitter to the control loop; the overshoot appears only under telemetry load.",
+  "evidence": [
+    {
+      "kind": "hil_measurement",
+      "ref": "overshoot_pct",
+      "note": "2.4% against a 2.0% limit in all three trials."
+    }
+  ],
+  "provenance": {
+    "contract": "triage/v0",
+    "actor": "model",
+    "rule_id": null,
+    "model": "claude-fable-5"
+  }
+}

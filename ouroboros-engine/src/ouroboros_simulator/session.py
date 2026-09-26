@@ -20,6 +20,12 @@ them, following the four meanings AP.4 publishes (`#306
     The acknowledgment names the attempt (*"steering applied to attempt 2"*), and the script
     reads :meth:`RunSession.steer_for` at its branch points, so a steer changes what the
     scenario does next.
+``steer`` with ``retryStage`` — a **correction round** (`#332
+<https://github.com/NobuData/ouroboros/issues/332>`_)
+    Record the text against the current stage's **next** attempt, as its planning context,
+    and acknowledge with that attempt's number (*"correction round queued: implement
+    attempt 2"*). The script reads :meth:`RunSession.correction_for` while it waits for a
+    person to Mark & Route a failure, and starts that attempt when one arrives.
 """
 
 import itertools
@@ -124,13 +130,16 @@ class Steer:
         control_id: The control.
         text: What the person typed.
         stage_key: The stage it landed on, or ``None`` before any stage started.
-        attempt: The attempt it landed on.
+        attempt: The attempt it landed on. For a correction round, the attempt it asked
+            for — the stage's next one.
+        correction: Whether it was a correction round (``retryStage``).
     """
 
     control_id: str
     text: str
     stage_key: str | None
     attempt: int
+    correction: bool = False
 
 
 @dataclass
@@ -519,6 +528,26 @@ class RunSession:
                 return steer
         return None
 
+    def correction_for(self, stage_key: str) -> Steer | None:
+        """The latest correction round asking for a stage's next attempt.
+
+        Args:
+            stage_key: The stage.
+
+        Returns:
+            The correction, or ``None`` when none asks for an attempt after the stage's
+            current one.
+        """
+        current = self._position.attempts.get(stage_key, 1)
+        for steer in reversed(self.steers):
+            if (
+                steer.correction
+                and steer.stage_key == stage_key
+                and steer.attempt > current
+            ):
+                return steer
+        return None
+
     def checkpoint(self) -> None:
         """Reach a safe boundary: send the transcript, then fetch and apply controls.
 
@@ -558,9 +587,15 @@ class RunSession:
     def _steer(self, control: PendingControl) -> None:
         """Record a steer on the current attempt and acknowledge it, without pausing.
 
+        A correction round is recorded on the stage's next attempt instead, and its
+        acknowledgment names that attempt.
+
         Args:
             control: The steer.
         """
+        if control.retry_stage:
+            self._correction(control)
+            return
         attempt = self._position.attempt
         if self._ack(control, attempt=attempt):
             self.steers.append(
@@ -569,6 +604,35 @@ class RunSession:
                     text=control.payload or "",
                     stage_key=self._position.stage_key,
                     attempt=attempt,
+                )
+            )
+
+    def _correction(self, control: PendingControl) -> None:
+        """Queue a correction round: the note becomes the next attempt's planning context.
+
+        Args:
+            control: The steer carrying ``retryStage``.
+        """
+        stage_key = self._position.stage_key
+        target = self._position.attempt + 1
+        where = (
+            f"{stage_key} attempt {target}"
+            if stage_key is not None
+            else f"attempt {target}, before the first stage"
+        )
+        self.system(
+            f"Correction round received: {where} will start with the note in its "
+            "planning context. Simulated run."
+        )
+        self.flush()
+        if self._ack(control, effect=f"correction round queued: {where}"):
+            self.steers.append(
+                Steer(
+                    control_id=control.id,
+                    text=control.payload or "",
+                    stage_key=stage_key,
+                    attempt=target,
+                    correction=True,
                 )
             )
 

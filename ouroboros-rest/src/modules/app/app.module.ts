@@ -39,6 +39,7 @@ import { VaultModule } from "../vault/vault.module";
 import { PlanningModule } from "../planning/planning.module";
 import { PullRequestsModule } from "../pull-requests/pull-requests.module";
 import { TestResultsModule } from "../test-results/test-results.module";
+import { TriageModule } from "../triage/triage.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { AppController } from "./app.controller";
@@ -435,6 +436,12 @@ export class AppModule {
         // routes under `/internal/runs` for an executor. After `InternalModule` for the reason
         // `IngestModule` is.
         ControlsModule,
+        // AT.4 ([#332](https://github.com/NobuData/ouroboros/issues/332)) — classification &
+        // routing: the Mark & Route card's hints, classify, re-run and waive under
+        // `/api/v1/test-runs/:id`. After `ControlsModule` and `FarmDispatchModule`, whose services
+        // its correction round and re-runs compose over. Ordinary member routes behind the
+        // session and tenant guards; waiving is `admin` and above.
+        TriageModule,
       ],
     };
   }

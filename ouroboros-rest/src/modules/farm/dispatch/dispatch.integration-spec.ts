@@ -610,6 +610,16 @@ describe("build dispatch", () => {
       const agent = await connect(await enrol(context, "forge-01"));
 
       const first = await submitted(context);
+      // A re-run's case set (#332) is part of what was asked, so the retry carries it too.
+      const selection = {
+        scope: "failed",
+        test_run_id: "5eed0033-0000-4000-8000-000000000002",
+        case_keys: ["a".repeat(64)],
+      };
+      await api.sql.query(`update ouroboros.build_jobs set test_selection = $2 where id = $1`, [
+        first.id,
+        JSON.stringify(selection),
+      ]);
       const offer = await agent.next("job.offer");
       await run(agent, offer);
       await finish(agent, offer, "errored", null);
@@ -619,6 +629,11 @@ describe("build dispatch", () => {
       expect(retryOffer.payload.attempt).toBe(2);
       const retryId = uuidOf("job", retryOffer.payload.job) as string;
       expect(await jobRow(retryId)).toMatchObject({ retry_of: first.id, number: 2 });
+      const { rows: carried } = await api.sql.query<{ test_selection: unknown }>(
+        `select test_selection from ouroboros.build_jobs where id = $1`,
+        [retryId],
+      );
+      expect(carried[0].test_selection).toEqual(selection);
       expect((await jobRow(first.id)).status).toBe("retried");
 
       await run(agent, retryOffer);

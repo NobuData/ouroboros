@@ -1,0 +1,542 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ouroboros.build/schemas/triage/v0.json",
+  "title": "Ouroboros triage contract, version 0",
+  "description": "The request and response of POST /v0/triage (#332, AT.4) -- the failure-triage contract, committed before its model implementation. Option 5-A: the MVP answers with deterministic heuristic rules (actor heuristic, a rule_id, confidence null, no narrative), and AV.1 (#343) answers the SAME shape with a model (actor model, a real confidence, a narrative and cited evidence) once the invocation stack exists, so the API, the Mark & Route card and its affix logic do not move. The root of this document is the response, because that is the half both implementations must agree on; the request is published beside it under $defs. A heuristic that reported a confidence would be inventing a calibration it does not have, so this schema refuses one, as V055's failure_classifications_confidence_model_only does. See fixtures/expected.json.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "class",
+    "subtype",
+    "confidence",
+    "narrative",
+    "evidence",
+    "provenance"
+  ],
+  "properties": {
+    "class": {
+      "description": "The suggested class -- one of the Mark & Route card's four radios.",
+      "$ref": "#/$defs/failure_class"
+    },
+    "subtype": {
+      "description": "A refinement of the class: unclear_requirements (the #434 amendment) or null.",
+      "enum": [
+        "unclear_requirements",
+        null
+      ]
+    },
+    "confidence": {
+      "description": "0-100, the AI pick's percentage. Null for a heuristic, always -- a rule has no calibration to report.",
+      "type": [
+        "number",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 100
+    },
+    "narrative": {
+      "description": "The causal story the card prints under the pick. Null for a heuristic; a model writes one.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "minLength": 1,
+      "maxLength": 4096
+    },
+    "evidence": {
+      "description": "What the answer rests on, each item citing something in the request.",
+      "type": "array",
+      "maxItems": 32,
+      "items": {
+        "$ref": "#/$defs/evidence"
+      }
+    },
+    "provenance": {
+      "$ref": "#/$defs/provenance"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "required": [
+          "provenance"
+        ],
+        "properties": {
+          "provenance": {
+            "type": "object",
+            "required": [
+              "actor"
+            ],
+            "properties": {
+              "actor": {
+                "const": "heuristic"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "confidence": {
+            "type": "null"
+          },
+          "narrative": {
+            "type": "null"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "required": [
+          "provenance"
+        ],
+        "properties": {
+          "provenance": {
+            "type": "object",
+            "required": [
+              "actor"
+            ],
+            "properties": {
+              "actor": {
+                "const": "model"
+              }
+            }
+          }
+        }
+      },
+      "then": {
+        "properties": {
+          "confidence": {
+            "type": "number"
+          },
+          "narrative": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "failure_class": {
+      "enum": [
+        "product_bug",
+        "test_update",
+        "flake_retry",
+        "infra_rig"
+      ]
+    },
+    "case_key": {
+      "description": "The durable case identity (decision T2): 64 lowercase hex digits.",
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "ref",
+        "note"
+      ],
+      "properties": {
+        "kind": {
+          "description": "What is cited: the failure payload, a HIL measurement, a changed path, a prior attempt, or the flake history.",
+          "enum": [
+            "failure",
+            "hil_measurement",
+            "diff_path",
+            "prior_attempt",
+            "flake_history"
+          ]
+        },
+        "ref": {
+          "description": "Which one: a metric, a path, an attempt number as text, or the case_key.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1024
+        },
+        "note": {
+          "description": "Why it matters, in one sentence.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 512
+        }
+      }
+    },
+    "provenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "actor",
+        "rule_id",
+        "model"
+      ],
+      "properties": {
+        "contract": {
+          "description": "Names the contract answered, so a v1 answer is never read as this one.",
+          "const": "triage/v0"
+        },
+        "actor": {
+          "description": "heuristic (the MVP's rules) or model (AV.1). Maps to failure_classifications.actor.",
+          "enum": [
+            "heuristic",
+            "model"
+          ]
+        },
+        "rule_id": {
+          "description": "The rule that picked the class. Required for a heuristic, null for a model.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "model": {
+          "description": "The model that answered. Required for a model, null for a heuristic.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 128
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "actor"
+            ],
+            "properties": {
+              "actor": {
+                "const": "heuristic"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rule_id": {
+                "type": "string"
+              },
+              "model": {
+                "type": "null"
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "required": [
+              "actor"
+            ],
+            "properties": {
+              "actor": {
+                "const": "model"
+              }
+            }
+          },
+          "then": {
+            "properties": {
+              "rule_id": {
+                "type": "null"
+              },
+              "model": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    },
+    "failed_case": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "case_key",
+        "name",
+        "classname",
+        "suite",
+        "platform",
+        "status",
+        "retry_outcomes",
+        "failure"
+      ],
+      "properties": {
+        "case_key": {
+          "$ref": "#/$defs/case_key"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "classname": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "suite": {
+          "type": "string",
+          "minLength": 1
+        },
+        "platform": {
+          "type": "string",
+          "minLength": 1
+        },
+        "status": {
+          "description": "Only a case that did not pass cleanly is triaged.",
+          "enum": [
+            "failed",
+            "error",
+            "flaky"
+          ]
+        },
+        "retry_outcomes": {
+          "description": "Every try in order, the sanctioned retries included.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "passed",
+              "failed",
+              "error",
+              "skipped"
+            ]
+          }
+        },
+        "failure": {
+          "description": "The failure payload (V051's test_cases.failure), or null when the report carried none.",
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "message": {
+              "type": "string",
+              "maxLength": 4096
+            },
+            "log_excerpt": {
+              "type": "string",
+              "maxLength": 16384
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 1024
+            }
+          }
+        }
+      }
+    },
+    "hil_measurement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "metric",
+        "value",
+        "unit",
+        "limit_value",
+        "limit_kind",
+        "verdict",
+        "trials"
+      ],
+      "properties": {
+        "metric": {
+          "type": "string",
+          "minLength": 1
+        },
+        "value": {
+          "type": "number"
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "limit_value": {
+          "type": "number"
+        },
+        "limit_kind": {
+          "enum": [
+            "max",
+            "min"
+          ]
+        },
+        "verdict": {
+          "enum": [
+            "pass",
+            "fail"
+          ]
+        },
+        "trials": {
+          "type": "array",
+          "items": {
+            "type": "object"
+          }
+        }
+      }
+    },
+    "diff_summary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "files",
+        "truncated"
+      ],
+      "properties": {
+        "files": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "status",
+              "additions",
+              "deletions"
+            ],
+            "properties": {
+              "path": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1024
+              },
+              "status": {
+                "enum": [
+                  "added",
+                  "modified",
+                  "deleted",
+                  "renamed"
+                ]
+              },
+              "additions": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "deletions": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        },
+        "truncated": {
+          "description": "True when the run changed more files than files carries.",
+          "type": "boolean"
+        }
+      }
+    },
+    "prior_attempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "attempt_seq",
+        "outcome",
+        "commit_sha"
+      ],
+      "properties": {
+        "attempt_seq": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "outcome": {
+          "description": "The same case_key in that attempt, or absent when it did not run there.",
+          "enum": [
+            "passed",
+            "failed",
+            "error",
+            "flaky",
+            "skipped",
+            "absent"
+          ]
+        },
+        "commit_sha": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[0-9a-f]{7,40}$"
+        }
+      }
+    },
+    "flake_history": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "occurrences",
+        "pass_on_retry",
+        "score",
+        "state"
+      ],
+      "properties": {
+        "occurrences": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "pass_on_retry": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "score": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1
+        },
+        "state": {
+          "enum": [
+            "healthy",
+            "watching",
+            "quarantined",
+            null
+          ]
+        }
+      }
+    },
+    "triage_request": {
+      "description": "What POST /v0/triage is sent: one failed case with everything a triager may cite.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract",
+        "case",
+        "hil_measurements",
+        "diff",
+        "prior_attempts",
+        "flake_history"
+      ],
+      "properties": {
+        "contract": {
+          "const": "triage/v0"
+        },
+        "case": {
+          "$ref": "#/$defs/failed_case"
+        },
+        "hil_measurements": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/hil_measurement"
+          }
+        },
+        "diff": {
+          "$ref": "#/$defs/diff_summary"
+        },
+        "prior_attempts": {
+          "description": "Earlier attempts of the same run, oldest first.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/prior_attempt"
+          }
+        },
+        "flake_history": {
+          "$ref": "#/$defs/flake_history"
+        }
+      }
+    }
+  }
+}

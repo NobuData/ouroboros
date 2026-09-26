@@ -1787,6 +1787,12 @@ export interface RunControlsTable {
    * the candidate still lands `awaiting review`: the flag is a hint, not a confirmation.
    */
   remember: Generated<boolean>;
+  /**
+   * A **correction round** (V061, [#332](https://github.com/NobuData/ouroboros/issues/332),
+   * decision **T6**): the steer's text goes into the planning context, and the executor then
+   * starts the current stage's next attempt. Steer-only, false unless set, frozen at insert.
+   */
+  retry_stage: Generated<boolean>;
 }
 
 /**
@@ -4288,6 +4294,15 @@ export interface RunnersTable {
   telemetry: Generated<unknown>;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * The farm health note an `infra_rig` classification writes (V061,
+   * [#332](https://github.com/NobuData/ouroboros/issues/332)). Informational; dispatch never
+   * reads it. Set together with {@link health_noted_at}.
+   */
+  health_note: string | null;
+  health_noted_at: Date | null;
+  /** Who wrote the note; set null if the person is removed. */
+  health_noted_by: string | null;
 }
 
 /**
@@ -4431,6 +4446,24 @@ export interface BuildJobsTable {
    * [#330](https://github.com/NobuData/ouroboros/issues/330)) — a JSON array of relative globs.
    */
   artifact_globs: Generated<unknown>;
+  /**
+   * A re-run's case set, snapshotted at submit (V061,
+   * [#332](https://github.com/NobuData/ouroboros/issues/332)): `{scope, test_run_id, case_keys}`.
+   * Null for every job that is not a re-run.
+   */
+  test_selection: ColumnType<TestSelection | null, string | null | undefined, never>;
+}
+
+/** `build_jobs.test_selection.scope` — which re-run button asked (V061). */
+export type TestSelectionScope = "failed" | "full";
+
+/** `build_jobs.test_selection` — exactly these three keys (`build_jobs_test_selection_shaped`). */
+export interface TestSelection {
+  scope: TestSelectionScope;
+  /** The attempt being re-run. */
+  test_run_id: string;
+  /** At least one distinct 64-hex `case_key`. */
+  case_keys: string[];
 }
 
 /**
@@ -4662,6 +4695,101 @@ export interface TestArtifactsTable {
   lines_total: ColumnType<string | null, number | null | undefined, never>;
 }
 
+/** `failure_classifications.class` — the Mark & Route card's four radios (V055). */
+export const FAILURE_CLASSES = ["product_bug", "test_update", "flake_retry", "infra_rig"] as const;
+export type FailureClass = (typeof FAILURE_CLASSES)[number];
+
+/** `failure_classifications.actor` — who picked the class, and what the card's affix reads (V055). */
+export type ClassificationActor = "human" | "heuristic" | "model";
+
+/** `failure_classifications.subtype` — the #434 amendment (V061). */
+export const FAILURE_SUBTYPES = ["unclear_requirements"] as const;
+export type FailureSubtype = (typeof FAILURE_SUBTYPES)[number];
+
+/**
+ * `failure_classifications.routed` — the dispatch receipt (V055). At least one key; other keys
+ * are allowed and the routing service writes a few (`routing`, `runner_id`, …).
+ */
+export interface ClassificationReceipt {
+  control_id?: string;
+  rerun_job_id?: string;
+  target_attempt?: number;
+  [key: string]: unknown;
+}
+
+/**
+ * `ouroboros.failure_classifications` — one Mark & Route decision about one failing case
+ * occurrence (V055, [#327](https://github.com/NobuData/ouroboros/issues/327); `subtype` V061).
+ * Frozen once written except `routed` (once), `superseded_by` (once) and a nulled `created_by`;
+ * a new row supersedes the case's current one by trigger.
+ */
+export interface FailureClassificationsTable {
+  id: Generated<string>;
+  organization_id: string;
+  test_case_id: string;
+  class: FailureClass;
+  note: string | null;
+  actor: ClassificationActor;
+  /** Heuristic only. */
+  rule_id: string | null;
+  /** Model only, 0–100 — `numeric`, so a string when read. */
+  confidence: ColumnType<string | null, number | null | undefined, never>;
+  routed: ColumnType<ClassificationReceipt | null, string | null | undefined, string>;
+  created_by: string | null;
+  created_at: Generated<Date>;
+  superseded_by: ColumnType<string | null, never, string>;
+  subtype: FailureSubtype | null;
+}
+
+/**
+ * `ouroboros.run_pr_intents` — the Mark & Route card's PR toggles for one run (V055, decision
+ * **T8**). Intents, not gates: nothing enforces them yet.
+ */
+export interface RunPrIntentsTable {
+  run_id: string;
+  organization_id: string;
+  block_until_green: Generated<boolean>;
+  auto_rerun_physical: Generated<boolean>;
+  updated_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.pr_waivers` — *Waive & annotate PR* (V055). Append-only; `reason` required; the
+ * annotation half is AV.2's ([#344](https://github.com/NobuData/ouroboros/issues/344)), so
+ * `annotation_state` stays `pending_pr_plane`.
+ */
+export interface PrWaiversTable {
+  id: Generated<string>;
+  organization_id: string;
+  run_id: string;
+  author: string | null;
+  reason: string;
+  case_keys: Generated<string[]>;
+  annotation_state: Generated<"pending_pr_plane">;
+  created_at: Generated<Date>;
+}
+
+/**
+ * `ouroboros.test_case_history` — one occurrence per case per attempt (V054,
+ * [#326](https://github.com/NobuData/ouroboros/issues/326)). A writer supplies the case; the
+ * trigger derives the rest, so everything else is `undefined` on insert.
+ */
+export interface TestCaseHistoryTable {
+  id: Generated<string>;
+  organization_id: string;
+  test_case_id: string;
+  github_repo_id: ColumnType<string, undefined, never>;
+  case_key: ColumnType<string, undefined, never>;
+  test_run_id: ColumnType<string, undefined, never>;
+  status: ColumnType<TestCaseStatus, undefined, never>;
+  retries: ColumnType<number, undefined, never>;
+  pass_on_retry: ColumnType<boolean, undefined, never>;
+  observed_at: ColumnType<Date, undefined, never>;
+  created_at: Generated<Date>;
+}
+
 /**
  * `ouroboros.build_job_artifact_uploads` — the job-scoped upload's token ledger while open, and its
  * receipt once closed (V060, [#330](https://github.com/NobuData/ouroboros/issues/330)): the attempt
@@ -4768,6 +4896,10 @@ export interface Database {
   hil_measurements: HilMeasurementsTable;
   test_artifacts: TestArtifactsTable;
   build_job_artifact_uploads: BuildJobArtifactUploadsTable;
+  failure_classifications: FailureClassificationsTable;
+  run_pr_intents: RunPrIntentsTable;
+  pr_waivers: PrWaiversTable;
+  test_case_history: TestCaseHistoryTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -4990,6 +5122,7 @@ export const TABLE_COLUMNS = {
     "ack_detail",
     "idempotency_key",
     "remember",
+    "retry_stage",
   ],
   run_ingest_receipts: [
     "id",
@@ -5336,6 +5469,9 @@ export const TABLE_COLUMNS = {
     "updated_at",
     "bearer_sealed",
     "hostname",
+    "health_note",
+    "health_noted_at",
+    "health_noted_by",
   ],
   enrollment_tokens: [
     "id",
@@ -5410,6 +5546,7 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
     "artifact_globs",
+    "test_selection",
   ],
   build_log_chunks: [
     "id",
@@ -5527,6 +5664,53 @@ export const TABLE_COLUMNS = {
     "manifest",
     "warnings",
     "stored_bytes",
+  ],
+  failure_classifications: [
+    "id",
+    "organization_id",
+    "test_case_id",
+    "class",
+    "note",
+    "actor",
+    "rule_id",
+    "confidence",
+    "routed",
+    "created_by",
+    "created_at",
+    "superseded_by",
+    "subtype",
+  ],
+  run_pr_intents: [
+    "run_id",
+    "organization_id",
+    "block_until_green",
+    "auto_rerun_physical",
+    "updated_by",
+    "created_at",
+    "updated_at",
+  ],
+  pr_waivers: [
+    "id",
+    "organization_id",
+    "run_id",
+    "author",
+    "reason",
+    "case_keys",
+    "annotation_state",
+    "created_at",
+  ],
+  test_case_history: [
+    "id",
+    "organization_id",
+    "test_case_id",
+    "github_repo_id",
+    "case_key",
+    "test_run_id",
+    "status",
+    "retries",
+    "pass_on_retry",
+    "observed_at",
+    "created_at",
   ],
   planning_epic_progress: [
     "epic_id",

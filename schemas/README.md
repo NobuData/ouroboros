@@ -35,6 +35,12 @@ schemas/
 │       ├── valid/               # a worked example per message type, and the variants
 │       ├── invalid/             # one document per rule, each breaking exactly that rule
 │       └── sessions/            # ordered transcripts — each frame a path into valid/
+├── triage/
+│   ├── v0.json                  # the contract — $id: …/triage/v0.json, JSON Schema 2020-12
+│   └── fixtures/
+│       ├── expected.json        # every document below, which half it is, and its verdict
+│       ├── valid/               # a request, and heuristic and model responses
+│       └── invalid/             # one document per rule — a heuristic with a confidence first
 └── workflow-dsl/
     ├── v1.json                  # the contract — $id: …/workflow-dsl/v1.json, JSON Schema 2020-12
     └── fixtures/
@@ -71,6 +77,7 @@ schemas/
 | [`ouroboros-runner/internal/conn/`](../ouroboros-runner/internal/conn) | the Go agent's protocol codec and validator (AG.1) — the runner contract's first implementation | `protocol_test.go` (every case's diagnostics, code and path, in the contract's order; every transcript replayed; every message type and every code covered), `frame_test.go` (the encoder reproduces a committed frame byte for byte) and `limits_test.go` (the Go constants are the schema's published limits, and the two over-limit cases built from them) |
 | [`ouroboros-rest/src/modules/farm/protocol/`](../ouroboros-rest/src/modules/farm/protocol) | the farm gateway's protocol codec (AH.3, [#251](https://github.com/NobuData/ouroboros/issues/251)) — the runner contract's second implementation, a table-for-table port of the Go one | `protocol.spec.ts` (every case's diagnostics, code and path, in the contract's order; every transcript's frames decoded and held to their direction; every fixture named by a case; the TypeScript constants are the schema's published limits, and the two over-limit cases built from them), and `gateway/agent.gateway.integration-spec.ts`, which replays the session transcripts against the running gateway in both directions |
 | [`ouroboros-rest/src/modules/test-results/`](../ouroboros-rest/src/modules/test-results) | the result parser (AT.1, [#329](https://github.com/NobuData/ouroboros/issues/329)) — reads a rig's `ouro-hil-results.json` into V053's measurements, dropping only the smallest invalid element | `hil.schema.spec.ts` (the embedded copy is exactly `hil-results/v1.json`, and classifies every fixture as `expected.json` records) |
+| [`ouroboros-rest/src/modules/triage/`](../ouroboros-rest/src/modules/triage) | `/v0/triage` (AT.4, [#332](https://github.com/NobuData/ouroboros/issues/332)) — the routing service's heuristic hints answered in the response shape, and the request it will send; committed before its model implementation, AV.1 ([#343](https://github.com/NobuData/ouroboros/issues/343)) | `triage.contract.spec.ts` (every field of `v0.json` pinned with its type in `triage.contract.ts`, every fixture classified as `expected.json` records, and every request and heuristic response the service builds valid) |
 | [`docs/TEST_RESULTS_INGEST.md`](../docs/TEST_RESULTS_INGEST.md) | the HIL results contract a person reads | Its worked example is `hil-results/fixtures/valid/helios-rig.json` |
 | [`docs/RUNNER_PROTOCOL.md`](../docs/RUNNER_PROTOCOL.md) | the runner wire contract a person reads | [`scripts/verify-runner-protocol.sh`](../scripts/verify-runner-protocol.sh) — every message type has a section, a fixture and a case; every example in the document is the committed fixture; every fixture is asserted against; the limits agree |
 
@@ -97,7 +104,7 @@ halves on the pull request that makes it. `ci/db` watches `workflow-dsl/v1.json`
 that file: its drift check validates the seeded workflow definitions against the schema, so a
 schema edit that leaves the seeds behind fails on the pull request that makes it rather than in
 the studio later. `ci/runner` and — since the farm gateway ([#251](https://github.com/NobuData/ouroboros/issues/251))
-made `ouroboros-rest` the contract's second implementation — `ci/rest` watch `runner-protocol/**`. `ci/rest` alone watches `hil-results/**` ([#329](https://github.com/NobuData/ouroboros/issues/329)): the result parser is its only reader until the runner's upload path validates what it sends.
+made `ouroboros-rest` the contract's second implementation — `ci/rest` watch `runner-protocol/**`. `ci/rest` alone watches `hil-results/**` ([#329](https://github.com/NobuData/ouroboros/issues/329)): the result parser is its only reader until the runner's upload path validates what it sends. `ci/rest` alone watches `triage/**` too ([#332](https://github.com/NobuData/ouroboros/issues/332)): `/v0/triage` is committed before the engine answers it, and `ci/engine` joins when AV.1 ([#343](https://github.com/NobuData/ouroboros/issues/343)) makes it a reader.
 
 **Those filters name each contract rather than the directory**, and that changed when
 `runner-protocol/` arrived ([#243](https://github.com/NobuData/ouroboros/issues/243)): both

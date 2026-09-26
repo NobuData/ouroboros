@@ -4735,6 +4735,11 @@ so none of them reports a control that has already elapsed.
 `{controlId, requestedBy}` in its payload. `remember: true` is the #412 amendment's *remember
 this* flag: stored (V050) for the knowledge pipeline, never applied differently by an executor.
 
+**A correction round is a steer with `retryStage: true`** (V061, #332). The Mark & Route card
+queues it through `ControlsService.correctionRound` — the one in-process writer, held to the same
+role policy — and the executor appends the note to the planning context and starts the current
+stage's next attempt, acking with that attempt. The public route never sets the flag.
+
 **The audit is the database's.** V048's `run_controls_audit()` trigger writes a
 `run_control.requested | delivered | acked | expired | rejected` event for every write, and the
 body is `{run_id, kind, state, has_payload}`, so the steer text has nowhere to go.
@@ -4810,6 +4815,42 @@ yarn test:integration src/modules/runs/console.mutation.integration-spec.ts
 (`Implementing · 4/6`, which the shared dev seed follows) and by mockup 10 (`Implement` … `Open
 PR`). The parity suite asserts both label lists exactly, so the stepper after the active node is
 the one reviewed difference and any further drift still fails.
+
+### Classification & routing
+
+AT.4 ([#332](https://github.com/NobuData/ouroboros/issues/332)), decisions **T6**/**T7**, option
+**5-A**, in [`src/modules/triage/`](src/modules/triage). The test-results page's Mark & Route
+card: honest hints, a recorded decision, and routes that compose over the control queue and the
+farm rather than beside them.
+
+```
+GET  /api/v1/test-runs/:id/hints                    every failing case's rule verdicts   (any member)
+GET  /api/v1/test-runs/:id/classifications          current decisions + routing receipts (any member)
+POST /api/v1/test-runs/:id/cases/:caseId/classify   record, then route                   (member+)
+POST /api/v1/test-runs/:id/rerun   {scope}          failed set | full suite, as a new build (member+)
+POST /api/v1/test-runs/:id/waivers {reason}         the waiver; no PR annotation (AV.2)   (admin+)
+```
+
+| class | route | dispatches | receipt |
+| ----- | ----- | ---------- | ------- |
+| `product_bug`, `test_update` | correction round | a steer with `retryStage` carrying the note | `control_id`, `target_attempt` |
+| `flake_retry` | flake | a `test_case_history` mark + a re-run of the case | `rerun_job_id` |
+| `infra_rig` | infra | the runner's `health_note` (+ a full re-run with `toggles.requeue`) | `rerun_job_id` when requeued |
+
+**Hints are rules, never a confidence.** `flake.pass_on_retry`, `infra.rig_error` and
+`product.new_failure_in_diff`, evaluated in that order; every hint is `confidence: null`,
+`actor: heuristic`, and is also answered in `/v0/triage`'s response shape
+(`schemas/triage/v0.json`), the contract AV.1 (#343) implements with a model.
+`triage.contract.spec.ts` pins every field of that schema, so a shape change is red here.
+
+**Re-runs answer an honest queue state.** `FarmJobsService.submitRerun` copies the attempt's
+build snapshot onto a new job with `build_jobs.test_selection` (V061) and answers `offered`,
+`queued_runner_available` or `queued_no_eligible_runner` — never *started*.
+
+**Recorded first, routed second, and what could not be routed is said.** `routing.skipped`
+explains a missing runner, a missing farm build or a disabled pool beside a classification that
+was still made. Audited as `triage.classified`, `triage.rerun_requested`, `triage.waived` and
+`runner.flagged`, with the person as the actor; the note never enters the trail.
 
 ## Container
 
@@ -4989,6 +5030,9 @@ ouroboros-rest/
 │       │   │               #   fleet.stats.ts — where null stops being zero
 │       │   │               #   fleet.policy.ts — the day boundary, last week, B5's label
 │       │   └── installer/  # /install.sh · /runner/<version>/<file> — the agent's installer · #248
+│       ├── triage/         # Mark & Route: hints, classify, re-run, waive  · #332
+│       │                   #   triage.rules.ts — the three heuristic rules, pure
+│       │                   #   triage.contract.ts — /v0/triage, held to schemas/triage/v0.json
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*

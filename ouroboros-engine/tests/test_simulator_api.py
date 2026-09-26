@@ -153,6 +153,7 @@ def test_the_scenarios_are_listed(dev: TestClient) -> None:
         "482-gate-return",
         "guardrail-violation",
         "control-responsive",
+        "correction-round",
     ]
 
 

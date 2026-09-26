@@ -1,0 +1,24 @@
+{
+  "class": "product_bug",
+  "subtype": null,
+  "confidence": null,
+  "narrative": null,
+  "evidence": [
+    {
+      "kind": "prior_attempt",
+      "ref": "1",
+      "note": "The case passed in attempt 1 and fails now."
+    },
+    {
+      "kind": "diff_path",
+      "ref": "drivers/motor/pid.c",
+      "note": "The failure's path is one this run changed."
+    }
+  ],
+  "provenance": {
+    "contract": "triage/v1",
+    "actor": "heuristic",
+    "rule_id": "product.new_failure_in_diff",
+    "model": null
+  }
+}

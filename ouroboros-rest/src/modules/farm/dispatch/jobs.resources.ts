@@ -10,6 +10,25 @@ import type { BuildExecutor, BuildJobStatus } from "../../db/schema";
 import { parseCommand } from "./command";
 import type { JobView } from "./dispatch.repository";
 
+/**
+ * Where a just-submitted job honestly stands (#332) — never *"started"*, because nothing has
+ * started when the request returns:
+ *
+ *   * `offered` — dispatch has already offered it to a runner (or the runner has taken it);
+ *   * `queued_runner_available` — queued, and at least one runner is eligible for it now, so
+ *     placement is a dispatcher pass away;
+ *   * `queued_no_eligible_runner` — queued, and **no runner is eligible**: offline, drained,
+ *     full, or without the job's executor. It waits in its pool's queue until one is.
+ */
+export type DispatchQueueState =
+  "offered" | "queued_runner_available" | "queued_no_eligible_runner";
+
+/** A re-run just submitted, and where it honestly stands. */
+export interface RerunDispatch {
+  readonly job: BuildJobResource;
+  readonly queueState: DispatchQueueState;
+}
+
 /** One build attempt. */
 export interface BuildJobResource {
   readonly id: string;

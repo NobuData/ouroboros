@@ -21547,6 +21547,221 @@ select pg_temp.must_hold(
   'and the AS.5 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- V061 — classification routing: subtype, stage retry, health note, test selection (#332, AT.4)
+-- ===========================================================================
+--
+-- The Mark & Route card's actions compose over existing machinery (decisions T6, T7), and V061
+-- adds only the four things those rows could not yet say. Asserted: a classification's subtype is
+-- a closed vocabulary of one and is frozen with the decision; only a steer may ask for a stage
+-- retry, and the flag is frozen at insert; a runner's health note is bounded and travels with its
+-- instant; a build job's test selection is exactly {scope, test_run_id, case_keys} with at least
+-- one distinct 64-hex key.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v061', 'Routing Works', 'routing-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a6100000-0000-0000-0000-00000000000a', 'Ken S', 'ken@routing-works.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a6110000-0000-0000-0000-00000000000a', 'org-v061', 'routing-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a611f000-0000-0000-0000-00000000000a', 'a6110000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('a6120000-0000-0000-0000-000000000482', 'org-v061', 'a611f000-0000-0000-0000-00000000000a',
+          482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'building', 'Test', 6, 8, now() - interval '1 hour');
+
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status, started_at) values
+  ('a6130000-0000-0000-0000-000000000001', 'org-v061', 'a6120000-0000-0000-0000-000000000482',
+   1, 'complete', now() - interval '30 minutes');
+
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind, meta)
+  values ('a6140000-0000-0000-0000-000000000001', 'org-v061', 'a6130000-0000-0000-0000-000000000001',
+          'telemetry integration', 'qemu_cortex_m3', 'sim', '{}');
+
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retries, retry_outcomes)
+  values ('a6150000-0000-0000-0000-000000000001', 'org-v061', 'a6140000-0000-0000-0000-000000000001',
+          'frame order under load', 'telemetry', 'failed', 0, '["failed"]');
+
+-- --- the subtype ---------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.failure_classifications', 'failure_classifications_subtype')
+    = array['unclear_requirements'],
+  'unclear_requirements is the whole subtype vocabulary — the #434 amendment and nothing else');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.failure_classifications
+      (organization_id, test_case_id, class, subtype, actor, created_by)
+    values ('org-v061', 'a6150000-0000-0000-0000-000000000001', 'product_bug', 'vague',
+            'human', 'a6100000-0000-0000-0000-00000000000a')$$,
+  'a subtype is one the intervention taxonomy maps', 'failure_classifications_subtype');
+
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, subtype, note, actor, created_by)
+  values ('a6160000-0000-0000-0000-000000000001', 'org-v061', 'a6150000-0000-0000-0000-000000000001',
+          'product_bug', 'unclear_requirements', 'The ticket never said which frame order wins.',
+          'human', 'a6100000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select subtype = 'unclear_requirements' from ouroboros.failure_classifications
+        where id = 'a6160000-0000-0000-0000-000000000001'),
+  'a person can say the ticket was underspecified, and the row keeps it');
+
+select pg_temp.must_reject(
+  $$update ouroboros.failure_classifications set subtype = null
+     where id = 'a6160000-0000-0000-0000-000000000001'$$,
+  'the subtype is part of the decision and is frozen with it', 'failure_classifications_frozen');
+
+-- --- the stage retry ---------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.run_controls (run_id, kind, retry_stage, requested_by, expires_at)
+    values ('a6120000-0000-0000-0000-000000000482', 'pause', true,
+            'a6100000-0000-0000-0000-00000000000a', now() + interval '5 minutes')$$,
+  'only a steer can ask for a stage retry', 'run_controls_retry_stage_belongs_to_steer');
+
+insert into ouroboros.run_controls
+    (id, run_id, kind, payload, retry_stage, requested_by, expires_at)
+  values ('a6170000-0000-0000-0000-000000000001', 'a6120000-0000-0000-0000-000000000482',
+          'steer', 'Keep k_msgq, but move PID velocity sampling off the telemetry path.', true,
+          'a6100000-0000-0000-0000-00000000000a', now() + interval '5 minutes'),
+         ('a6170000-0000-0000-0000-000000000002', 'a6120000-0000-0000-0000-000000000482',
+          'steer', 'An ordinary steer.', default,
+          'a6100000-0000-0000-0000-00000000000a', now() + interval '5 minutes');
+
+select pg_temp.must_hold(
+  (select not retry_stage from ouroboros.run_controls
+    where id = 'a6170000-0000-0000-0000-000000000002'),
+  'a steer is not a correction round unless it says so');
+
+select pg_temp.must_reject(
+  $$update ouroboros.run_controls set retry_stage = false
+     where id = 'a6170000-0000-0000-0000-000000000001'$$,
+  'the stage-retry flag is part of what was asked, and is frozen at insert', 'run_controls_transition');
+
+update ouroboros.run_controls set state = 'delivered', delivered_at = now()
+ where id = 'a6170000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select state = 'delivered' and retry_stage from ouroboros.run_controls
+    where id = 'a6170000-0000-0000-0000-000000000001'),
+  'a correction round still moves through the delivery machine like any steer');
+
+-- --- the runner's health note ---------------------------------------------------------------------
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('a6180000-0000-0000-0000-00000000000a', 'org-v061', 'rig-pool', 'shell');
+
+insert into ouroboros.runners
+    (id, organization_id, pool_id, name, arch, status, desired_state, security_mode, cert_serial,
+     enrolled_at)
+  values ('a6190000-0000-0000-0000-00000000000a', 'org-v061', 'a6180000-0000-0000-0000-00000000000a',
+          'helios-rig-02', 'linux/arm64', 'online', 'active', 'mtls', '4a610001', now());
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set health_note = 'brown-out' where id = 'a6190000-0000-0000-0000-00000000000a'$$,
+  'a health note travels with the instant it was written', 'runners_health_note_complete');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set health_note = '   ', health_noted_at = now()
+     where id = 'a6190000-0000-0000-0000-00000000000a'$$,
+  'a health note is never blank', 'runners_health_note_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set health_note = repeat('x', 1025), health_noted_at = now()
+     where id = 'a6190000-0000-0000-0000-00000000000a'$$,
+  'a health note is at most 1024 characters', 'runners_health_note_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runners set health_noted_by = 'a6100000-0000-0000-0000-00000000000a'
+     where id = 'a6190000-0000-0000-0000-00000000000a'$$,
+  'nobody is named as the author of a note that does not exist', 'runners_health_note_complete');
+
+update ouroboros.runners
+   set health_note = 'Rig power supply browned out mid-trial.', health_noted_at = now(),
+       health_noted_by = 'a6100000-0000-0000-0000-00000000000a'
+ where id = 'a6190000-0000-0000-0000-00000000000a';
+
+delete from ouroboros."user" where "id" = 'a6100000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select health_note is not null and health_noted_by is null from ouroboros.runners
+    where id = 'a6190000-0000-0000-0000-00000000000a'),
+  'the note outlives its author, whose name is forgotten rather than the note');
+
+-- --- the build job's test selection ---------------------------------------------------------------
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, run_id, github_repo_id, git_ref, commit_sha, label,
+     title, executor, command, status, test_selection)
+  values ('a61a0000-0000-0000-0000-000000000001', 'org-v061', 1,
+          'a6180000-0000-0000-0000-00000000000a', 'a6120000-0000-0000-0000-000000000482',
+          'a611f000-0000-0000-0000-00000000000a', 'refs/heads/main', repeat('a', 40), 'rig-pool',
+          'Re-run failed (1)', 'shell', 'make hil', 'queued',
+          jsonb_build_object('scope', 'failed',
+                             'test_run_id', 'a6130000-0000-0000-0000-000000000001',
+                             'case_keys', jsonb_build_array(repeat('c', 64))));
+
+select pg_temp.must_hold(
+  ouroboros.build_jobs_test_selection_shaped(jsonb_build_object(
+      'scope', 'full', 'test_run_id', 'a6130000-0000-0000-0000-000000000001',
+      'case_keys', jsonb_build_array(repeat('a', 64), repeat('b', 64))))
+  and not ouroboros.build_jobs_test_selection_shaped(null),
+  'a full-suite selection carries every key, and a missing selection is not a shaped one');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set test_selection = jsonb_build_object(
+      'scope', 'some', 'test_run_id', 'a6130000-0000-0000-0000-000000000001',
+      'case_keys', jsonb_build_array(repeat('c', 64)))
+     where id = 'a61a0000-0000-0000-0000-000000000001'$$,
+  'a selection scope is failed or full', 'build_jobs_test_selection_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set test_selection = jsonb_build_object(
+      'scope', 'failed', 'test_run_id', 'a6130000-0000-0000-0000-000000000001',
+      'case_keys', '[]'::jsonb)
+     where id = 'a61a0000-0000-0000-0000-000000000001'$$,
+  'a selection names at least one case', 'build_jobs_test_selection_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set test_selection = jsonb_build_object(
+      'scope', 'failed', 'test_run_id', 'a6130000-0000-0000-0000-000000000001',
+      'case_keys', jsonb_build_array(repeat('c', 64), repeat('c', 64)))
+     where id = 'a61a0000-0000-0000-0000-000000000001'$$,
+  'a selection names each case once', 'build_jobs_test_selection_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set test_selection = jsonb_build_object(
+      'scope', 'failed', 'test_run_id', 'a6130000-0000-0000-0000-000000000001',
+      'case_keys', jsonb_build_array('frame order under load'))
+     where id = 'a61a0000-0000-0000-0000-000000000001'$$,
+  'a selection names cases by case_key, never by display name', 'build_jobs_test_selection_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set test_selection = jsonb_build_object(
+      'scope', 'failed', 'test_run_id', 'build-2',
+      'case_keys', jsonb_build_array(repeat('c', 64)))
+     where id = 'a61a0000-0000-0000-0000-000000000001'$$,
+  'a selection names the attempt it re-runs by id', 'build_jobs_test_selection_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set test_selection = jsonb_build_object(
+      'scope', 'failed', 'test_run_id', 'a6130000-0000-0000-0000-000000000001',
+      'case_keys', jsonb_build_array(repeat('c', 64)), 'extra', true)
+     where id = 'a61a0000-0000-0000-0000-000000000001'$$,
+  'a selection carries exactly its three keys', 'build_jobs_test_selection_shape');
+
+delete from ouroboros.organization where "id" = 'org-v061';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.runs where organization_id = 'org-v061')
+  and (select count(*) = 0 from ouroboros.runners where organization_id = 'org-v061'),
+  'and the V061 fixture leaves nothing behind');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

@@ -1,0 +1,19 @@
+{
+  "class": "flake_retry",
+  "subtype": null,
+  "confidence": null,
+  "narrative": null,
+  "evidence": [
+    {
+      "kind": "flake_history",
+      "ref": "c7e1b0a5dddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+      "note": "Passed on retry 2 of 3."
+    }
+  ],
+  "provenance": {
+    "contract": "triage/v0",
+    "actor": "heuristic",
+    "rule_id": "flake.pass_on_retry",
+    "model": null
+  }
+}

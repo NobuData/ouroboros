@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.37.5",
+    "version": "0.37.6",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -89,6 +89,10 @@
     {
       "name": "workflows",
       "description": "**Workflow Studio's own surface** (mockup 04, epic\n[#127](https://github.com/NobuData/ouroboros/issues/127)) — the rail, the canvas, the\ndraft, and the **Publish v15** button.\n\nA workflow is an entity with a slug, a title, a status, and a version history. The slug\nis load-bearing: `runs.workflow_tag` and `queue_items.workflow_tag` are opaque text by\ndecision **F8**, and the slug is what one of those resolves through — so a closed run is\nstill rendered under the workflow it named, and a slug cannot be changed.\n\n**A workflow has one draft and any number of published versions.** The draft is the only\nmutable document; a published version cannot be revised by anybody, including an owner,\nbecause a run pins the version it executed (decision **P1**, enforced in the database).\nChanging a workflow therefore means editing its draft and publishing the next version.\n\n**Two operations here are easy to get subtly wrong, and are specified accordingly.**\nSaving a draft requires an `If-Match` carrying the etag of the draft you read, so a\nsecond tab cannot silently overwrite the first — a stale one is a `409` with the current\netag in `details`. Publishing runs two validators, this service's and\n`ouroboros-engine`'s, and creates a version only when both are green; a finding from\neither is a `422` with node-anchored errors and **nothing written**.\n\nReading is every member's, `viewer` included. Creating, renaming, pausing, saving a\ndraft and publishing are `owner` or `admin` — a `member` is somebody who works here,\nand publishing changes what every future run of the workspace does."
+    },
+    {
+      "name": "triage",
+      "description": "**Mark & Route** — the test-results page's control surface (mockup 11, issue\n[#332](https://github.com/NobuData/ouroboros/issues/332), decisions **T6**/**T7**, option\n**5-A**): heuristic hints that never claim a confidence, a classification recorded as a\ndecision, and routes that compose over the control queue and the build farm rather than\nbeside them — a correction round, a flake re-run, a runner's health note — plus the two\nre-run buttons and the waiver."
     },
     {
       "name": "farm",
@@ -1805,7 +1809,7 @@
           "dashboard"
         ],
         "summary": "Pause, resume, abort or steer a run",
-        "description": "Mockup 10's *Pause loop*, *Abort run* and the steering box\n([#306](https://github.com/NobuData/ouroboros/issues/306), decision **R6**). A control is\na row on a **durable queue**, not a call to the executor. The executor fetches it, applies\nit and acknowledges it with the effect it had, so the console can tell *acknowledged*\nfrom *sent* from *no response* instead of drawing all three as success.\n\n**Who may press what.** `steer` is `owner`, `admin` or `member`. `pause`, `resume` and\n`abort` are `owner` or `admin`. Checked by the server before the run is read, so a\nmember's abort is refused whatever it carries.\n\n**Abort needs the typed confirmation**: `confirmation` must be the run's loop number,\nthe `1847` of *Loop #1847*. The server re-checks it against the run.\n\n**Steering does not pause.** The text is appended to the current attempt's context and\nmirrored into the transcript as a `user` entry at once. The ack names the attempt it\nlanded on: *\"steering applied to attempt 2\"*. `remember: true` marks a steer as a\ncandidate fact for review (the #412 amendment). It is a hint, not a confirmation.\n\n**`202`, and the body's `state` says what became of it:**\n\n* `pending`: queued, not yet fetched. The chip reads *sent*.\n* `rejected`: the run has already finished. `detail` is the reason to display, and\n  nothing was queued.\n* any other state: a repeat collapsed into the control already outstanding. A second\n  `pause` or `abort` while one is pending or delivered answers with that one, and a\n  retry under the same `idempotencyKey` answers with the control that key named.\n\nA control that nobody acknowledges before `expiresAt` becomes `expired`, which is a\ndifferent state from `rejected`: *\"no response — the run may be between stages\"*.\nEvery control is audited as `run_control.*`, and no audit body carries the steer text.",
+        "description": "Mockup 10's *Pause loop*, *Abort run* and the steering box\n([#306](https://github.com/NobuData/ouroboros/issues/306), decision **R6**). A control is\na row on a **durable queue**, not a call to the executor. The executor fetches it, applies\nit and acknowledges it with the effect it had, so the console can tell *acknowledged*\nfrom *sent* from *no response* instead of drawing all three as success.\n\n**Who may press what.** `steer` is `owner`, `admin` or `member`. `pause`, `resume` and\n`abort` are `owner` or `admin`. Checked by the server before the run is read, so a\nmember's abort is refused whatever it carries.\n\n**Abort needs the typed confirmation**: `confirmation` must be the run's loop number,\nthe `1847` of *Loop #1847*. The server re-checks it against the run.\n\n**Steering does not pause.** The text is appended to the current attempt's context and\nmirrored into the transcript as a `user` entry at once. The ack names the attempt it\nlanded on: *\"steering applied to attempt 2\"*. `remember: true` marks a steer as a\ncandidate fact for review (the #412 amendment). It is a hint, not a confirmation.\nA steer the Mark & Route card queues as a correction round carries `retryStage: true`\n(#332); this route never sets it.\n\n**`202`, and the body's `state` says what became of it:**\n\n* `pending`: queued, not yet fetched. The chip reads *sent*.\n* `rejected`: the run has already finished. `detail` is the reason to display, and\n  nothing was queued.\n* any other state: a repeat collapsed into the control already outstanding. A second\n  `pause` or `abort` while one is pending or delivered answers with that one, and a\n  retry under the same `idempotencyKey` answers with the control that key named.\n\nA control that nobody acknowledges before `expiresAt` becomes `expired`, which is a\ndifferent state from `rejected`: *\"no response — the run may be between stages\"*.\nEvery control is audited as `run_control.*`, and no audit body carries the steer text.",
         "operationId": "submitRunControl",
         "parameters": [
           {
@@ -1865,7 +1869,8 @@
                       "expiresAt": "2026-09-22T14:09:40.000Z",
                       "detail": null,
                       "hasPayload": true,
-                      "remember": false
+                      "remember": false,
+                      "retryStage": false
                     }
                   },
                   "rejected": {
@@ -1882,7 +1887,8 @@
                       "expiresAt": "2026-09-22T14:35:00.000Z",
                       "detail": "The run is merged and has already finished, so there is nothing left to control.",
                       "hasPayload": true,
-                      "remember": false
+                      "remember": false,
+                      "retryStage": false
                     }
                   }
                 }
@@ -2023,7 +2029,8 @@
                       "expiresAt": "2026-09-22T14:09:40.000Z",
                       "detail": "steering applied to attempt 2",
                       "hasPayload": true,
-                      "remember": false
+                      "remember": false,
+                      "retryStage": false
                     },
                     {
                       "id": "c0000000-0000-4000-8000-000000000004",
@@ -2037,7 +2044,8 @@
                       "expiresAt": "2026-09-22T13:52:00.000Z",
                       "detail": null,
                       "hasPayload": false,
-                      "remember": false
+                      "remember": false,
+                      "retryStage": false
                     }
                   ]
                 }
@@ -17418,6 +17426,521 @@
         }
       }
     },
+    "/api/v1/test-runs/{id}/hints": {
+      "get": {
+        "tags": [
+          "triage"
+        ],
+        "summary": "Heuristic triage hints for a test run's failing cases",
+        "description": "The Mark & Route card's pre-selected radio ([#332](https://github.com/NobuData/ouroboros/issues/332),\noption **5-A**). For every `failed`, `error` or `flaky` case of the attempt: the first of\nthree **deterministic rules** that fires, and every rule's verdict with its reason, so a\nperson can read the rule and disagree with it.\n\n| rule | suggests | fires when |\n|---|---|---|\n| `flake.pass_on_retry` | `flake_retry` | the case passed on a sanctioned retry, now or in its history |\n| `infra.rig_error` | `infra_rig` | the build was retried for infrastructure, its runner is offline or removed, or the failure text matches the infra taxonomy |\n| `product.new_failure_in_diff` | `product_bug` | the case did not fail in the previous attempt and its failure path is (or sits beside) a path the run changed |\n\n**A hint never carries a confidence.** `confidence` is always `null` and `actor` always\n`heuristic`: a rule has no calibration to report. `triage` is the same hint in the\ncommitted `/v0/triage` response shape (`schemas/triage/v0.json`), the door AV.1's model\nwill answer behind (#343). Every member may read this, a `viewer` included.",
+        "operationId": "getTestRunHints",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TestRunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One entry per failing case, by suite then name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestRunHints"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`test_run_not_found` — no test run with that id, **or none this caller may know\nabout**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member\nof.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}/classifications": {
+      "get": {
+        "tags": [
+          "triage"
+        ],
+        "summary": "Each classified case's current decision and routing receipt",
+        "description": "The current classification of every classified case of the attempt, oldest first, with\nits **routing receipt**: the correction round's `controlId` and `targetAttempt`, or the\nre-run's `rerunJobId` ([#332](https://github.com/NobuData/ouroboros/issues/332)). A\nsuperseded decision is kept in the database and not listed. Every member may read this.",
+        "operationId": "listTestRunClassifications",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TestRunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The decisions.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassificationList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`test_run_not_found` — no test run with that id, **or none this caller may know\nabout**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member\nof.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}/cases/{caseId}/classify": {
+      "post": {
+        "tags": [
+          "triage"
+        ],
+        "summary": "Classify a failing case, and route the decision",
+        "description": "Mark & Route ([#332](https://github.com/NobuData/ouroboros/issues/332), decisions **T6**\nand **T7**). The decision is recorded first — actor `human`, the person as its author,\nsuperseding the case's earlier decision — and then routed over machinery that already\nexists:\n\n| class | route | what it dispatches |\n|---|---|---|\n| `product_bug`, `test_update` | `correction_round` | a steer carrying `note`, with `retryStage: true`: the executor puts the note in the next attempt's planning context and starts the stage's next attempt (*Queue correction round → attempt N+1*). Receipt: `controlId` + `targetAttempt`. |\n| `flake_retry` | `flake_retry` | a flake-history mark, and a re-run of the case as a new build attempt. Receipt: `rerunJobId`. |\n| `infra_rig` | `infra_rig` | a farm health note on the runner that ran the attempt; with `toggles.requeue`, a re-run of the attempt's cases. Receipt: `rerunJobId` when requeued. |\n\n**What routing could not do is said, not thrown**: `routing.skipped` explains a flag or a\nre-run that did not happen (no farm build produced the attempt, the pool is disabled, the\nrun has finished). The receipt holds only what was actually dispatched, and is written\nonce. `toggles.blockUntilGreen` and `toggles.autoRerunPhysical` are stored as the run's\nPR **intents** (decision T8), enforced by nothing yet. `subtype: unclear_requirements`\nrecords *this ticket was underspecified* (the #434 amendment).\n\n`owner`, `admin` or `member`. Audited as `triage.classified` (never with the note), plus\nthe control's, the build's and the runner's own events.",
+        "operationId": "classifyTestCase",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TestRunId"
+          },
+          {
+            "$ref": "#/components/parameters/TestCaseId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ClassifyCaseRequest"
+              },
+              "examples": {
+                "correction": {
+                  "summary": "Queue correction round → attempt 4",
+                  "value": {
+                    "class": "product_bug",
+                    "note": "Keep k_msgq, but move PID velocity sampling off the telemetry path.",
+                    "toggles": {
+                      "blockUntilGreen": true,
+                      "autoRerunPhysical": true
+                    }
+                  }
+                },
+                "infra": {
+                  "summary": "Flag the rig and requeue",
+                  "value": {
+                    "class": "infra_rig",
+                    "note": "Rig PSU browned out mid-trial.",
+                    "toggles": {
+                      "requeue": true
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The classification with its receipt, and what routing did.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ClassifyResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `viewer` may not classify.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`test_run_not_found`, `test_case_not_found` (the case is not in this test run), or\n`tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`test_case_not_failing` — the case passed or was skipped; only a failed, error or flaky\ncase can be classified.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`classification_note_required` — `product_bug` and `test_update` queue a correction\nround, whose note is the next attempt's planning context. `classification_toggle_invalid`\n— `toggles.requeue` on anything but `infra_rig`. `control_payload_invalid` — a note of\nonly whitespace. `validation_failed` — an id is not a uuid, or a field is the wrong shape.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}/rerun": {
+      "post": {
+        "tags": [
+          "triage"
+        ],
+        "summary": "Re-run a test run's failed cases, or its full suite",
+        "description": "The test-results head's **Re-run failed (N)** and **Re-run full suite**\n([#332](https://github.com/NobuData/ouroboros/issues/332), decision **T6**): a new build\nattempt through AH.4's dispatch, copying the snapshot of the build that produced the\nattempt (or the run's latest earlier farm-built attempt) and carrying the case set in\n`build_jobs.test_selection` — **only** the `failed` and `error` cases for `failed`, every\ncase for `full`.\n\n**`202`, and never an optimistic success.** `queueState` says honestly where the build\nstands: `offered` (already offered to a runner), `queued_runner_available` (a runner is\neligible now), or `queued_no_eligible_runner` (none is — it waits in its pool's queue).\n`owner`, `admin` or `member`. Audited as `triage.rerun_requested` and\n`runner.job_submitted`, with the person as the actor.",
+        "operationId": "rerunTestRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TestRunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RerunRequest"
+              },
+              "example": {
+                "scope": "failed"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "The build, queued, and its honest queue state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Rerun"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `viewer` may not start a build.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`test_run_not_found` — no test run with that id, **or none this caller may know\nabout**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member\nof.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`rerun_nothing_selected` — nothing failed (or the test run has no cases).\n`rerun_source_missing` — no attempt of this run was built on the farm, so there is no\nbuild to re-run. `farm_pool_disabled` — the build's pool has been switched off.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid, or `scope` is not `failed` or `full`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}/waivers": {
+      "post": {
+        "tags": [
+          "triage"
+        ],
+        "summary": "Waive failing cases, with a reason",
+        "description": "The waiver half of *Waive & annotate PR* ([#332](https://github.com/NobuData/ouroboros/issues/332),\ndecision **T8**). Records the author, the required reason and the waived cases by\n`case_key` (none waives a criterion). **No PR annotation is attempted**: that is AV.2's\n([#344](https://github.com/NobuData/ouroboros/issues/344)), and `annotationState` stays\n`pending_pr_plane` until it lands. `owner` or `admin` only — a waiver lets a failure\nthrough. Audited as `triage.waived`.",
+        "operationId": "waiveTestRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TestRunId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WaiveRequest"
+              },
+              "example": {
+                "reason": "Known rig drift on helios-rig-02; tracked in",
+                "caseIds": [
+                  "5eed0035-0000-4000-8000-000000000001"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The waiver.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Waiver"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — only an `owner` or `admin` may waive.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`test_run_not_found` — no test run with that id, **or none this caller may know\nabout**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member\nof.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`waiver_cases_invalid` — a case id that is not in this test run. `validation_failed` —\nno reason, a blank one, or an id that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/farm/jobs": {
       "post": {
         "tags": [
@@ -18282,6 +18805,28 @@
           "maxLength": 200
         },
         "example": "claude-fable-5"
+      },
+      "TestRunId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "The test run — `test_runs.id`, one build attempt's results (V051). Anything that is not a\nuuid is a `422` naming the field, before anything is read.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed0033-0000-4000-8000-000000000002"
+      },
+      "TestCaseId": {
+        "name": "caseId",
+        "in": "path",
+        "required": true,
+        "description": "The case — `test_cases.id`, one case in this test run (V051).",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed0035-0000-4000-8000-000000000001"
       },
       "RunId": {
         "name": "id",
@@ -19923,6 +20468,775 @@
           }
         }
       },
+      "TriageHint": {
+        "type": "object",
+        "title": "TriageHint",
+        "description": "A heuristic hint — a class, the rule that picked it, and **no confidence** (#332, option 5-A).",
+        "additionalProperties": false,
+        "required": [
+          "suggestedClass",
+          "ruleId",
+          "confidence",
+          "actor",
+          "reason"
+        ],
+        "properties": {
+          "suggestedClass": {
+            "type": "string",
+            "enum": [
+              "product_bug",
+              "test_update",
+              "flake_retry",
+              "infra_rig"
+            ]
+          },
+          "ruleId": {
+            "type": "string",
+            "enum": [
+              "flake.pass_on_retry",
+              "infra.rig_error",
+              "product.new_failure_in_diff"
+            ]
+          },
+          "confidence": {
+            "type": "null",
+            "description": "Always null. A rule has no calibration to report."
+          },
+          "actor": {
+            "type": "string",
+            "const": "heuristic"
+          },
+          "reason": {
+            "type": "string",
+            "description": "Why the rule fired, in a sentence the card can show."
+          }
+        }
+      },
+      "TriageRuleVerdict": {
+        "type": "object",
+        "title": "TriageRuleVerdict",
+        "additionalProperties": false,
+        "required": [
+          "ruleId",
+          "suggests",
+          "fired",
+          "reason"
+        ],
+        "properties": {
+          "ruleId": {
+            "type": "string",
+            "enum": [
+              "flake.pass_on_retry",
+              "infra.rig_error",
+              "product.new_failure_in_diff"
+            ]
+          },
+          "suggests": {
+            "type": "string",
+            "enum": [
+              "product_bug",
+              "test_update",
+              "flake_retry",
+              "infra_rig"
+            ]
+          },
+          "fired": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "TriageV0Response": {
+        "type": "object",
+        "title": "TriageV0Response",
+        "description": "The committed `/v0/triage` response shape (`schemas/triage/v0.json`, #332) — snake_case,\nbecause it is the engine-facing contract. A heuristic answers `confidence: null` and no\nnarrative; AV.1's model (#343) answers the same shape with both.",
+        "additionalProperties": false,
+        "required": [
+          "class",
+          "subtype",
+          "confidence",
+          "narrative",
+          "evidence",
+          "provenance"
+        ],
+        "properties": {
+          "class": {
+            "type": "string",
+            "enum": [
+              "product_bug",
+              "test_update",
+              "flake_retry",
+              "infra_rig"
+            ]
+          },
+          "subtype": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "unclear_requirements",
+              null
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "narrative": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "ref",
+                "note"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "failure",
+                    "hil_measurement",
+                    "diff_path",
+                    "prior_attempt",
+                    "flake_history"
+                  ]
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "note": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "contract",
+              "actor",
+              "rule_id",
+              "model"
+            ],
+            "properties": {
+              "contract": {
+                "type": "string",
+                "const": "triage/v0"
+              },
+              "actor": {
+                "type": "string",
+                "enum": [
+                  "heuristic",
+                  "model"
+                ]
+              },
+              "rule_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "model": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            }
+          }
+        }
+      },
+      "CaseHint": {
+        "type": "object",
+        "title": "CaseHint",
+        "additionalProperties": false,
+        "required": [
+          "caseId",
+          "caseKey",
+          "name",
+          "suite",
+          "status",
+          "hint",
+          "rules",
+          "triage"
+        ],
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caseKey": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "suite": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "failed",
+              "error",
+              "flaky"
+            ]
+          },
+          "hint": {
+            "description": "The first rule that fired, or null when none did.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TriageHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rules": {
+            "type": "array",
+            "description": "Every rule's verdict, in precedence order.",
+            "items": {
+              "$ref": "#/components/schemas/TriageRuleVerdict"
+            }
+          },
+          "triage": {
+            "description": "The hint in the `/v0/triage` response shape, or null.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TriageV0Response"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TestRunHints": {
+        "type": "object",
+        "title": "TestRunHints",
+        "additionalProperties": false,
+        "required": [
+          "testRunId",
+          "cases"
+        ],
+        "properties": {
+          "testRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "cases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CaseHint"
+            }
+          }
+        }
+      },
+      "ClassificationReceipt": {
+        "type": "object",
+        "title": "ClassificationReceipt",
+        "description": "What was actually dispatched because of a classification. Written once.",
+        "additionalProperties": false,
+        "required": [
+          "controlId",
+          "rerunJobId",
+          "targetAttempt",
+          "route"
+        ],
+        "properties": {
+          "controlId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The correction round's control."
+          },
+          "rerunJobId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The re-run's build."
+          },
+          "targetAttempt": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The attempt the correction round opens — *\"→ attempt 4\"*."
+          },
+          "route": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "correction_round",
+              "flake_retry",
+              "infra_rig",
+              null
+            ]
+          }
+        }
+      },
+      "Classification": {
+        "type": "object",
+        "title": "Classification",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "testCaseId",
+          "class",
+          "subtype",
+          "note",
+          "actor",
+          "ruleId",
+          "confidence",
+          "routed",
+          "createdBy",
+          "createdAt",
+          "supersededBy"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testCaseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "class": {
+            "type": "string",
+            "enum": [
+              "product_bug",
+              "test_update",
+              "flake_retry",
+              "infra_rig"
+            ]
+          },
+          "subtype": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "unclear_requirements",
+              null
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The correction note — the next attempt's planning context."
+          },
+          "actor": {
+            "type": "string",
+            "enum": [
+              "human",
+              "heuristic",
+              "model"
+            ]
+          },
+          "ruleId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "confidence": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "A model's 0–100. Null for a person and for a heuristic."
+          },
+          "routed": {
+            "description": "Null until something was dispatched.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/ClassificationReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "supersededBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          }
+        }
+      },
+      "ClassificationList": {
+        "type": "object",
+        "title": "ClassificationList",
+        "additionalProperties": false,
+        "required": [
+          "testRunId",
+          "classifications"
+        ],
+        "properties": {
+          "testRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "classifications": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Classification"
+            }
+          }
+        }
+      },
+      "ClassifyToggles": {
+        "type": "object",
+        "title": "ClassifyToggles",
+        "additionalProperties": false,
+        "properties": {
+          "blockUntilGreen": {
+            "type": "boolean",
+            "description": "*Block PR until green* — stored as an intent (T8)."
+          },
+          "autoRerunPhysical": {
+            "type": "boolean",
+            "description": "*Auto re-run physical suite after fix* — stored as an intent (T8)."
+          },
+          "requeue": {
+            "type": "boolean",
+            "description": "`infra_rig` only: also requeue the attempt's cases after flagging its runner."
+          }
+        }
+      },
+      "ClassifyCaseRequest": {
+        "type": "object",
+        "title": "ClassifyCaseRequest",
+        "additionalProperties": false,
+        "required": [
+          "class"
+        ],
+        "properties": {
+          "class": {
+            "type": "string",
+            "enum": [
+              "product_bug",
+              "test_update",
+              "flake_retry",
+              "infra_rig"
+            ]
+          },
+          "subtype": {
+            "type": "string",
+            "enum": [
+              "unclear_requirements"
+            ],
+            "description": "*This ticket was underspecified* (the #434 amendment)."
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Required for `product_bug` and `test_update`. Not blank, not padded."
+          },
+          "toggles": {
+            "$ref": "#/components/schemas/ClassifyToggles"
+          }
+        }
+      },
+      "RerunRequest": {
+        "type": "object",
+        "title": "RerunRequest",
+        "additionalProperties": false,
+        "required": [
+          "scope"
+        ],
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": [
+              "failed",
+              "full"
+            ]
+          }
+        }
+      },
+      "Rerun": {
+        "type": "object",
+        "title": "Rerun",
+        "additionalProperties": false,
+        "required": [
+          "testRunId",
+          "scope",
+          "caseKeys",
+          "job",
+          "queueState"
+        ],
+        "properties": {
+          "testRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "failed",
+              "full"
+            ]
+          },
+          "caseKeys": {
+            "type": "array",
+            "description": "The cases the build carries, by `case_key`.",
+            "items": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          },
+          "job": {
+            "$ref": "#/components/schemas/BuildJob"
+          },
+          "queueState": {
+            "type": "string",
+            "enum": [
+              "offered",
+              "queued_runner_available",
+              "queued_no_eligible_runner"
+            ],
+            "description": "Where the build honestly stands. Never *started*."
+          }
+        }
+      },
+      "RunnerFlag": {
+        "type": "object",
+        "title": "RunnerFlag",
+        "additionalProperties": false,
+        "required": [
+          "runnerId",
+          "runnerName",
+          "note",
+          "notedAt"
+        ],
+        "properties": {
+          "runnerId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runnerName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "type": "string"
+          },
+          "notedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TriageRouting": {
+        "type": "object",
+        "title": "TriageRouting",
+        "description": "What routing did. A field a route does not use is null.",
+        "additionalProperties": false,
+        "required": [
+          "route",
+          "control",
+          "targetAttempt",
+          "historyMarked",
+          "rerun",
+          "runnerFlag",
+          "skipped"
+        ],
+        "properties": {
+          "route": {
+            "type": "string",
+            "enum": [
+              "correction_round",
+              "flake_retry",
+              "infra_rig"
+            ]
+          },
+          "control": {
+            "description": "The correction round's steer, `retryStage: true`.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunControl"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "targetAttempt": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "historyMarked": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "rerun": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Rerun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runnerFlag": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/RunnerFlag"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skipped": {
+            "type": "array",
+            "description": "What routing could not do, and why.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "ClassifyResult": {
+        "type": "object",
+        "title": "ClassifyResult",
+        "additionalProperties": false,
+        "required": [
+          "classification",
+          "routing"
+        ],
+        "properties": {
+          "classification": {
+            "$ref": "#/components/schemas/Classification"
+          },
+          "routing": {
+            "$ref": "#/components/schemas/TriageRouting"
+          }
+        }
+      },
+      "WaiveRequest": {
+        "type": "object",
+        "title": "WaiveRequest",
+        "additionalProperties": false,
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 4096,
+            "description": "Why. Required, not blank."
+          },
+          "caseIds": {
+            "type": "array",
+            "maxItems": 500,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
+      "Waiver": {
+        "type": "object",
+        "title": "Waiver",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "runId",
+          "testRunId",
+          "author",
+          "reason",
+          "caseKeys",
+          "annotationState",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "author": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          },
+          "caseKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "annotationState": {
+            "type": "string",
+            "const": "pending_pr_plane",
+            "description": "The PR annotation is AV.2's (#344) and is not attempted."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
       "RunControl": {
         "type": "object",
         "title": "RunControl",
@@ -19939,7 +21253,8 @@
           "expiresAt",
           "detail",
           "hasPayload",
-          "remember"
+          "remember",
+          "retryStage"
         ],
         "properties": {
           "id": {
@@ -20002,6 +21317,10 @@
           "remember": {
             "type": "boolean",
             "description": "The steer's *remember this* flag. Always false for the other kinds."
+          },
+          "retryStage": {
+            "type": "boolean",
+            "description": "Whether the steer is a **correction round**\n([#332](https://github.com/NobuData/ouroboros/issues/332)): it also asked the executor\nto start the current stage's next attempt, with the text in its planning context. Set\nby the Mark & Route card's *Queue correction round*, never by this route. Always false\nfor the other kinds."
           }
         }
       },

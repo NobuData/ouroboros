@@ -384,7 +384,7 @@ describe("TABLE_COLUMNS", () => {
     // The seventy-first and seventy-second are V055's `test_artifacts` and V060's
     // `build_job_artifact_uploads`, mirrored by AT.2 (#330) — the job-scoped upload that registers
     // each artifact and closes the upload's receipt in one transaction.
-    expect(TABLE_NAMES).toHaveLength(72);
+    expect(TABLE_NAMES).toHaveLength(76);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

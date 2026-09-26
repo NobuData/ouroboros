@@ -57,7 +57,10 @@ export type AuditSubjectType =
   | "runner"
   | "runner_pool"
   | "enrollment_token"
-  | "build_job";
+  | "build_job"
+  | "test_case"
+  | "test_run"
+  | "pr_waiver";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -235,6 +238,36 @@ export const RUNNER_POOL_DELETED_EVENT = "runner.pool_deleted";
 export const RUNNER_JOB_SUBMITTED_EVENT = "runner.job_submitted";
 
 /**
+ * A runner was flagged with a farm health note because a failure it ran was classified
+ * `infra_rig` (AT.4, [#332](https://github.com/NobuData/ouroboros/issues/332)). In the `runner`
+ * family, so *what has happened to our fleet* stays one question. The note itself is on the
+ * runner row; the detail names the classification that wrote it.
+ */
+export const RUNNER_FLAGGED_EVENT = "runner.flagged";
+
+/**
+ * A person classified a failing test case on the Mark & Route card (AT.4, #332, decision
+ * **T7**). Subject `test_case`; the detail carries the class, the subtype, what was routed —
+ * `control_id`, `rerun_job_id`, `target_attempt` — and never the correction note, which is in
+ * the classification row and the transcript.
+ *
+ * **A family of its own, `triage`.** Classifying, re-running and waiving are decisions about test
+ * results, not about credentials or the fleet, and `action like 'triage.%'` is the question
+ * *who decided what about our failures*.
+ */
+export const TRIAGE_CLASSIFIED_EVENT = "triage.classified";
+
+/** *Re-run failed* or *Re-run full suite* dispatched a new build attempt (#332). Subject `test_run`. */
+export const TRIAGE_RERUN_REQUESTED_EVENT = "triage.rerun_requested";
+
+/**
+ * A waiver was recorded (#332, decision **T8**). Subject `pr_waiver`; the reason is in the row.
+ * The PR annotation is AV.2's ([#344](https://github.com/NobuData/ouroboros/issues/344)) and is
+ * not attempted.
+ */
+export const TRIAGE_WAIVED_EVENT = "triage.waived";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -268,6 +301,10 @@ export const AUDIT_ACTIONS = [
   RUNNER_POOL_UPDATED_EVENT,
   RUNNER_POOL_DELETED_EVENT,
   RUNNER_JOB_SUBMITTED_EVENT,
+  RUNNER_FLAGGED_EVENT,
+  TRIAGE_CLASSIFIED_EVENT,
+  TRIAGE_RERUN_REQUESTED_EVENT,
+  TRIAGE_WAIVED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

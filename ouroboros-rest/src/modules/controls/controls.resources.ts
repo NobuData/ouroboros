@@ -42,6 +42,11 @@ export interface RunControlResource {
   readonly hasPayload: boolean;
   /** The steer's *remember this* flag. Always false for the other kinds. */
   readonly remember: boolean;
+  /**
+   * Whether the steer is a correction round (#332): it also asked for the stage's next
+   * attempt. Always false for the other kinds.
+   */
+  readonly retryStage: boolean;
 }
 
 /** One control, as the executor claims it. */
@@ -52,6 +57,11 @@ export interface PendingControlResource {
   readonly payload: string | null;
   /** The steer's *remember this* flag. */
   readonly remember: boolean;
+  /**
+   * A correction round (#332): append the text to the planning context, then start the current
+   * stage's next attempt, and ack with that attempt's number. False for an ordinary steer.
+   */
+  readonly retryStage: boolean;
   readonly requestedAt: string;
   /** After this instant an ack is refused as `control_not_delivered` with state `expired`. */
   readonly expiresAt: string;
@@ -89,6 +99,7 @@ export function runControlResource(row: RunControl): RunControlResource {
     detail: row.ack_detail,
     hasPayload: row.payload !== null,
     remember: row.remember,
+    retryStage: row.retry_stage,
   };
 }
 
@@ -104,6 +115,7 @@ export function pendingControlResource(row: RunControl): PendingControlResource 
     kind: row.kind,
     payload: row.payload,
     remember: row.remember,
+    retryStage: row.retry_stage,
     requestedAt: row.requested_at.toISOString(),
     expiresAt: row.expires_at.toISOString(),
   };

@@ -38,6 +38,11 @@ name: ouroboros-rest · ci
 # An edit to the published schema that did not run this suite would leave the parser validating
 # rig uploads against the old rules.
 #
+# schemas/triage/** is here because of AT.4 (#332): the `/v0/triage` contract is committed before
+# its model implementation (AV.1, #343), and this module's unit suite is its drift check — it pins
+# every field of v0.json, classifies every fixture as expected.json records, and validates what
+# the routing service builds. ci/engine joins when AV.1 makes the engine a reader.
+#
 # ouroboros-engine/openapi.yaml is here because of R.4 (#146). The engine stub every integration
 # suite talks to holds each request it receives and each answer it serves to that document, read
 # at test time. An engine contract change that ran only ci/engine would leave this module's stub —
@@ -67,6 +72,7 @@ on:
       - "schemas/plan/**"
       - "schemas/runner-protocol/**"
       - "schemas/hil-results/**"
+      - "schemas/triage/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docs/mockups/10-run-detail.html"
@@ -90,6 +96,7 @@ on:
       - "schemas/plan/**"
       - "schemas/runner-protocol/**"
       - "schemas/hil-results/**"
+      - "schemas/triage/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docs/mockups/10-run-detail.html"
