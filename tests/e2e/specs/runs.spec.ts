@@ -477,9 +477,11 @@ test.describe("the right column (#313)", () => {
     await expect(commits.nth(1)).toContainText("7f03b8d");
     await expect(changes).toContainText("will squash on merge");
 
-    // ---- Resources: both meters at the mockup's fills, forge-02 reserved.
-    await expect(resources).toContainText("212k / 400k budget");
-    await expect(resources).toContainText("$1.14 / $2.50 cap");
+    // ---- Resources: both meters, forge-02 reserved. `284k` and `$1.52` rather than mockup 10's
+    // `212k` and `$1.14` since #356: mockup 12's Spend card sums the same run after its PR's
+    // correction round and verification pass (R__dev_seed_verification.sql, decision 3).
+    await expect(resources).toContainText("284k / 400k budget");
+    await expect(resources).toContainText("$1.52 / $2.50 cap");
     await expect(resources).toContainText("forge-02 reserved");
     await expect(resources.locator(".run-resources__dot--idle")).toHaveCount(1);
     await expect(resources.locator(".ou-meter")).toHaveCount(2);

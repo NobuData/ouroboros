@@ -409,6 +409,11 @@ seed: run #482 @ 12m40s — stages(3✓ · impl 2/3 · 4○) · 9 transcript ent
 > nothing drawing it. `tests/constraints.sql` reads each accepted set out of `pg_constraint`
 > and requires a fixture to have written every value of it, which turns the ticket that widens
 > a vocabulary red instead of the report that renders a blank cell.
+>
+> **Since #356 (AW.5) the Resources meters read `284k` / `$1.52`, not `212k` / `$1.14`.** Mockup
+> 12's Spend card sums the same run after its PR's correction round and verification pass, and
+> one ledger cannot give both pages their drawn figures; this seed's four rows still total 212k
+> and 114¢. See `R__dev_seed_verification.sql`'s decision 3.
 
 ---
 

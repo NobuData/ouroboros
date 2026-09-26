@@ -11,8 +11,9 @@
  *
  * ## Two workspaces, and why the leg needs both
  *
- * **`acme-robotics` is the mockup.** Its five runners, two pools, forty-nine builds (the
- * forty-ninth being run `#482`'s reservation, added by #302) and one streamed log are the seed's, so parity, the member's page and the shell's promises are asserted
+ * **`acme-robotics` is the mockup.** Its five runners, two pools, fifty-one builds (one being run
+ * `#482`'s reservation, added by #302, and two the builds of PR `#514`'s revisions, added by #356)
+ * and one streamed log are the seed's, so parity, the member's page and the shell's promises are asserted
  * there. But nothing can *enrol* there: the seed gives the workspace a farm CA whose key is a
  * placeholder envelope on purpose (`R__dev_seed_farm.sql` § *Neither the CA key nor the
  * certificate is real* — a genuine key in a migration is a private key in every clone), so a
@@ -71,8 +72,10 @@ export const SEEDED_STATS = [
   // *migrated*, and the note is re-aged on every read. `2h` on a stack that has just come up,
   // `3h` on one somebody kept for the afternoon — both are the page telling the truth.
   { label: "Runners online", value: "4/5", line: /forge-03 offline · \dh/ },
-  { label: "Builds today", value: "23", line: "19 clean · 3 retried · 1 failed" },
-  { label: "Avg build time", value: "4m 12s", line: "▼ 38s vs last week" },
+  // 25 and 4m 00s rather than mockup 08's 23 and 4m 12s since #356: mockup 12's Build gate cites
+  // a finished forge-01 build of each PR revision (R__dev_seed_verification.sql, decision 5).
+  { label: "Builds today", value: "25", line: "21 clean · 3 retried · 1 failed" },
+  { label: "Avg build time", value: "4m 00s", line: "▼ 50s vs last week" },
   { label: "Cache hit rate", value: "78%", line: "ccache · per-runner" },
 ] as const;
 

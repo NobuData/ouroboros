@@ -90,12 +90,13 @@ export const SEEDED_STATS: readonly SeededStat[] = [
   },
   {
     label: "Token spend · today",
-    // 4.2M tokens over sixteen events and four providers, of which three (the local `ollama`
+    // 4.2M tokens over eighteen events and four providers, of which three (the local `ollama`
     // ones) carry no price — which is what the `≈` means and why the cost is a floor. Sixteen
     // since #302, and the same 4.2M: the console seed needed `#482`'s own spend to be four
     // rows it could sum for mockup 10's Resources card, so the dashboard seed's one
-    // 900 000-token event gave up 212 000 of them and its attribution. The card prints a
-    // total, a cost and a provider count, and none of the three moved.
+    // 900 000-token event gave up 212 000 of them and its attribution. Eighteen since #356,
+    // which took 72 000 more for mockup 12's Spend card. The card prints a total, a cost and a
+    // provider count, and none of the three moved.
     value: "4.2M",
     detail: "≈ $18.60 across 4 providers",
   },

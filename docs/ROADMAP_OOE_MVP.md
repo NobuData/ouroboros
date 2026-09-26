@@ -114,14 +114,14 @@ position is not forced by dependencies, one of these decided it.
 | **P8** | Planning & batch work creation | ✅ 17/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | ✅ 20/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | ✅ 17/17 | 17 | 55 | Mockup 10 |
-| **P11** | Evidence — tests & PR verification | 🟡 13/38 | 38 | 119 | Mockups 11, 12 |
+| **P11** | Evidence — tests & PR verification | 🟡 14/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | — 0/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | — 0/32 | 32 | 109 | Mockups 15, 18 |
 | **P14** | Decisions & governance — inbox, settings | — 0/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **262/454** | **454** | **1,404** | |
+| | **Total** | **276/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -1486,7 +1486,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **38 issues** · 119 complexity points · order **#263–#300** · 8 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_11_TEST_RESULTS.md`, `ROADMAP_MOCKUP_12_PR_VERIFICATION.md`
-> **Status:** 🟡 **In progress** — 13 of 38 issues closed
+> **Status:** 🟡 **In progress** — 14 of 38 issues closed
 
 **Goal.** Parse test truth from farm jobs (JUnit, HIL measurements, coverage, artifacts), derive flake state from sanctioned retries, sync PR records from GitHub with per-push revisions, and compute merge gates from the real evidence systems — build, tests, HIL, diff-vs-plan, secrets and license.
 
@@ -1511,7 +1511,7 @@ the blockquote above that records what it did and what it did differently.
 | 273 | **AT.1** | ✅ [#329](https://github.com/NobuData/ouroboros/issues/329) | Result parser SPI (JUnit · HIL · coverage) | ouroboros-rest | L | AS.2 |
 | 274 | **AT.2** | ✅ [#330](https://github.com/NobuData/ouroboros/issues/330) | Job artifact & result upload | ouroboros-runner, ouroboros-rest | M | AG.4, AH.2 |
 | 275 | **AT.4** | ✅ [#332](https://github.com/NobuData/ouroboros/issues/332) | Classification & routing service | ouroboros-rest | L | AH.4, AP.4, AS.4 |
-| 276 | **AW.5** | [#356](https://github.com/NobuData/ouroboros/issues/356) | PR seeds — mockup-12 parity + probes | ouroboros-db, .github | M | 3.6, AW.2, AW.4 |
+| 276 | **AW.5** | ✅ [#356](https://github.com/NobuData/ouroboros/issues/356) | PR seeds — mockup-12 parity + probes | ouroboros-db, .github | M | 3.6, AW.2, AW.4 |
 | 277 | **AX.2** | [#358](https://github.com/NobuData/ouroboros/issues/358) | Gate engine & providers | ouroboros-rest | L | AW.2, AX.1 |
 | 278 | **AX.3** | [#359](https://github.com/NobuData/ouroboros/issues/359) | Criteria & evidence service | ouroboros-rest | M | AW.3, AX.1 |
 | 279 | **AT.3** | [#331](https://github.com/NobuData/ouroboros/issues/331) | Flake scorer & quarantine service | ouroboros-rest | M | AS.3, AT.1 |

@@ -510,7 +510,7 @@ test.describe("a farm whose refresh fails", () => {
     });
     // Stale, not gone: the page under the banner is still the page.
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(FARM_HEAD.headline);
-    await expect(tile(page, "Builds today")).toContainText("23");
+    await expect(tile(page, "Builds today")).toContainText("25");
 
     await page.unroute("**/api/farm");
     await banner.getByRole("button", { name: "Retry" }).click();
