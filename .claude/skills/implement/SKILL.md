@@ -60,7 +60,7 @@ git checkout -b ticket-<number>
 - UI: Use **CSS classes** - no hard-coded values.
 - Documentation must be complete and simple.
 - Check for code reuse; extract repeated logic into separate reusable modules.
-- Tests must **be thorough**, have **no warnings, no errors, and no skips**.
+- Only run unit tests.  End-to-end and integration are not necessary to run.
 
 ## Phase 5: Verify and Test
 
@@ -88,6 +88,7 @@ Run package-specific tests the issue touches, per READMEs.
 ## Phase 6: Note Work
 
 - Mark ticket complete in **ROADMAP** and REMOVE ITS ENTRY FROM THE ISSUES TABLE matching the issue number if applicable.
+- Update the **CHANGELOG** with a single line summary of what was done - it must be short and succinct, less than 80 characters.
 - Bump semver versions in modified projects.
 
 ## Phase 7: Commit, Push, Pull Request
