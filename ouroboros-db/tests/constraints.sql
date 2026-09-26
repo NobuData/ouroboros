@@ -21134,6 +21134,225 @@ select pg_temp.must_hold(
 delete from ouroboros.organization where "id" = 'org-v059';
 
 -- ===========================================================================
+-- V060 — the job-scoped artifact upload: token ledger, receipt and globs (#330, AT.2)
+-- ===========================================================================
+--
+-- Results leave a runner by a job-scoped HTTPS upload rather than the control socket (decision
+-- T4). A build job has one ledger row: the hash of the single-use token minted with its offer,
+-- then — once the upload is accepted — the receipt: the attempt it filled, the manifest of every
+-- file collected (truncated and skipped ones with their reasons) and the job warnings. Asserted:
+-- the globs are relative and bounded on the pool and the job; a ledger belongs to a job of its
+-- own workspace; a token is stored as a hash; an open ledger holds no receipt and a closed one
+-- always does; a re-offer re-mints an open ledger; a closed receipt is final; deleting the
+-- attempt clears only its reference; and the app role mints and closes but never deletes.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v060',  'Upload Works',       'upload-works',       now()),
+  ('org-v060b', 'Other Upload Works', 'other-upload-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a6010000-0000-0000-0000-00000000000a', 'org-v060',  'upload-works',       true),
+  ('a6010000-0000-0000-0000-00000000000b', 'org-v060b', 'other-upload-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a601f000-0000-0000-0000-00000000000a', 'a6010000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a601f000-0000-0000-0000-00000000000b', 'a6010000-0000-0000-0000-00000000000b',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('a6020000-0000-0000-0000-000000000482', 'org-v060', 'a601f000-0000-0000-0000-00000000000a',
+          482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'building', 'Test', 6, 8, now() - interval '1 hour');
+
+-- --- the globs: relative to the working directory, bounded, on the pool and the job ------------
+insert into ouroboros.runner_pools (id, organization_id, name, executor, artifact_globs) values
+  ('a6070000-0000-0000-0000-00000000000a', 'org-v060',  'rig-pool', 'shell',
+   '["captures/*.csv", "logs/serial-console.log"]'),
+  ('a6070000-0000-0000-0000-00000000000b', 'org-v060b', 'rig-pool', 'shell', '[]');
+
+select pg_temp.must_hold(
+  (select artifact_globs = '[]'::jsonb from ouroboros.runner_pools
+    where id = 'a6070000-0000-0000-0000-00000000000b'),
+  'a pool with no extra globs collects only the built-in result set');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set artifact_globs = '["/etc/passwd"]'
+     where id = 'a6070000-0000-0000-0000-00000000000a'$$,
+  'an artifact glob is relative, never absolute', 'runner_pools_artifact_globs_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set artifact_globs = '["build/../../secrets/*"]'
+     where id = 'a6070000-0000-0000-0000-00000000000a'$$,
+  'an artifact glob never climbs out of the workspace', 'runner_pools_artifact_globs_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set artifact_globs = '["logs\\serial.log"]'
+     where id = 'a6070000-0000-0000-0000-00000000000a'$$,
+  'an artifact glob separates with a slash, never a backslash', 'runner_pools_artifact_globs_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set artifact_globs = '["a.log", "a.log"]'
+     where id = 'a6070000-0000-0000-0000-00000000000a'$$,
+  'an artifact glob list is a set', 'runner_pools_artifact_globs_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools set artifact_globs = to_jsonb(array[repeat('a', 257)])
+     where id = 'a6070000-0000-0000-0000-00000000000a'$$,
+  'an artifact glob is at most 256 characters', 'runner_pools_artifact_globs_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.runner_pools
+       set artifact_globs = (select jsonb_agg('g' || n) from generate_series(1, 65) as n)
+     where id = 'a6070000-0000-0000-0000-00000000000a'$$,
+  'a pool names at most 64 artifact globs', 'runner_pools_artifact_globs_shape');
+
+select pg_temp.must_hold(
+  ouroboros.artifact_globs_valid('["..hidden/*.log", "a..b.xml", "**/junit*.xml"]'),
+  'dots inside a name are not a climb — only a whole .. segment is');
+
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, run_id, github_repo_id, git_ref, commit_sha, label,
+     title, executor, command, status, artifact_globs)
+  values
+    ('a6080000-0000-0000-0000-000000000001', 'org-v060', 1,
+     'a6070000-0000-0000-0000-00000000000a', 'a6020000-0000-0000-0000-000000000482',
+     'a601f000-0000-0000-0000-00000000000a', 'refs/heads/main', repeat('a', 40), 'HIL test rig',
+     'Run the rig suite', 'shell', 'make hil', 'queued',
+     '["captures/*.csv", "logs/serial-console.log"]'),
+    ('a6080000-0000-0000-0000-000000000002', 'org-v060', 2,
+     'a6070000-0000-0000-0000-00000000000a', 'a6020000-0000-0000-0000-000000000482',
+     'a601f000-0000-0000-0000-00000000000a', 'refs/heads/main', repeat('b', 40), 'HIL test rig',
+     'Run the rig suite again', 'shell', 'make hil', 'queued', '[]');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set artifact_globs = '["../x"]'
+     where id = 'a6080000-0000-0000-0000-000000000002'$$,
+  'a job''s artifact globs are held to the pool''s rule', 'build_jobs_artifact_globs_shape');
+
+-- --- the ledger: a hashed token, per job of the workspace --------------------------------------
+insert into ouroboros.build_job_artifact_uploads (build_job_id, organization_id, token_hash, expires_at)
+  values ('a6080000-0000-0000-0000-000000000001', 'org-v060', repeat('1', 64), now() + interval '2 hours'),
+         ('a6080000-0000-0000-0000-000000000002', 'org-v060', repeat('2', 64), now() + interval '2 hours');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_job_artifact_uploads (build_job_id, organization_id, token_hash, expires_at)
+    values ('a6080000-0000-0000-0000-000000000001', 'org-v060b', repeat('3', 64), now() + interval '1 hour')$$,
+  'a job has exactly one upload ledger', 'build_job_artifact_uploads_pkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.build_job_artifact_uploads (build_job_id, organization_id, token_hash, expires_at)
+    values (gen_random_uuid(), 'org-v060b', repeat('3', 64), now() + interval '1 hour')$$,
+  'a ledger belongs to a job of its own workspace', 'build_job_artifact_uploads_job_fk');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_artifact_uploads set token_hash = 'orb_upl_plaintext'
+     where build_job_id = 'a6080000-0000-0000-0000-000000000002'$$,
+  'an upload token is stored as its SHA-256, never as itself', 'build_job_artifact_uploads_token_hash_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_artifact_uploads set expires_at = minted_at
+     where build_job_id = 'a6080000-0000-0000-0000-000000000002'$$,
+  'an upload token expires after it was minted', 'build_job_artifact_uploads_expires_after_minted');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_artifact_uploads set warnings = '[{"code": "artifact_quota_exceeded"}]'
+     where build_job_id = 'a6080000-0000-0000-0000-000000000002'$$,
+  'an open upload has no receipt yet', 'build_job_artifact_uploads_receipt');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_artifact_uploads set closed_at = now()
+     where build_job_id = 'a6080000-0000-0000-0000-000000000002'$$,
+  'a closed upload always carries its manifest', 'build_job_artifact_uploads_receipt');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_artifact_uploads set closed_at = now(), manifest = '{}'
+     where build_job_id = 'a6080000-0000-0000-0000-000000000002'$$,
+  'an upload manifest is a list of files', 'build_job_artifact_uploads_manifest_array');
+
+-- A re-offer mints a fresh token over the open ledger; the first runner's token is dead.
+update ouroboros.build_job_artifact_uploads
+   set token_hash = repeat('4', 64), minted_at = now(), expires_at = now() + interval '3 hours'
+ where build_job_id = 'a6080000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select token_hash = repeat('4', 64) from ouroboros.build_job_artifact_uploads
+    where build_job_id = 'a6080000-0000-0000-0000-000000000002'),
+  'an open ledger is re-minted in place when its job is offered again');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_artifact_uploads set organization_id = 'org-v060b'
+     where build_job_id = 'a6080000-0000-0000-0000-000000000002'$$,
+  'a ledger belongs to its job', 'build_job_artifact_uploads_frozen');
+
+-- --- closing: the receipt, and it is final -----------------------------------------------------
+insert into ouroboros.test_runs (id, organization_id, run_id, build_job_id, attempt_seq, status) values
+  ('a6030000-0000-0000-0000-000000004821', 'org-v060', 'a6020000-0000-0000-0000-000000000482',
+   'a6080000-0000-0000-0000-000000000001', 1, 'complete');
+
+update ouroboros.build_job_artifact_uploads
+   set closed_at = now(),
+       test_run_id = 'a6030000-0000-0000-0000-000000004821',
+       stored_bytes = 2202009,
+       manifest = '[{"name": "junit-build3.xml", "status": "stored", "size_bytes": 20480},
+                    {"name": "rig-capture-estop.csv", "status": "truncated", "size_bytes": 2181529,
+                     "note": "cut at 2 MiB of 9.4 MiB (per-file cap)"},
+                    {"name": "serial-console.log", "status": "skipped", "size_bytes": 0,
+                     "reason": "quota"}]',
+       warnings = '[{"code": "artifact_quota_exceeded", "file": "serial-console.log",
+                     "message": "The workspace artifact quota is full; serial-console.log was not stored."}]'
+ where build_job_id = 'a6080000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select jsonb_array_length(manifest) = 3 and warnings -> 0 ->> 'code' = 'artifact_quota_exceeded'
+     from ouroboros.build_job_artifact_uploads
+    where build_job_id = 'a6080000-0000-0000-0000-000000000001'),
+  'a closed upload lists every collected file, the skipped one included, and warns about the quota');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_artifact_uploads set token_hash = repeat('5', 64)
+     where build_job_id = 'a6080000-0000-0000-0000-000000000001'$$,
+  'a closed upload is single use: its token cannot be re-minted', 'build_job_artifact_uploads_closed_final');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_artifact_uploads set closed_at = null, manifest = null
+     where build_job_id = 'a6080000-0000-0000-0000-000000000001'$$,
+  'a closed upload never reopens', 'build_job_artifact_uploads_closed_final');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_job_artifact_uploads set warnings = '[]'
+     where build_job_id = 'a6080000-0000-0000-0000-000000000001'$$,
+  'an upload''s warnings are part of its final receipt', 'build_job_artifact_uploads_closed_final');
+
+-- Deleting the attempt leaves the receipt, with the reference cleared.
+delete from ouroboros.test_runs where id = 'a6030000-0000-0000-0000-000000004821';
+
+select pg_temp.must_hold(
+  (select test_run_id is null and closed_at is not null and jsonb_array_length(manifest) = 3
+     from ouroboros.build_job_artifact_uploads
+    where build_job_id = 'a6080000-0000-0000-0000-000000000001'),
+  'a deleted attempt clears only the receipt''s reference to it');
+
+-- The ledger leaves with its job.
+delete from ouroboros.build_jobs where id = 'a6080000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.build_job_artifact_uploads
+               where build_job_id = 'a6080000-0000-0000-0000-000000000002'),
+  'an upload ledger leaves with its job');
+
+-- --- grants -----------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.build_job_artifact_uploads', 'select')
+  and has_table_privilege('ouroboros_app', 'ouroboros.build_job_artifact_uploads', 'insert')
+  and has_table_privilege('ouroboros_app', 'ouroboros.build_job_artifact_uploads', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.build_job_artifact_uploads', 'delete'),
+  'the application mints and closes upload ledgers and never deletes one');
+
+delete from ouroboros.organization where "id" in ('org-v060', 'org-v060b');
+
+-- ===========================================================================
 -- AS.5 — the test results vocabularies, covered rather than merely closed (#328)
 -- ===========================================================================
 --

@@ -453,6 +453,13 @@ sleep mid-handshake from holding a job nobody is running.
 | `timeout_s` | integer 1–86400 | yes | Wall-clock budget. On expiry: cancel, and finish `timed_out` |
 | `expires_at` | timestamp | yes | When this offer stops being answerable |
 | `attempt` | integer ≥ 1 | no | Which attempt of the build this job is: 2 for the automatic retry of an infrastructure failure ([#252](https://github.com/NobuData/ouroboros/issues/252)). Absent means 1, and the gateway omits it on a first attempt. Optional only because it was added inside line 1 (§ 3) |
+| `upload` | object | no | Where and how the job's results leave the agent ([#330](https://github.com/NobuData/ouroboros/issues/330)) — see [the artifact upload](#the-artifact-upload). Absent for a job with nowhere to upload to: one no run is attributed to. Optional only because it was added inside line 1 |
+| `upload.path` | string (2–512), `/`-rooted, never `//` | yes | The upload's path on the control plane's own origin |
+| `upload.token` | string (32–256), header-safe | yes | The single-use upload token, sent as `Authorization: Bearer <token>` |
+| `upload.expires_at` | timestamp | yes | When the token stops being honoured |
+| `upload.globs` | array of string (1–256), 1–128 | yes | What to collect, relative to the job's working directory: the built-in result set, then the pool's and the job's own. `**` spans directories |
+| `upload.max_file_bytes` · `max_job_bytes` | integer ≥ 1 | yes | The per-file and per-job caps |
+| `upload.max_files` | integer 1–1000 | yes | The most files one upload carries |
 
 Three of those are worth the words:
 
@@ -517,6 +524,53 @@ automatic retry of an infrastructure failure is dispatched under its own job id,
 `attempt: 2`, and the agent reports that number back in `job.start` and `job.finish`:
 [`valid/job-offer-retry.json`](../schemas/runner-protocol/fixtures/valid/job-offer-retry.json).
 A job's log, its workspace and its terminal frame therefore always belong to exactly one attempt.
+
+#### The artifact upload
+
+**A job's results do not ride this socket.** Decision T4 of
+[#330](https://github.com/NobuData/ouroboros/issues/330): the socket carries job control and
+heartbeats, and one 2 MB rig capture on it would degrade exactly the channel that decides whether a
+runner looks alive. So an offer may carry `upload`, and after the command ends — before the
+workspace is removed, and **before `job.finish`** — the agent collects what `upload.globs` match and
+sends it as one job-scoped HTTPS request:
+
+```
+POST <control plane>/<upload.path>          e.g. /api/v1/farm/jobs/<build job uuid>/artifacts
+Authorization: Bearer <upload.token>
+Content-Type: multipart/form-data
+  manifest   {"schema_version": 1, "files": [{"name", "size_bytes", "checksum": "sha256:<hex>",
+                "truncated"?: {"original_bytes", "note"}}], "skipped": [{"name", "size_bytes",
+                "reason", "detail"}]}
+  file × n   one part per manifest file, its filename the manifest name (a relative path)
+```
+
+Four rules, each one deliberate:
+
+- **The token is the only credential a dispatch carries**, and it is shaped so that carrying it
+  costs nothing: minted fresh with each offer (a re-offer kills the last runner's), scoped to the one
+  job, single use — the accepted upload closes it — and expired with the job. Neither side logs it.
+- **The path is a path.** The agent resolves it against the control-plane URL it already dials,
+  exactly as it builds the socket's URL, so no offer can aim the token at another host; `//host` is
+  refused by the schema (`invalid/job-offer-upload-path.json`) and by the agent again.
+- **Nothing leaves the workspace, and nothing is dropped silently.** A glob never climbs out, a
+  symlink is listed as skipped rather than followed, a file past `max_file_bytes` is sent cut to it
+  and marked `truncated`, and a file past `max_job_bytes` or `max_files`, or one that cannot be read,
+  is listed in `skipped` with its reason. The control plane's receipt keeps all of it for the page.
+- **The finish follows the manifest.** A transient failure — the network, a `5xx`, a `429` — is
+  retried with backoff; each retry resends the collection computed once, because the control plane
+  keeps nothing from an attempt it did not accept. A refusal is not retried. `409
+  farm_artifact_upload_closed` after a retry means an earlier attempt landed. Whatever happened is
+  written to the job's log on the `runner` stream, and then the `job.finish` is queued as ever — a
+  build's result is never held hostage by its artifacts.
+
+While it uploads, the agent's heartbeat reports the job in the `upload` phase, and it sends one
+`job.progress` in that phase. The control plane's half — the store, the quota, the checksums and
+the parse — is `ouroboros-rest`'s
+[`farm/artifacts/`](../ouroboros-rest/src/modules/farm/artifacts) and
+[`TEST_RESULTS_INGEST.md`](TEST_RESULTS_INGEST.md).
+
+A shell job on the `hil-rigs` pool, with an upload:
+[`valid/job-offer-upload.json`](../schemas/runner-protocol/fixtures/valid/job-offer-upload.json).
 
 #### `job.accept`
 
@@ -1099,6 +1153,7 @@ Named here so that nobody looks for it and concludes it was forgotten:
 | How a job is actually run: container, shell, workspace, cancellation | [#246](https://github.com/NobuData/ouroboros/issues/246), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#running-jobs)'s `internal/exec` |
 | How logs are chunked, throttled and stored | [#247](https://github.com/NobuData/ouroboros/issues/247), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#build-output)'s `internal/logship` (the chunker, the throttle, the agent's cap and its ccache statistics); [#253](https://github.com/NobuData/ouroboros/issues/253), shipped — `ouroboros-rest`'s [`farm/logs/`](../ouroboros-rest/src/modules/farm/logs) (ingest in `seq` order, the caps, retention, and the offset read) |
 | Packaging, `install.sh`, systemd and launchd units | [#248](https://github.com/NobuData/ouroboros/issues/248), shipped — [`ouroboros-runner`](../ouroboros-runner/README.md#install)'s `install.sh`, `make release` and `ci/runner`'s `release/runner`; served by `ouroboros-rest`'s [`farm/installer/`](../ouroboros-rest/src/modules/farm/installer) |
+| The artifact upload's control-plane half: the store, the quota, checksums, the receipt and the parse | [#330](https://github.com/NobuData/ouroboros/issues/330), shipped — `ouroboros-rest`'s [`farm/artifacts/`](../ouroboros-rest/src/modules/farm/artifacts); the agent's collection and upload are [`ouroboros-runner`](../ouroboros-runner/README.md)'s `internal/artifacts` |
 | A remote shared cache, and the untrusted-code isolation question | [#264](https://github.com/NobuData/ouroboros/issues/264), [#267](https://github.com/NobuData/ouroboros/issues/267) |
 
 The agent's own configuration — the control plane's URL, the pool, where the certificate lives —

@@ -1,0 +1,41 @@
+{
+  "v": 1,
+  "type": "job.offer",
+  "id": "01KE7V2M8RQJ4X5N0B9HC3TDWE",
+  "payload": {
+    "job": "job_01KE7V3A6YPN2K8R4WQ0SXBHDC",
+    "pool": "hil-rigs",
+    "executor": "shell",
+    "command": [
+      "west",
+      "twister",
+      "-p",
+      "helios_mainboard"
+    ],
+    "workdir": "/",
+    "env": {},
+    "repository": {
+      "url": "https://github.com/NobuData/helios-firmware.git",
+      "ref": "refs/heads/fix/482-can-telemetry",
+      "commit": "4c1d9e7b2a6f8035e1d7c9b4a2f6e8d0c3b5a719"
+    },
+    "timeout_s": 3600,
+    "expires_at": "2026-09-18T12:00:15.000Z",
+    "upload": {
+      "path": "/api/v1/farm/jobs/0199a1f2-6b3c-7d4e-8f50-61a2b3c4d5e6/artifacts",
+      "token": "ouro_upl_Yk3vQm9ZtR2wXa7LpN4sD8fH1jC6bE0uGiKoMq5TyVw",
+      "expires_at": "2026-09-18T13:30:15.000Z",
+      "globs": [
+        "**/junit*.xml",
+        "**/ouro-hil-results*.json",
+        "**/lcov*.info",
+        "**/coverage*.xml",
+        "captures/*.csv",
+        "logs/serial-console.log"
+      ],
+      "max_file_bytes": 67108864,
+      "max_job_bytes": 268435456,
+      "max_files": 256
+    }
+  }
+}

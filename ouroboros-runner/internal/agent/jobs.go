@@ -248,7 +248,7 @@ func (a *Agent) launch(ctx context.Context, offer conn.JobOfferPayload) {
 	go func() {
 		defer a.jobs.Done()
 		defer cancel(nil)
-		a.run(jobCtx, executor, job, offer.Pool, attempt)
+		a.run(jobCtx, executor, job, offer.Pool, attempt, offer.Upload)
 		a.cancels.remove(job.ID)
 	}()
 }
@@ -277,10 +277,15 @@ func (a *Agent) cancelJob(cancel conn.JobCancelPayload) {
 // a container job — the pool's directory mounted. Once the command has ended, what is still
 // held of its output is given its moment to leave, and only then is the finish queued: a
 // gateway closes a job's log when it records the finish ([#253]), so every chunk goes first.
+// Before any of that — after the command, before its workspace is removed — the job's
+// artifacts are collected and uploaded when its offer carried an upload ([#330]), so a job's
+// finish always follows its closed manifest.
 //
 // [#247]: https://github.com/NobuData/ouroboros/issues/247
 // [#253]: https://github.com/NobuData/ouroboros/issues/253
-func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job, pool string, attempt int) {
+// [#330]: https://github.com/NobuData/ouroboros/issues/330
+func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job, pool string, attempt int,
+	upload *conn.JobUpload) {
 	a.log.Info("running a job", "job", job.ID, "attempt", attempt, "executor", job.Kind, "image", job.Image,
 		"timeout", job.Timeout)
 	cache, err := a.caches.Prepare(pool, job.ID, job.Kind)
@@ -297,7 +302,11 @@ func (a *Agent) run(ctx context.Context, executor exec.Executor, job exec.Job, p
 
 	output := a.shipper.Open(job.ID)
 	events := &jobEvents{agent: a, job: job, attempt: attempt}
-	runner := exec.Runner{Workspaces: a.config.Workspaces, Now: a.config.Now}
+	runner := exec.Runner{Workspaces: a.config.Workspaces, Now: a.config.Now,
+		// Its results leave before its workspace does, and before its finish is queued (#330).
+		BeforeCleanup: func(workspace string, result exec.Result) {
+			a.uploadArtifacts(ctx, upload, job, workspace, result, output.Runner())
+		}}
 	result := runner.Run(ctx, executor, job, exec.Output{Stdout: output.Stdout(), Stderr: output.Stderr()}, events)
 	shipped := output.Close()
 	a.report(job, attempt, result, shipped, cache.Stats(job.Env))

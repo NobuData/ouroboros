@@ -228,6 +228,20 @@ export class InvalidRequestError extends DomainError {
 }
 
 /**
+ * `413` — the request is larger than this operation will take.
+ *
+ * AT.2's ([#330](https://github.com/NobuData/ouroboros/issues/330)) artifact upload is its first
+ * caller: a file past the per-file cap, or an upload past the per-job cap. The agent cuts a file
+ * to the cap itself and lists it as truncated, so reaching this is a caller that ignored the caps
+ * its offer carried — and the code says which cap, where a bare framework `413` would not.
+ */
+export class PayloadTooLargeError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.PAYLOAD_TOO_LARGE, code, message, details);
+  }
+}
+
+/**
  * `429` — the caller may do this, and has done it too often to be allowed another one now.
  *
  * Distinct from {@link ForbiddenError} on the axis that matters to whoever reads it: a `403`

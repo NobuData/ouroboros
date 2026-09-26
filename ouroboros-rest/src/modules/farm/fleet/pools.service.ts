@@ -280,6 +280,9 @@ function columns(request: PoolFieldsDto): PoolWrite {
   if (request.maxConcurrency !== undefined) write.max_concurrency = request.maxConcurrency;
   if (request.enabled !== undefined) write.enabled = request.enabled;
   if (request.tags !== undefined) write.tags = JSON.stringify(request.tags);
+  if (request.artifactGlobs !== undefined) {
+    write.artifact_globs = JSON.stringify(request.artifactGlobs);
+  }
   if (request.autoscalePref !== undefined) write.autoscale_pref = request.autoscalePref;
   if (request.defaultCommand !== undefined) {
     // argv in, the canonical rendering out — the form `build_jobs.command` holds, so a pool's

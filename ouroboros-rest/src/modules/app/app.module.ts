@@ -16,6 +16,7 @@ import { EstimationModule } from "../estimation/estimation.module";
 import { GithubModule } from "../github/github.module";
 import { HealthModule } from "../health/health.module";
 import { FarmModule } from "../farm/farm.module";
+import { FarmArtifactsModule } from "../farm/artifacts/artifacts.module";
 import { FarmDispatchModule } from "../farm/dispatch/dispatch.module";
 import { FarmGatewayModule } from "../farm/gateway/gateway.module";
 import { FarmFleetModule } from "../farm/fleet/fleet.module";
@@ -386,6 +387,14 @@ export class AppModule {
         // or above it applies — the transport authenticates the runner instead
         // (`farm/gateway/transport.ts`).
         FarmGatewayModule,
+        // AT.2 ([#330](https://github.com/NobuData/ouroboros/issues/330)) — the job-scoped
+        // artifact upload: `POST /api/v1/farm/jobs/:id/artifacts`, the `ArtifactStore` driver
+        // (local volume or S3/MinIO, by configuration) and the single-use token dispatch mints with
+        // every offer. Before `FarmDispatchModule`, which imports it for that token. Its one route
+        // is `@AllowAnonymous()` and authenticates on the token instead —
+        // `farm/artifacts/upload.controller.ts` argues it. After `TestResultsModule`, whose parsers
+        // an upload's result files are read by.
+        FarmArtifactsModule,
         // AH.4 ([#252](https://github.com/NobuData/ouroboros/issues/252)) — build dispatch:
         // `POST /api/v1/farm/jobs` and its cancel, and the loop that offers queued jobs to
         // connected runners. After `FarmGatewayModule`, whose sessions it offers through and whose

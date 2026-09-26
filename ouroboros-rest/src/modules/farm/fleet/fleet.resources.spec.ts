@@ -289,7 +289,11 @@ describe("a pool", () => {
   it("carries the card's metadata and its runner count", () => {
     expect(
       poolResource({
-        pool: runnerPool({ env_allowlist: ["CCACHE_DIR"], tags: ["firmware"] }),
+        pool: runnerPool({
+          env_allowlist: ["CCACHE_DIR"],
+          tags: ["firmware"],
+          artifact_globs: ["captures/*.csv"],
+        }),
         runners: 3,
       }),
     ).toEqual({
@@ -303,6 +307,7 @@ describe("a pool", () => {
       envAllowlist: ["CCACHE_DIR"],
       tags: ["firmware"],
       defaultCommand: "west build -b helios_mainboard app",
+      artifactGlobs: ["captures/*.csv"],
       autoscalePref: {},
       runners: 3,
     });

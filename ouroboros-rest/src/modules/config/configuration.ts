@@ -147,6 +147,48 @@ export const MIN_FARM_LOG_BUDGET_BYTES = 1_048_576;
 /** The largest `OURO_FARM_LOG_BUDGET_BYTES` — 1 TiB, far past any single database's disk. */
 export const MAX_FARM_LOG_BUDGET_BYTES = 1_099_511_627_776;
 
+/** The artifact store drivers (AT.2, [#330](https://github.com/NobuData/ouroboros/issues/330), option **3-A**). */
+export const ARTIFACT_STORE_DRIVERS = ["local", "s3"] as const;
+
+/** Which {@link ARTIFACT_STORE_DRIVERS} entry writes artifacts. */
+export type ArtifactStoreDriver = (typeof ARTIFACT_STORE_DRIVERS)[number];
+
+/**
+ * Where the local-volume artifact store writes when `OURO_ARTIFACT_DIR` is unset — `.artifacts`
+ * under the working directory, which `.gitignore` excludes. A deployment mounts a volume and
+ * names it.
+ */
+export const DEFAULT_ARTIFACT_DIR = ".artifacts";
+
+/** The S3 region signed for when `OURO_ARTIFACT_S3_REGION` is unset. MinIO accepts any. */
+export const DEFAULT_ARTIFACT_S3_REGION = "us-east-1";
+
+/**
+ * Bytes of live artifacts one workspace keeps when `OURO_ARTIFACT_QUOTA_BYTES` is unset — 10 GiB.
+ *
+ * #330: a quota breach is a job **warning**, never a job failure, so this bounds disk without
+ * ever costing a build.
+ */
+export const DEFAULT_ARTIFACT_QUOTA_BYTES = 10_737_418_240;
+
+/** The per-file cap when `OURO_ARTIFACT_MAX_FILE_BYTES` is unset — 64 MiB, the build-log cap. */
+export const DEFAULT_ARTIFACT_MAX_FILE_BYTES = 67_108_864;
+
+/** The per-job cap when `OURO_ARTIFACT_MAX_JOB_BYTES` is unset — 256 MiB. */
+export const DEFAULT_ARTIFACT_MAX_JOB_BYTES = 268_435_456;
+
+/** Days an artifact is kept when `OURO_ARTIFACT_RETENTION_DAYS` is unset — mockup 11's `retained 30d`. */
+export const DEFAULT_ARTIFACT_RETENTION_DAYS = 30;
+
+/** The smallest artifact byte figure any of the three limits accepts — 1 KiB. */
+export const MIN_ARTIFACT_BYTES = 1024;
+
+/** The largest per-file or per-job cap — 64 GiB. */
+export const MAX_ARTIFACT_UPLOAD_BYTES = 68_719_476_736;
+
+/** The largest workspace quota — 1 PiB, far past any single volume. */
+export const MAX_ARTIFACT_QUOTA_BYTES = 1_125_899_906_842_624;
+
 /**
  * Seconds between provider health sweeps when `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` is
  * not set, and the age at which a *local* provider's last check is stale.
@@ -691,6 +733,55 @@ export interface Configuration {
    */
   readonly farmLogBudgetBytes: number;
   /**
+   * Which driver the artifact store writes through. From `OURO_ARTIFACT_STORE`, `local` when
+   * unset.
+   *
+   * AT.2 ([#330](https://github.com/NobuData/ouroboros/issues/330)), option **3-A**: a local
+   * volume by default, because requiring object storage in a self-hosted single-node deployment
+   * contradicts the lightweight rule; `s3` (S3 or MinIO) when a deployment needs to scale
+   * horizontally — which a local volume cannot. The switch is configuration, never code: each
+   * artifact row records the driver it was written with.
+   */
+  readonly artifactStore: ArtifactStoreDriver;
+  /**
+   * The local-volume store's root. From `OURO_ARTIFACT_DIR`, {@link DEFAULT_ARTIFACT_DIR} when
+   * unset; a relative path is resolved against the working directory.
+   */
+  readonly artifactDir: string;
+  /** The S3-compatible endpoint, `http(s)://host[:port]`. From `OURO_ARTIFACT_S3_ENDPOINT`; required when {@link artifactStore} is `s3`. */
+  readonly artifactS3Endpoint?: string;
+  /** The bucket. From `OURO_ARTIFACT_S3_BUCKET`; required when {@link artifactStore} is `s3`. */
+  readonly artifactS3Bucket?: string;
+  /** The region requests are signed for. From `OURO_ARTIFACT_S3_REGION`, {@link DEFAULT_ARTIFACT_S3_REGION} when unset. */
+  readonly artifactS3Region: string;
+  /** The access key id. From `OURO_ARTIFACT_S3_ACCESS_KEY_ID`; required when {@link artifactStore} is `s3`. */
+  readonly artifactS3AccessKeyId?: string;
+  /** The secret access key — redacted from every log. From `OURO_ARTIFACT_S3_SECRET_ACCESS_KEY`; required when {@link artifactStore} is `s3`. */
+  readonly artifactS3SecretAccessKey?: string;
+  /**
+   * The bytes of live artifacts one workspace keeps. From `OURO_ARTIFACT_QUOTA_BYTES`,
+   * {@link DEFAULT_ARTIFACT_QUOTA_BYTES} when unset. A file that would cross it is not stored and
+   * the job carries a warning — never a failure (#330).
+   */
+  readonly artifactQuotaBytes: number;
+  /**
+   * The per-file cap, sent to the agent with each offer. From `OURO_ARTIFACT_MAX_FILE_BYTES`,
+   * {@link DEFAULT_ARTIFACT_MAX_FILE_BYTES} when unset. A larger file is uploaded cut to it and
+   * listed as truncated.
+   */
+  readonly artifactMaxFileBytes: number;
+  /**
+   * The per-job cap, sent with each offer. From `OURO_ARTIFACT_MAX_JOB_BYTES`,
+   * {@link DEFAULT_ARTIFACT_MAX_JOB_BYTES} when unset; at least the per-file cap. Files past it
+   * are listed as skipped.
+   */
+  readonly artifactMaxJobBytes: number;
+  /**
+   * Days an uploaded artifact is kept — its `retained_until`. From `OURO_ARTIFACT_RETENTION_DAYS`,
+   * {@link DEFAULT_ARTIFACT_RETENTION_DAYS} when unset.
+   */
+  readonly artifactRetentionDays: number;
+  /**
    * Seconds between provider health sweeps, and the age at which a local provider's last
    * check is stale. From `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS`,
    * {@link DEFAULT_PROVIDER_HEALTH_INTERVAL_SECONDS} when unset.
@@ -862,6 +953,17 @@ export const VARIABLES = {
   farmPublicUrl: "OURO_FARM_PUBLIC_URL",
   farmReleasesDir: "OURO_FARM_RELEASES_DIR",
   farmLogBudgetBytes: "OURO_FARM_LOG_BUDGET_BYTES",
+  artifactStore: "OURO_ARTIFACT_STORE",
+  artifactDir: "OURO_ARTIFACT_DIR",
+  artifactS3Endpoint: "OURO_ARTIFACT_S3_ENDPOINT",
+  artifactS3Bucket: "OURO_ARTIFACT_S3_BUCKET",
+  artifactS3Region: "OURO_ARTIFACT_S3_REGION",
+  artifactS3AccessKeyId: "OURO_ARTIFACT_S3_ACCESS_KEY_ID",
+  artifactS3SecretAccessKey: "OURO_ARTIFACT_S3_SECRET_ACCESS_KEY",
+  artifactQuotaBytes: "OURO_ARTIFACT_QUOTA_BYTES",
+  artifactMaxFileBytes: "OURO_ARTIFACT_MAX_FILE_BYTES",
+  artifactMaxJobBytes: "OURO_ARTIFACT_MAX_JOB_BYTES",
+  artifactRetentionDays: "OURO_ARTIFACT_RETENTION_DAYS",
   providerHealthIntervalSeconds: "OURO_PROVIDER_HEALTH_INTERVAL_SECONDS",
   providerHealthKeyCheckSeconds: "OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS",
   backlogSyncIntervalSeconds: "OURO_BACKLOG_SYNC_INTERVAL_SECONDS",
@@ -1310,6 +1412,49 @@ const environmentShape = z.object({
     )
     .default(DEFAULT_FARM_LOG_BUDGET_BYTES),
 
+  // The artifact store (#330, option 3-A). The driver is a closed choice; the S3 settings are
+  // optional here and required together when the driver is s3 — environmentSchema's rule below.
+  // The S3 endpoint is an http(s) origin rather than a URL with a path, because the bucket is a
+  // path segment the driver adds (path-style addressing, which MinIO and S3 both serve).
+  OURO_ARTIFACT_STORE: z.enum(ARTIFACT_STORE_DRIVERS).default("local"),
+  OURO_ARTIFACT_DIR: z.string().default(DEFAULT_ARTIFACT_DIR),
+  OURO_ARTIFACT_S3_ENDPOINT: z
+    .string()
+    .refine(
+      (value) => isOrigin(value),
+      "expected the http(s) origin of an S3-compatible endpoint, such as http://minio:9000",
+    )
+    .optional(),
+  OURO_ARTIFACT_S3_BUCKET: z
+    .string()
+    .regex(/^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$/, "expected an S3 bucket name")
+    .optional(),
+  OURO_ARTIFACT_S3_REGION: z
+    .string()
+    .regex(/^[a-z0-9-]{1,32}$/, "expected a region name such as us-east-1")
+    .default(DEFAULT_ARTIFACT_S3_REGION),
+  OURO_ARTIFACT_S3_ACCESS_KEY_ID: z.string().optional(),
+  OURO_ARTIFACT_S3_SECRET_ACCESS_KEY: z.string().optional(),
+  OURO_ARTIFACT_QUOTA_BYTES: boundedWhole(
+    MIN_ARTIFACT_BYTES,
+    DEFAULT_ARTIFACT_QUOTA_BYTES,
+    MAX_ARTIFACT_QUOTA_BYTES,
+    "bytes",
+  ),
+  OURO_ARTIFACT_MAX_FILE_BYTES: boundedWhole(
+    MIN_ARTIFACT_BYTES,
+    DEFAULT_ARTIFACT_MAX_FILE_BYTES,
+    MAX_ARTIFACT_UPLOAD_BYTES,
+    "bytes",
+  ),
+  OURO_ARTIFACT_MAX_JOB_BYTES: boundedWhole(
+    MIN_ARTIFACT_BYTES,
+    DEFAULT_ARTIFACT_MAX_JOB_BYTES,
+    MAX_ARTIFACT_UPLOAD_BYTES,
+    "bytes",
+  ),
+  OURO_ARTIFACT_RETENTION_DAYS: boundedWhole(1, DEFAULT_ARTIFACT_RETENTION_DAYS, 3650, "days"),
+
   // The two provider-health cadences (#196), read by the same rules as PORT and the
   // dashboard's poll: anchored digits, then a range. Two variables rather than one because
   // they govern requests to two different people — see `Configuration` for which is which.
@@ -1476,15 +1621,42 @@ const environmentShape = z.object({
  * `undefined !== <secret>` holds, so a deployment that sets no simulator secret passes this
  * without a special case.
  */
-const environmentSchema = environmentShape.refine(
-  (values) => values.OURO_RUN_SIMULATOR_SECRET !== values.OURO_ENGINE_SHARED_SECRET,
-  {
+const environmentSchema = environmentShape
+  .refine((values) => values.OURO_RUN_SIMULATOR_SECRET !== values.OURO_ENGINE_SHARED_SECRET, {
     path: [VARIABLES.runSimulatorSecret],
     error:
       "expected a different value from OURO_ENGINE_SHARED_SECRET — two principals cannot " +
       "share one secret",
-  },
-);
+  })
+  .superRefine((values, context) => {
+    // The S3 driver (#330) needs all four of its settings; a store that boots and then fails its
+    // first upload would be a build whose results are lost for a configuration mistake.
+    if (values.OURO_ARTIFACT_STORE === "s3") {
+      for (const name of [
+        VARIABLES.artifactS3Endpoint,
+        VARIABLES.artifactS3Bucket,
+        VARIABLES.artifactS3AccessKeyId,
+        VARIABLES.artifactS3SecretAccessKey,
+      ] as const) {
+        if (values[name] === undefined) {
+          context.addIssue({
+            code: "custom",
+            path: [name],
+            message: "is required when OURO_ARTIFACT_STORE is s3",
+          });
+        }
+      }
+    }
+
+    // One file larger than a whole job could never be uploaded whole.
+    if (values.OURO_ARTIFACT_MAX_FILE_BYTES > values.OURO_ARTIFACT_MAX_JOB_BYTES) {
+      context.addIssue({
+        code: "custom",
+        path: [VARIABLES.artifactMaxJobBytes],
+        message: "expected at least OURO_ARTIFACT_MAX_FILE_BYTES",
+      });
+    }
+  });
 
 /**
  * Drop the variables that are set but empty, so they read as unset.
@@ -1578,6 +1750,17 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     farmPublicUrl: values.OURO_FARM_PUBLIC_URL,
     farmReleasesDir: values.OURO_FARM_RELEASES_DIR,
     farmLogBudgetBytes: values.OURO_FARM_LOG_BUDGET_BYTES,
+    artifactStore: values.OURO_ARTIFACT_STORE,
+    artifactDir: values.OURO_ARTIFACT_DIR,
+    artifactS3Endpoint: values.OURO_ARTIFACT_S3_ENDPOINT,
+    artifactS3Bucket: values.OURO_ARTIFACT_S3_BUCKET,
+    artifactS3Region: values.OURO_ARTIFACT_S3_REGION,
+    artifactS3AccessKeyId: values.OURO_ARTIFACT_S3_ACCESS_KEY_ID,
+    artifactS3SecretAccessKey: values.OURO_ARTIFACT_S3_SECRET_ACCESS_KEY,
+    artifactQuotaBytes: values.OURO_ARTIFACT_QUOTA_BYTES,
+    artifactMaxFileBytes: values.OURO_ARTIFACT_MAX_FILE_BYTES,
+    artifactMaxJobBytes: values.OURO_ARTIFACT_MAX_JOB_BYTES,
+    artifactRetentionDays: values.OURO_ARTIFACT_RETENTION_DAYS,
     providerHealthIntervalSeconds: values.OURO_PROVIDER_HEALTH_INTERVAL_SECONDS,
     providerHealthKeyCheckSeconds: values.OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS,
     backlogSyncIntervalSeconds: values.OURO_BACKLOG_SYNC_INTERVAL_SECONDS,

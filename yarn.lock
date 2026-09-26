@@ -3217,6 +3217,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@types/busboy@npm:^1.5.4":
+  version: 1.5.4
+  resolution: "@types/busboy@npm:1.5.4"
+  dependencies:
+    "@types/node": "npm:*"
+  checksum: 10c0/0bdd209069a445d5a71277e558978ec0db1b1a3d108335da96477d017177ae349c4d81d604db0bea19e3c99c10af2d60dbac20e36cef7cb7a517e5a4760738bd
+  languageName: node
+  linkType: hard
+
 "@types/chai@npm:^5.2.2":
   version: 5.2.3
   resolution: "@types/chai@npm:5.2.3"
@@ -10133,6 +10142,7 @@ __metadata:
     "@readme/openapi-parser": "npm:^7"
     "@testcontainers/postgresql": "npm:^12"
     "@thallesp/nestjs-better-auth": "npm:^2.7.0"
+    "@types/busboy": "npm:^1.5.4"
     "@types/express": "npm:^5"
     "@types/jest": "npm:^30"
     "@types/node": "npm:^24"
@@ -10142,6 +10152,7 @@ __metadata:
     ajv: "npm:^8"
     ajv-formats: "npm:^3"
     better-auth: "npm:1.6.26"
+    busboy: "npm:^1.6.0"
     class-transformer: "npm:^0.5.1"
     class-validator: "npm:^0.15.1"
     dependency-cruiser: "npm:^18"

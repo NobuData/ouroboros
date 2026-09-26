@@ -43,6 +43,7 @@ import {
   type ValidatorConstraintInterface,
 } from "class-validator";
 
+import { IsArtifactGlobs } from "../artifacts/artifact.globs";
 import { ARGV_ITEM_MAX_LENGTH, ARGV_MAX_ITEMS, IsArgv } from "../dispatch/jobs.dto";
 
 /** V040's `runner_pools_name_shape`, restated. A slug that may not begin or end in a dash. */
@@ -248,6 +249,16 @@ export class PoolFieldsDto {
   @IsOptional()
   @Validate(IsAutoscalePref)
   autoscalePref?: Record<string, unknown>;
+
+  /**
+   * Files every build of this pool uploads beyond the built-in result set (#330) — globs relative
+   * to the working directory, such as a rig pool's `captures/*.csv`. A build snapshots them at
+   * submit time. `[]` clears them.
+   */
+  @IsOptional()
+  @IsArray()
+  @Validate(IsArtifactGlobs)
+  artifactGlobs?: string[];
 }
 
 /** The body of `POST /api/v1/farm/pools`. */

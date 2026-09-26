@@ -168,3 +168,52 @@ the database freezes. The summary uses V059's arithmetic:
 - `delta` is the difference of the unrounded ratios against the latest earlier attempt of the run
   with coverage, rounded once.
 - `delta` is **absent** (not zero) when there is no prior attempt.
+
+## 9. The upload that feeds it (#330)
+
+The files a parse reads arrive by the build farm's job-scoped artifact upload, AT.2
+([#330](https://github.com/NobuData/ouroboros/issues/330)) —
+[`ouroboros-rest/src/modules/farm/artifacts/`](../ouroboros-rest/src/modules/farm/artifacts). The
+agent's half, and why it is HTTPS rather than the control socket, is
+[`RUNNER_PROTOCOL.md` § 4.3](RUNNER_PROTOCOL.md#the-artifact-upload).
+
+```
+POST /api/v1/farm/jobs/:id/artifacts   (Bearer: the job's single-use upload token)
+  token ✓ (job-scoped · unexpired · open) ─▶ manifest ✓ ─▶ caps ✓ ─▶ quota plan (manifest order)
+  each file: sha256 · size · first 4 KB, streamed ─▶ ArtifactStore.put ─▶ checksum ✓
+  the attempt: test_runs by build_job_id, or the run's next attempt_seq
+  detect (first 4 KB) ─▶ read back the result files ─▶ parseAttempt   (this document, § 1)
+  one transaction: test_artifacts rows · the receipt · test_runs.status = complete · token closed
+```
+
+- **Which files are results** is decided by the registry's `detect` on each file's first 4 KB, the
+  same call the parse makes. Only those are read back from the store and parsed; a capture or a
+  serial log is stored and registered but never parsed, so it never becomes a
+  `format_unrecognized` warning.
+- **`test_artifacts.kind`** is the parser that read the file — `junit`, `hil` or `coverage` — or, for
+  anything no parser read, `log` (`.log`, `.txt`, `.out`), `capture` (`.csv`, `.pcap`, `.vcd`, …) or
+  `other`. A coverage report the parser could not count is `other`: V059 registers a `coverage` row
+  only with its counts.
+- **Coverage counts** (§ 8) are written onto each coverage row as it is inserted — the parse
+  returns them for exactly this — so `test_run_coverage` has them from the first read.
+- **Retention** is `OURO_ARTIFACT_RETENTION_DAYS` (30) from the upload; the sweep and the
+  artifact reads are AT.5 ([#333](https://github.com/NobuData/ouroboros/issues/333)).
+- **A truncated file is still parsed.** A JUnit report cut at the per-file cap keeps every element
+  that closed and carries `xml_truncated` (§ 6), and its artifact row carries `truncated` with the
+  agent's note — the page can say both that results are partial and why.
+
+**The receipt** is `build_job_artifact_uploads` (V060), one row per build job: while open, the
+token's hash; once closed, the attempt it filled, the **manifest** — every collected file,
+`stored`, `truncated` or `skipped`, with the reason (`job_cap`, `max_files`, `unreadable`,
+`not_regular_file`, `outside_workspace`, or the service's own `quota`) — and the **job warnings**
+the page renders:
+
+| Warning | When |
+|---|---|
+| `artifact_truncated` | the agent cut a file to the per-file cap; it is stored, marked `truncated` |
+| `artifact_skipped` | the agent left a file behind — past the per-job cap or the file limit, unreadable, a link |
+| `artifact_quota_exceeded` | the workspace's `OURO_ARTIFACT_QUOTA_BYTES` had no room; the file is not stored |
+
+A quota breach is a warning and never a failure of the build job. The quota is checked once, when
+an upload starts, against the workspace's live artifacts — a soft bound on a disk, not a lock on
+every upload.

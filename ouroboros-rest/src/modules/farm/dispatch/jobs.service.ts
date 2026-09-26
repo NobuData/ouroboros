@@ -37,6 +37,7 @@
 
 import { Inject, Injectable } from "@nestjs/common";
 
+import { snapshotGlobs } from "../artifacts/artifact.globs";
 import { FarmAudit } from "../farm.audit";
 import { GATEWAY_CLOCK, type GatewayClock } from "../gateway/gateway.clock";
 import {
@@ -187,6 +188,9 @@ export class FarmJobsService {
       image: pool.executor === "container" ? pool.image : null,
       command,
       env: {},
+      // The pool's globs and the submission's, snapshotted like the rest of the configuration
+      // (#330): a pool edited later does not change what this build collects.
+      artifact_globs: JSON.stringify(snapshotGlobs(pool.artifact_globs, request.artifacts)),
       queued_at: this.now(),
     });
 

@@ -380,7 +380,11 @@ describe("TABLE_COLUMNS", () => {
     // The sixty-sixth to seventieth are V051's `test_runs`, `test_suites` and `test_cases`,
     // V053's `hil_measurements` and V059's `test_run_coverage` view, mirrored by AT.1 (#329) —
     // the result parser that writes the tree and reads the prior attempt's coverage.
-    expect(TABLE_NAMES).toHaveLength(70);
+    //
+    // The seventy-first and seventy-second are V055's `test_artifacts` and V060's
+    // `build_job_artifact_uploads`, mirrored by AT.2 (#330) — the job-scoped upload that registers
+    // each artifact and closes the upload's receipt in one transaction.
+    expect(TABLE_NAMES).toHaveLength(72);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

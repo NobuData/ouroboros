@@ -32,6 +32,8 @@ import {
   type ValidatorConstraintInterface,
 } from "class-validator";
 
+import { IsArtifactGlobs } from "../artifacts/artifact.globs";
+
 /** The most words a command may have — the protocol's `job.offer.command` ceiling. */
 export const ARGV_MAX_ITEMS = 256;
 
@@ -66,6 +68,11 @@ export interface BuildJobRequest {
   readonly title?: string;
   /** The short label the runners table prints beside the number; the pool's name when absent. */
   readonly label?: string;
+  /**
+   * Files this build uploads beyond its pool's and the built-in result set — globs relative to the
+   * working directory, such as `logs/serial-console.log` (#330).
+   */
+  readonly artifacts?: readonly string[];
 }
 
 /**
@@ -136,4 +143,9 @@ export class SubmitBuildJobDto implements BuildJobRequest {
   @MinLength(1)
   @MaxLength(64)
   label?: string;
+
+  @IsOptional()
+  @IsArray()
+  @Validate(IsArtifactGlobs)
+  artifacts?: string[];
 }

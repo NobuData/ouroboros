@@ -37,3 +37,7 @@ yarn-error.log*
 # misc
 .DS_Store
 *.pem
+
+# The local-volume artifact store's default directory (#330, OURO_ARTIFACT_DIR) — uploaded
+# build artifacts, never source.
+.artifacts/

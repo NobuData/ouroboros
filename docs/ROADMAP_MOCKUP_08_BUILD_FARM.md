@@ -300,6 +300,12 @@ docs/RUNNER_PROTOCOL.md (v1)
   is what makes drift fail CI: every type described three times, every documented example
   byte-identical to its fixture, every fixture asserted against, every limit agreeing.
   The TypeScript halves (#251, #255) assert against the same bytes when they land.
+- **Amended by #330 (AT.2):** `job.offer` gains the optional `upload` — a path on the control
+  plane's origin, a single-use token, the globs and the caps — and
+  [`RUNNER_PROTOCOL.md` § 4.3](RUNNER_PROTOCOL.md#the-artifact-upload) documents the job-scoped
+  HTTPS upload beside the socket (decision T4 of the Test Results roadmap): a fixture
+  (`valid/job-offer-upload.json`), a refused `//host` path
+  (`invalid/job-offer-upload-path.json`), and both codecs.
 
 ### Issue AG.2 — ouroboros-runner: [AG.2] Enrollment, identity & connection loop
 
@@ -793,6 +799,12 @@ erDiagram
 mint(pool-a, ttl 24h, uses 5) ─▶ orb_enroll_…(sealed, audited)
 register(token) ─▶ runner row + cert{CN: runner_id, O: tenant} ─▶ mTLS thereafter
 ```
+
+- **Amended by #330 (AT.2):** the job lifecycle gains a second, narrower credential. Each offer
+  of a run's build carries a fresh single-use artifact upload token (`ouro_upl_…`), stored as its
+  SHA-256 in `build_job_artifact_uploads` (V060), scoped to that job, expiring with it, and
+  closed by the accepted upload — [`SECURITY_MODEL.md` § 7.8](SECURITY_MODEL.md#78-the-artifact-upload-token).
+  `build_jobs` gains its result linkage in the same table.
 
 ### Issue AH.3 — ouroboros-rest: [AH.3] Agent WebSocket gateway
 

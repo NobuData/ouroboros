@@ -5199,6 +5199,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/farm/jobs/{id}/artifacts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload a build job's artifacts — the runner's job-scoped HTTPS path
+         * @description How a build's results leave its runner ([#330](https://github.com/NobuData/ouroboros/issues/330),
+         *     AT.2, decision **T4**). **Not the control WebSocket**: one large rig capture on the socket
+         *     that carries heartbeats degrades exactly the channel that decides whether a runner looks
+         *     alive, so artifacts ride their own request.
+         *
+         *     **No session.** The caller is the runner that ran the job, and what authenticates it is the
+         *     **single-use upload token** its `job.offer` carried (`docs/RUNNER_PROTOCOL.md`,
+         *     `job.offer.upload`), sent as `Authorization: Bearer ouro_upl_…`. The token is scoped to the
+         *     job in the path, expires with the job, is re-minted if the job is offered again, and closes
+         *     with the first accepted upload. **Every token failure is one opaque `401`**; the right
+         *     token presented again after its upload closed is `409 farm_artifact_upload_closed`, so a
+         *     runner whose first response was lost can tell its upload was recorded. Either way a replay
+         *     writes nothing.
+         *
+         *     **The body** is `multipart/form-data`: first a `manifest` field — the agent's account of
+         *     every file it collected, each with its size and SHA-256, including files it cut to the
+         *     per-file cap (`truncated`) and files it left behind (`skipped`, with a reason) — then one
+         *     `file` part per sent file, its manifest name (a relative path) as the part's filename.
+         *
+         *     **What happens to it.** Every file is streamed to the configured `ArtifactStore` (the local
+         *     volume, or S3/MinIO — `OURO_ARTIFACT_STORE`) and verified against its checksum; the result
+         *     files are parsed into the job's attempt (AT.1, `docs/TEST_RESULTS_INGEST.md`); each stored
+         *     file becomes a `test_artifacts` row with its retention date; and the upload closes with a
+         *     receipt — every file `stored`, `truncated` or `skipped` — and the job warnings the page
+         *     renders. **A quota breach is a warning, never a failure**: a file the workspace's
+         *     `OURO_ARTIFACT_QUOTA_BYTES` has no room for is skipped with `artifact_quota_exceeded`, and
+         *     the build is untouched. **A corrupted upload keeps nothing** and leaves the token open, so
+         *     the runner retries it.
+         */
+        post: operations["uploadBuildJobArtifacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/farm/registrations": {
         parameters: {
             query?: never;
@@ -13620,6 +13667,14 @@ export interface components {
             title?: string;
             /** @description The short label the runners table prints beside the number. The pool's name when absent. */
             label?: string;
+            /**
+             * @description Files this build uploads beyond its pool's `artifactGlobs` and the built-in result set
+             *     (JUnit, `ouro-hil-results*.json`, lcov and cobertura) — globs relative to the working
+             *     directory, such as `logs/serial-console.log`
+             *     ([#330](https://github.com/NobuData/ouroboros/issues/330)). Distinct; no leading `/`,
+             *     no `..` segment, no backslash. Snapshotted onto the job with the pool's.
+             */
+            artifacts?: string[];
         };
         /**
          * FarmPage
@@ -13931,6 +13986,85 @@ export interface components {
             startedAt: string | null;
         };
         /**
+         * ArtifactUploadRequest
+         * @description A job's artifact upload ([#330](https://github.com/NobuData/ouroboros/issues/330)) — the
+         *     `manifest` field first, then one `file` part per file it lists.
+         */
+        ArtifactUploadRequest: {
+            /**
+             * @description JSON, at most 1 MiB — `{"schema_version": 1, "files": [{"name", "size_bytes",
+             *     "checksum": "sha256:<hex>", "truncated"?: {"original_bytes", "note"}}], "skipped":
+             *     [{"name", "size_bytes", "reason", "detail"}]}`. `reason` is `job_cap`, `max_files`,
+             *     `unreadable`, `not_regular_file` or `outside_workspace`.
+             */
+            manifest: string;
+            /** @description The files, each part's filename its manifest name. */
+            file?: string[];
+        };
+        /**
+         * ArtifactUploadEntry
+         * @description One collected file, as the receipt records what happened to it.
+         */
+        ArtifactUploadEntry: {
+            /** @description The path it was collected at, relative to the working directory. */
+            name: string;
+            /** @enum {string} */
+            status: "stored" | "truncated" | "skipped";
+            /** @description Bytes stored — or, for a skipped file, the size the agent reported. */
+            size_bytes: number;
+            /** @enum {string} */
+            kind?: "junit" | "hil" | "coverage" | "log" | "capture" | "other";
+            checksum?: string;
+            /**
+             * Format: uuid
+             * @description The `test_artifacts` row.
+             */
+            artifact_id?: string;
+            /**
+             * @description Why a file was skipped — `quota` is the workspace's quota; the rest are the agent's.
+             * @enum {string}
+             */
+            reason?: "job_cap" | "max_files" | "unreadable" | "not_regular_file" | "outside_workspace" | "quota";
+            /** @description How a file was truncated, or why it was skipped, in the agent's words. */
+            note?: string;
+        };
+        /**
+         * ArtifactUploadWarning
+         * @description A job warning the test-results page renders — a quota breach is one, and is never a job
+         *     failure.
+         */
+        ArtifactUploadWarning: {
+            /** @enum {string} */
+            code: "artifact_quota_exceeded" | "artifact_truncated" | "artifact_skipped";
+            file: string;
+            message: string;
+        };
+        /**
+         * ArtifactUploadReceipt
+         * @description A closed upload ([#330](https://github.com/NobuData/ouroboros/issues/330)).
+         */
+        ArtifactUploadReceipt: {
+            /** Format: uuid */
+            job: string;
+            /**
+             * Format: uuid
+             * @description The attempt the results were parsed into.
+             */
+            testRun: string;
+            files: components["schemas"]["ArtifactUploadEntry"][];
+            warnings: components["schemas"]["ArtifactUploadWarning"][];
+            /** @description The parsed attempt's counts, or `null` when the upload carried no result file. */
+            results: {
+                total: number;
+                passed: number;
+                failed: number;
+                flaky: number;
+                skipped: number;
+                /** @description How many `test_runs.parse_warnings` the parse left. */
+                parseWarnings: number;
+            } | null;
+        };
+        /**
          * RunnerPool
          * @description One execution world builds can be dispatched to
          *     ([#254](https://github.com/NobuData/ouroboros/issues/254), decision B4) — mockup 08's
@@ -13970,6 +14104,12 @@ export interface components {
              *     an argv.
              */
             defaultCommand: string | null;
+            /**
+             * @description Files every build of this pool uploads beyond the built-in result set — globs relative
+             *     to the working directory, such as a rig pool's `captures/*.csv`
+             *     ([#330](https://github.com/NobuData/ouroboros/issues/330)).
+             */
+            artifactGlobs: string[];
             /**
              * @description The mockup's *"Auto-scale to cloud when queue > 5"* — **stored, inert, and returned
              *     exactly as stored** (decision B9). Nothing in this release reads inside it; AI.4
@@ -14017,6 +14157,12 @@ export interface components {
             /** @description argv, never a shell string — the same bound a build submission's command carries. */
             defaultCommand?: string[] | null;
             /**
+             * @description Files every build of this pool uploads beyond the built-in result set
+             *     ([#330](https://github.com/NobuData/ouroboros/issues/330)). Distinct globs relative to
+             *     the working directory; no leading `/`, no `..` segment, no backslash.
+             */
+            artifactGlobs?: string[];
+            /**
              * @description Stored and inert (decision B9). Validated so that AJ.1 can activate the preference
              *     without first discovering what shapes accumulated while nobody was looking.
              */
@@ -14050,6 +14196,11 @@ export interface components {
             enabled?: boolean;
             tags?: string[];
             defaultCommand?: string[] | null;
+            /**
+             * @description Replaces the pool's artifact globs ([#330](https://github.com/NobuData/ouroboros/issues/330));
+             *     `[]` clears them. Builds already submitted keep the globs they snapshotted.
+             */
+            artifactGlobs?: string[];
             autoscalePref?: {
                 enabled?: boolean;
                 queue_threshold?: number;
@@ -37190,6 +37341,98 @@ export interface operations {
             /**
              * @description `internal_error` — the service itself failed. The message is a constant and
              *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    uploadBuildJobArtifacts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The build job's id — the path the offer's `upload.path` names. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["ArtifactUploadRequest"];
+            };
+        };
+        responses: {
+            /** @description The upload is closed: its receipt, its warnings and the parsed attempt's counts. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ArtifactUploadReceipt"];
+                };
+            };
+            /**
+             * @description `farm_artifact_upload_refused` — the token is missing, wrong, for another job, expired
+             *     or superseded by a later offer. One answer for all of them, with no detail.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_artifact_upload_closed` — the right token, for an upload already accepted: a
+             *     token is single use. Or `farm_artifact_job_unattributed` — the job is attributed to no
+             *     run, so there is no attempt for its results.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_artifact_too_large` — a file is past the per-file cap, or the upload past the
+             *     per-job cap, that the offer carried. `details.capBytes` names the cap.
+             */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_artifact_checksum_mismatch` — a file's bytes do not hash to its manifest
+             *     checksum; `details.file`, `details.declared` and `details.actual` say which and how.
+             *     Or `farm_artifact_manifest_invalid` — the body is not a manifest followed by exactly
+             *     the files it lists, or a file is not the size it declared. Nothing from the upload is
+             *     kept, and the token stays open.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed, the artifact store included. Nothing
+             *     from the upload is kept. The message is a constant and `details` is empty,
+             *     deliberately.
              */
             500: {
                 headers: {

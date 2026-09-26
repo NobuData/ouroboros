@@ -247,12 +247,20 @@ describe("what the guard actually answers, for every route in the table", () => 
       // The internal routes are excluded, and that exclusion is #224's whole point: they are
       // `anonymous` because their caller holds no session, and a stranger must get `401` from
       // every one of them. The section below is where that is asserted.
+      //
+      // And "not the session guard's `401`" rather than "not `401`": a route on the list may still
+      // refuse a caller that lacks *its own* credential — the artifact upload answers a request
+      // with no upload token `401 farm_artifact_upload_refused` (#330) — and that refusal is the
+      // route's, not the session guard's. What must never happen is the session guard refusing it.
       const refused: string[] = [];
 
       for (const route of routes.filter((each) => each.anonymous && !each.internal)) {
-        const { status } = await call(route);
+        const response = await call(route);
 
-        if (status === 401) {
+        if (
+          response.status === 401 &&
+          (response.body as Partial<ErrorEnvelope>).code === AUTH_ERRORS.unauthenticated
+        ) {
           refused.push(route.signature);
         }
       }

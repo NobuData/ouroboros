@@ -1,3 +1,4 @@
+import { FarmArtifactsModule } from "../artifacts/artifacts.module";
 import { FarmAudit } from "../farm.audit";
 import { FARM_DISPATCH_GATE, OPEN_GATE } from "./dispatch.gate";
 import { FarmDispatchModule } from "./dispatch.module";
@@ -6,12 +7,23 @@ import { FarmJobsService } from "./jobs.service";
 
 /** The module's shape (#252): what it depends on, and the three things it hands to named tickets. */
 describe("the dispatch module", () => {
-  it("imports the gateway, which never imports it back", () => {
+  it("imports the gateway and the artifact upload, neither of which imports it back", () => {
+    // #330: every offer carries a single-use upload token, minted by FarmArtifactsModule.
     const imported = (
       Reflect.getMetadata("imports", FarmDispatchModule) as { name?: string }[]
     ).map((module) => module.name);
 
-    expect(imported).toEqual(["DbModule", "AuditModule", "FarmGatewayModule"]);
+    expect(imported).toEqual([
+      "DbModule",
+      "AuditModule",
+      "FarmGatewayModule",
+      "FarmArtifactsModule",
+    ]);
+    expect(
+      (Reflect.getMetadata("imports", FarmArtifactsModule) as { name?: string }[]).map(
+        (module) => module.name,
+      ),
+    ).not.toContain("FarmDispatchModule");
   });
 
   it("writes to the audit trail through its own FarmAudit, without importing FarmModule", () => {

@@ -147,6 +147,14 @@ COPY --from=build --chown=nestjs:nestjs /app/ouroboros-rest/openapi.yaml ./ourob
 # an image without it fails at boot, naming the path.
 COPY --chown=nestjs:nestjs schemas/workflow-dsl/v1.json ./schemas/workflow-dsl/v1.json
 
+# The local artifact store's directory (#330). OURO_ARTIFACT_DIR's own default is `.artifacts`
+# under the working directory — /app/.artifacts here — which the service user could not create in
+# a root-owned /app, so the image makes it and gives it to that user. No ENV names it: this layer
+# bakes in no value of any variable the service reads (src/container.spec.ts). A deployment
+# mounts a volume at /app/.artifacts, and a fresh named volume takes this directory's ownership
+# when first mounted, which is what makes it writable.
+RUN mkdir -p /app/.artifacts && chown nestjs:nestjs /app/.artifacts
+
 USER nestjs
 EXPOSE 4000
 

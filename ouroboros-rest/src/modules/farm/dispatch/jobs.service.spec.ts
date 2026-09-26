@@ -110,10 +110,28 @@ describe("build job submission and cancellation", () => {
         image: "ghcr.io/acme-robotics/zephyr-sdk:0.17",
         command: "west build -b helios_mainboard app",
         env: {},
+        artifact_globs: "[]",
         queued_at: NOW,
       });
       expect(dispatcher.kick).toHaveBeenCalledTimes(1);
       expect(resource.id).toBe(JOB);
+    });
+
+    it("snapshots the pool's artifact globs and the submission's own, without repeats (#330)", async () => {
+      repository.pool.mockResolvedValue(
+        runnerPool({ artifact_globs: ["captures/*.csv", "logs/serial-console.log"] }),
+      );
+
+      await jobs.submit(ORG, ACTOR, {
+        ...REQUEST,
+        artifacts: ["logs/serial-console.log", "build/zephyr/zephyr.map"],
+      });
+
+      expect(JSON.parse(String(written().artifact_globs))).toEqual([
+        "captures/*.csv",
+        "logs/serial-console.log",
+        "build/zephyr/zephyr.map",
+      ]);
     });
 
     it("stores a named command as its canonical rendering, and keeps a title and label", async () => {

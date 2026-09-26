@@ -75,6 +75,7 @@ type Farm struct {
 	pool          *conn.AckPool
 	ttl           time.Duration
 	lead          time.Duration
+	uploadAnswers []UploadAnswer
 }
 
 // token is one enrollment token's row.
@@ -132,6 +133,8 @@ type Observed struct {
 	Violations []string
 	// Refused is every identity refusal the farm answered.
 	Refused []string
+	// Uploads is every artifact upload (#330), in the order they arrived.
+	Uploads []Upload
 }
 
 // NewFarm starts a farm on a loopback port and stops it at the end of the test.
@@ -170,6 +173,7 @@ func NewFarm(tb interface {
 	mux.HandleFunc("POST "+RegistrationsPath, farm.register)
 	mux.HandleFunc("POST "+RenewalPath, farm.renew)
 	mux.HandleFunc("GET "+GatewayPath, farm.gateway)
+	mux.HandleFunc("POST "+ArtifactsPathPrefix+"{id}/artifacts", farm.artifacts)
 
 	farm.server = httptest.NewUnstartedServer(mux)
 	farm.server.TLS = &tls.Config{
@@ -405,6 +409,7 @@ func (f *Farm) snapshotLocked() Observed {
 	observed.Byes = append([]conn.ByePayload(nil), f.observed.Byes...)
 	observed.Violations = append([]string(nil), f.observed.Violations...)
 	observed.Refused = append([]string(nil), f.observed.Refused...)
+	observed.Uploads = append([]Upload(nil), f.observed.Uploads...)
 	observed.Recorded = f.ledger.Len()
 	return observed
 }

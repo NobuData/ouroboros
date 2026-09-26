@@ -174,6 +174,10 @@ var (
 	jobRe       = regexp.MustCompile(`^job_[0-9A-HJKMNP-TV-Z]{26}$`)
 	commitRe    = regexp.MustCompile(`^[0-9a-f]{40}$`)
 	timestampRe = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]{3}Z$`)
+	// uploadPathRe is a path on the control plane's own origin: absolute, never `//host` (#330).
+	uploadPathRe = regexp.MustCompile(`^/[A-Za-z0-9._~%-][A-Za-z0-9._~%/-]*$`)
+	// uploadTokenRe is an upload token: characters a header carries verbatim (#330).
+	uploadTokenRe = regexp.MustCompile(`^[A-Za-z0-9._~-]+$`)
 )
 
 // ValidID reports whether a string is a ULID in the published shape — what an envelope

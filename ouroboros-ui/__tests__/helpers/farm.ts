@@ -108,6 +108,8 @@ export function runnerPool(over: Partial<RunnerPool> = {}): RunnerPool {
     envAllowlist: ["CCACHE_DIR", "WEST_TOPDIR", "ZEPHYR_BASE"],
     tags: ["firmware", "zephyr"],
     defaultCommand: "west build -b helios_mainboard app",
+    // What every build of the pool uploads beyond the built-in result set (#330) — none, as seeded.
+    artifactGlobs: [],
     // Stored and inert (decision B9) — and what draws the card's auto-scale sub-toggle.
     autoscalePref: { enabled: false, queue_threshold: 5 },
     runners: 3,

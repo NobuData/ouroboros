@@ -4,11 +4,30 @@ import { ConfigService } from "@nestjs/config";
 import type { LocalProviderKind } from "../internal/providers";
 import {
   listenHost,
+  type ArtifactStoreDriver,
   type Configuration,
   type ListenHost,
   type NodeEnvironment,
 } from "./configuration";
 import { describeConfiguration } from "./redaction";
+
+/** The artifact store's settings and the upload limits, as {@link AppConfigService.artifacts} reads them (#330). */
+export interface ArtifactSettings {
+  readonly store: ArtifactStoreDriver;
+  /** The local volume's root. */
+  readonly dir: string;
+  readonly s3Endpoint?: string;
+  readonly s3Bucket?: string;
+  readonly s3Region: string;
+  readonly s3AccessKeyId?: string;
+  /** A secret. Never logged. */
+  readonly s3SecretAccessKey?: string;
+  /** Bytes of live artifacts one workspace keeps. */
+  readonly quotaBytes: number;
+  readonly maxFileBytes: number;
+  readonly maxJobBytes: number;
+  readonly retentionDays: number;
+}
 
 /**
  * The typed accessor every other module reads configuration through.
@@ -241,6 +260,28 @@ export class AppConfigService {
   }
 
   /**
+   * The artifact store's settings — the `OURO_ARTIFACT_*` variables (#330). See
+   * `Configuration.artifactStore` and its neighbours.
+   *
+   * @returns The driver, its settings and the upload limits, as one object.
+   */
+  get artifacts(): ArtifactSettings {
+    return {
+      store: this.config.getOrThrow<ArtifactStoreDriver>("artifactStore"),
+      dir: this.config.getOrThrow<string>("artifactDir"),
+      s3Endpoint: this.config.get<string>("artifactS3Endpoint"),
+      s3Bucket: this.config.get<string>("artifactS3Bucket"),
+      s3Region: this.config.getOrThrow<string>("artifactS3Region"),
+      s3AccessKeyId: this.config.get<string>("artifactS3AccessKeyId"),
+      s3SecretAccessKey: this.config.get<string>("artifactS3SecretAccessKey"),
+      quotaBytes: this.config.getOrThrow<number>("artifactQuotaBytes"),
+      maxFileBytes: this.config.getOrThrow<number>("artifactMaxFileBytes"),
+      maxJobBytes: this.config.getOrThrow<number>("artifactMaxJobBytes"),
+      retentionDays: this.config.getOrThrow<number>("artifactRetentionDays"),
+    };
+  }
+
+  /**
    * Seconds between backlog sync cycles — `OURO_BACKLOG_SYNC_INTERVAL_SECONDS`.
    *
    * The nominal interval. `src/modules/backlog-sync/` jitters every delay by ±25% around it,
@@ -390,6 +431,17 @@ export class AppConfigService {
       dashboardPollSeconds: this.dashboardPollSeconds,
       listenHostOverride: this.listenHostOverride,
       farmLogBudgetBytes: this.farmLogBudgetBytes,
+      artifactStore: this.artifacts.store,
+      artifactDir: this.artifacts.dir,
+      artifactS3Endpoint: this.artifacts.s3Endpoint,
+      artifactS3Bucket: this.artifacts.s3Bucket,
+      artifactS3Region: this.artifacts.s3Region,
+      artifactS3AccessKeyId: this.artifacts.s3AccessKeyId,
+      artifactS3SecretAccessKey: this.artifacts.s3SecretAccessKey,
+      artifactQuotaBytes: this.artifacts.quotaBytes,
+      artifactMaxFileBytes: this.artifacts.maxFileBytes,
+      artifactMaxJobBytes: this.artifacts.maxJobBytes,
+      artifactRetentionDays: this.artifacts.retentionDays,
       providerHealthIntervalSeconds: this.providerHealthIntervalSeconds,
       providerHealthKeyCheckSeconds: this.providerHealthKeyCheckSeconds,
       backlogSyncIntervalSeconds: this.backlogSyncIntervalSeconds,

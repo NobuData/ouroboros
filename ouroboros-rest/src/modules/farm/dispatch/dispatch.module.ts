@@ -42,6 +42,7 @@ import { Module } from "@nestjs/common";
 
 import { AuditModule } from "../../audit/audit.module";
 import { DbModule } from "../../db/db.module";
+import { FarmArtifactsModule } from "../artifacts/artifacts.module";
 import { FarmAudit } from "../farm.audit";
 import { FarmGatewayModule } from "../gateway/gateway.module";
 import { FARM_DISPATCH_GATE, OPEN_GATE } from "./dispatch.gate";
@@ -52,7 +53,7 @@ import { FarmJobsController } from "./jobs.controller";
 import { FarmJobsService } from "./jobs.service";
 
 @Module({
-  imports: [DbModule, AuditModule, FarmGatewayModule],
+  imports: [DbModule, AuditModule, FarmGatewayModule, FarmArtifactsModule],
   controllers: [FarmJobsController],
   providers: [
     DispatchRepository,

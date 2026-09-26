@@ -92,18 +92,18 @@ need `shellcheck` and a POSIX `sh` on the machine.
 On a build machine, the command the Build Farm page's enroll card renders:
 
 ```bash
-curl -fsSL 'https://ouroboros.acme.dev/install.sh?version=0.7.0' | sh -s -- \
+curl -fsSL 'https://ouroboros.acme.dev/install.sh?version=0.8.0' | sh -s -- \
   --tenant acme-robotics --pool pool-a --token orb_enroll_…
 ```
 
 ```console
-downloading ouroboros-runner 0.7.0 for linux/arm64 from https://ouroboros.acme.dev/runner/0.7.0
+downloading ouroboros-runner 0.8.0 for linux/arm64 from https://ouroboros.acme.dev/runner/0.8.0
 verified   sha256 4537a98ce666a84142d6f89c8ddc93a89ff4e383e1f67a183f37f5d8c49f3994
 installed  /usr/local/bin/ouroboros-runner
 enrolled shed-pi-01 as runner 7f7c9d0e-… in acme-robotics / pool-a
 …
 
-ouroboros-runner 0.7.0 is installed and running.
+ouroboros-runner 0.8.0 is installed and running.
   service  systemd unit ouroboros-runner.service — starts at boot, restarts on failure
   runs as  builder, from /var/lib/ouroboros-runner
   logs     journalctl -u ouroboros-runner -f
@@ -319,6 +319,44 @@ the log says where. A later run of the same job replaces a kept workspace.
 or running — which the gateway sends in `ack.pool`, read from the pool's row at every hello.
 With no pool policy in the ack, the cap is 1.
 
+### Artifacts
+
+When a job's offer carries `upload` — a build a loop run submitted
+([#330](https://github.com/NobuData/ouroboros/issues/330), `internal/artifacts`) — the agent gets its
+results off this machine **after the command ends, before the workspace is removed, and before
+the `job.finish`**, so a job's finish always follows its closed manifest. The transfer is one
+HTTPS request to the control plane — **never the control WebSocket**, whose heartbeats are what
+keep this runner looking alive.
+
+```
+command ends ─▶ collect upload.globs under the workdir ─▶ caps ─▶ sha256 each file
+             ─▶ POST <server><upload.path>  Bearer <token>  multipart: manifest, then files
+             ─▶ retried on the network, a 5xx or a 429 ─▶ what happened, on the job's `runner` stream
+             ─▶ job.finish
+```
+
+| Rule | What it means here |
+|---|---|
+| **What** | the files the offer's globs match, relative to the job's working directory: the built-in result set (`**/junit*.xml`, `**/ouro-hil-results*.json`, lcov, cobertura) first, then the pool's and the job's own — rig captures, serial logs. `**` spans directories |
+| **Where** | the offer names a *path*, joined to `--server` exactly as the gateway URL is — a dispatch cannot aim the token at another host, and a `//host` path is refused |
+| **Never outside** | a glob never climbs out with `..`, and a symlink is **listed as skipped, never followed** — a link to `/etc/shadow` is not read |
+| **Never silent** | a file past `max_file_bytes` is sent cut to it and marked `truncated`; one past `max_job_bytes` or `max_files`, or one that cannot be read, is listed in the manifest as `skipped` with its reason. Results are ordered first, so a capture never crowds out the JUnit report |
+| **Retries** | the network, a `5xx` or a `429` is retried with backoff (5 attempts, 2 s doubling to 30 s), resending the collection computed once — the control plane keeps nothing from an attempt it did not accept. A refusal is not retried; `409 farm_artifact_upload_closed` after a retry means an earlier attempt landed |
+| **The token** | single use, for this job only, and **never logged** — not on the agent's log, not on the job's |
+| **Not uploaded** | a job with no `upload` (a build no run is attributed to), and a job that was `cancelled` or `errored` |
+
+While it uploads, the heartbeat reports the job in the `upload` phase and one `job.progress` says
+how many files are going. What happened lands on the job's own log on the `runner` stream, so the
+console shows it beside the build's output:
+
+```console
+ouroboros-runner: artifacts: uploaded 4 file(s), 2203318 byte(s); 1 warning(s)
+ouroboros-runner: artifacts: artifact_truncated: captures/rig-capture-estop.csv was cut short: cut at 64 MiB of 94 MiB (per-file cap).
+```
+
+A failed upload never fails the build: the job's outcome is its command's, and the finish is sent
+either way.
+
 ### Build output
 
 A job's stdout and stderr are shipped as they are written
@@ -452,7 +490,7 @@ offers against the minimum the refusal named.
 
 ```console
 $ ouroboros-runner version
-ouroboros-runner 0.7.0
+ouroboros-runner 0.8.0
 protocol        1 (speaks 1–1)
 arch            linux/arm64
 hostname        shed-pi-01
@@ -567,7 +605,8 @@ ouroboros-runner/
 │   ├── telemetry/            # what this machine is and how loaded it is, whether docker answers
 │   ├── farmtest/             # an in-process farm for the suites — never linked into the agent
 │   ├── exec/                 # job executors: container and shell, workspaces, cancellation
-│   └── logship/              # chunking, ordering, throttling, the cap, ccache stats · #247
+│   ├── logship/              # chunking, ordering, throttling, the cap, ccache stats · #247
+│   └── artifacts/            # collect by glob, cap, checksum, upload over HTTPS · #330
 ├── install.sh                # the one-liner's installer: verify, install, enrol, daemonize · #248
 ├── tests/                    # install.sh's suite, end to end against a staged root  · #248
 ├── .golangci.yml             # the linter, and why each check is on

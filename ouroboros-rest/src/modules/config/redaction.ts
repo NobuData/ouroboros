@@ -54,6 +54,9 @@ export const SECRET_VARIABLES: ReadonlySet<string> = new Set([
   // is every credential the product holds. Rotating it afterwards re-wraps the DEKs but does
   // not un-print the line.
   VARIABLES.vaultMasterKey,
+  // The artifact store's S3 credential (#330): whoever holds it reads and deletes every
+  // workspace's test artifacts.
+  VARIABLES.artifactS3SecretAccessKey,
 ]);
 
 /**

@@ -21,12 +21,15 @@ const PLANTED = {
   OURO_VAULT_MASTER_KEY: Buffer.from("vault-master-key-that-must-not!!", "utf8").toString("base64"),
   OURO_DATABASE_URL:
     "postgresql://ouroboros:database-password-that-must-not-leak@db:5432/ouroboros",
+  // The artifact store's S3 credential (#330) — set even with the local driver, because a
+  // deployment switching drivers sets it before it flips OURO_ARTIFACT_STORE.
+  OURO_ARTIFACT_S3_SECRET_ACCESS_KEY: "s3-secret-that-must-not-leak",
 };
 
 /**
  * The substrings none of the output may contain.
  *
- * Four of them are whole values from {@link PLANTED}; the fifth is the password buried
+ * All but one are whole values from {@link PLANTED}; the exception is the password buried
  * inside the connection string, which is the only *part* of a value that has to disappear.
  */
 const MUST_NOT_LEAK = [
@@ -35,6 +38,7 @@ const MUST_NOT_LEAK = [
   "better-auth-secret-that-must-not-leak",
   "github-secret-that-must-not-leak",
   "database-password-that-must-not-leak",
+  "s3-secret-that-must-not-leak",
   PLANTED.OURO_VAULT_MASTER_KEY,
 ];
 
@@ -82,13 +86,14 @@ describe("redactedEnvironment", () => {
   // *leaving* it — one fewer case is still a green run. This names the set instead, which
   // is what makes dropping `BETTER_AUTH_SECRET` from it a failing test rather than a
   // quieter suite. Written against `VARIABLES` so a rename moves both at once.
-  it("classifies exactly the five values that must never be printed", () => {
+  it("classifies exactly the six values that must never be printed", () => {
     expect([...SECRET_VARIABLES]).toEqual([
       VARIABLES.engineSharedSecret,
       VARIABLES.runSimulatorSecret,
       VARIABLES.betterAuthSecret,
       VARIABLES.githubClientSecret,
       VARIABLES.vaultMasterKey,
+      VARIABLES.artifactS3SecretAccessKey,
     ]);
   });
 

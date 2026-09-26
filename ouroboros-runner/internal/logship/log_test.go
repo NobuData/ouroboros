@@ -451,3 +451,23 @@ func FuzzEveryByteIsSentOrCounted(f *testing.F) {
 		reassemble(t, s.chunks(t), out, sum)
 	})
 }
+
+// TestTheAgentsOwnLinesTravelOnTheRunnerStream: what the agent says about a job — its artifact
+// upload (#330) — is a run of its own on the `runner` stream, apart from the build's output.
+func TestTheAgentsOwnLinesTravelOnTheRunnerStream(t *testing.T) {
+	s, c := &session{}, newClock()
+	shipper := fast(s, c, 0)
+	log := shipper.Open(testJob)
+	var out written
+
+	out.write(t, log, conn.StreamStdout, []byte("[525/525] Linking C executable zephyr.elf\n"))
+	out.write(t, log, conn.StreamRunner, []byte("ouroboros-runner: artifacts: uploaded 3 file(s)\n"))
+	drain(log)
+	sum := log.Close()
+
+	chunks := s.chunks(t)
+	if len(chunks) != 2 || chunks[1].payload.Stream != conn.StreamRunner {
+		t.Fatalf("got %d chunks; want the build's, then the runner's", len(chunks))
+	}
+	reassemble(t, chunks, out, sum)
+}

@@ -61,6 +61,7 @@ export function buildJob(overrides: Partial<BuildJob> = {}): BuildJob {
     log_swept_at: null,
     created_at: new Date("2026-09-19T12:00:00.000Z"),
     updated_at: new Date("2026-09-19T12:00:00.000Z"),
+    artifact_globs: [],
     ...overrides,
   };
 }
@@ -87,6 +88,7 @@ export function runnerPool(overrides: Partial<RunnerPool> = {}): RunnerPool {
     default_command: "west build -b helios_mainboard app",
     created_at: new Date("2026-09-19T12:00:00.000Z"),
     updated_at: new Date("2026-09-19T12:00:00.000Z"),
+    artifact_globs: [],
     ...overrides,
   };
 }
