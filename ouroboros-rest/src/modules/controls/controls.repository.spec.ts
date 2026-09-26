@@ -17,6 +17,7 @@ const SUBMISSION: ControlSubmission = {
   kind: "steer",
   payload: "prefer a fix inside the ISR",
   remember: false,
+  retryStage: false,
   requestedBy: "user-1",
   ttlSeconds: 300,
 };
@@ -37,6 +38,7 @@ function row(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     ack_detail: null,
     idempotency_key: "k",
     remember: false,
+    retry_stage: false,
     ...overrides,
   };
 }

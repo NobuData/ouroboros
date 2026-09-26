@@ -73,6 +73,8 @@ make_fixture() {
       - "schemas/workflow-dsl/**"
       - "schemas/plan/**"
       - "schemas/runner-protocol/**"
+      - "schemas/hil-results/**"
+      - "schemas/triage/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docker-compose.yml"'
@@ -993,6 +995,17 @@ check_break 'a rest workflow that stops watching the plan contract is reported' 
 check_break 'a rest workflow that stops watching the runner protocol is reported' \
   'schemas/runner-protocol/v1\.json runs rest\.yml runner\.yml' \
   'sed -i "/^      - \"schemas\/runner-protocol\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
+
+# …and the two contracts ci/rest alone reads: the HIL results schema its parser embeds (#329),
+# and the triage contract its unit suite drift-checks (#332). Each is one glob, so forgetting it
+# leaves the reader's suite green against a document it never re-read.
+check_break 'a rest workflow that stops watching the HIL results contract is reported' \
+  'schemas/hil-results/v1\.json runs rest\.yml' \
+  'sed -i "/^      - \"schemas\/hil-results\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
+
+check_break 'a rest workflow that stops watching the triage contract is reported' \
+  'schemas/triage/v0\.json runs rest\.yml' \
+  'sed -i "/^      - \"schemas\/triage\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
 
 check_break 'an engine workflow that stops watching the plan contract is reported' \
   'schemas/plan/v0\.json runs engine\.yml rest\.yml' \

@@ -434,6 +434,10 @@ class PendingControl(_Response):
         payload: The steering text, and ``None`` for every other kind.
         remember: The steer's *remember this* flag. For the knowledge pipeline, not for the
             executor, which applies a remembered steer exactly as any other.
+        retry_stage: A **correction round** (`#332
+            <https://github.com/NobuData/ouroboros/issues/332>`_). Steer-only: append the
+            text to the planning context, then start the current stage's next attempt, and
+            acknowledge with that attempt's number. ``False`` for an ordinary steer.
         requested_at: When a person asked, ISO 8601.
         expires_at: After this instant an acknowledgment is refused, ISO 8601.
     """
@@ -442,6 +446,7 @@ class PendingControl(_Response):
     kind: Literal["pause", "resume", "abort", "steer"]
     payload: str | None = None
     remember: bool = False
+    retry_stage: bool = False
     requested_at: str
     expires_at: str
 

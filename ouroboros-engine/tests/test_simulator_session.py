@@ -358,6 +358,97 @@ def test_a_steer_before_any_stage_lands_on_attempt_one(
     assert session.steers[0].stage_key is None
 
 
+def test_a_correction_round_is_recorded_on_the_next_attempt_and_acked_with_it(
+    fake: FakeControlPlane, clock: FakeClock, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+    fake.queue(QueuedControl("steer", "move PID sampling", retry_stage=True))
+
+    session.checkpoint()
+
+    assert fake.acks == [
+        ("steer", {"effect": "correction round queued: implement attempt 2"})
+    ]
+    assert session.acks[0].detail == "correction round queued: implement attempt 2"
+    assert clock.sleeps == [], "a correction round never pauses the loop"
+    assert session.steer_for("implement", 1) is None
+    correction = session.steer_for("implement", 2)
+    assert correction is not None
+    assert correction.correction is True
+    assert correction.text == "move PID sampling"
+    assert session.correction_for("implement") == correction
+    assert any(
+        e["actor"] == "system"
+        and e["body"].startswith("Correction round received: implement attempt 2")
+        for e in fake.events
+    )
+
+
+def test_a_correction_is_spent_once_its_attempt_has_started(
+    fake: FakeControlPlane, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+    fake.queue(QueuedControl("steer", "move PID sampling", retry_stage=True))
+    session.checkpoint()
+
+    session.stage("implement", "failed")
+    session.stage("implement", "active", attempt=2)
+
+    assert session.correction_for("implement") is None
+
+
+def test_an_ordinary_steer_is_not_a_correction(
+    fake: FakeControlPlane, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+    fake.queue(QueuedControl("steer", "prefer an ISR fix"))
+
+    session.checkpoint()
+
+    assert session.correction_for("implement") is None
+    assert session.steers[0].correction is False
+
+
+def test_a_correction_for_another_stage_is_not_this_stages(
+    fake: FakeControlPlane, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+    fake.queue(QueuedControl("steer", "move PID sampling", retry_stage=True))
+
+    session.checkpoint()
+
+    assert session.correction_for("build") is None
+
+
+def test_a_correction_before_any_stage_says_where_it_lands(
+    fake: FakeControlPlane, session: RunSession
+) -> None:
+    fake.queue(QueuedControl("steer", "early", retry_stage=True))
+
+    session.checkpoint()
+
+    assert fake.acks == [
+        (
+            "steer",
+            {"effect": "correction round queued: attempt 2, before the first stage"},
+        )
+    ]
+    assert session.steers[0].stage_key is None
+
+
+def test_an_expired_correction_is_not_recorded(
+    fake: FakeControlPlane, session: RunSession
+) -> None:
+    session.stage("implement", "active")
+    fake.queue(
+        QueuedControl("steer", "too late", retry_stage=True, refused_as="expired")
+    )
+
+    session.checkpoint()
+
+    assert session.correction_for("implement") is None
+
+
 # --- pause and resume -----------------------------------------------------------------------
 
 

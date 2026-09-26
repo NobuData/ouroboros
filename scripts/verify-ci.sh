@@ -287,6 +287,12 @@ check_route docs/mockups/04-workflow-builder.html ''
 check_route schemas/hil-results/v1.json 'rest.yml'
 check_route schemas/hil-results/fixtures/expected.json 'rest.yml'
 
+# The tenth (#332). The triage contract is committed ahead of its model implementation (AV.1,
+# #343); ci/rest's unit suite is its drift check — every field of v0.json pinned, every fixture
+# classified as expected.json records. ci/engine is not routed here until AV.1 reads it.
+check_route schemas/triage/v0.json 'rest.yml'
+check_route schemas/triage/fixtures/expected.json 'rest.yml'
+
 # …and no further. The rest of the module is ci/rest's business alone, which is what
 # keeps the data tier out of every controller change.
 check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'

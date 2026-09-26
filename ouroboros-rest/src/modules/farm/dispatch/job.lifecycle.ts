@@ -131,6 +131,8 @@ export async function insertRetryAttempt(
       image: failed.image,
       command: failed.command,
       env: failed.env ?? {},
+      // A re-run's case set is part of what was asked (#332): the retry runs the same cases.
+      test_selection: failed.test_selection === null ? null : JSON.stringify(failed.test_selection),
       status: "queued",
       queued_at: at,
       retry_of: failed.id,

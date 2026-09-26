@@ -19,8 +19,11 @@
  * wherever the module is registered, exactly as `IngestModule`'s is.
  *
  * `ScheduleModule.forRoot()` is imported for `SchedulerRegistry`, as `EstimationModule` does.
- * **It exports nothing.** The routes are the surface; a second in-process writer of controls
- * would be a path around the role policy.
+ * **It exports `ControlsService` and nothing below it.** The routes are one surface; the Mark &
+ * Route card's correction round ([#332](https://github.com/NobuData/ouroboros/issues/332)) is the
+ * other, and it goes through the service's own `correctionRound`, so the role policy, the
+ * transcript entry and the audit trigger are the same ones a person pressing a button meets.
+ * The repository stays private: a writer below the service would be a path around the policy.
  */
 
 import { Module } from "@nestjs/common";
@@ -37,5 +40,6 @@ import { ControlsSweeper } from "./controls.sweeper";
   imports: [DbModule, ScheduleModule.forRoot()],
   controllers: [ControlsController, ControlsInternalController],
   providers: [ControlsRepository, ControlsService, ControlsSweeper],
+  exports: [ControlsService],
 })
 export class ControlsModule {}

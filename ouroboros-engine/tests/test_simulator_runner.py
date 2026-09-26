@@ -205,6 +205,7 @@ def test_list_prints_every_scenario(capsys: pytest.CaptureFixture[str]) -> None:
         "482-gate-return",
         "guardrail-violation",
         "control-responsive",
+        "correction-round",
     ):
         assert name in out
 

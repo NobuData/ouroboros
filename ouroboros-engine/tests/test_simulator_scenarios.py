@@ -1,6 +1,6 @@
-"""The four scenarios, played through the fake control plane.
+"""The five scenarios, played through the fake control plane.
 
-Each one is checked for the story the issue gives it, and all four are checked for the rules
+Each one is checked for the story the issue gives it, and all five are checked for the rules
 every run the driver writes must keep: every entry is in order, every write is keyed, every
 stage key is a node of the pinned workflow, and model output always names its model.
 """
@@ -52,12 +52,13 @@ def _model_bodies(fake: FakeControlPlane) -> list[str]:
 # --- every scenario -------------------------------------------------------------------------
 
 
-def test_there_are_the_four_scenarios_the_issue_names() -> None:
+def test_there_are_the_five_scenarios_the_issues_name() -> None:
     assert list(SCENARIOS) == [
         "happy-path",
         "482-gate-return",
         "guardrail-violation",
         "control-responsive",
+        "correction-round",
     ]
 
 
@@ -294,3 +295,58 @@ def test_an_abort_from_a_running_stage_ends_the_run_canceled() -> None:
     assert fake.status == "canceled"
     assert ("open-pr", 1, "active") not in fake.stage_log
     assert fake.commits == [], "nothing after the abort"
+
+
+# --- correction-round (#332) ----------------------------------------------------------------
+
+#: The Mark & Route card's correction note, as mockup 11 writes it.
+NOTE = "Keep k_msgq, but move PID velocity sampling off the telemetry path."
+
+
+def test_without_a_correction_round_the_run_needs_a_human() -> None:
+    fake = FakeControlPlane()
+
+    assert _play("correction-round", fake) == "needs_human"
+
+    assert fake.stage_log[-1] == ("implement", 1, "failed")
+    assert ("implement", 2, "active") not in fake.stage_log
+    assert fake.acks == []
+
+
+def test_a_correction_round_starts_the_next_attempt_with_the_note() -> None:
+    fake = FakeControlPlane()
+    fake.queue(
+        QueuedControl(
+            kind="steer", payload=NOTE, retry_stage=True, release_on=("implement", 1)
+        )
+    )
+
+    assert _play("correction-round", fake) == "completed"
+
+    log = fake.stage_log
+    assert log.index(("implement", 1, "failed")) < log.index(("implement", 2, "active"))
+    assert ("implement", 2, "succeeded") in log
+    assert ("open-pr", 1, "succeeded") in log
+    assert fake.acks == [
+        ("steer", {"effect": "correction round queued: implement attempt 2"})
+    ]
+    attempt_two = [
+        e["body"]
+        for e in fake.events
+        if e["actor"] == "model" and e["stageKey"] == "implement" and e["attempt"] == 2
+    ]
+    assert any(NOTE in body for body in attempt_two)
+    assert any(
+        "Correction round received: implement attempt 2" in (e.get("body") or "")
+        for e in fake.events
+        if e["actor"] == "system"
+    )
+
+
+def test_an_ordinary_steer_while_holding_does_not_start_a_new_attempt() -> None:
+    fake = FakeControlPlane()
+    fake.queue(QueuedControl(kind="steer", payload=NOTE, release_on=("implement", 1)))
+
+    assert _play("correction-round", fake) == "needs_human"
+
+    assert fake.acks == [("steer", {"attempt": 1})]

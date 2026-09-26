@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.37.5"
+  version: "0.37.6"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -203,6 +203,10 @@ tags:
         **Do not pause.** Acknowledge with the attempt it landed on (`attempt: 2` gives
         *"steering applied to attempt 2"*), so the person who typed it knows it reached the
         attempt they were watching. `remember` is for the knowledge pipeline, not the executor.
+      * **`steer` with `retryStage: true`** — a **correction round** from the Mark & Route card
+        ([#332](https://github.com/NobuData/ouroboros/issues/332)): append `payload` to the
+        planning context, then **start the current stage's next attempt** with it. Acknowledge
+        with an `effect` naming that attempt (*"correction round queued: implement attempt 2"*).
 
       Apply fetched controls in the order given, which is oldest first. Poll at the executor's
       own safe points: a fetch that finds nothing is cheap.
@@ -1117,6 +1121,7 @@ paths:
                     kind: steer
                     payload: prefer a fix inside the ISR; do not touch the test timeouts
                     remember: false
+                    retryStage: false
                     requestedAt: "2026-09-22T14:04:40.000Z"
                     expiresAt: "2026-09-22T14:09:40.000Z"
         "401":
@@ -1198,6 +1203,7 @@ paths:
                 detail: steering applied to attempt 2
                 hasPayload: true
                 remember: false
+                retryStage: false
         "401":
           description: "`unauthenticated` — no `X-Ouro-Internal-Key`, or a value matching neither principal."
           content:
@@ -2401,7 +2407,7 @@ components:
       type: object
       title: PendingControl
       additionalProperties: false
-      required: [id, kind, payload, remember, requestedAt, expiresAt]
+      required: [id, kind, payload, remember, retryStage, requestedAt, expiresAt]
       properties:
         id:
           type: string
@@ -2415,6 +2421,12 @@ components:
         remember:
           type: boolean
           description: The steer's *remember this* flag. For the knowledge pipeline, not the executor.
+        retryStage:
+          type: boolean
+          description: |-
+            A **correction round** ([#332](https://github.com/NobuData/ouroboros/issues/332)):
+            append the text to the planning context, then start the current stage's next attempt,
+            and acknowledge naming that attempt. False for an ordinary steer.
         requestedAt:
           type: string
           format: date-time
@@ -2444,7 +2456,7 @@ components:
       title: AckedControl
       description: A control as it stands after an acknowledgment — the same shape the console reads.
       additionalProperties: false
-      required: [id, runId, kind, state, requestedBy, requestedAt, deliveredAt, ackedAt, expiresAt, detail, hasPayload, remember]
+      required: [id, runId, kind, state, requestedBy, requestedAt, deliveredAt, ackedAt, expiresAt, detail, hasPayload, remember, retryStage]
       properties:
         id:
           type: string
@@ -2478,3 +2490,6 @@ components:
           type: boolean
         remember:
           type: boolean
+        retryStage:
+          type: boolean
+          description: A correction round (#332). Always false for the other kinds.

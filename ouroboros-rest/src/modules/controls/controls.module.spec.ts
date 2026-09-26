@@ -35,7 +35,7 @@ describe("the controls module", () => {
     expect(providers.some((provider) => provider.provide === "APP_GUARD")).toBe(false);
   });
 
-  it("exports nothing, so there is no in-process path around the role policy", () => {
-    expect(Reflect.getMetadata("exports", ControlsModule)).toBeUndefined();
+  it("exports the service alone, so the only in-process path goes through the role policy", () => {
+    expect(Reflect.getMetadata("exports", ControlsModule)).toEqual([ControlsService]);
   });
 });

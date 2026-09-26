@@ -30,6 +30,12 @@
  * that a failure to record is a failure of the operation. The actor is the session's user for the
  * route and `null` for a run, which names itself through `runId`.
  *
+ * **A re-run is a third way in** ({@link FarmJobsService.submitRerun}, #332): the Mark & Route
+ * card's *Re-run failed* and *Re-run full suite*. It copies an earlier build's snapshot — pool,
+ * repository, ref, commit, executor, image, command, globs — onto a new job with the run's id and
+ * the case set to run (`build_jobs.test_selection`, V061), is audited like any submission with
+ * the person as its actor, and answers with an honest queue state rather than a success.
+ *
  * **Cancellation is final and immediate.** The row is `canceled` the moment the request commits;
  * the runner holding it is then told (`job.cancel`), and the finish it sends back changes
  * nothing, because the ledger only applies a finish to a job that has not already ended.
@@ -37,6 +43,7 @@
 
 import { Inject, Injectable } from "@nestjs/common";
 
+import type { TestSelection } from "../../db/schema";
 import { snapshotGlobs } from "../artifacts/artifact.globs";
 import { FarmAudit } from "../farm.audit";
 import { GATEWAY_CLOCK, type GatewayClock } from "../gateway/gateway.clock";
@@ -49,11 +56,16 @@ import {
   repositoryNotFound,
 } from "../farm.errors";
 import { parseCommand, renderCommand } from "./command";
-import { DispatchRepository } from "./dispatch.repository";
+import { DispatchRepository, type WaitingJob } from "./dispatch.repository";
 import { DispatchService } from "./dispatcher";
 import { JobCompletions } from "./job.completions";
 import type { BuildJobRequest } from "./jobs.dto";
-import { buildJobResource, type BuildJobResource } from "./jobs.resources";
+import {
+  buildJobResource,
+  type BuildJobResource,
+  type DispatchQueueState,
+  type RerunDispatch,
+} from "./jobs.resources";
 
 @Injectable()
 export class FarmJobsService {
@@ -109,6 +121,102 @@ export class FarmJobsService {
   ): Promise<BuildJobResource> {
     // No person authorised this one: the run did, and the event names it by `runId`.
     return this.enqueue(organizationId, null, request, runId);
+  }
+
+  /**
+   * Re-run an earlier build's test cases as a new build attempt — the test-results page's
+   * *Re-run failed* and *Re-run full suite*, and the routing service's flake and infra re-runs
+   * (AT.4, [#332](https://github.com/NobuData/ouroboros/issues/332), decision **T6**).
+   *
+   * The new job copies `sourceJobId`'s snapshot, so it builds exactly what the attempt built,
+   * and carries `selection` so the runner runs only those cases. It is **not** a `retry_of` the
+   * source: that chain is dispatch's automatic infrastructure retries, and this is a person's
+   * decision, audited with them as the actor.
+   *
+   * @param organizationId - The workspace, from the session.
+   * @param actorId - The person who asked.
+   * @param runId - The loop run the attempt belongs to, written to `build_jobs.run_id`.
+   * @param sourceJobId - The build whose snapshot is re-run.
+   * @param selection - The cases to run.
+   * @param title - What the farm page calls it: *"Re-run failed (2)"*.
+   * @returns The job and its queue state — `queued_no_eligible_runner` when nothing can take
+   *   it now, which is an answer, not an error.
+   * @throws {NotFoundError} `farm_job_not_found` for a source outside the workspace.
+   * @throws {ConflictError} `farm_pool_disabled` when the source's pool has been switched off.
+   */
+  async submitRerun(
+    organizationId: string,
+    actorId: string,
+    runId: string,
+    sourceJobId: string,
+    selection: TestSelection,
+    title: string,
+  ): Promise<RerunDispatch> {
+    const source = await this.repository.view(organizationId, sourceJobId);
+    if (!source) throw jobNotFound();
+
+    const pool = await this.repository.pool(organizationId, source.poolName);
+    if (!pool) throw poolNotFound(source.poolName);
+    if (!pool.enabled) throw poolDisabled(pool.name);
+
+    const { job: earlier } = source;
+    const job = await this.repository.submit({
+      organization_id: organizationId,
+      pool_id: earlier.pool_id,
+      run_id: runId,
+      github_repo_id: earlier.github_repo_id,
+      git_ref: earlier.git_ref,
+      commit_sha: earlier.commit_sha,
+      label: earlier.label,
+      title,
+      executor: earlier.executor,
+      image: earlier.image,
+      command: earlier.command,
+      env: earlier.env ?? {},
+      artifact_globs: JSON.stringify(earlier.artifact_globs ?? []),
+      test_selection: JSON.stringify(selection),
+      queued_at: this.now(),
+    });
+
+    await this.audit.jobSubmitted(
+      { organizationId, actorId, at: job.queued_at },
+      {
+        jobId: job.id,
+        number: job.number,
+        pool: source.poolName,
+        repository: `${source.repoOwner}/${source.repoName}`,
+        ref: job.git_ref,
+        commit: job.commit_sha ?? "",
+        runId,
+      },
+    );
+
+    void this.dispatcher.kick();
+
+    const resource = await this.resource(organizationId, job.id);
+
+    return { job: resource, queueState: await this.queueState(resource, job) };
+  }
+
+  /**
+   * Where a just-submitted job stands. Reads the eligibility dispatch itself uses
+   * (`DispatchRepository.candidates`), so *"a runner is available"* means what the dispatcher
+   * would act on — short of the live-session check, which belongs to the process holding the
+   * socket.
+   *
+   * @param resource - The job as the API describes it now.
+   * @param job - Its row, for the pool and executor.
+   * @returns The queue state.
+   */
+  private async queueState(
+    resource: BuildJobResource,
+    job: WaitingJob,
+  ): Promise<DispatchQueueState> {
+    if (resource.status !== "queued" || resource.runnerId !== null) return "offered";
+
+    const candidates = await this.repository.candidates(job, this.now());
+
+    return candidates.length > 0 ? "queued_runner_available" : "queued_no_eligible_runner";
   }
 
   /**
