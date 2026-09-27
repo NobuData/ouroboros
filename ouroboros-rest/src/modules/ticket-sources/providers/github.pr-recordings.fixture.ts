@@ -167,6 +167,9 @@ export function prRecording(options: PrRecordingOptions = {}): PrRecording {
     return [...byPath.values()];
   };
 
+  const commentUrl = (issue: number, id: number): string =>
+    `https://github.com/${SOURCE_LOGIN}/${SOURCE_REPO}/pull/${String(issue)}#issuecomment-${String(id)}`;
+
   const pullPayload = (pull: RecordedPull): Record<string, unknown> => {
     const files = filesOf(pull);
 
@@ -348,7 +351,7 @@ export function prRecording(options: PrRecordingOptions = {}): PrRecording {
 
         return comments
           .filter((comment) => comment.issue === Number(params.issue_number))
-          .map(({ id, body }) => ({ id, body }));
+          .map(({ id, issue, body }) => ({ id, body, html_url: commentUrl(issue, id) }));
 
       case CREATE_COMMENT_ROUTE: {
         const pull = find(params.issue_number);
@@ -361,7 +364,11 @@ export function prRecording(options: PrRecordingOptions = {}): PrRecording {
         comments.push(comment);
         pull.updated = tick();
 
-        return { id: comment.id, body: comment.body };
+        return {
+          id: comment.id,
+          body: comment.body,
+          html_url: commentUrl(pull.number, comment.id),
+        };
       }
 
       case UPDATE_COMMENT_ROUTE: {
@@ -374,7 +381,11 @@ export function prRecording(options: PrRecordingOptions = {}): PrRecording {
         comment.body = String(params.body);
         find(comment.issue).updated = tick();
 
-        return { id: comment.id, body: comment.body };
+        return {
+          id: comment.id,
+          body: comment.body,
+          html_url: commentUrl(comment.issue, comment.id),
+        };
       }
 
       case REQUEST_REVIEWERS_ROUTE: {

@@ -371,7 +371,10 @@ describe("the GitHub PR members", () => {
       body: "b",
     });
 
-    expect(edited).toEqual({ commentId: first.commentId, mode: "edited" });
+    expect(first.url).toBe(
+      `https://github.com/${SOURCE_LOGIN}/${SOURCE_REPO}/pull/${String(prNumber)}#issuecomment-${first.commentId}`,
+    );
+    expect(edited).toEqual({ commentId: first.commentId, url: first.url, mode: "edited" });
     expect(
       (
         await refusal(

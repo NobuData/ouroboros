@@ -168,7 +168,24 @@ const filePayload = z.object({
 });
 
 /** The fields of a comment payload this file reads. */
-const commentPayload = z.object({ id: z.number().int().positive(), body: z.string().nullish() });
+const commentPayload = z.object({
+  id: z.number().int().positive(),
+  body: z.string().nullish(),
+  html_url: z.string().nullish(),
+});
+
+/**
+ * A comment's page, as the host reported it — `null` when it did not, or when what it said is not
+ * an https URL, the rule every other URL this provider stores is held to.
+ *
+ * @param comment - A parsed comment payload.
+ * @returns The URL, or null.
+ */
+function commentUrl(comment: z.infer<typeof commentPayload>): string | null {
+  const url = comment.html_url ?? null;
+
+  return url !== null && HTTPS_URL.test(url) ? url : null;
+}
 
 /** The fields of an issue payload closure verification reads. */
 const issueState = z.object({ state: z.string() });
@@ -378,7 +395,7 @@ export class GithubPullRequests {
 
         if (hasPrCommentMarker(existing.body, comment.key)) {
           if (existing.body === body) {
-            return { commentId: String(existing.id), mode: "unchanged" };
+            return { commentId: String(existing.id), url: commentUrl(existing), mode: "unchanged" };
           }
 
           await this.client.request<unknown>(UPDATE_COMMENT_ROUTE, {
@@ -387,7 +404,7 @@ export class GithubPullRequests {
             body,
           });
 
-          return { commentId: String(existing.id), mode: "edited" };
+          return { commentId: String(existing.id), url: commentUrl(existing), mode: "edited" };
         }
       }
     }
@@ -398,10 +415,9 @@ export class GithubPullRequests {
       body,
     });
 
-    return {
-      commentId: String(parse(commentPayload, created.data, CREATE_COMMENT_ROUTE).id),
-      mode: "created",
-    };
+    const posted = parse(commentPayload, created.data, CREATE_COMMENT_ROUTE);
+
+    return { commentId: String(posted.id), url: commentUrl(posted), mode: "created" };
   }
 
   /**

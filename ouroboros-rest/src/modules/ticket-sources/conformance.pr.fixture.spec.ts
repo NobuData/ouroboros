@@ -164,6 +164,7 @@ describe("the PR rules against providers that break the contract", () => {
           commentId: String(
             this.hostOf().comment(context.credentials, IN_MEMORY_PROJECT, prNumber, comment.body),
           ),
+          url: null,
           mode: "created",
         });
       }

@@ -1638,6 +1638,78 @@ export interface PrGateResultsLatestView {
   provider_version: string;
 }
 
+/** `pr_criteria.source` — decision **V6**'s provenance (V057). `extracted` is reserved for AZ.2 (#372). */
+export type PrCriterionSource = "plan" | "manual" | "extracted";
+
+/** `pr_criteria.status` (V057). `verified` needs evidence; `waived` exactly when `waiver_ref` is set. */
+export type PrCriterionStatus = "unverified" | "verified" | "waived";
+
+/** The three, in the order `pr_criteria_status` declares them. */
+export const PR_CRITERION_STATUSES = [
+  "unverified",
+  "verified",
+  "waived",
+] as const satisfies readonly PrCriterionStatus[];
+
+/** `pr_criteria_evidence.kind` — which typed reference an evidence row carries (V057). */
+export type PrEvidenceKind =
+  "test_case" | "hil_measurement" | "hunk" | "analysis_note" | "build_artifact";
+
+/** The five, in the order `pr_criteria_evidence_kind` declares them. */
+export const PR_EVIDENCE_KINDS = [
+  "test_case",
+  "hil_measurement",
+  "hunk",
+  "analysis_note",
+  "build_artifact",
+] as const satisfies readonly PrEvidenceKind[];
+
+/**
+ * `ouroboros.pr_criteria` — one quoted claim of the ticket and whether the PR meets it (V057,
+ * [#354](https://github.com/NobuData/ouroboros/issues/354), decision **V6**): a row of mockup 12's
+ * *Does the PR do what the ticket says?* matrix. Written by the criteria service (AX.3,
+ * [#359](https://github.com/NobuData/ouroboros/issues/359)). `pr_id` is frozen.
+ */
+export interface PrCriteriaTable {
+  id: Generated<string>;
+  pr_id: string;
+  /** The quoted claim — at most 1024 characters, never blank. */
+  claim: string;
+  source: PrCriterionSource;
+  /** `default 'unverified'`. */
+  status: Generated<PrCriterionStatus>;
+  /** The AS.4 waiver, exactly when `waived` — one of the PR's own run. */
+  waiver_ref: string | null;
+  /** The matrix's order, ascending; ties break by `created_at`. `default 0`. */
+  sort_order: Generated<number>;
+  /** Who authored or confirmed it; null once the person is removed. */
+  created_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.pr_criteria_evidence` — one typed reference showing a criterion holds (V057). Exactly
+ * the reference columns of `kind` are set, each resolved at write; never updated.
+ */
+export interface PrCriteriaEvidenceTable {
+  id: Generated<string>;
+  criterion_id: string;
+  kind: PrEvidenceKind;
+  test_case_id: string | null;
+  hil_measurement_id: string | null;
+  test_artifact_id: string | null;
+  /** `hunk` and `analysis_note`: a revision of the criterion's PR. */
+  revision_id: string | null;
+  /** `hunk`: a path in the revision's files snapshot. */
+  hunk_path: string | null;
+  hunk_line_start: number | null;
+  hunk_line_end: number | null;
+  /** The composed mono line the matrix renders — at most 512 characters. */
+  display_text: string;
+  created_at: Stamped;
+}
+
 /**
  * `guardrail_evaluations.check` — which of the card's four rows a verdict is (V048, decision
  * **R5**).
@@ -4873,9 +4945,17 @@ export interface RunPrIntentsTable {
 }
 
 /**
- * `ouroboros.pr_waivers` — *Waive & annotate PR* (V055). Append-only; `reason` required; the
- * annotation half is AV.2's ([#344](https://github.com/NobuData/ouroboros/issues/344)), so
- * `annotation_state` stays `pending_pr_plane`.
+ * `pr_waivers.annotation_state` (V055, widened by V062 for
+ * [#359](https://github.com/NobuData/ouroboros/issues/359)): `pending_pr_plane` — not posted;
+ * `annotated` — the host holds the comment (final); `failed` — the post was refused.
+ */
+export type PrWaiverAnnotationState = "pending_pr_plane" | "annotated" | "failed";
+
+/**
+ * `ouroboros.pr_waivers` — *Waive & annotate PR* (V055). Append-only but for the annotation
+ * (V062): the app role may update only the four `annotation*` columns, and an `annotated` waiver
+ * not at all. A test-results waiver of cases (#332) stays `pending_pr_plane`; a criterion's waiver
+ * is posted to the host PR by the criteria service (#359).
  */
 export interface PrWaiversTable {
   id: Generated<string>;
@@ -4884,8 +4964,14 @@ export interface PrWaiversTable {
   author: string | null;
   reason: string;
   case_keys: Generated<string[]>;
-  annotation_state: Generated<"pending_pr_plane">;
+  annotation_state: Generated<PrWaiverAnnotationState>;
   created_at: Generated<Date>;
+  /** The host's id for the annotating comment — exactly when `annotated`. */
+  annotation_comment_id: string | null;
+  /** The comment's page — only when `annotated`, and null there when the host did not say. */
+  annotation_url: string | null;
+  /** When the annotation was posted — exactly when `annotated`. */
+  annotated_at: Date | null;
 }
 
 /**
@@ -4970,6 +5056,8 @@ export interface Database {
   pr_revisions: PrRevisionsTable;
   pr_gate_definitions: PrGateDefinitionsTable;
   pr_gate_results: PrGateResultsTable;
+  pr_criteria: PrCriteriaTable;
+  pr_criteria_evidence: PrCriteriaEvidenceTable;
   guardrail_evaluations: GuardrailEvaluationsTable;
   run_controls: RunControlsTable;
   run_ingest_receipts: RunIngestReceiptsTable;
@@ -5237,6 +5325,32 @@ export const TABLE_COLUMNS = {
     "evidence_ref",
     "evaluated_at",
     "provider_version",
+    "created_at",
+  ],
+  pr_criteria: [
+    "id",
+    "pr_id",
+    "claim",
+    "source",
+    "status",
+    "waiver_ref",
+    "sort_order",
+    "created_by",
+    "created_at",
+    "updated_at",
+  ],
+  pr_criteria_evidence: [
+    "id",
+    "criterion_id",
+    "kind",
+    "test_case_id",
+    "hil_measurement_id",
+    "test_artifact_id",
+    "revision_id",
+    "hunk_path",
+    "hunk_line_start",
+    "hunk_line_end",
+    "display_text",
     "created_at",
   ],
   guardrail_evaluations: [
@@ -5840,6 +5954,9 @@ export const TABLE_COLUMNS = {
     "case_keys",
     "annotation_state",
     "created_at",
+    "annotation_comment_id",
+    "annotation_url",
+    "annotated_at",
   ],
   test_case_history: [
     "id",
@@ -6006,6 +6123,14 @@ export const TABLE_NAMES = Object.keys(TABLE_COLUMNS) as (keyof Database)[];
 export type PrGateDefinition = Selectable<PrGateDefinitionsTable>;
 /** A row of `ouroboros.pr_gate_results`, as a `select` returns it. */
 export type PrGateResult = Selectable<PrGateResultsTable>;
+/** A row of `ouroboros.pr_criteria`, as a `select` returns it. */
+export type PrCriterion = Selectable<PrCriteriaTable>;
+/** A row of `ouroboros.pr_criteria_evidence`, as a `select` returns it. */
+export type PrCriterionEvidence = Selectable<PrCriteriaEvidenceTable>;
+/** The columns an `insert` into `ouroboros.pr_criteria_evidence` may carry. */
+export type NewPrCriterionEvidence = Insertable<PrCriteriaEvidenceTable>;
+/** A row of `ouroboros.pr_waivers`, as a `select` returns it. */
+export type PrWaiver = Selectable<PrWaiversTable>;
 
 /** A row of `ouroboros.tenant_domains`, as a `select` returns it. */
 export type TenantDomain = Selectable<TenantDomainsTable>;
