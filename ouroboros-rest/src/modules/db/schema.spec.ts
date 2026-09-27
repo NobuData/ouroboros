@@ -392,7 +392,11 @@ describe("TABLE_COLUMNS", () => {
     // The eightieth and eighty-first are V057's `pr_criteria` and `pr_criteria_evidence`, mirrored
     // by AX.3 (#359) — the criteria service that resolves typed evidence at write and posts a
     // waiver to the host PR (V062's annotation columns on `pr_waivers`).
-    expect(TABLE_NAMES).toHaveLength(81);
+    //
+    // The eighty-second to eighty-fourth are V054's `flake_score_formulas`, `flake_scores` and
+    // `flake_scorer_runs`, mirrored by AT.3 (#331) — the flake scorer that writes a score per case
+    // and a bookkeeping row per nightly pass.
+    expect(TABLE_NAMES).toHaveLength(84);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

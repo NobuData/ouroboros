@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.37.8",
+    "version": "0.37.9",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -93,6 +93,10 @@
     {
       "name": "triage",
       "description": "**Mark & Route** — the test-results page's control surface (mockup 11, issue\n[#332](https://github.com/NobuData/ouroboros/issues/332), decisions **T6**/**T7**, option\n**5-A**): heuristic hints that never claim a confidence, a classification recorded as a\ndecision, and routes that compose over the control queue and the build farm rather than\nbeside them — a correction round, a flake re-run, a runner's health note — plus the two\nre-run buttons and the waiver."
+    },
+    {
+      "name": "flakes",
+      "description": "**Flake state** — retry truth plus history (mockup 11's Flaky stat, issue\n[#331](https://github.com/NobuData/ouroboros/issues/331), option **4-A**, decision **T5**).\nA sanctioned pass on retry is a fact the parser records per case per attempt; flake score v1\n(V054) weighs those facts over a case's recent occurrences and moves it between `healthy` and\n`watching`. `quarantined` is storable and never written in the MVP — its activation is AV.3's\n(#345). A nightly pass re-scores what parsing never revisits and records a bookkeeping row."
     },
     {
       "name": "pr-criteria",
@@ -17430,6 +17434,153 @@
         }
       }
     },
+    "/api/v1/flakes/summary": {
+      "get": {
+        "tags": [
+          "flakes"
+        ],
+        "summary": "The workspace's flake summary — watching count, candidates, last nightly pass",
+        "description": "What the test-results strip's Flaky stat reads for its `quarantine watching` count and link\n([#331](https://github.com/NobuData/ouroboros/issues/331)): how many of the workspace's\ncases are `watching` and `quarantined`, the **candidates** — every non-healthy case,\nhighest score first, at most fifty, the payload the insights page (mockup 15, #345) will\nconsume — and the nightly re-scorer's latest bookkeeping row, so the job is observable.\nEvery member may read this, a `viewer` included.",
+        "operationId": "getFlakeSummary",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The summary.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FlakeSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — `X-Ouro-Tenant` names a workspace you are not a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/flakes/cases/{caseKey}": {
+      "get": {
+        "tags": [
+          "flakes"
+        ],
+        "summary": "One case's flake and quarantine state",
+        "description": "The flake state of one case by its durable key ([#331](https://github.com/NobuData/ouroboros/issues/331),\ndecision **T2**): its score under the formula that produced it, its state and when it\nentered it, and how many sanctioned passes on retry are among its observed occurrences.\nAn observed case that was never scored is `healthy` with a null `score`. `quarantined` is\nreported distinctly — a soft signal, never hidden. Every member may read this.",
+        "operationId": "getCaseFlakeState",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/CaseKey"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The case's state.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CaseFlakeState"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`flake_case_not_found` — this workspace has never observed that case, **or it is\nanother workspace's**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace\nyou are not a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the key is not 64 lowercase hex digits.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/test-runs/{id}/hints": {
       "get": {
         "tags": [
@@ -19925,6 +20076,17 @@
         },
         "example": "5eed0033-0000-4000-8000-000000000002"
       },
+      "CaseKey": {
+        "name": "caseKey",
+        "in": "path",
+        "required": true,
+        "description": "A test case's durable key — `test_cases.case_key`, the SHA-256 of its repository, suite,\nclassname and name (V051, decision T2), so it names the same case across builds and runs.\nAnything that is not 64 lowercase hex digits is a `422`, before anything is read.",
+        "schema": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "example": "3f0c9d2e8b7a6f5e4d3c2b1a09f8e7d6c5b4a3928170f6e5d4c3b2a190817263"
+      },
       "PullRequestId": {
         "name": "id",
         "in": "path",
@@ -21887,6 +22049,302 @@
             "items": {
               "$ref": "#/components/schemas/CaseHint"
             }
+          }
+        }
+      },
+      "FlakeState": {
+        "type": "string",
+        "title": "FlakeState",
+        "description": "`healthy` · `watching` · `quarantined`. `quarantined` is storable now and never written by\nthe scorer in the MVP (#345 activates it) — a soft signal, reported distinctly, never\nhidden and never blocking.",
+        "enum": [
+          "healthy",
+          "watching",
+          "quarantined"
+        ]
+      },
+      "FlakeScore": {
+        "type": "object",
+        "title": "FlakeScore",
+        "description": "A case's current score. Flake score v1 (V054) — the latest 20 non-skipped occurrences\nnewest first, weight 0.9^i, signal 1 for a sanctioned pass on retry; score =\nround(sum(w*f) / sum(w), 4); `watching` at >= 0.25, `healthy` below 0.10, unchanged\nbetween or under three observations.",
+        "additionalProperties": false,
+        "required": [
+          "score",
+          "windowRuns",
+          "state",
+          "formulaVersion",
+          "lastScoredAt",
+          "stateChangedAt"
+        ],
+        "properties": {
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "windowRuns": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many occurrences the score covers."
+          },
+          "state": {
+            "$ref": "#/components/schemas/FlakeState"
+          },
+          "formulaVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The `flake_score_formulas` version that produced the score."
+          },
+          "lastScoredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stateChangedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the case entered its current state."
+          }
+        }
+      },
+      "CaseFlakeState": {
+        "type": "object",
+        "title": "CaseFlakeState",
+        "additionalProperties": false,
+        "required": [
+          "caseKey",
+          "githubRepoId",
+          "state",
+          "quarantined",
+          "observed",
+          "passOnRetry",
+          "score"
+        ],
+        "properties": {
+          "caseKey": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "githubRepoId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "$ref": "#/components/schemas/FlakeState"
+          },
+          "quarantined": {
+            "type": "boolean",
+            "description": "True exactly when `state` is `quarantined`."
+          },
+          "observed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Every non-skipped occurrence of the case in the workspace."
+          },
+          "passOnRetry": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many of them were sanctioned passes on retry."
+          },
+          "score": {
+            "description": "Null when the case has never been scored.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FlakeScore"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "FlakeCandidate": {
+        "type": "object",
+        "title": "FlakeCandidate",
+        "description": "One case worth distrusting — an entry of the insights payload.",
+        "additionalProperties": false,
+        "required": [
+          "caseKey",
+          "githubRepoId",
+          "repository",
+          "name",
+          "classname",
+          "suite",
+          "score",
+          "windowRuns",
+          "state",
+          "formulaVersion",
+          "lastScoredAt",
+          "stateChangedAt"
+        ],
+        "properties": {
+          "caseKey": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "githubRepoId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repository": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The case's name as its latest occurrence recorded it."
+          },
+          "classname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suite": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "windowRuns": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "state": {
+            "$ref": "#/components/schemas/FlakeState"
+          },
+          "formulaVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "lastScoredAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "stateChangedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FlakeScorerRun": {
+        "type": "object",
+        "title": "FlakeScorerRun",
+        "description": "One nightly re-score pass over the workspace — its bookkeeping row.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "formulaVersion",
+          "status",
+          "startedAt",
+          "finishedAt",
+          "durationMs",
+          "casesScored",
+          "stateChanges",
+          "error"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "formulaVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "complete",
+              "error"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "casesScored": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "stateChanges": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the pass failed; null unless `status` is `error`."
+          }
+        }
+      },
+      "FlakeSummary": {
+        "type": "object",
+        "title": "FlakeSummary",
+        "additionalProperties": false,
+        "required": [
+          "formulaVersion",
+          "watching",
+          "quarantined",
+          "candidates",
+          "lastRun"
+        ],
+        "properties": {
+          "formulaVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The formula the scorer applies now."
+          },
+          "watching": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The strip's `quarantine watching` count."
+          },
+          "quarantined": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "candidates": {
+            "type": "array",
+            "maxItems": 50,
+            "description": "Every non-healthy case, highest score first, at most fifty.",
+            "items": {
+              "$ref": "#/components/schemas/FlakeCandidate"
+            }
+          },
+          "lastRun": {
+            "description": "The latest nightly pass, or null before the first.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FlakeScorerRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },

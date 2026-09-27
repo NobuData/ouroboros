@@ -4977,7 +4977,10 @@ export interface PrWaiversTable {
 /**
  * `ouroboros.test_case_history` — one occurrence per case per attempt (V054,
  * [#326](https://github.com/NobuData/ouroboros/issues/326)). A writer supplies the case; the
- * trigger derives the rest, so everything else is `undefined` on insert.
+ * trigger derives the rest, so everything else is `undefined` on insert. The outcome — `status`,
+ * `retries`, `pass_on_retry` — is rewritten with a re-parsed case (V063,
+ * [#331](https://github.com/NobuData/ouroboros/issues/331)); the trigger still refuses a value the
+ * case does not have.
  */
 export interface TestCaseHistoryTable {
   id: Generated<string>;
@@ -4986,11 +4989,71 @@ export interface TestCaseHistoryTable {
   github_repo_id: ColumnType<string, undefined, never>;
   case_key: ColumnType<string, undefined, never>;
   test_run_id: ColumnType<string, undefined, never>;
-  status: ColumnType<TestCaseStatus, undefined, never>;
-  retries: ColumnType<number, undefined, never>;
-  pass_on_retry: ColumnType<boolean, undefined, never>;
+  status: ColumnType<TestCaseStatus, undefined, TestCaseStatus>;
+  retries: ColumnType<number, undefined, number>;
+  pass_on_retry: ColumnType<boolean, undefined, boolean>;
   observed_at: ColumnType<Date, undefined, never>;
   created_at: Generated<Date>;
+}
+
+/** `flake_scores.state` (V054) — `quarantined` is storable now and never written by the scorer. */
+export type FlakeState = "healthy" | "watching" | "quarantined";
+
+/**
+ * `ouroboros.flake_score_formulas` — every versioned flake score formula (V054,
+ * [#326](https://github.com/NobuData/ouroboros/issues/326)). Shipped by migrations and frozen, so
+ * read-only here. The `numeric` columns arrive as strings.
+ */
+export interface FlakeScoreFormulasTable {
+  version: ColumnType<number, never, never>;
+  window_size: ColumnType<number, never, never>;
+  decay: ColumnType<string, never, never>;
+  watch_at: ColumnType<string, never, never>;
+  clear_below: ColumnType<string, never, never>;
+  min_observations: ColumnType<number, never, never>;
+  description: ColumnType<string, never, never>;
+  created_at: ColumnType<Date, never, never>;
+}
+
+/**
+ * `ouroboros.flake_scores` — one current score and state per case per workspace (V054,
+ * [#326](https://github.com/NobuData/ouroboros/issues/326)), written by the flake scorer (#331).
+ * `score` is `numeric`, so a string when read; `state_changed_at` is the trigger's.
+ */
+export interface FlakeScoresTable {
+  id: Generated<string>;
+  organization_id: string;
+  github_repo_id: string;
+  case_key: string;
+  score: ColumnType<string, string | number, string | number>;
+  window_runs: number;
+  formula_version: number;
+  state: ColumnType<FlakeState, FlakeState | undefined, FlakeState>;
+  last_scored_at: ColumnType<Date, Date | undefined, Date>;
+  state_changed_at: ColumnType<Date, never, never>;
+  created_at: Generated<Date>;
+  updated_at: Generated<Date>;
+}
+
+/** `flake_scorer_runs.status` (V054). */
+export type FlakeScorerRunStatus = "running" | "complete" | "error";
+
+/**
+ * `ouroboros.flake_scorer_runs` — the nightly re-scorer's bookkeeping, one row per pass per
+ * workspace (V054, [#326](https://github.com/NobuData/ouroboros/issues/326)). `duration_ms` is
+ * generated from the two instants, and a `bigint`, so a string when read.
+ */
+export interface FlakeScorerRunsTable {
+  id: Generated<string>;
+  organization_id: string;
+  formula_version: number;
+  status: ColumnType<FlakeScorerRunStatus, FlakeScorerRunStatus | undefined, FlakeScorerRunStatus>;
+  started_at: ColumnType<Date, Date | undefined, never>;
+  finished_at: Date | null;
+  duration_ms: ColumnType<string | null, never, never>;
+  cases_scored: ColumnType<number, number | undefined, number>;
+  state_changes: ColumnType<number, number | undefined, number>;
+  error: string | null;
 }
 
 /**
@@ -5107,6 +5170,9 @@ export interface Database {
   run_pr_intents: RunPrIntentsTable;
   pr_waivers: PrWaiversTable;
   test_case_history: TestCaseHistoryTable;
+  flake_score_formulas: FlakeScoreFormulasTable;
+  flake_scores: FlakeScoresTable;
+  flake_scorer_runs: FlakeScorerRunsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -5970,6 +6036,42 @@ export const TABLE_COLUMNS = {
     "pass_on_retry",
     "observed_at",
     "created_at",
+  ],
+  flake_score_formulas: [
+    "version",
+    "window_size",
+    "decay",
+    "watch_at",
+    "clear_below",
+    "min_observations",
+    "description",
+    "created_at",
+  ],
+  flake_scores: [
+    "id",
+    "organization_id",
+    "github_repo_id",
+    "case_key",
+    "score",
+    "window_runs",
+    "formula_version",
+    "state",
+    "last_scored_at",
+    "state_changed_at",
+    "created_at",
+    "updated_at",
+  ],
+  flake_scorer_runs: [
+    "id",
+    "organization_id",
+    "formula_version",
+    "status",
+    "started_at",
+    "finished_at",
+    "duration_ms",
+    "cases_scored",
+    "state_changes",
+    "error",
   ],
   planning_epic_progress: [
     "epic_id",

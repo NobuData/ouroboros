@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.8"
+  version: "0.37.9"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -555,6 +555,14 @@ tags:
       decision, and routes that compose over the control queue and the build farm rather than
       beside them — a correction round, a flake re-run, a runner's health note — plus the two
       re-run buttons and the waiver.
+  - name: flakes
+    description: |-
+      **Flake state** — retry truth plus history (mockup 11's Flaky stat, issue
+      [#331](https://github.com/NobuData/ouroboros/issues/331), option **4-A**, decision **T5**).
+      A sanctioned pass on retry is a fact the parser records per case per attempt; flake score v1
+      (V054) weighs those facts over a case's recent occurrences and moves it between `healthy` and
+      `watching`. `quarantined` is storable and never written in the MVP — its activation is AV.3's
+      (#345). A nightly pass re-scores what parsing never revisits and records a bookkeeping row.
   - name: pr-criteria
     description: |-
       **Does the PR do what the ticket says?** — the acceptance criteria matrix of the PR
@@ -16515,6 +16523,119 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/flakes/summary:
+    get:
+      tags: [flakes]
+      summary: The workspace's flake summary — watching count, candidates, last nightly pass
+      description: |-
+        What the test-results strip's Flaky stat reads for its `quarantine watching` count and link
+        ([#331](https://github.com/NobuData/ouroboros/issues/331)): how many of the workspace's
+        cases are `watching` and `quarantined`, the **candidates** — every non-healthy case,
+        highest score first, at most fifty, the payload the insights page (mockup 15, #345) will
+        consume — and the nightly re-scorer's latest bookkeeping row, so the job is observable.
+        Every member may read this, a `viewer` included.
+      operationId: getFlakeSummary
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The summary.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FlakeSummary"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — `X-Ouro-Tenant` names a workspace you are not a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/flakes/cases/{caseKey}:
+    get:
+      tags: [flakes]
+      summary: One case's flake and quarantine state
+      description: |-
+        The flake state of one case by its durable key ([#331](https://github.com/NobuData/ouroboros/issues/331),
+        decision **T2**): its score under the formula that produced it, its state and when it
+        entered it, and how many sanctioned passes on retry are among its observed occurrences.
+        An observed case that was never scored is `healthy` with a null `score`. `quarantined` is
+        reported distinctly — a soft signal, never hidden. Every member may read this.
+      operationId: getCaseFlakeState
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/CaseKey"
+      responses:
+        "200":
+          description: The case's state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CaseFlakeState"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `flake_case_not_found` — this workspace has never observed that case, **or it is
+            another workspace's**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace
+            you are not a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the key is not 64 lowercase hex digits.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/test-runs/{id}/hints:
     get:
       tags: [triage]
@@ -18716,6 +18837,18 @@ components:
         format: uuid
       example: 5eed0033-0000-4000-8000-000000000002
 
+    CaseKey:
+      name: caseKey
+      in: path
+      required: true
+      description: |-
+        A test case's durable key — `test_cases.case_key`, the SHA-256 of its repository, suite,
+        classname and name (V051, decision T2), so it names the same case across builds and runs.
+        Anything that is not 64 lowercase hex digits is a `422`, before anything is read.
+      schema:
+        type: string
+        pattern: "^[0-9a-f]{64}$"
+      example: 3f0c9d2e8b7a6f5e4d3c2b1a09f8e7d6c5b4a3928170f6e5d4c3b2a190817263
     PullRequestId:
       name: id
       in: path
@@ -20234,6 +20367,188 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/CaseHint"
+
+    FlakeState:
+      type: string
+      title: FlakeState
+      description: |-
+        `healthy` · `watching` · `quarantined`. `quarantined` is storable now and never written by
+        the scorer in the MVP (#345 activates it) — a soft signal, reported distinctly, never
+        hidden and never blocking.
+      enum: [healthy, watching, quarantined]
+
+    FlakeScore:
+      type: object
+      title: FlakeScore
+      description: |-
+        A case's current score. Flake score v1 (V054) — the latest 20 non-skipped occurrences
+        newest first, weight 0.9^i, signal 1 for a sanctioned pass on retry; score =
+        round(sum(w*f) / sum(w), 4); `watching` at >= 0.25, `healthy` below 0.10, unchanged
+        between or under three observations.
+      additionalProperties: false
+      required: [score, windowRuns, state, formulaVersion, lastScoredAt, stateChangedAt]
+      properties:
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        windowRuns:
+          type: integer
+          minimum: 0
+          description: How many occurrences the score covers.
+        state:
+          $ref: "#/components/schemas/FlakeState"
+        formulaVersion:
+          type: integer
+          minimum: 1
+          description: The `flake_score_formulas` version that produced the score.
+        lastScoredAt:
+          type: string
+          format: date-time
+        stateChangedAt:
+          type: string
+          format: date-time
+          description: When the case entered its current state.
+
+    CaseFlakeState:
+      type: object
+      title: CaseFlakeState
+      additionalProperties: false
+      required: [caseKey, githubRepoId, state, quarantined, observed, passOnRetry, score]
+      properties:
+        caseKey:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        githubRepoId:
+          type: string
+          format: uuid
+        state:
+          $ref: "#/components/schemas/FlakeState"
+        quarantined:
+          type: boolean
+          description: True exactly when `state` is `quarantined`.
+        observed:
+          type: integer
+          minimum: 0
+          description: Every non-skipped occurrence of the case in the workspace.
+        passOnRetry:
+          type: integer
+          minimum: 0
+          description: How many of them were sanctioned passes on retry.
+        score:
+          description: Null when the case has never been scored.
+          oneOf:
+            - $ref: "#/components/schemas/FlakeScore"
+            - type: "null"
+
+    FlakeCandidate:
+      type: object
+      title: FlakeCandidate
+      description: One case worth distrusting — an entry of the insights payload.
+      additionalProperties: false
+      required:
+        [caseKey, githubRepoId, repository, name, classname, suite, score, windowRuns, state,
+         formulaVersion, lastScoredAt, stateChangedAt]
+      properties:
+        caseKey:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+        githubRepoId:
+          type: string
+          format: uuid
+        repository:
+          type: string
+        name:
+          type: [string, "null"]
+          description: The case's name as its latest occurrence recorded it.
+        classname:
+          type: [string, "null"]
+        suite:
+          type: [string, "null"]
+        score:
+          type: number
+          minimum: 0
+          maximum: 1
+        windowRuns:
+          type: integer
+          minimum: 0
+        state:
+          $ref: "#/components/schemas/FlakeState"
+        formulaVersion:
+          type: integer
+          minimum: 1
+        lastScoredAt:
+          type: string
+          format: date-time
+        stateChangedAt:
+          type: string
+          format: date-time
+
+    FlakeScorerRun:
+      type: object
+      title: FlakeScorerRun
+      description: One nightly re-score pass over the workspace — its bookkeeping row.
+      additionalProperties: false
+      required:
+        [id, formulaVersion, status, startedAt, finishedAt, durationMs, casesScored,
+         stateChanges, error]
+      properties:
+        id:
+          type: string
+          format: uuid
+        formulaVersion:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [running, complete, error]
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, "null"]
+          format: date-time
+        durationMs:
+          type: [integer, "null"]
+          minimum: 0
+        casesScored:
+          type: integer
+          minimum: 0
+        stateChanges:
+          type: integer
+          minimum: 0
+        error:
+          type: [string, "null"]
+          description: Why the pass failed; null unless `status` is `error`.
+
+    FlakeSummary:
+      type: object
+      title: FlakeSummary
+      additionalProperties: false
+      required: [formulaVersion, watching, quarantined, candidates, lastRun]
+      properties:
+        formulaVersion:
+          type: integer
+          minimum: 1
+          description: The formula the scorer applies now.
+        watching:
+          type: integer
+          minimum: 0
+          description: The strip's `quarantine watching` count.
+        quarantined:
+          type: integer
+          minimum: 0
+        candidates:
+          type: array
+          maxItems: 50
+          description: Every non-healthy case, highest score first, at most fifty.
+          items:
+            $ref: "#/components/schemas/FlakeCandidate"
+        lastRun:
+          description: The latest nightly pass, or null before the first.
+          oneOf:
+            - $ref: "#/components/schemas/FlakeScorerRun"
+            - type: "null"
 
     ClassificationReceipt:
       type: object

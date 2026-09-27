@@ -11,6 +11,8 @@ import {
   DEFAULT_RUN_STEER_TTL_SECONDS,
   DEFAULT_BACKLOG_STALE_DAYS,
   DEFAULT_REESTIMATION_BATCH,
+  DEFAULT_FLAKE_RESCORE_CAP,
+  DEFAULT_FLAKE_RESCORE_HOUR_UTC,
   DEFAULT_REESTIMATION_HOUR_UTC,
   DEFAULT_REESTIMATION_JITTER_MINUTES,
   DEFAULT_DASHBOARD_POLL_SECONDS,
@@ -137,6 +139,9 @@ describe("the development defaults", () => {
       reestimationHourUtc: DEFAULT_REESTIMATION_HOUR_UTC,
       reestimationJitterMinutes: DEFAULT_REESTIMATION_JITTER_MINUTES,
       reestimationBatch: DEFAULT_REESTIMATION_BATCH,
+      // AT.3's (#331) two, written out in the template at their defaults for the same reason.
+      flakeRescoreHourUtc: DEFAULT_FLAKE_RESCORE_HOUR_UTC,
+      flakeRescoreCap: DEFAULT_FLAKE_RESCORE_CAP,
       // Commented out in the template (#145): a checkout suggests no skills until an operator
       // lists some, or until the skills registry (#410) replaces the variable.
       workflowSkillSuggestions: [],
@@ -1116,6 +1121,26 @@ describe("the backlog-health and nightly re-estimation variables (AL.5, #281)", 
     ["OURO_REESTIMATION_BATCH", "0", "expected between 1 and 1000"],
     ["OURO_REESTIMATION_BATCH", "1001", "expected between 1 and 1000"],
     ["OURO_REESTIMATION_BATCH", "1e2", "expected between 1 and 1000"],
+  ])("rejects %s=%s", (variable, value, message) => {
+    expect(failureFor(testEnvironment({ [variable]: value }))).toContain(`${variable}: ${message}`);
+  });
+});
+
+describe("the nightly flake re-scorer variables (AT.3, #331)", () => {
+  it.each([
+    ["OURO_FLAKE_RESCORE_HOUR_UTC", "flakeRescoreHourUtc", ["0", "3", "23"]],
+    ["OURO_FLAKE_RESCORE_CAP", "flakeRescoreCap", ["1", "2000", "100000"]],
+  ] as const)("reads %s inside its range", (variable, field, values) => {
+    for (const value of values) {
+      expect(loadConfiguration(testEnvironment({ [variable]: value }))[field]).toBe(Number(value));
+    }
+  });
+
+  it.each([
+    ["OURO_FLAKE_RESCORE_HOUR_UTC", "24", "expected between 0 and 23"],
+    // A zero cap is a pass that never re-scores; an unbounded one is the job AT.3 forbids.
+    ["OURO_FLAKE_RESCORE_CAP", "0", "expected between 1 and 100000"],
+    ["OURO_FLAKE_RESCORE_CAP", "100001", "expected between 1 and 100000"],
   ])("rejects %s=%s", (variable, value, message) => {
     expect(failureFor(testEnvironment({ [variable]: value }))).toContain(`${variable}: ${message}`);
   });

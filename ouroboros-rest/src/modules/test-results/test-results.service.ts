@@ -13,7 +13,10 @@
  * 4. replaces the attempt's tree in one transaction, recounts, and stores the warnings and the
  *    wall-time split (`test-results.repository.ts`);
  * 5. sums the coverage counts and computes the percentage and the delta against the prior attempt
- *    exactly as V059's `test_run_coverage` does.
+ *    exactly as V059's `test_run_coverage` does;
+ * 6. scores the cases the attempt touched (AT.3, [#331](https://github.com/NobuData/ouroboros/issues/331)):
+ *    step 4 wrote one `test_case_history` occurrence per case, and the flake scorer moves each case
+ *    that passed on a sanctioned retry, or was already scored, between `healthy` and `watching`.
  *
  * Coverage counts are **returned, not stored**: V059 stores them on the coverage `test_artifacts`
  * row, which the upload path inserts and the database freezes once written — so #330 inserts that
@@ -23,6 +26,7 @@
 import { Inject, Injectable } from "@nestjs/common";
 
 import { NotFoundError } from "../errors/error.envelope";
+import { FlakeScorerService, type AttemptScoring } from "../flakes/flake-scorer.service";
 import { NO_RETRIES, type FlakePolicy } from "./flake-policy";
 import type { CoverageCounts, NormalizedSuite, ParseWarning, ResultFile } from "./parser.spi";
 import { TestResultParserRegistry } from "./parser.registry";
@@ -76,6 +80,8 @@ export interface ParseReport {
   readonly parsedBy: Readonly<Record<string, string | null>>;
   /** Absent when the set had no readable coverage report. */
   readonly coverage?: CoverageSummary;
+  /** What the flake scorer did with the attempt's occurrences. */
+  readonly flakes: AttemptScoring;
 }
 
 /** See this file's header. */
@@ -84,10 +90,12 @@ export class TestResultIngestService {
   /**
    * @param registry - The registered parsers.
    * @param store - The statements.
+   * @param flakes - The flake scorer, run once the occurrences are written.
    */
   constructor(
     private readonly registry: TestResultParserRegistry,
     @Inject(TestResultsRepository) private readonly store: TestResultsStore,
+    private readonly flakes: FlakeScorerService,
   ) {}
 
   /**
@@ -140,6 +148,10 @@ export class TestResultIngestService {
     const tree = assembleTree(suites, flakePolicy);
     const split = durationSplit(tree);
     const totals = await this.store.replaceTree({ attempt, suites: tree, warnings, split });
+    // After the tree's transaction has committed, so the scorer reads the occurrences it wrote. A
+    // failure here fails the parse, and the upload path's retry re-parses — idempotently — and
+    // scores again.
+    const flakes = await this.flakes.scoreAttempt(attempt.organizationId, attempt.id);
     const prior = coverage.length === 0 ? undefined : await this.store.priorCoverage(attempt);
 
     return {
@@ -149,6 +161,7 @@ export class TestResultIngestService {
       warnings,
       parsedBy,
       ...(coverage.length === 0 ? {} : { coverage: summarizeCoverage(coverage, prior) }),
+      flakes,
     };
   }
 }

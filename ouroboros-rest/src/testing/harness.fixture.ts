@@ -212,6 +212,17 @@ export interface Workspace {
  */
 const HISTORY_TABLE = "flyway_schema_history";
 
+/**
+ * Tables a migration fills and the application only reads, which {@link ApiHarness.truncate} keeps.
+ *
+ * `flake_score_formulas` (V054) ships flake score v1 with its migration and is frozen; the app role
+ * may only select it, so nothing a suite does through the service can put it back. Emptying it would
+ * leave every later parse in the run scoring against no formula (AT.3, #331). Truncating the tables
+ * that reference it is unaffected — `cascade` runs from a referenced table to its referrers, never
+ * the other way.
+ */
+const REFERENCE_TABLES = ["flake_score_formulas"];
+
 export class ApiHarness {
   /** Every table {@link truncate} empties, discovered once and remembered. */
   private tables: string[] | undefined;
@@ -719,7 +730,8 @@ export class ApiHarness {
   }
 
   /**
-   * Every table in the application's schema, quoted, except Flyway's own.
+   * Every table in the application's schema, quoted, except Flyway's own and the
+   * {@link REFERENCE_TABLES}.
    *
    * `format('%I.%I')` is PostgreSQL quoting its own identifiers, which is what makes it safe
    * to interpolate the result into the `truncate` above — the names come from the catalogue
@@ -732,9 +744,9 @@ export class ApiHarness {
     const { rows } = await this.sql.query<{ table: string }>(
       `select format('%I.%I', schemaname, tablename) as table
          from pg_catalog.pg_tables
-        where schemaname = $1 and tablename <> $2
+        where schemaname = $1 and tablename <> all($2::text[])
         order by tablename`,
-      [SCHEMA_NAME, HISTORY_TABLE],
+      [SCHEMA_NAME, [HISTORY_TABLE, ...REFERENCE_TABLES]],
     );
 
     if (rows.length === 0) {

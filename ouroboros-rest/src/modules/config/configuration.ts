@@ -501,6 +501,29 @@ export const MIN_REESTIMATION_BATCH = 1;
 export const MAX_REESTIMATION_BATCH = 1000;
 
 /**
+ * The UTC hour the nightly flake re-scorer is scheduled at, when `OURO_FLAKE_RESCORE_HOUR_UTC` is
+ * not set — three in the morning, an hour after the re-estimation job so the two do not share a
+ * slot (AT.3, #331).
+ */
+export const DEFAULT_FLAKE_RESCORE_HOUR_UTC = 3;
+
+/**
+ * The most cases one workspace's nightly flake re-score covers, when `OURO_FLAKE_RESCORE_CAP` is not
+ * set — two thousand.
+ *
+ * The bound AT.3 asks for. Each case is one windowed read of an index, so two thousand is a few
+ * seconds of database time; what the cap leaves is the least recently scored, and first in line the
+ * next night.
+ */
+export const DEFAULT_FLAKE_RESCORE_CAP = 2000;
+
+/** Smallest cap — one case. */
+export const MIN_FLAKE_RESCORE_CAP = 1;
+
+/** Largest cap — a hundred thousand cases a night per workspace. */
+export const MAX_FLAKE_RESCORE_CAP = 100000;
+
+/**
  * The service's validated configuration.
  *
  * Every field is derived from exactly one environment variable — {@link VARIABLES} is the
@@ -885,6 +908,16 @@ export interface Configuration {
    */
   readonly reestimationBatch: number;
   /**
+   * The UTC hour the nightly flake re-scorer is scheduled at. From `OURO_FLAKE_RESCORE_HOUR_UTC`,
+   * {@link DEFAULT_FLAKE_RESCORE_HOUR_UTC} when unset.
+   */
+  readonly flakeRescoreHourUtc: number;
+  /**
+   * The most cases one workspace's nightly flake re-score covers. From `OURO_FLAKE_RESCORE_CAP`,
+   * {@link DEFAULT_FLAKE_RESCORE_CAP} when unset.
+   */
+  readonly flakeRescoreCap: number;
+  /**
    * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
    *
    * A map of provider kind to base URL, from a comma-separated list of `kind=url` pairs, and
@@ -978,6 +1011,8 @@ export const VARIABLES = {
   reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
   reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
   reestimationBatch: "OURO_REESTIMATION_BATCH",
+  flakeRescoreHourUtc: "OURO_FLAKE_RESCORE_HOUR_UTC",
+  flakeRescoreCap: "OURO_FLAKE_RESCORE_CAP",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
   workflowSkillSuggestions: "OURO_WORKFLOW_SKILL_SUGGESTIONS",
 } as const satisfies Record<keyof Configuration, string>;
@@ -1568,6 +1603,14 @@ const environmentShape = z.object({
     MAX_REESTIMATION_BATCH,
   ),
 
+  OURO_FLAKE_RESCORE_HOUR_UTC: boundedWhole(0, DEFAULT_FLAKE_RESCORE_HOUR_UTC, 23),
+
+  OURO_FLAKE_RESCORE_CAP: boundedWhole(
+    MIN_FLAKE_RESCORE_CAP,
+    DEFAULT_FLAKE_RESCORE_CAP,
+    MAX_FLAKE_RESCORE_CAP,
+  ),
+
   // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
   // pairs, comma-separated. Optional, and its default is *no local providers*: an
   // installation that runs none is the normal one, and a default address would be this
@@ -1775,6 +1818,8 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
     reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,
     reestimationBatch: values.OURO_REESTIMATION_BATCH,
+    flakeRescoreHourUtc: values.OURO_FLAKE_RESCORE_HOUR_UTC,
+    flakeRescoreCap: values.OURO_FLAKE_RESCORE_CAP,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
     workflowSkillSuggestions: Object.freeze(values.OURO_WORKFLOW_SKILL_SUGGESTIONS),
   });
