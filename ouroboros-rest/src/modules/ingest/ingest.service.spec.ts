@@ -826,6 +826,25 @@ describe("reporting a change-set", () => {
     expect(spy.allocateChangeSetSeq).not.toHaveBeenCalled();
   });
 
+  it("tells the gate engine the run was judged, once the report has committed", async () => {
+    const { repository } = stubRepository();
+    const gates = { notify: jest.fn().mockResolvedValue(undefined) };
+    const service = new IngestService(repository, stubGuardrails(), gates);
+
+    await service.reportFiles(RUN, {
+      idempotencyKey: "k",
+      files: [{ path: "a.c", status: "modified", additions: 3 }],
+    } as never);
+    await service.reportFiles(RUN, { idempotencyKey: "k2", files: [] });
+
+    // The empty report judged nothing, so it moves no gate.
+    expect(gates.notify).toHaveBeenCalledTimes(1);
+    expect(gates.notify).toHaveBeenCalledWith(WORKSPACE, {
+      kind: "guardrail_evaluated",
+      runId: RUN,
+    });
+  });
+
   it("still replaces the stored change-set when the report is empty", async () => {
     // A run that reverted everything it did has an empty change-set, not a stale one.
     const { repository, spy } = stubRepository();

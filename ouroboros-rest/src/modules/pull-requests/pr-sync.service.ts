@@ -21,11 +21,16 @@
  * **The credential is opened for one call**, by `TicketSourcesService.withCredentials`, exactly as
  * the intake loop and the push service open it.
  *
- * Nothing calls this on a schedule yet: the gate engine (#358) and merge executor (#360) are its
- * callers, and a `prEvents` poll loop joins them there. The service is the contract they build on.
+ * **Every sync tells the gate engine** (AX.2, #358), after the mirror's transaction commits: a new
+ * revision is `revision_pushed` (every gate re-evaluated, a new snapshot), anything else is
+ * `pr_synced` (definitions re-materialized, state brought in line). The sink never throws, so a gate
+ * problem never fails a sync.
+ *
+ * Nothing calls this on a schedule yet: the merge executor (#360) is its caller, and a `prEvents`
+ * poll loop joins it there. The service is the contract they build on.
  */
 
-import { Inject, Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import type { TicketSourceKind } from "../db/schema";
 import {
@@ -36,6 +41,7 @@ import {
 import { TicketSourceRegistry } from "../ticket-sources/ticket-source.registry";
 import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
 import { TicketSourcesService } from "../ticket-sources/ticket-sources.service";
+import { GATE_EVIDENCE, type GateEvidenceSink } from "./gates/gate.evidence";
 import { prSourceHasNoPullRequests, prSourceNotFound } from "./pr-sync.errors";
 import { PrMirrorRepository, type PrMirrorStore, type PrSyncOutcome } from "./pr-sync.repository";
 
@@ -58,11 +64,13 @@ export class PrSyncService {
    * @param store - The mirror's statements.
    * @param registry - The providers, by kind.
    * @param sources - What opens a source's credential for one call.
+   * @param gates - The gate engine's sink, told about every sync; absent in a context without it.
    */
   constructor(
     @Inject(PrMirrorRepository) private readonly store: PrMirrorStore,
     private readonly registry: TicketSourceRegistry,
     @Inject(TicketSourcesService) private readonly sources: PrSourceOpener,
+    @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
   ) {}
 
   /**
@@ -89,7 +97,18 @@ export class PrSyncService {
       provider.syncPR(context, prNumber, mirrored?.headSha ?? null),
     );
 
-    return this.store.applySync({ source, snapshot: synced.pr, revision: synced.revision });
+    const outcome = await this.store.applySync({
+      source,
+      snapshot: synced.pr,
+      revision: synced.revision,
+    });
+
+    await this.gates?.notify(organizationId, {
+      kind: outcome.newRevision || outcome.created ? "revision_pushed" : "pr_synced",
+      prId: outcome.prId,
+    });
+
+    return outcome;
   }
 
   /**

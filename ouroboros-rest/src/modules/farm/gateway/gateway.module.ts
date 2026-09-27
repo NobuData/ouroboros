@@ -34,6 +34,9 @@
  * history (AJ.4, [#266](https://github.com/NobuData/ouroboros/issues/266)); and the clock, for
  * dispatch — whose lost-runner cutoff is compared with the `last_seen_at` this clock wrote, so the
  * two must be one clock.
+ *
+ * It imports `GatesModule` for one token, the gate engine's sink, which a finished job notifies
+ * (AX.2, [#358](https://github.com/NobuData/ouroboros/issues/358)).
  */
 
 import { Module } from "@nestjs/common";
@@ -41,6 +44,7 @@ import { ScheduleModule } from "@nestjs/schedule";
 
 import { AppConfigService } from "../../config/config.service";
 import { DbModule } from "../../db/db.module";
+import { GatesModule } from "../../pull-requests/gates/gates.module";
 import { VaultModule } from "../../vault/vault.module";
 import { FarmModule } from "../farm.module";
 import { AgentGateway, VERSION_POLICY } from "./agent.gateway";
@@ -54,7 +58,7 @@ import { RunnerControl } from "./runner.control";
 import { TransportAuthenticator } from "./transport";
 
 @Module({
-  imports: [FarmModule, DbModule, VaultModule, ScheduleModule.forRoot()],
+  imports: [FarmModule, DbModule, VaultModule, GatesModule, ScheduleModule.forRoot()],
   providers: [
     AgentGateway,
     AgentSessions,

@@ -1,5 +1,6 @@
 import { Logger } from "@nestjs/common";
 import type { Runner } from "../../db/schema";
+import type { GateEvidenceSink } from "../../pull-requests/gates/gate.evidence";
 import { runner } from "../farm.fixture";
 import { encode, frame, type Envelope } from "../protocol/protocol";
 import type { JobOfferPayload } from "../protocol/protocol.messages";
@@ -64,7 +65,9 @@ describe("an agent connection", () => {
   let connection: AgentConnection;
 
   /** Build the connection under test. */
-  function open(options: { mode?: Transport["mode"]; policy?: VersionPolicy } = {}): void {
+  function open(
+    options: { mode?: Transport["mode"]; policy?: VersionPolicy; gates?: GateEvidenceSink } = {},
+  ): void {
     connection = new AgentConnection(
       socket,
       { runner: row, mode: options.mode ?? "mtls" },
@@ -74,6 +77,7 @@ describe("an agent connection", () => {
         metrics,
         policy: options.policy ?? DEFAULT_VERSION_POLICY,
         now: () => NOW,
+        ...(options.gates === undefined ? {} : { gates: options.gates }),
       },
     );
   }
@@ -343,6 +347,28 @@ describe("an agent connection", () => {
         of: "01KE7PDZMQDPKXES55PN5RZM7Q",
         of_type: "job.finish",
         duplicate: false,
+      });
+    });
+
+    it("tells the gate engine a job finished, once it is recorded — and not for a re-send", async () => {
+      const gates = { notify: jest.fn().mockResolvedValue(undefined) };
+      const jobId = uuidOf("job", "job_01KE7J4EZ3204KQXMHJRPQPWQ6");
+      // A connection that carries the sink, in place of the one the block said hello on.
+      connection.closed();
+      socket = new FakeSocket();
+      open({ gates });
+      await hello();
+      repository.recordTerminal
+        .mockResolvedValueOnce({ duplicate: false, applied: true, jobId, status: "succeeded" })
+        .mockResolvedValueOnce({ duplicate: true, applied: false });
+
+      await send(fixtureBytes("valid/job-finish.json"));
+      await send(fixtureBytes("valid/job-finish.json"));
+
+      expect(gates.notify).toHaveBeenCalledTimes(1);
+      expect(gates.notify).toHaveBeenCalledWith(row.organization_id, {
+        kind: "build_job_finished",
+        jobId,
       });
     });
 

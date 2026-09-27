@@ -10,6 +10,7 @@
  *          ─▶ each file: inspect (sha256 · size · head) ─▶ ArtifactStore.put ─▶ checksum ✓
  *          ─▶ the attempt (test_runs) ─▶ parse the result files (AT.1, #329)
  *          ─▶ close: test_artifacts rows + receipt (manifest · warnings) + attempt complete
+ *          ─▶ tell the gate engine the attempt is in (AX.2, #358) — after the close commits
  * ```
  *
  * **Nothing is dropped silently.** A file the agent cut to the per-file cap is stored and marked
@@ -30,12 +31,13 @@ import { randomUUID } from "node:crypto";
 import type { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 
 import { AppConfigService } from "../../config/config.service";
 import { DomainError } from "../../errors/error.envelope";
 import { describeForLog } from "../../errors/failure";
 import type { BuildJob } from "../../db/schema";
+import { GATE_EVIDENCE, type GateEvidenceSink } from "../../pull-requests/gates/gate.evidence";
 import { TestResultParserRegistry } from "../../test-results/parser.registry";
 import type { ResultFile } from "../../test-results/parser.spi";
 import { TestResultIngestService, type ParseReport } from "../../test-results/test-results.service";
@@ -143,6 +145,8 @@ export class ArtifactUploadService implements OfferUploads {
    * @param ingest - AT.1's parse orchestration.
    * @param config - The caps, the quota and the retention.
    * @param now - The clock tokens are minted and expired by.
+   * @param gates - The gate engine's sink, told when an attempt's results are in; absent in a
+   *   context without it.
    */
   constructor(
     private readonly repository: UploadRepository,
@@ -151,6 +155,7 @@ export class ArtifactUploadService implements OfferUploads {
     private readonly ingest: TestResultIngestService,
     private readonly config: AppConfigService,
     @Inject(GATEWAY_CLOCK) private readonly now: GatewayClock,
+    @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
   ) {}
 
   /** @inheritdoc */
@@ -418,6 +423,9 @@ export class ArtifactUploadService implements OfferUploads {
     });
     // Another request with this token closed it between admission and here: a replay.
     if (closed === undefined) throw uploadClosed();
+
+    // The attempt is complete and committed: the test and HIL gates can read it. Never throws.
+    await this.gates?.notify(ledger.organizationId, { kind: "test_run_parsed", testRunId });
 
     return {
       job: ledger.jobId,

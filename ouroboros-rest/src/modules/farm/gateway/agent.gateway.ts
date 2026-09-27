@@ -44,6 +44,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  Optional,
   type OnApplicationBootstrap,
   type OnApplicationShutdown,
 } from "@nestjs/common";
@@ -55,6 +56,7 @@ import { WebSocketServer, type WebSocket } from "ws";
 import { AppConfigService } from "../../config/config.service";
 import { NotFoundError, type DomainError, type ErrorEnvelope } from "../../errors/error.envelope";
 import { describeForLog } from "../../errors/failure";
+import { GATE_EVIDENCE, type GateEvidenceSink } from "../../pull-requests/gates/gate.evidence";
 import { ENVELOPE_MAX_BYTES, frame } from "../protocol/protocol";
 import { AgentConnection } from "./agent.connection";
 import { AgentSessions } from "./agent.sessions";
@@ -87,6 +89,7 @@ export class AgentGateway implements OnApplicationBootstrap, OnApplicationShutdo
    * @param config - Which header a trusted proxy forwards a certificate in, for the warning.
    * @param policy - Which protocol lines and agent versions are accepted.
    * @param now - The clock.
+   * @param gates - The gate engine's sink, told when a job finishes; absent without the engine.
    */
   constructor(
     private readonly adapterHost: HttpAdapterHost,
@@ -97,6 +100,7 @@ export class AgentGateway implements OnApplicationBootstrap, OnApplicationShutdo
     private readonly config: AppConfigService,
     @Inject(VERSION_POLICY) private readonly policy: VersionPolicy,
     @Inject(GATEWAY_CLOCK) private readonly now: GatewayClock,
+    @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
   ) {}
 
   /**
@@ -218,6 +222,7 @@ export class AgentGateway implements OnApplicationBootstrap, OnApplicationShutdo
       metrics: this.metrics,
       policy: this.policy,
       now: this.now,
+      ...(this.gates === undefined ? {} : { gates: this.gates }),
     });
     this.connections.add(connection);
 

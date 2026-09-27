@@ -41,6 +41,9 @@
  * binding with an import, and nothing in the service moved, because the trigger point, the
  * transaction and the *"no files, no evaluation"* rule are all AP.1's.
  *
+ * It imports `GatesModule` for the gate engine's sink, which a judged change-set notifies after
+ * its transaction commits (AX.2, [#358](https://github.com/NobuData/ouroboros/issues/358)).
+ *
  * **It exports nothing.** Nothing inside this service should be opening runs: the contract
  * exists for a caller outside the process, and a second in-process consumer would be a sign
  * that the read-model had grown a second writer — which is exactly what decision R2 exists to
@@ -51,12 +54,13 @@ import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
 import { GuardrailsModule } from "../guardrails/guardrails.module";
+import { GatesModule } from "../pull-requests/gates/gates.module";
 import { IngestController } from "./ingest.controller";
 import { IngestRepository } from "./ingest.repository";
 import { IngestService } from "./ingest.service";
 
 @Module({
-  imports: [DbModule, GuardrailsModule],
+  imports: [DbModule, GuardrailsModule, GatesModule],
   controllers: [IngestController],
   providers: [IngestRepository, IngestService],
 })

@@ -384,7 +384,11 @@ describe("TABLE_COLUMNS", () => {
     // The seventy-first and seventy-second are V055's `test_artifacts` and V060's
     // `build_job_artifact_uploads`, mirrored by AT.2 (#330) — the job-scoped upload that registers
     // each artifact and closes the upload's receipt in one transaction.
-    expect(TABLE_NAMES).toHaveLength(76);
+    //
+    // The seventy-seventh to seventy-ninth are V056's `pr_gate_definitions`, `pr_gate_results` and
+    // the `pr_gate_results_latest` view, mirrored by AX.2 (#358) — the gate engine that
+    // materializes definitions and appends a verdict snapshot per revision.
+    expect(TABLE_NAMES).toHaveLength(79);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -566,7 +570,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(9);
+    expect(READ_ONLY_VIEWS).toHaveLength(10);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {

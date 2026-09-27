@@ -52,10 +52,11 @@
  * `needs_review`.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Transaction } from "kysely";
 
 import type { Database, Run, RunIngestOperation, RunStage } from "../db/schema";
+import { GATE_EVIDENCE, type GateEvidenceSink } from "../pull-requests/gates/gate.evidence";
 import { isDatabaseFailure } from "../tenancy/constraints";
 import {
   GUARDRAIL_SCHEDULER,
@@ -120,10 +121,13 @@ export class IngestService {
    * @param runs - Every statement the contract issues.
    * @param guardrails - What a change-set report triggers. Injected by token, because AP.3
    *   ([#305](https://github.com/NobuData/ouroboros/issues/305)) substitutes for it.
+   * @param gates - The gate engine's sink, told once judged verdicts have committed (AX.2,
+   *   [#358](https://github.com/NobuData/ouroboros/issues/358)); absent without the engine.
    */
   constructor(
     private readonly runs: IngestRepository,
     @InjectGuardrailScheduler() private readonly guardrails: GuardrailScheduler,
+    @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
   ) {}
 
   // --- POST /internal/runs ----------------------------------------------------------------
@@ -440,9 +444,11 @@ export class IngestService {
    */
   async reportFiles(run: string, request: ReportFilesDto): Promise<ChangeSetResource> {
     const digest = requestDigest(request);
+    let organizationId: string | undefined;
 
-    return this.runs.transaction(async (trx) => {
+    const resource = await this.runs.transaction(async (trx) => {
       const row = await this.locked(trx, run);
+      organizationId = row.organization_id;
       const replay = await this.replayed<ChangeSetResource>(
         trx,
         row.organization_id,
@@ -507,6 +513,14 @@ export class IngestService {
         },
       );
     });
+
+    // The verdicts have committed: the Secrets & license gate can read them. A replay re-notifies,
+    // which the engine's idempotency makes a no-op. `notify` never rejects.
+    if (organizationId !== undefined && resource.guardrailChecks > 0) {
+      await this.gates?.notify(organizationId, { kind: "guardrail_evaluated", runId: run });
+    }
+
+    return resource;
   }
 
   // --- POST /internal/runs/:id/commits ------------------------------------------------------
