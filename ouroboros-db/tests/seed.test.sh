@@ -22,7 +22,8 @@
 # R__dev_seed_audit.sql (#225) is *who touched the keys*, R__dev_seed_sources.sql (#138) is
 # *where the work comes from*, R__dev_seed_test_results.sql (#328) is *what the builds proved*,
 # R__dev_seed_ticket_planning.sql (#275) is *the work and the
-# plan over it*, and R__dev_seed_workflows.sql (#136) is *what it does with it* — and the
+# plan over it*, R__dev_seed_verification.sql (#356) is *what the PR has to show before it
+# merges*, and R__dev_seed_workflows.sql (#136) is *what it does with it* — and the
 # structural rules below are asserted over all of them, in a loop, so that a tenth seed
 # inherits them by being added to the one list at the top.
 #
@@ -71,6 +72,7 @@ FARM_SEED="$MODULE_DIR/migrations/R__dev_seed_farm.sql"
 SOURCES_SEED="$MODULE_DIR/migrations/R__dev_seed_sources.sql"
 RUN_CONSOLE_SEED="$MODULE_DIR/migrations/R__dev_seed_run_console.sql"
 TEST_RESULTS_SEED="$MODULE_DIR/migrations/R__dev_seed_test_results.sql"
+VERIFICATION_SEED="$MODULE_DIR/migrations/R__dev_seed_verification.sql"
 PLANNING_SEED="$MODULE_DIR/migrations/R__dev_seed_ticket_planning.sql"
 WORKFLOWS_SEED="$MODULE_DIR/migrations/R__dev_seed_workflows.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
@@ -109,6 +111,7 @@ FARM_BODY="$work/seed-body-farm.sql"
 SOURCES_BODY="$work/seed-body-sources.sql"
 RUN_CONSOLE_BODY="$work/seed-body-run-console.sql"
 TEST_RESULTS_BODY="$work/seed-body-test-results.sql"
+VERIFICATION_BODY="$work/seed-body-verification.sql"
 PLANNING_BODY="$work/seed-body-ticket-planning.sql"
 WORKFLOWS_BODY="$work/seed-body-workflows.sql"
 seed_body "$SEED" "$BODY"
@@ -121,6 +124,7 @@ seed_body "$FARM_SEED" "$FARM_BODY"
 seed_body "$SOURCES_SEED" "$SOURCES_BODY"
 seed_body "$RUN_CONSOLE_SEED" "$RUN_CONSOLE_BODY"
 seed_body "$TEST_RESULTS_SEED" "$TEST_RESULTS_BODY"
+seed_body "$VERIFICATION_SEED" "$VERIFICATION_BODY"
 seed_body "$PLANNING_SEED" "$PLANNING_BODY"
 seed_body "$WORKFLOWS_SEED" "$WORKFLOWS_BODY"
 
@@ -149,6 +153,7 @@ check_exists "$FARM_SEED" 'migrations/R__dev_seed_farm.sql exists'
 check_exists "$SOURCES_SEED" 'migrations/R__dev_seed_sources.sql exists'
 check_exists "$RUN_CONSOLE_SEED" 'migrations/R__dev_seed_run_console.sql exists'
 check_exists "$TEST_RESULTS_SEED" 'migrations/R__dev_seed_test_results.sql exists'
+check_exists "$VERIFICATION_SEED" 'migrations/R__dev_seed_verification.sql exists'
 check_exists "$PLANNING_SEED" 'migrations/R__dev_seed_ticket_planning.sql exists'
 check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
 
@@ -156,7 +161,7 @@ check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
-                 "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$WORKFLOWS_SEED"; do
+                 "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -192,6 +197,8 @@ run_console_description=$(basename -- "$RUN_CONSOLE_SEED" .sql)
 run_console_description=${run_console_description#R__}
 test_results_description=$(basename -- "$TEST_RESULTS_SEED" .sql)
 test_results_description=${test_results_description#R__}
+verification_description=$(basename -- "$VERIFICATION_SEED" .sql)
+verification_description=${verification_description#R__}
 planning_description=$(basename -- "$PLANNING_SEED" .sql)
 planning_description=${planning_description#R__}
 workflows_description=$(basename -- "$WORKFLOWS_SEED" .sql)
@@ -235,15 +242,23 @@ workflows_description=${workflows_description#R__}
 # `dev_seed_ticket_planning`, which is after both of its parents; `results` alone would too, and
 # `test_results` is the name the domain uses everywhere else.
 #
+# The verification seed (#356) **must** sort after the planning seed, whose canonical ticket
+# `#482` and GitHub source the PR closes and is mirrored from, and after the test-results seed,
+# whose Builds 1–3 its Build 4 copies and its revision 1 cites — and through those after the
+# dashboard, farm and run-console seeds it also reads. `dev_seed_verification` sorts after
+# `dev_seed_ticket_planning` and before `dev_seed_workflows`, which it does not need; `pr` would
+# sort before `providers`, and every join in it would find nothing on a database migrated from
+# empty.
+#
 # The farm seed (#249) sorts fourth and only needs to sort after the first: every row it writes
 # finds the workspace by slug, a person by email and a repository by name, and V040's tables are
 # the first of their domain. `dev_seed_farm` does that; `farm_dev_seed`, which reads better,
 # would sort before `dev_seed` and every join in it would find nothing on a database migrated
 # from empty.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$workflows_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$workflows_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the twelve seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the thirteen seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -263,7 +278,7 @@ check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s' "$base_description"
 # seed's own section below.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
-                 "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$WORKFLOWS_SEED"; do
+                 "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -275,6 +290,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$RUN_CONSOLE_SEED" ] && body=$RUN_CONSOLE_BODY
   [ "$seed_file" = "$SOURCES_SEED" ] && body=$SOURCES_BODY
   [ "$seed_file" = "$TEST_RESULTS_SEED" ] && body=$TEST_RESULTS_BODY
+  [ "$seed_file" = "$VERIFICATION_SEED" ] && body=$VERIFICATION_BODY
   [ "$seed_file" = "$PLANNING_SEED" ] && body=$PLANNING_BODY
   [ "$seed_file" = "$WORKFLOWS_SEED" ] && body=$WORKFLOWS_BODY
 
@@ -309,11 +325,21 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   # vocabulary term the schema closed and not a value anybody wrote. The rule is therefore
   # tightened for that file instead of dropped: every occurrence must be the check name, so a
   # `secret_key` or an `api_secret` added later still fails here.
+  #
+  # The verification seed (#356) is the second, for the same kind of reason: it reads that check
+  # by name, and V056's gate vocabulary spells the scan gate `secrets_license`. Every occurrence
+  # there must be one of those two, counted as occurrences rather than lines.
   for secret in secret api_key; do
     if [ "$seed_file" = "$RUN_CONSOLE_SEED" ] && [ "$secret" = secret ]; then
       check_equals "$(grep -Eoc "'secrets'" "$body" || true)" \
                    "$(grep -Eoc 'secret' "$body" || true)" \
                    "$name says secret only as the guardrail check named 'secrets'"
+      continue
+    fi
+    if [ "$seed_file" = "$VERIFICATION_SEED" ] && [ "$secret" = secret ]; then
+      check_equals "$(grep -Eo "'secrets'|'secrets_license'" "$body" | wc -l | tr -d ' ')" \
+                   "$(grep -Eo 'secret' "$body" | wc -l | tr -d ' ')" \
+                   "$name says secret only as the guardrail check 'secrets' and the gate 'secrets_license'"
       continue
     fi
     check_absent "$body" "$secret" "$name writes no $secret"
@@ -1086,6 +1112,76 @@ check_contains "$TEST_RESULTS_BODY" '^ order by m\.attempt, m\.n$' \
   'the measurements are inserted in attempt order, so each build'"'"'s comparative sees the ones before it'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_verification.sql — mockup 12's PR verification (#356)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_verification.sql — the PR verification page\n'
+
+# Nine prefixes of its own, one per PR table, so a waiver, a PR, a revision, a gate, a verdict, a
+# criterion, a citation, a thread entry and a plan are told apart on sight. Build 4 and the farm
+# jobs reuse #328's and the farm seed's, because they are more rows of those seeds' kinds.
+for prefix in '5eed0039' '5eed003a' '5eed003b' '5eed003c' '5eed003d' '5eed003e' '5eed003f' \
+              '5eed0040' '5eed0041' '5eed0031' '5eed0034' '5eed0028' '5eed0029' '5eed002e'; do
+  check_contains "$VERIFICATION_BODY" "'$prefix" \
+    "the verification seed builds its ids from the $prefix… prefix"
+done
+
+# The tables mockup 12 is drawn from, and the four AS tables and two farm tables Build 4 and the
+# Build gate need — and not `runs`: #68 owns `#482`.
+verification_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$VERIFICATION_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'build_jobs build_log_chunks flake_scores hil_measurements pr_criteria pr_criteria_evidence pr_gate_definitions pr_gate_results pr_merge_plans pr_revisions pr_thread_entries pr_waivers pull_requests test_case_history test_cases test_runs test_suites token_usage ' \
+  "$verification_tables" \
+  'the verification seed writes the PR tables, Build 4'"'"'s, the two farm tables and the ledger, and nothing else'
+
+# Every instant is an offset into the run, for #302's reason. The one clock read is #302's UTC-day
+# clamp on the ledger rows.
+check_absent "$VERIFICATION_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the verification seed carries no literal date'
+check_equals '1' "$(grep -Eo 'now\(\)' "$VERIFICATION_BODY" | wc -l | tr -d ' ')" \
+  'and reads the clock once'
+check_contains "$VERIFICATION_BODY" "date_trunc\('day', now\(\) at time zone 'utc'\)" \
+  'which is the UTC-day clamp on the ledger rows'
+check_contains "$VERIFICATION_BODY" 'run\.started_at \+ make_interval' \
+  'every other instant is an offset into the run'
+
+# **Derived numbers derive.** The aggregate is V056's function's, the head's counts are the
+# snapshot's sum, the snapshot is the console's change-set, the gate lines are composed from the
+# rows they cite, the message is V058's template, and Build 4's figures are #328's recipes — so
+# none of the figures the page prints may appear in the file as a literal.
+check_contains "$VERIFICATION_BODY" 'from ouroboros\.run_files f' \
+  'the files snapshot is built from the console'"'"'s change-set'
+check_contains "$VERIFICATION_BODY" 'jsonb_array_elements\(rev\.files\)' \
+  'and the PR'"'"'s counts are summed from it'
+check_contains "$VERIFICATION_BODY" 'from ouroboros\.test_run_counts_computed' \
+  'Build 4'"'"'s totals are recounted from its cases'
+check_contains "$VERIFICATION_BODY" 'ouroboros\.hil_verdict\(' \
+  'its verdicts are the verdict function'"'"'s'
+check_contains "$VERIFICATION_BODY" 'ouroboros\.flake_state_next\(' \
+  'and the telemetry case is re-scored by the formula'
+check_contains "$VERIFICATION_BODY" 'null,$' \
+  'the merge plan'"'"'s message is written null, for V058'"'"'s template to fill'
+for computed in "'5 / 7'" '5 of 7' '\+68' '−15' '63/63' 'after attempt 4' '1\.7%' '2\.4%' \
+                '43\.5%' '284' '1\.52' 'Closes #482' 'was 2\.4'; do
+  check_absent "$VERIFICATION_BODY" "$computed" \
+    "the verification seed stores no $computed — it is computed from the rows"
+done
+
+# Decision R4: both model-authored thread entries wear the watermark, and it follows from the
+# author kind rather than being typed beside each row.
+check_contains "$VERIFICATION_BODY" "entry\.author_kind = 'model'," \
+  'a thread entry is simulated exactly when a model wrote it'
+
+# The comparative and the log chunks' byte offsets are assigned as rows arrive, so both inserts
+# are ordered — #262's and #302's lesson.
+check_contains "$VERIFICATION_BODY" '^ order by m\.n$' \
+  'Build 4'"'"'s measurements are inserted in order'
+check_contains "$VERIFICATION_BODY" '^ order by job\.number$' \
+  'and so are the farm jobs'"'"' log chunks'
+check_contains "$VERIFICATION_BODY" 'not exists \(select 1 from ouroboros\.build_log_chunks existing' \
+  'which carry the farm seed'"'"'s guard, because their trigger moves the byte count before a conflict'
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -1104,6 +1200,7 @@ check_contains "$README" 'R__dev_seed_workflows\.sql' 'README.md documents the w
 check_contains "$README" 'R__dev_seed_farm\.sql' 'README.md documents the farm seed'
 check_contains "$README" 'R__dev_seed_run_console\.sql' 'README.md documents the run-console seed'
 check_contains "$README" 'R__dev_seed_test_results\.sql' 'README.md documents the test-results seed'
+check_contains "$README" 'R__dev_seed_verification\.sql' 'README.md documents the verification seed'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'

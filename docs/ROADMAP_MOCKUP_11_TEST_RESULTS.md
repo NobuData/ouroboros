@@ -426,6 +426,11 @@ seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail
 >
 > Of the thirteen probes, six widen a vocabulary; three of those are caught first by V055's
 > hard-coded roster rather than AS.5's coverage assertion, which the script's header records.
+>
+> **Since #356 (AW.5) `#482` has a fourth attempt.** Mockup 12's revision 2 was judged on Build 4
+> (`b7e41d0`, `63/63`, overshoot `1.7%`), so the Test Results page's latest attempt is Build 4 and
+> the telemetry case is re-scored over it (still `watching`). Builds 1–3 are unchanged and remain
+> mockup 11's page by attempt. See `R__dev_seed_verification.sql`'s decision 1.
 
 ---
 

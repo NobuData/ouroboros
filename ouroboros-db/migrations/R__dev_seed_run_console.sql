@@ -438,6 +438,9 @@ on conflict do nothing;
 -- and drops its attribution: `688 000` tokens, `426` cents, no run. 688 + 212 is 900 and
 -- 426 + 114 is 540, so the day is untouched, the run is right, and neither number was
 -- invented to make the other work. That file's header says the same thing from its side.
+-- (#356 later took another 72 000 tokens and 38 cents from it for mockup 12's spend, so the
+-- row now holds 616 000 and 388, and this meter reads the PR page's 284k / $1.52 — see
+-- R__dev_seed_verification.sql's decision 3.)
 --
 -- **`task_kind` and `latency_ms` stay null**, as they are on every row the dashboard and
 -- provider seeds write. The 370 rows of R__dev_seed_routing.sql are the *routed* ledger

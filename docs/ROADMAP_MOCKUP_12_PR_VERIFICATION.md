@@ -240,7 +240,7 @@ every issue assigned. Complexity chips: **XS · S · M · L**.
 | AW.2 | #353 | 🟢 Done | ouroboros-db: [AW.2] Gate definitions & revision snapshots | Declarative gates, provider results, evidence refs (V2) | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
 | AW.3 | #354 | 🟢 Done | ouroboros-db: [AW.3] Criteria, evidence links & review thread | Claims with typed evidence, waiver render refs, thread entries | mvp, pr, db | N (after AW.1) | Y | M | ouroboros-db |
 | AW.4 | #355 | 🟢 Done | ouroboros-db: [AW.4] Merge plans & auto-merge intents | Policy snapshot, action toggles, armed-intent state, audit refs | mvp, pr, db | N (after AW.1) | Y | S | ouroboros-db |
-| AW.5 | #356 | 🟡 Open | ouroboros-db: [AW.5] PR seeds — mockup-12 parity + probes | The #514 story across two revisions; ci constraint checks | mvp, pr, db, ci | N (after AW.2–AW.4, #24) | Y | M | ouroboros-db, .github |
+| AW.5 | #356 | 🟢 Done | ouroboros-db: [AW.5] PR seeds — mockup-12 parity + probes | The #514 story across two revisions; ci constraint checks | mvp, pr, db, ci | N (after AW.2–AW.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue AW.1 — ouroboros-db: [AW.1] Pull requests & revisions schema
 
@@ -376,7 +376,7 @@ armed by Ken @14:35 ─▶ merged_result: {sha, identity: "pat:ken-token", actio
 
 ### Issue AW.5 — ouroboros-db: [AW.5] PR seeds — mockup-12 parity + probes
 
-> **GitHub issue:** #356 · **Status:** 🟡 Open · **Parent epic:** #348
+> **GitHub issue:** #356 · **Status:** 🟢 Done · **Parent epic:** #348
 
 - **Problem Statement:** Design review needs #514's full two-revision story
   with every card populated, coherent with the `#482` universe.
@@ -402,6 +402,37 @@ armed by Ken @14:35 ─▶ merged_result: {sha, identity: "pat:ken-token", actio
 seeds: PR#514 rev1(blocked: HIL 2.4%) → correction(attempt 4) → rev2(5/7, voting slot)
        criteria 4✓+1 waived · thread 3 · plan squash · spend 284k/$1.52 + 41k/$0.19
 ```
+
+> **Delivered as `R__dev_seed_verification.sql`, a `seed.sql` section, an AW.5 section of
+> `constraints.sql` and eight probes in `verify-constraint-probes.sh`.** Every figure the page
+> prints is computed from rows: `5 / 7 green` (and revision 1's `2 gates red`) by
+> `pr_gate_aggregate()`, `+68 −15 · 3 files` from revision 2's files snapshot — which is #302's
+> `run_files` change-set — each gate line composed from the row its `evidence_ref` cites, the
+> merge message by V058's template, and the spend as sums over `#482`'s ledger. Both
+> model-authored thread entries carry `simulated`. Six things the issue, the mockup and the
+> existing `#482` seeds disagreed on were decided on #356 rather than guessed:
+>
+> 1. **Build 4.** Revision 2's `63/63 after attempt 4` and `1.7%` are a fourth test attempt on
+>    `#482` at `b7e41d0`, placed inside the run (it overlaps Build 3's window); Test Results'
+>    latest attempt becomes Build 4, and the flaky telemetry case is re-scored over it (still
+>    `watching`).
+> 2. **"Attempt 4" is a test attempt.** `run_stages` has `implement` attempts 1–2 and neither PR
+>    sha is a `run_commits` row, so `pr_revisions.run_stage_id` stays null and mockup 10's commits
+>    card is untouched.
+> 3. **Spend.** `#482` gains a 31k / 19¢ correction row and a 41k / 19¢ verification row tagged
+>    `task_kind = 'verify'` — a kind no route owns, so mockup 06's matrix does not move (a
+>    `review` tag would have broken its exact `$0.22`). The dashboard's unattributed row gives up
+>    the same 72k / 38¢, so mockup 02's day holds; the console's meters read `284k` / `$1.52`.
+> 4. **The waiver.** #328 seeded none, so this seed writes Ken's criterion-level thermal waiver.
+> 5. **The Build gate's jobs.** The farm had no build of either sha, so `#484` and `#485` are added
+>    on `forge-01` with the memory map the gate reads `FLASH 43.5%` from; mockup 08 then reads 25
+>    builds today at a 4m 00s average.
+> 6. **Revision 1's policy gates** read `unavailable` and `not_required`, as revision 2's do —
+>    three green, two red, not the issue's "five others green".
+>
+> All eight probes are caught first by the V052 and V056–V058 sections' own assertions, which
+> the probe script's header records; the AW.5 section covers each machine and evidence kind
+> behind them.
 
 ---
 

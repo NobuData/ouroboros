@@ -48,8 +48,9 @@
 -- their chips — by #103, and with mockup 09's planning page — the canonical backlog, the
 -- roadmap lanes and the OTA draft batch — by #275, and with mockup 08's build farm — two
 -- pools, six runners of which one is removed, forty-nine builds and the live log's chunks —
--- by #249 and #302, and with mockup 10's run console — one run in detail, transcript and all
--- four cards — by #302.
+-- by #249 and #302, with mockup 10's run console — one run in detail, transcript and all
+-- four cards — by #302, with mockup 11's test results by #328, and with mockup 12's PR
+-- verification — PR #514's two revisions, gates, criteria, thread, plan and spend — by #356.
 
 \set ON_ERROR_STOP on
 
@@ -631,12 +632,12 @@ select pg_temp.must_hold(
 -- reads the view rather than the table and gets the same answer from any connection.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select sum(day.tokens_total) = 4200000 and count(*) = 4 and sum(day.events) = 16
+  (select sum(day.tokens_total) = 4200000 and count(*) = 4 and sum(day.events) = 18
      from ouroboros.token_usage_daily day
      join ouroboros.organization org on org."id" = day.organization_id
     where org."slug" = 'acme-robotics'
       and day.day = (now() at time zone 'utc')::date),
-  'today holds 4.2M tokens across four providers, in sixteen events — Token spend · today');
+  'today holds 4.2M tokens across four providers, in eighteen events — Token spend · today');
 
 -- **Sixteen and not twelve, and 4.2M all the same** (#302). The card prints a token total, a
 -- cost and a provider count; it does not print how many calls those took. AO.5 needed `#482`'s
@@ -645,6 +646,11 @@ select pg_temp.must_hold(
 -- them and its attribution, and R__dev_seed_run_console.sql wrote them back as four. The
 -- three figures above are what the mockup fixes and they are exactly where they were; the
 -- event count is this seed's own bookkeeping, and it moved.
+--
+-- **Eighteen since #356** (AW.5), for the same reason one page on: mockup 12's Spend card sums
+-- `#482` to 284k, so the same unattributed event gave up another 72 000 tokens and
+-- R__dev_seed_verification.sql wrote them back as two rows — the correction round and the
+-- verification pass.
 
 -- `≈ $18.60`, and the `≈` itself: the priced events total 1 860 cents, and the three
 -- unpriced ones (local inference on the workstation) are why the figure is a lower bound.
@@ -682,7 +688,8 @@ select pg_temp.must_hold(
   (select count(*) = 4 and sum(usage.tokens_in + usage.tokens_out) = 212000
       and sum(usage.cost_cents) = 114
      from ouroboros.token_usage usage
-    where usage.id::text like '5eed002e%'),
+    where usage.id::text like '5eed002e%'
+      and right(usage.id::text, 6)::integer <= 4),
   'and the fifth became four rows of #482''s own, totalling 212k tokens and $1.14');
 
 -- ---------------------------------------------------------------------------
@@ -1461,14 +1468,28 @@ select pg_temp.must_hold(
 -- spend, and they are not *routed* spend, so they contribute to the card and to no matrix row.
 -- Twelve from the dashboard, eleven from the providers seed, and since #302 four more —
 -- `#482`'s own, which mockup 10's Resources card sums and mockup 06's matrix must not: a
--- kind on them would join a p50 and a $/run that neither page asked this seed to move.
+-- kind on them would join a p50 and a $/run that neither page asked this seed to move. #356
+-- added two more of `#482`'s: the correction round's, untagged, and the verification pass's,
+-- tagged `verify` — a name no task kind of the workspace has, so the matrix, which reads stats
+-- only for its own kinds, still counts neither.
 select pg_temp.must_hold(
-  (select count(*) = 27 from ouroboros.token_usage usage
+  (select count(*) = 28 from ouroboros.token_usage usage
      join ouroboros.organization org on org."id" = usage.organization_id
     where org."slug" = 'acme-robotics'
       and usage.task_kind is null
       and usage.latency_ms is null),
-  'the twenty-seven unrouted usage events carry no task kind and no latency, and no matrix row counts them');
+  'the twenty-eight unrouted usage events carry no task kind and no latency, and no matrix row counts them');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.token_usage usage
+     join ouroboros.organization org on org."id" = usage.organization_id
+    where org."slug" = 'acme-robotics'
+      and usage.task_kind is not null
+      and usage.latency_ms is null
+      and usage.task_kind = 'verify'
+      and not exists (select 1 from ouroboros.task_kinds kind
+                       where kind.organization_id = org."id" and kind.name = usage.task_kind)),
+  'the one tagged but unrouted event is #482''s verification pass, under a kind no matrix row has');
 
 -- ---------------------------------------------------------------------------
 -- The empty workspace, again — this time as AA.6's routing-guidance fixture, and as the
@@ -3414,6 +3435,10 @@ select pg_temp.must_hold(
 --
 -- One partition of today's terminal jobs answers the card's headline and its three-part
 -- delta, which is why the three numbers add up: they are one `group by`, not three queries.
+--
+-- **25 and 21 since #356** (AW.5, decision 5): mockup 12's Build gate cites a finished build of
+-- each PR revision, and the farm had none, so R__dev_seed_verification.sql adds `#484` and `#485`
+-- on `forge-01`, both clean. Mockup 08 draws 23 and 19; the farm seed's own jobs still do.
 select pg_temp.must_hold(
   (with today as (
      select j.status from ouroboros.build_jobs j
@@ -3421,24 +3446,24 @@ select pg_temp.must_hold(
       where o."slug" = 'acme-robotics'
         and j.status in ('succeeded', 'failed', 'retried', 'canceled')
         and j.finished_at >= date_trunc('day', now()))
-   select count(*) = 23
-      and count(*) filter (where status = 'succeeded') = 19
+   select count(*) = 25
+      and count(*) filter (where status = 'succeeded') = 21
       and count(*) filter (where status = 'retried')   = 3
       and count(*) filter (where status = 'failed')    = 1
      from today),
-  'Builds today reads 23, and 19 clean · 3 retried · 1 failed partitions it');
+  'Builds today reads 25, and 21 clean · 3 retried · 1 failed partitions it');
 
 select pg_temp.must_hold(
-  (select count(*) = 29 from ouroboros.build_jobs j
+  (select count(*) = 31 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
     where o."slug" = 'acme-robotics' and j.queued_at >= date_trunc('day', now())),
-  'and the two running, three queued and one reserved job are the near miss: counted by queued_at it reads 29');
+  'and the two running, three queued and one reserved job are the near miss: counted by queued_at it reads 31');
 
 select pg_temp.must_hold(
-  (select count(*) = 43 from ouroboros.build_jobs j
+  (select count(*) = 45 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
     where o."slug" = 'acme-robotics' and j.finished_at is not null),
-  'and the prior week''s twenty are the other one: without the day window it reads 43');
+  'and the prior week''s twenty are the other one: without the day window it reads 45');
 
 -- Each retried attempt has a successor among the nineteen, so a retry is one failure and one
 -- success rather than two of either.
@@ -3452,13 +3477,13 @@ select pg_temp.must_hold(
   'each of today''s three retried attempts has the successful attempt that replaced it');
 
 select pg_temp.must_hold(
-  (select round(extract(epoch from avg(j.finished_at - j.started_at))) = 252
+  (select round(extract(epoch from avg(j.finished_at - j.started_at))) = 240
      from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
     where o."slug" = 'acme-robotics'
       and j.status in ('succeeded', 'failed', 'retried', 'canceled')
       and j.finished_at >= date_trunc('day', now())),
-  'Avg build time is 252 seconds, which the card prints as 4m 12s');
+  'Avg build time is 240 seconds, which the card prints as 4m 00s — mockup 08''s 4m 12s before #356''s two builds');
 
 select pg_temp.must_hold(
   (select round(extract(epoch from avg(j.finished_at - j.started_at))) = 290
@@ -3467,7 +3492,7 @@ select pg_temp.must_hold(
     where o."slug" = 'acme-robotics'
       and j.finished_at <  date_trunc('day', now())
       and j.finished_at >= date_trunc('day', now()) - interval '7 days'),
-  'and the prior week''s is 290, so the delta the card prints is 38 seconds down');
+  'and the prior week''s is 290, so the delta the card prints is 50 seconds down');
 
 -- --- the cache rate, weighted, and null is not zero ------------------------------
 select pg_temp.must_hold(
@@ -3482,13 +3507,13 @@ select pg_temp.must_hold(
   'Cache hit rate is 78% — Σ hits over Σ objects across today''s jobs that measured any');
 
 select pg_temp.must_hold(
-  (select count(*) = 7 from ouroboros.build_jobs j
+  (select count(*) = 9 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
     where o."slug" = 'acme-robotics'
       and j.ccache_stats is null
       and j.status in ('succeeded', 'failed', 'retried', 'canceled')
       and j.finished_at >= date_trunc('day', now())),
-  'seven of today''s twenty-three measured no cache at all, and null is not zero (B5)');
+  'nine of today''s twenty-five measured no cache at all, and null is not zero (B5)');
 
 select pg_temp.must_hold(
   (select round(100.0 * sum((j.ccache_stats ->> 'hits')::numeric)
@@ -3551,11 +3576,11 @@ select pg_temp.must_hold(
      join ouroboros.build_jobs j on j.id = c.job_id
      join ouroboros.organization o on o."id" = j.organization_id
     where o."slug" = 'acme-robotics' and j.number = 479)
-   and (select count(*) = 5 from ouroboros.build_log_chunks c
+   and (select count(*) = 7 from ouroboros.build_log_chunks c
           join ouroboros.build_jobs j on j.id = c.job_id
           join ouroboros.organization o on o."id" = j.organization_id
          where o."slug" = 'acme-robotics'),
-  'the LIVE card''s listing is three chunks of #479, of five in the whole seed');
+  'the LIVE card''s listing is three chunks of #479, of seven in the whole seed — #484''s and #485''s memory maps are #356''s');
 
 select pg_temp.must_hold(
   (select (j.ccache_stats ->> 'hits')::int = 412
@@ -3606,10 +3631,10 @@ select pg_temp.must_hold(
 
 -- --- the whole seed belongs to one workspace, and the others are empty ------------
 select pg_temp.must_hold(
-  (select count(*) = 49 from ouroboros.build_jobs j
+  (select count(*) = 51 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
     where o."slug" = 'acme-robotics'),
-  'forty-nine build jobs in all — twenty last week, twenty-three today, five in flight and one reserved');
+  'fifty-one build jobs in all — twenty last week, twenty-five today, five in flight and one reserved');
 
 select pg_temp.must_hold(
   (select not exists (select 1 from ouroboros.runner_pools p
@@ -3893,9 +3918,14 @@ select pg_temp.must_hold(
 -- `212k / 400k budget`. The numerator is a `sum` over `token_usage` for this run and the
 -- denominator is the budget V045 pinned onto the run's model stages from the DSL — so the
 -- meter is a division between two systems and a counter on `runs` would be a third answer.
+--
+-- **It reads 284k and $1.52 since #356** (AW.5, decision 3): mockup 12's Spend card is the same
+-- `sum` over the same run once the PR's correction round and verification pass have spent, and
+-- one ledger cannot give both pages their drawn figures. #302's own four rows still total
+-- 212k and $1.14, asserted with the dashboard's ledger above.
 select pg_temp.must_hold(
-  (select sum(usage.tokens_in + usage.tokens_out) = 212000
-      and sum(usage.cost_cents) = 114
+  (select sum(usage.tokens_in + usage.tokens_out) = 284000
+      and sum(usage.cost_cents) = 152
      from ouroboros.token_usage usage
      join ouroboros.runs run on run.id = usage.run_id
     where run.id::text like '5eed0009%' and run.issue_number = 482)
@@ -3904,7 +3934,7 @@ select pg_temp.must_hold(
           join ouroboros.runs run on run.id = stage.run_id
          where run.id::text like '5eed0009%' and run.issue_number = 482
            and stage.token_budget is not null),
-  'the token meter is 212k summed from the ledger over the 400k pinned on the run''s model stages');
+  'the token meter is 284k summed from the ledger over the 400k pinned on the run''s model stages');
 
 -- `$1.14 / $2.50 cap`. The cap is the route's — `implement-primary`, the only route mockup 06
 -- gives one — read through the task kind the run's stage is, and it is not copied here.
@@ -3916,15 +3946,15 @@ select pg_temp.must_hold(
     where org."slug" = 'acme-robotics' and kind.name = 'implement'),
   'and the cost meter''s $2.50 cap is the implement route''s, where #192 put it');
 
--- The two meter widths the mockup draws, as the divisions they are: 212/400 is 53% and
--- 114/250 is 46%, and neither percentage is stored anywhere.
+-- The two meter widths, as the divisions they are: 284/400 is 71% and 152/250 is 61% (mockup
+-- 10's 53% and 46% before #356's two rows), and neither percentage is stored anywhere.
 select pg_temp.must_hold(
-  (select round(100.0 * sum(usage.tokens_in + usage.tokens_out) / 400000) = 53
-      and round(100.0 * sum(usage.cost_cents) / 250) = 46
+  (select round(100.0 * sum(usage.tokens_in + usage.tokens_out) / 400000) = 71
+      and round(100.0 * sum(usage.cost_cents) / 250) = 61
      from ouroboros.token_usage usage
      join ouroboros.runs run on run.id = usage.run_id
     where run.id::text like '5eed0009%' and run.issue_number = 482),
-  'the two meters read 53% and 46% — both computed, neither stored');
+  'the two meters read 71% and 61% — both computed, neither stored');
 
 -- `forge-02 reserved`. The card names a runner and the run points at a *job*, so the name is
 -- resolved through the job the way the console must resolve it.
@@ -3941,7 +3971,7 @@ select pg_temp.must_hold(
 -- the pair a seed relative to `now()` has to keep at once: `token_usage_daily` fixes the day
 -- to UTC, and a run that started 12m 40s ago started yesterday at 00:05.
 select pg_temp.must_hold(
-  (select count(*) = 4
+  (select count(*) = 6
      from ouroboros.token_usage usage
      join ouroboros.runs run on run.id = usage.run_id
     where usage.id::text like '5eed002e%'
@@ -3949,7 +3979,7 @@ select pg_temp.must_hold(
       and usage.occurred_at >= greatest(run.started_at,
                                         date_trunc('day', now() at time zone 'utc')
                                           at time zone 'utc')),
-  'all four of #482''s usage rows fall inside the current UTC day and inside the run, at any hour');
+  'all six of #482''s usage rows fall inside the current UTC day and inside the run, at any hour');
 
 -- --- Guardrails ------------------------------------------------------------------------
 --
@@ -4015,14 +4045,18 @@ select pg_temp.must_hold(
 -- assertion as well.
 
 -- --- one #482 universe --------------------------------------------------------------------------
+--
+-- **Four attempts since #356** (AW.5, decision 1): mockup 12's revision 2 was judged on a fourth,
+-- Build 4 at b7e41d0, which R__dev_seed_verification.sql adds with #328's recipes. Mockup 11's
+-- page is Builds 1–3, and every assertion below that describes it by attempt still holds.
 select pg_temp.must_hold(
-  (select count(*) = 3
+  (select count(*) = 4
           and bool_and(run.id = '5eed0009-0000-4000-8000-000000000482'
                        and run.loop_seq = 1847 and run.branch_name = 'loop/482-canbus-flake')
      from ouroboros.test_runs attempt
      join ouroboros.runs run on run.id = attempt.run_id
     where run.issue_number = 482),
-  'the three attempts belong to the dashboard''s #482 — Loop #1847 on loop/482-canbus-flake — and to no second #482');
+  'the four attempts belong to the dashboard''s #482 — Loop #1847 on loop/482-canbus-flake — and to no second #482');
 
 select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.runs where issue_number = 482),
@@ -4034,8 +4068,8 @@ select pg_temp.must_hold(
      from ouroboros.test_runs attempt
      join ouroboros.runs run on run.id = attempt.run_id
     where run.issue_number = 482)
-    = array['1:complete:a3f19c2', '2:complete:c81d4e7', '3:running:f42b9a0'],
-  'Build 1 at a3f19c2 and Build 2 are complete, and Build 3 at f42b9a0 is running');
+    = array['1:complete:a3f19c2', '2:complete:c81d4e7', '3:running:f42b9a0', '4:complete:b7e41d0'],
+  'Build 1 at a3f19c2 and Build 2 are complete, Build 3 at f42b9a0 is running, and #356''s Build 4 at b7e41d0 is complete');
 
 -- Every attempt is inside its run and none is in the future — the clock the header argues.
 select pg_temp.must_hold(
@@ -4061,8 +4095,8 @@ select pg_temp.must_hold(
      from ouroboros.test_runs attempt
      join ouroboros.runs run on run.id = attempt.run_id
     where run.issue_number = 482)
-    = array['49/63:14:0', '61/63:2:0', '61/63:1:1'],
-  'Build 1 is 49/63 with 14 failed, Build 2 61/63 with 2, and Build 3 61 passed, 1 failed, 1 flaky of 63');
+    = array['49/63:14:0', '61/63:2:0', '61/63:1:1', '63/63:0:0'],
+  'Build 1 is 49/63 with 14 failed, Build 2 61/63 with 2, Build 3 61 passed, 1 failed, 1 flaky of 63, and Build 4 63/63');
 
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.test_results_count_drift drift
@@ -4136,7 +4170,7 @@ select pg_temp.must_hold(
      join ouroboros.test_suites suite    on suite.id = case_row.test_suite_id
      join ouroboros.test_runs attempt    on attempt.id = suite.test_run_id
     where measurement.metric = 'reordered_frames')
-    = array['1:37:-', '2:0:was 37 in build 1', '3:0:was 37 in build 1'],
+    = array['1:37:-', '2:0:was 37 in build 1', '3:0:was 37 in build 1', '4:0:was 37 in build 1'],
   'the frame-order measurement reads 0 reordered frames, was 37 in build 1 — composed from Build 1''s row');
 
 -- --- the flaky telemetry case -------------------------------------------------------------------
@@ -4148,13 +4182,13 @@ select pg_temp.must_hold(
   'Build 3''s telemetry case passed on retry 2 of 3');
 
 select pg_temp.must_hold(
-  (select count(distinct history.case_key) = 1 and count(*) = 4
+  (select count(distinct history.case_key) = 1 and count(*) = 5
           and count(distinct attempt.run_id) = 2
      from ouroboros.test_case_history history
      join ouroboros.test_runs attempt on attempt.id = history.test_run_id
     where history.case_key = (select case_key from ouroboros.test_cases
                                where id = '5eed0033-0000-4000-8000-000048230203')),
-  'its case_key is the same in #479 and in all three of #482''s attempts — four occurrences of one identity');
+  'its case_key is the same in #479 and in all four of #482''s attempts — five occurrences of one identity');
 
 select pg_temp.must_hold(
   (select score.score = computed.score and score.window_runs = computed.window_runs
@@ -4167,10 +4201,10 @@ select pg_temp.must_hold(
   'and its stored score is what flake score v1 computes from those occurrences today, which puts it at watching');
 
 select pg_temp.must_hold(
-  (select count(*) = 208 from ouroboros.test_case_history where id::text like '5eed0035%')
-   and (select count(*) = 208 from ouroboros.test_cases where id::text like '5eed0033%')
+  (select count(*) = 271 from ouroboros.test_case_history where id::text like '5eed0035%')
+   and (select count(*) = 271 from ouroboros.test_cases where id::text like '5eed0033%')
    and (select count(*) = 0 from ouroboros.test_case_history_drift),
-  'every seeded case has exactly one occurrence, and none has drifted from its case');
+  'every seeded case has exactly one occurrence — #328''s 208 and Build 4''s 63 — and none has drifted from its case');
 
 -- --- Mark & Route and the PR toggles ------------------------------------------------------------
 select pg_temp.must_hold(
@@ -4224,6 +4258,289 @@ select pg_temp.must_hold(
     where run.issue_number = 482)
     = array['2:86.8:-', '3:87.4:0.6'],
   'coverage computes to 86.8% on Build 2 and 87.4% (+0.6%) on Build 3, from line counts');
+
+-- ===========================================================================
+-- R__dev_seed_verification.sql — mockup 12's PR Verification for PR #514 (#356, AW.5)
+-- ===========================================================================
+--
+-- The page, number by number, recomputed from the rows: the aggregate through
+-- `pr_gate_aggregate()`, the head's counts through the files snapshot, each gate line against
+-- the row its evidence names, the HIL story across #328's Build 3 and Build 4, the thread's open
+-- count, the template message and the spend under the cap. Exact counts double as the
+-- idempotency assertion, as above.
+
+-- --- one #482 universe --------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+          and bool_and(pr.run_id = '5eed0009-0000-4000-8000-000000000482'
+                       and pr.ticket_id = '5eed0030-0000-4000-8000-000000000482'
+                       and pr.head_branch = run.branch_name and pr.base_branch = 'main'
+                       and pr.external_number = 514 and pr.state = 'verifying'
+                       and pr.title = 'can: fix flaky telemetry frame order under ISR load'
+                       and pr.external_url like 'https://github.com/%/helios-firmware/pull/514')
+     from ouroboros.pull_requests pr
+     join ouroboros.runs run on run.id = pr.run_id),
+  'one PR, #514, verifying, from loop/482-canbus-flake into main — opened by #482 and closing the canonical #482');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s', rev.revision_seq, rev.head_sha,
+                           coalesce(rev.run_stage_id::text, '-')) order by rev.revision_seq)
+     from ouroboros.pr_revisions rev
+    where rev.pr_id = '5eed003a-0000-4000-8000-000000000514')
+    = array['1:3f9c2ae:-', '2:b7e41d0:-'],
+  'revision 1 at 3f9c2ae and revision 2 at b7e41d0, neither linked to a stage attempt (decision 2)');
+
+-- Every instant the file wrote is inside the run and before now — the clock #302 draws.
+select pg_temp.must_hold(
+  (select bool_and(instant.at > run.started_at and instant.at < now())
+     from ouroboros.runs run
+     cross join lateral (
+       select rev.pushed_at from ouroboros.pr_revisions rev
+        where rev.pr_id = '5eed003a-0000-4000-8000-000000000514'
+       union all
+       select result.evaluated_at from ouroboros.pr_gate_results result
+        where result.id::text like '5eed003d%'
+       union all
+       select entry.created_at from ouroboros.pr_thread_entries entry
+        where entry.id::text like '5eed0040%'
+       union all
+       select job.finished_at from ouroboros.build_jobs job
+        where job.id in ('5eed0028-0000-4000-8000-000000000484', '5eed0028-0000-4000-8000-000000000485')
+       union all
+       select attempt.started_at from ouroboros.test_runs attempt
+        where attempt.id = '5eed0031-0000-4000-8000-000000004824'
+     ) as instant (at)
+    where run.id = '5eed0009-0000-4000-8000-000000000482'),
+  'every PR instant — pushes, evaluations, thread entries, builds, Build 4 — falls inside #482 and before now');
+
+-- --- the head: +68 −15 · 3 files ----------------------------------------------------------------
+select pg_temp.must_hold(
+  (select pr.additions = snapshot.additions and pr.deletions = snapshot.deletions
+          and pr.changed_files = snapshot.files
+          and snapshot.additions = 68 and snapshot.deletions = 15 and snapshot.files = 3
+     from ouroboros.pull_requests pr
+     cross join lateral (
+       select sum((f ->> 'additions')::integer) as additions,
+              sum((f ->> 'deletions')::integer) as deletions,
+              count(*)                          as files
+         from ouroboros.pr_revisions rev
+         cross join lateral jsonb_array_elements(rev.files) f
+        where rev.pr_id = pr.id and rev.revision_seq = 2) as snapshot
+    where pr.id = '5eed003a-0000-4000-8000-000000000514'),
+  'the head''s +68 −15 · 3 files is revision 2''s snapshot summed, and the PR''s counts agree with it');
+
+select pg_temp.must_hold(
+  (select rev.files = (select jsonb_agg(jsonb_build_object('path', f.path, 'additions', f.additions,
+                                                           'deletions', f.deletions) order by f.path)
+                         from ouroboros.run_files f where f.run_id = pr.run_id)
+     from ouroboros.pr_revisions rev
+     join ouroboros.pull_requests pr on pr.id = rev.pr_id
+    where rev.pr_id = '5eed003a-0000-4000-8000-000000000514' and rev.revision_seq = 2),
+  'and the changed-files card is the console''s change-set, row for row');
+
+-- --- the gates card: 5 / 7 green, and revision 1's two reds -------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 7 and bool_and(gate.required and gate.source = 'standard-fix@v14 pin')
+     from ouroboros.pr_gate_definitions gate
+    where gate.pr_id = '5eed003a-0000-4000-8000-000000000514'),
+  'seven required gates, each materialized from the standard-fix@v14 pin');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s/%s:%s red:%s', rev.revision_seq, agg.green_count,
+                           agg.required_count, agg.red_count, agg.merge_ready)
+                    order by rev.revision_seq)
+     from ouroboros.pr_revisions rev
+     cross join lateral ouroboros.pr_gate_aggregate(rev.id) agg
+    where rev.pr_id = '5eed003a-0000-4000-8000-000000000514')
+    = array['1:3/7:2 red:f', '2:5/7:0 red:f'],
+  'the aggregate computes 5 / 7 green on revision 2, and revision 1''s 2 gates red stay inspectable beside it');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s', rev.revision_seq, latest.gate_key, latest.verdict)
+                    order by rev.revision_seq, latest.sort_order)
+     from ouroboros.pr_gate_results_latest latest
+     join ouroboros.pr_revisions rev on rev.id = latest.revision_id
+    where latest.pr_id = '5eed003a-0000-4000-8000-000000000514'
+      and latest.gate_key in ('test_suite', 'physical_hil', 'model_review', 'human_approval'))
+    = array['1:test_suite:red', '1:physical_hil:red', '1:model_review:unavailable',
+            '1:human_approval:not_required',
+            '2:test_suite:green', '2:physical_hil:green', '2:model_review:unavailable',
+            '2:human_approval:not_required'],
+  'revision 1 is red on the test suite and the rig; model review is unavailable, never pending, and human approval is the policy''s');
+
+-- Each gate line says what the row it cites says.
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s', latest.gate_key, latest.evidence) order by latest.sort_order)
+     from ouroboros.pr_gate_results_latest latest
+     join ouroboros.pr_revisions rev on rev.id = latest.revision_id
+    where latest.pr_id = '5eed003a-0000-4000-8000-000000000514' and rev.revision_seq = 2
+      and latest.evidence_ref is not null)
+    = array['build:forge-01 · zephyr.elf · FLASH 43.5%',
+            'test_suite:63/63 after attempt 4',
+            'physical_hil:overshoot 1.7% ≤ 2.0% · rig helios-rig-02',
+            'diff_vs_plan:all hunks map to planned files · 0 out-of-scope edits',
+            'secrets_license:clean'],
+  'revision 2''s five evidenced lines read as the mockup draws them');
+
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.pr_gate_evidence_ref_resolves(pr.organization_id, result.evidence_ref))
+          and count(*) filter (where result.evidence_ref is not null) = 10
+          and count(distinct result.evidence_ref ->> 'kind') = 4
+     from ouroboros.pr_gate_results result
+     join ouroboros.pr_gate_definitions gate on gate.id = result.definition_id
+     join ouroboros.pull_requests pr on pr.id = gate.pr_id
+    where pr.id = '5eed003a-0000-4000-8000-000000000514'),
+  'every gate evidence link resolves in the workspace, across all four resolvable kinds');
+
+select pg_temp.must_hold(
+  (select job.status = 'succeeded' and runner.name = 'forge-01'
+          and job.commit_sha like rev.head_sha || '%'
+          and convert_from(chunk.content, 'UTF8') like '%FLASH:%43.50%%'
+          and job.run_id is null
+     from ouroboros.pr_gate_results_latest latest
+     join ouroboros.pr_revisions rev on rev.id = latest.revision_id
+     join ouroboros.build_jobs job on job.id = (latest.evidence_ref ->> 'id')::uuid
+     join ouroboros.runners runner on runner.id = job.runner_id
+     join ouroboros.build_log_chunks chunk on chunk.job_id = job.id
+    where latest.pr_id = '5eed003a-0000-4000-8000-000000000514'
+      and latest.gate_key = 'build' and rev.revision_seq = 2),
+  'the Build gate cites a clean forge-01 build of b7e41d0 whose memory map printed FLASH 43.50%, attributed to no loop (B6)');
+
+-- --- the HIL story: 2.4% blocked, 1.7% passing --------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s:%s', rev.revision_seq, attempt.attempt_seq, measurement.value,
+                           measurement.verdict) order by rev.revision_seq)
+     from ouroboros.pr_gate_results_latest latest
+     join ouroboros.pr_revisions rev on rev.id = latest.revision_id
+     join ouroboros.hil_measurements measurement
+       on measurement.id = (latest.evidence_ref ->> 'id')::uuid
+     join ouroboros.test_cases case_row  on case_row.id = measurement.test_case_id
+     join ouroboros.test_suites suite    on suite.id = case_row.test_suite_id
+     join ouroboros.test_runs attempt    on attempt.id = suite.test_run_id
+    where latest.pr_id = '5eed003a-0000-4000-8000-000000000514'
+      and latest.gate_key = 'physical_hil')
+    = array['1:3:2.4:fail', '2:4:1.7:pass'],
+  'revision 1''s HIL gate is #328''s 2.4% in Build 3 and revision 2''s is 1.7% in Build 4 — one continuous story');
+
+select pg_temp.must_hold(
+  (select measurement.value = (select max((trial ->> 'overshoot_pct')::numeric)
+                                 from jsonb_array_elements(measurement.trials) trial)
+          and measurement.verdict = ouroboros.hil_verdict(measurement.value, measurement.limit_value,
+                                                          measurement.limit_kind)
+          and measurement.context = 'was 2.4% in build 3'
+     from ouroboros.hil_measurements measurement
+    where measurement.test_case_id = '5eed0033-0000-4000-8000-000048240501'),
+  'Build 4''s 1.7% is its worst trial, passes by the verdict function, and V053 composes "was 2.4% in build 3"');
+
+select pg_temp.must_hold(
+  (select score.score = computed.score and score.window_runs = computed.window_runs
+          and score.state = 'watching'
+     from ouroboros.flake_scores score
+     cross join lateral ouroboros.flake_score(score.organization_id, score.case_key, 1) computed
+    where score.id = '5eed0036-0000-4000-8000-000000000482'),
+  'Build 4''s pass is scored: the stored flake score is still what formula 1 computes, and still watching');
+
+-- --- the criteria matrix ------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s', criterion.status, criterion.claim) order by criterion.sort_order)
+     from ouroboros.pr_criteria criterion
+    where criterion.pr_id = '5eed003a-0000-4000-8000-000000000514')
+    = array['verified:Telemetry frames must arrive in ISR order under load',
+            'verified:No regression in e-stop response envelope',
+            'verified:Fix must not mask real ordering bugs in tests',
+            'verified:Zero heap allocation in ISR fast path',
+            'waived:Flake must not reappear across temperature range'],
+  'five criteria: four verified and one waived');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s', evidence.kind, evidence.display_text) order by evidence.id)
+     from ouroboros.pr_criteria_evidence evidence
+     join ouroboros.pr_criteria criterion on criterion.id = evidence.criterion_id
+    where criterion.pr_id = '5eed003a-0000-4000-8000-000000000514')
+    = array['test_case:test_frame_order_under_load (10⁶ frames, 0 reordered)',
+            'hunk:hunk telemetry_buf.c:41–66',
+            'hil_measurement:HIL overshoot 1.7% vs 2.0% limit (was 2.4% in rev 1)',
+            'analysis_note:test asserts on seq gaps, not sleep-based',
+            'analysis_note:static K_MSGQ_DEFINE · stack analysis clean'],
+  'each verified criterion''s evidence renders as the matrix draws it');
+
+select pg_temp.must_hold(
+  (select bool_and(case evidence.kind
+                     when 'test_case' then evidence.test_case_id = '5eed0033-0000-4000-8000-000048240502'
+                     when 'hil_measurement' then measurement.test_case_id = '5eed0033-0000-4000-8000-000048240501'
+                     when 'hunk' then rev.revision_seq = 2
+                                      and rev.files @> jsonb_build_array(jsonb_build_object('path', evidence.hunk_path))
+                     when 'analysis_note' then rev.revision_seq = 2
+                   end)
+          and bool_and(exists (select 1 from ouroboros.pr_criteria_evidence e
+                                where e.criterion_id = criterion.id) = (criterion.status = 'verified'))
+     from ouroboros.pr_criteria criterion
+     left join ouroboros.pr_criteria_evidence evidence on evidence.criterion_id = criterion.id
+     left join ouroboros.hil_measurements measurement on measurement.id = evidence.hil_measurement_id
+     left join ouroboros.pr_revisions rev on rev.id = evidence.revision_id
+    where criterion.pr_id = '5eed003a-0000-4000-8000-000000000514'),
+  'the evidence resolves to Build 4''s rig cases and revision 2''s snapshot, and exactly the verified criteria have any');
+
+select pg_temp.must_hold(
+  (select waiver.run_id = pr.run_id and waiver.reason = 'rig runs at 22°C only — thermal chamber not in bench'
+          and waiver.case_keys = '{}' and waiver.author = '5eed0003-0000-4000-8000-000000000001'
+     from ouroboros.pr_criteria criterion
+     join ouroboros.pull_requests pr on pr.id = criterion.pr_id
+     join ouroboros.pr_waivers waiver on waiver.id = criterion.waiver_ref
+    where criterion.pr_id = '5eed003a-0000-4000-8000-000000000514' and criterion.status = 'waived'),
+  'the waived criterion links to Ken''s AS.4 thermal waiver on #482, whose reason is the row''s text');
+
+-- --- the review thread: 3 entries · 0 open ------------------------------------------------------
+select pg_temp.must_hold(
+  (select summary.entry_count = 3 and summary.open_count = 0
+     from ouroboros.pr_thread_summary('5eed003a-0000-4000-8000-000000000514') summary),
+  'the thread card reads 3 entries · 0 open');
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s|%s|%s|%s|%s|%s|%s', entry.author_kind, entry.author_name, entry.tag,
+                           coalesce(rev.revision_seq::text, '-'), entry.blocking, entry.resolved,
+                           entry.simulated) order by entry.id)
+     from ouroboros.pr_thread_entries entry
+     left join ouroboros.pr_revisions rev on rev.id = entry.revision_id
+    where entry.pr_id = '5eed003a-0000-4000-8000-000000000514')
+    = array['model|claude-fable-5|self-review|-|f|t|t',
+            'model|cursor/composer-2|second opinion|1|t|t|t',
+            'policy_bot|ouroboros policy bot|policy|2|f|f|f'],
+  'both model-authored entries carry simulated (R4), and the second opinion on rev 1 was blocking and is resolved');
+
+select pg_temp.must_hold(
+  (select entry.resolution_body = 'Addressed in attempt 4 — sampling decoupled from telemetry drain.'
+     from ouroboros.pr_thread_entries entry
+    where entry.id = '5eed0040-0000-4000-8000-000000005142'),
+  'its resolving reply is "Addressed in attempt 4"');
+
+-- --- the merge plan -----------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+          and bool_and(plan.strategy = 'squash' and plan.delete_branch
+                       and plan.commit_message = ouroboros.pr_merge_commit_message_template(plan.pr_id)
+                       and plan.commit_message like '%Closes #482.'
+                       and plan.close_ticket and plan.comment_evidence and not plan.back_annotate_epic
+                       and not plan.armed and plan.merged_result is null)
+     from ouroboros.pr_merge_plans plan
+    where plan.pr_id = '5eed003a-0000-4000-8000-000000000514'),
+  'the merge plan is squash · delete branch, the template message ending Closes #482., toggles on/on/off, unarmed');
+
+-- --- spend: 284k · $1.52 loop, 41k · $0.19 verification, $2.50 cap ------------------------------
+select pg_temp.must_hold(
+  (select sum(usage.tokens_in + usage.tokens_out) = 284000 and sum(usage.cost_cents) = 152
+          and sum(usage.tokens_in + usage.tokens_out) filter (where usage.task_kind = 'verify') = 41000
+          and sum(usage.cost_cents) filter (where usage.task_kind = 'verify') = 19
+          and sum(usage.cost_cents) <= (select route.max_cost_cents_per_run
+                                          from ouroboros.routes route
+                                          join ouroboros.task_kinds kind on kind.id = route.task_kind_id
+                                         where kind.organization_id = run.organization_id
+                                           and kind.name = 'implement')
+     from ouroboros.token_usage usage
+     join ouroboros.runs run on run.id = usage.run_id
+    where run.id = '5eed0009-0000-4000-8000-000000000482'
+    group by run.organization_id),
+  'the Spend card sums #482 to 284k · $1.52, 41k · $0.19 of it verification, within the $2.50 cap');
 
 \o
 \echo 'seed.sql: all assertions passed'

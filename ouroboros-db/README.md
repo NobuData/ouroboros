@@ -1039,7 +1039,7 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **eleven migrations**, because they answer eleven questions and change on different
+It is **thirteen migrations**, because they answer thirteen questions and change on different
 days:
 
 | File | Holds | Issue |
@@ -1056,12 +1056,13 @@ days:
 | [`R__dev_seed_workflows.sql`](migrations/R__dev_seed_workflows.sql) | *What it does with it* — mockup 04's studio: the rail's five workflows, `standard-fix`'s twelve-node canvas at v14 with the fourteen versions that number implies, the draft the page head's *Last edited 2h ago* is read from, and the paused `hotfix-p0` behind the rail's err-dot | [#136](https://github.com/NobuData/ouroboros/issues/136) |
 | [`R__dev_seed_run_console.sql`](migrations/R__dev_seed_run_console.sql) | *One run, in detail* — mockup 10 for `#482`, caught mid-flight at 12m 40s: the nine-entry transcript with both diff payloads, the gate's return and the live `47/63`, all watermarked `simulated` (decision **R4**); three changed files and two commits under the squash snapshot; the four `token_usage` rows the `212k / 400k` and `$1.14 / $2.50` meters divide; the `forge-02` reservation; and the four guardrail verdicts. Every instant is an offset from `runs.started_at`, so the page's own arithmetic is exact at any hour | [#302](https://github.com/NobuData/ouroboros/issues/302) |
 | [`R__dev_seed_test_results.sql`](migrations/R__dev_seed_test_results.sql) | *What the builds proved* — mockup 11 for the same `#482`: Build 1 `49/63 · 14 failed` at `a3f19c2`, Build 2 `61/63 · 2 failed`, Build 3 running the failed set at `f42b9a0` (61 passed, 1 failed, 1 flaky, `6m 12s · 4m sim · 2m 12s physical`); the five suites on their platforms; the HIL overshoot `2.4%` against a `2.0%` max and the frame-order `0 (was 37 in build 1)`; the telemetry case passed on retry 2/3 and scored `watching` by flake formula 1 over its history in `#479` and `#482`; a heuristic product-bug hint; both PR intents on; four artifacts plus Build 2's coverage report. **Every figure is computed** — totals by recount, `▲ 12` as a difference, the verdict by `hil_verdict()`, the comparative by V053's trigger, the flake state by `flake_state_next()`, `87.4% (+0.6%)` by `test_run_coverage` — and every instant, retention included, is an offset from `runs.started_at`. Where it and mockup 10 cannot both hold (the clocks, the shas, the farm) the header says which gave way | [#328](https://github.com/NobuData/ouroboros/issues/328) |
+| [`R__dev_seed_verification.sql`](migrations/R__dev_seed_verification.sql) | *What the PR has to show before it merges* — mockup 12's PR `#514`, the outcome of `#482`: revision 1 at `3f9c2ae` blocked (test suite and HIL red on Build 3's `2.4%`) and revision 2 at `b7e41d0` live at `5 / 7` green, with `model_review` `unavailable` and `human_approval` `not_required`; seven gates from the `standard-fix@v14` pin, each verdict's line composed from the row its `evidence_ref` cites; a fourth test attempt (Build 4, `63/63`, overshoot `1.7%`) and two finished `forge-01` builds for those citations; five criteria (four verified with typed evidence, one waived against the AS.4 thermal waiver it seeds); three thread entries, both model rows `simulated`; the unarmed squash plan with V058's template message; and two ledger rows that bring the loop to `284k · $1.52`, `41k · $0.19` of it tagged `verify`. **Every figure is computed** — the aggregate by `pr_gate_aggregate()`, `+68 −15 · 3 files` from the snapshot, which is the console's change-set — and the header records the six places the PR's later chapter moves mockups 02, 08, 10 and 11 | [#356](https://github.com/NobuData/ouroboros/issues/356) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
 > their *descriptions*, and every row the later seeds write finds its parent by natural key —
 > so `dev_seed_audit`, `dev_seed_dashboard`, `dev_seed_farm`, `dev_seed_intake`,
 > `dev_seed_providers`, `dev_seed_routing`, `dev_seed_run_console`, `dev_seed_sources`,
-> `dev_seed_ticket_planning` and
+> `dev_seed_ticket_planning`, `dev_seed_verification` and
 > `dev_seed_workflows` all have to sort after `dev_seed`, `dev_seed_routing` after `dev_seed_providers` besides,
 > since every alias binds to a connection by kind and name, and `dev_seed_ticket_planning`
 > after `dev_seed_sources`, since every ticket hangs off the GitHub source — which is why it
@@ -1172,13 +1173,15 @@ it belongs to `acme-robotics`, and it is drawn from three tables:
 
 > **The meters are three seeds added together.** A card's *This month* figure is calendar-
 > month spend over `token_usage`; the dashboard seed writes twelve events dated *today* (and
-> the run-console seed four more, which came out of one of those twelve — see #302) and
+> the run-console seed four more and the verification seed two, which came out of one of those
+> twelve — see #302 and #356) and
 > the routing seed writes the month's routed calls. So the providers seed writes the
 > remainder — `$379.15` of Anthropic, `$62.30` of Cursor, `$68.80` of Copilot and 1.0M
 > unpriced Ollama tokens — and the three together are the mockup's `$412.80`, `$64.10`,
 > `$76.00` and *2.1M tokens on-box*. Nothing the providers seed
 > writes lands on *today*, which is what keeps mockup 02's *Token spend · today* card the
-> dashboard seed's twelve events and the run-console seed's four; `tests/seed.sql` asserts
+> dashboard seed's twelve events, the run-console seed's four and the verification seed's two;
+> `tests/seed.sql` asserts
 > both totals and the
 > rule that keeps them apart. On the first of a month there is no *earlier this month*: the
 > rows fall on the last day of the previous one and the meters read the day's spend alone,
@@ -1502,13 +1505,15 @@ as the shell suites share [`../scripts/lib/checks.sh`](../scripts/lib/checks.sh)
 every uniqueness rule, check constraint, cascade, trigger and index the migrations claim
 — because `validate` compares checksums rather than behaviour, and a `unique` on the
 wrong columns passes it. [`tests/seed.sql`](tests/seed.sql) asserts the opposite side:
-what the twelve `R__dev_seed*.sql` migrations actually put in a development database, one
+what the thirteen `R__dev_seed*.sql` migrations actually put in a development database, one
 assertion per row — the workspaces, mockup 02's dashboard number for number, mockup 03's
 backlog and the estimates behind its chips, mockup 07's five provider cards with the
 meters their two seeds add up to, mockup 04's studio: the canvas against the mockup's
 own coordinates, the rail's five captions recomputed the way P.4 composes them, and a dry
-run of the seeded `#485` walked edge by edge through the graph — and mockup 11's test
-results for `#482`, every figure recomputed from the rows rather than read back.
+run of the seeded `#485` walked edge by edge through the graph — mockup 11's test
+results for `#482`, every figure recomputed from the rows rather than read back, and mockup
+12's PR `#514`: `5 / 7` through `pr_gate_aggregate()`, the head's counts through the files
+snapshot, and the HIL figure's one story from Build 3's `2.4%` to Build 4's `1.7%`.
 [`tests/registry-invariants.sql`](tests/registry-invariants.sql) is the third, and it is a
 second way into a file rather than a third body of assertions:
 [`tests/lib/registry-invariants.sql`](tests/lib/registry-invariants.sql) is CG.5's
@@ -2112,6 +2117,7 @@ ouroboros-db/
 │   ├── R__dev_seed_sources.sql       # the two trackers acme-robotics ingests from, dev only — #138 (sorts after the above)
 │   ├── R__dev_seed_test_results.sql  # mockup 11 — #482's three builds, suites, HIL, flaky case, artifacts, dev only — #328 (sorts after dashboard)
 │   ├── R__dev_seed_ticket_planning.sql # mockup 09 — backlog, roadmap lanes, OTA batch, dev only — #275 (sorts after sources)
+│   ├── R__dev_seed_verification.sql  # mockup 12 — PR #514's two revisions, gates, criteria, thread, plan, spend, dev only — #356 (sorts after test_results and ticket_planning)
 │   ├── R__dev_seed_workflows.sql     # mockup 04's studio — five workflows, standard-fix at v14, dev only — #136 (sorts after the above)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/

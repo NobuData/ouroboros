@@ -21547,6 +21547,422 @@ select pg_temp.must_hold(
   'and the AS.5 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- AW.5 — the PR domain's machines and links, covered rather than merely closed (#356)
+-- ===========================================================================
+--
+-- AS.5's argument (#328), one mockup on. The V052 and V056–V058 sections assert each rule of the
+-- PR domain against a fixture built for it; this section is the one tests/verify-constraint-
+-- probes.sh watches go red, and it covers AW.5's scope bullets from one PR's point of view:
+--
+--   * **the PR state machine** — one PR walked through every state, each reached as the graph
+--     allows, with `merged` terminal and nothing mirrored in `armed`;
+--   * **the merge-plan machine** — planned → armed → disarmed by hand → armed → disarmed by a
+--     failed re-check → armed → merged, with its audit row at every step;
+--   * **the verdict vocabulary** — every one of V056's six verdicts written, `unavailable`
+--     included, and `unavailable` never satisfying the merge as `pending` does not either;
+--   * **evidence resolution for every kind** — each gate evidence kind and each criterion
+--     evidence kind resolving, and each refused when it names another workspace's row;
+--   * **one plan per PR**, **identity honesty**, and **a verified criterion has evidence**.
+--
+-- Each vocabulary is read out of `pg_constraint` by `pg_temp.vocabulary` (AO.5's helper), so a
+-- widened one turns this red for the ticket that widened it.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-aw5',  'PR Seeds Works',       'pr-seeds-works',       now()),
+  ('org-aw5b', 'Other PR Seeds Works', 'other-pr-seeds-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('aa550000-0000-0000-0000-00000000000a', 'Ken S', 'ken@pr-seeds-works.dev', true);
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('aa550001-0000-0000-0000-00000000000a', 'org-aw5', 'github', 'GitHub · pr-seeds-works');
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('aa550002-0000-0000-0000-00000000000a', 'org-aw5',  'pr-seeds-works',       true),
+  ('aa550002-0000-0000-0000-00000000000b', 'org-aw5b', 'other-pr-seeds-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('aa550003-0000-0000-0000-00000000000a', 'aa550002-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('aa550003-0000-0000-0000-00000000000b', 'aa550002-0000-0000-0000-00000000000b',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('aa550004-0000-0000-0000-000000000482', 'org-aw5', 'aa550003-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'review', 'Review', 7, 8, now() - interval '1 hour'),
+    ('aa550004-0000-0000-0000-000000000900', 'org-aw5b', 'aa550003-0000-0000-0000-00000000000b',
+     900, 'Elsewhere', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '10 minutes');
+
+-- --- a row of every evidence kind in this workspace, and one of each in the other ---------------
+insert into ouroboros.runner_pools (id, organization_id, name, executor) values
+  ('aa550005-0000-0000-0000-00000000000a', 'org-aw5',  'forge', 'shell'),
+  ('aa550005-0000-0000-0000-00000000000b', 'org-aw5b', 'forge', 'shell');
+
+insert into ouroboros.build_jobs
+    (id, organization_id, number, pool_id, github_repo_id, git_ref, label, title, executor, command)
+  values
+    ('aa550006-0000-0000-0000-00000000000a', 'org-aw5', 1, 'aa550005-0000-0000-0000-00000000000a',
+     'aa550003-0000-0000-0000-00000000000a', 'loop/482-canbus-flake', 'build', 'zephyr.elf',
+     'shell', 'west build'),
+    ('aa550006-0000-0000-0000-00000000000b', 'org-aw5b', 1, 'aa550005-0000-0000-0000-00000000000b',
+     'aa550003-0000-0000-0000-00000000000b', 'main', 'build', 'zephyr.elf', 'shell', 'west build');
+
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status) values
+  ('aa550007-0000-0000-0000-00000000000a', 'org-aw5',  'aa550004-0000-0000-0000-000000000482', 4, 'complete'),
+  ('aa550007-0000-0000-0000-00000000000b', 'org-aw5b', 'aa550004-0000-0000-0000-000000000900', 1, 'complete');
+
+insert into ouroboros.test_suites
+    (id, organization_id, test_run_id, name, platform, kind, results_format)
+  values
+    ('aa550008-0000-0000-0000-00000000000a', 'org-aw5', 'aa550007-0000-0000-0000-00000000000a',
+     'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil'),
+    ('aa550008-0000-0000-0000-00000000000b', 'org-aw5b', 'aa550007-0000-0000-0000-00000000000b',
+     'PHYSICAL · HIL rig', 'rig:helios-rig-02', 'physical', 'hil');
+
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retry_outcomes)
+  values
+    ('aa550009-0000-0000-0000-00000000000a', 'org-aw5', 'aa550008-0000-0000-0000-00000000000a',
+     'overshoot_under_load', 'tests/hil/test_estop_release.py', 'passed', '["passed"]'),
+    ('aa550009-0000-0000-0000-00000000000b', 'org-aw5b', 'aa550008-0000-0000-0000-00000000000b',
+     'overshoot_under_load', 'tests/hil/test_estop_release.py', 'passed', '["passed"]');
+
+insert into ouroboros.hil_measurements
+    (id, organization_id, test_case_id, procedure, metric, value, unit, limit_value, limit_kind, verdict)
+  values
+    ('aa55000a-0000-0000-0000-00000000000a', 'org-aw5', 'aa550009-0000-0000-0000-00000000000a',
+     'dyno bench releases e-stop under 2 Nm load', 'overshoot_pct', 1.7, '%', 2.0, 'max', 'pass'),
+    ('aa55000a-0000-0000-0000-00000000000b', 'org-aw5b', 'aa550009-0000-0000-0000-00000000000b',
+     'dyno bench releases e-stop under 2 Nm load', 'overshoot_pct', 1.7, '%', 2.0, 'max', 'pass');
+
+insert into ouroboros.guardrail_evaluations (id, run_id, "check", verdict) values
+  ('aa55000b-0000-0000-0000-00000000000a', 'aa550004-0000-0000-0000-000000000482', 'secrets', 'pass'),
+  ('aa55000b-0000-0000-0000-00000000000b', 'aa550004-0000-0000-0000-000000000900', 'secrets', 'pass');
+
+insert into ouroboros.test_artifacts
+    (id, organization_id, test_run_id, name, kind, size_bytes, storage_ref, checksum, retained_until)
+  values
+    ('aa55000c-0000-0000-0000-00000000000a', 'org-aw5', 'aa550007-0000-0000-0000-00000000000a',
+     'zephyr.elf.map', 'other', 812, '{"driver": "local", "key": "org-aw5/482/4/zephyr.elf.map"}',
+     'sha256:' || repeat('a', 64), now() + interval '30 days'),
+    ('aa55000c-0000-0000-0000-00000000000b', 'org-aw5b', 'aa550007-0000-0000-0000-00000000000b',
+     'zephyr.elf.map', 'other', 812, '{"driver": "local", "key": "org-aw5b/900/1/zephyr.elf.map"}',
+     'sha256:' || repeat('b', 64), now() + interval '30 days');
+
+-- --- the PR, walked through every state the graph admits ----------------------------------------
+--
+-- Each state it reaches is written down as it is reached, so the coverage assertion below reads
+-- what the machine actually allowed rather than what a fixture typed.
+create temporary table aw5_states_reached (state text not null);
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, additions, deletions, changed_files, run_id)
+  values
+    ('aa55000d-0000-0000-0000-000000000514', 'org-aw5', 'aa550001-0000-0000-0000-00000000000a',
+     514, 'https://github.com/pr-seeds-works/helios-firmware/pull/514',
+     'can: fix flaky telemetry frame order under ISR load',
+     'loop/482-canbus-flake', 'main', 68, 15, 3, 'aa550004-0000-0000-0000-000000000482'),
+    ('aa55000d-0000-0000-0000-000000000077', 'org-aw5', 'aa550001-0000-0000-0000-00000000000a',
+     77, 'https://github.com/pr-seeds-works/helios-firmware/pull/77',
+     'docs: sandbox change', 'sandbox/docs', 'main', 4, 1, 1, null);
+
+insert into aw5_states_reached select state from ouroboros.pull_requests
+ where id = 'aa55000d-0000-0000-0000-000000000514';
+
+do $walk$
+declare
+  next_state text;
+begin
+  -- open → verifying → blocked → verifying → armed → verifying (a disarm) → closed → open → merged
+  foreach next_state in array array['verifying', 'blocked', 'verifying', 'armed', 'verifying',
+                                    'closed', 'open', 'merged'] loop
+    update ouroboros.pull_requests
+       set state = next_state,
+           merged_at = case when next_state = 'merged' then now() end,
+           merged_by = case when next_state = 'merged' then 'ken-s' end
+     where id = 'aa55000d-0000-0000-0000-000000000514';
+    insert into aw5_states_reached values (next_state);
+  end loop;
+end
+$walk$;
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.pull_requests', 'pull_requests_state')
+    = (select array_agg(distinct state order by state) from aw5_states_reached),
+  'AW.5: the PR walks every state the graph admits — open, verifying, blocked, armed, closed and merged');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'open', merged_at = null, merged_by = null
+     where id = 'aa55000d-0000-0000-0000-000000000514'$$,
+  'AW.5: merged is terminal — a merged PR cannot be reopened, even with its merge columns cleared');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set state = 'armed'
+     where id = 'aa55000d-0000-0000-0000-000000000077'$$,
+  'AW.5: armed is reached only from verifying — an open PR cannot be armed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pull_requests
+      (organization_id, source_id, external_number, external_url, title, head_branch, base_branch, state)
+    values ('org-aw5', 'aa550001-0000-0000-0000-00000000000a', 515,
+            'https://github.com/pr-seeds-works/helios-firmware/pull/515', 'armed on arrival',
+            'feature/x', 'main', 'armed')$$,
+  'AW.5: nothing is mirrored in armed');
+
+-- A second PR in `verifying` carries the gates, criteria and plan: #514 is merged now.
+update ouroboros.pull_requests set state = 'verifying'
+ where id = 'aa55000d-0000-0000-0000-000000000077';
+
+insert into ouroboros.pr_revisions (id, pr_id, revision_seq, head_sha, pushed_at, files) values
+  ('aa55000e-0000-0000-0000-000000000001', 'aa55000d-0000-0000-0000-000000000077', 1, 'd0c5a11',
+   now() - interval '20 minutes',
+   '[{"path": "drivers/can/telemetry_buf.c", "additions": 38, "deletions": 12}]');
+
+-- --- every verdict, and every gate evidence kind ------------------------------------------------
+--
+-- Six definitions, one per verdict; the four resolvable kinds cited once each. `custom:` keys
+-- carry the two verdicts no built-in gate here reaches.
+insert into ouroboros.pr_gate_definitions (id, pr_id, gate_key, source, required, sort_order, label)
+  values
+    ('aa55000f-0000-0000-0000-000000000001', 'aa55000d-0000-0000-0000-000000000077',
+     'build',          'standard-fix@v14 pin', true, 1, 'Build'),
+    ('aa55000f-0000-0000-0000-000000000002', 'aa55000d-0000-0000-0000-000000000077',
+     'test_suite',     'standard-fix@v14 pin', true, 2, 'Test suite'),
+    ('aa55000f-0000-0000-0000-000000000003', 'aa55000d-0000-0000-0000-000000000077',
+     'physical_hil',   'standard-fix@v14 pin', true, 3, 'Physical HIL'),
+    ('aa55000f-0000-0000-0000-000000000004', 'aa55000d-0000-0000-0000-000000000077',
+     'secrets_license', 'org config',          true, 4, 'Secrets & license scan'),
+    ('aa55000f-0000-0000-0000-000000000005', 'aa55000d-0000-0000-0000-000000000077',
+     'model_review',   'standard-fix@v14 pin', true, 5, 'Second-model review'),
+    ('aa55000f-0000-0000-0000-000000000006', 'aa55000d-0000-0000-0000-000000000077',
+     'human_approval', 'standard-fix@v14 pin', true, 6, 'Human approval'),
+    ('aa55000f-0000-0000-0000-000000000007', 'aa55000d-0000-0000-0000-000000000077',
+     'custom:coverage', 'org config',          true, 7, 'Coverage'),
+    ('aa55000f-0000-0000-0000-000000000008', 'aa55000d-0000-0000-0000-000000000077',
+     'custom:soak',    'org config',           true, 8, 'Soak');
+
+insert into ouroboros.pr_gate_results
+    (definition_id, revision_id, verdict, evidence, evidence_ref, provider_version)
+  values
+    ('aa55000f-0000-0000-0000-000000000001', 'aa55000e-0000-0000-0000-000000000001', 'green',
+     'forge-01 · zephyr.elf', '{"kind": "build_job", "id": "aa550006-0000-0000-0000-00000000000a"}',
+     'gate-build@1.0.0'),
+    ('aa55000f-0000-0000-0000-000000000002', 'aa55000e-0000-0000-0000-000000000001', 'red',
+     '61/63 after attempt 4', '{"kind": "test_run", "id": "aa550007-0000-0000-0000-00000000000a"}',
+     'gate-tests@1.0.0'),
+    ('aa55000f-0000-0000-0000-000000000003', 'aa55000e-0000-0000-0000-000000000001', 'green',
+     'overshoot 1.7% ≤ 2.0%', '{"kind": "hil_measurement", "id": "aa55000a-0000-0000-0000-00000000000a"}',
+     'gate-hil@1.0.0'),
+    ('aa55000f-0000-0000-0000-000000000004', 'aa55000e-0000-0000-0000-000000000001', 'waived',
+     'waived by Ken', '{"kind": "guardrail_evaluation", "id": "aa55000b-0000-0000-0000-00000000000a"}',
+     'gate-scan@1.0.0'),
+    ('aa55000f-0000-0000-0000-000000000005', 'aa55000e-0000-0000-0000-000000000001', 'unavailable',
+     'no second-model review provider until AZ.1', null, 'gate-review@0.0.0'),
+    ('aa55000f-0000-0000-0000-000000000006', 'aa55000e-0000-0000-0000-000000000001', 'not_required',
+     'not required by policy', null, 'gate-policy@1.0.0'),
+    ('aa55000f-0000-0000-0000-000000000007', 'aa55000e-0000-0000-0000-000000000001', 'pending',
+     'coverage evaluating', null, 'gate-coverage@1.0.0');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.pr_gate_results', 'pr_gate_results_verdict')
+    = (select array_agg(distinct verdict order by verdict)
+         from ouroboros.pr_gate_results r
+         join ouroboros.pr_gate_definitions d on d.id = r.definition_id
+        where d.pr_id = 'aa55000d-0000-0000-0000-000000000077'),
+  'AW.5: every gate verdict the card draws is one this PR reaches — unavailable included');
+
+-- `unavailable` does not satisfy the merge, any more than `pending` or no result does: of eight
+-- required gates, green, waived and not_required satisfy three, and red, unavailable, pending
+-- and the soak gate with no result at all satisfy nothing.
+select pg_temp.must_hold(
+  (select agg.required_count = 8 and agg.green_count = 2 and agg.red_count = 1
+          and agg.satisfied_count = 4 and not agg.merge_ready
+     from ouroboros.pr_gate_aggregate('aa55000e-0000-0000-0000-000000000001') agg),
+  'AW.5: unavailable is not satisfied — the aggregate counts only green, waived and not_required');
+
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.pr_gate_evidence_ref_resolves('org-aw5', r.evidence_ref))
+          and count(distinct r.evidence_ref ->> 'kind') = 4
+     from ouroboros.pr_gate_results r
+     join ouroboros.pr_gate_definitions d on d.id = r.definition_id
+    where d.pr_id = 'aa55000d-0000-0000-0000-000000000077' and r.evidence_ref is not null),
+  'AW.5: a gate evidence link of each resolvable kind resolves in its own workspace');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results
+      (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('aa55000f-0000-0000-0000-000000000008', 'aa55000e-0000-0000-0000-000000000001', 'green',
+            '{"kind": "build_job", "id": "aa550006-0000-0000-0000-00000000000b"}', 'gate-soak@1.0.0')$$,
+  'AW.5: a gate cannot cite another workspace''s build job');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results
+      (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('aa55000f-0000-0000-0000-000000000008', 'aa55000e-0000-0000-0000-000000000001', 'green',
+            '{"kind": "test_run", "id": "aa550007-0000-0000-0000-00000000000b"}', 'gate-soak@1.0.0')$$,
+  'AW.5: nor another workspace''s test run');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results
+      (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('aa55000f-0000-0000-0000-000000000008', 'aa55000e-0000-0000-0000-000000000001', 'green',
+            '{"kind": "hil_measurement", "id": "aa55000a-0000-0000-0000-00000000000b"}', 'gate-soak@1.0.0')$$,
+  'AW.5: nor another workspace''s HIL measurement');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results
+      (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('aa55000f-0000-0000-0000-000000000008', 'aa55000e-0000-0000-0000-000000000001', 'green',
+            '{"kind": "guardrail_evaluation", "id": "aa55000b-0000-0000-0000-00000000000b"}', 'gate-soak@1.0.0')$$,
+  'AW.5: nor another workspace''s guardrail evaluation');
+
+-- --- criteria: every evidence kind, and verified only with evidence -----------------------------
+insert into ouroboros.pr_criteria (id, pr_id, claim, source, status, sort_order) values
+  ('aa550010-0000-0000-0000-000000000001', 'aa55000d-0000-0000-0000-000000000077',
+   'Telemetry frames must arrive in ISR order under load', 'plan', 'unverified', 1),
+  ('aa550010-0000-0000-0000-000000000002', 'aa55000d-0000-0000-0000-000000000077',
+   'Zero heap allocation in ISR fast path', 'plan', 'unverified', 2);
+
+insert into ouroboros.pr_criteria_evidence
+    (criterion_id, kind, test_case_id, hil_measurement_id, test_artifact_id, revision_id,
+     hunk_path, hunk_line_start, hunk_line_end, display_text)
+  values
+    ('aa550010-0000-0000-0000-000000000001', 'test_case', 'aa550009-0000-0000-0000-00000000000a',
+     null, null, null, null, null, null, 'test_overshoot_under_load'),
+    ('aa550010-0000-0000-0000-000000000001', 'hil_measurement', null,
+     'aa55000a-0000-0000-0000-00000000000a', null, null, null, null, null, 'HIL overshoot 1.7%'),
+    ('aa550010-0000-0000-0000-000000000001', 'build_artifact', null, null,
+     'aa55000c-0000-0000-0000-00000000000a', null, null, null, null, 'zephyr.elf.map'),
+    ('aa550010-0000-0000-0000-000000000001', 'hunk', null, null, null,
+     'aa55000e-0000-0000-0000-000000000001', 'drivers/can/telemetry_buf.c', 41, 66,
+     'hunk telemetry_buf.c:41–66'),
+    ('aa550010-0000-0000-0000-000000000001', 'analysis_note', null, null, null,
+     'aa55000e-0000-0000-0000-000000000001', null, null, null, 'stack analysis clean');
+
+update ouroboros.pr_criteria set status = 'verified'
+ where id = 'aa550010-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.pr_criteria_evidence', 'pr_criteria_evidence_kind')
+    = (select array_agg(distinct kind order by kind) from ouroboros.pr_criteria_evidence
+        where criterion_id = 'aa550010-0000-0000-0000-000000000001'),
+  'AW.5: a criterion cites evidence of every kind the matrix renders, each resolved at write');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_case_id, display_text)
+    values ('aa550010-0000-0000-0000-000000000002', 'test_case',
+            'aa550009-0000-0000-0000-00000000000b', 'someone else''s test')$$,
+  'AW.5: criterion evidence cannot cite another workspace''s test case');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, hil_measurement_id, display_text)
+    values ('aa550010-0000-0000-0000-000000000002', 'hil_measurement',
+            'aa55000a-0000-0000-0000-00000000000b', 'someone else''s rig')$$,
+  'AW.5: nor another workspace''s HIL measurement');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence (criterion_id, kind, test_artifact_id, display_text)
+    values ('aa550010-0000-0000-0000-000000000002', 'build_artifact',
+            'aa55000c-0000-0000-0000-00000000000b', 'someone else''s artifact')$$,
+  'AW.5: nor another workspace''s artifact');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria_evidence
+      (criterion_id, kind, revision_id, hunk_path, hunk_line_start, hunk_line_end, display_text)
+    values ('aa550010-0000-0000-0000-000000000002', 'hunk', 'aa55000e-0000-0000-0000-000000000001',
+            'drivers/can/isr_fastpath.c', 1, 9, 'hunk isr_fastpath.c:1–9')$$,
+  'AW.5: nor a hunk of a file the revision never touched');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_criteria set status = 'verified'
+     where id = 'aa550010-0000-0000-0000-000000000002'$$,
+  'AW.5: a criterion with no evidence cannot be verified');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_criteria (pr_id, claim, source, status)
+    values ('aa55000d-0000-0000-0000-000000000077', 'asserted, not shown', 'manual', 'verified')$$,
+  'AW.5: nor inserted verified');
+
+-- --- the merge plan: one per PR, every state, and an honest identity ---------------------------
+insert into ouroboros.pr_merge_plans (id, pr_id, commit_message) values
+  ('aa550011-0000-0000-0000-000000000077', 'aa55000d-0000-0000-0000-000000000077', null);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_merge_plans (pr_id, commit_message)
+    values ('aa55000d-0000-0000-0000-000000000077', 'a second plan')$$,
+  'AW.5: a PR has exactly one merge plan');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set armed = true, armed_by = 'aa550000-0000-0000-0000-00000000000a'
+     where id = 'aa550011-0000-0000-0000-000000000077'$$,
+  'AW.5: an armed plan knows when and against which revision it was armed');
+
+-- planned → armed → disarmed by hand → armed → disarmed by a failed re-check → armed → merged
+update ouroboros.pr_merge_plans
+   set armed = true, armed_by = 'aa550000-0000-0000-0000-00000000000a', armed_at = now(),
+       armed_against_revision_id = 'aa55000e-0000-0000-0000-000000000001'
+ where id = 'aa550011-0000-0000-0000-000000000077';
+update ouroboros.pr_merge_plans
+   set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+       updated_by = 'aa550000-0000-0000-0000-00000000000a'
+ where id = 'aa550011-0000-0000-0000-000000000077';
+update ouroboros.pr_merge_plans
+   set armed = true, armed_by = 'aa550000-0000-0000-0000-00000000000a', armed_at = now(),
+       armed_against_revision_id = 'aa55000e-0000-0000-0000-000000000001'
+ where id = 'aa550011-0000-0000-0000-000000000077';
+update ouroboros.pr_merge_plans
+   set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+       disarm_reason = 'head moved'
+ where id = 'aa550011-0000-0000-0000-000000000077';
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans
+       set merged_result = '{"sha": "e1f2a3b", "identity_used": "ouroboros-app[bot]",
+                             "actions_executed": ["close_ticket"], "merged_at": "2026-09-26T14:40:00Z"}'
+     where id = 'aa550011-0000-0000-0000-000000000077'$$,
+  'AW.5: a merge made with a person''s token may not claim a [bot] identity');
+
+update ouroboros.pr_merge_plans
+   set armed = true, armed_by = 'aa550000-0000-0000-0000-00000000000a', armed_at = now(),
+       armed_against_revision_id = 'aa55000e-0000-0000-0000-000000000001', disarm_reason = null
+ where id = 'aa550011-0000-0000-0000-000000000077';
+update ouroboros.pr_merge_plans
+   set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+       merged_result = '{"sha": "e1f2a3b", "identity_used": "ken-s",
+                         "actions_executed": ["close_ticket", "delete_branch"],
+                         "merged_at": "2026-09-26T14:40:00Z"}'
+ where id = 'aa550011-0000-0000-0000-000000000077';
+
+select pg_temp.must_hold(
+  (select array_agg(distinct e.action order by e.action)
+                = array['pr_merge_plan.armed', 'pr_merge_plan.disarmed', 'pr_merge_plan.merged']
+          and count(*) filter (where e.action = 'pr_merge_plan.armed') = 3
+          and count(*) filter (where e.action = 'pr_merge_plan.disarmed') = 2
+          and count(*) filter (where e.action = 'pr_merge_plan.disarmed'
+                                 and (e.detail ->> 'recheck_failed')::boolean) = 1
+     from ouroboros.audit_events e
+    where e.subject_type = 'pr_merge_plan' and e.subject_id = 'aa550011-0000-0000-0000-000000000077'),
+  'AW.5: the plan reached armed three times, was disarmed by hand and by a re-check, and merged — an audit row for each');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_merge_plans set strategy = 'rebase'
+     where id = 'aa550011-0000-0000-0000-000000000077'$$,
+  'AW.5: a merged plan is final');
+
+delete from ouroboros.organization where "id" in ('org-aw5', 'org-aw5b');
+drop table aw5_states_reached;
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pull_requests where organization_id in ('org-aw5', 'org-aw5b'))
+  and (select count(*) = 0 from ouroboros.audit_events where organization_id in ('org-aw5', 'org-aw5b')),
+  'and the AW.5 fixture leaves nothing behind');
+
+-- ===========================================================================
 -- V061 — classification routing: subtype, stage retry, health note, test selection (#332, AT.4)
 -- ===========================================================================
 --
