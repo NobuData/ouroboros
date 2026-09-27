@@ -4,13 +4,15 @@
  * uploads through.
  *
  * Exports {@link FARM_OFFER_UPLOADS} for `FarmDispatchModule`, which mints a token with every
- * offer, and {@link ARTIFACT_STORE} for the read and retention work that follows (#333).
+ * offer, and {@link ARTIFACT_STORE} for the read and retention work that follows (#333). Imports
+ * `GatesModule` for the gate engine's sink, which a closed upload notifies (#358).
  */
 
 import { Module } from "@nestjs/common";
 
 import { AppConfigService } from "../../config/config.service";
 import { DbModule } from "../../db/db.module";
+import { GatesModule } from "../../pull-requests/gates/gates.module";
 import { TestResultsModule } from "../../test-results/test-results.module";
 import { FarmGatewayModule } from "../gateway/gateway.module";
 import { ARTIFACT_STORE, createArtifactStore } from "./artifact.store.factory";
@@ -19,7 +21,7 @@ import { UploadRepository } from "./upload.repository";
 import { ArtifactUploadService, FARM_OFFER_UPLOADS } from "./upload.service";
 
 @Module({
-  imports: [DbModule, TestResultsModule, FarmGatewayModule],
+  imports: [DbModule, TestResultsModule, FarmGatewayModule, GatesModule],
   controllers: [ArtifactUploadController],
   providers: [
     {

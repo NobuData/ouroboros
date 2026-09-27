@@ -15,6 +15,7 @@ import { TicketSourceError } from "../ticket-sources/ticket-source.errors";
 import type { TicketSyncContext } from "../ticket-sources/ticket-source.provider";
 import { TicketSourceRegistry } from "../ticket-sources/ticket-source.registry";
 import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
+import type { GateEvidenceEvent, GateEvidenceSink } from "./gates/gate.evidence";
 import { PR_SYNC_ERRORS } from "./pr-sync.errors";
 import type { MirroredPr, PrMirrorStore, PrSyncOutcome, PrSyncWrite } from "./pr-sync.repository";
 import { PrSyncService, type PrSourceOpener } from "./pr-sync.service";
@@ -103,12 +104,25 @@ class Opener implements PrSourceOpener {
   }
 }
 
+/** A gate sink that keeps what it was told. */
+class RecordedGates implements GateEvidenceSink {
+  /** Every notification, in order. */
+  readonly events: [string, GateEvidenceEvent][] = [];
+
+  /** @inheritdoc */
+  notify(organizationId: string, event: GateEvidenceEvent): Promise<void> {
+    this.events.push([organizationId, event]);
+    return Promise.resolve();
+  }
+}
+
 /**
  * A service over the in-memory host with one open PR.
  *
+ * @param gates - The gate engine's sink, when the case listens to it.
  * @returns The service, its collaborators and the PR's number.
  */
-function build(): {
+function build(gates?: GateEvidenceSink): {
   service: PrSyncService;
   store: RecordedStore;
   opener: Opener;
@@ -131,7 +145,13 @@ function build(): {
     new InMemoryPrTicketSourceProvider(new InMemoryTracker(), host),
   ]);
 
-  return { service: new PrSyncService(store, registry, opener), store, opener, host, prNumber };
+  return {
+    service: new PrSyncService(store, registry, opener, gates),
+    store,
+    opener,
+    host,
+    prNumber,
+  };
 }
 
 describe("PrSyncService", () => {
@@ -157,6 +177,32 @@ describe("PrSyncService", () => {
       deletions: 15,
       changedFiles: 3,
     });
+  });
+
+  it("tells the gate engine about every sync — a push as revision_pushed, else pr_synced", async () => {
+    const gates = new RecordedGates();
+    const { service, host, prNumber } = build(gates);
+
+    await service.sync(ORG, SOURCE.sourceId, prNumber);
+    await service.sync(ORG, SOURCE.sourceId, prNumber);
+    host.push("loop/482-canbus-flake", SECOND_PUSH);
+    await service.sync(ORG, SOURCE.sourceId, prNumber);
+
+    expect(gates.events).toEqual([
+      [ORG, { kind: "revision_pushed", prId: "pr-1" }],
+      [ORG, { kind: "pr_synced", prId: "pr-1" }],
+      [ORG, { kind: "revision_pushed", prId: "pr-1" }],
+    ]);
+  });
+
+  it("tells the gate engine nothing when the host refused", async () => {
+    const gates = new RecordedGates();
+    const { service, host, prNumber } = build(gates);
+
+    host.refuse("rate_limit", new Date("2026-09-24T14:20:00.000Z"));
+    await service.sync(ORG, SOURCE.sourceId, prNumber).catch(() => undefined);
+
+    expect(gates.events).toEqual([]);
   });
 
   it("hands the provider the mirror's latest head, so detection is by sha", async () => {

@@ -4852,6 +4852,48 @@ explains a missing runner, a missing farm build or a disabled pool beside a clas
 was still made. Audited as `triage.classified`, `triage.rerun_requested`, `triage.waived` and
 `runner.flagged`, with the person as the actor; the note never enters the trail.
 
+### PR gate engine
+
+AX.2 ([#358](https://github.com/NobuData/ouroboros/issues/358)), decision **V2**, in
+[`src/modules/pull-requests/gates/`](src/modules/pull-requests/gates). Mockup 12's Verification
+gates card, as data: definitions materialized from the pinned policy into `pr_gate_definitions`,
+and a verdict snapshot per gate per revision appended to `pr_gate_results` (V056).
+
+| gate | required when | green line | otherwise |
+| ---- | ------------- | ---------- | --------- |
+| `build` | the pin has a `checks` gate node | `forge-01 · zephyr.elf · FLASH 43.5%` | red `forge-01 · exit 2`; pending while no build of the head has finished |
+| `test_suite` | … or the run's *block until green* intent is on | `63/63 after attempt 4` | red `61/63 · 2 failing after attempt 4`; waived when AS.4 waivers cover every failing case |
+| `physical_hil` | the pin has a `checks` gate node | `overshoot 1.7% ≤ 2.0% · rig helios-rig-02` | red with the worst failure; not required with no physical suite |
+| `diff_vs_plan` | the pin has a `checks` gate node | `all hunks map to planned files · 0 out-of-scope edits` | red naming the out-of-scope paths; not required with no plan |
+| `secrets_license` | the pin has a `checks` gate node | `clean (headers + manifest delta)` | red with AP.3's secrets fail or the license layer's first finding |
+| `model_review` | an `add_vote` rule matches the ticket (#194) | — | **`unavailable`, never `pending`**, until AZ.1 (#371) |
+| `human_approval` | always | — | `not_required` when the terminal auto-merges; pending otherwise (approvals: AX.5, #361) |
+
+Each definition's `source` names what produced it — `standard-fix@v14 pin`, `ouroboros default`
+for a PR without a readable pin (everything required), or `org config`. Org config is read
+through the `ORG_GATE_POLICY` port, bound to the defaults (no overrides; a permissive SPDX
+allow-list) until the org policy document's resolver (#481) rebinds it.
+
+**Triggers.** The PR sync (`revision_pushed` / `pr_synced`), the artifact upload's parse
+(`test_run_parsed`), the gateway's `job.finish` (`build_job_finished`) and the change-set report
+(`guardrail_evaluated`) notify the `GATE_EVIDENCE` sink after their own transaction commits. Each
+event re-evaluates only the gates it can move, plus any gate never judged on the revision. The
+sink never throws into its caller.
+
+**Idempotent.** Providers are pure functions of the gathered facts; a result identical to the
+latest one is not appended, and the PR row is locked per evaluation. Only the latest revision is
+judged, so a push leaves the previous revision's verdicts intact.
+
+**State.** After each evaluation, `pr_gate_aggregate(revision)` moves `pull_requests.state` along
+V052's graph: a red required gate is `blocked`, otherwise `verifying`; an `armed` PR that stops
+being merge-ready is disarmed. Merge-ready is reported as armed-ready — arming is AX.4's (#360).
+
+**The license layer states its scope** (decision V7, option 3-A): SPDX headers on the revision's
+diff sample (every added `SPDX-License-Identifier:` expression against the allow-list, and a new
+source file without one), and added `"license"` entries in `package-lock.json`, `composer.lock`
+and `package.json`. No full-text detection, no transitive audit — that is AZ.4 (#374). The SPDX
+list is bundled (`gate.spdx.ts`, list version in every result's `provider_version`).
+
 ## Container
 
 [`Dockerfile`](Dockerfile) is the production image
@@ -5160,6 +5202,7 @@ the estimation contract it calls [#105](https://github.com/NobuData/ouroboros/is
 the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
 the workflow rail's statistics and registry [#135](https://github.com/NobuData/ouroboros/issues/135) ·
 the ticket-source SPI, registry and sync loop [#139](https://github.com/NobuData/ouroboros/issues/139) ·
+the PR gate engine and its providers [#358](https://github.com/NobuData/ouroboros/issues/358) ·
 the build farm's enrollment API and runner CA [#250](https://github.com/NobuData/ouroboros/issues/250) ·
 the runner installer, served from this deployment [#248](https://github.com/NobuData/ouroboros/issues/248) ·
 the farm schema it writes [#249](https://github.com/NobuData/ouroboros/issues/249) ·

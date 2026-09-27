@@ -69,9 +69,14 @@ describe("the ingestion module", () => {
   it("imports the database module, which is the answer to who may reach these tables", () => {
     // `DbModule` is deliberately non-global, so the import list is the answer to *who can
     // reach the run read-model* — the convention every module with a repository follows.
-    // `GuardrailsModule` is the other import, and it brings no connection of its own.
+    // `GuardrailsModule` is the other import, and it brings no connection of its own;
+    // `GatesModule` brings the gate engine's sink (#358), which a judged change-set notifies.
     const imports = Reflect.getMetadata("imports", IngestModule) as { name?: string }[];
 
-    expect(imports.map((imported) => imported.name)).toEqual(["DbModule", "GuardrailsModule"]);
+    expect(imports.map((imported) => imported.name)).toEqual([
+      "DbModule",
+      "GuardrailsModule",
+      "GatesModule",
+    ]);
   });
 });

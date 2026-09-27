@@ -20,6 +20,7 @@ describe("readPinnedPolicy", () => {
     const policy = readPinnedPolicy(STANDARD_FIX);
 
     expect(policy?.autoMerges).toBe(true);
+    expect(policy?.holdsOnChecks).toBe(true);
     expect([...(policy?.touchCi ?? [])]).toEqual([
       ["analyze", false],
       ["plan", false],
@@ -46,6 +47,20 @@ describe("readPinnedPolicy", () => {
 
     expect(readPinnedPolicy(document)?.autoMerges).toBe(false);
   });
+
+  it("sees no checks gate once the gate node holds on something else", () => {
+    const document = structuredClone(STANDARD_FIX) as {
+      nodes: { id: string; config: Record<string, unknown> }[];
+    };
+    const gate = document.nodes.find((node) => node.id === "checks-green");
+
+    if (gate !== undefined) {
+      gate.config = { kind: "gate", predicate: { kind: "always" } };
+    }
+
+    expect(gate).toBeDefined();
+    expect(readPinnedPolicy(document)?.holdsOnChecks).toBe(false);
+  });
 });
 
 describe("resolvePermissions", () => {
@@ -56,6 +71,7 @@ describe("resolvePermissions", () => {
       ["review", false],
     ]),
     autoMerges: true,
+    holdsOnChecks: true,
   };
 
   it("uses the most recently reported model stage", () => {
@@ -73,13 +89,19 @@ describe("resolvePermissions", () => {
   });
 
   it("allows CI only when every model stage does, if none has reported", () => {
-    const permissive: PinnedPolicy = { touchCi: new Map([["implement", true]]), autoMerges: true };
+    const permissive: PinnedPolicy = {
+      touchCi: new Map([["implement", true]]),
+      autoMerges: true,
+      holdsOnChecks: false,
+    };
 
     expect(resolvePermissions(permissive, [])).toEqual({ stageKey: "implement", touchCi: true });
   });
 
   it("is undefined for a document with no model stage", () => {
-    expect(resolvePermissions({ touchCi: new Map(), autoMerges: true }, [])).toBeUndefined();
+    expect(
+      resolvePermissions({ touchCi: new Map(), autoMerges: true, holdsOnChecks: false }, []),
+    ).toBeUndefined();
   });
 });
 
@@ -104,10 +126,12 @@ describe("countVoteRules", () => {
 describe("reviewPolicy and asQueueEffort", () => {
   it("is undefined when the pin could not be read", () => {
     expect(reviewPolicy(undefined, 2)).toBeUndefined();
-    expect(reviewPolicy({ touchCi: new Map(), autoMerges: true }, 2)).toEqual({
-      autoMerges: true,
-      voteRules: 2,
-    });
+    expect(reviewPolicy({ touchCi: new Map(), autoMerges: true, holdsOnChecks: false }, 2)).toEqual(
+      {
+        autoMerges: true,
+        voteRules: 2,
+      },
+    );
   });
 
   it("narrows the five sizes and nothing else", () => {

@@ -43,6 +43,7 @@ import { Logger } from "@nestjs/common";
 
 import { describeForLog } from "../../errors/failure";
 import type { Runner } from "../../db/schema";
+import type { GateEvidenceSink } from "../../pull-requests/gates/gate.evidence";
 import { SENT_BY, decode, encode, frame, type Envelope, type Frame } from "../protocol/protocol";
 import type { RefusePayload } from "../protocol/protocol.messages";
 import { uuidOf, wireId } from "../protocol/ulid";
@@ -65,6 +66,8 @@ export interface ConnectionContext {
   readonly metrics: GatewayMetrics;
   readonly policy: VersionPolicy;
   readonly now: GatewayClock;
+  /** The gate engine's sink, told when a job finishes (AX.2, #358); absent without the engine. */
+  readonly gates?: GateEvidenceSink;
 }
 
 /** The close codes this file uses. */
@@ -406,6 +409,15 @@ export class AgentConnection {
       frame("receipt", { of: envelope.id, of_type: "job.finish", duplicate: record.duplicate }),
       "receipt",
     );
+
+    // The job is finished and committed: the Build gate can read it. Not awaited — the receipt is
+    // owed now, and gate evaluation must never hold up the agent's frames. `notify` never rejects.
+    if (record.applied && record.jobId !== undefined) {
+      void this.context.gates?.notify(this.runner.organization_id, {
+        kind: "build_job_finished",
+        jobId: record.jobId,
+      });
+    }
 
     return record;
   }

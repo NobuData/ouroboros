@@ -1527,6 +1527,118 @@ export interface PrRevisionsTable {
 }
 
 /**
+ * `pr_gate_results.verdict` — what a gate decided on one revision (V056,
+ * [#353](https://github.com/NobuData/ouroboros/issues/353)).
+ *
+ * Six, not three: `waived` and `not_required` are policy (they satisfy the merge precondition but
+ * are not `green`), and `unavailable` — no provider exists yet — is never `pending`, which is a
+ * provider that exists and is evaluating.
+ */
+export type PrGateVerdict = "green" | "red" | "pending" | "waived" | "not_required" | "unavailable";
+
+/** The six, in the order `pr_gate_results_verdict` declares them. */
+export const PR_GATE_VERDICTS = [
+  "green",
+  "red",
+  "pending",
+  "waived",
+  "not_required",
+  "unavailable",
+] as const satisfies readonly PrGateVerdict[];
+
+/** The seven built-in `pr_gate_definitions.gate_key` values, in the card's order (V056). */
+export const BUILT_IN_GATE_KEYS = [
+  "build",
+  "test_suite",
+  "physical_hil",
+  "diff_vs_plan",
+  "secrets_license",
+  "model_review",
+  "human_approval",
+] as const;
+
+/** A built-in gate key. */
+export type BuiltInGateKey = (typeof BUILT_IN_GATE_KEYS)[number];
+
+/** `pr_gate_definitions.gate_key` — a built-in key, or `custom:<name>`. */
+export type PrGateKey = BuiltInGateKey | `custom:${string}`;
+
+/** `pr_gate_results.evidence_ref.kind` — `vote` and `approval` are reserved and refused until their tables land. */
+export type PrGateEvidenceKind =
+  "build_job" | "test_run" | "hil_measurement" | "guardrail_evaluation" | "vote" | "approval";
+
+/** `pr_gate_results.evidence_ref` — exactly `{kind, id}` (`pr_gate_evidence_ref_shaped`). */
+export interface PrGateEvidenceRef {
+  kind: PrGateEvidenceKind;
+  /** A lowercase uuid of a row in the PR's own workspace. */
+  id: string;
+}
+
+/**
+ * `ouroboros.pr_gate_definitions` — one gate a PR is held to (V056, decision **V2**), materialized
+ * from the pinned workflow policy and org config by the gate engine (AX.2,
+ * [#358](https://github.com/NobuData/ouroboros/issues/358)).
+ *
+ * `pr_id` and `gate_key` are frozen once written; `required`, `source`, `label` and `sort_order`
+ * may move. Never deleted — a definition takes its results with it.
+ */
+export interface PrGateDefinitionsTable {
+  id: Generated<string>;
+  pr_id: string;
+  gate_key: PrGateKey;
+  /** Provenance — `standard-fix@v14 pin`, `org config`. */
+  source: string;
+  /** Counts toward `pr_gate_aggregate`'s denominator. `default true`. */
+  required: Generated<boolean>;
+  /** The card's order. `default 0`. */
+  sort_order: Generated<number>;
+  /** The card's row title — Build, Test suite. */
+  label: string;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.pr_gate_results` — one evaluation of one gate on one revision (V056). **Append-only**
+ * by grant: a re-evaluation is a new row, unique by `(definition_id, revision_id, evaluated_at)`.
+ */
+export interface PrGateResultsTable {
+  id: Generated<string>;
+  definition_id: string;
+  revision_id: string;
+  verdict: PrGateVerdict;
+  /** The row's mono line — at most 512 characters, never blank. */
+  evidence: string | null;
+  /** The row the line was composed from, resolved in the PR's workspace at write. */
+  evidence_ref: ColumnType<PrGateEvidenceRef | null, PrGateEvidenceRef | null | undefined, never>;
+  evaluated_at: Generated<Date>;
+  /** Which provider build said so — `gate-build@1.0.0`. */
+  provider_version: string;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.pr_gate_results_latest` — the newest result per gate per revision (V056), with the
+ * definition's columns beside it. The card's read. Read-only.
+ */
+export interface PrGateResultsLatestView {
+  result_id: string;
+  pr_id: string;
+  revision_id: string;
+  definition_id: string;
+  gate_key: PrGateKey;
+  label: string;
+  required: boolean;
+  sort_order: number;
+  source: string;
+  verdict: PrGateVerdict;
+  evidence: string | null;
+  evidence_ref: PrGateEvidenceRef | null;
+  evaluated_at: Date;
+  provider_version: string;
+}
+
+/**
  * `guardrail_evaluations.check` — which of the card's four rows a verdict is (V048, decision
  * **R5**).
  *
@@ -4087,6 +4199,10 @@ export interface WorkspaceSettingsEffectiveView {
  * The percentage and delta are computed from `test_artifacts`' line counts; AT.1
  * ([#329](https://github.com/NobuData/ouroboros/issues/329)) reads it for the prior attempt.
  *
+ * **`pr_gate_results_latest` (V056, [#353](https://github.com/NobuData/ouroboros/issues/353)) is
+ * the tenth**: a `DISTINCT ON` over `pr_gate_results`, for `v_run_guardrails_latest`'s reason — a
+ * re-evaluation is a new row in `pr_gate_results`, never a rewrite.
+ *
  * `schema.spec.ts` holds this list to the view interfaces above; `db.integration-spec.ts`
  * compares their columns against `information_schema` exactly as it does a table's, because a
  * view that lost a column breaks a query the same way a table that lost one does.
@@ -4101,6 +4217,7 @@ export const READ_ONLY_VIEWS = [
   "run_events_jsonl",
   "v_run_guardrails_latest",
   "test_run_coverage",
+  "pr_gate_results_latest",
 ] as const;
 
 /**
@@ -4851,6 +4968,8 @@ export interface Database {
   run_commits: RunCommitsTable;
   pull_requests: PullRequestsTable;
   pr_revisions: PrRevisionsTable;
+  pr_gate_definitions: PrGateDefinitionsTable;
+  pr_gate_results: PrGateResultsTable;
   guardrail_evaluations: GuardrailEvaluationsTable;
   run_controls: RunControlsTable;
   run_ingest_receipts: RunIngestReceiptsTable;
@@ -4910,6 +5029,7 @@ export interface Database {
   run_events_jsonl: RunEventsJsonlView;
   v_run_guardrails_latest: RunGuardrailsLatestView;
   test_run_coverage: TestRunCoverageView;
+  pr_gate_results_latest: PrGateResultsLatestView;
 }
 
 /**
@@ -5095,6 +5215,28 @@ export const TABLE_COLUMNS = {
     "files",
     "diff_excerpt",
     "run_stage_id",
+    "created_at",
+  ],
+  pr_gate_definitions: [
+    "id",
+    "pr_id",
+    "gate_key",
+    "source",
+    "required",
+    "sort_order",
+    "label",
+    "created_at",
+    "updated_at",
+  ],
+  pr_gate_results: [
+    "id",
+    "definition_id",
+    "revision_id",
+    "verdict",
+    "evidence",
+    "evidence_ref",
+    "evaluated_at",
+    "provider_version",
     "created_at",
   ],
   guardrail_evaluations: [
@@ -5839,10 +5981,31 @@ export const TABLE_COLUMNS = {
     "previous_attempt_seq",
     "delta",
   ],
+  pr_gate_results_latest: [
+    "result_id",
+    "pr_id",
+    "revision_id",
+    "definition_id",
+    "gate_key",
+    "label",
+    "required",
+    "sort_order",
+    "source",
+    "verdict",
+    "evidence",
+    "evidence_ref",
+    "evaluated_at",
+    "provider_version",
+  ],
 } as const satisfies { [T in keyof Database]: readonly (keyof Database[T])[] };
 
 /** Every table name, for a caller that wants to iterate them. */
 export const TABLE_NAMES = Object.keys(TABLE_COLUMNS) as (keyof Database)[];
+
+/** A row of `ouroboros.pr_gate_definitions`, as a `select` returns it. */
+export type PrGateDefinition = Selectable<PrGateDefinitionsTable>;
+/** A row of `ouroboros.pr_gate_results`, as a `select` returns it. */
+export type PrGateResult = Selectable<PrGateResultsTable>;
 
 /** A row of `ouroboros.tenant_domains`, as a `select` returns it. */
 export type TenantDomain = Selectable<TenantDomainsTable>;

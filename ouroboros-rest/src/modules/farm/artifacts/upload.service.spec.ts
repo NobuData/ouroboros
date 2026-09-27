@@ -81,6 +81,7 @@ let usage: number;
 let closes: UploadClose[];
 let closeAnswer: "closed" | "raced";
 let parse: jest.Mock;
+let gates: { notify: jest.Mock };
 let repository: jest.Mocked<
   Pick<UploadRepository, "mint" | "ledger" | "usage" | "attempt" | "close">
 >;
@@ -107,6 +108,7 @@ beforeEach(async () => {
   closes = [];
   closeAnswer = "closed";
   parse = jest.fn().mockResolvedValue(REPORT);
+  gates = { notify: jest.fn().mockResolvedValue(undefined) };
 
   repository = {
     mint: jest.fn().mockResolvedValue(true),
@@ -134,6 +136,7 @@ beforeEach(async () => {
       },
     } as unknown as AppConfigService,
     () => NOW,
+    gates,
   );
 });
 
@@ -256,6 +259,19 @@ describe("accepting an upload", () => {
       },
     });
     expect(await storedObjects()).toHaveLength(4);
+  });
+
+  it("tells the gate engine the attempt is in, once, after the upload has closed", async () => {
+    await send(uploadBody(mockupFiles()));
+
+    expect(gates.notify).toHaveBeenCalledTimes(1);
+    expect(gates.notify).toHaveBeenCalledWith(ORG, {
+      kind: "test_run_parsed",
+      testRunId: TEST_RUN,
+    });
+    expect(gates.notify.mock.invocationCallOrder[0]).toBeGreaterThan(
+      repository.close.mock.invocationCallOrder[0],
+    );
   });
 
   it("does not parse an upload that carries no result file", async () => {
@@ -472,6 +488,7 @@ describe("accepting an upload", () => {
 
     expect(error.code).toBe(ARTIFACT_ERRORS.uploadClosed);
     expect(await storedObjects()).toEqual([]);
+    expect(gates.notify).not.toHaveBeenCalled();
   });
 
   it("removes what it wrote when the store fails, and reports the store's failure", async () => {

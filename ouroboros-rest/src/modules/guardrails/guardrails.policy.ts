@@ -8,6 +8,7 @@
  * ```
  * stage permissions   workflow_versions.definition → llm node → config.permissions   (WF-P.2, #133)
  * terminal policy     workflow_versions.definition → term nodes → config.action
+ * checks gate         workflow_versions.definition → flow gate nodes → config.predicate (checks)
  * vote rules          escalation_rules where "then" is add_vote, matched against the ticket
  * ```
  *
@@ -36,6 +37,13 @@ export interface PinnedPolicy {
   readonly touchCi: ReadonlyMap<string, boolean>;
   /** Whether any terminal is `open_pr_automerge`. */
   readonly autoMerges: boolean;
+  /**
+   * Whether any `gate` flow node holds on an `all_passed` `checks` predicate — the pin requiring
+   * its checks to pass before the PR terminal. The gate engine (AX.2, #358) makes the evidence
+   * gates required when it does. The predicate's `names` are CI check names (`build`, `test`),
+   * not PR gate keys, so they are not read here.
+   */
+  readonly holdsOnChecks: boolean;
 }
 
 /**
@@ -53,6 +61,7 @@ export function readPinnedPolicy(definition: unknown): PinnedPolicy | undefined 
 
   const touchCi = new Map<string, boolean>();
   let autoMerges = false;
+  let holdsOnChecks = false;
 
   for (const candidate of root.data.nodes) {
     const node = NodeShapeSchema.safeParse(candidate);
@@ -75,10 +84,30 @@ export function readPinnedPolicy(definition: unknown): PinnedPolicy | undefined 
       }
     } else if (type === "term" && config.action === "open_pr_automerge") {
       autoMerges = true;
+    } else if (type === "flow") {
+      holdsOnChecks ||= isChecksGate(config);
     }
   }
 
-  return { touchCi, autoMerges };
+  return { touchCi, autoMerges, holdsOnChecks };
+}
+
+/**
+ * Whether a flow node is a gate holding on its checks.
+ *
+ * @param config - The flow node's config, as stored.
+ * @returns `true` for `{kind: "gate", predicate: {kind: "checks", op: "all_passed"}}`.
+ */
+function isChecksGate(config: Record<string, unknown>): boolean {
+  const predicate = config.predicate as Record<string, unknown> | null | undefined;
+
+  return (
+    config.kind === "gate" &&
+    typeof predicate === "object" &&
+    predicate !== null &&
+    predicate.kind === "checks" &&
+    predicate.op === "all_passed"
+  );
 }
 
 /**
