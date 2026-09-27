@@ -22,10 +22,10 @@ describe("the composed evidence lines", () => {
     expect(
       measurementLine(
         {
-          metric: "overshoot",
+          metric: "overshoot_pct",
           value: "1.7",
           unit: "%",
-          limit_value: "2.0",
+          limit_value: "2",
           limit_kind: "max",
           context: "was 2.4% in build 3",
         },
@@ -45,11 +45,11 @@ describe("the composed evidence lines", () => {
     expect(testCaseLine({ name: "boot_ok", status: "failed" }, " ")).toBe("boot_ok · failed");
   });
 
-  it("writes units as V053's comparative does, and names a floor as a minimum", () => {
+  it("prints units as the gates card does, and names a floor as a minimum", () => {
     expect(
       measurementLine(
         {
-          metric: "boots",
+          metric: "recovered_boots",
           value: "3",
           unit: "count",
           limit_value: "3",
@@ -58,7 +58,20 @@ describe("the composed evidence lines", () => {
         },
         "slot-B fallback",
       ),
-    ).toBe("HIL boots 3 vs 3 minimum (slot-B fallback)");
+    ).toBe("HIL recovered boots 3 vs 3 minimum (slot-B fallback)");
+    expect(
+      measurementLine(
+        {
+          metric: "reboot_ms",
+          value: "412",
+          unit: "ms",
+          limit_value: "500.5",
+          limit_kind: "max",
+          context: null,
+        },
+        null,
+      ),
+    ).toBe("HIL reboot ms 412.0 ms vs 500.5 ms limit");
   });
 
   it("prints a one-line hunk as one line, and a path with no directory as itself", () => {

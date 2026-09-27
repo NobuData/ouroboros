@@ -26,6 +26,7 @@ import { GlobSet, widenToScope } from "../../guardrails/guardrails.glob";
 import { describeFinding, scanLicenses } from "./gate.license";
 import { SPDX_LIST_VERSION } from "./gate.spdx";
 import type { GateOutcome, GateProvider, HilFact } from "./gate.types";
+import { figureWithUnit, metricLabel, sharedScale } from "../hil.format";
 
 /** The provider build every built-in gate reports. Bump when a verdict rule or a line changes. */
 export const GATE_PROVIDER_RELEASE = "1.0.0";
@@ -245,35 +246,6 @@ function reported(facts: readonly HilFact[]): HilFact {
 }
 
 /**
- * Digits after the point in a `numeric` rendered as text.
- *
- * @param value - `2.40`, `2`.
- * @returns `2`, `0`.
- */
-function decimals(value: string): number {
-  const point = value.indexOf(".");
-
-  return point === -1 ? 0 : value.length - point - 1;
-}
-
-/**
- * A `numeric` padded with trailing zeros to a scale — `2` at 1 is `2.0`. Never rounds.
- *
- * @param value - The digits.
- * @param scale - Digits wanted after the point; never fewer than the value has.
- * @returns The padded digits.
- */
-function atScale(value: string, scale: number): string {
-  const missing = scale - decimals(value);
-
-  if (missing <= 0) {
-    return value;
-  }
-
-  return `${value}${decimals(value) === 0 ? "." : ""}${"0".repeat(missing)}`;
-}
-
-/**
  * One measurement as the gate's line — `overshoot 1.7% ≤ 2.0% · rig helios-rig-02`.
  *
  * The value and the limit are written at the same scale, so a limit a parser stored as `2` reads
@@ -284,17 +256,9 @@ function atScale(value: string, scale: number): string {
  *   comparison `hil_verdict()` chose, and where it was measured.
  */
 export function measurementLine(fact: HilFact): string {
-  const metric = fact.metric.replace(/_(pct|percent)$/, "").replace(/_/g, " ");
-  const scale = Math.max(decimals(fact.value), decimals(fact.limitValue));
-  const withUnit = (value: string): string => {
-    const figure = atScale(value, scale);
-
-    return fact.unit === "%"
-      ? `${figure}%`
-      : fact.unit === "count"
-        ? figure
-        : `${figure} ${fact.unit}`;
-  };
+  const metric = metricLabel(fact.metric);
+  const scale = sharedScale(fact.value, fact.limitValue);
+  const withUnit = (value: string): string => figureWithUnit(value, fact.unit, scale);
   const pass = fact.verdict === "pass";
   const sign = fact.limitKind === "max" ? (pass ? "≤" : ">") : pass ? "≥" : "<";
   const rig = /^rig:(.+)$/.exec(fact.platform);

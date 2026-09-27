@@ -22,6 +22,7 @@
  */
 
 import type { HilLimitKind, TestCaseStatus } from "../../db/schema";
+import { figureWithUnit, metricLabel, sharedScale } from "../hil.format";
 
 /** `pr_criteria_evidence_display_text_bounded` — at most 512 characters. */
 export const MAX_DISPLAY_TEXT = 512;
@@ -67,19 +68,21 @@ export function testCaseLine(testCase: CaseForDisplay, note: string | null): str
 /**
  * A HIL measurement's line: the metric, the value against its limit, and V053's comparative.
  *
- * The unit is written the way V053 writes the comparative — glued to the number, and absent for a
- * `count` — so the two halves of the line read alike.
+ * Figures are printed as the gate card prints them (`../hil.format.ts`): the metric without its
+ * unit suffix, value and limit at one scale — a limit the parser stored as `2` reads `2.0` beside a
+ * `1.7` — so the matrix and the gates card agree about one measurement.
  *
  * @param measurement - The measurement the reference resolved to.
  * @param note - The caller's qualifier, or null. Printed after the comparative.
  * @returns `HIL overshoot 1.7% vs 2.0% limit (was 2.4% in build 3)`.
  */
 export function measurementLine(measurement: MeasurementForDisplay, note: string | null): string {
-  const unit = measurement.unit === "count" ? "" : measurement.unit;
+  const scale = sharedScale(measurement.value, measurement.limit_value);
+  const figure = (value: string): string => figureWithUnit(value, measurement.unit, scale);
   const bound = measurement.limit_kind === "max" ? "limit" : "minimum";
   const base =
-    `HIL ${measurement.metric} ${measurement.value}${unit} ` +
-    `vs ${measurement.limit_value}${unit} ${bound}`;
+    `HIL ${metricLabel(measurement.metric)} ${figure(measurement.value)} ` +
+    `vs ${figure(measurement.limit_value)} ${bound}`;
 
   return qualified(qualified(base, measurement.context), note);
 }
