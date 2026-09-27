@@ -47,6 +47,13 @@ export interface S3StoreOptions extends SigningCredentials {
   readonly now?: () => Date;
 }
 
+/** A body to stream with a request, its exact size and any extra headers. */
+interface Upload {
+  readonly body: Readable;
+  readonly sizeBytes: number;
+  readonly headers: Record<string, string>;
+}
+
 /** An S3 response, read whole. */
 interface S3Response {
   readonly status: number;
@@ -86,6 +93,19 @@ export class S3ArtifactStore implements ArtifactStore {
   }
 
   /** @inheritdoc */
+  async open(key: ArtifactKey): Promise<Readable> {
+    const incoming = await this.exchange("GET", key);
+    const status = incoming.statusCode ?? 0;
+
+    if (status === 200) return incoming;
+
+    // Anything else carries a small error document, not the object: read it for the code.
+    const response = { status, body: await collect(incoming) };
+    if (status === 404) throw new ArtifactNotFoundError(key);
+    throw this.failure("opened", key, response);
+  }
+
+  /** @inheritdoc */
   async delete(key: ArtifactKey): Promise<void> {
     const response = await this.send("DELETE", key);
 
@@ -120,8 +140,28 @@ export class S3ArtifactStore implements ArtifactStore {
   private async send(
     method: string,
     key: ArtifactKey | undefined,
-    upload?: { body: Readable; sizeBytes: number; headers: Record<string, string> },
+    upload?: Upload,
   ): Promise<S3Response> {
+    const incoming = await this.exchange(method, key, upload);
+
+    return { status: incoming.statusCode ?? 0, body: await collect(incoming) };
+  }
+
+  /**
+   * Sign and send one request, and answer with its response unread — the head has arrived, the
+   * body is still streaming.
+   *
+   * @param method - The verb.
+   * @param key - The object, or undefined for the bucket itself.
+   * @param upload - A body to stream, its size and any extra headers.
+   * @returns The response, for the caller to consume.
+   * @throws {ArtifactStoreError} When the request cannot be made or times out.
+   */
+  private async exchange(
+    method: string,
+    key: ArtifactKey | undefined,
+    upload?: Upload,
+  ): Promise<IncomingMessage> {
     if (key !== undefined && !isArtifactKey(key)) {
       throw new ArtifactStoreError(`${JSON.stringify(key)} is not an artifact key`);
     }
@@ -141,7 +181,7 @@ export class S3ArtifactStore implements ArtifactStore {
 
     const send = this.endpoint.protocol === "https:" ? httpsRequest : httpRequest;
 
-    return new Promise<S3Response>((resolve, reject) => {
+    return new Promise<IncomingMessage>((resolve, reject) => {
       const outgoing = send(
         {
           method,
@@ -152,14 +192,7 @@ export class S3ArtifactStore implements ArtifactStore {
           headers,
           timeout: S3_REQUEST_TIMEOUT_MS,
         },
-        (incoming: IncomingMessage) => {
-          const chunks: Buffer[] = [];
-          incoming.on("data", (chunk: Buffer) => chunks.push(chunk));
-          incoming.on("end", () => {
-            resolve({ status: incoming.statusCode ?? 0, body: Buffer.concat(chunks) });
-          });
-          incoming.on("error", reject);
-        },
+        resolve,
       );
 
       outgoing.on("timeout", () => {
@@ -205,4 +238,23 @@ export class S3ArtifactStore implements ArtifactStore {
       `the artifact at ${key} could not be ${verb}: HTTP ${response.status}${code ? ` ${code}` : ""}`,
     );
   }
+}
+
+/**
+ * Read a response body whole.
+ *
+ * @param incoming - The response.
+ * @returns Its bytes.
+ * @throws {ArtifactStoreError} When the connection fails part-way.
+ */
+async function collect(incoming: IncomingMessage): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+
+  try {
+    for await (const chunk of incoming) chunks.push(chunk as Buffer);
+  } catch (error) {
+    throw new ArtifactStoreError("the object store's answer was cut off", { cause: error });
+  }
+
+  return Buffer.concat(chunks);
 }

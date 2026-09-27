@@ -500,6 +500,7 @@ describe("accepting an upload", () => {
           ? Promise.reject(new ArtifactStoreError("the disk is full"))
           : store.put(key, body, size),
       get: (key) => store.get(key),
+      open: (key) => store.open(key),
       delete: (key) => store.delete(key),
     };
     service = new ArtifactUploadService(

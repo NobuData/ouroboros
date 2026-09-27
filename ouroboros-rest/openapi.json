@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.37.9",
+    "version": "0.37.10",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -97,6 +97,10 @@
     {
       "name": "flakes",
       "description": "**Flake state** — retry truth plus history (mockup 11's Flaky stat, issue\n[#331](https://github.com/NobuData/ouroboros/issues/331), option **4-A**, decision **T5**).\nA sanctioned pass on retry is a fact the parser records per case per attempt; flake score v1\n(V054) weighs those facts over a case's recent occurrences and moves it between `healthy` and\n`watching`. `quarantined` is storable and never written in the MVP — its activation is AV.3's\n(#345). A nightly pass re-scores what parsing never revisits and records a bookkeeping row."
+    },
+    {
+      "name": "test-results",
+      "description": "**The Test Results page's reads** (mockup 11, issue\n[#333](https://github.com/NobuData/ouroboros/issues/333)): the attempts timeline with each\nattempt's computed strip and decision **T8**'s next step, one attempt's page payload, a\ncase's failure detail, and artifact downloads streamed through the store — text inline,\neverything else as an attachment, an expired file a tombstone rather than a gap."
     },
     {
       "name": "pr-criteria",
@@ -17581,6 +17585,384 @@
         }
       }
     },
+    "/api/v1/runs/{id}/test-runs": {
+      "get": {
+        "tags": [
+          "test-results"
+        ],
+        "summary": "The Test Results page's attempts timeline, strips and next step",
+        "description": "Every build attempt of the run, oldest first, each with its **strip** — the five stat\ncards — and the dashed **Next** card's projection\n([#333](https://github.com/NobuData/ouroboros/issues/333), AT.5).\n\n**The page renders what it is told.** The totals, the suite count, the failed and flaky\ncases the captions name, the wall-time split and the passed delta are all computed here,\nso a second surface drawing the same attempt cannot drift from the first.\n\n**`passedDelta` is measured since the count last moved**: against the most recent\nearlier attempt that reported cases and passed a different number of them, which it\nnames in `versusAttemptSeq`. A re-run of the failed set that carries the previous\nattempt's passes forward is therefore compared with the attempt before it, and a label\nnever names a build the number is not from. Null when the count has never moved.\n\n**`next.activation` is decision T8's state**: `gate_armed` when the run's PR carries a\nrequired `test_suite` gate (evaluated by the gate engine on every revision),\n`intent_stored` when *Block PR until green* is on but no PR carries the gate yet, `none`\notherwise — so the card can say *gated on 63/63* only when something holds.\n\nEvery member of the workspace may read it; another workspace's run is `404`.",
+        "operationId": "getRunTestRuns",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The timeline.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestRunTimeline"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`run_not_found` — no run with that id, **or none this caller may know about**. Or\n`tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}": {
+      "get": {
+        "tags": [
+          "test-results"
+        ],
+        "summary": "One attempt's page payload",
+        "description": "Everything the Test Results page shows of one build attempt\n([#333](https://github.com/NobuData/ouroboros/issues/333), AT.5): its strip, the parser's\nwarnings, the suites with their platform tags, counts and cases (retry outcomes and flake\nstate included), the rig card's HIL measurements with limits and comparatives, the\ncurrent classifications with their routing receipts, the artifacts and the coverage\nsummary.\n\n**Coverage's `delta` is absent, not zero, when there is no earlier attempt with\ncoverage.** **An expired artifact is listed**, `state: expired` with no `href` — the\nretention sweep leaves a tombstone, and a list that silently shortened would teach people\nthe product loses things. No artifact carries a storage path, key or driver.\n\nEvery member of the workspace may read it; another workspace's attempt is `404`.",
+        "operationId": "getTestRun",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TestRunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestRunPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`test_run_not_found` — no test run with that id, **or none this caller may know\nabout**. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/test-runs/{id}/cases/{caseId}/failure": {
+      "get": {
+        "tags": [
+          "test-results"
+        ],
+        "summary": "One failing case's failure detail",
+        "description": "The failure detail card ([#333](https://github.com/NobuData/ouroboros/issues/333), AT.5):\nthe assertion message, the log excerpt the parser kept and the test's path. A case that\npassed or was skipped has none and is `404 test_case_failure_not_found`.",
+        "operationId": "getTestCaseFailure",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/TestRunId"
+          },
+          {
+            "$ref": "#/components/parameters/TestCaseId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The failure payload.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestCaseFailureDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`test_run_not_found` — no such test run this caller may know about.\n`test_case_not_found` — no such case in this test run. `test_case_failure_not_found` —\nthe case did not fail, so there is no detail. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/artifacts/{id}": {
+      "get": {
+        "tags": [
+          "test-results"
+        ],
+        "summary": "An artifact's file, streamed through the artifact store",
+        "description": "The artifacts card's **open ↗** ([#333](https://github.com/NobuData/ouroboros/issues/333),\nAT.5). The bytes stream **through the configured store** — the local volume or S3 — so\nwhich one holds them is invisible here, and no storage path, key or driver name is ever\nin the answer.\n\n**Text kinds preview inline; everything else downloads.** A `junit`, `hil`, `coverage` or\n`log` artifact whose name is a text type (`.xml`, `.json`, `.log`, `.txt`, `.info`, …) is\n`Content-Disposition: inline`; a `capture` (a 2.1 MB rig CSV) or `other` is `attachment`.\nThe type comes from the name, and an unknown one is `application/octet-stream`.\n\n**The bytes are the runner's**, so every answer carries `X-Content-Type-Options: nosniff`\nand `Content-Security-Policy: sandbox; default-src 'none'` — a file that contains markup\ncan neither be sniffed into HTML nor run script on this origin.\n\nAn artifact the retention sweep removed is `410 artifact_expired`: its row is a tombstone\nand the page still lists it. Every member may download; another workspace's artifact is\n`404`, answered before a byte is sent.",
+        "operationId": "downloadArtifact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/ArtifactId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "headers": {
+              "Content-Type": {
+                "description": "From the name — `application/xml`, `text/plain; charset=utf-8`, `text/csv; charset=utf-8`, … or `application/octet-stream`.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "application/xml"
+              },
+              "Content-Disposition": {
+                "description": "`inline` for a previewable text artifact, `attachment` otherwise, with an ASCII\n`filename` and the exact name as RFC 5987's `filename*`.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "inline; filename=\"junit-build3.xml\"; filename*=UTF-8''junit-build3.xml"
+              },
+              "Content-Length": {
+                "description": "The uploaded size, in bytes.",
+                "schema": {
+                  "type": "integer"
+                },
+                "example": 48213
+              },
+              "X-Content-Type-Options": {
+                "description": "Always `nosniff`.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "nosniff"
+              },
+              "Content-Security-Policy": {
+                "description": "Always `sandbox; default-src 'none'`.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "sandbox; default-src 'none'"
+              },
+              "Cache-Control": {
+                "description": "`private, no-cache` — one workspace's file, which no shared cache may store.",
+                "schema": {
+                  "type": "string"
+                },
+                "example": "private, no-cache"
+              }
+            },
+            "content": {
+              "application/octet-stream": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`artifact_not_found` — no artifact with that id, **or none this caller may know\nabout**. `artifact_content_unavailable` — the artifact is live but the configured\nstore does not hold its file. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "410": {
+            "description": "`artifact_expired` — the retention sweep removed the file; `details.expiredAt` says\nwhen.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed before the file began. A failure after\nthe first byte ends the stream early instead, since the status has already been sent.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/test-runs/{id}/hints": {
       "get": {
         "tags": [
@@ -20130,6 +20512,17 @@
           "format": "uuid"
         },
         "example": "5eed0035-0000-4000-8000-000000000001"
+      },
+      "ArtifactId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "The artifact — `test_artifacts.id`, one file an attempt uploaded (V055). Anything that is\nnot a uuid is a `422` naming the field, before anything is read.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed0038-0000-4000-8000-000000048231"
       },
       "RunId": {
         "name": "id",
@@ -22757,6 +23150,1188 @@
           },
           "routing": {
             "$ref": "#/components/schemas/TriageRouting"
+          }
+        }
+      },
+      "TestCounts": {
+        "type": "object",
+        "title": "TestCounts",
+        "description": "A suite's counts, recounted from its cases (V051). `failed` includes `error`.",
+        "additionalProperties": false,
+        "required": [
+          "total",
+          "passed",
+          "failed",
+          "flaky",
+          "skipped"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "passed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "flaky": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "PassedDelta": {
+        "type": "object",
+        "title": "PassedDelta",
+        "description": "`▲ 12 vs build 1` — passed now minus passed then, against the most recent earlier attempt\nthat reported cases and passed a different number of them. Never zero.",
+        "additionalProperties": false,
+        "required": [
+          "value",
+          "versusAttemptSeq",
+          "versusTestRunId"
+        ],
+        "properties": {
+          "value": {
+            "type": "integer"
+          },
+          "versusAttemptSeq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "versusTestRunId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "StripCase": {
+        "type": "object",
+        "title": "StripCase",
+        "description": "A failing case the *Failed* stat's caption names — `motor overshoot · HIL`.",
+        "additionalProperties": false,
+        "required": [
+          "caseId",
+          "name",
+          "suite",
+          "physical"
+        ],
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "suite": {
+            "type": "string"
+          },
+          "physical": {
+            "type": "boolean",
+            "description": "It ran on a rig."
+          }
+        }
+      },
+      "StripFlakyCase": {
+        "type": "object",
+        "title": "StripFlakyCase",
+        "description": "A flaky case the *Flaky* stat's caption names — `passed on retry 2/3 · watching`.",
+        "additionalProperties": false,
+        "required": [
+          "caseId",
+          "name",
+          "suite",
+          "physical",
+          "passedOnRetry",
+          "attempts",
+          "flakeState"
+        ],
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "suite": {
+            "type": "string"
+          },
+          "physical": {
+            "type": "boolean"
+          },
+          "passedOnRetry": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The retry it passed on — the `2` of `2/3`."
+          },
+          "attempts": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Every attempt it took — the `3` of `2/3`."
+          },
+          "flakeState": {
+            "description": "Its flake score's state; null when it has never been scored.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/FlakeState"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "WallTime": {
+        "type": "object",
+        "title": "WallTime",
+        "description": "The wall-time split — `6m 12s · 4m sim · 2m 12s physical`. `wallMs = simMs + physicalMs`.",
+        "additionalProperties": false,
+        "required": [
+          "wallMs",
+          "simMs",
+          "physicalMs"
+        ],
+        "properties": {
+          "wallMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "simMs": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "physicalMs": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "TestStrip": {
+        "type": "object",
+        "title": "TestStrip",
+        "description": "The five stat cards of one attempt, computed by the service.",
+        "additionalProperties": false,
+        "required": [
+          "total",
+          "suiteCount",
+          "passed",
+          "passedDelta",
+          "failed",
+          "failedCases",
+          "flaky",
+          "flakyCases",
+          "skipped",
+          "wallTime"
+        ],
+        "properties": {
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "suiteCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The suites the total spans — `across 5 suites`."
+          },
+          "passed": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "passedDelta": {
+            "description": "Null when the count has not moved since the first report.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PassedDelta"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Cases that failed or errored."
+          },
+          "failedCases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StripCase"
+            }
+          },
+          "flaky": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "flakyCases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/StripFlakyCase"
+            }
+          },
+          "skipped": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "wallTime": {
+            "description": "Null until the attempt reports a duration.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/WallTime"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TestAttemptBuild": {
+        "type": "object",
+        "title": "TestAttemptBuild",
+        "description": "The farm build that produced an attempt.",
+        "additionalProperties": false,
+        "required": [
+          "jobId",
+          "number",
+          "runner"
+        ],
+        "properties": {
+          "jobId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "The job's number — `#479`."
+          },
+          "runner": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The runner that held it — `forge-01`."
+          }
+        }
+      },
+      "TestAttempt": {
+        "type": "object",
+        "title": "TestAttempt",
+        "description": "One build attempt — *Build 1 · 2 · 3* — with its strip.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "attemptSeq",
+          "status",
+          "commitSha",
+          "startedAt",
+          "selection",
+          "build",
+          "rigs",
+          "strip"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "attemptSeq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "complete",
+              "error"
+            ]
+          },
+          "commitSha": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "selection": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "failed",
+              "full",
+              null
+            ],
+            "description": "`failed` for a *re-run of the failed set*, `full` for a full re-run, null for an\nordinary build."
+          },
+          "build": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TestAttemptBuild"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rigs": {
+            "type": "array",
+            "description": "The rigs its physical suites ran on — `helios-rig-02`.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "strip": {
+            "$ref": "#/components/schemas/TestStrip"
+          }
+        }
+      },
+      "TestTimelineRun": {
+        "type": "object",
+        "title": "TestTimelineRun",
+        "description": "The run a timeline belongs to — `branch loop/482-canbus-flake · loop",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "issueNumber",
+          "issueTitle",
+          "loopSeq",
+          "branch",
+          "workflowTag",
+          "workflowVersionPin",
+          "startedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "issueNumber": {
+            "type": "integer"
+          },
+          "issueTitle": {
+            "type": "string"
+          },
+          "loopSeq": {
+            "type": "integer"
+          },
+          "branch": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "workflowTag": {
+            "type": "string"
+          },
+          "workflowVersionPin": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "TestNextStep": {
+        "type": "object",
+        "title": "TestNextStep",
+        "description": "The dashed *Next* card — decision **T8**'s projection from the stored intents, with its\nactivation state so the card can tell *gate armed* from *intent stored*.",
+        "additionalProperties": false,
+        "required": [
+          "action",
+          "pullRequest",
+          "gatedOn",
+          "activation",
+          "intents",
+          "gate"
+        ],
+        "properties": {
+          "action": {
+            "type": "string",
+            "enum": [
+              "publish_to_pr"
+            ]
+          },
+          "pullRequest": {
+            "description": "The run's PR — `#514` — or null before it has opened one.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "number",
+                  "url"
+                ],
+                "properties": {
+                  "number": {
+                    "type": "integer"
+                  },
+                  "url": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gatedOn": {
+            "description": "`gated on 63/63` — every case of the latest attempt; null before any attempt.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "passed",
+                  "total"
+                ],
+                "properties": {
+                  "passed": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "total": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "activation": {
+            "type": "string",
+            "enum": [
+              "gate_armed",
+              "intent_stored",
+              "none"
+            ],
+            "description": "`gate_armed` — the PR carries a required `test_suite` gate. `intent_stored` — *Block PR\nuntil green* is on and nothing holds the PR yet. `none` — neither."
+          },
+          "intents": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "blockUntilGreen",
+              "autoRerunPhysical"
+            ],
+            "properties": {
+              "blockUntilGreen": {
+                "type": "boolean"
+              },
+              "autoRerunPhysical": {
+                "type": "boolean"
+              }
+            }
+          },
+          "gate": {
+            "description": "The PR's `test_suite` gate definition, when it has one.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "required",
+                  "source"
+                ],
+                "properties": {
+                  "required": {
+                    "type": "boolean"
+                  },
+                  "source": {
+                    "type": "string",
+                    "description": "Provenance — `standard-fix@v14 pin`."
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TestRunTimeline": {
+        "type": "object",
+        "title": "TestRunTimeline",
+        "additionalProperties": false,
+        "required": [
+          "run",
+          "attempts",
+          "latestTestRunId",
+          "next"
+        ],
+        "properties": {
+          "run": {
+            "$ref": "#/components/schemas/TestTimelineRun"
+          },
+          "attempts": {
+            "type": "array",
+            "description": "Oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/TestAttempt"
+            }
+          },
+          "latestTestRunId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The newest attempt — the page's default. Null before any."
+          },
+          "next": {
+            "$ref": "#/components/schemas/TestNextStep"
+          }
+        }
+      },
+      "TestParseWarning": {
+        "type": "object",
+        "title": "TestParseWarning",
+        "description": "Something the parser could not read and did not refuse the report over (#329).",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "file",
+          "message"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "enum": [
+              "format_unrecognized",
+              "xml_truncated",
+              "xml_malformed",
+              "junit_platform_missing",
+              "hil_json_malformed",
+              "hil_schema_version_unknown",
+              "hil_schema_invalid",
+              "hil_measurement_incomplete",
+              "coverage_unreadable"
+            ]
+          },
+          "file": {
+            "type": "string",
+            "description": "The manifest name of the file it is about."
+          },
+          "message": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "description": "Where in the file — `line 212`, `/suites/0/cases/1` — when the format says."
+          }
+        }
+      },
+      "TestCaseFlake": {
+        "type": "object",
+        "title": "TestCaseFlake",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "score",
+          "windowRuns",
+          "formulaVersion"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/FlakeState"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "windowRuns": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "formulaVersion": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "TestCaseResult": {
+        "type": "object",
+        "title": "TestCaseResult",
+        "description": "One case, with its retries. Its failure payload is its own route.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "caseKey",
+          "name",
+          "classname",
+          "status",
+          "retries",
+          "retryOutcomes",
+          "durationMs",
+          "hasFailure",
+          "flake"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caseKey": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "classname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "flaky",
+              "skipped",
+              "error"
+            ]
+          },
+          "retries": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "retryOutcomes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "passed",
+                "failed",
+                "error",
+                "skipped"
+              ]
+            }
+          },
+          "durationMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "hasFailure": {
+            "type": "boolean",
+            "description": "Whether `…/cases/{caseId}/failure` has something to answer."
+          },
+          "flake": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TestCaseFlake"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TestSuiteResult": {
+        "type": "object",
+        "title": "TestSuiteResult",
+        "description": "One suite on one platform — a row of the suites card.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "platform",
+          "kind",
+          "resultsFormat",
+          "rig",
+          "bench",
+          "counts",
+          "cases"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string",
+            "description": "The platform tag — `native_sim`, `qemu_cortex_m3`, `rig:helios-rig-02`."
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "sim",
+              "physical"
+            ]
+          },
+          "resultsFormat": {
+            "type": "string",
+            "enum": [
+              "junit",
+              "hil"
+            ]
+          },
+          "rig": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The rig's name for a physical suite."
+          },
+          "bench": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The rig's bench — `CAN bus + motor + power-cycler`."
+          },
+          "counts": {
+            "$ref": "#/components/schemas/TestCounts"
+          },
+          "cases": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TestCaseResult"
+            }
+          }
+        }
+      },
+      "HilMeasurementResult": {
+        "type": "object",
+        "title": "HilMeasurementResult",
+        "additionalProperties": false,
+        "required": [
+          "metric",
+          "value",
+          "unit",
+          "limit",
+          "limitKind",
+          "verdict",
+          "comparative",
+          "trials"
+        ],
+        "properties": {
+          "metric": {
+            "type": "string"
+          },
+          "value": {
+            "type": "number",
+            "description": "The worst trial's value — `2.4`."
+          },
+          "unit": {
+            "type": "string"
+          },
+          "limit": {
+            "type": "number"
+          },
+          "limitKind": {
+            "type": "string",
+            "enum": [
+              "max",
+              "min"
+            ]
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "pass",
+              "fail"
+            ]
+          },
+          "comparative": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`was 37 in build 1`, composed by the database; null when nothing changed."
+          },
+          "trials": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "PhysicalCaseResult": {
+        "type": "object",
+        "title": "PhysicalCaseResult",
+        "description": "One measured case — a row of the rig card.",
+        "additionalProperties": false,
+        "required": [
+          "caseId",
+          "name",
+          "classname",
+          "suiteId",
+          "status",
+          "procedure",
+          "measurements"
+        ],
+        "properties": {
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "classname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suiteId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "flaky",
+              "skipped",
+              "error"
+            ]
+          },
+          "procedure": {
+            "type": "string"
+          },
+          "measurements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HilMeasurementResult"
+            }
+          }
+        }
+      },
+      "TestCoverage": {
+        "type": "object",
+        "title": "TestCoverage",
+        "description": "`87.4% (+0.6%)`. `delta` and `versusAttemptSeq` are **absent**, not zero, when no earlier\nattempt has coverage.",
+        "additionalProperties": false,
+        "required": [
+          "percent",
+          "linesCovered",
+          "linesTotal"
+        ],
+        "properties": {
+          "percent": {
+            "type": "number"
+          },
+          "linesCovered": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "linesTotal": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "delta": {
+            "type": "number",
+            "description": "Percentage points."
+          },
+          "versusAttemptSeq": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "TestArtifact": {
+        "type": "object",
+        "title": "TestArtifact",
+        "description": "One artifact — a live file, or the tombstone the retention sweep left. Never a storage\npath, key or driver.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "sizeBytes",
+          "checksum",
+          "createdAt",
+          "retainedUntil",
+          "retentionDays",
+          "state",
+          "expiredAt",
+          "truncated",
+          "truncationNote",
+          "preview",
+          "href",
+          "coverage"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "junit",
+              "hil",
+              "coverage",
+              "log",
+              "capture",
+              "other"
+            ]
+          },
+          "sizeBytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "checksum": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "retainedUntil": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "retentionDays": {
+            "type": "integer",
+            "description": "`retained 30d`."
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "available",
+              "expired"
+            ]
+          },
+          "expiredAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "truncated": {
+            "type": "boolean"
+          },
+          "truncationNote": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "preview": {
+            "type": "string",
+            "enum": [
+              "inline",
+              "download"
+            ],
+            "description": "`inline` opens in the browser; `download` is saved."
+          },
+          "href": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The download route; null once expired."
+          },
+          "coverage": {
+            "description": "The attempt's coverage, on a `coverage` artifact.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TestCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TestRunPage": {
+        "type": "object",
+        "title": "TestRunPage",
+        "additionalProperties": false,
+        "required": [
+          "runId",
+          "testRun",
+          "parseWarnings",
+          "suites",
+          "physical",
+          "classifications",
+          "artifacts",
+          "coverage"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testRun": {
+            "$ref": "#/components/schemas/TestAttempt"
+          },
+          "parseWarnings": {
+            "type": "array",
+            "description": "The page's banner. Empty when the parser read everything.",
+            "items": {
+              "$ref": "#/components/schemas/TestParseWarning"
+            }
+          },
+          "suites": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TestSuiteResult"
+            }
+          },
+          "physical": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PhysicalCaseResult"
+            }
+          },
+          "classifications": {
+            "type": "array",
+            "description": "Each classified case's current decision, with its routing receipt.",
+            "items": {
+              "$ref": "#/components/schemas/Classification"
+            }
+          },
+          "artifacts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TestArtifact"
+            }
+          },
+          "coverage": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/TestCoverage"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "TestCaseFailureDetail": {
+        "type": "object",
+        "title": "TestCaseFailureDetail",
+        "additionalProperties": false,
+        "required": [
+          "testRunId",
+          "caseId",
+          "caseKey",
+          "name",
+          "classname",
+          "suite",
+          "platform",
+          "status",
+          "retryOutcomes",
+          "message",
+          "logExcerpt",
+          "path"
+        ],
+        "properties": {
+          "testRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caseId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "caseKey": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          },
+          "name": {
+            "type": "string"
+          },
+          "classname": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "suite": {
+            "type": "string"
+          },
+          "platform": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "passed",
+              "failed",
+              "flaky",
+              "skipped",
+              "error"
+            ]
+          },
+          "retryOutcomes": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "passed",
+                "failed",
+                "error",
+                "skipped"
+              ]
+            }
+          },
+          "message": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "logExcerpt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`tests/hil/test_estop_release.py`."
           }
         }
       },

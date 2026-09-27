@@ -41,6 +41,7 @@ import { PullRequestsModule } from "../pull-requests/pull-requests.module";
 import { TestResultsModule } from "../test-results/test-results.module";
 import { FlakesModule } from "../flakes/flakes.module";
 import { TriageModule } from "../triage/triage.module";
+import { TestResultsReadModule } from "../test-results-read/results.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { AppController } from "./app.controller";
@@ -448,6 +449,12 @@ export class AppModule {
         // its correction round and re-runs compose over. Ordinary member routes behind the
         // session and tenant guards; waiving is `admin` and above.
         TriageModule,
+        // AT.5 ([#333](https://github.com/NobuData/ouroboros/issues/333)) — the Test Results
+        // page's reads (`/api/v1/runs/:id/test-runs`, `/api/v1/test-runs/:id`, its failure detail)
+        // and `GET /api/v1/artifacts/:id`, streamed through the store, plus the hourly retention
+        // sweep. After `FarmArtifactsModule`, whose store it reads and sweeps. Ordinary member
+        // reads behind the session and tenant guards.
+        TestResultsReadModule,
       ],
     };
   }

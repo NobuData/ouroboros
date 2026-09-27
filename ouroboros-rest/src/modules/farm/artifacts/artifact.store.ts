@@ -50,6 +50,17 @@ export interface ArtifactStore {
    */
   get(key: ArtifactKey): Promise<Buffer>;
   /**
+   * Open an object for streaming (#333): what a download pipes to its response, so a 2.1 MB rig
+   * capture is never held in memory whole. The promise settles only once the driver knows the
+   * object is there, so a caller can still answer with an error before it sends any header.
+   *
+   * @param key - Where.
+   * @returns Its bytes, as a stream the caller must consume or destroy.
+   * @throws {ArtifactNotFoundError} If there is no object at the key.
+   * @throws {ArtifactStoreError} If the key is not a key, or the read could not start.
+   */
+  open(key: ArtifactKey): Promise<Readable>;
+  /**
    * Remove an object. Removing one that is not there is not an error: cleanup after a failed
    * upload runs whether or not each write got as far as landing.
    *
