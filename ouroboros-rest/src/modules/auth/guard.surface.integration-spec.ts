@@ -82,6 +82,9 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `POST /api/v1/test-runs/:id/cases/:caseId/classify` (#332). A well-formed uuid, so the
   // guard's answer — not the pipe's 422 — is what this suite observes.
   caseId: "5eed0035-0000-4000-8000-000000000001",
+  // `GET /api/v1/flakes/cases/:caseKey` (#331). 64 lowercase hex digits — V051's case key shape —
+  // so the pipe lets it through and what this suite sees is the guard's answer.
+  caseKey: "c".repeat(64),
   // The planning surface's four (#272, #274, #280). Uuids everywhere but `:key`, which is a
   // draft's key within its batch and is free text to the router. **These were missing**: AL.4
   // landed `/planning/…` routes without revisiting this list, so every walk of the table threw

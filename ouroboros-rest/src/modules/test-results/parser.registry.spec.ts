@@ -12,7 +12,7 @@ import {
   type ResultFile,
   type TestResultParser,
 } from "./parser.spi";
-import { InMemoryTestResultsStore } from "./test-results.store.fixture";
+import { InMemoryTestResultsStore, RecordingFlakeScorer } from "./test-results.store.fixture";
 import { TestResultIngestService } from "./test-results.service";
 import { fixtureFile, textFile } from "./test-results.fixture";
 
@@ -111,7 +111,11 @@ describe("TestResultParserRegistry", () => {
       githubRepoId: "repo",
     };
     const store = new InMemoryTestResultsStore([attempt]);
-    const service = new TestResultIngestService(registry, store);
+    const service = new TestResultIngestService(
+      registry,
+      store,
+      new RecordingFlakeScorer().asService(),
+    );
 
     const report = await service.parseAttempt({
       organizationId: "org",

@@ -1,0 +1,26 @@
+-- V063__case_history_rewrite.sql — let the parse-time hook rewrite an occurrence with its case.
+--
+-- Filed as issue #331 (AT.3, the flake scorer & quarantine service) of the Test Results roadmap
+-- (docs/ROADMAP_MOCKUP_11_TEST_RESULTS.md, option 4-A, decision T5).
+--
+--
+-- Why an occurrence has to move at all.
+-- ---------------------------------------------------------------------------
+--
+-- V054 granted `test_case_history` insert-only on the reading that *"a re-parse replaces the case
+-- and the occurrence leaves with it"*. AT.1's parser (#329) does not quite do that: a re-parse
+-- upserts each case **by durable key and keeps its id**, because a person's classification
+-- (V055) and a criterion's evidence (V057) hang off the case with `on delete cascade`, and a
+-- retried upload must not erase them. So a re-parse whose upload set now says a case failed
+-- where the first said it passed on retry leaves the case row in place with a new `status` —
+-- and its occurrence, still saying `flaky`, is exactly what `test_case_history_drift` lists and
+-- `tests/constraints.sql` requires empty. V054's drift view already names the fix: *"rewrite the
+-- occurrence with the case"*.
+--
+-- So the app role may update the three columns a re-parse can change — `status`, `retries` and
+-- `pass_on_retry` — and nothing else. The occurrence still cannot disagree with its case:
+-- `test_case_history_derive` runs on update too and refuses any value the case does not have.
+-- The key, the attempt, the repository and `observed_at` stay frozen, and an occurrence is still
+-- never deleted directly.
+
+grant update (status, retries, pass_on_retry) on ouroboros.test_case_history to ouroboros_app;

@@ -383,6 +383,16 @@ export class AppConfigService {
     return this.config.getOrThrow<number>("reestimationBatch");
   }
 
+  /** The UTC hour the nightly flake re-scorer is scheduled at — `OURO_FLAKE_RESCORE_HOUR_UTC`. */
+  get flakeRescoreHourUtc(): number {
+    return this.config.getOrThrow<number>("flakeRescoreHourUtc");
+  }
+
+  /** The most cases one workspace's nightly flake re-score covers — `OURO_FLAKE_RESCORE_CAP`. */
+  get flakeRescoreCap(): number {
+    return this.config.getOrThrow<number>("flakeRescoreCap");
+  }
+
   /**
    * Is this a production deployment?
    *
@@ -456,6 +466,8 @@ export class AppConfigService {
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,
       reestimationBatch: this.reestimationBatch,
+      flakeRescoreHourUtc: this.flakeRescoreHourUtc,
+      flakeRescoreCap: this.flakeRescoreCap,
       localProviderUrls: this.localProviderUrls,
       workflowSkillSuggestions: this.workflowSkillSuggestions,
     };

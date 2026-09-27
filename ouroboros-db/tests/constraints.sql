@@ -22321,6 +22321,110 @@ select pg_temp.must_hold(
   'and the V062 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- V063 — an occurrence is rewritten with its case (#331, AT.3)
+-- ===========================================================================
+--
+-- AT.1's re-parse keeps a case's id and rewrites its status, so the parse-time hook rewrites the
+-- case's occurrence with it. Asserted: the hook's upsert follows a rewritten case and leaves
+-- `test_case_history_drift` empty; an occurrence still cannot claim what its case does not have;
+-- the app role may update status, retries and pass_on_retry and nothing else.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v063', 'Rewrite Works', 'rewrite-works', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a6310000-0000-0000-0000-00000000000a', 'org-v063', 'rewrite-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a631f000-0000-0000-0000-00000000000a', 'a6310000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a6320000-0000-0000-0000-000000000482', 'org-v063', 'a631f000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '1 hour');
+
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status, started_at) values
+  ('a6330000-0000-0000-0000-000000004821', 'org-v063', 'a6320000-0000-0000-0000-000000000482',
+   1, 'complete', now() - interval '1 hour');
+
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind) values
+  ('a6340000-0000-0000-0000-000000004821', 'org-v063', 'a6330000-0000-0000-0000-000000004821',
+   'telemetry integration', 'qemu_cortex_m3', 'sim');
+
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retries, retry_outcomes)
+  values
+    ('a6350000-0000-0000-0000-000000048211', 'org-v063', 'a6340000-0000-0000-0000-000000004821',
+     'ring buffer drains under burst', 'telemetry', 'flaky', 1, '["failed", "passed"]');
+
+-- The hook's statement, exactly: the case, and on a second parse the derived values back.
+create function pg_temp.v063_record() returns void language sql as $$
+  insert into ouroboros.test_case_history (organization_id, test_case_id)
+  select organization_id, id from ouroboros.test_cases where organization_id = 'org-v063'
+  on conflict (test_case_id) do update
+     set status = excluded.status, retries = excluded.retries,
+         pass_on_retry = excluded.pass_on_retry
+   where (test_case_history.status, test_case_history.retries)
+         is distinct from (excluded.status, excluded.retries)
+$$;
+
+select pg_temp.v063_record();
+
+select pg_temp.must_hold(
+  (select status = 'flaky' and retries = 1 and pass_on_retry from ouroboros.test_case_history
+    where test_case_id = 'a6350000-0000-0000-0000-000000048211'),
+  'the first parse records the sanctioned pass on retry');
+
+-- A re-parse under a stricter policy: the retry was not sanctioned, so the case failed.
+update ouroboros.test_cases
+   set status = 'failed', retries = 0, retry_outcomes = '["failed"]'
+ where id = 'a6350000-0000-0000-0000-000000048211';
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.test_case_history_drift
+    where test_case_id = 'a6350000-0000-0000-0000-000000048211'),
+  'a rewritten case leaves its occurrence drifting until the hook runs');
+
+select pg_temp.v063_record();
+
+select pg_temp.must_hold(
+  (select status = 'failed' and retries = 0 and not pass_on_retry
+     from ouroboros.test_case_history
+    where test_case_id = 'a6350000-0000-0000-0000-000000048211')
+  and (select count(*) = 1 from ouroboros.test_case_history where organization_id = 'org-v063')
+  and not exists (select 1 from ouroboros.test_case_history_drift d
+                    join ouroboros.test_case_history h on h.id = d.test_case_history_id
+                   where h.organization_id = 'org-v063'),
+  'the hook rewrites the occurrence with its case — still one row, and no drift');
+
+select pg_temp.must_reject(
+  $$update ouroboros.test_case_history set status = 'flaky', retries = 1, pass_on_retry = true
+     where test_case_id = 'a6350000-0000-0000-0000-000000048211'$$,
+  'a rewrite still cannot claim an outcome its case does not have',
+  'test_case_history_agrees_with_case');
+
+-- --- grants ----------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_column_privilege('ouroboros_app', 'ouroboros.test_case_history', 'status', 'update')
+  and has_column_privilege('ouroboros_app', 'ouroboros.test_case_history', 'retries', 'update')
+  and has_column_privilege('ouroboros_app', 'ouroboros.test_case_history', 'pass_on_retry', 'update')
+  and not has_column_privilege('ouroboros_app', 'ouroboros.test_case_history', 'case_key', 'update')
+  and not has_column_privilege('ouroboros_app', 'ouroboros.test_case_history', 'test_case_id', 'update')
+  and not has_column_privilege('ouroboros_app', 'ouroboros.test_case_history', 'observed_at', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.test_case_history', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.test_case_history', 'delete'),
+  'the app role rewrites an occurrence''s outcome with its case and can change nothing else');
+
+delete from ouroboros.organization where "id" = 'org-v063';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.test_case_history where organization_id = 'org-v063'),
+  'and the V063 fixture leaves nothing behind');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

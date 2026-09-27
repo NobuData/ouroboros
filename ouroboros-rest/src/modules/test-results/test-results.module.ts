@@ -3,7 +3,8 @@
  * [#329](https://github.com/NobuData/ouroboros/issues/329)).
  *
  * It declares no route: the upload path (#330) calls {@link TestResultIngestService} when a
- * manifest completes, and the read APIs (#333) land beside it.
+ * manifest completes, and the read APIs (#333) land beside it. It imports `FlakesModule` (AT.3,
+ * #331) so a parse can score the cases its attempt touched.
  *
  * **{@link TEST_RESULT_PARSERS} is the registration point, and this is the file that changes when
  * a build gains a result format.** TAP, ctest JSON or pytest-json each add one entry to the list —
@@ -14,6 +15,7 @@
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { FlakesModule } from "../flakes/flakes.module";
 import { CoverageParser } from "./coverage.parser";
 import { HilParser } from "./hil.parser";
 import { JunitParser } from "./junit.parser";
@@ -23,7 +25,7 @@ import { TestResultsRepository } from "./test-results.repository";
 import { TestResultIngestService } from "./test-results.service";
 
 @Module({
-  imports: [DbModule],
+  imports: [DbModule, FlakesModule],
   providers: [
     {
       provide: TEST_RESULT_PARSERS,

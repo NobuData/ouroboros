@@ -64,6 +64,7 @@ const REPORT: ParseReport = {
   split: { wallMs: null, simMs: null, physicalMs: null },
   warnings: [],
   parsedBy: { "junit-build3.xml": "junit", "coverage/lcov.info": "coverage" },
+  flakes: { scored: 1, stateChanges: 0, formulaVersion: 1 },
   coverage: {
     linesCovered: 4475,
     linesTotal: 5120,

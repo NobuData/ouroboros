@@ -25,6 +25,12 @@
  * After the cases are written, `ouroboros.test_run_recount()` rewrites the suite and attempt counts
  * from V051's counting views — the single definition of counting — so stored equals recompute
  * after every parse.
+ *
+ * ## Every case leaves an occurrence
+ *
+ * In the same transaction, each case of the attempt is recorded in `test_case_history` (V054) —
+ * the history the flake scorer reads (AT.3, [#331](https://github.com/NobuData/ouroboros/issues/331)).
+ * See {@link recordOccurrences}.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -197,6 +203,7 @@ export class TestResultsRepository implements TestResultsStore {
       }
 
       await sql`select ouroboros.test_run_recount(${attempt.id}::uuid)`.execute(trx);
+      await recordOccurrences(trx, attempt);
 
       return trx
         .updateTable("test_runs")
@@ -290,6 +297,55 @@ async function writeSuite(
       await writeMeasurements(trx, attempt, ids.get(key) as string, kase);
     }
   }
+}
+
+/**
+ * The parse-time flake hook (AT.3, [#331](https://github.com/NobuData/ouroboros/issues/331)):
+ * write one `test_case_history` occurrence for every case of the attempt.
+ *
+ * Every case, not only the flaky ones — flake score v1 is *weighted pass-on-retry occurrences over
+ * runs observed* (V054), so a clean pass is an observation the score needs as much as a flake. A
+ * case is `flaky` only when the pinned policy sanctioned its retry (`flake-policy.ts`), and the
+ * occurrence's `pass_on_retry` is derived from that status by `test_case_history_derive`; so a
+ * sanctioned pass on retry yields exactly one flagged occurrence, and an unsanctioned retry — a
+ * `failed` case — yields none.
+ *
+ * The writer supplies the case and nothing else; the trigger derives the rest. A re-parse keeps a
+ * case's id and may rewrite its outcome, so an existing occurrence whose `status` or `retries` no
+ * longer match is rewritten with the case (V063) — `excluded` carries the values the trigger
+ * derived — and one that still matches is left alone. Cases the re-parse deleted took their
+ * occurrences with them.
+ *
+ * @param trx - The replacement's transaction.
+ * @param attempt - The attempt.
+ * @returns When every occurrence is written.
+ */
+async function recordOccurrences(trx: Transaction<Database>, attempt: AttemptRef): Promise<void> {
+  await trx
+    .insertInto("test_case_history")
+    .columns(["organization_id", "test_case_id"])
+    .expression((eb) =>
+      eb
+        .selectFrom("test_cases as c")
+        .innerJoin("test_suites as s", "s.id", "c.test_suite_id")
+        .select(["c.organization_id", "c.id"])
+        .where("s.test_run_id", "=", attempt.id)
+        .where("c.organization_id", "=", attempt.organizationId),
+    )
+    .onConflict((conflict) =>
+      conflict
+        .column("test_case_id")
+        .doUpdateSet((eb) => ({
+          status: eb.ref("excluded.status"),
+          retries: eb.ref("excluded.retries"),
+          pass_on_retry: eb.ref("excluded.pass_on_retry"),
+        }))
+        .where(
+          sql<boolean>`(test_case_history.status, test_case_history.retries)
+                       is distinct from (excluded.status, excluded.retries)`,
+        ),
+    )
+    .execute();
 }
 
 /**

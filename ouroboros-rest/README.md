@@ -281,6 +281,8 @@ service never starts half-configured.
 | `OURO_REESTIMATION_HOUR_UTC` | The UTC hour the [nightly re-estimation job](#backlog-health-and-nightly-re-estimation) is scheduled at |      no — 2       | a whole number, 0–23 |
 | `OURO_REESTIMATION_JITTER_MINUTES` | The window after that hour a night's run is jittered across, so installations do not all run on the hour |      no — 30      | a whole number of minutes, 1–180 |
 | `OURO_REESTIMATION_BATCH` | The most unsized tickets one night's run queues, across every workspace — the job's bound |     no — 100      | a whole number, 1–1000 |
+| `OURO_FLAKE_RESCORE_HOUR_UTC` | The UTC hour the [nightly flake re-scorer](#flake-scorer) is scheduled at; each pass lands at a random minute in the hour after it ([#331](https://github.com/NobuData/ouroboros/issues/331)) |      no — 3       | a whole number, 0–23 |
+| `OURO_FLAKE_RESCORE_CAP` | The most cases one workspace's nightly flake re-score covers, least recently scored first — the job's bound |     no — 2000     | a whole number, 1–100000 |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -4851,6 +4853,47 @@ build snapshot onto a new job with `build_jobs.test_selection` (V061) and answer
 explains a missing runner, a missing farm build or a disabled pool beside a classification that
 was still made. Audited as `triage.classified`, `triage.rerun_requested`, `triage.waived` and
 `runner.flagged`, with the person as the actor; the note never enters the trail.
+
+### Flake scorer
+
+AT.3 ([#331](https://github.com/NobuData/ouroboros/issues/331)), option **4-A**, decision **T5**,
+in [`src/modules/flakes/`](src/modules/flakes). Retry truth plus history — no model, no
+fingerprint clustering.
+
+```
+parse (#329) ─▶ one test_case_history occurrence per case ─▶ score what the attempt touched ─▶ healthy ⇄ watching
+nightly      ─▶ per workspace: bookkeeping row ─▶ re-score ≤ OURO_FLAKE_RESCORE_CAP active cases ─▶ candidates[]
+
+GET /api/v1/flakes/summary            watching / quarantined counts, candidates, last nightly pass (any member)
+GET /api/v1/flakes/cases/:caseKey     one case's score, state and pass-on-retry count              (any member)
+```
+
+**The occurrence is the parse's.** In the same transaction as the tree, every case of the attempt
+gets one `test_case_history` row (V054); `pass_on_retry` is derived from the case's status, and a
+case is `flaky` only when the pinned `flakes:` policy sanctioned its retry — so a sanctioned pass
+on retry is exactly one flagged occurrence and an unsanctioned retry (a `failed` case) is none. A
+re-parse rewrites an occurrence whose case changed (V063), so `test_case_history_drift` stays empty.
+
+**The formula is the database's.** Flake score v1 — the latest 20 non-skipped occurrences newest
+first, weight `0.9^i`, signal 1 for a pass on retry, `score = round(Σ w·f / Σ w, 4)`; `watching` at
+≥ 0.25, `healthy` below 0.10, unchanged between or under 3 observations — is V054's
+`flake_score()` and `flake_state_next()`, which every write calls. Each score row is stamped with
+the latest `formula_version`; a re-tuning is a new formula row, and the nightly pass restamps
+every score of an older version. Mockup 11's telemetry case scores `0.5028` over four
+occurrences and lands `watching`.
+
+**The nightly pass is bounded, jittered and observable.** `FlakeRescoreScheduler` books
+`OURO_FLAKE_RESCORE_HOUR_UTC` (03:00) plus a random minute in the hour after. Each workspace with
+an active case — not `healthy`, not zero, or of an older formula — gets a `flake_scorer_runs` row
+opened before the work and closed with cases scored, state changes and duration, or with the error;
+at most `OURO_FLAKE_RESCORE_CAP` cases per workspace, least recently scored first. A case that
+stopped flaking returns to `healthy` here once clean builds push its flakes down the window. The
+pass is idempotent, so every replica may run it.
+
+**No code path writes `quarantined`.** The written state is always `flake_state_next()`'s, which
+keeps a quarantined case quarantined and moves nothing else there; activation is AV.3's (#345).
+`flakes.quarantine.spec.ts` holds that by source scan and compiled SQL, and
+`flakes.integration-spec.ts` by behaviour.
 
 ### PR gate engine
 

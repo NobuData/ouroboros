@@ -440,7 +440,7 @@ seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AT.1 | #329 ✅ | 🟢 Done | ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage) | Format detection, normalized tree, retry/flake extraction | mvp, tests, rest | N (after AS.2) | Y | L | ouroboros-rest |
 | AT.2 | #330 ✅ | 🟢 Done | ouroboros-runner: [AT.2] Job artifact & result upload | Job-scoped multipart upload path, quotas, store driver (T4) | mvp, tests, build-farm | N (after AG.4, AH.2) | Y | M | ouroboros-runner, ouroboros-rest |
-| AT.3 | #331 | 🟡 Open | ouroboros-rest: [AT.3] Flake scorer & quarantine service | Retry-truth marking, history scoring, nightly candidates | mvp, tests, rest | N (after AS.3, AT.1) | Y | M | ouroboros-rest |
+| AT.3 | #331 ✅ | 🟢 Done | ouroboros-rest: [AT.3] Flake scorer & quarantine service | Retry-truth marking, history scoring, nightly candidates | mvp, tests, rest | N (after AS.3, AT.1) | Y | M | ouroboros-rest |
 | AT.4 | #332 ✅ | 🟢 Done | ouroboros-rest: [AT.4] Classification & routing service | Heuristic hints, classify API, correction/re-run dispatch (T6/T7) | mvp, tests, rest, runs | N (after AS.4, AP.4, AH.4) | Y | L | ouroboros-rest |
 | AT.5 | #333 | 🟡 Open | ouroboros-rest: [AT.5] Test-results read APIs & artifact serving | Page payloads, attempt timelines, artifact downloads, retention | mvp, tests, rest | N (after AT.1, AS.4) | Y | M | ouroboros-rest |
 | AT.6 | #334 | 🟡 Open | ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios | Parser fixtures, routing compositions, AP.5 test scenarios | mvp, tests, rest, ci | N (after AT.2–AT.5, AP.5) | Y | M | ouroboros-rest, ouroboros-engine |
@@ -552,7 +552,7 @@ job finish ─▶ collect globs ─▶ POST /internal/jobs/:id/artifacts (single
 
 ### Issue AT.3 — ouroboros-rest: [AT.3] Flake scorer & quarantine service
 
-> **GitHub issue:** #331 · **Status:** 🟡 Open · **Parent epic:** #321
+> **GitHub issue:** #331 · **Status:** 🟢 Done · **Parent epic:** #321
 
 - **Problem Statement:** Flake state must be computed truth (T5): occurrence
   marking at parse time, history accumulation, scoring, and the `watching`
@@ -576,6 +576,28 @@ job finish ─▶ collect globs ─▶ POST /internal/jobs/:id/artifacts (single
 parse ─▶ pass-on-retry ─▶ occurrence ─▶ score(window) ─▶ watching (threshold doc'd)
 nightly ─▶ re-score ─▶ candidates[] (insights boundary)
 ```
+
+> **Delivered as `ouroboros-rest/src/modules/flakes/`, the parse-time hook in
+> `test-results.repository.ts` and `V063__case_history_rewrite.sql`.** Decided on #331:
+>
+> 1. **Every case leaves an occurrence, not only the flaky ones.** Flake score v1 is weighted
+>    passes-on-retry *over runs observed*, so a clean pass is an observation too. A sanctioned pass
+>    on retry is exactly one flagged occurrence; an unsanctioned retry is a `failed` case and is
+>    none. A re-parse that changes a case rewrites its occurrence (V063 grants the app role
+>    `status`, `retries` and `pass_on_retry`), so `test_case_history_drift` stays empty.
+> 2. **A parse scores what its attempt touched** — each case that passed on a sanctioned retry, or
+>    already has a score — so `watching` is current the moment a build is parsed. The nightly pass
+>    (`OURO_FLAKE_RESCORE_HOUR_UTC`, 03:00 + a random minute in the hour after) re-scores each
+>    workspace's active cases — not healthy, not zero, or of an older formula — at most
+>    `OURO_FLAKE_RESCORE_CAP` per workspace, least recently scored first, with a
+>    `flake_scorer_runs` row per workspace per night.
+> 3. **The formula stays V054's.** Every write calls `flake_score()` and `flake_state_next()` and
+>    stamps the latest `formula_version`; nothing writes `quarantined` (source scan + compiled SQL +
+>    integration). Scores are an update of existing rows beside an insert of new ones, because an
+>    upsert's proposed insert of a quarantined case trips V054's *cannot start quarantined*.
+> 4. **The read API is `GET /api/v1/flakes/summary`** (watching/quarantined counts, the candidates
+>    list, the last nightly run) **and `GET /api/v1/flakes/cases/:caseKey`**. Mockup 11's telemetry
+>    history, parsed build by build, scores `0.5028` and lands `watching`.
 
 ### Issue AT.4 — ouroboros-rest: [AT.4] Classification & routing service
 

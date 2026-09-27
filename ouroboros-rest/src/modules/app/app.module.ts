@@ -39,6 +39,7 @@ import { VaultModule } from "../vault/vault.module";
 import { PlanningModule } from "../planning/planning.module";
 import { PullRequestsModule } from "../pull-requests/pull-requests.module";
 import { TestResultsModule } from "../test-results/test-results.module";
+import { FlakesModule } from "../flakes/flakes.module";
 import { TriageModule } from "../triage/triage.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
@@ -363,6 +364,11 @@ export class AppModule {
         // into V052's mirror. After `TicketSourcesModule` for the same reasons as the push; it
         // declares no route yet, so its position carries no routing rule.
         PullRequestsModule,
+        // AT.3 ([#331](https://github.com/NobuData/ouroboros/issues/331)) — the flake scorer: the
+        // nightly re-score and `GET /api/v1/flakes/{summary,cases/:caseKey}`. Before
+        // `TestResultsModule`, whose parse scores what an attempt touched through it. Ordinary
+        // member reads behind the session and tenant guards.
+        FlakesModule,
         // AT.1 ([#329](https://github.com/NobuData/ouroboros/issues/329)) — the result parser SPI
         // and parse orchestration over V051/V053's tree. No route; the upload path (#330) calls it.
         TestResultsModule,

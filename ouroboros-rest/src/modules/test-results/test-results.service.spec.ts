@@ -6,7 +6,7 @@ import { JunitParser } from "./junit.parser";
 import { TestResultParserRegistry } from "./parser.registry";
 import { PARSE_WARNING_CODES } from "./parser.spi";
 import { MATRIX, fixtureFile } from "./test-results.fixture";
-import { InMemoryTestResultsStore } from "./test-results.store.fixture";
+import { InMemoryTestResultsStore, RecordingFlakeScorer } from "./test-results.store.fixture";
 import {
   TEST_RUN_NOT_FOUND,
   TestResultIngestService,
@@ -26,7 +26,7 @@ const ATTEMPT = {
  * A service over the built-in parsers and an in-memory store.
  *
  * @param prior - The prior coverage the store answers for {@link ATTEMPT}.
- * @returns The service and its store.
+ * @returns The service, its store and its flake scorer.
  */
 function harness(prior?: { attemptSeq: number; linesCovered: number; linesTotal: number }) {
   const store = new InMemoryTestResultsStore([ATTEMPT], prior === undefined ? {} : { t3: prior });
@@ -36,16 +36,37 @@ function harness(prior?: { attemptSeq: number; linesCovered: number; linesTotal:
     new JunitParser(),
   ]);
 
-  return { store, service: new TestResultIngestService(registry, store) };
+  const flakes = new RecordingFlakeScorer({ scored: 1, stateChanges: 1, formulaVersion: 1 });
+
+  return {
+    store,
+    flakes,
+    service: new TestResultIngestService(registry, store, flakes.asService()),
+  };
 }
 
 describe("TestResultIngestService.parseAttempt", () => {
   it("refuses an attempt the workspace does not have", async () => {
-    const { service } = harness();
+    const { service, flakes } = harness();
     const parse = service.parseAttempt({ organizationId: "other", testRunId: "t3", files: [] });
 
     await expect(parse).rejects.toBeInstanceOf(NotFoundError);
     await expect(parse).rejects.toMatchObject({ code: TEST_RUN_NOT_FOUND });
+    expect(flakes.scored).toEqual([]);
+  });
+
+  it("scores the attempt's cases once its tree is written, and reports it (#331)", async () => {
+    const { service, store, flakes } = harness();
+    const report = await service.parseAttempt({
+      organizationId: "org",
+      testRunId: "t3",
+      files: [fixtureFile(MATRIX.twister)],
+      flakePolicy: parseFlakePolicy("retry-twice"),
+    });
+
+    expect(store.writes).toHaveLength(1);
+    expect(flakes.scored).toEqual([{ organizationId: "org", testRunId: "t3" }]);
+    expect(report.flakes).toEqual({ scored: 1, stateChanges: 1, formulaVersion: 1 });
   });
 
   it("parses the whole matrix as one upload set, keeping every warning with its file", async () => {

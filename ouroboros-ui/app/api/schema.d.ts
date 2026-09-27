@@ -5099,6 +5099,55 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/flakes/summary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's flake summary — watching count, candidates, last nightly pass
+         * @description What the test-results strip's Flaky stat reads for its `quarantine watching` count and link
+         *     ([#331](https://github.com/NobuData/ouroboros/issues/331)): how many of the workspace's
+         *     cases are `watching` and `quarantined`, the **candidates** — every non-healthy case,
+         *     highest score first, at most fifty, the payload the insights page (mockup 15, #345) will
+         *     consume — and the nightly re-scorer's latest bookkeeping row, so the job is observable.
+         *     Every member may read this, a `viewer` included.
+         */
+        get: operations["getFlakeSummary"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/flakes/cases/{caseKey}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One case's flake and quarantine state
+         * @description The flake state of one case by its durable key ([#331](https://github.com/NobuData/ouroboros/issues/331),
+         *     decision **T2**): its score under the formula that produced it, its state and when it
+         *     entered it, and how many sanctioned passes on retry are among its observed occurrences.
+         *     An observed case that was never scored is `healthy` with a null `score`. `quarantined` is
+         *     reported distinctly — a soft signal, never hidden. Every member may read this.
+         */
+        get: operations["getCaseFlakeState"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/test-runs/{id}/hints": {
         parameters: {
             query?: never;
@@ -6864,6 +6913,105 @@ export interface components {
             /** Format: uuid */
             testRunId: string;
             cases: components["schemas"]["CaseHint"][];
+        };
+        /**
+         * FlakeState
+         * @description `healthy` · `watching` · `quarantined`. `quarantined` is storable now and never written by
+         *     the scorer in the MVP (#345 activates it) — a soft signal, reported distinctly, never
+         *     hidden and never blocking.
+         * @enum {string}
+         */
+        FlakeState: "healthy" | "watching" | "quarantined";
+        /**
+         * FlakeScore
+         * @description A case's current score. Flake score v1 (V054) — the latest 20 non-skipped occurrences
+         *     newest first, weight 0.9^i, signal 1 for a sanctioned pass on retry; score =
+         *     round(sum(w*f) / sum(w), 4); `watching` at >= 0.25, `healthy` below 0.10, unchanged
+         *     between or under three observations.
+         */
+        FlakeScore: {
+            score: number;
+            /** @description How many occurrences the score covers. */
+            windowRuns: number;
+            state: components["schemas"]["FlakeState"];
+            /** @description The `flake_score_formulas` version that produced the score. */
+            formulaVersion: number;
+            /** Format: date-time */
+            lastScoredAt: string;
+            /**
+             * Format: date-time
+             * @description When the case entered its current state.
+             */
+            stateChangedAt: string;
+        };
+        /** CaseFlakeState */
+        CaseFlakeState: {
+            caseKey: string;
+            /** Format: uuid */
+            githubRepoId: string;
+            state: components["schemas"]["FlakeState"];
+            /** @description True exactly when `state` is `quarantined`. */
+            quarantined: boolean;
+            /** @description Every non-skipped occurrence of the case in the workspace. */
+            observed: number;
+            /** @description How many of them were sanctioned passes on retry. */
+            passOnRetry: number;
+            /** @description Null when the case has never been scored. */
+            score: components["schemas"]["FlakeScore"] | null;
+        };
+        /**
+         * FlakeCandidate
+         * @description One case worth distrusting — an entry of the insights payload.
+         */
+        FlakeCandidate: {
+            caseKey: string;
+            /** Format: uuid */
+            githubRepoId: string;
+            repository: string;
+            /** @description The case's name as its latest occurrence recorded it. */
+            name: string | null;
+            classname: string | null;
+            suite: string | null;
+            score: number;
+            windowRuns: number;
+            state: components["schemas"]["FlakeState"];
+            formulaVersion: number;
+            /** Format: date-time */
+            lastScoredAt: string;
+            /** Format: date-time */
+            stateChangedAt: string;
+        };
+        /**
+         * FlakeScorerRun
+         * @description One nightly re-score pass over the workspace — its bookkeeping row.
+         */
+        FlakeScorerRun: {
+            /** Format: uuid */
+            id: string;
+            formulaVersion: number;
+            /** @enum {string} */
+            status: "running" | "complete" | "error";
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: string | null;
+            durationMs: number | null;
+            casesScored: number;
+            stateChanges: number;
+            /** @description Why the pass failed; null unless `status` is `error`. */
+            error: string | null;
+        };
+        /** FlakeSummary */
+        FlakeSummary: {
+            /** @description The formula the scorer applies now. */
+            formulaVersion: number;
+            /** @description The strip's `quarantine watching` count. */
+            watching: number;
+            quarantined: number;
+            /** @description Every non-healthy case, highest score first, at most fifty. */
+            candidates: components["schemas"]["FlakeCandidate"][];
+            /** @description The latest nightly pass, or null before the first. */
+            lastRun: components["schemas"]["FlakeScorerRun"] | null;
         };
         /**
          * ClassificationReceipt
@@ -15317,6 +15465,13 @@ export interface components {
          * @example 5eed0033-0000-4000-8000-000000000002
          */
         TestRunId: string;
+        /**
+         * @description A test case's durable key — `test_cases.case_key`, the SHA-256 of its repository, suite,
+         *     classname and name (V051, decision T2), so it names the same case across builds and runs.
+         *     Anything that is not 64 lowercase hex digits is a `422`, before anything is read.
+         * @example 3f0c9d2e8b7a6f5e4d3c2b1a09f8e7d6c5b4a3928170f6e5d4c3b2a190817263
+         */
+        CaseKey: string;
         /**
          * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
          *     that is not a uuid is a `422` naming the field, before anything is read.
@@ -37768,6 +37923,229 @@ export interface operations {
             /**
              * @description `internal_error` — the service itself failed. The message is a constant and
              *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getFlakeSummary: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The summary. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FlakeSummary"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — `X-Ouro-Tenant` names a workspace you are not a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getCaseFlakeState: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A test case's durable key — `test_cases.case_key`, the SHA-256 of its repository, suite,
+                 *     classname and name (V051, decision T2), so it names the same case across builds and runs.
+                 *     Anything that is not 64 lowercase hex digits is a `422`, before anything is read.
+                 * @example 3f0c9d2e8b7a6f5e4d3c2b1a09f8e7d6c5b4a3928170f6e5d4c3b2a190817263
+                 */
+                caseKey: components["parameters"]["CaseKey"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The case's state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CaseFlakeState"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `flake_case_not_found` — this workspace has never observed that case, **or it is
+             *     another workspace's**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace
+             *     you are not a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the key is not 64 lowercase hex digits. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
              */
             500: {
                 headers: {

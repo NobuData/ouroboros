@@ -4,6 +4,7 @@
  * totals a parse reports; `test-results.integration-spec.ts` checks the real recount.
  */
 
+import type { AttemptScoring, FlakeScorerService } from "../flakes/flake-scorer.service";
 import type {
   AttemptRef,
   AttemptTotals,
@@ -52,5 +53,42 @@ export class InMemoryTestResultsStore implements TestResultsStore {
       flaky: count("flaky"),
       skipped: count("skipped"),
     });
+  }
+}
+
+/**
+ * A stand-in for the flake scorer (AT.3, #331) that records each attempt it was asked to score and
+ * answers a fixed tally. `flakes.integration-spec.ts` checks the real scoring.
+ */
+export class RecordingFlakeScorer {
+  /** Every `(organizationId, testRunId)` scored, in order. */
+  readonly scored: { organizationId: string; testRunId: string }[] = [];
+
+  /**
+   * @param answer - What every call answers.
+   */
+  constructor(
+    private readonly answer: AttemptScoring = { scored: 0, stateChanges: 0, formulaVersion: 1 },
+  ) {}
+
+  /**
+   * Record the call.
+   *
+   * @param organizationId - The workspace.
+   * @param testRunId - The attempt.
+   * @returns The fixed tally.
+   */
+  scoreAttempt(organizationId: string, testRunId: string): Promise<AttemptScoring> {
+    this.scored.push({ organizationId, testRunId });
+    return Promise.resolve(this.answer);
+  }
+
+  /**
+   * This recorder typed as the service the orchestration takes.
+   *
+   * @returns It.
+   */
+  asService(): FlakeScorerService {
+    return this as unknown as FlakeScorerService;
   }
 }
