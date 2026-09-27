@@ -18685,9 +18685,11 @@ select pg_temp.must_hold(
     = array['heuristic', 'human', 'model']
   and pg_temp.vocabulary('ouroboros.test_artifacts', 'test_artifacts_kind')
     = array['capture', 'coverage', 'hil', 'junit', 'log', 'other']
+  -- V062 (#359) widened the annotation vocabulary when the PR plane could post; its own section
+  -- asserts what each new state means.
   and pg_temp.vocabulary('ouroboros.pr_waivers', 'pr_waivers_annotation_state')
-    = array['pending_pr_plane'],
-  'all four classes, the three actors, all six artifact kinds and the one annotation state are the whole vocabulary');
+    = array['annotated', 'failed', 'pending_pr_plane'],
+  'all four classes, the three actors, all six artifact kinds and the three annotation states are the whole vocabulary');
 
 select pg_temp.must_reject(
   $$insert into ouroboros.failure_classifications (organization_id, test_case_id, class, actor, created_by)
@@ -22176,6 +22178,147 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.runs where organization_id = 'org-v061')
   and (select count(*) = 0 from ouroboros.runners where organization_id = 'org-v061'),
   'and the V061 fixture leaves nothing behind');
+
+-- ===========================================================================
+-- V062 — waiver annotations: where a waiver was posted on the host PR (#359, AX.3)
+-- ===========================================================================
+--
+-- Decision V9: waiving a criterion writes the AS.4 waiver and posts it to the host PR. V062 adds
+-- where the comment is and widens V055's vocabulary of one. Asserted: the three states and what
+-- each carries; an https URL or none; the annotation is the only thing that moves, and an
+-- annotated waiver does not move at all; the author may still be forgotten; the app role may
+-- update the four annotation columns and nothing else.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v062', 'Annotation Works', 'annotation-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a6200000-0000-0000-0000-00000000000a', 'Ken S', 'ken@annotation-works.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a6210000-0000-0000-0000-00000000000a', 'org-v062', 'annotation-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a621f000-0000-0000-0000-00000000000a', 'a6210000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('a6220000-0000-0000-0000-000000000482', 'org-v062', 'a621f000-0000-0000-0000-00000000000a',
+          482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+          'building', 'Test', 6, 8, now() - interval '1 hour');
+
+insert into ouroboros.pr_waivers (id, organization_id, run_id, author, reason) values
+  ('a6230000-0000-0000-0000-000000000001', 'org-v062', 'a6220000-0000-0000-0000-000000000482',
+   'a6200000-0000-0000-0000-00000000000a', 'rig runs at 22°C only — thermal chamber not in bench'),
+  ('a6230000-0000-0000-0000-000000000002', 'org-v062', 'a6220000-0000-0000-0000-000000000482',
+   'a6200000-0000-0000-0000-00000000000a', 'rig runs at 22°C only — thermal chamber not in bench');
+
+select pg_temp.must_hold(
+  (select annotation_state = 'pending_pr_plane' and annotation_comment_id is null
+          and annotation_url is null and annotated_at is null
+     from ouroboros.pr_waivers where id = 'a6230000-0000-0000-0000-000000000001'),
+  'a waiver is written unposted — the decision is kept before the host is asked');
+
+-- --- what each state carries -----------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set annotation_state = 'annotated'
+     where id = 'a6230000-0000-0000-0000-000000000001'$$,
+  'an annotated waiver names its comment and when it was posted', 'pr_waivers_annotation_coherent');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set annotation_comment_id = '7000001', annotated_at = now()
+     where id = 'a6230000-0000-0000-0000-000000000001'$$,
+  'a comment is named only by an annotated waiver', 'pr_waivers_annotation_coherent');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set annotation_state = 'failed',
+          annotation_url = 'https://github.com/annotation-works/helios-firmware/pull/514#issuecomment-1'
+     where id = 'a6230000-0000-0000-0000-000000000001'$$,
+  'a failed post has no URL — nothing was posted', 'pr_waivers_annotation_coherent');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set annotation_state = 'annotated', annotation_comment_id = '7000001',
+          annotated_at = now(), annotation_url = 'http://github.com/x#issuecomment-1'
+     where id = 'a6230000-0000-0000-0000-000000000001'$$,
+  'an annotation URL is https', 'pr_waivers_annotation_url_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set annotation_state = 'annotated', annotation_comment_id = '  ',
+          annotated_at = now()
+     where id = 'a6230000-0000-0000-0000-000000000001'$$,
+  'a comment id is never blank', 'pr_waivers_annotation_comment_id_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set annotation_state = 'annotated', annotation_comment_id = '7000001',
+          annotated_at = created_at - interval '1 second'
+     where id = 'a6230000-0000-0000-0000-000000000001'$$,
+  'a waiver is not annotated before it was written', 'pr_waivers_annotated_after_created');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set annotation_state = 'posted'
+     where id = 'a6230000-0000-0000-0000-000000000001'$$,
+  'an annotation state is one of the three', 'pr_waivers_annotation_state');
+
+-- A refused post, then the retry that lands: the second waiver is the re-waive.
+update ouroboros.pr_waivers set annotation_state = 'failed'
+ where id = 'a6230000-0000-0000-0000-000000000001';
+
+update ouroboros.pr_waivers
+   set annotation_state = 'annotated', annotation_comment_id = '7000001', annotated_at = now(),
+       annotation_url = 'https://github.com/annotation-works/helios-firmware/pull/514#issuecomment-7000001'
+ where id = 'a6230000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select annotation_state = 'failed' and annotation_comment_id is null
+     from ouroboros.pr_waivers where id = 'a6230000-0000-0000-0000-000000000001')
+  and (select annotation_state = 'annotated' and annotation_url like 'https://%#issuecomment-7000001'
+         from ouroboros.pr_waivers where id = 'a6230000-0000-0000-0000-000000000002'),
+  'a refused post says so, and the retry records where the comment is');
+
+-- --- append-only, but for the annotation ------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set annotation_url = null
+     where id = 'a6230000-0000-0000-0000-000000000002'$$,
+  'an annotated waiver is final — its pill links to that comment', 'pr_waivers_annotation_only');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set reason = 'it was fine really'
+     where id = 'a6230000-0000-0000-0000-000000000001'$$,
+  'the reason is what was decided, and is never rewritten', 'pr_waivers_annotation_only');
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a6200000-0000-0000-0000-00000000000b', 'Mara O', 'mara@annotation-works.dev', true);
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_waivers set author = 'a6200000-0000-0000-0000-00000000000b'
+     where id = 'a6230000-0000-0000-0000-000000000001'$$,
+  'nor is the author — a waiver is never re-attributed', 'pr_waivers_annotation_only');
+
+delete from ouroboros."user" where "id" = 'a6200000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.pr_waivers
+    where run_id = 'a6220000-0000-0000-0000-000000000482' and author is null),
+  'a removed person is forgotten from both waivers, annotated or not');
+
+-- --- grants ----------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_column_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'annotation_state', 'update')
+  and has_column_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'annotation_comment_id', 'update')
+  and has_column_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'annotation_url', 'update')
+  and has_column_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'annotated_at', 'update')
+  and not has_column_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'reason', 'update')
+  and not has_column_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'case_keys', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.pr_waivers', 'delete'),
+  'the app role records an annotation and can change nothing else about a waiver');
+
+delete from ouroboros."user" where "id" = 'a6200000-0000-0000-0000-00000000000b';
+delete from ouroboros.organization where "id" = 'org-v062';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_waivers where organization_id = 'org-v062'),
+  'and the V062 fixture leaves nothing behind');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

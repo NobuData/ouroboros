@@ -33,6 +33,7 @@
 import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import type { TicketSourceKind } from "../db/schema";
+import type { PrCommentInput, PrCommentResult } from "../ticket-sources/ticket-source.pr";
 import {
   supportsPullRequests,
   type PrCapableProvider,
@@ -109,6 +110,38 @@ export class PrSyncService {
     });
 
     return outcome;
+  }
+
+  /**
+   * Publish a comment on a mirrored PR, edited rather than re-posted under the same key (decision
+   * **V9**). The criteria service's waiver annotation (AX.3, #359) is its first caller.
+   *
+   * @param organizationId - The workspace asking.
+   * @param sourceId - The git-host source the PR lives on.
+   * @param prNumber - The host's number.
+   * @param comment - The key and the Markdown.
+   * @returns The comment's id, its page, and how it landed.
+   * @throws {NotFoundError} `pr_source_not_found` for a source the workspace does not have.
+   * @throws {ConflictError} `pr_source_has_no_pull_requests` for a tracker without PRs.
+   * @throws {TicketSourceError} The host's refusal, classified by the provider.
+   */
+  async comment(
+    organizationId: string,
+    sourceId: string,
+    prNumber: number,
+    comment: PrCommentInput,
+  ): Promise<PrCommentResult> {
+    const source = await this.store.source(organizationId, sourceId);
+
+    if (source === undefined) {
+      throw prSourceNotFound(sourceId);
+    }
+
+    const provider = this.prHost(source.kind, sourceId);
+
+    return this.sources.withCredentials(source, (context) =>
+      provider.commentPR(context, prNumber, comment),
+    );
   }
 
   /**

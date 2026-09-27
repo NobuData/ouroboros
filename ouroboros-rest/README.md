@@ -4894,6 +4894,39 @@ source file without one), and added `"license"` entries in `package-lock.json`, 
 and `package.json`. No full-text detection, no transitive audit — that is AZ.4 (#374). The SPDX
 list is bundled (`gate.spdx.ts`, list version in every result's `provider_version`).
 
+### PR acceptance criteria
+
+AX.3 ([#359](https://github.com/NobuData/ouroboros/issues/359)), decisions **V6** and **V9**, in
+[`src/modules/pull-requests/criteria/`](src/modules/pull-requests/criteria). Mockup 12's *Does
+the PR do what the ticket says?* matrix over V057's `pr_criteria` and `pr_criteria_evidence`.
+
+| route | what | who |
+| ----- | ---- | --- |
+| `GET /api/v1/pull-requests/:id/criteria` | the matrix: claims, evidence lines, status, waiver | every member |
+| `POST …/criteria` · `PATCH`/`DELETE …/criteria/:criterionId` · `PUT …/criteria/order` | author (`manual`), reword, delete, reorder | member+ |
+| `POST …/criteria/import` | the plan's *Acceptance criteria* section, as `plan` rows (repeatable) | member+ |
+| `POST …/criteria/:criterionId/evidence` · `DELETE …/evidence/:evidenceId` | cite / remove a typed reference | member+ |
+| `POST …/criteria/:criterionId/verify` · `…/unverify` | status, audited | member+ |
+| `POST …/criteria/:criterionId/waive` | AS.4 waiver + host PR annotation, audited | owner, admin |
+
+**Evidence resolves before it is stored.** `test_case` by `caseKey` in an attempt of the PR's run
+(a skipped case did not run), `hil_measurement` and `build_artifact` of the run, `hunk` against
+the revision's files snapshot (`hunk_outside_snapshot` otherwise), `analysis_note` on a revision
+of the PR. A reference that does not resolve is `422 evidence_unresolved` for every kind. The
+composed mono line — `hunk telemetry_buf.c:41–66`, `HIL overshoot 1.7% vs 2.0% limit (was 2.4%
+in build 3)` — is stored beside the reference.
+
+**Verification requires evidence** (`409 criterion_evidence_required`). `extracted` provenance is
+refused until AZ.2 (#372). The plan import reads the newest draft pushed as the PR's ticket
+(`ticket_drafts.pushed_ticket_id`) and only its stated *Acceptance criteria* section.
+
+**Waiving** writes the waiver and `waived` in one transaction, then posts
+`criterion.<id>`-keyed Markdown (criterion, reason, author) through `PrSyncService.comment` — the
+SPI's `commentPR`, which now also answers the comment's `url`. A re-waive is a new waiver and an
+**edit** of the same comment. A host refusal is answered as `annotation.state: failed`, recorded
+on the waiver (V062), never thrown; waiving again retries. Audited as `pr_criterion.verified`,
+`pr_criterion.unverified` and `pr_criterion.waived`.
+
 ## Container
 
 [`Dockerfile`](Dockerfile) is the production image
@@ -5072,6 +5105,8 @@ ouroboros-rest/
 │       │   │               #   fleet.stats.ts — where null stops being zero
 │       │   │               #   fleet.policy.ts — the day boundary, last week, B5's label
 │       │   └── installer/  # /install.sh · /runner/<version>/<file> — the agent's installer · #248
+│       ├── pull-requests/  # the PR plane: SPI sync (#357), gates/ (#358)
+│       │                   #   criteria/ — claims, typed evidence, verify, waive + annotate · #359
 │       ├── triage/         # Mark & Route: hints, classify, re-run, waive  · #332
 │       │                   #   triage.rules.ts — the three heuristic rules, pure
 │       │                   #   triage.contract.ts — /v0/triage, held to schemas/triage/v0.json

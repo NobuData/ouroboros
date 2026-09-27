@@ -264,3 +264,51 @@ describe("PrSyncService", () => {
     expect(store.writes).toEqual([]);
   });
 });
+
+describe("PrSyncService.comment", () => {
+  it("posts once, then edits the same comment under the same key (decision V9)", async () => {
+    const { service, opener, host, prNumber } = build();
+    const input = { key: "criterion.c1", body: "**Acceptance criterion waived**" };
+    const first = await service.comment(ORG, SOURCE.sourceId, prNumber, input);
+    const again = await service.comment(ORG, SOURCE.sourceId, prNumber, {
+      ...input,
+      body: "**Acceptance criterion waived** — reworded",
+    });
+
+    expect(first.mode).toBe("created");
+    expect(again).toEqual({ commentId: first.commentId, url: first.url, mode: "edited" });
+    expect(first.url).toMatch(/#comment-/);
+    expect(host.ledger().comments.filter(([number]) => number === prNumber)).toHaveLength(1);
+    expect(opener.opened).toBe(2);
+  });
+
+  it("refuses an unknown source or a tracker without PRs before opening anything", async () => {
+    const { service, opener, prNumber } = build();
+    const unknown = await service
+      .comment("org-other", SOURCE.sourceId, prNumber, { key: "k", body: "b" })
+      .catch((error: unknown) => error);
+    const tracker = await new PrSyncService(
+      new RecordedStore(),
+      new TicketSourceRegistry([new InMemoryTicketSourceProvider(new InMemoryTracker())]),
+      opener,
+    )
+      .comment(ORG, SOURCE.sourceId, prNumber, { key: "k", body: "b" })
+      .catch((error: unknown) => error);
+
+    expect((unknown as NotFoundError).code).toBe(PR_SYNC_ERRORS.sourceNotFound);
+    expect((tracker as ConflictError).code).toBe(PR_SYNC_ERRORS.noPullRequests);
+    expect(opener.opened).toBe(0);
+  });
+
+  it("lets the host's refusal through, classified", async () => {
+    const { service, host, prNumber } = build();
+
+    host.refuse("permission");
+
+    const refused = await service
+      .comment(ORG, SOURCE.sourceId, prNumber, { key: "k", body: "b" })
+      .catch((error: unknown) => error);
+
+    expect((refused as TicketSourceError).errorClass).toBe("permission");
+  });
+});

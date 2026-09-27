@@ -925,19 +925,32 @@ export class InMemoryPrTicketSourceProvider
         .find(([, text]) => hasPrCommentMarker(text, comment.key));
 
       if (existing === undefined) {
+        const id = this.host.comment(context.credentials, project, prNumber, body);
+
         return {
-          commentId: String(this.host.comment(context.credentials, project, prNumber, body)),
+          commentId: String(id),
+          url: commentUrl(project, prNumber, id),
           mode: "created" as const,
         };
       }
 
-      if (existing[1] === body) {
-        return { commentId: String(existing[0]), mode: "unchanged" as const };
+      const [id, text] = existing;
+
+      if (text === body) {
+        return {
+          commentId: String(id),
+          url: commentUrl(project, prNumber, id),
+          mode: "unchanged" as const,
+        };
       }
 
-      this.host.editComment(context.credentials, project, prNumber, existing[0], body);
+      this.host.editComment(context.credentials, project, prNumber, id, body);
 
-      return { commentId: String(existing[0]), mode: "edited" as const };
+      return {
+        commentId: String(id),
+        url: commentUrl(project, prNumber, id),
+        mode: "edited" as const,
+      };
     });
   }
 
@@ -1046,6 +1059,18 @@ export class InMemoryPrTicketSourceProvider
  */
 export function pullUrl(project: string, number: number): string {
   return `${IN_MEMORY_SITE}/${project}/pull/${String(number)}`;
+}
+
+/**
+ * A comment's page on the fake host — the PR's page with the comment's anchor.
+ *
+ * @param project - The project.
+ * @param number - The PR.
+ * @param id - The comment.
+ * @returns The URL.
+ */
+export function commentUrl(project: string, number: number, id: number): string {
+  return `${pullUrl(project, number)}#comment-${String(id)}`;
 }
 
 /**

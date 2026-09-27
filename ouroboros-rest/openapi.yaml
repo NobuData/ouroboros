@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.7"
+  version: "0.37.8"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -555,6 +555,13 @@ tags:
       decision, and routes that compose over the control queue and the build farm rather than
       beside them — a correction round, a flake re-run, a runner's health note — plus the two
       re-run buttons and the waiver.
+  - name: pr-criteria
+    description: |-
+      **Does the PR do what the ticket says?** — the acceptance criteria matrix of the PR
+      Verification page (mockup 12, issue [#359](https://github.com/NobuData/ouroboros/issues/359),
+      decisions **V6**/**V9**, option **4-A**): claims authored or imported from the plan, typed
+      evidence resolved at write, verification that requires evidence, and a waiver that is
+      annotated on the host PR.
   - name: farm
     description: |-
       **The build farm's identity layer** (mockup 08, epic
@@ -16926,6 +16933,845 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/criteria:
+    get:
+      tags: [pr-criteria]
+      summary: The acceptance criteria matrix of a pull request
+      description: |-
+        Mockup 12's **Does the PR do what the ticket says?** card
+        ([#359](https://github.com/NobuData/ouroboros/issues/359), decision **V6**): every claim in the
+        matrix's order, with its evidence lines, its status and — when waived — the AS.4 waiver and
+        where it was annotated on the host PR. Each evidence row carries its composed mono line
+        (`displayText`) **and** its typed reference, so the matrix renders without a join and a click can
+        still reach the case, the measurement or the hunk. Shaped for the matrix card
+        ([#366](https://github.com/NobuData/ouroboros/issues/366)). Every member may read this, a
+        `viewer` included.
+      operationId: getPullRequestCriteria
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+      responses:
+        "200":
+          description: The matrix.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriteriaMatrix"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [pr-criteria]
+      summary: Author an acceptance criterion
+      description: |-
+        Writes one claim as `manual` — the only provenance authoring writes (option **4-A**). `plan`
+        rows come from the plan import, and `extracted` is reserved for claim extraction (AZ.2,
+        [#372](https://github.com/NobuData/ouroboros/issues/372)) and refused in the MVP; both answer
+        `criterion_source_invalid`. The claim goes last in the matrix, `unverified`. `owner`, `admin` or
+        `member`.
+      operationId: createPullRequestCriterion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCriterionRequest"
+            example:
+              claim: Telemetry frames must arrive in ISR order under load
+      responses:
+        "201":
+          description: The criterion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrCriterion"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner`, `admin` or `member` may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `criterion_source_invalid` — `extracted` (reserved) or `plan` (import only).
+            `validation_failed` — a blank, padded or over-long claim, or an id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/criteria/import:
+    post:
+      tags: [pr-criteria]
+      summary: Import the plan's acceptance criteria
+      description: |-
+        Reads the **Acceptance criteria** section of the plan draft pushed as this PR's ticket (AL.1,
+        [#277](https://github.com/NobuData/ouroboros/issues/277)) and writes each item as a `plan` row,
+        after the matrix's last row, `created_by` the caller. Only a stated section is read — a heading,
+        a bold line or a `label:` — so task detail is never guessed into claims. **Repeatable**: a claim
+        the PR already has, word for word, is skipped and listed in `alreadyPresent`; an item longer than
+        a claim may be is listed in `tooLong` rather than cut. `owner`, `admin` or `member`.
+      operationId: importPullRequestCriteria
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+      responses:
+        "201":
+          description: What was imported.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriteriaImport"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner`, `admin` or `member` may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `plan_context_missing` — the PR has no ticket, or no plan draft with a body was pushed as it.
+            `plan_criteria_missing` — the plan draft states no acceptance-criteria section.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/criteria/order:
+    put:
+      tags: [pr-criteria]
+      summary: Reorder the acceptance criteria
+      description: |-
+        Puts the matrix in the order given: every criterion of the PR, each once, first row first.
+        `owner`, `admin` or `member`.
+      operationId: reorderPullRequestCriteria
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ReorderCriteriaRequest"
+            example:
+              criterionIds: [5eed003e-0000-4000-8000-000000005142, 5eed003e-0000-4000-8000-000000005141]
+      responses:
+        "200":
+          description: The matrix, in its new order.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CriteriaMatrix"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner`, `admin` or `member` may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `criteria_order_invalid` — the list leaves a criterion out, repeats one, or names one that is
+            not this PR's; `details` lists `missing` and `unknown`. `validation_failed` — an id that
+            is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/criteria/{criterionId}:
+    patch:
+      tags: [pr-criteria]
+      summary: Reword an acceptance criterion
+      description: |-
+        Replaces the claim's wording. Its evidence and status stay — the citations were of the work,
+        not the words. `owner`, `admin` or `member`.
+      operationId: updatePullRequestCriterion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+        - $ref: "#/components/parameters/CriterionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateCriterionRequest"
+            example:
+              claim: Telemetry frames must arrive in ISR order under sustained load
+      responses:
+        "200":
+          description: The criterion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrCriterion"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner`, `admin` or `member` may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. `criterion_not_found` — no criterion with that id on this pull request.
+            Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a blank, padded or over-long claim, or an id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [pr-criteria]
+      summary: Delete an acceptance criterion
+      description: |-
+        Removes the claim and its evidence. Its AS.4 waiver, if it had one, stays — waivers are
+        append-only. `owner`, `admin` or `member`.
+      operationId: deletePullRequestCriterion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+        - $ref: "#/components/parameters/CriterionId"
+      responses:
+        "204":
+          description: Deleted.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner`, `admin` or `member` may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. `criterion_not_found` — no criterion with that id on this pull request.
+            Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/criteria/{criterionId}/evidence:
+    post:
+      tags: [pr-criteria]
+      summary: Cite evidence for an acceptance criterion
+      description: |-
+        One **typed reference, resolved before it is stored** (decision **V6**) — free-text evidence
+        would render identically and mean nothing, and would rot silently the first time a test was
+        renamed:
+
+        | kind | reference | resolves to |
+        |---|---|---|
+        | `test_case` | `caseKey`, `testRunId`? | the case with that durable key in an attempt of the PR's run — the latest that has it, unless `testRunId` names one; a `skipped` case did not run and is refused |
+        | `hil_measurement` | `hilMeasurementId` | a measurement of one of the run's cases |
+        | `build_artifact` | `testArtifactId` | a file one of the run's attempts uploaded, not expired |
+        | `hunk` | `path`, `lineStart`, `lineEnd`, `revisionId`? | a path in the revision's files snapshot (the latest revision unless named), `1 ≤ lineStart ≤ lineEnd` |
+        | `analysis_note` | `note`, `revisionId`? | a revision of the PR; the note is the evidence |
+
+        The composed line is stored beside the reference — `test_frame_order_under_load (10⁶ frames, 0
+        reordered)`, `HIL overshoot 1.7% vs 2.0% limit (was 2.4% in build 3)`, `hunk
+        telemetry_buf.c:41–66` — and `note` on any other kind is a qualifier appended in parentheses.
+        **A reference that does not resolve is refused** with `evidence_unresolved` for every kind,
+        naming the kind and the reference. `owner`, `admin` or `member`.
+      operationId: attachPullRequestCriterionEvidence
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+        - $ref: "#/components/parameters/CriterionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AttachEvidenceRequest"
+            example:
+              kind: hunk
+              path: drivers/can/telemetry_buf.c
+              lineStart: 41
+              lineEnd: 66
+      responses:
+        "201":
+          description: The criterion, with the new line.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrCriterion"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner`, `admin` or `member` may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. `criterion_not_found` — no criterion with that id on this pull request.
+            Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `evidence_unresolved` — the reference does not resolve in this PR's run or revisions (every
+            kind); `details` carries `kind` and `reference`. `hunk_outside_snapshot` — the revision
+            never changed that path. `validation_failed` — a missing reference for the kind, a
+            malformed key, a line below 1, or an id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/criteria/{criterionId}/evidence/{evidenceId}:
+    delete:
+      tags: [pr-criteria]
+      summary: Remove a piece of evidence
+      description: |-
+        Removes one citation. A `verified` criterion whose last evidence goes is moved back to
+        `unverified` — a claim whose proof is gone is no longer verified. `owner`, `admin` or `member`.
+      operationId: detachPullRequestCriterionEvidence
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+        - $ref: "#/components/parameters/CriterionId"
+        - $ref: "#/components/parameters/EvidenceId"
+      responses:
+        "200":
+          description: The criterion, as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrCriterion"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner`, `admin` or `member` may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. `criterion_not_found` — no criterion with that id on this pull request.
+            Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+            `evidence_not_found` — no evidence with that id on this criterion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/criteria/{criterionId}/verify:
+    post:
+      tags: [pr-criteria]
+      summary: Mark an acceptance criterion verified
+      description: |-
+        **Verification requires evidence**: a criterion with no evidence row is refused. Already
+        verified answers the criterion unchanged. Audited as `pr_criterion.verified` with the person as
+        the actor. `owner`, `admin` or `member`.
+      operationId: verifyPullRequestCriterion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+        - $ref: "#/components/parameters/CriterionId"
+      responses:
+        "200":
+          description: The criterion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrCriterion"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner`, `admin` or `member` may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. `criterion_not_found` — no criterion with that id on this pull request.
+            Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `criterion_evidence_required` — the criterion has no evidence. `criterion_waived` — it is
+            waived and annotated on the PR; waive it again or delete it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/criteria/{criterionId}/unverify:
+    post:
+      tags: [pr-criteria]
+      summary: Move an acceptance criterion back to unverified
+      description: |-
+        Already unverified answers the criterion unchanged. Audited as `pr_criterion.unverified`.
+        `owner`, `admin` or `member`.
+      operationId: unverifyPullRequestCriterion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+        - $ref: "#/components/parameters/CriterionId"
+      responses:
+        "200":
+          description: The criterion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrCriterion"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner`, `admin` or `member` may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. `criterion_not_found` — no criterion with that id on this pull request.
+            Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `criterion_waived` — it is waived and annotated on the PR; waive it again or delete it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/criteria/{criterionId}/waive:
+    post:
+      tags: [pr-criteria]
+      summary: Waive an acceptance criterion and annotate the host PR
+      description: |-
+        Decision **V9** — *waivers have to leave the building*. Writes the AS.4 waiver (author, required
+        reason) and sets the criterion `waived` in one transaction, **then** posts an annotation to the
+        host PR through the SPI's idempotent comment surface — the criterion, the reason and the author.
+        The comment is keyed by the criterion, so **waiving again edits the same comment** rather than
+        posting a second (`annotation.mode` is `edited`) and records a new waiver.
+
+        A host that refuses is **not** an error of this request: the waiver is kept, its annotation is
+        recorded `failed`, and `annotation.error` says why (`host_auth`, `host_permission`,
+        `host_rate_limit`, …). Waiving again is the retry. On success the criterion's
+        `waiver.annotation.url` is what the matrix's `waived · annotated on PR ↗` pill links to.
+
+        Audited as `pr_criterion.waived` (never with the reason, which is in the waiver and on the PR).
+        `owner` or `admin` only — a waiver lets an unmet criterion through.
+      operationId: waivePullRequestCriterion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+        - $ref: "#/components/parameters/CriterionId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WaiveCriterionRequest"
+            example:
+              reason: rig runs at 22°C only — thermal chamber not in bench
+      responses:
+        "201":
+          description: The criterion with its waiver, and how the annotation landed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrCriterionWaived"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner` or `admin` — a waiver lets an unmet criterion through may do this.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. `criterion_not_found` — no criterion with that id on this pull request.
+            Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `criterion_waiver_needs_run` — a waiver belongs to the loop that opened the PR, and no loop
+            opened this one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — no reason, a blank or padded one, one over 4096 characters, or an id
+            that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/farm/jobs:
     post:
       tags: [farm]
@@ -17869,6 +18715,38 @@ components:
         type: string
         format: uuid
       example: 5eed0033-0000-4000-8000-000000000002
+
+    PullRequestId:
+      name: id
+      in: path
+      required: true
+      description: |-
+        The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+        that is not a uuid is a `422` naming the field, before anything is read.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed003a-0000-4000-8000-000000000514
+
+    CriterionId:
+      name: criterionId
+      in: path
+      required: true
+      description: The criterion — `pr_criteria.id`, one claim of this PR's matrix (V057).
+      schema:
+        type: string
+        format: uuid
+      example: 5eed003e-0000-4000-8000-000000005141
+
+    EvidenceId:
+      name: evidenceId
+      in: path
+      required: true
+      description: The evidence — `pr_criteria_evidence.id`, one citation of this criterion (V057).
+      schema:
+        type: string
+        format: uuid
+      example: 5eed003f-0000-4000-8000-000000051411
 
     TestCaseId:
       name: caseId
@@ -19615,6 +20493,331 @@ components:
         createdAt:
           type: string
           format: date-time
+
+    CreateCriterionRequest:
+      type: object
+      title: CreateCriterionRequest
+      additionalProperties: false
+      required: [claim]
+      properties:
+        claim:
+          type: string
+          maxLength: 1024
+          description: The quoted claim. Not blank, not padded.
+        source:
+          type: string
+          enum: [plan, manual, extracted]
+          description: |-
+            `manual`, the default and the only value authoring accepts. `plan` comes from the
+            import and `extracted` is reserved for AZ.2 (#372); both answer
+            `criterion_source_invalid`.
+
+    UpdateCriterionRequest:
+      type: object
+      title: UpdateCriterionRequest
+      additionalProperties: false
+      required: [claim]
+      properties:
+        claim:
+          type: string
+          maxLength: 1024
+
+    ReorderCriteriaRequest:
+      type: object
+      title: ReorderCriteriaRequest
+      additionalProperties: false
+      required: [criterionIds]
+      properties:
+        criterionIds:
+          type: array
+          maxItems: 200
+          description: Every criterion of the PR, each once, first row first.
+          items:
+            type: string
+            format: uuid
+
+    AttachEvidenceRequest:
+      type: object
+      title: AttachEvidenceRequest
+      additionalProperties: false
+      required: [kind]
+      description: |-
+        One typed reference. `kind` decides which fields are required — see the operation.
+      properties:
+        kind:
+          type: string
+          enum: [test_case, hil_measurement, hunk, analysis_note, build_artifact]
+        caseKey:
+          type: string
+          pattern: ^[0-9a-f]{64}$
+          description: "`test_case`: the case's durable key (decision T2)."
+        testRunId:
+          type: string
+          format: uuid
+          description: "`test_case`: the attempt to cite, when not the latest that ran the case."
+        hilMeasurementId:
+          type: string
+          format: uuid
+          description: "`hil_measurement`: `hil_measurements.id`."
+        testArtifactId:
+          type: string
+          format: uuid
+          description: "`build_artifact`: `test_artifacts.id`."
+        revisionId:
+          type: string
+          format: uuid
+          description: "`hunk` and `analysis_note`: the revision, when not the PR's latest."
+        path:
+          type: string
+          maxLength: 1024
+          description: "`hunk`: a path in the revision's files snapshot."
+        lineStart:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        lineEnd:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        note:
+          type: string
+          maxLength: 512
+          description: |-
+            `analysis_note`: the reading itself, required. Any other kind: a qualifier appended
+            to the composed line in parentheses.
+
+    WaiveCriterionRequest:
+      type: object
+      title: WaiveCriterionRequest
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          maxLength: 4096
+          description: Why. Required, not blank — written to the waiver and posted on the host PR.
+
+    PrEvidenceRef:
+      type: object
+      title: PrEvidenceRef
+      additionalProperties: false
+      description: The typed reference — exactly the fields of the row's kind are non-null.
+      required: [testCaseId, hilMeasurementId, testArtifactId, revisionId, path, lineStart, lineEnd]
+      properties:
+        testCaseId:
+          type: [string, "null"]
+          format: uuid
+        hilMeasurementId:
+          type: [string, "null"]
+          format: uuid
+        testArtifactId:
+          type: [string, "null"]
+          format: uuid
+        revisionId:
+          type: [string, "null"]
+          format: uuid
+        path:
+          type: [string, "null"]
+        lineStart:
+          type: [integer, "null"]
+        lineEnd:
+          type: [integer, "null"]
+
+    PrEvidence:
+      type: object
+      title: PrEvidence
+      additionalProperties: false
+      required: [id, criterionId, kind, displayText, ref, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        criterionId:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [test_case, hil_measurement, hunk, analysis_note, build_artifact]
+        displayText:
+          type: string
+          maxLength: 512
+          description: The composed mono line the matrix prints.
+        ref:
+          $ref: "#/components/schemas/PrEvidenceRef"
+        createdAt:
+          type: string
+          format: date-time
+
+    PrWaiverAnnotation:
+      type: object
+      title: PrWaiverAnnotation
+      additionalProperties: false
+      required: [state, commentId, url, annotatedAt]
+      properties:
+        state:
+          type: string
+          enum: [pending_pr_plane, annotated, failed]
+          description: |-
+            `pending_pr_plane` — not posted; `annotated` — the host holds the comment (final);
+            `failed` — the host refused it, and waiving again retries.
+        commentId:
+          type: [string, "null"]
+        url:
+          type: [string, "null"]
+          description: The comment's page — null when the host did not say.
+        annotatedAt:
+          type: [string, "null"]
+          format: date-time
+
+    PrCriterionWaiver:
+      type: object
+      title: PrCriterionWaiver
+      additionalProperties: false
+      required: [id, reason, author, createdAt, annotation]
+      properties:
+        id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+        author:
+          type: [string, "null"]
+          description: Who waived; null once the person is removed.
+        createdAt:
+          type: string
+          format: date-time
+        annotation:
+          $ref: "#/components/schemas/PrWaiverAnnotation"
+
+    PrCriterion:
+      type: object
+      title: PrCriterion
+      additionalProperties: false
+      required: [id, prId, claim, source, status, sortOrder, createdBy, createdAt, updatedAt, evidence, waiver]
+      properties:
+        id:
+          type: string
+          format: uuid
+        prId:
+          type: string
+          format: uuid
+        claim:
+          type: string
+        source:
+          type: string
+          enum: [plan, manual, extracted]
+        status:
+          type: string
+          enum: [unverified, verified, waived]
+        sortOrder:
+          type: integer
+        createdBy:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        evidence:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrEvidence"
+        waiver:
+          description: The AS.4 waiver, exactly when `status` is `waived`.
+          oneOf:
+            - $ref: "#/components/schemas/PrCriterionWaiver"
+            - type: "null"
+
+    CriteriaCounts:
+      type: object
+      title: CriteriaCounts
+      additionalProperties: false
+      required: [total, verified, waived, unverified]
+      properties:
+        total:
+          type: integer
+        verified:
+          type: integer
+        waived:
+          type: integer
+        unverified:
+          type: integer
+
+    CriteriaMatrix:
+      type: object
+      title: CriteriaMatrix
+      additionalProperties: false
+      required: [prId, counts, criteria]
+      properties:
+        prId:
+          type: string
+          format: uuid
+        counts:
+          $ref: "#/components/schemas/CriteriaCounts"
+        criteria:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrCriterion"
+
+    CriteriaImport:
+      type: object
+      title: CriteriaImport
+      additionalProperties: false
+      required: [draftId, imported, alreadyPresent, tooLong]
+      properties:
+        draftId:
+          type: string
+          format: uuid
+          description: The plan draft the criteria were read from.
+        imported:
+          type: array
+          items:
+            $ref: "#/components/schemas/PrCriterion"
+        alreadyPresent:
+          type: array
+          items:
+            type: string
+        tooLong:
+          type: array
+          items:
+            type: string
+
+    PrAnnotationOutcome:
+      type: object
+      title: PrAnnotationOutcome
+      additionalProperties: false
+      required: [state, mode, error]
+      properties:
+        state:
+          type: string
+          enum: [annotated, failed]
+        mode:
+          type: [string, "null"]
+          enum: [created, edited, unchanged, null]
+        error:
+          description: Why the host refused, on failure.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [code, message]
+              properties:
+                code:
+                  type: string
+                message:
+                  type: string
+            - type: "null"
+
+    PrCriterionWaived:
+      type: object
+      title: PrCriterionWaived
+      additionalProperties: false
+      required: [criterion, annotation]
+      properties:
+        criterion:
+          $ref: "#/components/schemas/PrCriterion"
+        annotation:
+          $ref: "#/components/schemas/PrAnnotationOutcome"
 
     RunControl:
       type: object

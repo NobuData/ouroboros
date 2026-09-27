@@ -665,6 +665,13 @@ export function describeTicketSourcePrConformance(
         violations.push("every publish under one key must answer the same comment");
       }
 
+      if (
+        first.value !== undefined &&
+        (same.value?.url !== first.value.url || edited.value?.url !== first.value.url)
+      ) {
+        violations.push("every publish under one key must answer the same comment URL");
+      }
+
       if (ledger().comments.length - before !== 2) {
         violations.push(
           `the host holds ${String(ledger().comments.length - before)} new comments — expected two, one per key`,

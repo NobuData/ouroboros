@@ -96,6 +96,11 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // reason above: `ParseUUIDPipe` refuses anything else, and a `422` would let the signed-in
   // half pass without the guard having admitted anything.
   runnerId: "9c4ab7f0-2d31-4e55-8a0b-6f1c2d3e4a5b",
+  // `POST /api/v1/pull-requests/:id/criteria/:criterionId/verify` and
+  // `DELETE …/evidence/:evidenceId` (#359). Well-formed uuids, so the guard's answer — not the
+  // pipe's 422 — is what this suite observes.
+  criterionId: "5eed003e-0000-4000-8000-000000005141",
+  evidenceId: "5eed003f-0000-4000-8000-000000051411",
   // `GET /runner/:version/:file` (#248). A release version and one of the five file names a
   // release holds, so what a stranger gets is the route's own answer — `404` from a suite that
   // configures no releases directory — rather than a refusal of the shape.

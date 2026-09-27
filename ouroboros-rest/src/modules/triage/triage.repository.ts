@@ -571,14 +571,14 @@ export class TriageRepository {
    * @param caseKeys - The waived cases; empty for a criterion-level waiver.
    * @returns The waiver.
    */
-  insertWaiver(
+  async insertWaiver(
     organizationId: string,
     runId: string,
     author: string,
     reason: string,
     caseKeys: readonly string[],
   ): Promise<WaiverRow> {
-    return this.db
+    const row = await this.db
       .insertInto("pr_waivers")
       .values({
         organization_id: organizationId,
@@ -587,7 +587,23 @@ export class TriageRepository {
         reason,
         case_keys: [...caseKeys],
       })
-      .returningAll()
+      .returning([
+        "id",
+        "run_id",
+        "author",
+        "reason",
+        "case_keys",
+        "annotation_state",
+        "created_at",
+      ])
       .executeTakeFirstOrThrow();
+
+    // A waiver of cases is never posted — only a criterion's is, by the criteria service (#359) —
+    // so the database writes it unposted, and anything else is a default that moved under us.
+    if (row.annotation_state !== "pending_pr_plane") {
+      throw new Error(`waiver ${row.id} was written ${row.annotation_state}, not pending_pr_plane`);
+    }
+
+    return { ...row, annotation_state: row.annotation_state };
   }
 }

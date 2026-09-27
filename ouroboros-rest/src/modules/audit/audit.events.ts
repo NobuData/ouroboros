@@ -60,7 +60,8 @@ export type AuditSubjectType =
   | "build_job"
   | "test_case"
   | "test_run"
-  | "pr_waiver";
+  | "pr_waiver"
+  | "pr_criterion";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -268,6 +269,28 @@ export const TRIAGE_RERUN_REQUESTED_EVENT = "triage.rerun_requested";
 export const TRIAGE_WAIVED_EVENT = "triage.waived";
 
 /**
+ * A person marked an acceptance criterion `verified` on mockup 12's matrix (AX.3,
+ * [#359](https://github.com/NobuData/ouroboros/issues/359), decision **V6**). Subject
+ * `pr_criterion`; the detail carries the PR, the status it left and how many evidence rows back it.
+ *
+ * **A family of its own, `pr_criterion`.** *Who decided this PR does what the ticket says* is a
+ * question about claims, not about test failures (`triage`), and `action like 'pr_criterion.%'`
+ * answers it whole.
+ */
+export const PR_CRITERION_VERIFIED_EVENT = "pr_criterion.verified";
+
+/** A person moved a verified criterion back to `unverified` (#359). Subject `pr_criterion`. */
+export const PR_CRITERION_UNVERIFIED_EVENT = "pr_criterion.unverified";
+
+/**
+ * A person waived a criterion (#359, decision **V9**): the AS.4 waiver was written and the host PR
+ * annotation attempted. Subject `pr_criterion`; the detail names the waiver, the status it left and
+ * how the annotation landed (`annotated` or `failed`) — never the reason, which is in the waiver
+ * row and on the PR.
+ */
+export const PR_CRITERION_WAIVED_EVENT = "pr_criterion.waived";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -305,6 +328,9 @@ export const AUDIT_ACTIONS = [
   TRIAGE_CLASSIFIED_EVENT,
   TRIAGE_RERUN_REQUESTED_EVENT,
   TRIAGE_WAIVED_EVENT,
+  PR_CRITERION_VERIFIED_EVENT,
+  PR_CRITERION_UNVERIFIED_EVENT,
+  PR_CRITERION_WAIVED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

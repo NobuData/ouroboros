@@ -604,7 +604,7 @@ createPR(context, { branch, base, title, body })   → { number, url } | null
 getPR(context, n)                                  → PullRequestSnapshot
 syncPR(context, n, knownHeadSha)                   → { pr, revision | null }
 mergePR(context, n, { strategy, message, deleteBranch }) → { sha, alreadyMerged, branchDeleted, closures[] }
-commentPR(context, n, { key, body })               → { commentId, mode: "created" | "edited" | "unchanged" }
+commentPR(context, n, { key, body })               → { commentId, url | null, mode: "created" | "edited" | "unchanged" }
 requestReview(context, n, user)                    → { requested[] } | null
 prEvents(context, cursor)                          → { events[], nextCursor, hasMore }
 ```
@@ -667,7 +667,7 @@ The PR plane of a source is its **push target** (the first enabled repository): 
 | `createPR` | `GET …/pulls?head=owner:branch&base=…&state=open`, else `POST …/pulls` |
 | `getPR` / `syncPR` | `GET …/pulls/{n}`; when the head moved, every page of `GET …/pulls/{n}/files`. `pushedAt` is the PR's `updated_at` — GitHub reports no push time |
 | `mergePR` | strategy gate (no request) → `GET …/pulls/{n}` → `PUT …/pulls/{n}/merge` with the message's first line as `commit_title` and the rest as `commit_message` → `DELETE …/git/refs/heads/{b}` (`422` = already gone) → `GET …/issues/{N}` per closing reference |
-| `commentPR` | `GET …/issues/{n}/comments`, then `PATCH …/issues/comments/{id}` or `POST …/issues/{n}/comments` |
+| `commentPR` | `GET …/issues/{n}/comments`, then `PATCH …/issues/comments/{id}` or `POST …/issues/{n}/comments`. `url` is the comment's `html_url` (null when absent or not https) — what a criterion waiver's *annotated on PR* pill links to (#359) |
 | `requestReview` | `POST …/pulls/{n}/requested_reviewers` |
 | `prEvents` | inclusive `since` cursor — a PR on the last instant repeats rather than being skipped; `syncPR` is idempotent |
 

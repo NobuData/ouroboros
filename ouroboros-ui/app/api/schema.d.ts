@@ -5251,6 +5251,245 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pull-requests/{id}/criteria": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The acceptance criteria matrix of a pull request
+         * @description Mockup 12's **Does the PR do what the ticket says?** card
+         *     ([#359](https://github.com/NobuData/ouroboros/issues/359), decision **V6**): every claim in the
+         *     matrix's order, with its evidence lines, its status and — when waived — the AS.4 waiver and
+         *     where it was annotated on the host PR. Each evidence row carries its composed mono line
+         *     (`displayText`) **and** its typed reference, so the matrix renders without a join and a click can
+         *     still reach the case, the measurement or the hunk. Shaped for the matrix card
+         *     ([#366](https://github.com/NobuData/ouroboros/issues/366)). Every member may read this, a
+         *     `viewer` included.
+         */
+        get: operations["getPullRequestCriteria"];
+        put?: never;
+        /**
+         * Author an acceptance criterion
+         * @description Writes one claim as `manual` — the only provenance authoring writes (option **4-A**). `plan`
+         *     rows come from the plan import, and `extracted` is reserved for claim extraction (AZ.2,
+         *     [#372](https://github.com/NobuData/ouroboros/issues/372)) and refused in the MVP; both answer
+         *     `criterion_source_invalid`. The claim goes last in the matrix, `unverified`. `owner`, `admin` or
+         *     `member`.
+         */
+        post: operations["createPullRequestCriterion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/criteria/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import the plan's acceptance criteria
+         * @description Reads the **Acceptance criteria** section of the plan draft pushed as this PR's ticket (AL.1,
+         *     [#277](https://github.com/NobuData/ouroboros/issues/277)) and writes each item as a `plan` row,
+         *     after the matrix's last row, `created_by` the caller. Only a stated section is read — a heading,
+         *     a bold line or a `label:` — so task detail is never guessed into claims. **Repeatable**: a claim
+         *     the PR already has, word for word, is skipped and listed in `alreadyPresent`; an item longer than
+         *     a claim may be is listed in `tooLong` rather than cut. `owner`, `admin` or `member`.
+         */
+        post: operations["importPullRequestCriteria"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/criteria/order": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Reorder the acceptance criteria
+         * @description Puts the matrix in the order given: every criterion of the PR, each once, first row first.
+         *     `owner`, `admin` or `member`.
+         */
+        put: operations["reorderPullRequestCriteria"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/criteria/{criterionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Delete an acceptance criterion
+         * @description Removes the claim and its evidence. Its AS.4 waiver, if it had one, stays — waivers are
+         *     append-only. `owner`, `admin` or `member`.
+         */
+        delete: operations["deletePullRequestCriterion"];
+        options?: never;
+        head?: never;
+        /**
+         * Reword an acceptance criterion
+         * @description Replaces the claim's wording. Its evidence and status stay — the citations were of the work,
+         *     not the words. `owner`, `admin` or `member`.
+         */
+        patch: operations["updatePullRequestCriterion"];
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/criteria/{criterionId}/evidence": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cite evidence for an acceptance criterion
+         * @description One **typed reference, resolved before it is stored** (decision **V6**) — free-text evidence
+         *     would render identically and mean nothing, and would rot silently the first time a test was
+         *     renamed:
+         *
+         *     | kind | reference | resolves to |
+         *     |---|---|---|
+         *     | `test_case` | `caseKey`, `testRunId`? | the case with that durable key in an attempt of the PR's run — the latest that has it, unless `testRunId` names one; a `skipped` case did not run and is refused |
+         *     | `hil_measurement` | `hilMeasurementId` | a measurement of one of the run's cases |
+         *     | `build_artifact` | `testArtifactId` | a file one of the run's attempts uploaded, not expired |
+         *     | `hunk` | `path`, `lineStart`, `lineEnd`, `revisionId`? | a path in the revision's files snapshot (the latest revision unless named), `1 ≤ lineStart ≤ lineEnd` |
+         *     | `analysis_note` | `note`, `revisionId`? | a revision of the PR; the note is the evidence |
+         *
+         *     The composed line is stored beside the reference — `test_frame_order_under_load (10⁶ frames, 0
+         *     reordered)`, `HIL overshoot 1.7% vs 2.0% limit (was 2.4% in build 3)`, `hunk
+         *     telemetry_buf.c:41–66` — and `note` on any other kind is a qualifier appended in parentheses.
+         *     **A reference that does not resolve is refused** with `evidence_unresolved` for every kind,
+         *     naming the kind and the reference. `owner`, `admin` or `member`.
+         */
+        post: operations["attachPullRequestCriterionEvidence"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/criteria/{criterionId}/evidence/{evidenceId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a piece of evidence
+         * @description Removes one citation. A `verified` criterion whose last evidence goes is moved back to
+         *     `unverified` — a claim whose proof is gone is no longer verified. `owner`, `admin` or `member`.
+         */
+        delete: operations["detachPullRequestCriterionEvidence"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/criteria/{criterionId}/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mark an acceptance criterion verified
+         * @description **Verification requires evidence**: a criterion with no evidence row is refused. Already
+         *     verified answers the criterion unchanged. Audited as `pr_criterion.verified` with the person as
+         *     the actor. `owner`, `admin` or `member`.
+         */
+        post: operations["verifyPullRequestCriterion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/criteria/{criterionId}/unverify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Move an acceptance criterion back to unverified
+         * @description Already unverified answers the criterion unchanged. Audited as `pr_criterion.unverified`.
+         *     `owner`, `admin` or `member`.
+         */
+        post: operations["unverifyPullRequestCriterion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/criteria/{criterionId}/waive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Waive an acceptance criterion and annotate the host PR
+         * @description Decision **V9** — *waivers have to leave the building*. Writes the AS.4 waiver (author, required
+         *     reason) and sets the criterion `waived` in one transaction, **then** posts an annotation to the
+         *     host PR through the SPI's idempotent comment surface — the criterion, the reason and the author.
+         *     The comment is keyed by the criterion, so **waiving again edits the same comment** rather than
+         *     posting a second (`annotation.mode` is `edited`) and records a new waiver.
+         *
+         *     A host that refuses is **not** an error of this request: the waiver is kept, its annotation is
+         *     recorded `failed`, and `annotation.error` says why (`host_auth`, `host_permission`,
+         *     `host_rate_limit`, …). Waiving again is the retry. On success the criterion's
+         *     `waiver.annotation.url` is what the matrix's `waived · annotated on PR ↗` pill links to.
+         *
+         *     Audited as `pr_criterion.waived` (never with the reason, which is in the waiver and on the PR).
+         *     `owner` or `admin` only — a waiver lets an unmet criterion through.
+         */
+        post: operations["waivePullRequestCriterion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/farm/jobs": {
         parameters: {
             query?: never;
@@ -6773,6 +7012,190 @@ export interface components {
             annotationState: "pending_pr_plane";
             /** Format: date-time */
             createdAt: string;
+        };
+        /** CreateCriterionRequest */
+        CreateCriterionRequest: {
+            /** @description The quoted claim. Not blank, not padded. */
+            claim: string;
+            /**
+             * @description `manual`, the default and the only value authoring accepts. `plan` comes from the
+             *     import and `extracted` is reserved for AZ.2 (#372); both answer
+             *     `criterion_source_invalid`.
+             * @enum {string}
+             */
+            source?: "plan" | "manual" | "extracted";
+        };
+        /** UpdateCriterionRequest */
+        UpdateCriterionRequest: {
+            claim: string;
+        };
+        /** ReorderCriteriaRequest */
+        ReorderCriteriaRequest: {
+            /** @description Every criterion of the PR, each once, first row first. */
+            criterionIds: string[];
+        };
+        /**
+         * AttachEvidenceRequest
+         * @description One typed reference. `kind` decides which fields are required — see the operation.
+         */
+        AttachEvidenceRequest: {
+            /** @enum {string} */
+            kind: "test_case" | "hil_measurement" | "hunk" | "analysis_note" | "build_artifact";
+            /** @description `test_case`: the case's durable key (decision T2). */
+            caseKey?: string;
+            /**
+             * Format: uuid
+             * @description `test_case`: the attempt to cite, when not the latest that ran the case.
+             */
+            testRunId?: string;
+            /**
+             * Format: uuid
+             * @description `hil_measurement`: `hil_measurements.id`.
+             */
+            hilMeasurementId?: string;
+            /**
+             * Format: uuid
+             * @description `build_artifact`: `test_artifacts.id`.
+             */
+            testArtifactId?: string;
+            /**
+             * Format: uuid
+             * @description `hunk` and `analysis_note`: the revision, when not the PR's latest.
+             */
+            revisionId?: string;
+            /** @description `hunk`: a path in the revision's files snapshot. */
+            path?: string;
+            lineStart?: number;
+            lineEnd?: number;
+            /**
+             * @description `analysis_note`: the reading itself, required. Any other kind: a qualifier appended
+             *     to the composed line in parentheses.
+             */
+            note?: string;
+        };
+        /** WaiveCriterionRequest */
+        WaiveCriterionRequest: {
+            /** @description Why. Required, not blank — written to the waiver and posted on the host PR. */
+            reason: string;
+        };
+        /**
+         * PrEvidenceRef
+         * @description The typed reference — exactly the fields of the row's kind are non-null.
+         */
+        PrEvidenceRef: {
+            /** Format: uuid */
+            testCaseId: string | null;
+            /** Format: uuid */
+            hilMeasurementId: string | null;
+            /** Format: uuid */
+            testArtifactId: string | null;
+            /** Format: uuid */
+            revisionId: string | null;
+            path: string | null;
+            lineStart: number | null;
+            lineEnd: number | null;
+        };
+        /** PrEvidence */
+        PrEvidence: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            criterionId: string;
+            /** @enum {string} */
+            kind: "test_case" | "hil_measurement" | "hunk" | "analysis_note" | "build_artifact";
+            /** @description The composed mono line the matrix prints. */
+            displayText: string;
+            ref: components["schemas"]["PrEvidenceRef"];
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** PrWaiverAnnotation */
+        PrWaiverAnnotation: {
+            /**
+             * @description `pending_pr_plane` — not posted; `annotated` — the host holds the comment (final);
+             *     `failed` — the host refused it, and waiving again retries.
+             * @enum {string}
+             */
+            state: "pending_pr_plane" | "annotated" | "failed";
+            commentId: string | null;
+            /** @description The comment's page — null when the host did not say. */
+            url: string | null;
+            /** Format: date-time */
+            annotatedAt: string | null;
+        };
+        /** PrCriterionWaiver */
+        PrCriterionWaiver: {
+            /** Format: uuid */
+            id: string;
+            reason: string;
+            /** @description Who waived; null once the person is removed. */
+            author: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            annotation: components["schemas"]["PrWaiverAnnotation"];
+        };
+        /** PrCriterion */
+        PrCriterion: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            prId: string;
+            claim: string;
+            /** @enum {string} */
+            source: "plan" | "manual" | "extracted";
+            /** @enum {string} */
+            status: "unverified" | "verified" | "waived";
+            sortOrder: number;
+            createdBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            evidence: components["schemas"]["PrEvidence"][];
+            /** @description The AS.4 waiver, exactly when `status` is `waived`. */
+            waiver: components["schemas"]["PrCriterionWaiver"] | null;
+        };
+        /** CriteriaCounts */
+        CriteriaCounts: {
+            total: number;
+            verified: number;
+            waived: number;
+            unverified: number;
+        };
+        /** CriteriaMatrix */
+        CriteriaMatrix: {
+            /** Format: uuid */
+            prId: string;
+            counts: components["schemas"]["CriteriaCounts"];
+            criteria: components["schemas"]["PrCriterion"][];
+        };
+        /** CriteriaImport */
+        CriteriaImport: {
+            /**
+             * Format: uuid
+             * @description The plan draft the criteria were read from.
+             */
+            draftId: string;
+            imported: components["schemas"]["PrCriterion"][];
+            alreadyPresent: string[];
+            tooLong: string[];
+        };
+        /** PrAnnotationOutcome */
+        PrAnnotationOutcome: {
+            /** @enum {string} */
+            state: "annotated" | "failed";
+            /** @enum {string|null} */
+            mode: "created" | "edited" | "unchanged" | null;
+            /** @description Why the host refused, on failure. */
+            error: {
+                code: string;
+                message: string;
+            } | null;
+        };
+        /** PrCriterionWaived */
+        PrCriterionWaived: {
+            criterion: components["schemas"]["PrCriterion"];
+            annotation: components["schemas"]["PrAnnotationOutcome"];
         };
         /** RunControl */
         RunControl: {
@@ -14894,6 +15317,22 @@ export interface components {
          * @example 5eed0033-0000-4000-8000-000000000002
          */
         TestRunId: string;
+        /**
+         * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+         *     that is not a uuid is a `422` naming the field, before anything is read.
+         * @example 5eed003a-0000-4000-8000-000000000514
+         */
+        PullRequestId: string;
+        /**
+         * @description The criterion — `pr_criteria.id`, one claim of this PR's matrix (V057).
+         * @example 5eed003e-0000-4000-8000-000000005141
+         */
+        CriterionId: string;
+        /**
+         * @description The evidence — `pr_criteria_evidence.id`, one citation of this criterion (V057).
+         * @example 5eed003f-0000-4000-8000-000000051411
+         */
+        EvidenceId: string;
         /**
          * @description The case — `test_cases.id`, one case in this test run (V051).
          * @example 5eed0035-0000-4000-8000-000000000001
@@ -38011,6 +38450,1584 @@ export interface operations {
             /**
              * @description `waiver_cases_invalid` — a case id that is not in this test run. `validation_failed` —
              *     no reason, a blank one, or an id that is not a uuid.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPullRequestCriteria: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The matrix. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriteriaMatrix"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createPullRequestCriterion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "claim": "Telemetry frames must arrive in ISR order under load"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateCriterionRequest"];
+            };
+        };
+        responses: {
+            /** @description The criterion. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrCriterion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner`, `admin` or `member` may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `criterion_source_invalid` — `extracted` (reserved) or `plan` (import only).
+             *     `validation_failed` — a blank, padded or over-long claim, or an id that is not a uuid.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    importPullRequestCriteria: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What was imported. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriteriaImport"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner`, `admin` or `member` may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `plan_context_missing` — the PR has no ticket, or no plan draft with a body was pushed as it.
+             *     `plan_criteria_missing` — the plan draft states no acceptance-criteria section.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    reorderPullRequestCriteria: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "criterionIds": [
+                 *         "5eed003e-0000-4000-8000-000000005142",
+                 *         "5eed003e-0000-4000-8000-000000005141"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["ReorderCriteriaRequest"];
+            };
+        };
+        responses: {
+            /** @description The matrix, in its new order. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CriteriaMatrix"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner`, `admin` or `member` may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `criteria_order_invalid` — the list leaves a criterion out, repeats one, or names one that is
+             *     not this PR's; `details` lists `missing` and `unknown`. `validation_failed` — an id that
+             *     is not a uuid.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deletePullRequestCriterion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+                /**
+                 * @description The criterion — `pr_criteria.id`, one claim of this PR's matrix (V057).
+                 * @example 5eed003e-0000-4000-8000-000000005141
+                 */
+                criterionId: components["parameters"]["CriterionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner`, `admin` or `member` may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. `criterion_not_found` — no criterion with that id on this pull request.
+             *     Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updatePullRequestCriterion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+                /**
+                 * @description The criterion — `pr_criteria.id`, one claim of this PR's matrix (V057).
+                 * @example 5eed003e-0000-4000-8000-000000005141
+                 */
+                criterionId: components["parameters"]["CriterionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "claim": "Telemetry frames must arrive in ISR order under sustained load"
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateCriterionRequest"];
+            };
+        };
+        responses: {
+            /** @description The criterion. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrCriterion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner`, `admin` or `member` may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. `criterion_not_found` — no criterion with that id on this pull request.
+             *     Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a blank, padded or over-long claim, or an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    attachPullRequestCriterionEvidence: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+                /**
+                 * @description The criterion — `pr_criteria.id`, one claim of this PR's matrix (V057).
+                 * @example 5eed003e-0000-4000-8000-000000005141
+                 */
+                criterionId: components["parameters"]["CriterionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "kind": "hunk",
+                 *       "path": "drivers/can/telemetry_buf.c",
+                 *       "lineStart": 41,
+                 *       "lineEnd": 66
+                 *     }
+                 */
+                "application/json": components["schemas"]["AttachEvidenceRequest"];
+            };
+        };
+        responses: {
+            /** @description The criterion, with the new line. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrCriterion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner`, `admin` or `member` may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. `criterion_not_found` — no criterion with that id on this pull request.
+             *     Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `evidence_unresolved` — the reference does not resolve in this PR's run or revisions (every
+             *     kind); `details` carries `kind` and `reference`. `hunk_outside_snapshot` — the revision
+             *     never changed that path. `validation_failed` — a missing reference for the kind, a
+             *     malformed key, a line below 1, or an id that is not a uuid.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    detachPullRequestCriterionEvidence: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+                /**
+                 * @description The criterion — `pr_criteria.id`, one claim of this PR's matrix (V057).
+                 * @example 5eed003e-0000-4000-8000-000000005141
+                 */
+                criterionId: components["parameters"]["CriterionId"];
+                /**
+                 * @description The evidence — `pr_criteria_evidence.id`, one citation of this criterion (V057).
+                 * @example 5eed003f-0000-4000-8000-000000051411
+                 */
+                evidenceId: components["parameters"]["EvidenceId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The criterion, as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrCriterion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner`, `admin` or `member` may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. `criterion_not_found` — no criterion with that id on this pull request.
+             *     Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             *     `evidence_not_found` — no evidence with that id on this criterion.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    verifyPullRequestCriterion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+                /**
+                 * @description The criterion — `pr_criteria.id`, one claim of this PR's matrix (V057).
+                 * @example 5eed003e-0000-4000-8000-000000005141
+                 */
+                criterionId: components["parameters"]["CriterionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The criterion. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrCriterion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner`, `admin` or `member` may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. `criterion_not_found` — no criterion with that id on this pull request.
+             *     Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `criterion_evidence_required` — the criterion has no evidence. `criterion_waived` — it is
+             *     waived and annotated on the PR; waive it again or delete it.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    unverifyPullRequestCriterion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+                /**
+                 * @description The criterion — `pr_criteria.id`, one claim of this PR's matrix (V057).
+                 * @example 5eed003e-0000-4000-8000-000000005141
+                 */
+                criterionId: components["parameters"]["CriterionId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The criterion. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrCriterion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner`, `admin` or `member` may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. `criterion_not_found` — no criterion with that id on this pull request.
+             *     Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `criterion_waived` — it is waived and annotated on the PR; waive it again or delete it. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    waivePullRequestCriterion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+                /**
+                 * @description The criterion — `pr_criteria.id`, one claim of this PR's matrix (V057).
+                 * @example 5eed003e-0000-4000-8000-000000005141
+                 */
+                criterionId: components["parameters"]["CriterionId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "reason": "rig runs at 22°C only — thermal chamber not in bench"
+                 *     }
+                 */
+                "application/json": components["schemas"]["WaiveCriterionRequest"];
+            };
+        };
+        responses: {
+            /** @description The criterion with its waiver, and how the annotation landed. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrCriterionWaived"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner` or `admin` — a waiver lets an unmet criterion through may do this. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. `criterion_not_found` — no criterion with that id on this pull request.
+             *     Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `criterion_waiver_needs_run` — a waiver belongs to the loop that opened the PR, and no loop
+             *     opened this one.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — no reason, a blank or padded one, one over 4096 characters, or an id
+             *     that is not a uuid.
              */
             422: {
                 headers: {

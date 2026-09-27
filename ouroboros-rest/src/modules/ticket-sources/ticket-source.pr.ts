@@ -21,7 +21,7 @@
  * getPR(ctx, n)                                 → PullRequestSnapshot
  * syncPR(ctx, n, knownHeadSha)                  → { pr, revision | null }     revision when the head sha moved
  * mergePR(ctx, n, {strategy, message, deleteBranch}) → { sha, branchDeleted, closures[] }
- * commentPR(ctx, n, {key, body})                → { commentId, mode }        edits, never re-posts
+ * commentPR(ctx, n, {key, body})                → { commentId, url, mode }   edits, never re-posts
  * requestReview(ctx, n, user)                   → { requested } | null
  * prEvents(ctx, cursor)                         → { events[], nextCursor, hasMore }
  * ```
@@ -265,6 +265,12 @@ export type PrCommentMode = "created" | "edited" | "unchanged";
 export interface PrCommentResult {
   /** The host's id for the comment — the same on every publish under one key. */
   readonly commentId: string;
+  /**
+   * The comment's page on the host — what a waiver's `waived · annotated on PR ↗` pill links to
+   * (AX.3, [#359](https://github.com/NobuData/ouroboros/issues/359)). `null` when the host did not
+   * say; never composed from a guess at the host's URL scheme.
+   */
+  readonly url: string | null;
   /** `created` the first time, `edited` when the body changed, `unchanged` when it did not. */
   readonly mode: PrCommentMode;
 }
