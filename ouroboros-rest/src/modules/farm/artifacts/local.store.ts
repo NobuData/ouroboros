@@ -11,7 +11,7 @@
 
 import { randomUUID } from "node:crypto";
 import { createWriteStream } from "node:fs";
-import { mkdir, readFile, rename, rm } from "node:fs/promises";
+import { mkdir, open as openFile, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve, sep } from "node:path";
 import { Transform, type Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
@@ -65,6 +65,19 @@ export class LocalArtifactStore implements ArtifactStore {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new ArtifactNotFoundError(key);
       throw new ArtifactStoreError(`the artifact at ${key} could not be read`, { cause: error });
+    }
+  }
+
+  /** @inheritdoc */
+  async open(key: ArtifactKey): Promise<Readable> {
+    try {
+      // Opening first is what lets a missing file be an error before any byte is promised.
+      const handle = await openFile(this.pathOf(key), "r");
+      return handle.createReadStream();
+    } catch (error) {
+      if (error instanceof ArtifactStoreError) throw error;
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new ArtifactNotFoundError(key);
+      throw new ArtifactStoreError(`the artifact at ${key} could not be opened`, { cause: error });
     }
   }
 

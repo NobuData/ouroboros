@@ -197,7 +197,9 @@ POST /api/v1/farm/jobs/:id/artifacts   (Bearer: the job's single-use upload toke
 - **Coverage counts** (§ 8) are written onto each coverage row as it is inserted — the parse
   returns them for exactly this — so `test_run_coverage` has them from the first read.
 - **Retention** is `OURO_ARTIFACT_RETENTION_DAYS` (30) from the upload; the sweep and the
-  artifact reads are AT.5 ([#333](https://github.com/NobuData/ouroboros/issues/333)).
+  artifact reads are AT.5 ([#333](https://github.com/NobuData/ouroboros/issues/333)): an hourly
+  sweep deletes the bytes through the store and sets `expired_at`, leaving the row as a tombstone
+  the page renders as `expired`.
 - **A truncated file is still parsed.** A JUnit report cut at the per-file cap keeps every element
   that closed and carries `xml_truncated` (§ 6), and its artifact row carries `truncated` with the
   agent's note — the page can say both that results are partial and why.

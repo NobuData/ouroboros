@@ -196,6 +196,20 @@ export class ConflictError extends DomainError {
 }
 
 /**
+ * `410` — the thing addressed existed, and is gone for good.
+ *
+ * Distinct from `404` on the axis AT.5 ([#333](https://github.com/NobuData/ouroboros/issues/333))
+ * cares about: an artifact the retention sweep removed keeps its row as a tombstone, and asking
+ * for its bytes says *expired* rather than *there was never such a file* — a list that silently
+ * shortens teaches people the product loses things. No request will ever make it a `200` again.
+ */
+export class GoneError extends DomainError {
+  constructor(code: string, message: string, details: ErrorDetails = {}) {
+    super(HttpStatus.GONE, code, message, details);
+  }
+}
+
+/**
  * `405` — the path names something real, and it does not accept this method.
  *
  * Distinct from `404` on the axis a client acts on: there *is* such a thing, and no request of

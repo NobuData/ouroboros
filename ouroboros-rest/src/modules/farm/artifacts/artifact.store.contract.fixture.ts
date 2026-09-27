@@ -132,6 +132,24 @@ export function describeArtifactStoreContract(
       await expect(store.get(where)).rejects.toBeInstanceOf(ArtifactNotFoundError);
     });
 
+    it("opens a stored object as a stream of exactly its bytes", async () => {
+      const where = key("job/upload/rig-capture-open.csv");
+      const { bytes, stream } = chunked(1_048_583, 11);
+      await store.put(where, stream, bytes.length);
+
+      const opened = await store.open(where);
+      const read: Buffer[] = [];
+      for await (const chunk of opened) read.push(chunk as Buffer);
+
+      expect(Buffer.concat(read).equals(bytes)).toBe(true);
+    });
+
+    it("answers opening a missing object with ArtifactNotFoundError, before any byte", async () => {
+      await expect(store.open(key("job/upload/never-opened.log"))).rejects.toBeInstanceOf(
+        ArtifactNotFoundError,
+      );
+    });
+
     it("answers a missing object with ArtifactNotFoundError", async () => {
       await expect(store.get(key("job/upload/never-written.xml"))).rejects.toBeInstanceOf(
         ArtifactNotFoundError,
@@ -159,6 +177,7 @@ export function describeArtifactStoreContract(
         store.put(`${prefix}/${bad}`, streamOf(Buffer.from("x")), 1),
       ).rejects.toBeInstanceOf(ArtifactStoreError);
       await expect(store.get(`${prefix}/${bad}`)).rejects.toBeInstanceOf(ArtifactStoreError);
+      await expect(store.open(`${prefix}/${bad}`)).rejects.toBeInstanceOf(ArtifactStoreError);
     });
   });
 }

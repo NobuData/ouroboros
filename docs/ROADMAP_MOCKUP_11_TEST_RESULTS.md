@@ -442,7 +442,7 @@ seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail
 | AT.2 | #330 ✅ | 🟢 Done | ouroboros-runner: [AT.2] Job artifact & result upload | Job-scoped multipart upload path, quotas, store driver (T4) | mvp, tests, build-farm | N (after AG.4, AH.2) | Y | M | ouroboros-runner, ouroboros-rest |
 | AT.3 | #331 ✅ | 🟢 Done | ouroboros-rest: [AT.3] Flake scorer & quarantine service | Retry-truth marking, history scoring, nightly candidates | mvp, tests, rest | N (after AS.3, AT.1) | Y | M | ouroboros-rest |
 | AT.4 | #332 ✅ | 🟢 Done | ouroboros-rest: [AT.4] Classification & routing service | Heuristic hints, classify API, correction/re-run dispatch (T6/T7) | mvp, tests, rest, runs | N (after AS.4, AP.4, AH.4) | Y | L | ouroboros-rest |
-| AT.5 | #333 | 🟡 Open | ouroboros-rest: [AT.5] Test-results read APIs & artifact serving | Page payloads, attempt timelines, artifact downloads, retention | mvp, tests, rest | N (after AT.1, AS.4) | Y | M | ouroboros-rest |
+| AT.5 | #333 ✅ | 🟢 Done | ouroboros-rest: [AT.5] Test-results read APIs & artifact serving | Page payloads, attempt timelines, artifact downloads, retention | mvp, tests, rest | N (after AT.1, AS.4) | Y | M | ouroboros-rest |
 | AT.6 | #334 | 🟡 Open | ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios | Parser fixtures, routing compositions, AP.5 test scenarios | mvp, tests, rest, ci | N (after AT.2–AT.5, AP.5) | Y | M | ouroboros-rest, ouroboros-engine |
 
 ### Issue AT.1 — ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage)
@@ -662,7 +662,7 @@ re-run failed(2) ─▶ AH.4 job {suite filter} ─▶ Build 4 attempt
 
 ### Issue AT.5 — ouroboros-rest: [AT.5] Test-results read APIs & artifact serving
 
-> **GitHub issue:** #333 · **Status:** 🟡 Open · **Parent epic:** #321
+> **GitHub issue:** #333 · **Status:** 🟢 Done · **Parent epic:** #321
 
 - **Problem Statement:** The page needs shaped reads — attempt timeline,
   suite/case trees, HIL rows, failure payloads, artifact links — plus
@@ -688,6 +688,28 @@ re-run failed(2) ─▶ AH.4 job {suite filter} ─▶ Build 4 attempt
 GET /runs/:id/test-runs ─▶ {attempts[3+next], strip{63, 61 ▲12, 1, 1, 6m12s split}}
 GET /test-runs/:id ─▶ {suites[5], hil[4], failure, flake, classifications, artifacts[4], coverage}
 ```
+
+> **Delivered as `ouroboros-rest/src/modules/test-results-read/`, `ArtifactStore.open` on both
+> drivers and `410 Gone` (`GoneError`).** Decided on #333:
+>
+> 1. **`▲ 12` is measured since the count last moved.** Build 3 re-ran Build 2's failed set and
+>    carried its 61 passes forward, so "vs the prior attempt" is `▲ 0`. The strip's `passedDelta`
+>    compares with the most recent earlier attempt that reported cases and passed a different
+>    number, and names it: Build 3 reads `▲ 12` against **Build 1**, Build 4 `▲ 2` against Build 3.
+>    The number is the mockup's; the label is the one the data supports (#328's decision 2).
+> 2. **T8's activation state is `gate_armed` · `intent_stored` · `none`.** Armed when the run's PR
+>    carries a required `test_suite` gate definition (the gate engine, #358, evaluates it); stored
+>    when *Block PR until green* is on and no PR holds it. The seeded `#482` is armed by PR #514.
+> 3. **The strip is per attempt**, on both reads, so Build 3's page still prints mockup 11's
+>    numbers now that #356 made Build 4 the latest.
+> 4. **Downloads stream through `ArtifactStore.open`**; text kinds (`junit`, `hil`, `coverage`,
+>    `log`) with a text type preview inline, a `capture` or `other` downloads, an unknown type is
+>    `application/octet-stream`, and every answer is `nosniff` + `CSP: sandbox`. No storage
+>    reference reaches a client.
+> 5. **The sweep reads `retained_until`, the per-row policy the upload wrote**, hourly, at most 200
+>    rows, bytes first then `expired_at`; a row stored through another driver waits for AV.5
+>    (#347). #482's retention service computes the `artifacts` tier's cutoff at that write, and
+>    each tick logs its tombstone counts.
 
 ### Issue AT.6 — ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios
 

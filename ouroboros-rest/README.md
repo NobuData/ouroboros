@@ -3624,7 +3624,8 @@ the handler.
 **The `ArtifactStore` is an interface from day one.** `local.store.ts` is a directory (writes land
 in a temporary file and are renamed into place); `s3.store.ts` is S3 or MinIO, path-style, signed
 with a hand-written SigV4 (`sigv4.ts`, held to AWS's published example) rather than the AWS SDK.
-`OURO_ARTIFACT_STORE` picks one, and each row records `{driver, key}`. A local volume does not
+`OURO_ARTIFACT_STORE` picks one, and each row records `{driver, key}`. Four operations —
+`put`, `get`, `delete`, and `open` for a streamed read (#333's downloads). A local volume does not
 scale horizontally — two replicas do not share a disk — which is why the swap exists; migration
 tooling is AV.5 ([#347](https://github.com/NobuData/ouroboros/issues/347)).
 `artifact.store.contract.fixture.ts` is the one suite both drivers pass unchanged: in the unit
@@ -4895,6 +4896,54 @@ keeps a quarantined case quarantined and moves nothing else there; activation is
 `flakes.quarantine.spec.ts` holds that by source scan and compiled SQL, and
 `flakes.integration-spec.ts` by behaviour.
 
+### Test Results reads & artifact serving
+
+AT.5 ([#333](https://github.com/NobuData/ouroboros/issues/333)), decision **T8**, in
+[`src/modules/test-results-read/`](src/modules/test-results-read). Mockup 11's shaped reads, the
+artifact download and the retention sweep. **The page renders what it is told**: every figure it
+prints is a field here, computed once, so no client re-derives it.
+
+```
+GET /api/v1/runs/:id/test-runs                   attempts oldest first, each with its strip; T8's next step (any member)
+GET /api/v1/test-runs/:id                        suites · cases · HIL · classifications · artifacts · coverage · warnings
+GET /api/v1/test-runs/:id/cases/:caseId/failure  message · log excerpt · path — 404 for a case that did not fail
+GET /api/v1/artifacts/:id                        the file, streamed through the store — 410 once expired
+hourly sweep                                     retained_until passed ─▶ delete bytes ─▶ expired_at (a tombstone)
+```
+
+**The strip.** `total`, `suiteCount` (*across 5 suites*), `passed`, `failed` and `flaky` with the
+cases their captions name (`passedOnRetry`/`attempts` for *retry 2/3*, the flake state), and the
+`wallTime` split (*6m 12s · 4m sim · 2m 12s physical*). **`passedDelta` is measured since the count
+last moved** — against the most recent earlier attempt that reported cases and passed a different
+number — and names that attempt. Mockup 11's Build 3 re-ran Build 2's failed set and carried its 61
+passes forward, so it reads `▲ 12` against **Build 1** (`versusAttemptSeq: 1`): the number the
+mockup prints, with the label the data supports (#328's decision 2). Build 4 reads `▲ 2` against
+Build 3.
+
+**The next step (T8).** `activation` is `gate_armed` when the run's PR carries a required
+`test_suite` gate — which the gate engine (#358) evaluates on every revision, so *gated on 63/63*
+is true — `intent_stored` when *Block PR until green* is on and nothing holds the PR yet, and
+`none` otherwise. The intents, the PR and the gate's provenance ride along.
+
+**Artifacts.** Each is its name, kind, size, checksum, `retentionDays` (from the row — *retained
+30d*), `preview` and an `href` — **never its storage reference, key or driver**. The download streams
+through `ArtifactStore.open`, so the local→S3 swap is invisible to a caller. A `junit`, `hil`,
+`coverage` or `log` artifact whose name is a text type is `inline`; a `capture` (the 2.1 MB rig CSV)
+or `other` is an `attachment`; an unknown type is `application/octet-stream`, never HTML. Every
+answer carries `nosniff`, `Content-Security-Policy: sandbox` and `private, no-cache`.
+
+**Retention leaves tombstones.** `ArtifactRetentionSweeper` runs hourly (jittered): live rows past
+`retained_until`, stored through this process's driver, oldest first, at most 200 a tick — the
+bytes are deleted through the store **first**, then `expired_at` is set, and name, kind and size
+stay. The page lists the row as `state: expired` with no `href`, and the download answers `410
+artifact_expired`. The policy is the row's `retained_until`, written at upload from
+`OURO_ARTIFACT_RETENTION_DAYS` (30), so a later change never reaches back; #482's retention service
+computes the `artifacts` tier there. Each tick that removed something logs its tombstone counts.
+
+Coverage's `delta` is **absent**, not zero, with no earlier attempt that has coverage; the parser's
+`parseWarnings` (#329) are on the page payload for the banner. Everything is scoped to the session's
+workspace, and another workspace's run, attempt, case or artifact is a `404`.
+
 ### PR gate engine
 
 AX.2 ([#358](https://github.com/NobuData/ouroboros/issues/358)), decision **V2**, in
@@ -5153,6 +5202,10 @@ ouroboros-rest/
 │       ├── triage/         # Mark & Route: hints, classify, re-run, waive  · #332
 │       │                   #   triage.rules.ts — the three heuristic rules, pure
 │       │                   #   triage.contract.ts — /v0/triage, held to schemas/triage/v0.json
+│       ├── test-results-read/ # the Test Results page's reads, downloads, retention · #333
+│       │                   #   results.strip.ts — ▲ deltas, T8's activation state, pure
+│       │                   #   artifact.serving.ts — type, inline or attachment, safe headers
+│       │                   #   artifact.retention.ts — the hourly sweep that leaves tombstones
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*

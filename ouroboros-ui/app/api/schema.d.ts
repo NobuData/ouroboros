@@ -5148,6 +5148,135 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{id}/test-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Test Results page's attempts timeline, strips and next step
+         * @description Every build attempt of the run, oldest first, each with its **strip** — the five stat
+         *     cards — and the dashed **Next** card's projection
+         *     ([#333](https://github.com/NobuData/ouroboros/issues/333), AT.5).
+         *
+         *     **The page renders what it is told.** The totals, the suite count, the failed and flaky
+         *     cases the captions name, the wall-time split and the passed delta are all computed here,
+         *     so a second surface drawing the same attempt cannot drift from the first.
+         *
+         *     **`passedDelta` is measured since the count last moved**: against the most recent
+         *     earlier attempt that reported cases and passed a different number of them, which it
+         *     names in `versusAttemptSeq`. A re-run of the failed set that carries the previous
+         *     attempt's passes forward is therefore compared with the attempt before it, and a label
+         *     never names a build the number is not from. Null when the count has never moved.
+         *
+         *     **`next.activation` is decision T8's state**: `gate_armed` when the run's PR carries a
+         *     required `test_suite` gate (evaluated by the gate engine on every revision),
+         *     `intent_stored` when *Block PR until green* is on but no PR carries the gate yet, `none`
+         *     otherwise — so the card can say *gated on 63/63* only when something holds.
+         *
+         *     Every member of the workspace may read it; another workspace's run is `404`.
+         */
+        get: operations["getRunTestRuns"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/test-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One attempt's page payload
+         * @description Everything the Test Results page shows of one build attempt
+         *     ([#333](https://github.com/NobuData/ouroboros/issues/333), AT.5): its strip, the parser's
+         *     warnings, the suites with their platform tags, counts and cases (retry outcomes and flake
+         *     state included), the rig card's HIL measurements with limits and comparatives, the
+         *     current classifications with their routing receipts, the artifacts and the coverage
+         *     summary.
+         *
+         *     **Coverage's `delta` is absent, not zero, when there is no earlier attempt with
+         *     coverage.** **An expired artifact is listed**, `state: expired` with no `href` — the
+         *     retention sweep leaves a tombstone, and a list that silently shortened would teach people
+         *     the product loses things. No artifact carries a storage path, key or driver.
+         *
+         *     Every member of the workspace may read it; another workspace's attempt is `404`.
+         */
+        get: operations["getTestRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/test-runs/{id}/cases/{caseId}/failure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One failing case's failure detail
+         * @description The failure detail card ([#333](https://github.com/NobuData/ouroboros/issues/333), AT.5):
+         *     the assertion message, the log excerpt the parser kept and the test's path. A case that
+         *     passed or was skipped has none and is `404 test_case_failure_not_found`.
+         */
+        get: operations["getTestCaseFailure"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/artifacts/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * An artifact's file, streamed through the artifact store
+         * @description The artifacts card's **open ↗** ([#333](https://github.com/NobuData/ouroboros/issues/333),
+         *     AT.5). The bytes stream **through the configured store** — the local volume or S3 — so
+         *     which one holds them is invisible here, and no storage path, key or driver name is ever
+         *     in the answer.
+         *
+         *     **Text kinds preview inline; everything else downloads.** A `junit`, `hil`, `coverage` or
+         *     `log` artifact whose name is a text type (`.xml`, `.json`, `.log`, `.txt`, `.info`, …) is
+         *     `Content-Disposition: inline`; a `capture` (a 2.1 MB rig CSV) or `other` is `attachment`.
+         *     The type comes from the name, and an unknown one is `application/octet-stream`.
+         *
+         *     **The bytes are the runner's**, so every answer carries `X-Content-Type-Options: nosniff`
+         *     and `Content-Security-Policy: sandbox; default-src 'none'` — a file that contains markup
+         *     can neither be sniffed into HTML nor run script on this origin.
+         *
+         *     An artifact the retention sweep removed is `410 artifact_expired`: its row is a tombstone
+         *     and the page still lists it. Every member may download; another workspace's artifact is
+         *     `404`, answered before a byte is sent.
+         */
+        get: operations["downloadArtifact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/test-runs/{id}/hints": {
         parameters: {
             query?: never;
@@ -7135,6 +7264,357 @@ export interface components {
         ClassifyResult: {
             classification: components["schemas"]["Classification"];
             routing: components["schemas"]["TriageRouting"];
+        };
+        /**
+         * TestCounts
+         * @description A suite's counts, recounted from its cases (V051). `failed` includes `error`.
+         */
+        TestCounts: {
+            total: number;
+            passed: number;
+            failed: number;
+            flaky: number;
+            skipped: number;
+        };
+        /**
+         * PassedDelta
+         * @description `▲ 12 vs build 1` — passed now minus passed then, against the most recent earlier attempt
+         *     that reported cases and passed a different number of them. Never zero.
+         */
+        PassedDelta: {
+            value: number;
+            versusAttemptSeq: number;
+            /** Format: uuid */
+            versusTestRunId: string;
+        };
+        /**
+         * StripCase
+         * @description A failing case the *Failed* stat's caption names — `motor overshoot · HIL`.
+         */
+        StripCase: {
+            /** Format: uuid */
+            caseId: string;
+            name: string;
+            suite: string;
+            /** @description It ran on a rig. */
+            physical: boolean;
+        };
+        /**
+         * StripFlakyCase
+         * @description A flaky case the *Flaky* stat's caption names — `passed on retry 2/3 · watching`.
+         */
+        StripFlakyCase: {
+            /** Format: uuid */
+            caseId: string;
+            name: string;
+            suite: string;
+            physical: boolean;
+            /** @description The retry it passed on — the `2` of `2/3`. */
+            passedOnRetry: number;
+            /** @description Every attempt it took — the `3` of `2/3`. */
+            attempts: number;
+            /** @description Its flake score's state; null when it has never been scored. */
+            flakeState: components["schemas"]["FlakeState"] | null;
+        };
+        /**
+         * WallTime
+         * @description The wall-time split — `6m 12s · 4m sim · 2m 12s physical`. `wallMs = simMs + physicalMs`.
+         */
+        WallTime: {
+            wallMs: number;
+            simMs: number;
+            physicalMs: number;
+        };
+        /**
+         * TestStrip
+         * @description The five stat cards of one attempt, computed by the service.
+         */
+        TestStrip: {
+            total: number;
+            /** @description The suites the total spans — `across 5 suites`. */
+            suiteCount: number;
+            passed: number;
+            /** @description Null when the count has not moved since the first report. */
+            passedDelta: components["schemas"]["PassedDelta"] | null;
+            /** @description Cases that failed or errored. */
+            failed: number;
+            failedCases: components["schemas"]["StripCase"][];
+            flaky: number;
+            flakyCases: components["schemas"]["StripFlakyCase"][];
+            skipped: number;
+            /** @description Null until the attempt reports a duration. */
+            wallTime: components["schemas"]["WallTime"] | null;
+        };
+        /**
+         * TestAttemptBuild
+         * @description The farm build that produced an attempt.
+         */
+        TestAttemptBuild: {
+            /** Format: uuid */
+            jobId: string;
+            /** @description The job's number — `#479`. */
+            number: number | null;
+            /** @description The runner that held it — `forge-01`. */
+            runner: string | null;
+        };
+        /**
+         * TestAttempt
+         * @description One build attempt — *Build 1 · 2 · 3* — with its strip.
+         */
+        TestAttempt: {
+            /** Format: uuid */
+            id: string;
+            attemptSeq: number;
+            /** @enum {string} */
+            status: "running" | "complete" | "error";
+            commitSha: string | null;
+            /** Format: date-time */
+            startedAt: string;
+            /**
+             * @description `failed` for a *re-run of the failed set*, `full` for a full re-run, null for an
+             *     ordinary build.
+             * @enum {string|null}
+             */
+            selection: "failed" | "full" | null;
+            build: components["schemas"]["TestAttemptBuild"] | null;
+            /** @description The rigs its physical suites ran on — `helios-rig-02`. */
+            rigs: string[];
+            strip: components["schemas"]["TestStrip"];
+        };
+        /**
+         * TestTimelineRun
+         * @description The run a timeline belongs to — `branch loop/482-canbus-flake · loop
+         */
+        TestTimelineRun: {
+            /** Format: uuid */
+            id: string;
+            issueNumber: number;
+            issueTitle: string;
+            loopSeq: number;
+            branch: string | null;
+            workflowTag: string;
+            workflowVersionPin: number | null;
+            /** Format: date-time */
+            startedAt: string;
+        };
+        /**
+         * TestNextStep
+         * @description The dashed *Next* card — decision **T8**'s projection from the stored intents, with its
+         *     activation state so the card can tell *gate armed* from *intent stored*.
+         */
+        TestNextStep: {
+            /** @enum {string} */
+            action: "publish_to_pr";
+            /** @description The run's PR — `#514` — or null before it has opened one. */
+            pullRequest: {
+                number: number;
+                url: string;
+            } | null;
+            /** @description `gated on 63/63` — every case of the latest attempt; null before any attempt. */
+            gatedOn: {
+                passed: number;
+                total: number;
+            } | null;
+            /**
+             * @description `gate_armed` — the PR carries a required `test_suite` gate. `intent_stored` — *Block PR
+             *     until green* is on and nothing holds the PR yet. `none` — neither.
+             * @enum {string}
+             */
+            activation: "gate_armed" | "intent_stored" | "none";
+            intents: {
+                blockUntilGreen: boolean;
+                autoRerunPhysical: boolean;
+            };
+            /** @description The PR's `test_suite` gate definition, when it has one. */
+            gate: {
+                required: boolean;
+                /** @description Provenance — `standard-fix@v14 pin`. */
+                source: string;
+            } | null;
+        };
+        /** TestRunTimeline */
+        TestRunTimeline: {
+            run: components["schemas"]["TestTimelineRun"];
+            /** @description Oldest first. */
+            attempts: components["schemas"]["TestAttempt"][];
+            /**
+             * Format: uuid
+             * @description The newest attempt — the page's default. Null before any.
+             */
+            latestTestRunId: string | null;
+            next: components["schemas"]["TestNextStep"];
+        };
+        /**
+         * TestParseWarning
+         * @description Something the parser could not read and did not refuse the report over (#329).
+         */
+        TestParseWarning: {
+            /** @enum {string} */
+            code: "format_unrecognized" | "xml_truncated" | "xml_malformed" | "junit_platform_missing" | "hil_json_malformed" | "hil_schema_version_unknown" | "hil_schema_invalid" | "hil_measurement_incomplete" | "coverage_unreadable";
+            /** @description The manifest name of the file it is about. */
+            file: string;
+            message: string;
+            /** @description Where in the file — `line 212`, `/suites/0/cases/1` — when the format says. */
+            at?: string;
+        };
+        /** TestCaseFlake */
+        TestCaseFlake: {
+            state: components["schemas"]["FlakeState"];
+            score: number;
+            windowRuns: number;
+            formulaVersion: number;
+        };
+        /**
+         * TestCaseResult
+         * @description One case, with its retries. Its failure payload is its own route.
+         */
+        TestCaseResult: {
+            /** Format: uuid */
+            id: string;
+            caseKey: string;
+            name: string;
+            classname: string | null;
+            /** @enum {string} */
+            status: "passed" | "failed" | "flaky" | "skipped" | "error";
+            retries: number;
+            retryOutcomes: ("passed" | "failed" | "error" | "skipped")[];
+            durationMs: number | null;
+            /** @description Whether `…/cases/{caseId}/failure` has something to answer. */
+            hasFailure: boolean;
+            flake: components["schemas"]["TestCaseFlake"] | null;
+        };
+        /**
+         * TestSuiteResult
+         * @description One suite on one platform — a row of the suites card.
+         */
+        TestSuiteResult: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @description The platform tag — `native_sim`, `qemu_cortex_m3`, `rig:helios-rig-02`. */
+            platform: string;
+            /** @enum {string} */
+            kind: "sim" | "physical";
+            /** @enum {string} */
+            resultsFormat: "junit" | "hil";
+            /** @description The rig's name for a physical suite. */
+            rig: string | null;
+            /** @description The rig's bench — `CAN bus + motor + power-cycler`. */
+            bench: string | null;
+            counts: components["schemas"]["TestCounts"];
+            cases: components["schemas"]["TestCaseResult"][];
+        };
+        /** HilMeasurementResult */
+        HilMeasurementResult: {
+            metric: string;
+            /** @description The worst trial's value — `2.4`. */
+            value: number;
+            unit: string;
+            limit: number;
+            /** @enum {string} */
+            limitKind: "max" | "min";
+            /** @enum {string} */
+            verdict: "pass" | "fail";
+            /** @description `was 37 in build 1`, composed by the database; null when nothing changed. */
+            comparative: string | null;
+            trials: number;
+        };
+        /**
+         * PhysicalCaseResult
+         * @description One measured case — a row of the rig card.
+         */
+        PhysicalCaseResult: {
+            /** Format: uuid */
+            caseId: string;
+            name: string;
+            classname: string | null;
+            /** Format: uuid */
+            suiteId: string;
+            /** @enum {string} */
+            status: "passed" | "failed" | "flaky" | "skipped" | "error";
+            procedure: string;
+            measurements: components["schemas"]["HilMeasurementResult"][];
+        };
+        /**
+         * TestCoverage
+         * @description `87.4% (+0.6%)`. `delta` and `versusAttemptSeq` are **absent**, not zero, when no earlier
+         *     attempt has coverage.
+         */
+        TestCoverage: {
+            percent: number;
+            linesCovered: number;
+            linesTotal: number;
+            /** @description Percentage points. */
+            delta?: number;
+            versusAttemptSeq?: number;
+        };
+        /**
+         * TestArtifact
+         * @description One artifact — a live file, or the tombstone the retention sweep left. Never a storage
+         *     path, key or driver.
+         */
+        TestArtifact: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** @enum {string} */
+            kind: "junit" | "hil" | "coverage" | "log" | "capture" | "other";
+            sizeBytes: number;
+            checksum: string;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            retainedUntil: string;
+            /** @description `retained 30d`. */
+            retentionDays: number;
+            /** @enum {string} */
+            state: "available" | "expired";
+            /** Format: date-time */
+            expiredAt: string | null;
+            truncated: boolean;
+            truncationNote: string | null;
+            /**
+             * @description `inline` opens in the browser; `download` is saved.
+             * @enum {string}
+             */
+            preview: "inline" | "download";
+            /** @description The download route; null once expired. */
+            href: string | null;
+            /** @description The attempt's coverage, on a `coverage` artifact. */
+            coverage: components["schemas"]["TestCoverage"] | null;
+        };
+        /** TestRunPage */
+        TestRunPage: {
+            /** Format: uuid */
+            runId: string;
+            testRun: components["schemas"]["TestAttempt"];
+            /** @description The page's banner. Empty when the parser read everything. */
+            parseWarnings: components["schemas"]["TestParseWarning"][];
+            suites: components["schemas"]["TestSuiteResult"][];
+            physical: components["schemas"]["PhysicalCaseResult"][];
+            /** @description Each classified case's current decision, with its routing receipt. */
+            classifications: components["schemas"]["Classification"][];
+            artifacts: components["schemas"]["TestArtifact"][];
+            coverage: components["schemas"]["TestCoverage"] | null;
+        };
+        /** TestCaseFailureDetail */
+        TestCaseFailureDetail: {
+            /** Format: uuid */
+            testRunId: string;
+            /** Format: uuid */
+            caseId: string;
+            caseKey: string;
+            name: string;
+            classname: string | null;
+            suite: string;
+            platform: string;
+            /** @enum {string} */
+            status: "passed" | "failed" | "flaky" | "skipped" | "error";
+            retryOutcomes: ("passed" | "failed" | "error" | "skipped")[];
+            message: string | null;
+            logExcerpt: string | null;
+            /** @description `tests/hil/test_estop_release.py`. */
+            path: string | null;
         };
         /** WaiveRequest */
         WaiveRequest: {
@@ -15493,6 +15973,12 @@ export interface components {
          * @example 5eed0035-0000-4000-8000-000000000001
          */
         TestCaseId: string;
+        /**
+         * @description The artifact — `test_artifacts.id`, one file an attempt uploaded (V055). Anything that is
+         *     not a uuid is a `422` naming the field, before anything is read.
+         * @example 5eed0038-0000-4000-8000-000000048231
+         */
+        ArtifactId: string;
         /**
          * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
          *     uuid is a `422` naming the field, before anything is read.
@@ -38146,6 +38632,536 @@ export interface operations {
             /**
              * @description `internal_error` — the service itself failed. The message is a constant and `details`
              *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRunTestRuns: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0009-0000-4000-8000-000000000482
+                 */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The timeline. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestRunTimeline"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `run_not_found` — no run with that id, **or none this caller may know about**. Or
+             *     `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTestRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The test run — `test_runs.id`, one build attempt's results (V051). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0033-0000-4000-8000-000000000002
+                 */
+                id: components["parameters"]["TestRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page payload. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestRunPage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `test_run_not_found` — no test run with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTestCaseFailure: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The test run — `test_runs.id`, one build attempt's results (V051). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0033-0000-4000-8000-000000000002
+                 */
+                id: components["parameters"]["TestRunId"];
+                /**
+                 * @description The case — `test_cases.id`, one case in this test run (V051).
+                 * @example 5eed0035-0000-4000-8000-000000000001
+                 */
+                caseId: components["parameters"]["TestCaseId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The failure payload. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TestCaseFailureDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `test_run_not_found` — no such test run this caller may know about.
+             *     `test_case_not_found` — no such case in this test run. `test_case_failure_not_found` —
+             *     the case did not fail, so there is no detail. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    downloadArtifact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The artifact — `test_artifacts.id`, one file an attempt uploaded (V055). Anything that is
+                 *     not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0038-0000-4000-8000-000000048231
+                 */
+                id: components["parameters"]["ArtifactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    /**
+                     * @description From the name — `application/xml`, `text/plain; charset=utf-8`, `text/csv; charset=utf-8`, … or `application/octet-stream`.
+                     * @example application/xml
+                     */
+                    "Content-Type"?: string;
+                    /**
+                     * @description `inline` for a previewable text artifact, `attachment` otherwise, with an ASCII
+                     *     `filename` and the exact name as RFC 5987's `filename*`.
+                     * @example inline; filename="junit-build3.xml"; filename*=UTF-8''junit-build3.xml
+                     */
+                    "Content-Disposition"?: string;
+                    /**
+                     * @description The uploaded size, in bytes.
+                     * @example 48213
+                     */
+                    "Content-Length"?: number;
+                    /**
+                     * @description Always `nosniff`.
+                     * @example nosniff
+                     */
+                    "X-Content-Type-Options"?: string;
+                    /**
+                     * @description Always `sandbox; default-src 'none'`.
+                     * @example sandbox; default-src 'none'
+                     */
+                    "Content-Security-Policy"?: string;
+                    /**
+                     * @description `private, no-cache` — one workspace's file, which no shared cache may store.
+                     * @example private, no-cache
+                     */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `artifact_not_found` — no artifact with that id, **or none this caller may know
+             *     about**. `artifact_content_unavailable` — the artifact is live but the configured
+             *     store does not hold its file. Or `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `artifact_expired` — the retention sweep removed the file; `details.expiredAt` says
+             *     when.
+             */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed before the file began. A failure after
+             *     the first byte ends the stream early instead, since the status has already been sent.
              */
             500: {
                 headers: {
