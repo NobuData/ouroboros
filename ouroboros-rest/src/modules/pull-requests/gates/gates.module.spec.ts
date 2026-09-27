@@ -1,5 +1,6 @@
 import { DbModule } from "../../db/db.module";
 import { GATE_EVIDENCE } from "./gate.evidence";
+import { GateListeners } from "./gate.listeners";
 import { DEFAULT_ORG_GATE_POLICY, ORG_GATE_POLICY } from "./gate.policy";
 import { GateEngineService } from "./gate.service";
 import { GatesModule, gateEvidenceProvider } from "./gates.module";
@@ -11,12 +12,16 @@ import { GatesModule, gateEvidenceProvider } from "./gates.module";
  */
 
 describe("the gates module", () => {
-  it("binds the evidence token to the engine with useExisting, and exports both", () => {
+  it("binds the evidence token to the engine with useExisting, and exports both and the listeners", () => {
     expect(gateEvidenceProvider).toEqual({
       provide: GATE_EVIDENCE,
       useExisting: GateEngineService,
     });
-    expect(Reflect.getMetadata("exports", GatesModule)).toEqual([GateEngineService, GATE_EVIDENCE]);
+    expect(Reflect.getMetadata("exports", GatesModule)).toEqual([
+      GateEngineService,
+      GATE_EVIDENCE,
+      GateListeners,
+    ]);
   });
 
   it("binds the org policy to the defaults", () => {

@@ -121,6 +121,59 @@ describe("InMemoryPrHost", () => {
     ).toBe(422);
   });
 
+  it("reports a conflict as not mergeable and refuses its merge until it is resolved", async () => {
+    const { host, provider, prNumber } = build();
+
+    expect((await provider.getPR(CONTEXT, prNumber)).mergeable).toBe(true);
+
+    host.conflict(prNumber);
+
+    expect((await provider.getPR(CONTEXT, prNumber)).mergeable).toBe(false);
+    expect(
+      statusOf(() => host.merge(IN_MEMORY_TOKEN, IN_MEMORY_PROJECT, prNumber, "squash", "m")),
+    ).toBe(405);
+
+    host.conflict(prNumber, false);
+    host.merge(IN_MEMORY_TOKEN, IN_MEMORY_PROJECT, prNumber, "squash", "m");
+
+    expect((await provider.getPR(CONTEXT, prNumber)).mergeable).toBeNull();
+  });
+
+  it("refuses a merge under branch protection while the PR still reads mergeable", async () => {
+    const { host, provider, prNumber } = build();
+
+    host.protect();
+
+    expect((await provider.getPR(CONTEXT, prNumber)).mergeable).toBe(true);
+    await expect(
+      provider.mergePR(CONTEXT, prNumber, {
+        strategy: "squash",
+        message: "m",
+        deleteBranch: false,
+      }),
+    ).rejects.toMatchObject({ errorClass: "validation" });
+
+    host.protect(false);
+
+    await expect(
+      provider.mergePR(CONTEXT, prNumber, {
+        strategy: "squash",
+        message: "m",
+        deleteBranch: false,
+      }),
+    ).resolves.toMatchObject({ alreadyMerged: false });
+  });
+
+  it("records a merge as its token's owner — IN_MEMORY_MERGER unless told otherwise", async () => {
+    const { host, provider, prNumber } = build();
+    const other = new InMemoryPrHost({ merger: "ken-s" });
+
+    host.merge(IN_MEMORY_TOKEN, IN_MEMORY_PROJECT, prNumber, "squash", "m");
+
+    expect((await provider.getPR(CONTEXT, prNumber)).mergedBy).toBe(IN_MEMORY_MERGER);
+    expect(other.merger).toBe("ken-s");
+  });
+
   it("closes a keyword's issue on a merge into the default branch, in its own repository only", async () => {
     const { host, provider, prNumber } = build();
     const issue = host.openIssue();

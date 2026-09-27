@@ -22,12 +22,15 @@
  * per PR: the build result, test report or change-set that triggered it has already committed, and
  * a gate that could not be re-evaluated is re-evaluated by the next event.
  *
+ * **Every evaluation is told to {@link GateListeners}** after its transaction commits — the merge
+ * executor (AX.4, #360) fires an armed plan there, or disarms it.
+ *
  * **Not wired yet, deliberately:** a gate-level waiver action and approval records (AX.5, #361), a
  * second-model provider (AZ.1, #371), and the org policy document's resolver (#481), which rebinds
  * {@link ORG_GATE_POLICY}.
  */
 
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 
 import type { BuiltInGateKey, PullRequestState } from "../../db/schema";
 import type { ReviewPolicy } from "../../guardrails/guardrails.checks";
@@ -41,6 +44,7 @@ import {
 import { materializeDefinitions } from "./gate.definitions";
 import { evaluateGate, statePath, unchanged, type GateAggregate } from "./gate.engine";
 import { AFFECTED_GATES, type GateEvidenceEvent, type GateEvidenceSink } from "./gate.evidence";
+import { GateListeners } from "./gate.listeners";
 import { ORG_GATE_POLICY, type OrgGatePolicy } from "./gate.policy";
 import { GATE_PROVIDERS } from "./gate.providers";
 import { GateRepository, type GateStore, type PolicySources } from "./gate.repository";
@@ -105,10 +109,13 @@ export class GateEngineService implements GateEvidenceSink {
   /**
    * @param store - The engine's statements.
    * @param org - The workspace's gate configuration.
+   * @param listeners - Who hears each evaluation — the merge executor (#360). A fresh, empty
+   *   registry when absent.
    */
   constructor(
     @Inject(GateRepository) private readonly store: GateStore,
     @Inject(ORG_GATE_POLICY) private readonly org: OrgGatePolicy,
+    @Optional() private readonly listeners: GateListeners = new GateListeners(),
   ) {}
 
   /** @inheritdoc */
@@ -132,6 +139,14 @@ export class GateEngineService implements GateEvidenceSink {
           this.logger.debug(
             `pr ${prId} ${event.kind}: ${String(result.written)} written, state ${result.state}`,
           );
+          this.listeners.emit({
+            prId: result.prId,
+            organizationId,
+            revisionId: result.revisionId,
+            state: result.state,
+            mergeReady: result.armedReady,
+            redCount: result.aggregate?.redCount ?? 0,
+          });
         }
       } catch (error) {
         this.logger.error(

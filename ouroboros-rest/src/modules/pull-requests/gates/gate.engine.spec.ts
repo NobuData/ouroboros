@@ -100,7 +100,7 @@ describe("statePath", () => {
     ["blocked", blocked, []],
     ["blocked", verifying, ["verifying"]],
     ["armed", ready, []],
-    ["armed", verifying, ["verifying"]],
+    ["armed", verifying, []],
     ["armed", blocked, ["verifying", "blocked"]],
     ["merged", blocked, []],
     ["closed", verifying, []],

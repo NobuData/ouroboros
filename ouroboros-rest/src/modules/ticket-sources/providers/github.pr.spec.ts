@@ -584,6 +584,16 @@ describe("snapshotOf and hostStateOf", () => {
     expect(open).toMatchObject({ mergedBy: null, mergedAt: null, additions: 0, changedFiles: 0 });
   });
 
+  it("reads mergeable on an open PR — null while GitHub computes it — and never on a closed one", () => {
+    const open = { ...PULL, state: "open" as const, merged_at: null };
+
+    expect(snapshotOf({ ...open, mergeable: false }).mergeable).toBe(false);
+    expect(snapshotOf({ ...open, mergeable: true }).mergeable).toBe(true);
+    expect(snapshotOf({ ...open, mergeable: null }).mergeable).toBeNull();
+    expect(snapshotOf(open).mergeable).toBeNull();
+    expect(snapshotOf({ ...PULL, mergeable: true }).mergeable).toBeNull();
+  });
+
   it("refuses a PR V052 could not store", () => {
     for (const bad of [
       { ...PULL, html_url: "http://github.com/x" },

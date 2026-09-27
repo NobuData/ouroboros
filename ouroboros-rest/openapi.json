@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.37.10",
+    "version": "0.37.11",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -105,6 +105,10 @@
     {
       "name": "pr-criteria",
       "description": "**Does the PR do what the ticket says?** — the acceptance criteria matrix of the PR\nVerification page (mockup 12, issue [#359](https://github.com/NobuData/ouroboros/issues/359),\ndecisions **V6**/**V9**, option **4-A**): claims authored or imported from the plan, typed\nevidence resolved at write, verification that requires evidence, and a waiver that is\nannotated on the host PR."
+    },
+    {
+      "name": "pr-merge",
+      "description": "**Merge when all gates green** — the merge plan and executor of the PR Verification page\n(mockup 12, issue [#360](https://github.com/NobuData/ouroboros/issues/360), decisions\n**V3**/**V9**): an arm that records the revision it promised about, a re-check inside the\ntransaction that holds the PR so no gate can move between the check and the merge, designed\ndisarm reasons instead of a blind merge, verified post-merge actions, and an honest merge\nidentity."
     },
     {
       "name": "farm",
@@ -19582,6 +19586,399 @@
         }
       }
     },
+    "/api/v1/pull-requests/{id}/merge-plan": {
+      "get": {
+        "tags": [
+          "pr-merge"
+        ],
+        "summary": "The merge plan of a pull request, and why a re-check last disarmed it",
+        "description": "Mockup 12's **Merge plan** card ([#360](https://github.com/NobuData/ouroboros/issues/360),\ndecision **V3**) — the strategy, the commit message, the three action toggles, the armed\n*merge when all gates green* intent (who, when, against which revision), and once merged,\nwhat the merge did and as whom. A PR without a plan is given one with the defaults (squash ·\ndelete branch · the templated `Closes #N.` message · close and comment on, back-annotate off).\n\n`disarmReason` is set when the executor's re-check disarmed the plan rather than merge it —\n`code` is one of `head_moved`, `gate_red`, `host_not_open`, `host_head_moved`,\n`host_conflict`, `host_refused`, and `message` is the card's sentence. Arming again clears\nit. Every member may read this, a `viewer` included.",
+        "operationId": "getPullRequestMergePlan",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/PullRequestId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrMergePlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pull_request_not_found` — no pull request with that id, **or none this caller may know\nabout**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pull-requests/{id}/merge-plan/arm": {
+      "post": {
+        "tags": [
+          "pr-merge"
+        ],
+        "summary": "Merge when all gates green — arm the plan against the revision you looked at",
+        "description": "The PR page's primary action ([#360](https://github.com/NobuData/ouroboros/issues/360),\ndecision **V3**). Arming is a promise about the future, so it records what it promised —\nwho, when, and **the revision whose gates the person looked at**. A `revisionId` that is no\nlonger the PR's latest is refused (`merge_revision_stale`): the person has not seen the new\nhead's gates.\n\nFrom then on the executor listens to the gate engine. When the last required gate turns\ngreen it **re-checks inside a transaction holding the PR row** — the armed revision is\nstill the head, no required gate is red, every one is satisfied, the host still reports the\nPR open, at that head, without a conflict — and only then asks the host to merge. Any\nfailure disarms with a reason (`GET …/merge-plan`'s `disarmReason`) rather than merging; a\ngate that is merely still running leaves the arm in place. A PR whose gates are already\ngreen is merged at once.\n\nOnly a `verifying` PR can be armed — a `blocked` one has a red gate. Arming a plan already\narmed against the same revision answers it unchanged. Audited as `pr_merge_plan.armed`,\nnaming the person. `owner` or `admin`, or a `member` when the PR's pinned workflow ends in\nan auto-merge terminal.",
+        "operationId": "armPullRequestMergePlan",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/PullRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ArmMergePlanRequest"
+              },
+              "example": {
+                "revisionId": "5eed003b-0000-4000-8000-000000000002"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The armed plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrMergePlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `viewer`. `merge_not_policy_eligible` — a `member`, on a PR whose pinned\nworkflow does not auto-merge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pull_request_not_found` — no pull request with that id, **or none this caller may know\nabout**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`merge_revision_stale` — a newer revision exists. `merge_plan_not_armable` — the PR is\nnot `verifying` (a red gate, gates never evaluated, or merged or closed).\n`merge_plan_merged` — the plan has merged and is final.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a missing `revisionId`, or an id that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pull-requests/{id}/merge-plan/disarm": {
+      "post": {
+        "tags": [
+          "pr-merge"
+        ],
+        "summary": "Disarm the merge plan",
+        "description": "Withdraw the *merge when all gates green* intent\n([#360](https://github.com/NobuData/ouroboros/issues/360)). The safe direction, so any\n`owner`, `admin` or `member` may. An armed PR goes back to `verifying`. Disarming a plan\nthat is not armed answers it unchanged. Audited as `pr_merge_plan.disarmed`, naming the\nperson.",
+        "operationId": "disarmPullRequestMergePlan",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/PullRequestId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The disarmed plan.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrMergePlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `viewer`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pull_request_not_found` — no pull request with that id, **or none this caller may know\nabout**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`merge_plan_merged` — the plan has merged and is final.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pull-requests/{id}/merge-plan/merge": {
+      "post": {
+        "tags": [
+          "pr-merge"
+        ],
+        "summary": "Merge now, through the same re-check an armed merge passes",
+        "description": "The direct merge ([#360](https://github.com/NobuData/ouroboros/issues/360), decision\n**V3**) for a PR whose gates are already green. The same re-check inside the same\ntransaction as an armed merge, then the host merge with the plan's strategy, message and\nbranch deletion, then the post-merge actions — **the ticket's closure verified, never\nassumed**, the evidence summary (gate table, criteria matrix, spend) published as one host\ncomment **edited rather than re-posted**, the epic note when toggled, and the run finalized\nas `merged`. `mergedResult.identityUsed` is who the host recorded; while merges are made with\nthe workspace's token it is never a `[bot]` identity.\n\nA refused re-check answers `409 merge_recheck_failed` with `details.reason` — the designed\ncode — and `details.disarmed`, whether an armed plan was disarmed by it. An action switched\non that did not happen is listed in `failedActions` — a ticket the host left open among them.\nAudited as `pr_merge_plan.merged`, naming the person. `owner` or `admin`, or a `member` when\nthe PR's pinned workflow ends in an auto-merge terminal.",
+        "operationId": "mergePullRequest",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/PullRequestId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The final plan, the ticket's closure, and any action that did not run.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrMergeOutcome"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `viewer`. `merge_not_policy_eligible` — a `member`, on a PR whose pinned\nworkflow does not auto-merge.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pull_request_not_found` — no pull request with that id, **or none this caller may know\nabout**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`merge_recheck_failed` — the re-check refused the merge; `details.reason` is one of\n`head_moved`, `gate_red`, `gates_pending`, `host_not_open`, `host_head_moved`,\n`host_conflict` or `host_refused`. `merge_plan_merged` — the plan has merged and is final.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/farm/jobs": {
       "post": {
         "tags": [
@@ -24970,6 +25367,262 @@
           },
           "annotation": {
             "$ref": "#/components/schemas/PrAnnotationOutcome"
+          }
+        }
+      },
+      "ArmMergePlanRequest": {
+        "type": "object",
+        "title": "ArmMergePlanRequest",
+        "additionalProperties": false,
+        "required": [
+          "revisionId"
+        ],
+        "properties": {
+          "revisionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The revision whose gates the person looked at — `pr_revisions.id`. Refused when it is\nno longer the PR's latest."
+          }
+        }
+      },
+      "PrMergeAction": {
+        "type": "string",
+        "title": "PrMergeAction",
+        "enum": [
+          "close_ticket",
+          "comment_evidence",
+          "back_annotate_epic",
+          "delete_branch"
+        ]
+      },
+      "PrMergeRefusalCode": {
+        "type": "string",
+        "title": "PrMergeRefusalCode",
+        "description": "Why the executor's re-check refused a merge. `gates_pending` never disarms; every other\ncode disarms an armed plan.",
+        "enum": [
+          "head_moved",
+          "gate_red",
+          "gates_pending",
+          "host_not_open",
+          "host_head_moved",
+          "host_conflict",
+          "host_refused"
+        ]
+      },
+      "PrMergePlan": {
+        "type": "object",
+        "title": "PrMergePlan",
+        "additionalProperties": false,
+        "required": [
+          "prId",
+          "strategy",
+          "deleteBranch",
+          "commitMessage",
+          "closeTicket",
+          "commentEvidence",
+          "backAnnotateEpic",
+          "epicId",
+          "armed",
+          "armedBy",
+          "armedAt",
+          "armedAgainstRevisionId",
+          "disarmReason",
+          "mergedResult",
+          "updatedAt"
+        ],
+        "properties": {
+          "prId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "strategy": {
+            "type": "string",
+            "enum": [
+              "squash",
+              "merge",
+              "rebase"
+            ]
+          },
+          "deleteBranch": {
+            "type": "boolean"
+          },
+          "commitMessage": {
+            "type": "string",
+            "description": "The merge commit's message — the PR's title and a `Closes <key>.` trailer unless edited."
+          },
+          "closeTicket": {
+            "type": "boolean"
+          },
+          "commentEvidence": {
+            "type": "boolean"
+          },
+          "backAnnotateEpic": {
+            "type": "boolean"
+          },
+          "epicId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "armed": {
+            "type": "boolean",
+            "description": "The *merge when all gates green* intent."
+          },
+          "armedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who armed it, while armed."
+          },
+          "armedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "armedAgainstRevisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The revision the arm applies to, while armed."
+          },
+          "disarmReason": {
+            "description": "Why the executor's re-check disarmed the plan — null after a manual disarm and once armed again.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "code",
+                  "message"
+                ],
+                "properties": {
+                  "code": {
+                    "$ref": "#/components/schemas/PrMergeRefusalCode"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "mergedResult": {
+            "description": "What the merge did, once it has. Final.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "sha",
+                  "identityUsed",
+                  "actionsExecuted",
+                  "mergedAt"
+                ],
+                "properties": {
+                  "sha": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{7,40}$"
+                  },
+                  "identityUsed": {
+                    "type": "string",
+                    "description": "Who the host recorded as merging — never a `[bot]` identity while merges are token-based."
+                  },
+                  "actionsExecuted": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PrMergeAction"
+                    }
+                  },
+                  "mergedAt": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PrMergeOutcome": {
+        "type": "object",
+        "title": "PrMergeOutcome",
+        "additionalProperties": false,
+        "required": [
+          "plan",
+          "ticket",
+          "failedActions"
+        ],
+        "properties": {
+          "plan": {
+            "$ref": "#/components/schemas/PrMergePlan"
+          },
+          "ticket": {
+            "description": "The canonical ticket's closure as the host reports it after the merge — null for a PR without a ticket.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "closed",
+                  "detail"
+                ],
+                "properties": {
+                  "key": {
+                    "type": "string"
+                  },
+                  "closed": {
+                    "type": "boolean"
+                  },
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "failedActions": {
+            "type": "array",
+            "description": "The actions switched on that did not run, each with its reason.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "action",
+                "detail"
+              ],
+              "properties": {
+                "action": {
+                  "$ref": "#/components/schemas/PrMergeAction"
+                },
+                "detail": {
+                  "type": "string"
+                }
+              }
+            }
           }
         }
       },

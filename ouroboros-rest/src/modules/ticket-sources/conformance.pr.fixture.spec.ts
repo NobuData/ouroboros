@@ -52,6 +52,7 @@ const SNAPSHOT: PullRequestSnapshot = {
   changedFiles: 3,
   mergedAt: null,
   mergedBy: null,
+  mergeable: true,
   updatedAt: new Date("2026-09-24T10:00:00.000Z"),
 };
 
@@ -70,7 +71,13 @@ describe("snapshotViolations", () => {
     expect(snapshotViolations(SNAPSHOT, "getPR")).toEqual([]);
     expect(
       snapshotViolations(
-        { ...SNAPSHOT, state: "merged", mergedAt: new Date(), mergedBy: "mara-okafor" },
+        {
+          ...SNAPSHOT,
+          state: "merged",
+          mergedAt: new Date(),
+          mergedBy: "mara-okafor",
+          mergeable: null,
+        },
         "getPR",
       ),
     ).toEqual([]);
@@ -103,8 +110,23 @@ describe("snapshotViolations", () => {
       "getPR: state must be open, closed or merged",
       "getPR: mergedAt must be set exactly when the PR is merged",
       "getPR: mergedBy is only ever set on a merged PR",
+      "getPR: mergeable is only ever known on an open PR",
       "getPR: updatedAt must be a valid Date",
     ]);
+  });
+
+  it("holds mergeable to a boolean or null, and known only on an open PR", () => {
+    expect(snapshotViolations({ ...SNAPSHOT, mergeable: false }, "getPR")).toEqual([]);
+    expect(snapshotViolations({ ...SNAPSHOT, mergeable: null }, "getPR")).toEqual([]);
+    expect(snapshotViolations({ ...SNAPSHOT, mergeable: "yes" }, "getPR")).toEqual([
+      "getPR: mergeable must be true, false or null",
+    ]);
+    expect(
+      snapshotViolations(
+        { ...SNAPSHOT, state: "merged", mergedAt: new Date(), mergedBy: "mara-okafor" },
+        "getPR",
+      ),
+    ).toEqual(["getPR: mergeable is only ever known on an open PR"]);
   });
 });
 

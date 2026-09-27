@@ -4974,6 +4974,80 @@ export interface PrWaiversTable {
   annotated_at: Date | null;
 }
 
+/** `pr_merge_plans.strategy` (V058) — how the host is asked to merge. */
+export type PrMergeStrategy = "squash" | "merge" | "rebase";
+
+/** One configured action a merge can have executed — `merged_result.actions_executed` (V058). */
+export type PrMergeAction =
+  "close_ticket" | "comment_evidence" | "back_annotate_epic" | "delete_branch";
+
+/**
+ * `pr_merge_plans.merged_result` — what the merge did, exactly these four keys (V058's
+ * `pr_merge_result_valid`). `identity_used` may not claim a `[bot]` identity while merges are
+ * token-based (`pr_merge_plans_identity_not_bot`).
+ */
+export interface PrMergedResult {
+  /** The merge commit — 7 to 40 lowercase hex. */
+  sha: string;
+  /** Who the host recorded as merging. */
+  identity_used: string;
+  /** The configured actions that actually ran, each once. */
+  actions_executed: PrMergeAction[];
+  /** When it merged, ISO 8601. */
+  merged_at: string;
+}
+
+/**
+ * `ouroboros.pr_merge_plans` — how a PR will be merged, one per PR (V058,
+ * [#355](https://github.com/NobuData/ouroboros/issues/355), decision **V3**): the plan, the armed
+ * "merge when all gates green" intent, why a re-check disarmed it, and what the merge did. Written
+ * by the merge executor (AX.4, [#360](https://github.com/NobuData/ouroboros/issues/360)); every
+ * arm, disarm, edit and merge writes an audit row by trigger, naming `updated_by` where a person
+ * acted. `pr_id` is frozen and a merged plan is final.
+ */
+export interface PrMergePlansTable {
+  id: Generated<string>;
+  pr_id: string;
+  strategy: Generated<PrMergeStrategy>;
+  delete_branch: Generated<boolean>;
+  /** Filled from `pr_merge_commit_message_template` when written null. */
+  commit_message: ColumnType<string, string | null | undefined, string>;
+  close_ticket: Generated<boolean>;
+  comment_evidence: Generated<boolean>;
+  back_annotate_epic: Generated<boolean>;
+  epic_id: string | null;
+  armed: Generated<boolean>;
+  armed_by: string | null;
+  armed_at: Date | null;
+  armed_against_revision_id: string | null;
+  /** Why a re-check disarmed it — only on a disarmed plan. */
+  disarm_reason: string | null;
+  merged_result: PrMergedResult | null;
+  /** The person the last write acted for — the audit row's actor. */
+  updated_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `planning_epic_notes.kind` (V064) — what a note records. */
+export type PlanningEpicNoteKind = "pr_merged";
+
+/**
+ * `ouroboros.planning_epic_notes` — an annotation on a planning epic (V064,
+ * [#360](https://github.com/NobuData/ouroboros/issues/360)): mockup 12's *Back-annotate roadmap*
+ * toggle, written once per epic, PR and kind by the merge executor and never edited.
+ */
+export interface PlanningEpicNotesTable {
+  id: Generated<string>;
+  epic_id: string;
+  /** Released when the PR is deleted. */
+  pr_id: string | null;
+  kind: Generated<PlanningEpicNoteKind>;
+  /** The line the roadmap shows — at most 2048 characters. */
+  body: string;
+  created_at: Stamped;
+}
+
 /**
  * `ouroboros.test_case_history` — one occurrence per case per attempt (V054,
  * [#326](https://github.com/NobuData/ouroboros/issues/326)). A writer supplies the case; the
@@ -5121,6 +5195,7 @@ export interface Database {
   pr_gate_results: PrGateResultsTable;
   pr_criteria: PrCriteriaTable;
   pr_criteria_evidence: PrCriteriaEvidenceTable;
+  pr_merge_plans: PrMergePlansTable;
   guardrail_evaluations: GuardrailEvaluationsTable;
   run_controls: RunControlsTable;
   run_ingest_receipts: RunIngestReceiptsTable;
@@ -5150,6 +5225,7 @@ export interface Database {
   planning_epics: PlanningEpicsTable;
   epic_tickets: EpicTicketsTable;
   epic_mirrors: EpicMirrorsTable;
+  planning_epic_notes: PlanningEpicNotesTable;
   reestimation_runs: ReestimationRunsTable;
   reestimation_run_counts: ReestimationRunCountsTable;
   runner_pools: RunnerPoolsTable;
@@ -5418,6 +5494,26 @@ export const TABLE_COLUMNS = {
     "hunk_line_end",
     "display_text",
     "created_at",
+  ],
+  pr_merge_plans: [
+    "id",
+    "pr_id",
+    "strategy",
+    "delete_branch",
+    "commit_message",
+    "close_ticket",
+    "comment_evidence",
+    "back_annotate_epic",
+    "epic_id",
+    "armed",
+    "armed_by",
+    "armed_at",
+    "armed_against_revision_id",
+    "disarm_reason",
+    "merged_result",
+    "updated_by",
+    "created_at",
+    "updated_at",
   ],
   guardrail_evaluations: [
     "id",
@@ -5751,6 +5847,7 @@ export const TABLE_COLUMNS = {
   ],
   epic_tickets: ["id", "epic_id", "ticket_id", "created_at"],
   epic_mirrors: ["id", "epic_id", "source_id", "kind", "external_ref", "created_at", "updated_at"],
+  planning_epic_notes: ["id", "epic_id", "pr_id", "kind", "body", "created_at"],
   reestimation_runs: ["id", "night", "started_at", "finished_at", "status", "batch_limit"],
   reestimation_run_counts: ["run_id", "organization_id", "found", "queued", "in_flight"],
   runner_pools: [
@@ -6233,6 +6330,10 @@ export type PrCriterionEvidence = Selectable<PrCriteriaEvidenceTable>;
 export type NewPrCriterionEvidence = Insertable<PrCriteriaEvidenceTable>;
 /** A row of `ouroboros.pr_waivers`, as a `select` returns it. */
 export type PrWaiver = Selectable<PrWaiversTable>;
+/** A merge plan row (V058). */
+export type PrMergePlan = Selectable<PrMergePlansTable>;
+/** An epic note row (V064). */
+export type PlanningEpicNote = Selectable<PlanningEpicNotesTable>;
 
 /** A row of `ouroboros.tenant_domains`, as a `select` returns it. */
 export type TenantDomain = Selectable<TenantDomainsTable>;

@@ -26,14 +26,22 @@
  * `pr_synced` (definitions re-materialized, state brought in line). The sink never throws, so a gate
  * problem never fails a sync.
  *
- * Nothing calls this on a schedule yet: the merge executor (#360) is its caller, and a `prEvents`
- * poll loop joins it there. The service is the contract they build on.
+ * **The merge executor (AX.4, #360) reaches the host only through here** — {@link PrSyncService.get}
+ * for its re-check, {@link PrSyncService.merge}, {@link PrSyncService.comment} for the evidence
+ * summary, and {@link PrSyncService.sync} to mirror the merge once it has committed. Nothing calls
+ * `sync` on a schedule yet; a `prEvents` poll loop joins the executor there.
  */
 
 import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import type { TicketSourceKind } from "../db/schema";
-import type { PrCommentInput, PrCommentResult } from "../ticket-sources/ticket-source.pr";
+import type {
+  MergePrInput,
+  MergePrResult,
+  PrCommentInput,
+  PrCommentResult,
+  PullRequestSnapshot,
+} from "../ticket-sources/ticket-source.pr";
 import {
   supportsPullRequests,
   type PrCapableProvider,
@@ -131,6 +139,73 @@ export class PrSyncService {
     prNumber: number,
     comment: PrCommentInput,
   ): Promise<PrCommentResult> {
+    return this.withHost(organizationId, sourceId, (provider, context) =>
+      provider.commentPR(context, prNumber, comment),
+    );
+  }
+
+  /**
+   * One PR as its host reports it now — the merge executor's re-check (#360) asks this inside its
+   * transaction, and reads who merged it afterwards.
+   *
+   * @param organizationId - The workspace asking.
+   * @param sourceId - The git-host source the PR lives on.
+   * @param prNumber - The host's number.
+   * @returns The snapshot, `mergeable` included.
+   * @throws {NotFoundError} `pr_source_not_found` for a source the workspace does not have.
+   * @throws {ConflictError} `pr_source_has_no_pull_requests` for a tracker without PRs.
+   * @throws {TicketSourceError} The host's refusal, classified by the provider.
+   */
+  async get(
+    organizationId: string,
+    sourceId: string,
+    prNumber: number,
+  ): Promise<PullRequestSnapshot> {
+    return this.withHost(organizationId, sourceId, (provider, context) =>
+      provider.getPR(context, prNumber),
+    );
+  }
+
+  /**
+   * Ask the host to merge a PR — the merge executor's (#360) only way to, and only after its
+   * re-check passed.
+   *
+   * @param organizationId - The workspace asking.
+   * @param sourceId - The git-host source the PR lives on.
+   * @param prNumber - The host's number.
+   * @param input - The plan's strategy, message and branch deletion.
+   * @returns What the host did, with every keyword closure verified.
+   * @throws {NotFoundError} `pr_source_not_found` for a source the workspace does not have.
+   * @throws {ConflictError} `pr_source_has_no_pull_requests` for a tracker without PRs.
+   * @throws {TicketSourceError} The host's refusal — a conflict or unmet branch protection among
+   *   them — classified by the provider.
+   */
+  async merge(
+    organizationId: string,
+    sourceId: string,
+    prNumber: number,
+    input: MergePrInput,
+  ): Promise<MergePrResult> {
+    return this.withHost(organizationId, sourceId, (provider, context) =>
+      provider.mergePR(context, prNumber, input),
+    );
+  }
+
+  /**
+   * Run one call against a source's host with its credential opened.
+   *
+   * @param organizationId - The workspace asking.
+   * @param sourceId - The source.
+   * @param run - The call.
+   * @returns What `run` returned.
+   * @throws {NotFoundError} `pr_source_not_found` for a source the workspace does not have.
+   * @throws {ConflictError} `pr_source_has_no_pull_requests` for a tracker without PRs.
+   */
+  private async withHost<T>(
+    organizationId: string,
+    sourceId: string,
+    run: (provider: PrCapableProvider, context: TicketSyncContext) => Promise<T>,
+  ): Promise<T> {
     const source = await this.store.source(organizationId, sourceId);
 
     if (source === undefined) {
@@ -139,9 +214,7 @@ export class PrSyncService {
 
     const provider = this.prHost(source.kind, sourceId);
 
-    return this.sources.withCredentials(source, (context) =>
-      provider.commentPR(context, prNumber, comment),
-    );
+    return this.sources.withCredentials(source, (context) => run(provider, context));
   }
 
   /**
