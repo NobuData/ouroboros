@@ -424,7 +424,7 @@ ouroboros-ui/
 │   │   ├── view.ts          #   the four ways a trail lies, and what stops each
 │   │   ├── audit-actions.ts #   the Server Action — no arguments, so nothing to forge
 │   │   └── audit-trail.tsx  #   <AuditTrail /> — the button and its sheet, mountable
-│   ├── test-results/        # mockup 11's test results: head, actions, summary strip · #335
+│   ├── test-results/        # mockup 11's test results: head, actions, timeline, summary strip · #335 #336
 │   │   ├── view.ts          #   the attempt, the head, the strip as the payload states it, the honest gate
 │   │   ├── poll.ts          #   the two readers and guards: the run's timeline, the attempt's gate
 │   │   ├── data.ts          #   readTests() — the first paint, the tracker link and the gate best-effort
@@ -432,7 +432,8 @@ ouroboros-ui/
 │   │   ├── tests-head.tsx   #   the eyebrow, the linked headline and the four-element meta row
 │   │   ├── tests-actions.tsx #  Re-run failed (N) / Re-run full suite / Send failures back to loop ⟳
 │   │   ├── summary-strip.tsx #  the five StatCards, and the flaky card's honest link to insights
-│   │   ├── attempt-picker.tsx # Build 1 · 2 · 3 — which attempt the whole page reads
+│   │   ├── timeline.ts      #   the attempt cards, the honest Next card (T8), where the strip scrolls · #336
+│   │   ├── attempts-timeline.tsx # err → warn → live → future — and which attempt the whole page reads
 │   │   ├── mark-route-slot.tsx # where Send failures back lands until #340 draws the card
 │   │   ├── tests-loading.tsx #  the first read in flight
 │   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip — two polls
@@ -3584,8 +3585,8 @@ Both dialogs trap Tab, close on Escape and return focus to the button that opene
 
 `/runs/:id/tests` ([#335](https://github.com/NobuData/ouroboros/issues/335)) is mockup 11's frame:
 the eyebrow (`Test Results · Run #1847 · Build 3`), the headline linked to its tracker, the meta row
-(pin tag, pass-ratio pill, `build 3 of loop #1847`, runner + rig + duration), the three actions and
-the five-stat summary strip. A contextual surface like the run console: no sidebar entry, `?from=`
+(pin tag, pass-ratio pill, `build 3 of loop #1847`, runner + rig + duration), the three actions, the
+build attempts timeline and the five-stat summary strip. A contextual surface like the run console: no sidebar entry, `?from=`
 keeps the originating module lit, and the breadcrumb leads back through the console. The run
 console's Test stage and a loop build's farm job cell link here.
 
@@ -3603,6 +3604,38 @@ re-run's `N` are the payload's (AT.5 #333, and `GET /api/v1/test-runs/:id/rerun`
 | **Re-run failed (N)** | queues the failed set as a new build (AT.4 #332) and says the honest queue state | a viewer · no eligible runner · pool disabled · no farm build · nothing failed · checking |
 | **Re-run full suite** | queues every case the same way | the same, bar *nothing failed* |
 | **Send failures back to loop ⟳** | stages the failed set on Mark & Route and focuses it — a navigation, not a dispatch | nothing failed |
+
+### Build attempts timeline
+
+`AttemptsTimeline` ([#336](https://github.com/NobuData/ouroboros/issues/336)) is the strip between
+the head and the summary: one card per attempt, oldest first, then the dashed **Next** card. It is
+the page's attempt selector — a click (or Enter on the card's button) re-scopes every region and
+replaces `?attempt=`.
+
+| Card | Drawn as | From |
+|------|----------|------|
+| **err** | `49/63 · 14 failed ✗` | a finished attempt under 90 % passed, or a build that errored |
+| **warn** | `61/63 · 2 failed` | a finished attempt at or above 90 % |
+| **ok** | `63/63 · all passed ✓` | every case passed |
+| **live** | pulse dot · `running re-run of failed set` / `running full re-run` / `running tests` | `status: running`, by `selection`; redrawn on the timeline's poll |
+| **Next** (dashed) | see below | the payload's next-step projection (`next`) |
+
+Each attempt's meta line is its start as a UTC time of day and its sha, abbreviated to seven
+characters. The sha links through `commitUrl` — GitHub, GitLab or Bitbucket — and is plain text when
+the source cannot produce a commit URL.
+
+**The Next card is honest about what is built** (decision T8):
+
+| Projection | Result line | Line under it |
+|------------|-------------|---------------|
+| a pull request is linked **and** `activation: gate_armed` | `Publish to PR #514 when green` | `auto · gated on 63/63` |
+| `activation: intent_stored` | `auto · gated on 63/63` | `Block PR until green is stored · PR publishing activates with the PR plane` |
+| anything else | `auto · gated on 63/63` | `PR publishing activates with the PR plane` |
+
+No PR number is printed for a gate nothing holds. The strip scrolls sideways inside its own wrapper
+— the content pane never does — and brings the selected card into view by scrolling that wrapper
+alone. The pulse's halo moves only under `prefers-reduced-motion: no-preference`; the dot, the
+accent and the words are drawn either way.
 
 Mark & Route itself is #340's; until then the page holds its slot, which names the staged cases.
 Insights (mockup 15) is `soon`, so the flaky card's `quarantine watching (N)` is words with the

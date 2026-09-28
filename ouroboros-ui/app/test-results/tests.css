@@ -1,5 +1,6 @@
 /*
- * The test-results frame (#335) — mockup 11's page head, its actions and its five-stat strip.
+ * The test-results frame (#335) — mockup 11's page head, its actions and its five-stat strip —
+ * and its build attempts timeline (#336).
  *
  * The mockup is docs/mockups/11-test-results.html over docs/mockups/assets/ouroboros.css. What is
  * taken from it is the page head and the summary strip. What is not is the topbar — this page
@@ -180,19 +181,114 @@
   color: var(--err);
 }
 
-/* ---------- the attempt selector ---------- */
+/* ---------- the build attempts timeline (#336) ---------- */
 
-.tests-attempts {
+/* The mockup's `card c-12`, above the strip. */
+.tests-timeline {
+  margin-bottom: var(--sp-8);
+}
+
+/* The mockup's `mono small faint` — the loop and when it started. */
+.tests-timeline__loop {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/*
+ * The strip's own wrapper: a long loop scrolls here, and the content pane never scrolls
+ * sideways. It is the cards' offset parent, which is what lets the selected one be brought into
+ * view by scrolling this box alone.
+ */
+.tests-timeline__scroll {
+  position: relative;
+  overflow-x: auto;
+}
+
+/* The mockup's `.attempts`; the padding keeps a card's focus ring and glow inside the box. */
+.tests-timeline__list {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-3);
-  margin: 0 0 var(--sp-8);
-  padding: 0;
+  align-items: stretch;
+  gap: var(--sp-5);
+  width: max-content;
+  margin: 0;
+  padding: var(--sp-2);
   list-style: none;
 }
 
-.tests-attempts__label {
+/* The mockup's `.attempt`. */
+.tests-timeline__card {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 13rem;
+  padding: var(--sp-6) var(--sp-7);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+/* The mockup's `.a-arrow`, drawn rather than written so the list reads as a list. */
+.tests-timeline__card + .tests-timeline__card {
+  margin-left: var(--sp-9);
+}
+
+.tests-timeline__card + .tests-timeline__card::before {
+  content: "→";
+  position: absolute;
+  inset: 0 auto 0 calc((var(--sp-9) + var(--sp-5)) * -1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--sp-9) + var(--sp-5));
+  color: var(--ink-faint);
+  font-size: var(--t-lg);
+}
+
+/* The label and the result: the card's button, laid out as the card's first two lines. */
+.tests-timeline__select {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* Its hit area is the whole card. */
+.tests-timeline__select::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--r-md);
+}
+
+.tests-timeline__select:focus-visible {
+  outline: none;
+}
+
+.tests-timeline__select:focus-visible::after {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* The attempt the page reads: an accent inset, which no status hue is. */
+.tests-timeline__select[aria-pressed="true"]::after {
+  box-shadow: inset 0 -0.1875rem 0 var(--accent);
+}
+
+.tests-timeline__card:hover {
+  border-color: var(--line-strong);
+}
+
+.tests-timeline__label {
   color: var(--ink-faint);
   font-family: var(--f-mono);
   font-size: var(--t-2xs);
@@ -200,29 +296,117 @@
   text-transform: uppercase;
 }
 
-.tests-attempts__button {
-  padding: var(--sp-2) var(--sp-5);
-  border: 1px solid var(--line);
-  border-radius: var(--r-md);
-  background: var(--inset);
-  color: var(--ink-dim);
+.tests-timeline__result {
+  font-family: var(--f-disp);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  letter-spacing: var(--tr-tight);
+}
+
+.tests-timeline__meta {
+  color: var(--ink-faint);
   font-family: var(--f-mono);
-  font-size: var(--t-xs);
-  cursor: pointer;
+  font-size: var(--t-2xs);
 }
 
-.tests-attempts__button:hover {
-  color: var(--ink);
-}
-
-.tests-attempts__button:focus-visible {
-  outline: 0.125rem solid var(--accent);
-  outline-offset: 0.125rem;
-}
-
-.tests-attempts__button[aria-pressed="true"] {
-  border-color: var(--accent-line);
+/* The sha's link sits above the card's hit area, so it is its own target. */
+.tests-timeline__sha {
+  position: relative;
+  z-index: 1;
   color: var(--accent);
+  text-decoration: none;
+}
+
+.tests-timeline__sha:hover {
+  text-decoration: underline;
+}
+
+/* The verdicts: a 35% border and the hue on the result, as the mockup draws them. */
+.tests-timeline__card--err {
+  border-color: var(--err-line);
+}
+
+.tests-timeline__card--err .tests-timeline__result {
+  color: var(--err);
+}
+
+.tests-timeline__card--warn {
+  border-color: var(--warn-line);
+}
+
+.tests-timeline__card--warn .tests-timeline__result {
+  color: var(--warn);
+}
+
+.tests-timeline__card--ok {
+  border-color: var(--ok-line);
+}
+
+.tests-timeline__card--ok .tests-timeline__result {
+  color: var(--ok);
+}
+
+.tests-timeline__card--neutral .tests-timeline__result {
+  color: var(--ink-mut);
+}
+
+/* The build in flight: the accent, and the glow reserved for live things. */
+.tests-timeline__card--live {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  box-shadow: 0 0 var(--sp-9) calc(var(--sp-3) * -1) var(--accent-glow);
+}
+
+.tests-timeline__card--live .tests-timeline__result {
+  color: var(--accent);
+}
+
+/* What has not happened: dashed, and on no surface of its own. */
+.tests-timeline__card--future {
+  border-style: dashed;
+  background: transparent;
+}
+
+.tests-timeline__card--future .tests-timeline__result {
+  color: var(--ink-mut);
+  font-weight: 500;
+}
+
+/* The honest note may be a sentence; it wraps inside the card rather than widening the strip. */
+.tests-timeline__card--future .tests-timeline__meta {
+  max-width: 18rem;
+}
+
+/*
+ * The mockup's `.dot.pulse`. The dot is always drawn, in the accent, beside words that say the
+ * build is running; only the halo moves, and only for a reader who has not asked for less
+ * motion. Nothing about the state is in the movement.
+ */
+.tests-timeline__pulse {
+  display: inline-block;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  margin-right: var(--sp-3);
+  border-radius: var(--r-round);
+  background: var(--accent);
+  vertical-align: 0.0625rem;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .tests-timeline__pulse {
+    animation: tests-timeline-pulse 0.8s ease-in-out infinite alternate;
+  }
+}
+
+/* Out and back — the shared chip's halo, written as one leg played in both directions. */
+@keyframes tests-timeline-pulse {
+  from {
+    box-shadow: 0 0 0 0 var(--accent-glow);
+  }
+
+  to {
+    box-shadow: 0 0 0 0.3125rem transparent;
+  }
 }
 
 /* ---------- the summary strip ---------- */

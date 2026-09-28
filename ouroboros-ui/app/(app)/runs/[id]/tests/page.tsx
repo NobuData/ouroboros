@@ -45,6 +45,7 @@ export default async function Page({
 
   return (
     <TestsScreen
+      commitSource={found?.commitSource ?? null}
       initial={found?.timeline ?? null}
       initialAttempt={attempt}
       initialError={reading.state === "failed" ? reading.reason : null}

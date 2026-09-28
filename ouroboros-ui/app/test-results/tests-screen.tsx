@@ -11,12 +11,13 @@ import type {
 } from "@/app/api/test-results";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { TESTS_ATTEMPT_PARAM, runPath } from "@/app/paths";
+import type { CommitSource } from "@/app/runs/cards";
 import type { RunOrigin } from "@/app/runs/origin";
 import { BREADCRUMB_LABEL } from "@/app/runs/view";
 import { setNavOrigin } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 
-import { AttemptPicker } from "./attempt-picker";
+import { AttemptsTimeline } from "./attempts-timeline";
 import { MarkRouteSlot, type StagedFailures } from "./mark-route-slot";
 import { type TestsPollOptions, createGatePoll, createTimelinePoll } from "./poll";
 import type { RerunOutcome } from "./rerun";
@@ -24,6 +25,7 @@ import { requestRerun } from "./rerun-actions";
 import { SummaryStrip } from "./summary-strip";
 import { type ActionOutcome, TestsActions } from "./tests-actions";
 import { TestsHead } from "./tests-head";
+import { timelineView } from "./timeline";
 import {
   NO_ATTEMPTS,
   STALE_HEADLINE,
@@ -76,6 +78,8 @@ export interface TestsScreenProps {
   readonly initialGate?: RerunAvailability | null;
   /** The ticket on its tracker, or `null`. */
   readonly trackerUrl: string | null;
+  /** Where the run's commits live, or `null` when no sha can be linked. `null` when absent. */
+  readonly commitSource?: CommitSource | null;
   /** The run's pull request, or `null` when it opened none. `null` when absent. */
   readonly pullRequest?: PullRequestRef | null;
   /** The module the page was opened from. */
@@ -92,7 +96,9 @@ export interface TestsScreenProps {
 
 /**
  * The test-results frame ([#335](https://github.com/NobuData/ouroboros/issues/335)) — mockup 11's
- * breadcrumb, head, actions and summary strip, for one attempt of one run.
+ * breadcrumb, head, actions, build attempts timeline
+ * ([#336](https://github.com/NobuData/ouroboros/issues/336)) and summary strip, for one attempt of
+ * one run.
  *
  * **A contextual surface.** It renders in the shell's content pane and adds no chrome of its own,
  * so the header and the sidebar stay put while the pane scrolls. It has no sidebar entry: the
@@ -100,7 +106,7 @@ export interface TestsScreenProps {
  * keeps that entry lit, and the breadcrumb leads back through the run console to it.
  *
  * **The attempt is the page's state.** It lives here and in `?attempt=` (replaced, not pushed, so
- * Back leaves the page), defaulting to the latest; every region below is drawn from the one
+ * Back leaves the page), defaulting to the latest, and the timeline's cards are what switch it; every region below is drawn from the one
  * attempt `selectedAttempt` answers, so switching redraws all of them in the same render. Anything
  * that belongs to an attempt — the gate's answer, a re-run's outcome, a staged failed set — is held
  * with the attempt's id and drawn only while that attempt is on screen.
@@ -123,6 +129,7 @@ export function TestsScreen({
   initialAttempt,
   initialGate = null,
   trackerUrl,
+  commitSource = null,
   pullRequest = null,
   origin,
   mayContribute = false,
@@ -279,10 +286,9 @@ export function TestsScreen({
 
       {timeline !== null && attempt !== null && (
         <>
-          <AttemptPicker
-            attempts={timeline.attempts}
+          <AttemptsTimeline
             onSelect={selectAttempt}
-            selected={attempt.attemptSeq}
+            view={timelineView(timeline, attempt.attemptSeq, commitSource)}
           />
           <SummaryStrip view={stripView(attempt.strip)} />
           <MarkRouteSlot

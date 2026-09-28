@@ -117,6 +117,28 @@ export function seededAttempts(): TestAttempt[] {
 }
 
 /**
+ * The seeded run's three attempts as mockup 11's timeline draws them (#336): Build 1 a mass
+ * failure, Build 2 a near-fix, and Build 3 the re-run of the failed set, still in flight — each
+ * with the mockup's own timestamp and sha.
+ *
+ * @returns Build 1 (err), Build 2 (warn) and Build 3 (live), oldest first.
+ */
+export function mockupAttempts(): TestAttempt[] {
+  const [one, two, three] = seededAttempts();
+
+  return [
+    { ...one!, commitSha: "a3f19c2", startedAt: "2026-09-19T13:52:41.000Z" },
+    {
+      ...two!,
+      commitSha: "c81d4e7",
+      startedAt: "2026-09-19T14:21:07.000Z",
+      strip: { ...two!.strip, failed: 2 },
+    },
+    { ...three!, status: "running", commitSha: "f42b9a0", startedAt: "2026-09-19T14:38:19.000Z" },
+  ];
+}
+
+/**
  * The timeline.
  *
  * @param over What to change.

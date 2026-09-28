@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 /**
  * The properties of `app/test-results/tests.css` that are agreements with something outside it
- * (#335). jsdom applies no stylesheet, so *both themes* and *the 125% font-scale step* are
+ * (#335, and #336's timeline). jsdom applies no stylesheet, so *both themes* and *the 125% font-scale step* are
  * verified as what they reduce to: every hue is a token, every length is a token or a rem, and
  * every type size is a token. The shell compliance half — no chrome of its own, a fixed header
  * and sidebar while the pane scrolls — is that the sheet fixes and sticks nothing.
@@ -62,6 +62,49 @@ describe("scaling and theming", () => {
 
     for (const [, value] of CODE.matchAll(/(?:^|[\s;{])(?:color|background|border-color):\s*([^;]+);/g)) {
       expect(value!.trim()).toMatch(/^(var\(--[a-z0-9-]+\)|none|inherit|transparent)$/);
+    }
+  });
+});
+
+describe("the build attempts timeline (#336)", () => {
+  it("scrolls sideways inside its own wrapper, so the content pane never does", () => {
+    expect(CODE).toMatch(/\.tests-timeline__scroll\s*\{[^}]*overflow-x: auto;/);
+    expect(CODE).toMatch(/\.tests-timeline__list\s*\{[^}]*width: max-content;/);
+    // Nothing else on the page may scroll or overflow sideways.
+    expect([...CODE.matchAll(/overflow(?:-x)?:\s*(auto|scroll)/g)]).toHaveLength(1);
+  });
+
+  it("makes the wrapper the cards' offset parent, which is what scrolling it alone relies on", () => {
+    expect(CODE).toMatch(/\.tests-timeline__scroll\s*\{[^}]*position: relative;/);
+  });
+
+  it("moves the live pulse only for a reader who has not asked for less motion", () => {
+    const animated = [...CODE.matchAll(/animation:/g)];
+    const guarded = CODE.match(
+      /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.tests-timeline__pulse\s*\{\s*animation:[^}]*\}\s*\}/,
+    );
+
+    expect(guarded).not.toBeNull();
+    expect(animated).toHaveLength(1);
+  });
+
+  it("draws the dot and the live hue with or without motion, so the reduced variant stays legible", () => {
+    const dot = CODE.match(/\.tests-timeline__pulse\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(dot).toMatch(/background: var\(--accent\);/);
+    expect(dot).not.toMatch(/animation/);
+    expect(CODE).toMatch(/\.tests-timeline__card--live \.tests-timeline__result\s*\{\s*color: var\(--accent\);/);
+  });
+
+  it("draws the future card dashed, in either variant", () => {
+    expect(CODE).toMatch(/\.tests-timeline__card--future\s*\{[^}]*border-style: dashed;/);
+  });
+
+  it("gives each verdict its own hue, from the tokens", () => {
+    for (const tone of ["err", "warn", "ok"]) {
+      expect(CODE).toMatch(
+        new RegExp(`\\.tests-timeline__card--${tone} \\.tests-timeline__result\\s*\\{\\s*color: var\\(--${tone}\\);`),
+      );
     }
   });
 });

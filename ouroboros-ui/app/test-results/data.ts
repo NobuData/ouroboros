@@ -10,10 +10,12 @@ import "server-only";
  *
  * Two reads ride along, each **best-effort**, because neither is the page's reason to exist:
  *
- * - **The run console's snapshot, for the tracker link.** The timeline names the issue by number;
- *   the repository it lives in is the console's (`head.repository`), and `trackerUrl` builds the
- *   link from the two exactly as the run console's headline does. Unreadable, the headline is
- *   plain text rather than a guessed link.
+ * - **The run console's snapshot, for the tracker link and the commit links.** The timeline names
+ *   the issue by number and each attempt's commit by sha; the repository they live in is the
+ *   console's (`head.repository`), and `trackerUrl` and `commitSource` build from it exactly as
+ *   the run console does. Unreadable, the headline and the shas
+ *   ([#336](https://github.com/NobuData/ouroboros/issues/336)) are plain text rather than guessed
+ *   links.
  * - **The selected attempt's re-run gate**, so the buttons can be honest on first paint. Unreadable,
  *   they say they are checking, and the gate's poll answers within one interval.
  * - **The run's pull request** ([#363](https://github.com/NobuData/ouroboros/issues/363)), so the
@@ -30,6 +32,7 @@ import {
   testResults,
 } from "@/app/api/test-results";
 import { runPullRequests } from "@/app/prs/data";
+import { type CommitSource, commitSource } from "@/app/runs/cards";
 import { trackerUrl } from "@/app/runs/view";
 
 import { selectedAttempt } from "./view";
@@ -39,6 +42,8 @@ export interface TestsFirstRead {
   readonly timeline: TestRunTimeline;
   /** The ticket on its tracker, or `null`. */
   readonly trackerUrl: string | null;
+  /** Where the run's commits live, or `null` — the timeline's shas are then plain text. */
+  readonly commitSource: CommitSource | null;
   /** The selected attempt's gate, or `null` when there is no attempt or it could not be read. */
   readonly gate: RerunAvailability | null;
   /** The run's pull request, or `null` when it opened none or it could not be looked up. */
@@ -121,6 +126,7 @@ export async function readTests(
     value: {
       timeline,
       trackerUrl: repository === null ? null : trackerUrl(repository, timeline.run.issueNumber),
+      commitSource: repository === null ? null : commitSource(repository),
       gate,
       pullRequest,
     },

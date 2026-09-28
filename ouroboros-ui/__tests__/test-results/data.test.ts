@@ -8,7 +8,7 @@ import { BUILD_2_ID, BUILD_3_ID, gate, timeline } from "../helpers/test-results"
 
 /**
  * The test-results page's first read (#335): the timeline decides found, missing or failed; the
- * tracker link, the selected attempt's gate and the run's pull request (#363) ride along
+ * tracker link, the commit source (#336), the selected attempt's gate and the run's pull request (#363) ride along
  * best-effort.
  */
 
@@ -48,6 +48,7 @@ describe("readTests", () => {
       value: {
         timeline: timeline(),
         trackerUrl: "https://github.com/acme-robotics/helios-firmware/issues/482",
+        commitSource: { kind: "github", owner: "acme-robotics", name: "helios-firmware" },
         gate: gate(),
         pullRequest: PULL_REQUEST,
       },
@@ -97,7 +98,7 @@ describe("readTests", () => {
 
     expect(reading).toEqual({
       state: "found",
-      value: { timeline: timeline(), trackerUrl: null, gate: null, pullRequest: null },
+      value: { timeline: timeline(), trackerUrl: null, commitSource: null, gate: null, pullRequest: null },
     });
   });
 
