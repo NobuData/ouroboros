@@ -21,6 +21,8 @@ import {
   WORKFLOWS_PATH,
   loginPath,
   runPath,
+  TESTS_ATTEMPT_PARAM,
+  testsPath,
   safeReturnTo,
   workflowPath,
 } from "@/app/paths";
@@ -116,6 +118,15 @@ describe("the paths themselves", () => {
 
   it("encode a run's id and its origin, because both are values from input", () => {
     expect(runPath("a/b?c", "x&y=z")).toBe("/runs/a%2Fb%3Fc?from=x%26y%3Dz");
+  });
+
+  it("address one run's test results, carrying its origin and attempt (#335)", () => {
+    expect(TESTS_ATTEMPT_PARAM).toBe("attempt");
+    expect(testsPath("5eed")).toBe("/runs/5eed/tests");
+    expect(testsPath("5eed", { from: "build-farm" })).toBe("/runs/5eed/tests?from=build-farm");
+    expect(testsPath("5eed", { attempt: 3 })).toBe("/runs/5eed/tests?attempt=3");
+    expect(testsPath("5eed", { from: "dashboard", attempt: 2 })).toBe("/runs/5eed/tests?from=dashboard&attempt=2");
+    expect(testsPath("a/b?c", { from: "x&y=z" })).toBe("/runs/a%2Fb%3Fc/tests?from=x%26y%3Dz");
   });
 
   it("give each Models surface a segment of its own", () => {

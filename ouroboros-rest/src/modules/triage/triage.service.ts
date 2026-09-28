@@ -7,6 +7,7 @@
  * GET  /api/v1/test-runs/:id/hints                     heuristic hints, every rule's verdict
  * GET  /api/v1/test-runs/:id/classifications           each case's current decision + receipt
  * POST /api/v1/test-runs/:id/cases/:caseId/classify    record a decision, then route it
+ * GET  /api/v1/test-runs/:id/rerun                     whether a re-run could be placed now
  * POST /api/v1/test-runs/:id/rerun                     Re-run failed (N) / Re-run full suite
  * POST /api/v1/test-runs/:id/waivers                   the waiver half of Waive & annotate PR
  * ```
@@ -76,6 +77,7 @@ import {
   waiverResource,
   type ClassificationsListResource,
   type ClassifyResultResource,
+  type RerunAvailabilityResource,
   type RerunResource,
   type Route,
   type RoutingResource,
@@ -271,6 +273,40 @@ export class TriageService {
     });
 
     return { classification: classificationResource(classification), routing };
+  }
+
+  // --- GET rerun -------------------------------------------------------------------------
+
+  /**
+   * Whether a re-run of an attempt could be placed now, and the size of each scope's case set —
+   * asked before anyone presses (#335). It reads the same source build {@link rerun} would copy
+   * and dispatch's own eligibility, and writes nothing.
+   *
+   * @param organizationId - The workspace.
+   * @param testRunId - The attempt.
+   * @returns The readiness, the pool, and the case counts.
+   * @throws {NotFoundError} `404 test_run_not_found`.
+   */
+  async rerunAvailability(
+    organizationId: string,
+    testRunId: string,
+  ): Promise<RerunAvailabilityResource> {
+    const attempt = await this.attemptOrThrow(organizationId, testRunId);
+    const [cases, source] = await Promise.all([
+      this.triage.cases(organizationId, testRunId, {}),
+      this.triage.rerunSource(organizationId, attempt),
+    ]);
+    const { readiness, pool } = await this.jobs.rerunReadiness(organizationId, source);
+    const distinct = (rows: readonly CaseRow[]): number =>
+      new Set(rows.map((row) => row.case_key)).size;
+
+    return {
+      testRunId,
+      readiness,
+      pool,
+      failedCases: distinct(cases.filter((row) => FAILED_STATUSES.includes(row.status))),
+      fullCases: distinct(cases),
+    };
   }
 
   // --- POST rerun ------------------------------------------------------------------------

@@ -89,7 +89,7 @@ export {
   type SchemaFieldsProps,
   type SchemaWidget,
 } from "./schema-form";
-export { StatCard, type StatCardProps, type StatTone } from "./stat-card";
+export { StatCard, type StatCardProps, type StatTone, type StatValueTone } from "./stat-card";
 export { StickyBar, type StickyBarProps, type StickyBarTone } from "./sticky-bar";
 export {
   Table,

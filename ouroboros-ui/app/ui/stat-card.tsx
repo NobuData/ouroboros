@@ -31,6 +31,15 @@ import "./ui.css";
  *   rather than a `meter` prop, because what goes there is the caller's composition and a
  *   primitive that knew about meters would be two primitives.
  *
+ * ### The two mockup 11 adds
+ *
+ * - **A hue on the figure** — the test-results strip draws *Passed* in the ok hue, *Failed* in
+ *   the error hue and *Flaky* in the warn hue (#335). `valueTone` names that hue; whether a
+ *   figure deserves one is the caller's.
+ * - **A link in the line** — the *Flaky* tile's `quarantine watching ↗`. The line is a node
+ *   rather than a string, so the caller composes it; a primitive that knew about links would
+ *   be deciding where they go.
+ *
  * The caption is the tile's accessible name, so a reader moving between four of them hears
  * "Loops live, 3" rather than four unlabelled numbers. It is a `<section>` for the same reason:
  * an `aria-label` on a `<div>` names nothing.
@@ -56,6 +65,9 @@ export type StatTone =
   /** Not news at all: the reason the figure could not be read. */
   | "failed";
 
+/** The hue a figure may take — mockup 11's coloured counts. */
+export type StatValueTone = "ok" | "warn" | "err";
+
 /** What a stat tile takes. */
 export interface StatCardProps {
   /** The caption above the figure, and the tile's accessible name. */
@@ -72,8 +84,13 @@ export interface StatCardProps {
    * present tense. The suffix never takes it.
    */
   readonly accent?: boolean;
-  /** The line under the figure, or `null` for a tile that has nothing it can honestly say. */
-  readonly delta?: string | null;
+  /** The figure's hue, when it has one. Ignored when `accent` is set. */
+  readonly valueTone?: StatValueTone;
+  /**
+   * The line under the figure — text, or the caller's composition of text and a link — or
+   * `null` for a tile that has nothing it can honestly say.
+   */
+  readonly delta?: ReactNode;
   /** How that line is drawn. Defaults to `muted`. */
   readonly tone?: StatTone;
   /** What sits between the figure and its line — a meter. */
@@ -90,6 +107,13 @@ const TONE_CLASS: Record<StatTone, string> = {
   failed: "ou-stat__delta--failed",
 };
 
+/** The modifier each figure hue adds. */
+const VALUE_TONE_CLASS: Record<StatValueTone, string> = {
+  ok: "ou-stat__value--ok",
+  warn: "ou-stat__value--warn",
+  err: "ou-stat__value--err",
+};
+
 /**
  * A stat tile.
  *
@@ -101,6 +125,7 @@ export function StatCard({
   value,
   valueSuffix,
   accent = false,
+  valueTone,
   delta = null,
   tone = "muted",
   children,
@@ -110,12 +135,18 @@ export function StatCard({
     <Card as="section" className={className} aria-label={label}>
       <div className="ou-stat">
         <span className="ou-stat__label">{label}</span>
-        <span className={cx("ou-stat__value", accent && "ou-stat__value--accent")}>
+        <span
+          className={cx(
+            "ou-stat__value",
+            accent && "ou-stat__value--accent",
+            !accent && valueTone !== undefined && VALUE_TONE_CLASS[valueTone],
+          )}
+        >
           {value}
           {valueSuffix !== undefined && <span className="ou-stat__suffix">{valueSuffix}</span>}
         </span>
         {children}
-        {delta !== null && <span className={cx("ou-stat__delta", TONE_CLASS[tone])}>{delta}</span>}
+        {delta !== null && delta !== undefined && <span className={cx("ou-stat__delta", TONE_CLASS[tone])}>{delta}</span>}
       </div>
     </Card>
   );

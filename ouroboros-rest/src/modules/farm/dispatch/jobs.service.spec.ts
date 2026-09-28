@@ -375,6 +375,55 @@ describe("build job submission and cancellation", () => {
     });
   });
 
+  describe("re-run readiness (#335)", () => {
+    const SOURCE = "7f000002-0000-4000-8000-000000000099";
+
+    it("answers runner_available when dispatch's eligibility finds a candidate", async () => {
+      repository.candidates.mockResolvedValue([
+        { id: RUNNER, name: "forge-01", held: 0, max_concurrency: 2 },
+      ]);
+
+      expect(await jobs.rerunReadiness(ORG, SOURCE)).toEqual({
+        readiness: "runner_available",
+        pool: "pool-a",
+      });
+      expect(repository.candidates).toHaveBeenCalledWith(
+        expect.objectContaining({ organization_id: ORG, executor: "container" }),
+        NOW,
+      );
+    });
+
+    it("answers no_eligible_runner when nothing could take it, and writes nothing", async () => {
+      expect(await jobs.rerunReadiness(ORG, SOURCE)).toEqual({
+        readiness: "no_eligible_runner",
+        pool: "pool-a",
+      });
+      expect(repository.submit).not.toHaveBeenCalled();
+      expect(dispatcher.kick).not.toHaveBeenCalled();
+      expect(trail).toEqual([]);
+    });
+
+    it("answers pool_disabled for a disabled or vanished pool, without asking for candidates", async () => {
+      repository.pool.mockResolvedValueOnce(runnerPool({ enabled: false }));
+      expect((await jobs.rerunReadiness(ORG, SOURCE)).readiness).toBe("pool_disabled");
+
+      repository.pool.mockResolvedValueOnce(undefined);
+      expect((await jobs.rerunReadiness(ORG, SOURCE)).readiness).toBe("pool_disabled");
+      expect(repository.candidates).not.toHaveBeenCalled();
+    });
+
+    it("answers no_source_build when there is no build, or it is not this workspace's", async () => {
+      expect(await jobs.rerunReadiness(ORG, undefined)).toEqual({
+        readiness: "no_source_build",
+        pool: null,
+      });
+      expect(repository.view).not.toHaveBeenCalled();
+
+      repository.view.mockResolvedValueOnce(undefined);
+      expect((await jobs.rerunReadiness(ORG, SOURCE)).readiness).toBe("no_source_build");
+    });
+  });
+
   describe("cancelling", () => {
     it("cancels a running job, tells its runner, and announces the completion", async () => {
       repository.cancel.mockResolvedValue({

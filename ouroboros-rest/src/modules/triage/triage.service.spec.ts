@@ -130,7 +130,7 @@ describe("the classification & routing service", () => {
     insertWaiver: jest.Mock;
   };
   let controls: { correctionRound: jest.Mock };
-  let jobs: { submitRerun: jest.Mock };
+  let jobs: { submitRerun: jest.Mock; rerunReadiness: jest.Mock };
   let trail: AuditRecord[];
   let service: TriageService;
 
@@ -172,6 +172,7 @@ describe("the classification & routing service", () => {
       submitRerun: jest
         .fn()
         .mockResolvedValue({ job: job(), queueState: "queued_no_eligible_runner" }),
+      rerunReadiness: jest.fn().mockResolvedValue({ readiness: "runner_available", pool: "hil" }),
     };
     trail = [];
     service = new TriageService(
@@ -537,6 +538,56 @@ describe("the classification & routing service", () => {
       );
       expect(jobs.submitRerun).not.toHaveBeenCalled();
       expect(trail).toEqual([]);
+    });
+  });
+
+  describe("re-run availability (#335)", () => {
+    it("counts each scope's distinct cases and reads the source build's readiness", async () => {
+      repo.cases.mockResolvedValue([
+        failing(),
+        failing({ id: OTHER_CASE, case_key: "d".repeat(64), status: "error" }),
+        failing({
+          id: "5eed0035-0000-4000-8000-000000000003",
+          case_key: "e".repeat(64),
+          status: "flaky",
+        }),
+        failing({
+          id: "5eed0035-0000-4000-8000-000000000004",
+          case_key: "f".repeat(64),
+          status: "passed",
+        }),
+        // The same case on a second platform is one case, as the re-run's selection counts it.
+        failing({ id: "5eed0035-0000-4000-8000-000000000005", platform: "native_sim" }),
+      ]);
+
+      expect(await service.rerunAvailability(ORG, TEST_RUN)).toEqual({
+        testRunId: TEST_RUN,
+        readiness: "runner_available",
+        pool: "hil",
+        failedCases: 2,
+        fullCases: 4,
+      });
+      expect(repo.cases).toHaveBeenCalledWith(ORG, TEST_RUN, {});
+      expect(jobs.rerunReadiness).toHaveBeenCalledWith(ORG, SOURCE);
+    });
+
+    it("passes a missing source build through, and writes nothing", async () => {
+      repo.rerunSource.mockResolvedValueOnce(undefined);
+      jobs.rerunReadiness.mockResolvedValueOnce({ readiness: "no_source_build", pool: null });
+
+      expect(await service.rerunAvailability(ORG, TEST_RUN)).toEqual(
+        expect.objectContaining({ readiness: "no_source_build", pool: null }),
+      );
+      expect(jobs.rerunReadiness).toHaveBeenCalledWith(ORG, undefined);
+      expect(jobs.submitRerun).not.toHaveBeenCalled();
+      expect(trail).toEqual([]);
+    });
+
+    it("answers 404 for an attempt this workspace does not have", async () => {
+      repo.attempt.mockResolvedValueOnce(undefined);
+
+      expect(await refusal(service.rerunAvailability(ORG, TEST_RUN))).toBe("test_run_not_found");
+      expect(jobs.rerunReadiness).not.toHaveBeenCalled();
     });
   });
 

@@ -413,6 +413,25 @@
   font-size: var(--t-xs);
 }
 
+/* A loop's build: the console link, and its test results beside it (#335). */
+.farm-runners__job-links {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+.farm-runners__tests {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  text-decoration: none;
+}
+
+.farm-runners__tests:hover {
+  text-decoration: underline;
+}
+
 /* The mockup's `.faint` em dash: a cell with nothing in it, said quietly. */
 .farm-runners__none {
   color: var(--ink-faint);

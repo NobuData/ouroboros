@@ -25,6 +25,7 @@ import { ClassifyCaseDto, RerunDto, TestCaseParams, TestRunParams, WaiveDto } fr
 import type {
   ClassificationsListResource,
   ClassifyResultResource,
+  RerunAvailabilityResource,
   RerunResource,
   TestRunHintsResource,
   WaiverResource,
@@ -89,6 +90,21 @@ export class TriageController {
       requester(member, "classify"),
       request,
     );
+  }
+
+  /**
+   * Whether *Re-run failed* and *Re-run full suite* could be placed now (#335). Every member's.
+   *
+   * @param tenant - The workspace.
+   * @param params - The attempt.
+   * @returns The readiness and each scope's case count.
+   */
+  @Get(":id/rerun")
+  rerunAvailability(
+    @CurrentTenant() tenant: Organization,
+    @Param() params: TestRunParams,
+  ): Promise<RerunAvailabilityResource> {
+    return this.triage.rerunAvailability(tenant.id, params.id);
   }
 
   /**

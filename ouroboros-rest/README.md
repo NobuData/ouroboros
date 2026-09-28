@@ -4830,6 +4830,7 @@ farm rather than beside them.
 GET  /api/v1/test-runs/:id/hints                    every failing case's rule verdicts   (any member)
 GET  /api/v1/test-runs/:id/classifications          current decisions + routing receipts (any member)
 POST /api/v1/test-runs/:id/cases/:caseId/classify   record, then route                   (member+)
+GET  /api/v1/test-runs/:id/rerun                    could a re-run be placed now + counts (any member)
 POST /api/v1/test-runs/:id/rerun   {scope}          failed set | full suite, as a new build (member+)
 POST /api/v1/test-runs/:id/waivers {reason}         the waiver; no PR annotation (AV.2)   (admin+)
 ```

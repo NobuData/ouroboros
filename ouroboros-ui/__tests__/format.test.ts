@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  spanOfMs,
   article,
   compactNumber,
   durationOfMinutes,
@@ -300,5 +301,27 @@ describe("ageOfSeconds", () => {
     expect(ageOfSeconds(-30)).toBe("0s");
     expect(ageOfSeconds(Number.NaN)).toBe("0s");
     expect(ageOfSeconds(Number.POSITIVE_INFINITY)).toBe("0s");
+  });
+});
+
+describe("spanOfMs (#335)", () => {
+  it.each([
+    [372_000, "6m 12s"],
+    [240_000, "4m"],
+    [132_000, "2m 12s"],
+    [45_000, "45s"],
+    [65_000, "1m 05s"],
+    [3_720_000, "1h 02m"],
+    [3_605_000, "1h 05s"],
+    [0, "0s"],
+    [999, "0s"],
+  ])("draws %i ms as %s — to the second, zero parts dropped", (ms, expected) => {
+    expect(spanOfMs(ms)).toBe(expected);
+  });
+
+  it("draws a negative or non-finite span as zero rather than as nonsense", () => {
+    expect(spanOfMs(-5_000)).toBe("0s");
+    expect(spanOfMs(Number.NaN)).toBe("0s");
+    expect(spanOfMs(Number.POSITIVE_INFINITY)).toBe("0s");
   });
 });

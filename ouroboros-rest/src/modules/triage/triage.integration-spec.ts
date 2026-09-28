@@ -9,6 +9,7 @@ import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import type {
   ClassificationsListResource,
   ClassifyResultResource,
+  RerunAvailabilityResource,
   RerunResource,
   TestRunHintsResource,
   WaiverResource,
@@ -468,6 +469,45 @@ describe("classification & routing", () => {
     );
     const placeable = bodyOf<RerunResource>(await rerun(at.owner, at, "failed").expect(202));
     expect(placeable.queueState).toBe("queued_runner_available");
+  });
+
+  it("says before any press whether a runner could take the re-run, and writes nothing", async () => {
+    const at = await scene();
+    const viewer = await colleague(at, "viewer");
+    const availability = async () =>
+      bodyOf<RerunAvailabilityResource>(
+        await as(viewer, at, "get", `/api/v1/test-runs/${at.testRunId}/rerun`).expect(200),
+      );
+    const jobsBefore = await api.sql.query(
+      `select count(*)::int as n from ${SCHEMA_NAME}.build_jobs`,
+    );
+
+    const offline = await availability();
+    expect(offline).toEqual(
+      expect.objectContaining({
+        testRunId: at.testRunId,
+        readiness: "no_eligible_runner",
+        failedCases: 2,
+        fullCases: Object.keys(at.cases).length,
+      }),
+    );
+    expect(offline.pool).toEqual(expect.any(String));
+
+    await api.sql.query(
+      `update ${SCHEMA_NAME}.runners set status = 'online', last_seen_at = now() where id = $1`,
+      [at.runnerId],
+    );
+    expect((await availability()).readiness).toBe("runner_available");
+
+    await api.sql.query(`update ${SCHEMA_NAME}.test_runs set build_job_id = null where id = $1`, [
+      at.testRunId,
+    ]);
+    expect(await availability()).toEqual(
+      expect.objectContaining({ readiness: "no_source_build", pool: null }),
+    );
+    expect(await api.sql.query(`select count(*)::int as n from ${SCHEMA_NAME}.build_jobs`)).toEqual(
+      expect.objectContaining({ rows: jobsBefore.rows }),
+    );
   });
 
   it("refuses a re-run of a run no farm build produced, rather than inventing one", async () => {

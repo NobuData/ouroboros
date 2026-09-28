@@ -17,7 +17,11 @@ import type {
   TestCaseStatus,
   TestSelectionScope,
 } from "../db/schema";
-import type { BuildJobResource, DispatchQueueState } from "../farm/dispatch/jobs.resources";
+import type {
+  BuildJobResource,
+  DispatchQueueState,
+  RerunReadiness,
+} from "../farm/dispatch/jobs.resources";
 import type { TriageResponse } from "./triage.contract";
 import type { ClassificationRow, WaiverRow } from "./triage.repository";
 import type { Hint, RuleVerdict } from "./triage.rules";
@@ -89,6 +93,22 @@ export interface RerunResource {
   readonly job: BuildJobResource;
   /** Never *"started"*: `offered`, `queued_runner_available` or `queued_no_eligible_runner`. */
   readonly queueState: DispatchQueueState;
+}
+
+/**
+ * `GET /api/v1/test-runs/{id}/rerun` — whether *Re-run failed (N)* and *Re-run full suite* could
+ * be placed now, and how many cases each would carry (#335). The head disables both, with the
+ * reason, unless `readiness` is `runner_available`; *Re-run failed* also when `failedCases` is 0.
+ */
+export interface RerunAvailabilityResource {
+  readonly testRunId: string;
+  readonly readiness: RerunReadiness;
+  /** The pool the re-run would be queued in; null when no farm build produced the attempt. */
+  readonly pool: string | null;
+  /** The distinct `failed` and `error` cases `scope: failed` would carry — the `N`. */
+  readonly failedCases: number;
+  /** Every distinct case `scope: full` would carry. */
+  readonly fullCases: number;
 }
 
 /** The runner an `infra_rig` classification flagged. */

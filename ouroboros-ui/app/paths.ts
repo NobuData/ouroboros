@@ -234,6 +234,41 @@ export function runPath(id: string, from?: string): string {
 }
 
 /**
+ * The query parameter naming the attempt the test-results page reads — its `attemptSeq`, the
+ * `3` of *Build 3* (#335). Absent, the page reads the latest attempt.
+ */
+export const TESTS_ATTEMPT_PARAM = "attempt";
+
+/**
+ * The test-results page for one run — `/runs/7f00…/tests?from=build-farm&attempt=3`
+ * ([#335](https://github.com/NobuData/ouroboros/issues/335)).
+ *
+ * Under {@link RUNS_PATH} for the run console's reason: a contextual surface with no sidebar
+ * entry of its own, which carries its origin in {@link RUN_ORIGIN_PARAM} so the module it was
+ * opened from stays lit. The run console's Test stage and the build farm's job cells link here.
+ *
+ * @param id The run's id (a uuid). Encoded anyway, for {@link workflowPath}'s reason.
+ * @param options Where the reader came from — a sidebar entry id — and the attempt to open, by
+ *   its ordinal. Either may be omitted: the page then falls back to the dashboard and the latest
+ *   attempt.
+ * @returns The path.
+ */
+export function testsPath(
+  id: string,
+  options: { readonly from?: string; readonly attempt?: number } = {},
+): string {
+  const query = new URLSearchParams();
+
+  if (options.from !== undefined) query.set(RUN_ORIGIN_PARAM, options.from);
+  if (options.attempt !== undefined) query.set(TESTS_ATTEMPT_PARAM, String(options.attempt));
+
+  const search = query.toString();
+  const path = `${RUNS_PATH}/${encodeURIComponent(id)}/tests`;
+
+  return search === "" ? path : `${path}?${search}`;
+}
+
+/**
  * The routing matrix's heading, as an element id — where a **Used by** chip naming a route
  * goes ([#593](https://github.com/NobuData/ouroboros/issues/593)).
  *

@@ -30,6 +30,16 @@ export type StepTone = "done" | "active" | "pending" | "failed" | "skipped";
 /** The query parameter that names the stage the transcript is filtered to (#312). */
 export const STAGE_PARAM = "stage";
 
+/**
+ * The DSL node id of the Test stage — the node whose results page is mockup 11 (#335). The
+ * seeded `standard-fix` workflow names it `test`, and a workflow that names its test stage
+ * otherwise gets no link rather than one on the wrong node.
+ */
+export const TEST_STAGE_KEY = "test";
+
+/** The Test stage's link to its results page (#335). */
+export const TEST_RESULTS_LINK = "Test results ↗";
+
 /** The card's title — the mockup's `STAGE TIMELINE`. */
 export const STEPPER_TITLE = "Stage timeline";
 
@@ -269,4 +279,15 @@ export function withStage(search: string, stage: string | null): string {
 
   const next = params.toString();
   return next === "" ? "" : `?${next}`;
+}
+
+/**
+ * Whether a node links to the test-results page (#335): the Test stage, once the loop has
+ * reached it — before then there is no build whose results the page could show.
+ *
+ * @param step The node.
+ * @returns `true` for a done, active or failed Test stage.
+ */
+export function linksToTests(step: StepView): boolean {
+  return step.key === TEST_STAGE_KEY && REACHED.has(step.tone);
 }

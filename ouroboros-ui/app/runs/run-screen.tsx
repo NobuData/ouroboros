@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import type { RunConsole } from "@/app/api/runs";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
+import { testsPath } from "@/app/paths";
 import { setNavOrigin } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 
@@ -202,7 +203,14 @@ export function RunScreen({
         />
       )}
 
-      {stepper !== null && <RunStepper onSelect={selectStage} selected={stage} view={stepper} />}
+      {stepper !== null && (
+        <RunStepper
+          onSelect={selectStage}
+          selected={stage}
+          testsHref={testsPath(id, { from: origin.id })}
+          view={stepper}
+        />
+      )}
 
       {data !== null && view !== null && stepper !== null && (
         <div className="run__body">

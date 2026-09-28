@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useRef } from "react";
 
 import { Card, CardHead, Tag } from "@/app/ui";
@@ -8,8 +9,10 @@ import {
   NO_STAGES,
   STEPPER_LABEL,
   STEPPER_TITLE,
+  TEST_RESULTS_LINK,
   type StepTone,
   type StepperView,
+  linksToTests,
 } from "./stepper";
 
 /** Each treatment's class — written out, so the sheet's audit can see every one rendered. */
@@ -29,6 +32,8 @@ export interface RunStepperProps {
   readonly selected: string | null;
   /** Filter to a stage, or clear the filter with `null`. */
   readonly onSelect: (stage: string | null) => void;
+  /** Where the Test stage links — the run's test results (#335) — or `null` for no link. */
+  readonly testsHref?: string | null;
 }
 
 /**
@@ -55,7 +60,7 @@ export interface RunStepperProps {
  * @param props See {@link RunStepperProps}.
  * @returns The card.
  */
-export function RunStepper({ view, selected, onSelect }: RunStepperProps) {
+export function RunStepper({ view, selected, onSelect, testsHref = null }: RunStepperProps) {
   const titleId = useId();
   const scroller = useRef<HTMLDivElement>(null);
   const nodes = useRef(new Map<string, HTMLElement>());
@@ -120,6 +125,11 @@ export function RunStepper({ view, selected, onSelect }: RunStepperProps) {
                     )}
                   </button>
                   {step.note !== null && <p className="run-step__note">{step.note}</p>}
+                  {testsHref !== null && linksToTests(step) && (
+                    <Link className="run-step__tests" href={testsHref}>
+                      {TEST_RESULTS_LINK}
+                    </Link>
+                  )}
                 </div>
               </li>
             ))}

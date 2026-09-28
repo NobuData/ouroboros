@@ -162,6 +162,38 @@ export function elapsedOfSeconds(seconds: number): string {
     : `${hours}h ${padded(minutes)}m ${padded(rest)}s`;
 }
 
+/** Milliseconds in a second. */
+const MS_PER_SECOND = 1000;
+
+/**
+ * A finished span measured to the second — `6m 12s`, `4m`, `2m 12s`, `45s`, `1h 02m`.
+ *
+ * Mockup 11's wall time and its split (#335). It sits between {@link durationOfMinutes} and
+ * {@link elapsedOfSeconds}: to the second, like the clock, but **not moving**, so a zero part is
+ * dropped the way an estimate drops one — the mockup's `4m sim` is not `4m 00s sim`. A part
+ * that follows a larger one is still padded to two digits, so `1m 05s` in one column and
+ * `12m 40s` in the next read as the same kind of figure.
+ *
+ * @param ms How many milliseconds. Rounded down to a whole second; a negative or non-finite one
+ *   is drawn as zero.
+ * @returns The span. Zero is `0s`, because a span has to be *something*.
+ */
+export function spanOfMs(ms: number): string {
+  const total = Number.isFinite(ms) ? Math.max(0, Math.floor(ms / MS_PER_SECOND)) : 0;
+  const hours = Math.floor(total / SECONDS_PER_HOUR);
+  const minutes = Math.floor((total % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
+  const seconds = total % SECONDS_PER_MINUTE;
+  const parts: string[] = [];
+
+  if (hours > 0) parts.push(`${hours}h`);
+  if (minutes > 0) parts.push(parts.length === 0 ? `${minutes}m` : `${padded(minutes)}m`);
+  if (seconds > 0 || parts.length === 0) {
+    parts.push(parts.length === 0 ? `${seconds}s` : `${padded(seconds)}s`);
+  }
+
+  return parts.join(" ");
+}
+
 /** Cents in a dollar. */
 const CENTS_PER_DOLLAR = 100;
 
