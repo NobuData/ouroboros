@@ -37,6 +37,7 @@ import type {
 import { BUILD_FARM_PATH, runPath, testsPath } from "@/app/paths";
 import type { ChipTone } from "@/app/ui";
 
+import { DIFF_VS_PLAN_KEY, FLAGGED_LINK } from "./files";
 import type { GatesScope } from "./strip";
 import { currentReview, hostOwnedReason } from "./view";
 
@@ -166,6 +167,9 @@ export interface GateLink {
  * | `guardrail_evaluation` | the run console, where the guardrails card holds the evaluation |
  * | `vote`, `approval`     | nowhere — the row itself is where those are answered            |
  *
+ * A red diff-vs-plan row cites nothing of these: it leads to the page's own changed files
+ * ({@link flaggedLink}).
+ *
  * @param row The gate's row.
  * @param scope The gates on screen.
  * @param head The PR's head.
@@ -208,6 +212,28 @@ export function gateLink(
     default:
       return null;
   }
+}
+
+/**
+ * Where a red diff-vs-plan row leads — the changed files it flags
+ * ([#367](https://github.com/NobuData/ouroboros/issues/367)).
+ *
+ * @param row The gate's row.
+ * @param scope The gates on screen.
+ * @param page The PR page.
+ * @returns The link to the Changed files card, or `null` for any other gate or verdict, and for a
+ *   revision whose files are not the ones on the page: the card draws the latest revision's
+ *   snapshot only.
+ */
+export function flaggedLink(
+  row: PrGateRow,
+  scope: GatesScope,
+  page: PullRequestPage,
+): GateLink | null {
+  if (row.key !== DIFF_VS_PLAN_KEY || row.verdict !== "red") return null;
+  if (page.files === null || page.files.revisionId !== scope.revision.id) return null;
+
+  return FLAGGED_LINK;
 }
 
 // --- the approval --------------------------------------------------------------------------
@@ -332,6 +358,8 @@ export interface GateRowView {
   readonly evidence: string | null;
   /** Where the evidence can be checked, or `null`. */
   readonly link: GateLink | null;
+  /** The changed files a red diff-vs-plan flags, on this page — or `null`. */
+  readonly flagged: GateLink | null;
   /** {@link UNAVAILABLE_NOTE} on an `unavailable` row, otherwise `null`. */
   readonly note: string | null;
   /** {@link PENDING_PILL} on a `pending` row, otherwise `null`. */
@@ -384,6 +412,7 @@ export function gateRowView(row: PrGateRow, input: GatesCardInput): GateRowView 
     word: VERDICT_WORDS[verdict],
     evidence: row.evidence,
     link: gateLink(row, input.scope, input.page.pullRequest, input.originId),
+    flagged: flaggedLink(row, input.scope, input.page),
     note: verdict === "unavailable" ? UNAVAILABLE_NOTE : null,
     pill: verdict === "pending" ? PENDING_PILL : null,
     tag: verdict === "not_required" && row.key === HUMAN_APPROVAL_KEY ? AUTO_MERGE_ELIGIBLE : null,

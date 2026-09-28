@@ -88,7 +88,7 @@ describe("the shell", () => {
     expect(CODE).toMatch(/\.prv-return__evidence \{[^}]*overflow-wrap: anywhere;/);
   });
 
-  it("scrolls sideways in the strip's, the gates' and the matrix's own wrappers and nowhere else (#364, #365, #366)", () => {
+  it("scrolls sideways in the strip's, the gates', the matrix's and the diff's own wrappers and nowhere else (#364–#367)", () => {
     const scrolling = [...CODE.matchAll(/([^{}]+)\{[^}]*overflow(?:-x)?:\s*(?:scroll|auto)[^}]*\}/g)].map(
       (match) => match[1]!.trim(),
     );
@@ -97,10 +97,12 @@ describe("the shell", () => {
       ".prv-strip__scroll",
       ".prv-gates__scroll",
       ".prv-criteria__scroll",
+      ".prv-diff__scroll",
     ]);
     expect(CODE).toMatch(/\.prv-strip__scroll \{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.prv-gates__scroll \{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.prv-criteria__scroll \{[^}]*overflow-x: auto;/);
+    expect(CODE).toMatch(/\.prv-diff__scroll \{[^}]*overflow-x: auto;/);
     expect(CODE).not.toMatch(/overflow(-y)?:\s*(scroll|auto)/);
   });
 
@@ -224,5 +226,58 @@ describe("the criteria matrix (#366)", () => {
 
   it("lets a long evidence line break rather than widen the grid", () => {
     expect(CODE).toMatch(/\.prv-crit__evidence \{[^}]*overflow-wrap: anywhere;/);
+  });
+});
+
+describe("the changed files card (#367)", () => {
+  /** The transcript's sheet, without its prose — where the shared diff treatments are stated. */
+  const RUNS = readFileSync(join(DIRECTORY, "..", "runs", "runs.css"), "utf8").replace(
+    /\/\*[\s\S]*?\*\//g,
+    " ",
+  );
+
+  /**
+   * One rule's colour and background.
+   *
+   * @param sheet The sheet.
+   * @param selector The rule's selector, exactly.
+   * @returns The two declarations, in the sheet's order.
+   */
+  function palette(sheet: string, selector: string): string[] {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const body = sheet.match(new RegExp(`(?:^|\\})\\s*${escaped} \\{([^}]*)\\}`))?.[1] ?? "";
+
+    return [...body.matchAll(/(?:^|\s)((?:color|background): [^;]+;)/g)].map((each) => each[1]!);
+  }
+
+  it("draws del, add and ctx from the transcript's own tokens — one diff palette", () => {
+    for (const kind of ["ctx", "del", "add"]) {
+      const shared = palette(RUNS, `.run-entry__line--${kind}`);
+
+      expect(shared.length, kind).toBeGreaterThan(0);
+      expect(palette(CODE, `.prv-diff__line--${kind}`), kind).toEqual(shared);
+    }
+
+    expect(CODE).toMatch(/\.prv-diff__scroll \{[^}]*background: var\(--inset\);/);
+    expect(RUNS).toMatch(/\.run-entry__diff \{[^}]*background: var\(--inset\);/);
+  });
+
+  it("keeps every line whole, so a long one scrolls the block and never wraps", () => {
+    expect(CODE).toMatch(/\.prv-diff__line \{[^}]*white-space: pre;/);
+  });
+
+  it("colours the meter's segments from the ok and err tokens, and its rest from the track's", () => {
+    expect(CODE).toMatch(/\.prv-file__meter-add \{[^}]*fill: var\(--ok\);/);
+    expect(CODE).toMatch(/\.prv-file__meter-del \{[^}]*fill: var\(--err\);/);
+    expect(CODE).toMatch(/\.prv-file__meter-rest \{[^}]*fill: var\(--raised\);/);
+  });
+
+  it("gives a flagged row the err tint and a rule, so the flag is not hue alone", () => {
+    expect(CODE).toMatch(/\.prv-file--flagged \{[^}]*background: var\(--err-tint\);/);
+    expect(CODE).toMatch(/\.prv-file--flagged \{[^}]*border-left: 0\.125rem solid var\(--err\);/);
+  });
+
+  it("marks the cited range with a rule beside the line", () => {
+    expect(CODE).toMatch(/\.prv-diff__line--cited \{[^}]*box-shadow: inset/);
   });
 });
