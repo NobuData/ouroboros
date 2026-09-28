@@ -249,6 +249,37 @@ describe("the artifacts card (#341)", () => {
   });
 });
 
+describe("the states the mockup does not draw (#342)", () => {
+  it("labels a running build in the live hue, never a verdict's", () => {
+    const note = CODE.match(/\.tests__partial-text\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(note).toMatch(/color: var\(--ink-dim\);/);
+    expect(CODE.match(/\.tests__partial\s*\{([^}]*)\}/)?.[1] ?? "").not.toMatch(/var\(--(ok|warn|err)\)/);
+  });
+
+  it("draws the parse-warning banner as the retry banner's box, in the warn hue", () => {
+    const box = CODE.match(/\.tests-warnings\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(box).toMatch(/border: 1px solid var\(--warn-line\);/);
+    expect(box).toMatch(/background: var\(--warn-tint\);/);
+    expect(CODE).toMatch(/\.tests-warnings__headline\s*\{[^}]*color: var\(--warn\);/);
+  });
+
+  it("wraps a long file name inside the banner, so the pane never scrolls sideways", () => {
+    expect(CODE).toMatch(/\.tests-warnings__file\s*\{[^}]*overflow-wrap: anywhere;/);
+  });
+
+  it("keeps the skeleton still, and clips it rather than scrolling it", () => {
+    const skeleton = [...CODE.matchAll(/\.tests-skeleton[a-z_-]*\s*\{([^}]*)\}/g)].map((match) => match[1]!);
+
+    expect(skeleton.length).toBeGreaterThan(0);
+    for (const rules of skeleton) {
+      expect(rules).not.toMatch(/animation/);
+      expect(rules).not.toMatch(/overflow(?:-x)?:\s*(auto|scroll)/);
+    }
+  });
+});
+
 describe("the shell", () => {
   it("adds no fixed or sticky chrome, so the header and sidebar stay put while the pane scrolls", () => {
     expect(CODE).not.toMatch(/position:\s*(fixed|sticky)/);

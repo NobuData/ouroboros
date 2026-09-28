@@ -68,6 +68,13 @@
 #   db        run-console.spec.ts the console's MVP gate reads a seeded run and a live one out of
 #                                 the run tables: with the database stopped nobody can sign in
 #                                 to read either, and the driver cannot open its run (#314)
+#   db        test-results.spec.ts the test-results page's states are read out of the
+#                                 test-results read model and the seed: with the database
+#                                 stopped nobody can sign in to read them (#342)
+#   farm-     test-results.spec.ts PARKED — the live chain's upload path, which waits on the
+#   gateway   (the live chain)    Mark & Route card (#340), workflow build-stage integration
+#                                 (#265) and agent source checkout (#991); registered so that
+#                                 the day it runs, this script starts checking it (#342)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -597,6 +604,14 @@ expect_red db runs.spec.ts "the simulator (exited|opened no run)"
 # for the routing pair's reason: a switch that makes the service lie is worse to ship than a
 # check somebody repeats.
 expect_red db run-console.spec.ts "sign-in for .* answered 5[0-9][0-9]|the simulator (exited|opened no run)"
+
+# The test-results leg (#342). `db` for the reason every pair above uses it. The issue's three
+# layer breakages — the upload path, the parser, the routing dispatch — belong to the leg's live
+# chain, which is parked; its pair is registered by name and reported `--` until it runs. The
+# parser and the dispatch are code paths inside `rest`, to be verified by hand on the commit that
+# un-parks it, for the routing pair's reason.
+expect_red db test-results.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+expect_red farm-gateway test-results.spec.ts "the upload arrived" "live: failing-HIL"
 
 printf '\n'
 if check_summary; then

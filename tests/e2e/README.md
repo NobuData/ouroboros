@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and thirteen amended in since:
+deployment. Five legs from the issue, and fourteen amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -36,6 +36,7 @@ deployment. Five legs from the issue, and thirteen amended in since:
 | 16 | [`specs/farm.spec.ts`](specs/farm.spec.ts) | Mockup 08 against the farm seed in both palettes — and **the first chain that leaves the stack's language and its network**: a fresh workspace walked from *no pools* to *no runners, enrol first* to a live row by **pasting the page's copied command, verbatim, into a bare machine**, where a real Go agent installs itself over TLS, enrols with a single-use token against a farm CA made a second earlier, and connects out over mTLS through a certificate-forwarding gateway; a token revoked in the browser **refused by the control plane in its own words**; a drain that round-trips on the agent's heartbeat; and the machine killed with `SIGKILL`, its row flipping to `offline` *because nothing is heartbeating* — plus a stale-data banner over a refused poll, a member served everything and offered nothing, and the shell at 125%. The build → live log → stats test is written and **parked** on [#991](https://github.com/NobuData/ouroboros/issues/991) |
 | 17 | [`specs/runs.spec.ts`](specs/runs.spec.ts) | Mockup 10's run controls against **a run that really answers them**: the simulated-run driver (#307), started on the host, opens a run through the ingestion contract, and the leg presses **Pause loop** until the chip reads *acknowledged* and the button becomes **Resume**, resumes it the same way, double-clicks Pause into exactly one queued control, takes the run over (the branch's commands, the JSONL export, the #316 limitation), shows a member none of it and has the service refuse their direct call, has a forged abort confirmation refused with `422`, and aborts the run for real — the page going `canceled` without a reload, the timeline drawing the stage it died on as failed, and the driver reporting `aborted`; and (#311) a stage timeline that moves on the poll, filters by stage in the address across a reload, and at phone width in both palettes scrolls in its own box while the pane does not; and (#312) the seeded transcript's nine entries screenshot in both palettes, and a steer typed into a live simulated run that comes back as the service's own `user` entry, *acknowledged*, with the box closed and saying why once the run has ended; and (#313) the seeded right column — three files, two commits, both meters, `forge-02 reserved`, four guardrail marks under a computed `clean` pill — screenshot in both palettes, and at phone width a pane that never scrolls sideways |
 | 18 | [`specs/run-console.spec.ts`](specs/run-console.spec.ts) | **The Run Console MVP gate (#314)** — the whole stack moving together against a run that is genuinely moving: a finished seeded run (`#474`, merged) screenshot in both palettes with its outcome pill, frozen elapsed, pull-request link and closed steering; the driver's `482-gate-return` watched as its stepper advances, its transcript appends, a steer typed mid-attempt comes back *acknowledged*, guardrail verdicts render and a pause and resume both reach *acknowledged*; a second run aborted through the typed confirmation into the terminal state, and its JSONL export carrying the simulated watermark on every line; and the shell's promises on the console — fixed chrome under a pane scroll, the origin's sidebar entry lit, the 125% step |
+| 19 | [`specs/test-results.spec.ts`](specs/test-results.spec.ts) | **The test-results page's states (#342)** against the AS.5 seed: mockup 11's Build 3 screenshot in both palettes with its figures labelled *partial* and the ingest-lag banner naming when a report last arrived; a finished build with neither; a run without results leading to its console; a run that does not exist as the page's own not-found; an `?attempt=` naming a build the run never made; a report that parsed in part naming what failed and what is missing; a member served the re-runs and offered no waive; and the shell at 125%. The live chain — upload → parse → classify → correction → re-run → green — is written and **parked** on [#340](https://github.com/NobuData/ouroboros/issues/340), [#265](https://github.com/NobuData/ouroboros/issues/265) and [#991](https://github.com/NobuData/ouroboros/issues/991) |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -260,6 +261,22 @@ the driver reports — which is what makes the red ones evidence rather than col
 with the recipe the farm leg used: stub, `up -d --build rest`, recreate `ui` (it shares `rest`'s
 network namespace), restore the source at once, `grep` the stub in `/app/ouroboros-rest/dist`, run
 the spec, rebuild clean and `grep` for none.
+
+Leg 19 is [#342](https://github.com/NobuData/ouroboros/issues/342)'s — AU.8, the states mockup 11
+does not draw — in about eleven seconds of the suite's ten minutes. **It is not yet the Test
+Results milestone's gate, and #342 stays open**: the issue's live chain needs a card that is not
+built (#340), a route from a run's build stage to the farm that does not exist (#265) and a runner
+that can run a build (#991), so that test is `test.fixme` with its reason, as leg 16's build test
+is. What runs is everything the seed can show.
+
+The `db` pair was run and went red at sign-in (`sign-in for … answered 500`) on all eight tests.
+The issue's three breakages — the upload path, the parser, the routing dispatch — are the parked
+chain's, and its pair is registered by name so the script reports it `--` until it runs.
+
+The parse-warning test **rewrites the browser's own poll** of the attempt's page, adding one
+warning to the service's real answer: no seeded attempt carries one, and writing one into the seed
+would put a truncated report on mockup 11's page. It certifies the page's half; the parser's is
+`ouroboros-rest`'s suite (#329).
 
 Leg 16 is [#262](https://github.com/NobuData/ouroboros/issues/262)'s — AI.7, mockup 08's MVP gate —
 and it is different in kind from the fifteen before it. They certify a UI against services in the
@@ -572,6 +589,13 @@ Leg 18's pair is the whole console of the seeded **merged** run `#474` through a
 window, and it needs no mask: every figure on a finished run is final — the elapsed is its cycle
 (`11m 00s`), the pull request is `#512`, and nothing ticks. That is the point of photographing it.
 
+Leg 19's pairs are four. `test-results-running-{light,dark}` is the whole page of the seeded `#482`,
+Build 3, through a 1920 × 2400 window, with **three masks** — the lag banner's headline, the
+attempt cards' times and the timeline's `started` caption — because each prints an instant the seed
+wrote relative to the moment it migrated. The browser's clock is moved three minutes on first, so
+the banner is always there and the layout under it never depends on how old the stack is.
+`test-results-empty`, `test-results-missing` and `test-results-parse-warning` need none.
+
 Leg 12's pair is of the **canvas region alone** rather than the page —
 `studio-canvas-{light,dark}` in [`specs/studio.spec.ts`](specs/studio.spec.ts), through a
 1920 × 1400 window the leg asserts the canvas fits whole. The studio's head says *Last edited 2h
@@ -752,5 +776,7 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#312](https://github.com/NobuData/ouroboros/issues/312) — leg 17's agent transcript and steering
 - [#313](https://github.com/NobuData/ouroboros/issues/313) — leg 17's changes, resources and guardrails cards
 - [#314](https://github.com/NobuData/ouroboros/issues/314) — leg 18, the run console's states and the Run Console MVP gate
+- [#342](https://github.com/NobuData/ouroboros/issues/342) — leg 19, the test-results page's states; its live chain is parked
+- [#340](https://github.com/NobuData/ouroboros/issues/340), [#265](https://github.com/NobuData/ouroboros/issues/265) — the Mark & Route card and the build-stage integration that un-park leg 19's live chain
 - [#306](https://github.com/NobuData/ouroboros/issues/306) — the control queue leg 17's presses travel through
 - [#307](https://github.com/NobuData/ouroboros/issues/307) — the simulated-run driver that acknowledges them

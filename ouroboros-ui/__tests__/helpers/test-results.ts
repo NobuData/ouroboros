@@ -90,6 +90,7 @@ export function attempt(attemptSeq: number, over: Partial<TestAttempt> = {}): Te
     status: "complete",
     commitSha: "f42b9a0",
     startedAt: "2026-09-19T14:38:19.000Z",
+    lastReceivedAt: "2026-09-19T14:44:31.000Z",
     selection: null,
     build: { jobId: "7f000002-0000-4000-8000-000000000479", number: 479, runner: "forge-01" },
     rigs: ["helios-rig-02"],

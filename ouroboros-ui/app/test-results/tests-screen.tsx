@@ -20,6 +20,7 @@ import type { CommitSource } from "@/app/runs/cards";
 import type { RunOrigin } from "@/app/runs/origin";
 import { BREADCRUMB_LABEL } from "@/app/runs/view";
 import { setNavOrigin } from "@/app/shell/nav-registry";
+import { workflowCaption } from "@/app/runs/view";
 import { RetryBanner } from "@/app/ui";
 
 import { artifactsView } from "./artifacts";
@@ -28,6 +29,7 @@ import { ArtifactsCard } from "./artifacts-card";
 import { AttemptsTimeline } from "./attempts-timeline";
 import { failureScope } from "./failure";
 import { FailureDetail } from "./failure-detail";
+import { TestsIngestLagBanner } from "./ingest-lag-banner";
 import { MarkRouteSlot, type StagedFailures } from "./mark-route-slot";
 import {
   type CaseSelection,
@@ -37,6 +39,8 @@ import {
   physicalView,
   resolveCase,
 } from "./physical";
+import { ParseWarnings } from "./parse-warnings";
+import { PartialNote } from "./partial-note";
 import { PhysicalCard } from "./physical-card";
 import {
   type TestsPollOptions,
@@ -47,14 +51,15 @@ import {
 } from "./poll";
 import type { RerunOutcome } from "./rerun";
 import { requestRerun } from "./rerun-actions";
+import { emptyKind, parseWarningsView, partialNote, unknownAttemptNote } from "./states";
 import { type SuiteSelection, resolveSuite, selectionCleared, suitesView } from "./suites";
 import { SuitesCard } from "./suites-card";
 import { SummaryStrip } from "./summary-strip";
 import { type ActionOutcome, TestsActions } from "./tests-actions";
+import { TestsEmpty } from "./tests-empty";
 import { TestsHead } from "./tests-head";
 import { timelineView } from "./timeline";
 import {
-  NO_ATTEMPTS,
   STALE_HEADLINE,
   TESTS_CRUMB,
   UNREAD_HEADLINE,
@@ -163,6 +168,17 @@ export interface TestsScreenProps {
   readonly origin: RunOrigin;
   /** Whether the reader may start a build — owner, admin or member. `false` when absent. */
   readonly mayContribute?: boolean;
+  /**
+   * Whether the run's stages include the test stage, or `null` when they could not be read.
+   * `null` when absent.
+   */
+  readonly hasTestStage?: boolean | null;
+  /**
+   * When the server made the first read, in epoch milliseconds — the ingest-lag banner's clock
+   * on the server's render and the hydration pass, so the two match. `null` when absent or when
+   * that read failed; the banner is then first drawn in the browser, by its own clock.
+   */
+  readonly readAt?: number | null;
   /** Test seams for the timeline's poll; production passes none. */
   readonly timelinePoll?: TestsPollOptions<TestRunTimeline>;
   /** Test seams for the gate's poll; production passes none. */
@@ -236,6 +252,13 @@ export interface TestsScreenProps {
  * **The actions are honestly gated** (`actionsView`), and *Send failures back to loop* stages the
  * failed set on the Mark & Route slot and moves focus there.
  *
+ * **The states the mockup does not draw** ([#342](https://github.com/NobuData/ouroboros/issues/342),
+ * `states.ts`): a running build's figures are labelled *partial*; a run with no attempt says
+ * whether its workflow has no test stage or has simply reported nothing; a report that parsed in
+ * part names what is missing; a running build whose uploads have gone quiet says when a report
+ * last arrived — never over a failed read's banner, which takes precedence; and an `?attempt=`
+ * naming no build says which build is shown instead.
+ *
  * @param props See {@link TestsScreenProps}.
  * @returns The screen.
  */
@@ -253,6 +276,8 @@ export function TestsScreen({
   pullRequest = null,
   origin,
   mayContribute = false,
+  hasTestStage = null,
+  readAt = null,
   timelinePoll,
   gatePoll,
   pagePoll,
@@ -323,6 +348,12 @@ export function TestsScreen({
   const [caseNotice, setCaseNotice] = useState<ForAttempt<string> | null>(null);
 
   const onScreen = page !== null && attempt !== null && page.testRun.id === attempt.id ? page : null;
+  const partial = attempt === null ? null : partialNote(attempt);
+  const warnings =
+    onScreen === null || attempt === null
+      ? null
+      : parseWarningsView(onScreen.parseWarnings, attempt);
+  const unknownAttempt = unknownAttemptNote(requested, attempt);
   // Resolved against the page on screen: a selection that is about to be cleared scopes nothing.
   const suiteScope = onScreen === null ? null : suitesView(onScreen.suites, suite).scope;
 
@@ -519,14 +550,36 @@ export function TestsScreen({
         />
       )}
 
-      {timeline !== null && attempt === null && <p className="tests__empty">{NO_ATTEMPTS}</p>}
+      {error === null && attempt !== null && (
+        <TestsIngestLagBanner
+          attempt={attempt}
+          onRetry={timelineRead.refresh}
+          readAt={readAt ?? 0}
+        />
+      )}
+
+      {timeline !== null && attempt === null && (
+        <TestsEmpty
+          consoleHref={runPath(runId, origin.id)}
+          kind={emptyKind(hasTestStage)}
+          workflow={workflowCaption(timeline.run.workflowTag, timeline.run.workflowVersionPin)}
+          workflowSlug={timeline.run.workflowTag}
+        />
+      )}
 
       {timeline !== null && attempt !== null && (
         <>
+          {unknownAttempt !== null && (
+            <p className="tests__notice" role="status">
+              {unknownAttempt}
+            </p>
+          )}
+          {warnings !== null && <ParseWarnings view={warnings} />}
           <AttemptsTimeline
             onSelect={selectAttempt}
             view={timelineView(timeline, attempt.attemptSeq, commitSource)}
           />
+          {partial !== null && <PartialNote note={partial} />}
           <SummaryStrip view={stripView(attempt.strip)} />
           <SuitesCard
             error={pageRead.snapshot.error}

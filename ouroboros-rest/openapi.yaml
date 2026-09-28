@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.18"
+  version: "0.37.19"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -22293,7 +22293,7 @@ components:
       title: TestAttempt
       description: One build attempt — *Build 1 · 2 · 3* — with its strip.
       additionalProperties: false
-      required: [id, attemptSeq, status, commitSha, startedAt, selection, build, rigs, strip]
+      required: [id, attemptSeq, status, commitSha, startedAt, lastReceivedAt, selection, build, rigs, strip]
       properties:
         id:
           type: string
@@ -22309,6 +22309,13 @@ components:
         startedAt:
           type: string
           format: date-time
+        lastReceivedAt:
+          type: string
+          format: date-time
+          description: |-
+            When a report for this attempt last arrived. Every results write moves it, so a
+            running attempt whose instant has stopped moving has stopped receiving uploads —
+            what the page's ingest-lag banner names.
         selection:
           type: [string, "null"]
           enum: [failed, full, null]

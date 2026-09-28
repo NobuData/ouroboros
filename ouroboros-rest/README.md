@@ -4921,6 +4921,11 @@ passes forward, so it reads `▲ 12` against **Build 1** (`versusAttemptSeq: 1`)
 mockup prints, with the label the data supports (#328's decision 2). Build 4 reads `▲ 2` against
 Build 3.
 
+**When a report last arrived.** Each attempt carries `lastReceivedAt` — `test_runs.updated_at`,
+which every results write moves — beside `startedAt`. A running attempt whose `lastReceivedAt` has
+stopped moving has stopped receiving uploads, which is what the page's ingest-lag banner names
+([#342](https://github.com/NobuData/ouroboros/issues/342)).
+
 **The next step (T8).** `activation` is `gate_armed` when the run's PR carries a required
 `test_suite` gate — which the gate engine (#358) evaluates on every revision, so *gated on 63/63*
 is true — `intent_stored` when *Block PR until green* is on and nothing holds the PR yet, and

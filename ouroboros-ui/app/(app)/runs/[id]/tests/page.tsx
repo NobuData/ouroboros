@@ -32,7 +32,8 @@ import { attemptParam } from "@/app/test-results/view";
  *
  * @param props.params The run's id.
  * @param props.searchParams The query — `?from=`, `?attempt=`, `?suite=` and `?case=`.
- * @returns The screen, or the not-found page for a run this workspace cannot see.
+ * @returns The screen, or the not-found page (`not-found.tsx`,
+ *   [#342](https://github.com/NobuData/ouroboros/issues/342)) for a run this workspace cannot see.
  */
 export default async function Page({
   params,
@@ -55,6 +56,7 @@ export default async function Page({
   return (
     <TestsScreen
       commitSource={found?.commitSource ?? null}
+      hasTestStage={found?.hasTestStage ?? null}
       initial={found?.timeline ?? null}
       initialAttempt={attempt}
       initialCase={caseParam(query[TESTS_CASE_PARAM])}
@@ -65,6 +67,7 @@ export default async function Page({
       mayContribute={mayContribute(membership.roles)}
       origin={origin}
       pullRequest={found?.pullRequest ?? null}
+      readAt={found?.readAt ?? null}
       runId={id}
       trackerUrl={found?.trackerUrl ?? null}
     />

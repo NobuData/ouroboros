@@ -38,6 +38,9 @@ export type TestTimelineRun = components["schemas"]["TestTimelineRun"];
 /** One attempt's page payload — the suites card reads its `suites` (#337). */
 export type TestRunPage = components["schemas"]["TestRunPage"];
 
+/** One thing the parser could not read and did not refuse the report over (#329) — the banner's. */
+export type TestParseWarning = components["schemas"]["TestParseWarning"];
+
 /** One suite on one platform — a row of the suites card. */
 export type TestSuiteResult = components["schemas"]["TestSuiteResult"];
 

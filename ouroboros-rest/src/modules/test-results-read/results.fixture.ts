@@ -285,6 +285,7 @@ export function mockupUniverse(): Universe {
       status: attempt === 3 ? "running" : "complete",
       commit_sha: commits[attempt - 1],
       started_at: at([4.68, 5.58, 6.47, 6.5][attempt - 1]),
+      updated_at: at([5.2, 6.1, 6.49, 6.9][attempt - 1]),
       ...counts,
       wall_ms: attempt === 3 ? "372000" : null,
       sim_ms: attempt === 3 ? "240000" : null,

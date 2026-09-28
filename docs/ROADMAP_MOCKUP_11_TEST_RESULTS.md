@@ -1130,6 +1130,26 @@ junit-build3.xml ↗ · rig-capture-estop.csv 2.1MB ↗ · serial-console.log �
 e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ · re-run→green ✓ · artifacts ✓
 ```
 
+> **Delivered in part — #342 stays open as the milestone's gate.** The states and the seeded half
+> of the leg are `ouroboros-ui/app/test-results/states.ts` and its components, and
+> `tests/e2e/specs/test-results.spec.ts` (leg 19). Decided on #342:
+>
+> 1. **The live chain is parked, not faked.** It needs the Mark & Route card (#340, open),
+>    AJ.3 (#265, open, v2) and agent source checkout (#991). It is written as `test.fixme` with
+>    its reason and its failure-mode pair is registered as parked. The member view's *classify
+>    allowed* half waits on #340 too; *waive absent* holds today.
+> 2. **`lastReceivedAt` is `test_runs.updated_at`**, served on every attempt
+>    (`ouroboros-rest` 0.37.19, additive). The ingest-lag banner names it for a **running**
+>    attempt two minutes quiet — the run console's threshold.
+> 3. **No test stage is read from the run's reported stages**, by the console's `test` key. A run
+>    that has reported no stage, or whose stages could not be read, is *unknown*, never *absent*.
+> 4. **An `?attempt=` naming no build says so** and names the build shown — the page has no
+>    address by test-run id for a missing one to be.
+> 5. **No seeded attempt carries a parse warning**; the e2e test adds one to the browser's poll.
+> 6. **Still owed when the chain un-parks:** upload → parse → classify → correction (note in the
+>    console transcript) → re-run → green → artifacts download, the three hand-verified layer
+>    breakages, and the ≤ 3 min budget measured with the chain in it (leg 19 is ~11 s today).
+
 ---
 
 ## Epic AV (#323) — Intelligent Triage & Extended (v2 · milestone `Test Results v2`)

@@ -57,17 +57,187 @@
   text-decoration: underline;
 }
 
-/* ---------- banners and the empty state ---------- */
+/* ---------- banners, notices and the empty state ---------- */
 
 .tests__banner {
   margin-bottom: var(--sp-8);
 }
 
-.tests__empty {
-  margin: 0 0 var(--sp-10);
-  color: var(--ink-mut);
-  font-size: var(--t-sm);
+/* What became of an `?attempt=` that names no build (#342). */
+.tests__notice {
+  margin: 0 0 var(--sp-8);
+  color: var(--warn);
+  font-size: var(--t-xs);
   line-height: var(--lh-body);
+}
+
+/* A run with no attempt to show (#342): the empty state, in a card of its own. */
+.tests__empty-card {
+  margin-bottom: var(--sp-10);
+}
+
+/*
+ * A running build's label (#342): the word *partial* and what it means, directly above the strip
+ * it qualifies. The accent is the live hue — never a status hue, because a count so far is not a
+ * verdict.
+ */
+.tests__partial {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: 0 0 var(--sp-6);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.tests__partial-text {
+  flex: 1 1 24rem;
+  min-width: 0;
+  color: var(--ink-dim);
+}
+
+/* ---------- the parse-warning banner (#342) ---------- */
+
+/* The retry banner's box without its control: there is nothing to retry about a file's bytes. */
+.tests-warnings {
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.tests-warnings__headline {
+  margin: 0;
+  color: var(--warn);
+  font-weight: 600;
+}
+
+.tests-warnings__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: var(--sp-4) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One warning: the file, what failed, what is missing — stacked, so a long path wraps alone. */
+.tests-warnings__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.tests-warnings__file {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  overflow-wrap: anywhere;
+}
+
+.tests-warnings__failed {
+  color: var(--ink-dim);
+}
+
+.tests-warnings__missing {
+  color: var(--ink-mut);
+}
+
+/* ---------- the skeleton (#342) ---------- */
+
+/* The regions below the head, hidden from the accessibility tree as one. */
+.tests-skeleton {
+  min-width: 0;
+}
+
+/* Clipped rather than scrolled: on a narrow pane a bar is cut short, never a scrollbar. */
+.tests-skeleton__head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  margin-top: var(--sp-2);
+  overflow: hidden;
+}
+
+/* Still, not pulsing: a bar is a placeholder's geometry, not a progress report. */
+.tests-skeleton__bar {
+  display: block;
+  flex: none;
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The headline's `--t-2xl` line. */
+.tests-skeleton__bar--title {
+  width: 26rem;
+  height: var(--sp-11);
+}
+
+/* The meta row's pills. */
+.tests-skeleton__bar--meta {
+  width: 32rem;
+}
+
+/* A card head's title. */
+.tests-skeleton__bar--heading {
+  width: 10rem;
+}
+
+/* A stat card's caption, and its figure beneath. */
+.tests-skeleton__bar--label {
+  width: 5rem;
+  height: var(--sp-5);
+}
+
+.tests-skeleton__bar--figure {
+  width: 4rem;
+  height: var(--sp-10);
+}
+
+/* One row of a card, as wide as the card. */
+.tests-skeleton__bar--row {
+  align-self: stretch;
+  height: var(--sp-5);
+}
+
+.tests-skeleton__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-10);
+  overflow: hidden;
+}
+
+.tests-skeleton__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  overflow: hidden;
+}
+
+/* The timeline's row of attempt cards, at the cards' own size. */
+.tests-skeleton__attempts {
+  display: flex;
+  align-self: stretch;
+  gap: var(--sp-9);
+  overflow: hidden;
+}
+
+.tests-skeleton__attempt {
+  flex: none;
+  width: 13rem;
+  height: 5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
 }
 
 /* ---------- the head ---------- */
