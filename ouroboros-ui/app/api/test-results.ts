@@ -7,6 +7,8 @@
  * ```
  * GET  /api/v1/runs/{id}/test-runs      the attempts, each with its strip — the page's frame
  * GET  /api/v1/test-runs/{id}           one attempt's page — its suites and their cases (#337)
+ * GET  /api/v1/test-runs/{id}/hints     each failing case's heuristic triage hint (#339)
+ * GET  /api/v1/test-runs/{id}/cases/{caseId}/failure   one case's failure payload (#339)
  * GET  /api/v1/test-runs/{id}/rerun     whether a re-run could be placed now, and each scope's N
  * POST /api/v1/test-runs/{id}/rerun     Re-run failed (N) / Re-run full suite
  * GET  /api/v1/artifacts/{id}           one artifact's file — streamed by `artifact-file.ts` (#341)
@@ -48,6 +50,24 @@ export type TestArtifact = components["schemas"]["TestArtifact"];
 /** An attempt's coverage — `87.4% (+0.6%)`, the delta absent when there is no earlier one. */
 export type TestCoverage = components["schemas"]["TestCoverage"];
 
+/** One case's failure payload — its path, its message and its log excerpt (#339). */
+export type TestCaseFailureDetail = components["schemas"]["TestCaseFailureDetail"];
+
+/**
+ * An attempt's triage hints, one entry per failing case (#339, over AT.4's #332).
+ *
+ * Read off the read itself rather than `components`: the client types a response without the
+ * fields the contract fixes at `null` — a heuristic hint's `confidence` — so this is the shape
+ * {@link testResults.hints} answers with.
+ */
+export type TestRunHints = Awaited<ReturnType<typeof testResults.hints>>;
+
+/** One failing case's hint, every rule's verdict, and the answer in `/v0/triage`'s shape. */
+export type CaseHint = TestRunHints["cases"][number];
+
+/** A heuristic hint — a class, the rule that picked it, and no confidence. */
+export type TriageHint = NonNullable<CaseHint["hint"]>;
+
 /** Whether a re-run of an attempt could be placed now. */
 export type RerunAvailability = components["schemas"]["RerunAvailability"];
 
@@ -82,6 +102,17 @@ export function isTestRunId(value: unknown): value is string {
  * @returns `true` for a uuid.
  */
 export function isArtifactId(value: unknown): value is string {
+  return typeof value === "string" && TEST_RUN_ID.test(value);
+}
+
+/**
+ * Whether a value can be a test case's id — `test_cases.id`, a uuid (V051). Checked by every hop
+ * that puts one in a path itself, for the reason `isRunId` gives.
+ *
+ * @param value What arrived.
+ * @returns `true` for a uuid.
+ */
+export function isTestCaseId(value: unknown): value is string {
   return typeof value === "string" && TEST_RUN_ID.test(value);
 }
 
@@ -124,6 +155,49 @@ export const testResults = {
   ): Promise<TestRunPage> {
     return unwrap(
       await client.GET("/api/v1/test-runs/{id}", {
+        params: { path: { id: testRunId } },
+        signal,
+      }),
+    );
+  },
+
+  /**
+   * Read one case's failure payload ([#339](https://github.com/NobuData/ouroboros/issues/339)).
+   *
+   * @param testRunId The attempt's id.
+   * @param caseId The case's id in that attempt.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @param signal Aborts the read — the poll route's timeout.
+   * @returns The case's path, message and log excerpt.
+   * @throws ApiError `404` for an attempt or a case that is not this workspace's, or a case that
+   *   has no failure.
+   */
+  async failure(
+    testRunId: string,
+    caseId: string,
+    client: ApiClient = api(),
+    signal?: AbortSignal,
+  ): Promise<TestCaseFailureDetail> {
+    return unwrap(
+      await client.GET("/api/v1/test-runs/{id}/cases/{caseId}/failure", {
+        params: { path: { id: testRunId, caseId } },
+        signal,
+      }),
+    );
+  },
+
+  /**
+   * Read an attempt's triage hints ([#339](https://github.com/NobuData/ouroboros/issues/339)).
+   *
+   * @param testRunId The attempt's id.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @param signal Aborts the read — the poll route's timeout.
+   * @returns One entry per failing case: its hint, or `null` when no rule fired.
+   * @throws ApiError `404 test_run_not_found` for an attempt that is not this workspace's.
+   */
+  async hints(testRunId: string, client: ApiClient = api(), signal?: AbortSignal) {
+    return unwrap(
+      await client.GET("/api/v1/test-runs/{id}/hints", {
         params: { path: { id: testRunId } },
         signal,
       }),

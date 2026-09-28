@@ -259,11 +259,13 @@ ouroboros-ui/
 │   │   ├── run-console.ts   #   readRunConsole() — the same read, answered for the console's poll
 │   │   ├── run-controls.ts  #   readRunControls() — the chips' read, 2 s while a control is on its way · #310
 │   │   ├── run-events.ts    #   readRunEvents() — one page of the transcript's tail, at the service's cadence · #312
-│   │   ├── test-results.ts  #   testResults.* — the timeline, the re-run gate, the re-run · #335 — the attempt's page · #337
-│   │   ├── test-results-read.ts # readTimelineForPoll() / readGateForPoll() / readPageForPoll() — for their polls
+│   │   ├── test-results.ts  #   testResults.* — the timeline, the re-run gate, the re-run · #335 — the attempt's page · #337 — a case's failure, the hints · #339
+│   │   ├── test-results-read.ts # readTimelineForPoll() / readGateForPoll() / readPageForPoll() / readFailureForPoll() / readHintsForPoll() — for their polls
 │   │   ├── runs/[id]/tests/route.ts # GET /api/runs/{id}/tests — the attempts timeline, on this origin
 │   │   ├── test-runs/[id]/rerun/route.ts # GET /api/test-runs/{id}/rerun — whether a runner could take a re-run
 │   │   ├── test-runs/[id]/route.ts # GET /api/test-runs/{id} — one attempt's page: its suites and cases · #337
+│   │   ├── test-runs/[id]/hints/route.ts # GET /api/test-runs/{id}/hints — the attempt's heuristic triage hints · #339
+│   │   ├── test-runs/[id]/cases/[caseId]/failure/route.ts # GET …/cases/{caseId}/failure — one case's path, message and log · #339
 │   │   ├── artifact-file.ts #   readArtifactFile() — AT.5's artifact download, streamed through and made safe · #341
 │   │   ├── artifacts/[id]/route.ts # GET /api/artifacts/{id} — the artifacts card's open ↗, on this origin
 │   │   ├── pull-requests.ts #   pullRequests.* — the PR page, forRuns() the by-run lookup, the head actions, decideApproval(), the criteria matrix's writes · #363 · #365 · #366
@@ -427,9 +429,9 @@ ouroboros-ui/
 │   │   ├── view.ts          #   the four ways a trail lies, and what stops each
 │   │   ├── audit-actions.ts #   the Server Action — no arguments, so nothing to forge
 │   │   └── audit-trail.tsx  #   <AuditTrail /> — the button and its sheet, mountable
-│   ├── test-results/        # mockup 11's test results: head, actions, timeline, strip, suites, physical, artifacts · #335–#338 #341
+│   ├── test-results/        # mockup 11's test results: head, actions, timeline, strip, suites, physical, failure detail, artifacts · #335–#339 #341
 │   │   ├── view.ts          #   the attempt, the head, the strip as the payload states it, the honest gate
-│   │   ├── poll.ts          #   the readers and guards: the run's timeline, the attempt's gate and page
+│   │   ├── poll.ts          #   the readers and guards: the run's timeline, the attempt's gate, page and hints, a case's failure
 │   │   ├── data.ts          #   readTests() — the first paint, the tracker link and the gate best-effort
 │   │   ├── rerun.ts · rerun-actions.ts # requestRerun() — the Server Action and what it answers
 │   │   ├── tests-head.tsx   #   the eyebrow, the linked headline and the four-element meta row
@@ -441,12 +443,15 @@ ouroboros-ui/
 │   │   ├── suites-card.tsx  #   the suite rows, the selected one, and each suite's case drill
 │   │   ├── physical.ts      #   the measured line composed from stored fields, the breach, the rig's presence · #338
 │   │   ├── physical-card.tsx #  the rig groups, their ptest rows, and the selected case
+│   │   ├── failure.ts       #   the failures in scope, the pager, the log as it came, the triage section decided by actor · #339
+│   │   ├── failure-card.tsx #   the path, the log block, the heuristic hint and the designed narrative slot
+│   │   ├── failure-detail.tsx # which failure is on the card, and its payload's poll
 │   │   ├── artifacts.ts     #   the retention tag, the notable size, the coverage delta, tombstones, the bounded read · #341
 │   │   ├── artifacts-card.tsx # the art rows, their open affordances, and which viewer is open
 │   │   ├── artifact-viewer.tsx # a text artifact read in place, as text
 │   │   ├── mark-route-slot.tsx # where Send failures back lands until #340 draws the card
 │   │   ├── tests-loading.tsx #  the first read in flight
-│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites, physical, artifacts — three polls and the farm's
+│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites, physical, failure detail, artifacts — four polls and the farm's
 │   ├── prs/                 # mockup 12's PR verification: route, head, three actions, revision strip · #363 · #364
 │   │   ├── view.ts          #   the head, the pill's hue, the red gates, the three actions by role and state
 │   │   ├── strip.ts         #   the revision cycle's steps, each a join; the ?rev= scope and its gates
@@ -3743,6 +3748,56 @@ failure-detail card (#339) is scoped by (`physicalView(...).scope`).
 A selected case that the attempt did not run on a rig, or that the selected suite does not hold, is
 cleared — here and in the address — and the card says so. A long or wide list scrolls inside the
 card's own wrapper.
+
+### Failure detail card
+
+`FailureCard` ([#339](https://github.com/NobuData/ouroboros/issues/339)) sits beneath the physical
+tests and above Mark & Route: the `1 of N` pill and the build's tag, the test's path, the log block,
+and the triage section. It adds two reads, both polled on this origin with the visitor's session:
+
+| Read | Asked of | Keyed on |
+|------|----------|----------|
+| `/api/test-runs/:id/cases/:caseId/failure` | AT.5's failure payload (#333) | the attempt **and** the case |
+| `/api/test-runs/:id/hints` | AT.4's heuristic hints (#332) | the attempt — and only while a failure is in scope |
+
+**It is bound by the page's two selections.** A *failure* is a case with a failure payload
+(`hasFailure`), in the payload's order.
+
+| Selected | The card holds |
+|----------|----------------|
+| a physical case that failed | that failure alone — `1 of 1` |
+| a physical case that did not | *`<case>` did not fail in Build N.* — never another case's failure |
+| a suite, and no case | that suite's failures, or *`<suite>` has no failures in Build N.* |
+| nothing | every failure of the build, or *This build has no failures.* |
+
+A selection change from either card re-binds the card from the first failure. **The pager changes
+neither selection**: it moves among the failures in scope with its two buttons, or with
+<kbd>←</kbd> <kbd>→</kbd> <kbd>Home</kbd> <kbd>End</kbd> from either of them. A button at an end is
+`aria-disabled`, so the pager keeps its focus.
+
+**The path** is `<path>::<case name>` (the classname when the failure names no path) on one mono
+line that scrolls sideways inside itself. **The log** is the payload's excerpt, line for line and
+character for character, in a `<pre>` as text — markup in a log is characters. The assertion
+(pytest's `E` line, or the line stating the failure's message) is in the err hue, and a trial's
+percentage in the code block's figure hue. An excerpt that does not state the message has it as a
+last line. The block scrolls both ways inside its own wrapper and takes focus for the keyboard.
+
+**The triage section is decided by the payload's `actor`, not by copy** (`triageView`):
+
+| `triage.provenance.actor` | The section draws |
+|---------------------------|-------------------|
+| `heuristic` | the `heuristic` chip, the rule stated — `rule: new failure ∩ diff-path overlap → product bug` — the service's reason, and the designed slot *AI triage arrives with the provider stack* |
+| none, no rule fired | *No heuristic rule fired for this failure.* and the slot |
+| `model`, with a narrative (#343) | the narrative, the model pill and `confidence N%` — and no slot |
+| `model`, with no narrative | the heuristic hint — the provider-failure fallback |
+
+**No confidence percentage and no model pill can render while the actor is `heuristic`.** The
+section's view is a union whose only variant able to carry either is `model`, and that variant is
+built only from an answer whose actor is `model`; a heuristic answer that carries a confidence or a
+model's name anyway is drawn as the hint, without them. The slot is a statement, not a spinner.
+
+The mockup's `triaged 14:44:52` is not drawn: `triage/v0` carries no timestamp, and it arrives with
+#343's payload.
 
 ### Artifacts card
 

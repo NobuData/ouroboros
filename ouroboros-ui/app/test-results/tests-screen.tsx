@@ -8,6 +8,8 @@ import type { PullRequestRef } from "@/app/api/pull-requests";
 import type {
   RerunAvailability,
   RerunScope,
+  TestCaseFailureDetail,
+  TestRunHints,
   TestRunPage,
   TestRunTimeline,
 } from "@/app/api/test-results";
@@ -24,6 +26,8 @@ import { artifactsView } from "./artifacts";
 import type { ArtifactReader } from "./artifact-viewer";
 import { ArtifactsCard } from "./artifacts-card";
 import { AttemptsTimeline } from "./attempts-timeline";
+import { failureScope } from "./failure";
+import { FailureDetail } from "./failure-detail";
 import { MarkRouteSlot, type StagedFailures } from "./mark-route-slot";
 import {
   type CaseSelection,
@@ -37,6 +41,7 @@ import { PhysicalCard } from "./physical-card";
 import {
   type TestsPollOptions,
   createGatePoll,
+  createHintsPoll,
   createPagePoll,
   createTimelinePoll,
 } from "./poll";
@@ -166,6 +171,10 @@ export interface TestsScreenProps {
   readonly pagePoll?: TestsPollOptions<TestRunPage>;
   /** Test seams for the farm's poll — the rigs' presence; production passes none. */
   readonly farmPoll?: FarmPollOptions;
+  /** Test seams for the triage hints' poll; production passes none. */
+  readonly hintsPoll?: TestsPollOptions<TestRunHints>;
+  /** Test seams for the bound failure's poll; production passes none. */
+  readonly failurePoll?: TestsPollOptions<TestCaseFailureDetail>;
   /** How to send a re-run. Defaults to the Server Action. */
   readonly send?: RerunSender;
   /** How the artifacts card's viewer reads a file; production passes none. */
@@ -177,7 +186,8 @@ export interface TestsScreenProps {
  * breadcrumb, head, actions, build attempts timeline
  * ([#336](https://github.com/NobuData/ouroboros/issues/336)), summary strip, suites card
  * ([#337](https://github.com/NobuData/ouroboros/issues/337)), physical-tests card
- * ([#338](https://github.com/NobuData/ouroboros/issues/338)) and artifacts card
+ * ([#338](https://github.com/NobuData/ouroboros/issues/338)), failure-detail card
+ * ([#339](https://github.com/NobuData/ouroboros/issues/339)) and artifacts card
  * ([#341](https://github.com/NobuData/ouroboros/issues/341)), for one attempt of one run.
  *
  * **A contextual surface.** It renders in the shell's content pane and adds no chrome of its own,
@@ -214,6 +224,12 @@ export interface TestsScreenProps {
  * whether a runner of the rig's name is connected. Until it answers, and whenever it cannot, the
  * `rig online` pill is omitted.
  *
+ * **The failure-detail card is bound by both selections** (`failureScope`): the selected
+ * physical case alone, else the selected suite's failures, else the attempt's. It is keyed by the
+ * attempt and both selections, so a change to either re-binds it from the first failure. The
+ * attempt's triage hints are a poll of their own, asked only while a failure is in scope; the
+ * bound case's failure is the card's.
+ *
  * **The artifacts card reads the attempt's page too** — its files, its tombstones and its
  * coverage — and is keyed by the attempt, so an open viewer closes when the attempt changes.
  *
@@ -241,6 +257,8 @@ export function TestsScreen({
   gatePoll,
   pagePoll,
   farmPoll,
+  hintsPoll,
+  failurePoll,
   send = requestRerun,
   artifactRead,
 }: TestsScreenProps) {
@@ -338,6 +356,20 @@ export function TestsScreen({
 
   const hasRig = onScreen !== null && physicalSuites(onScreen.suites, null).length > 0;
   const farmRead = useKeyedPoll<FarmPage>(hasRig ? FARM_KEY : null, () => createFarmPoll(farmPoll));
+
+  const physical =
+    onScreen === null
+      ? null
+      : physicalView(onScreen, suiteScope, picked, farmRead.snapshot.data?.runners ?? null);
+  const caseScope = physical?.scope ?? null;
+  const failures =
+    onScreen === null || attempt === null
+      ? null
+      : failureScope(onScreen.suites, suiteScope, caseScope, attempt.attemptSeq);
+  const hasFailures = failures !== null && failures.entries.length > 0;
+  const hintsRead = useKeyedPoll(hasFailures ? (attempt?.id ?? null) : null, (id) =>
+    createHintsPoll(id, hintsPoll),
+  );
 
   const [pending, setPending] = useState<RerunScope | null>(null);
   const [outcome, setOutcome] = useState<ForAttempt<ActionOutcome> | null>(null);
@@ -508,11 +540,16 @@ export function TestsScreen({
               caseNotice !== null && caseNotice.testRunId === attempt.id ? caseNotice.value : null
             }
             onSelect={selectCase}
-            view={
-              onScreen === null
-                ? null
-                : physicalView(onScreen, suiteScope, picked, farmRead.snapshot.data?.runners ?? null)
-            }
+            view={physical}
+          />
+          <FailureDetail
+            attemptSeq={attempt.attemptSeq}
+            failurePoll={failurePoll}
+            hints={hintsRead.snapshot.data}
+            hintsError={hintsRead.snapshot.error}
+            key={`${attempt.id}:${suiteScope?.id ?? ""}:${caseScope?.caseId ?? ""}`}
+            scope={failures}
+            testRunId={attempt.id}
           />
           <MarkRouteSlot
             ref={slot}

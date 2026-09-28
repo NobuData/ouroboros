@@ -1,9 +1,12 @@
 import type {
+  CaseHint,
   RerunAvailability,
   TestArtifact,
   TestAttempt,
+  TestCaseFailureDetail,
   TestCaseResult,
   TestCoverage,
+  TestRunHints,
   TestRunPage,
   TestRunTimeline,
   TestStrip,
@@ -556,4 +559,122 @@ export function mockupArtifacts(): TestArtifact[] {
       coverage: coverage(),
     }),
   ];
+}
+
+/** The overshoot failure's path, as the seed states it. */
+export const OVERSHOOT_PATH = "tests/hil/test_estop_release.py";
+
+/** The overshoot failure's assertion. */
+export const OVERSHOOT_MESSAGE = "AssertionError: max overshoot 2.4% > limit 2.0%";
+
+/** The overshoot failure's log excerpt, as the seed states it — mockup 11's six lines. */
+export const OVERSHOOT_LOG = [
+  "[rig] e-stop released @ 2.00 Nm · setpoint 1200 rpm",
+  "[rig] trial 1: peak 1225.2 rpm  → overshoot 2.1%",
+  "[rig] trial 2: peak 1228.8 rpm  → overshoot 2.4%",
+  "[rig] trial 3: peak 1227.6 rpm  → overshoot 2.3%",
+  "[rig] settle time 84ms · velocity sample lag +0.4ms",
+  `E   ${OVERSHOOT_MESSAGE}`,
+].join("\n");
+
+/**
+ * A case's failure payload (#339).
+ *
+ * @param over What to change.
+ * @returns Mockup 11's failure — `overshoot_under_load` on the rig in Build 3 — changed.
+ */
+export function caseFailure(over: Partial<TestCaseFailureDetail> = {}): TestCaseFailureDetail {
+  return {
+    testRunId: BUILD_3_ID,
+    caseId: OVERSHOOT_CASE.caseId,
+    caseKey: "b".repeat(64),
+    name: "overshoot_under_load",
+    classname: null,
+    suite: "PHYSICAL · HIL rig",
+    platform: "rig:helios-rig-02",
+    status: "failed",
+    retryOutcomes: ["failed"],
+    message: OVERSHOOT_MESSAGE,
+    logExcerpt: OVERSHOOT_LOG,
+    path: OVERSHOOT_PATH,
+    ...over,
+  };
+}
+
+/** Why the seeded hint's rule fired, in the service's sentence. */
+export const OVERSHOOT_REASON = `New since the previous attempt, in ${OVERSHOOT_PATH}, which this run changed.`;
+
+/**
+ * One failing case's hint entry (#339, as AT.4 answers it).
+ *
+ * @param over What to change.
+ * @returns The overshoot case's: `product.new_failure_in_diff` suggesting a product bug, by the
+ *   `heuristic` actor, with no confidence, no narrative and no model — changed.
+ */
+export function caseHint(over: Partial<CaseHint> = {}): CaseHint {
+  return {
+    caseId: OVERSHOOT_CASE.caseId,
+    caseKey: "b".repeat(64),
+    name: "overshoot_under_load",
+    suite: "PHYSICAL · HIL rig",
+    status: "failed",
+    hint: {
+      suggestedClass: "product_bug",
+      ruleId: "product.new_failure_in_diff",
+      actor: "heuristic",
+      reason: OVERSHOOT_REASON,
+    },
+    rules: [],
+    triage: {
+      class: "product_bug",
+      subtype: null,
+      confidence: null,
+      narrative: null,
+      evidence: [],
+      provenance: {
+        contract: "triage/v0",
+        actor: "heuristic",
+        rule_id: "product.new_failure_in_diff",
+        model: null,
+      },
+    },
+    ...over,
+  };
+}
+
+/** Mockup 11's narrative — what AV.1's model (#343) will answer. */
+export const MODEL_NARRATIVE =
+  "The k_msgq change in build 2 added ~0.4ms latency on the telemetry path, which delays the PID loop's velocity sample by one tick. Overshoot regression, not a test artifact — classify as product bug.";
+
+/** Mockup 11's model pill. */
+export const MODEL_NAME = "claude-fable-5";
+
+/**
+ * A hint entry as AV.1's model (#343) will answer it: the same shape, by the `model` actor.
+ *
+ * @param over What to change in the `/v0/triage` answer.
+ * @returns The overshoot case's entry, its triage a model's — a narrative, 84, and the model.
+ */
+export function modelHint(over: Partial<NonNullable<CaseHint["triage"]>> = {}): CaseHint {
+  return caseHint({
+    triage: {
+      class: "product_bug",
+      subtype: null,
+      confidence: 84,
+      narrative: MODEL_NARRATIVE,
+      evidence: [],
+      provenance: { contract: "triage/v0", actor: "model", rule_id: null, model: MODEL_NAME },
+      ...over,
+    },
+  });
+}
+
+/**
+ * An attempt's triage hints (#339).
+ *
+ * @param cases The entries. Defaults to the overshoot case's heuristic hint.
+ * @returns Build 3's hints.
+ */
+export function hints(cases: readonly CaseHint[] = [caseHint()]): TestRunHints {
+  return { testRunId: BUILD_3_ID, cases: [...cases] };
 }

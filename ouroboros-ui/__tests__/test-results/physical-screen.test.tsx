@@ -112,7 +112,9 @@ function draw(
   return render(
     <TestsScreen
       farmPoll={options.farmPoll ?? quiet()}
+      failurePoll={quiet()}
       gatePoll={quiet()}
+      hintsPoll={quiet()}
       initial={timeline()}
       initialAttempt={null}
       initialCase={options.initialCase ?? null}

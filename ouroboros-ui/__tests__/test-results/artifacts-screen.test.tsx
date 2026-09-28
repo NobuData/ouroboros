@@ -75,7 +75,9 @@ function draw(
     <TestsScreen
       artifactRead={options.read ?? (() => Promise.resolve({ state: "read", text: "boot ok\n", clipped: false }))}
       farmPoll={quiet()}
+      failurePoll={quiet()}
       gatePoll={quiet()}
+      hintsPoll={quiet()}
       initial={timeline()}
       initialAttempt={null}
       initialError={null}

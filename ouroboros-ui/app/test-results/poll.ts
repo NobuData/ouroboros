@@ -1,7 +1,9 @@
 /**
  * The test-results page's polls — `app/poll.ts`'s loop over one run's attempts, over one
- * attempt's re-run gate ([#335](https://github.com/NobuData/ouroboros/issues/335)) and over one
- * attempt's page, for its suites ([#337](https://github.com/NobuData/ouroboros/issues/337)).
+ * attempt's re-run gate ([#335](https://github.com/NobuData/ouroboros/issues/335)), over one
+ * attempt's page, for its suites ([#337](https://github.com/NobuData/ouroboros/issues/337)), and
+ * over one attempt's triage hints and one case's failure
+ * ([#339](https://github.com/NobuData/ouroboros/issues/339)).
  *
  * `app/runs/console-poll.ts` is the same file for the run console, and the argument is the
  * same: the page is the browser asking, on the shared I.8 cadence
@@ -13,13 +15,21 @@
  * held, in the same render. The gate is the *attempt's*: it is rebuilt the moment the attempt
  * changes, and until its first answer the actions say they are checking — a gate read for
  * Build 2 is never drawn under Build 3's head. The page is the attempt's for the same reason:
- * Build 2's suites are never drawn under Build 3's head.
+ * Build 2's suites are never drawn under Build 3's head. The hints are the attempt's too, and
+ * the failure is the *case's* — keyed on the attempt and the case together
+ * ({@link failureKey}), so one case's log is never drawn under another's path.
  *
  * **Framework-free**, so each reader is a unit test against a stubbed `fetch`; the screen meets
  * them through `app/issues/use-keyed-poll.ts`.
  */
 
-import type { RerunAvailability, TestRunPage, TestRunTimeline } from "@/app/api/test-results";
+import type {
+  RerunAvailability,
+  TestCaseFailureDetail,
+  TestRunHints,
+  TestRunPage,
+  TestRunTimeline,
+} from "@/app/api/test-results";
 import {
   type Poll,
   type PollOptions,
@@ -36,6 +46,24 @@ export const GATE_ENDPOINT = "/api/test-runs";
 
 /** Where the browser asks for an attempt's page — this origin, `/api/test-runs/:id`. */
 export const PAGE_ENDPOINT = "/api/test-runs";
+
+/** Where the browser asks for a case's failure — `/api/test-runs/:id/cases/:caseId/failure`. */
+export const FAILURE_ENDPOINT = "/api/test-runs";
+
+/** Where the browser asks for an attempt's triage hints — `/api/test-runs/:id/hints`. */
+export const HINTS_ENDPOINT = "/api/test-runs";
+
+/** What is said when something answered and this client could not read it as a failure. */
+export const UNREADABLE_FAILURE = "The failure could not be read.";
+
+/** What is said when nothing answered the failure's read at all. */
+export const UNREACHABLE_FAILURE = "The failure could not be reached.";
+
+/** What is said when something answered and this client could not read it as triage hints. */
+export const UNREADABLE_HINTS = "The triage hint could not be read.";
+
+/** What is said when nothing answered the hints' read at all. */
+export const UNREACHABLE_HINTS = "The triage hint could not be reached.";
 
 /** What is said when something answered and this client could not read it as an attempt's page. */
 export const UNREADABLE_PAGE = "The suites could not be read.";
@@ -89,6 +117,122 @@ export function gateUrl(testRunId: string): string {
  */
 export function pageUrl(testRunId: string): string {
   return `${PAGE_ENDPOINT}/${encodeURIComponent(testRunId)}`;
+}
+
+/**
+ * The address the page polls for a case's failure.
+ *
+ * @param testRunId The attempt's id.
+ * @param caseId The case's id in that attempt.
+ * @returns `/api/test-runs/<id>/cases/<caseId>/failure`, both ids encoded.
+ */
+export function failureUrl(testRunId: string, caseId: string): string {
+  return `${FAILURE_ENDPOINT}/${encodeURIComponent(testRunId)}/cases/${encodeURIComponent(caseId)}/failure`;
+}
+
+/**
+ * The address the page polls for an attempt's triage hints.
+ *
+ * @param testRunId The attempt's id.
+ * @returns `/api/test-runs/<id>/hints`, the id encoded.
+ */
+export function hintsUrl(testRunId: string): string {
+  return `${HINTS_ENDPOINT}/${encodeURIComponent(testRunId)}/hints`;
+}
+
+/** What separates the attempt from the case in a failure poll's key — in no uuid. */
+const FAILURE_KEY_SEPARATOR = "/";
+
+/**
+ * What a failure's poll is keyed on: the attempt and the case, together.
+ *
+ * @param testRunId The attempt's id.
+ * @param caseId The case's id in that attempt.
+ * @returns The key, for `useKeyedPoll`.
+ */
+export function failureKey(testRunId: string, caseId: string): string {
+  return `${testRunId}${FAILURE_KEY_SEPARATOR}${caseId}`;
+}
+
+/**
+ * Read a failure poll's key back.
+ *
+ * @param key A key from {@link failureKey}.
+ * @returns The attempt's id and the case's — the case's empty for a key that names none.
+ */
+export function failureKeyParts(key: string): { readonly testRunId: string; readonly caseId: string } {
+  const at = key.indexOf(FAILURE_KEY_SEPARATOR);
+
+  return at < 0
+    ? { testRunId: key, caseId: "" }
+    : { testRunId: key.slice(0, at), caseId: key.slice(at + FAILURE_KEY_SEPARATOR.length) };
+}
+
+/**
+ * Whether a value is a string or `null` — what every optional field of a failure is.
+ *
+ * @param value A field.
+ * @returns `true` for either.
+ */
+function isTextOrNull(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+/**
+ * Whether a parsed body is a case's failure.
+ *
+ * Structural rather than exhaustive: the failure-detail card reaches for the ids, the name and
+ * the three optional texts, and a body carrying those is the failure for every purpose it has.
+ *
+ * @param value A parsed response body.
+ * @returns `true` when it can be read as a {@link TestCaseFailureDetail}.
+ */
+export function isCaseFailure(value: unknown): value is TestCaseFailureDetail {
+  if (typeof value !== "object" || value === null) return false;
+
+  const candidate = value as Record<string, unknown>;
+
+  return (
+    typeof candidate.testRunId === "string" &&
+    typeof candidate.caseId === "string" &&
+    typeof candidate.name === "string" &&
+    isTextOrNull(candidate.classname) &&
+    isTextOrNull(candidate.message) &&
+    isTextOrNull(candidate.logExcerpt) &&
+    isTextOrNull(candidate.path)
+  );
+}
+
+/**
+ * Whether a parsed body is an attempt's triage hints.
+ *
+ * Structural rather than exhaustive: each entry must name its case and carry a `hint` and a
+ * `triage` that are objects or `null`. What is *inside* them is read field by field, and
+ * defensively, by `failure.ts` — the honesty rule is decided there, not assumed here.
+ *
+ * @param value A parsed response body.
+ * @returns `true` when it can be read as {@link TestRunHints}.
+ */
+export function isTestRunHints(value: unknown): value is TestRunHints {
+  if (typeof value !== "object" || value === null) return false;
+
+  const candidate = value as Partial<TestRunHints>;
+
+  return (
+    typeof candidate.testRunId === "string" &&
+    Array.isArray(candidate.cases) &&
+    candidate.cases.every((each: unknown) => {
+      if (typeof each !== "object" || each === null) return false;
+
+      const row = each as Record<string, unknown>;
+
+      return (
+        typeof row.caseId === "string" &&
+        (row.hint === null || typeof row.hint === "object") &&
+        (row.triage === null || typeof row.triage === "object")
+      );
+    })
+  );
 }
 
 /**
@@ -246,6 +390,55 @@ export function createPagePoll(
       requestPayload(url, etag, isTestRunPage, {
         unreachable: UNREACHABLE_PAGE,
         unreadable: UNREADABLE_PAGE,
+      }));
+
+  return createPoll(read, options);
+}
+
+/**
+ * Build the failure's loop over one case of one attempt
+ * ([#339](https://github.com/NobuData/ouroboros/issues/339)).
+ *
+ * @param key The attempt and the case, from {@link failureKey}.
+ * @param options Test seams; production passes none.
+ * @returns The poll. It is inert until `start` is called.
+ */
+export function createFailurePoll(
+  key: string,
+  options: TestsPollOptions<TestCaseFailureDetail> = {},
+): Poll<TestCaseFailureDetail> {
+  const { testRunId, caseId } = failureKeyParts(key);
+  const url = failureUrl(testRunId, caseId);
+  const read: PollReader<TestCaseFailureDetail> =
+    options.read ??
+    ((etag) =>
+      requestPayload(url, etag, isCaseFailure, {
+        unreachable: UNREACHABLE_FAILURE,
+        unreadable: UNREADABLE_FAILURE,
+      }));
+
+  return createPoll(read, options);
+}
+
+/**
+ * Build the hints' loop over one attempt
+ * ([#339](https://github.com/NobuData/ouroboros/issues/339)).
+ *
+ * @param testRunId The attempt's id.
+ * @param options Test seams; production passes none.
+ * @returns The poll. It is inert until `start` is called.
+ */
+export function createHintsPoll(
+  testRunId: string,
+  options: TestsPollOptions<TestRunHints> = {},
+): Poll<TestRunHints> {
+  const url = hintsUrl(testRunId);
+  const read: PollReader<TestRunHints> =
+    options.read ??
+    ((etag) =>
+      requestPayload(url, etag, isTestRunHints, {
+        unreachable: UNREACHABLE_HINTS,
+        unreadable: UNREADABLE_HINTS,
       }));
 
   return createPoll(read, options);

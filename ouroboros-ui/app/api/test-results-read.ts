@@ -15,13 +15,22 @@ import { readForPoll } from "@/app/api/poll-read";
 import { anonymousApi } from "@/app/api/server";
 import {
   type RerunAvailability,
+  type TestCaseFailureDetail,
+  type TestRunHints,
   type TestRunPage,
   type TestRunTimeline,
+  isTestCaseId,
   isTestRunId,
   testResults,
 } from "@/app/api/test-results";
 import type { PollAnswer } from "@/app/poll";
-import { UNREACHABLE_GATE, UNREACHABLE_PAGE, UNREACHABLE_TIMELINE } from "@/app/test-results/poll";
+import {
+  UNREACHABLE_FAILURE,
+  UNREACHABLE_GATE,
+  UNREACHABLE_HINTS,
+  UNREACHABLE_PAGE,
+  UNREACHABLE_TIMELINE,
+} from "@/app/test-results/poll";
 
 /** The code a failed timeline read is answered with. */
 export const TESTS_UNAVAILABLE_CODE = "test_results_unavailable";
@@ -31,6 +40,15 @@ export const RERUN_GATE_UNAVAILABLE_CODE = "rerun_gate_unavailable";
 
 /** The code a failed read of an attempt's page is answered with. */
 export const TEST_RUN_PAGE_UNAVAILABLE_CODE = "test_run_page_unavailable";
+
+/** The code a failed read of a case's failure is answered with. */
+export const CASE_FAILURE_UNAVAILABLE_CODE = "case_failure_unavailable";
+
+/** The code a failed read of an attempt's triage hints is answered with. */
+export const TRIAGE_HINTS_UNAVAILABLE_CODE = "triage_hints_unavailable";
+
+/** What is said, before calling out, for a failure asked of something that is not a case id. */
+export const TEST_CASE_ID_INVALID = "That is not a test case id.";
 
 /** What is said, before calling out, for a gate asked of something that is not a test run id. */
 export const TEST_RUN_ID_INVALID = "That is not a test run id.";
@@ -92,4 +110,56 @@ export async function readPageForPoll(
   }
 
   return readForPoll((signal) => read(testRunId, signal), UNREACHABLE_PAGE);
+}
+
+/**
+ * Read one case's failure payload for the poll
+ * ([#339](https://github.com/NobuData/ouroboros/issues/339)).
+ *
+ * @param testRunId The attempt's id.
+ * @param caseId The case's id in that attempt.
+ * @param read How to read it. Replaced in tests.
+ * @returns The poll's answer — never a throw. An id that is not a uuid — either of them — is
+ *   refused here rather than put in the service's path, for the reason `isRunId` gives.
+ */
+export async function readFailureForPoll(
+  testRunId: string,
+  caseId: string,
+  read: (
+    testRunId: string,
+    caseId: string,
+    signal: AbortSignal,
+  ) => Promise<TestCaseFailureDetail> = (askedRun, askedCase, signal) =>
+    testResults.failure(askedRun, askedCase, anonymousApi(), signal),
+): Promise<PollAnswer<TestCaseFailureDetail>> {
+  if (!isTestRunId(testRunId)) {
+    return { state: "failed", reason: TEST_RUN_ID_INVALID, pollAfterSeconds: null };
+  }
+
+  if (!isTestCaseId(caseId)) {
+    return { state: "failed", reason: TEST_CASE_ID_INVALID, pollAfterSeconds: null };
+  }
+
+  return readForPoll((signal) => read(testRunId, caseId, signal), UNREACHABLE_FAILURE);
+}
+
+/**
+ * Read an attempt's triage hints for the poll
+ * ([#339](https://github.com/NobuData/ouroboros/issues/339)).
+ *
+ * @param testRunId The attempt's id.
+ * @param read How to read them. Replaced in tests.
+ * @returns The poll's answer — never a throw. An id that is not a uuid is refused here rather
+ *   than put in the service's path, for the reason `isRunId` gives.
+ */
+export async function readHintsForPoll(
+  testRunId: string,
+  read: (testRunId: string, signal: AbortSignal) => Promise<TestRunHints> = (asked, signal) =>
+    testResults.hints(asked, anonymousApi(), signal),
+): Promise<PollAnswer<TestRunHints>> {
+  if (!isTestRunId(testRunId)) {
+    return { state: "failed", reason: TEST_RUN_ID_INVALID, pollAfterSeconds: null };
+  }
+
+  return readForPoll((signal) => read(testRunId, signal), UNREACHABLE_HINTS);
 }

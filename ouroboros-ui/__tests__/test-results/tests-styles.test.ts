@@ -71,8 +71,9 @@ describe("the build attempts timeline (#336)", () => {
     expect(CODE).toMatch(/\.tests-timeline__scroll\s*\{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.tests-timeline__list\s*\{[^}]*width: max-content;/);
     // Nothing else on the page may scroll or overflow sideways, but the suites card's wrapper
-    // (#337), the physical-tests card's (#338), and the artifacts card's and its viewer's (#341).
-    expect([...CODE.matchAll(/overflow(?:-x)?:\s*(auto|scroll)/g)]).toHaveLength(5);
+    // (#337), the physical-tests card's (#338), the failure-detail card's path and log (#339),
+    // and the artifacts card's and its viewer's (#341).
+    expect([...CODE.matchAll(/overflow(?:-x)?:\s*(auto|scroll)/g)]).toHaveLength(7);
   });
 
   it("makes the wrapper the cards' offset parent, which is what scrolling it alone relies on", () => {
@@ -170,6 +171,43 @@ describe("the physical-tests card (#338)", () => {
     expect(CODE).toMatch(/\.tests-physical__row\s*\{[^}]*position: relative;/);
     expect(CODE).toMatch(/\.tests-physical__select::after\s*\{[^}]*inset: 0;/);
     expect(CODE).toMatch(/\.tests-physical__select:focus-visible::after\s*\{[^}]*outline: [^;]*var\(--accent\);/);
+  });
+});
+
+describe("the failure-detail card (#339)", () => {
+  it("scrolls a long path sideways on one line, inside itself", () => {
+    const path = CODE.match(/\.tests-failure__path\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(path).toMatch(/overflow-x: auto;/);
+    expect(path).toMatch(/white-space: nowrap;/);
+    expect(path).toMatch(/font-family: var\(--f-mono\);/);
+  });
+
+  it("keeps the log's whitespace and scrolls it inside its own wrapper, both ways", () => {
+    const log = CODE.match(/\.tests-failure__log\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(log).toMatch(/overflow: auto;/);
+    expect(log).toMatch(/max-height: [\d.]+rem;/);
+    expect(log).toMatch(/white-space: pre;/);
+    expect(log).toMatch(/background: var\(--inset\);/);
+  });
+
+  it("colours the assertion err and a trial's figure warn, from the tokens", () => {
+    expect(CODE).toMatch(/\.tests-failure__line--err\s*\{\s*color: var\(--err\);/);
+    expect(CODE).toMatch(/\.tests-failure__figure\s*\{\s*color: var\(--warn\);/);
+  });
+
+  it("draws the narrative slot dashed and still — designed, not loading", () => {
+    const slot = CODE.match(/\.tests-failure__slot\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(slot).toMatch(/border: 1px dashed var\(--line-strong\);/);
+    expect(slot).not.toMatch(/animation/);
+  });
+
+  it("gives the pager's buttons, the path and the log a visible focus ring", () => {
+    expect(CODE).toMatch(
+      /\.tests-failure__page:focus-visible,\s*\.tests-failure__path:focus-visible,\s*\.tests-failure__log:focus-visible\s*\{[^}]*outline: [^;]*var\(--accent\);/,
+    );
   });
 });
 
