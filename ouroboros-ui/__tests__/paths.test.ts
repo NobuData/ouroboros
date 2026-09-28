@@ -24,6 +24,7 @@ import {
   prPath,
   runPath,
   TESTS_ATTEMPT_PARAM,
+  TESTS_CASE_PARAM,
   TESTS_SUITE_PARAM,
   testsPath,
   safeReturnTo,
@@ -140,6 +141,14 @@ describe("the paths themselves", () => {
     expect(testsPath("5eed", { suite: "unit · drivers&x=1" })).toBe(
       `/runs/5eed/tests?suite=${encodeURIComponent("unit · drivers&x=1").replace(/%20/g, "+")}`,
     );
+  });
+
+  it("carry the selected physical case by name, beside the suite (#338)", () => {
+    expect(TESTS_CASE_PARAM).toBe("case");
+    expect(testsPath("5eed", { suite: "HIL rig", case: "estop release" })).toBe(
+      "/runs/5eed/tests?suite=HIL+rig&case=estop+release",
+    );
+    expect(new URL(testsPath("5eed", { case: "a&suite=x" }), "https://o.test").searchParams.get("suite")).toBeNull();
   });
 
   it("address one PR's verification page by its id, carrying where it was opened from (#363)", () => {

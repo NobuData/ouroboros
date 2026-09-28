@@ -247,6 +247,13 @@ export const TESTS_ATTEMPT_PARAM = "attempt";
 export const TESTS_SUITE_PARAM = "suite";
 
 /**
+ * The query parameter naming the physical case the test-results page has selected — its name
+ * (#338). A name rather than an id, for {@link TESTS_SUITE_PARAM}'s reason. Absent, nothing is
+ * selected.
+ */
+export const TESTS_CASE_PARAM = "case";
+
+/**
  * The test-results page for one run — `/runs/7f00…/tests?from=build-farm&attempt=3`
  * ([#335](https://github.com/NobuData/ouroboros/issues/335)).
  *
@@ -256,19 +263,26 @@ export const TESTS_SUITE_PARAM = "suite";
  *
  * @param id The run's id (a uuid). Encoded anyway, for {@link workflowPath}'s reason.
  * @param options Where the reader came from — a sidebar entry id — the attempt to open, by
- *   its ordinal, and the suite to select, by its name (#337). Any may be omitted: the page then
- *   falls back to the dashboard, the latest attempt and no selection.
+ *   its ordinal, the suite to select, by its name (#337), and the physical case to select, by
+ *   its name (#338). Any may be omitted: the page then falls back to the dashboard, the latest
+ *   attempt and no selection.
  * @returns The path.
  */
 export function testsPath(
   id: string,
-  options: { readonly from?: string; readonly attempt?: number; readonly suite?: string } = {},
+  options: {
+    readonly from?: string;
+    readonly attempt?: number;
+    readonly suite?: string;
+    readonly case?: string;
+  } = {},
 ): string {
   const query = new URLSearchParams();
 
   if (options.from !== undefined) query.set(RUN_ORIGIN_PARAM, options.from);
   if (options.attempt !== undefined) query.set(TESTS_ATTEMPT_PARAM, String(options.attempt));
   if (options.suite !== undefined) query.set(TESTS_SUITE_PARAM, options.suite);
+  if (options.case !== undefined) query.set(TESTS_CASE_PARAM, options.case);
 
   const search = query.toString();
   const path = `${RUNS_PATH}/${encodeURIComponent(id)}/tests`;

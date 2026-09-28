@@ -137,10 +137,25 @@ export interface SuitesView {
  *   means *nothing selected*.
  */
 export function suiteParam(value: string | readonly string[] | null | undefined): string | null {
+  return nameParam(value, SUITE_NAME_LIMIT);
+}
+
+/**
+ * Read a query parameter that carries a name — `?suite=`, and `?case=`
+ * ([#338](https://github.com/NobuData/ouroboros/issues/338)).
+ *
+ * @param value The raw parameter as Next.js hands it over, or as `URLSearchParams` reads it.
+ * @param limit The longest name it is read as.
+ * @returns The name, trimmed — or `null` for an absent, blank or over-long one.
+ */
+export function nameParam(
+  value: string | readonly string[] | null | undefined,
+  limit: number,
+): string | null {
   const first = typeof value === "string" ? value : value?.[0];
   const name = first?.trim() ?? "";
 
-  return name === "" || name.length > SUITE_NAME_LIMIT ? null : name;
+  return name === "" || name.length > limit ? null : name;
 }
 
 /**

@@ -68,6 +68,7 @@ function draw(
 
   return render(
     <TestsScreen
+      farmPoll={quiet()}
       gatePoll={quiet()}
       initial={timeline()}
       initialAttempt={options.initialAttempt ?? null}

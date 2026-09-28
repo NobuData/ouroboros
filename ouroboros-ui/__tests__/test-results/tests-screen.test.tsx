@@ -92,6 +92,7 @@ function draw(
   return render(
     <TestsScreen
       commitSource={options.commitSource ?? null}
+      farmPoll={quiet()}
       gatePoll={options.gatePoll ?? quiet()}
       initial={options.initial === undefined ? timeline() : options.initial}
       initialAttempt={options.initialAttempt ?? null}

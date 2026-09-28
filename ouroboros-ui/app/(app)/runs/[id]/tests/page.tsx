@@ -2,9 +2,15 @@ import { notFound } from "next/navigation";
 
 import { requireWorkspace } from "@/app/api/access";
 import { mayContribute } from "@/app/api/membership";
-import { RUN_ORIGIN_PARAM, TESTS_ATTEMPT_PARAM, TESTS_SUITE_PARAM } from "@/app/paths";
+import {
+  RUN_ORIGIN_PARAM,
+  TESTS_ATTEMPT_PARAM,
+  TESTS_CASE_PARAM,
+  TESTS_SUITE_PARAM,
+} from "@/app/paths";
 import { runOrigin } from "@/app/runs/origin";
 import { readTests } from "@/app/test-results/data";
+import { caseParam } from "@/app/test-results/physical";
 import { suiteParam } from "@/app/test-results/suites";
 import { TestsScreen } from "@/app/test-results/tests-screen";
 import { attemptParam } from "@/app/test-results/view";
@@ -17,14 +23,15 @@ import { attemptParam } from "@/app/test-results/view";
  * the console's Test stage and the build farm's job cells, renders in the shell's content pane, and
  * `?from=` names the module the reader came from, which stays lit (`app/runs/origin.ts`).
  * `?attempt=` names the build it reads; absent, the latest. `?suite=` names the suite it has
- * selected ([#337](https://github.com/NobuData/ouroboros/issues/337)); absent, none.
+ * selected ([#337](https://github.com/NobuData/ouroboros/issues/337)) and `?case=` the physical
+ * case ([#338](https://github.com/NobuData/ouroboros/issues/338)); absent, none.
  *
  * *Re-run failed* and *Re-run full suite* are drawn switched on only for an owner, admin or member
  * — `mayContribute`, the rule the service applies to a re-run — and the screen is handed a boolean
  * rather than a role. The service checks again on every press.
  *
  * @param props.params The run's id.
- * @param props.searchParams The query — `?from=`, `?attempt=` and `?suite=`.
+ * @param props.searchParams The query — `?from=`, `?attempt=`, `?suite=` and `?case=`.
  * @returns The screen, or the not-found page for a run this workspace cannot see.
  */
 export default async function Page({
@@ -50,6 +57,7 @@ export default async function Page({
       commitSource={found?.commitSource ?? null}
       initial={found?.timeline ?? null}
       initialAttempt={attempt}
+      initialCase={caseParam(query[TESTS_CASE_PARAM])}
       initialError={reading.state === "failed" ? reading.reason : null}
       initialGate={found?.gate ?? null}
       initialPage={found?.page ?? null}

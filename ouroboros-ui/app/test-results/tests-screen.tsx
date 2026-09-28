@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import type { FarmPage } from "@/app/api/farm";
 import type { PullRequestRef } from "@/app/api/pull-requests";
 import type {
   RerunAvailability,
@@ -10,8 +11,9 @@ import type {
   TestRunPage,
   TestRunTimeline,
 } from "@/app/api/test-results";
+import { type FarmPollOptions, createFarmPoll } from "@/app/farm/farm-poll";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
-import { TESTS_ATTEMPT_PARAM, TESTS_SUITE_PARAM, runPath } from "@/app/paths";
+import { TESTS_ATTEMPT_PARAM, TESTS_CASE_PARAM, TESTS_SUITE_PARAM, runPath } from "@/app/paths";
 import type { CommitSource } from "@/app/runs/cards";
 import type { RunOrigin } from "@/app/runs/origin";
 import { BREADCRUMB_LABEL } from "@/app/runs/view";
@@ -20,6 +22,15 @@ import { RetryBanner } from "@/app/ui";
 
 import { AttemptsTimeline } from "./attempts-timeline";
 import { MarkRouteSlot, type StagedFailures } from "./mark-route-slot";
+import {
+  type CaseSelection,
+  caseCleared,
+  caseOutOfScope,
+  physicalSuites,
+  physicalView,
+  resolveCase,
+} from "./physical";
+import { PhysicalCard } from "./physical-card";
 import {
   type TestsPollOptions,
   createGatePoll,
@@ -73,6 +84,25 @@ export function withAttempt(search: string, attemptSeq: number): string {
 }
 
 /**
+ * The address with a name parameter set or removed, everything else kept.
+ *
+ * @param search The current query, `?…` or empty.
+ * @param param The parameter.
+ * @param name The name it carries, or `null` to remove it.
+ * @returns The new query, with its `?` — or empty when nothing is left to say.
+ */
+function withName(search: string, param: string, name: string | null): string {
+  const query = new URLSearchParams(search);
+
+  if (name === null) query.delete(param);
+  else query.set(param, name);
+
+  const next = query.toString();
+
+  return next === "" ? "" : `?${next}`;
+}
+
+/**
  * The address with `?suite=` set or removed, everything else kept.
  *
  * @param search The current query, `?…` or empty.
@@ -80,15 +110,22 @@ export function withAttempt(search: string, attemptSeq: number): string {
  * @returns The new query, with its `?` — or empty when nothing is left to say.
  */
 export function withSuite(search: string, suite: string | null): string {
-  const query = new URLSearchParams(search);
-
-  if (suite === null) query.delete(TESTS_SUITE_PARAM);
-  else query.set(TESTS_SUITE_PARAM, suite);
-
-  const next = query.toString();
-
-  return next === "" ? "" : `?${next}`;
+  return withName(search, TESTS_SUITE_PARAM, suite);
 }
+
+/**
+ * The address with `?case=` set or removed, everything else kept.
+ *
+ * @param search The current query, `?…` or empty.
+ * @param name The selected physical case's name, or `null` for none.
+ * @returns The new query, with its `?` — or empty when nothing is left to say.
+ */
+export function withCase(search: string, name: string | null): string {
+  return withName(search, TESTS_CASE_PARAM, name);
+}
+
+/** What the farm's poll is keyed on: there is one farm, asked only while a rig is on screen. */
+const FARM_KEY = "farm";
 
 /** What the screen is told. */
 export interface TestsScreenProps {
@@ -104,6 +141,8 @@ export interface TestsScreenProps {
   readonly initialGate?: RerunAvailability | null;
   /** The suite `?suite=` named, or `null` for none. `null` when absent. */
   readonly initialSuite?: string | null;
+  /** The physical case `?case=` named, or `null` for none. `null` when absent. */
+  readonly initialCase?: string | null;
   /** The first read's page — the suites — for that attempt, or `null`. */
   readonly initialPage?: TestRunPage | null;
   /** The ticket on its tracker, or `null`. */
@@ -122,6 +161,8 @@ export interface TestsScreenProps {
   readonly gatePoll?: TestsPollOptions<RerunAvailability>;
   /** Test seams for the attempt page's poll; production passes none. */
   readonly pagePoll?: TestsPollOptions<TestRunPage>;
+  /** Test seams for the farm's poll — the rigs' presence; production passes none. */
+  readonly farmPoll?: FarmPollOptions;
   /** How to send a re-run. Defaults to the Server Action. */
   readonly send?: RerunSender;
 }
@@ -129,8 +170,9 @@ export interface TestsScreenProps {
 /**
  * The test-results frame ([#335](https://github.com/NobuData/ouroboros/issues/335)) — mockup 11's
  * breadcrumb, head, actions, build attempts timeline
- * ([#336](https://github.com/NobuData/ouroboros/issues/336)), summary strip and suites card
- * ([#337](https://github.com/NobuData/ouroboros/issues/337)), for one attempt of one run.
+ * ([#336](https://github.com/NobuData/ouroboros/issues/336)), summary strip, suites card
+ * ([#337](https://github.com/NobuData/ouroboros/issues/337)) and physical-tests card
+ * ([#338](https://github.com/NobuData/ouroboros/issues/338)), for one attempt of one run.
  *
  * **A contextual surface.** It renders in the shell's content pane and adds no chrome of its own,
  * so the header and the sidebar stay put while the pane scrolls. It has no sidebar entry: the
@@ -151,11 +193,20 @@ export interface TestsScreenProps {
  * ([#338](https://github.com/NobuData/ouroboros/issues/338)) and failure-detail
  * ([#339](https://github.com/NobuData/ouroboros/issues/339)) cards are scoped by.
  *
+ * **The selected physical case is the third**, a name in `?case=` kept the same way. It is looked
+ * for among the physical suites the selected suite leaves on the card; a case the attempt did not
+ * run on a rig, or one outside the selected suite, is cleared and said to be.
+ * `physicalView`'s `scope` is what the failure-detail card is scoped by.
+ *
  * **Three polls on the I.8 cadence** ([#87](https://github.com/NobuData/ouroboros/issues/87)): the
  * run's timeline, so a running build's strip moves; the attempt's re-run gate, rebuilt when the
  * attempt changes, so a runner coming online switches the buttons on; and the attempt's page, for
  * its suites, rebuilt the same way. A failed refresh keeps the last answer on screen under a
  * banner rather than blanking it.
+ *
+ * **And the farm's, while a rig is on screen** — the build farm's own poll, read for one thing:
+ * whether a runner of the rig's name is connected. Until it answers, and whenever it cannot, the
+ * `rig online` pill is omitted.
  *
  * **The actions are honestly gated** (`actionsView`), and *Send failures back to loop* stages the
  * failed set on the Mark & Route slot and moves focus there.
@@ -170,6 +221,7 @@ export function TestsScreen({
   initialAttempt,
   initialGate = null,
   initialSuite = null,
+  initialCase = null,
   initialPage = null,
   trackerUrl,
   commitSource = null,
@@ -179,6 +231,7 @@ export function TestsScreen({
   timelinePoll,
   gatePoll,
   pagePoll,
+  farmPoll,
   send = requestRerun,
 }: TestsScreenProps) {
   const timelineRead = useKeyedPoll(runId, (id) => createTimelinePoll(id, timelinePoll));
@@ -236,6 +289,46 @@ export function TestsScreen({
     window.history.replaceState(window.history.state, "", `${pathname}${next}${hash}`);
   }, [suiteName]);
 
+  const [picked, setPicked] = useState<CaseSelection | null>(
+    initialCase === null ? null : { name: initialCase, platform: null },
+  );
+  const [caseNotice, setCaseNotice] = useState<ForAttempt<string> | null>(null);
+
+  const onScreen = page !== null && attempt !== null && page.testRun.id === attempt.id ? page : null;
+  // Resolved against the page on screen: a selection that is about to be cleared scopes nothing.
+  const suiteScope = onScreen === null ? null : suitesView(onScreen.suites, suite).scope;
+
+  // The selected case is not on the card — the attempt did not run it on a rig, or the suite
+  // now selected does not hold it. Cleared during render, for the suite selection's reason.
+  if (picked !== null && attempt !== null && onScreen !== null) {
+    const stillSelected = suite === null || suiteScope !== null;
+
+    if (stillSelected && resolveCase(physicalSuites(onScreen.suites, suiteScope), picked) === null) {
+      const ranOnARig = resolveCase(physicalSuites(onScreen.suites, null), picked) !== null;
+
+      setPicked(null);
+      setCaseNotice({
+        testRunId: attempt.id,
+        value:
+          ranOnARig && suiteScope !== null
+            ? caseOutOfScope(picked.name, suiteScope.name)
+            : caseCleared(picked.name, attempt.attemptSeq),
+      });
+    }
+  }
+
+  const pickedName = picked?.name ?? null;
+  useEffect(() => {
+    const { pathname, search, hash } = window.location;
+    const next = withCase(search, pickedName);
+    if (next === search) return;
+
+    window.history.replaceState(window.history.state, "", `${pathname}${next}${hash}`);
+  }, [pickedName]);
+
+  const hasRig = onScreen !== null && physicalSuites(onScreen.suites, null).length > 0;
+  const farmRead = useKeyedPoll<FarmPage>(hasRig ? FARM_KEY : null, () => createFarmPoll(farmPoll));
+
   const [pending, setPending] = useState<RerunScope | null>(null);
   const [outcome, setOutcome] = useState<ForAttempt<ActionOutcome> | null>(null);
   const [staged, setStaged] = useState<StagedFailures | null>(null);
@@ -277,6 +370,17 @@ export function TestsScreen({
   function selectSuite(selection: SuiteSelection | null): void {
     setSuite(selection);
     setCleared(null);
+    setCaseNotice(null);
+  }
+
+  /**
+   * Select a physical case, or clear the selection. The address follows.
+   *
+   * @param selection The case, by name and its suite's platform, or `null`.
+   */
+  function selectCase(selection: CaseSelection | null): void {
+    setPicked(selection);
+    setCaseNotice(null);
   }
 
   /**
@@ -388,6 +492,17 @@ export function TestsScreen({
             onRetry={pageRead.refresh}
             onSelect={selectSuite}
             view={page === null ? null : suitesView(page.suites, suite)}
+          />
+          <PhysicalCard
+            notice={
+              caseNotice !== null && caseNotice.testRunId === attempt.id ? caseNotice.value : null
+            }
+            onSelect={selectCase}
+            view={
+              onScreen === null
+                ? null
+                : physicalView(onScreen, suiteScope, picked, farmRead.snapshot.data?.runners ?? null)
+            }
           />
           <MarkRouteSlot
             ref={slot}
