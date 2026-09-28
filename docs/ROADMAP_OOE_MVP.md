@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**295 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 is in progress.
+**296 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 is in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 | **262** |
-| 🟡 **In progress** | P11 | **33** of 38 |
+| 🟡 **In progress** | P11 | **34** of 38 |
 | — **Not started** | P12–P17 | 0 of 154 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -114,7 +114,7 @@ position is not forced by dependencies, one of these decided it.
 | **P8** | Planning & batch work creation | ✅ 17/17 | 17 | 52 | Mockup 09 |
 | **P9** | Build farm & runner agent | ✅ 20/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | ✅ 17/17 | 17 | 55 | Mockup 10 |
-| **P11** | Evidence — tests & PR verification | 🟡 33/38 | 38 | 119 | Mockups 11, 12 |
+| **P11** | Evidence — tests & PR verification | 🟡 34/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | — 0/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | — 0/32 | 32 | 109 | Mockups 15, 18 |
 | **P14** | Decisions & governance — inbox, settings | — 0/31 | 31 | 102 | Mockups 16, 17 |
@@ -1486,7 +1486,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **38 issues** · 119 complexity points · order **#263–#300** · 8 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_11_TEST_RESULTS.md`, `ROADMAP_MOCKUP_12_PR_VERIFICATION.md`
-> **Status:** 🟡 **In progress** — 33 of 38 issues closed
+> **Status:** 🟡 **In progress** — 34 of 38 issues closed
 
 **Goal.** Parse test truth from farm jobs (JUnit, HIL measurements, coverage, artifacts), derive flake state from sanctioned retries, sync PR records from GitHub with per-push revisions, and compute merge gates from the real evidence systems — build, tests, HIL, diff-vs-plan, secrets and license.
 
@@ -1531,7 +1531,7 @@ the blockquote above that records what it did and what it did differently.
 | 293 | **AY.4** | ✅ [#366](https://github.com/NobuData/ouroboros/issues/366) | Acceptance criteria matrix | ouroboros-ui | M | AX.3, AY.1 |
 | 294 | **AY.5** | ✅ [#367](https://github.com/NobuData/ouroboros/issues/367) | Changed files & diff excerpt | ouroboros-ui | S | AY.1 |
 | 295 | **AY.6** | ✅ [#368](https://github.com/NobuData/ouroboros/issues/368) | Review thread card | ouroboros-ui | S | AY.1 |
-| 296 | **AU.5** | [#339](https://github.com/NobuData/ouroboros/issues/339) | Failure detail card | ouroboros-ui | M | AU.3, AU.4 |
+| 296 | **AU.5** | ✅ [#339](https://github.com/NobuData/ouroboros/issues/339) | Failure detail card | ouroboros-ui | M | AU.3, AU.4 |
 | 297 | **AU.8** | [#342](https://github.com/NobuData/ouroboros/issues/342) | Test-results states & e2e leg | ouroboros-ui, .github | M | AU.2, AU.7 |
 | 298 | **AY.7** | [#369](https://github.com/NobuData/ouroboros/issues/369) | Merge plan & spend cards | ouroboros-ui | M | AX.4, AY.3 |
 | 299 | **AU.6** | [#340](https://github.com/NobuData/ouroboros/issues/340) | Mark & Route card | ouroboros-ui | L | AT.4, AU.5 |

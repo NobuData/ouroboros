@@ -824,6 +824,186 @@
   color: var(--ink-faint);
 }
 
+/* ---------- the failure-detail card (#339) ---------- */
+
+.tests-failure {
+  margin-bottom: var(--sp-10);
+}
+
+/* Reading, a build with no failure, and a failure with no log. */
+.tests-failure__note {
+  margin: 0 0 var(--sp-5);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.tests-failure__banner {
+  margin-bottom: var(--sp-5);
+}
+
+/* The mockup's `1 of 1` pill, between its two buttons when there is somewhere to go. */
+.tests-failure__pager {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.tests-failure__page {
+  min-width: 1.5rem;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  cursor: pointer;
+}
+
+.tests-failure__page:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+/* At an end: still focusable, so the pager keeps the focus it arrived with. */
+.tests-failure__page[aria-disabled="true"],
+.tests-failure__page[aria-disabled="true"]:hover {
+  border-color: var(--line);
+  color: var(--ink-faint);
+  cursor: default;
+}
+
+.tests-failure__page:focus-visible,
+.tests-failure__path:focus-visible,
+.tests-failure__log:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* The test's path: one mono line that scrolls sideways inside itself, however long it is. */
+.tests-failure__path {
+  margin-bottom: var(--sp-5);
+  overflow-x: auto;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  white-space: nowrap;
+}
+
+/* The mockup's `.code`: a well that keeps the log's columns and scrolls both ways inside itself. */
+.tests-failure__log {
+  max-height: 24rem;
+  margin: 0;
+  padding: var(--sp-6) var(--sp-7);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  white-space: pre;
+  tab-size: 4;
+}
+
+.tests-failure__line {
+  color: inherit;
+}
+
+/* The assertion. */
+.tests-failure__line--err {
+  color: var(--err);
+}
+
+/* The mockup's `.c-num`: a trial's percentage. */
+.tests-failure__figure {
+  color: var(--warn);
+}
+
+/* ----- the triage section ----- */
+
+.tests-failure__triage {
+  margin-top: var(--sp-7);
+}
+
+/* The heuristic hint: its chip, and its rule stated beside it. */
+.tests-failure__hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-3);
+}
+
+.tests-failure__rule {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+/* Why the rule fired. */
+.tests-failure__reason {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/*
+ * The designed empty slot: dashed, as the timeline's future card is, because it is a thing that
+ * has not happened yet — and still, because it is not loading.
+ */
+.tests-failure__slot {
+  margin-top: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.tests-failure__slot-title {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.tests-failure__slot-body {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* A model's narrative (#343) — the mockup's paragraph, its pill and its confidence. */
+.tests-failure__narrative {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.tests-failure__provenance {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+}
+
+.tests-failure__confidence {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
 /* ---------- the artifacts card (#341) ---------- */
 
 .tests-artifacts {

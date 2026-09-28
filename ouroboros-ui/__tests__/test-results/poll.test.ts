@@ -1,14 +1,24 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  UNREADABLE_FAILURE,
   UNREADABLE_GATE,
+  UNREADABLE_HINTS,
   UNREADABLE_PAGE,
   UNREADABLE_TIMELINE,
+  createFailurePoll,
   createGatePoll,
+  createHintsPoll,
   createPagePoll,
   createTimelinePoll,
+  failureKey,
+  failureKeyParts,
+  failureUrl,
   gateUrl,
+  hintsUrl,
+  isCaseFailure,
   isRerunAvailability,
+  isTestRunHints,
   isTestRunPage,
   isTestRunTimeline,
   pageUrl,
@@ -16,7 +26,18 @@ import {
 } from "@/app/test-results/poll";
 
 import { SEEDED_RUN_ID } from "../helpers/runs";
-import { BUILD_3_ID, gate, page, suite, timeline } from "../helpers/test-results";
+import {
+  BUILD_3_ID,
+  OVERSHOOT_CASE,
+  caseFailure,
+  caseHint,
+  gate,
+  hints,
+  modelHint,
+  page,
+  suite,
+  timeline,
+} from "../helpers/test-results";
 
 /**
  * The test-results page's two poll readers (#335): the addresses, the guards, and a read through
@@ -49,6 +70,28 @@ describe("the addresses", () => {
     expect(pageUrl(BUILD_3_ID)).toBe(`/api/test-runs/${BUILD_3_ID}`);
     expect(pageUrl("a/../b")).toBe("/api/test-runs/a%2F..%2Fb");
   });
+
+  it("name a case's failure and an attempt's hints, with every id encoded (#339)", () => {
+    expect(failureUrl(BUILD_3_ID, OVERSHOOT_CASE.caseId)).toBe(
+      `/api/test-runs/${BUILD_3_ID}/cases/${OVERSHOOT_CASE.caseId}/failure`,
+    );
+    expect(failureUrl("a/b", "c/../d")).toBe("/api/test-runs/a%2Fb/cases/c%2F..%2Fd/failure");
+    expect(hintsUrl(BUILD_3_ID)).toBe(`/api/test-runs/${BUILD_3_ID}/hints`);
+    expect(hintsUrl("a/../b")).toBe("/api/test-runs/a%2F..%2Fb/hints");
+  });
+});
+
+describe("the failure's key (#339)", () => {
+  it("carries the attempt and the case, and reads back as both", () => {
+    const key = failureKey(BUILD_3_ID, OVERSHOOT_CASE.caseId);
+
+    expect(failureKeyParts(key)).toEqual({ testRunId: BUILD_3_ID, caseId: OVERSHOOT_CASE.caseId });
+    expect(failureKey(BUILD_3_ID, "a")).not.toBe(failureKey(BUILD_3_ID, "b"));
+  });
+
+  it("reads a key that names no case as no case", () => {
+    expect(failureKeyParts(BUILD_3_ID)).toEqual({ testRunId: BUILD_3_ID, caseId: "" });
+  });
 });
 
 describe("the guards", () => {
@@ -77,7 +120,63 @@ describe("the guards", () => {
   });
 });
 
+describe("the failure's and the hints' guards (#339)", () => {
+  it("accept a failure, with or without its optional texts, and refuse what is not one", () => {
+    expect(isCaseFailure(caseFailure())).toBe(true);
+    expect(isCaseFailure(caseFailure({ path: null, message: null, logExcerpt: null, classname: null }))).toBe(true);
+    expect(isCaseFailure({ ...caseFailure(), logExcerpt: 12 })).toBe(false);
+    expect(isCaseFailure({ ...caseFailure(), path: undefined })).toBe(false);
+    expect(isCaseFailure({ ...caseFailure(), caseId: null })).toBe(false);
+    expect(isCaseFailure(hints())).toBe(false);
+    expect(isCaseFailure(null)).toBe(false);
+  });
+
+  it("accept hints — heuristic, model, or none — and refuse what is not them", () => {
+    expect(isTestRunHints(hints())).toBe(true);
+    expect(isTestRunHints(hints([]))).toBe(true);
+    expect(isTestRunHints(hints([modelHint(), caseHint({ hint: null, triage: null })]))).toBe(true);
+    expect(isTestRunHints({ ...hints(), cases: [{ ...caseHint(), hint: "product_bug" }] })).toBe(false);
+    expect(isTestRunHints({ ...hints(), cases: [{ ...caseHint(), triage: undefined }] })).toBe(false);
+    expect(isTestRunHints({ ...hints(), cases: [null] })).toBe(false);
+    expect(isTestRunHints({ testRunId: BUILD_3_ID })).toBe(false);
+    expect(isTestRunHints(caseFailure())).toBe(false);
+    expect(isTestRunHints(null)).toBe(false);
+  });
+});
+
 describe("the reads", () => {
+  it("ask this origin for a case's failure, and refuse a body that is not one (#339)", async () => {
+    const stub = fetching(caseFailure());
+    const poll = createFailurePoll(failureKey(BUILD_3_ID, OVERSHOOT_CASE.caseId), { visible: () => true });
+    const stop = poll.start();
+
+    await vi.waitFor(() => expect(poll.snapshot().data).toEqual(caseFailure()));
+    expect(stub.mock.calls[0]![0]).toBe(failureUrl(BUILD_3_ID, OVERSHOOT_CASE.caseId));
+    stop();
+
+    fetching(page());
+    const broken = createFailurePoll(failureKey(BUILD_3_ID, OVERSHOOT_CASE.caseId), { visible: () => true });
+    const stopBroken = broken.start();
+    await vi.waitFor(() => expect(broken.snapshot().error).toBe(UNREADABLE_FAILURE));
+    stopBroken();
+  });
+
+  it("ask this origin for the attempt's hints, and refuse a body that is not them (#339)", async () => {
+    const stub = fetching(hints());
+    const poll = createHintsPoll(BUILD_3_ID, { visible: () => true });
+    const stop = poll.start();
+
+    await vi.waitFor(() => expect(poll.snapshot().data).toEqual(hints()));
+    expect(stub.mock.calls[0]![0]).toBe(hintsUrl(BUILD_3_ID));
+    stop();
+
+    fetching(gate());
+    const broken = createHintsPoll(BUILD_3_ID, { visible: () => true });
+    const stopBroken = broken.start();
+    await vi.waitFor(() => expect(broken.snapshot().error).toBe(UNREADABLE_HINTS));
+    stopBroken();
+  });
+
   it("ask this origin for the timeline, and refuse a body that is not one", async () => {
     const stub = fetching(timeline());
     const poll = createTimelinePoll(SEEDED_RUN_ID, { visible: () => true });

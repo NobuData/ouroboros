@@ -773,7 +773,7 @@ tokens (both themes; the mockup is dark-only).
 | AU.2 | #336 ✅ | 🟢 Done | ouroboros-ui: [AU.2] Build attempts timeline | err/warn/live/future attempt cards with arrows | mvp, tests, ui, design | N (after AU.1) | Y | S | ouroboros-ui |
 | AU.3 | #337 ✅ | 🟢 Done | ouroboros-ui: [AU.3] Suites card | Platform-tagged suite rows, meters, selection → filtering | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.4 | #338 ✅ | 🟢 Done | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
-| AU.5 | #339 | 🟡 Open | ouroboros-ui: [AU.5] Failure detail card | Test path, rig log block, honest triage slot | mvp, tests, ui, design | N (after AU.3/AU.4) | Y | M | ouroboros-ui |
+| AU.5 | #339 ✅ | 🟢 Done | ouroboros-ui: [AU.5] Failure detail card | Test path, rig log block, honest triage slot | mvp, tests, ui, design | N (after AU.3/AU.4) | Y | M | ouroboros-ui |
 | AU.6 | #340 | 🟡 Open | ouroboros-ui: [AU.6] Mark & Route card | Classify radios with hints, note, toggles, routing actions | mvp, tests, ui | N (after AU.5, AT.4) | Y | L | ouroboros-ui |
 | AU.7 | #341 ✅ | 🟢 Done | ouroboros-ui: [AU.7] Artifacts card & downloads | Artifact rows, sizes, coverage delta, tombstones | mvp, tests, ui | N (after AU.1, AT.5) | Y | S | ouroboros-ui |
 | AU.8 | #342 | 🟡 Open | ouroboros-ui: [AU.8] Test-results states & e2e leg | Running/empty/error states, themes, full-chain e2e | mvp, tests, ui, ci | N (after AU.2–AU.7) | Y | M | ouroboros-ui, .github |
@@ -980,7 +980,7 @@ measured: overshoot 2.4% vs limit 2.0%   ◀ selected · syncs failure detail
 
 ### Issue AU.5 — ouroboros-ui: [AU.5] Failure detail card
 
-> **GitHub issue:** #339 · **Status:** 🟡 Open · **Parent epic:** #322
+> **GitHub issue:** #339 · **Status:** 🟢 Done · **Parent epic:** #322
 
 - **Problem Statement:** The selected failure's full story: test path,
   the rig/assert log block, and the triage slot — honest until AV.1.
@@ -1004,6 +1004,33 @@ tests/hil/test_estop_release.py::overshoot_under_load        (1 of 1)
 [rig] trial 2: peak 1228.8 rpm → overshoot 2.4% … E AssertionError: 2.4% > 2.0%
 TRIAGE  [heuristic · new-failure ∩ diff-paths → product bug]  · "AI narrative arrives with providers"
 ```
+
+> **Delivered as `ouroboros-ui/app/test-results/failure.ts`, `failure-card.tsx` and
+> `failure-detail.tsx`**, over two new reads on the UI's origin: AT.5's failure payload
+> (`/api/test-runs/:id/cases/:caseId/failure`) and AT.4's hints (`/api/test-runs/:id/hints`).
+> Decided on #339:
+>
+> 1. **The card is bound by both selections.** A selected physical case is the card's one failure
+>    (the mockup's `1 of 1`); with no case selected, the selected suite's failures; with nothing
+>    selected, every failure of the build. A *failure* is a case with a failure payload
+>    (`hasFailure`). A selected case that did not fail says so, and is never replaced by another.
+> 2. **The pager changes neither selection**, and a selection change re-binds the card from the
+>    first failure. It is two buttons and ← → Home End.
+> 3. **The honesty rule is structural.** The triage view is a union whose only variant able to
+>    carry a confidence or a model's name is `model`, built only from an answer whose
+>    `provenance.actor` is `model`. A heuristic answer carrying either is drawn without them —
+>    asserted by test against malformed payloads.
+> 4. **The rule is stated by the UI from the `ruleId`** (`new failure ∩ diff-path overlap →
+>    product bug`), with the service's `reason` beneath it. A rule this client does not know is
+>    printed as its id.
+> 5. **The model branch is drawn now** — narrative, model pill, `confidence N%` — so #343 fills the
+>    slot by answering the same shape. A model answer with no narrative falls back to the hint.
+> 6. **The triage timestamp is not drawn**: `triage/v0` carries none. It arrives with #343.
+> 7. **The assertion line** is pytest's `E` line or the line stating the failure's `message`; an
+>    excerpt that does not state the message has it appended.
+> 8. **Screenshots in both themes were not captured** in this change; both themes are held by the
+>    sheet's token-only rule (`tests-styles.test.ts`).
+> 9. **#340 reads the same hints** (`TestsScreen`'s hints poll) for its radio pre-selection.
 
 ### Issue AU.6 — ouroboros-ui: [AU.6] Mark & Route card
 
