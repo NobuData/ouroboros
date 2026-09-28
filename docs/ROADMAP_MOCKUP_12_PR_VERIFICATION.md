@@ -677,7 +677,7 @@ the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AY.1 | #363 ✅ | 🟢 Done | ouroboros-ui: [AY.1] PR route, head & actions | `/prs/:id` frame, meta, the three composed actions | mvp, pr, ui, design | N (after #41, AX.5, BA-D.5) | Y | M | ouroboros-ui |
 | AY.2 | #364 ✅ | 🟢 Done | ouroboros-ui: [AY.2] Revision cycle strip | err/plain/live/ghosted steps with real joins (V4) | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
-| AY.3 | #365 | 🟡 Open | ouroboros-ui: [AY.3] Verification gates card | Seven-row gate list with all verdict states + links | mvp, pr, ui, design | N (after AY.1) | Y | M | ouroboros-ui |
+| AY.3 | #365 ✅ | 🟢 Done | ouroboros-ui: [AY.3] Verification gates card | Seven-row gate list with all verdict states + links | mvp, pr, ui, design | N (after AY.1) | Y | M | ouroboros-ui |
 | AY.4 | #366 | 🟡 Open | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
 | AY.5 | #367 | 🟡 Open | ouroboros-ui: [AY.5] Changed files & diff excerpt | File rows with proportional meters, diff block, host link | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.6 | #368 | 🟡 Open | ouroboros-ui: [AY.6] Review thread card | Author-kinded entries, blocking arcs, resolution states | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
@@ -737,7 +737,8 @@ can: fix flaky telemetry frame order under ISR load
 ### Issue AY.2 — ouroboros-ui: [AY.2] Revision cycle strip
 
 > **GitHub issue:** #364 · **Status:** 🟢 Done · **Parent epic:** #350
-> **Delivered as `ouroboros-ui/app/prs/strip.ts`, `revision-strip.tsx` and `gates-slot.tsx`**, over
+> **Delivered as `ouroboros-ui/app/prs/strip.ts`, `revision-strip.tsx` and `gates-slot.tsx`** (the
+> slot became `gates-card.tsx` with #365), over
 > the page AY.1 already reads (`revisions[]` with their snapshots and corrections, and `plan`).
 > Decided on #364:
 >
@@ -763,7 +764,8 @@ can: fix flaky telemetry frame order under ISR load
 >    scoped revision and lists its snapshot's rows as recorded — AY.1's Merge plan slot
 >    precedent. AY.3 replaces the body and keeps the id and `gatesScope(page, scoped)`.
 > 9. **The head and *Return to loop* still describe the latest revision**; returning from an
->    earlier one arrives with #365, as AY.1 decided.
+>    earlier one arrives with #365, as AY.1 decided. *(#365 did not take it up — see its
+>    decision 8.)*
 
 - **Problem Statement:** The strip narrates the loop's convergence — and
   every step must be a join, not prose (V4).
@@ -789,7 +791,33 @@ can: fix flaky telemetry frame order under ISR load
 
 ### Issue AY.3 — ouroboros-ui: [AY.3] Verification gates card
 
-> **GitHub issue:** #365 · **Status:** 🟡 Open · **Parent epic:** #350
+> **GitHub issue:** #365 · **Status:** 🟢 Done · **Parent epic:** #350
+> **Delivered as `ouroboros-ui/app/prs/gates.ts`, `gates-card.tsx` and `decline-dialog.tsx`**,
+> replacing AY.2's slot and keeping `#gates` and `gatesScope(page, scoped)`. Decided on #365:
+>
+> 1. **`unavailable` stands still.** A `–` mark, a dashed rule and the stated note `arrives with
+>    the provider stack`; no dot, no gradient, no pill. `pending` keeps the mockup's row — the
+>    pulsing dot, the gradient and `in progress` — for when AZ.1 (#371) reports one.
+> 2. **The evidence line is the engine's, untouched**, and never cut short: the rows scroll
+>    sideways in their own wrapper instead of ending in an ellipsis.
+> 3. **The pill is the scoped revision's own aggregate**, as the payload states it.
+> 4. **Links are routed by `evidenceRef.kind`, and only where a destination exists.**
+>    `build_job` → the build farm page (a job has no address of its own); `test_run` and
+>    `hil_measurement` → test results on the attempt the revision was judged on;
+>    `guardrail_evaluation` (diff-vs-plan, secrets & license) → the run console, where the
+>    guardrails card is. No *evidence sheet* exists, and none was built.
+> 5. **Out-of-scope highlighting is not drawn.** The changed-files card is #367's, and the paths
+>    exist only as text inside the evidence line. **Open for #367.**
+> 6. **The waiver popover has no author.** `PrGateRow` carries no waiver — the reason is inside
+>    the evidence line and the engine's `GateWaiver` names nobody — so the popover shows the
+>    recorded line and the gate's source, and says that no author is recorded. **Needs a REST
+>    follow-up** to put the waiver (reason, author, when) on the row.
+> 7. **Approve and Decline are on the row** (`POST …/approvals`), drawn for owner, admin and
+>    member while a review is waiting, on the latest revision of an open PR. *Decline* asks for
+>    its note first. Otherwise the row offers *Request review*, the head action's own request.
+> 8. **Return to loop still acts on the latest revision.** The issue does not ask for returning
+>    from a scoped revision, so AY.1's decision 5 stays open.
+> 9. **"Verified in e2e" is AY.8's** (#370); the links are asserted in the UI suite here.
 
 - **Problem Statement:** The seven-row gate list with every verdict
   treatment — including the pending gradient row and the honest

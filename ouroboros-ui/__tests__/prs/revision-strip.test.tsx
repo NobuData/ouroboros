@@ -2,18 +2,11 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PullRequestPage } from "@/app/api/pull-requests";
-import { GATES_ID, GATES_PENDING_CARD } from "@/app/prs/gates-slot";
+import { FOLLOW_LATEST, GATES_TITLE, NO_GATES } from "@/app/prs/gates";
+import { GATES_ID } from "@/app/prs/gates-card";
 import type { PrPollOptions } from "@/app/prs/poll";
 import { PrScreen } from "@/app/prs/pr-screen";
-import {
-  FOLLOW_LATEST,
-  GATES_TITLE,
-  NO_GATES,
-  NO_REVISIONS,
-  SCOPED_HERE,
-  STRIP_TAG,
-  STRIP_TITLE,
-} from "@/app/prs/strip";
+import { NO_REVISIONS, SCOPED_HERE, STRIP_TAG, STRIP_TITLE } from "@/app/prs/strip";
 import { DASHBOARD_ORIGIN } from "@/app/runs/origin";
 
 import {
@@ -39,6 +32,7 @@ import {
 
 // The Server Actions are never reached here.
 vi.mock("@/app/prs/head-actions", () => ({
+  decideApproval: vi.fn(),
   requestHumanReview: vi.fn(),
   returnToLoop: vi.fn(),
 }));
@@ -86,10 +80,10 @@ function gates(): HTMLElement {
 
 /** The verdicts the gates slot lists, as `label: verdict`. */
 function verdicts(): string[] {
-  return [...gates().querySelectorAll(".prv-gates__row")].map(
+  return [...gates().querySelectorAll(".prv-gate")].map(
     (row) =>
-      `${row.querySelector(".prv-gates__name")?.textContent}: ` +
-      `${row.querySelector(".ou-chip")?.textContent}`,
+      `${row.querySelector(".prv-gate__name")?.textContent}: ` +
+      `${row.querySelector(".prv-gate__mark")?.getAttribute("aria-label")}`,
   );
 }
 
@@ -271,7 +265,6 @@ describe("scoping the gates", () => {
 
     expect(gates()).toHaveAttribute("id", GATES_ID);
     expect(gates()).toHaveTextContent("Revision 2 · b7e41d0 · 5/7 gates green");
-    expect(gates()).toHaveTextContent(GATES_PENDING_CARD);
     expect(verdicts().filter((row) => row.endsWith(": red"))).toEqual([]);
     expect(revisionButton(1)).toHaveAttribute("aria-pressed", "false");
     expect(revisionButton(2)).toHaveAttribute("aria-pressed", "false");

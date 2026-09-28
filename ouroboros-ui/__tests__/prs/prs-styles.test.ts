@@ -88,13 +88,14 @@ describe("the shell", () => {
     expect(CODE).toMatch(/\.prv-return__evidence \{[^}]*overflow-wrap: anywhere;/);
   });
 
-  it("scrolls sideways in the strip's own wrapper and nowhere else (#364)", () => {
+  it("scrolls sideways in the strip's and the gates' own wrappers and nowhere else (#364, #365)", () => {
     const scrolling = [...CODE.matchAll(/([^{}]+)\{[^}]*overflow(?:-x)?:\s*(?:scroll|auto)[^}]*\}/g)].map(
       (match) => match[1]!.trim(),
     );
 
-    expect(scrolling).toEqual([".prv-strip__scroll"]);
+    expect(scrolling).toEqual([".prv-strip__scroll", ".prv-gates__scroll"]);
     expect(CODE).toMatch(/\.prv-strip__scroll \{[^}]*overflow-x: auto;/);
+    expect(CODE).toMatch(/\.prv-gates__scroll \{[^}]*overflow-x: auto;/);
     expect(CODE).not.toMatch(/overflow(-y)?:\s*(scroll|auto)/);
   });
 
@@ -120,9 +121,11 @@ describe("the revision cycle strip (#364)", () => {
   });
 
   it("moves the live dot only for a reader who has not asked for less motion", () => {
-    const guarded = CODE.match(
-      /@media \(prefers-reduced-motion: no-preference\)\s*\{([\s\S]*?\})\s*\}/,
-    )?.[1];
+    const guarded = [
+      ...CODE.matchAll(/@media \(prefers-reduced-motion: no-preference\)\s*\{([\s\S]*?\})\s*\}/g),
+    ]
+      .map((match) => match[1])
+      .join("\n");
 
     expect(guarded).toMatch(/\.prv-step__dot \{[^}]*animation: prv-step-pulse/);
 
@@ -134,5 +137,59 @@ describe("the revision cycle strip (#364)", () => {
     expect(unguarded).not.toMatch(/animation:/);
     // Standing still, the dot is still drawn — the state is not in the movement.
     expect(unguarded).toMatch(/\.prv-step__dot \{[^}]*background: var\(--accent\);/);
+  });
+});
+
+describe("the verification gates card (#365)", () => {
+  /**
+   * One rule's declarations.
+   *
+   * @param selector The rule's selector, exactly.
+   * @returns What it declares, or an empty string when the sheet has no such rule.
+   */
+  function rule(selector: string): string {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    return CODE.match(new RegExp(`(?:^|\\})\\s*${escaped} \\{([^}]*)\\}`))?.[1] ?? "";
+  }
+
+  it("draws pending as the mockup's gradient, from a token", () => {
+    expect(rule(".prv-gate--pending")).toMatch(
+      /background-image: linear-gradient\(90deg, var\(--accent-tint\), transparent 28rem\);/,
+    );
+  });
+
+  it("draws unavailable apart from pending: no gradient, nothing that moves", () => {
+    const unavailable = rule(".prv-gate--unavailable");
+
+    expect(unavailable).toMatch(/border-bottom-style: dashed;/);
+    expect(unavailable).not.toMatch(/gradient|animation|background/);
+    expect(unavailable).not.toBe(rule(".prv-gate--pending"));
+    expect(CODE).not.toMatch(/\.prv-gate--unavailable[^{]*\.prv-gate__dot/);
+  });
+
+  it("moves the pending dot only for a reader who has not asked for less motion", () => {
+    expect(CODE).toMatch(
+      /@media \(prefers-reduced-motion: no-preference\)\s*\{\s*\.prv-gate__dot \{[^}]*animation:/,
+    );
+    expect(rule(".prv-gate__dot")).not.toMatch(/animation/);
+  });
+
+  it("never draws policy in the pass's green", () => {
+    expect(CODE).toMatch(/\.prv-gate--green \.prv-gate__mark \{[^}]*color: var\(--ok\);/);
+
+    for (const policy of ["not-required", "waived", "unavailable"]) {
+      for (const [, declarations] of CODE.matchAll(
+        new RegExp(`\\.prv-gate--${policy}[^{]*\\{([^}]*)\\}`, "g"),
+      )) {
+        expect(declarations, policy).not.toMatch(/var\(--ok/);
+      }
+    }
+  });
+
+  it("never cuts the evidence line short, and keeps the waiver in the row's own flow", () => {
+    expect(rule(".prv-gate__evidence")).toMatch(/white-space: nowrap;/);
+    expect(rule(".prv-gate__evidence")).not.toMatch(/text-overflow|overflow: hidden/);
+    expect(rule(".prv-gate__popover")).not.toMatch(/position:/);
   });
 });

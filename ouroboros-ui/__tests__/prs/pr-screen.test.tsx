@@ -59,6 +59,7 @@ import { SEEDED_RUN_ID } from "../helpers/runs";
 
 // The Server Actions are never reached here: the cases that press pass their own senders.
 vi.mock("@/app/prs/head-actions", () => ({
+  decideApproval: vi.fn(),
   requestHumanReview: vi.fn(),
   returnToLoop: vi.fn(),
 }));

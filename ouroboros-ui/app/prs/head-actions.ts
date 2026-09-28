@@ -3,7 +3,8 @@
 /**
  * The server hop for *Request human review* and *Return to loop*
  * ([#363](https://github.com/NobuData/ouroboros/issues/363), over AX.5's
- * [#361](https://github.com/NobuData/ouroboros/issues/361)).
+ * [#361](https://github.com/NobuData/ouroboros/issues/361)), and for the gates card's *Approve*
+ * and *Decline* ([#365](https://github.com/NobuData/ouroboros/issues/365)).
  *
  * `app/runs/control-actions.ts` states the rule this exists under: the browser cannot reach
  * `ouroboros-rest`, so a Client Component that needs to write calls a Server Action that calls
@@ -30,9 +31,12 @@ import {
   ACTION_UNREACHABLE,
   ACTION_UNREACHABLE_CODE,
   GATE_KEY_PATTERN,
+  MAX_APPROVAL_NOTE_LENGTH,
   MAX_REPLAY_KEY_LENGTH,
   MAX_RETURNED_GATES,
   type ActionRefusal,
+  type ApprovalAnswer,
+  type ApprovalOutcome,
   type ReturnOutcome,
   type ReturnSelection,
   type ReviewRequestOutcome,
@@ -96,6 +100,57 @@ function isSelection(selection: unknown): selection is ReturnSelection {
         replayKey.length <= MAX_REPLAY_KEY_LENGTH &&
         replayKey.trim() === replayKey))
   );
+}
+
+/**
+ * Whether an answer could have come from the gates card.
+ *
+ * @param answer What arrived.
+ * @returns `true` for `approve` or `decline` with a note that is absent or a bounded, unpadded
+ *   string — and present on a decline, because a red gate says why.
+ */
+function isAnswer(answer: unknown): answer is ApprovalAnswer {
+  if (typeof answer !== "object" || answer === null) return false;
+
+  const { decision, note } = answer as Partial<ApprovalAnswer>;
+
+  if (decision !== "approve" && decision !== "decline") return false;
+  if (note === undefined) return decision === "approve";
+
+  return (
+    typeof note === "string" &&
+    note.length > 0 &&
+    note.length <= MAX_APPROVAL_NOTE_LENGTH &&
+    note.trim() === note
+  );
+}
+
+/**
+ * Answer a PR's approval slot — approve, or decline with the reason.
+ *
+ * @param prId The PR.
+ * @param answer The decision and its note.
+ * @returns The answered slot and the re-evaluated gate, or the reason nothing was answered. The
+ *   role gate is the service's: a viewer who calls this gets its `403` as a refusal.
+ * @throws Whatever is not an `ApiError` or a dropped connection.
+ */
+export async function decideApproval(
+  prId: string,
+  answer: ApprovalAnswer,
+): Promise<ApprovalOutcome> {
+  if (!isPullRequestId(prId) || !isAnswer(answer)) return INVALID;
+
+  try {
+    return {
+      ok: true,
+      outcome: await pullRequests.decideApproval(prId, {
+        decision: answer.decision,
+        ...(answer.note === undefined ? {} : { note: answer.note }),
+      }),
+    };
+  } catch (error) {
+    return refusalOf(error);
+  }
 }
 
 /**

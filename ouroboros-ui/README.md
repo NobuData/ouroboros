@@ -266,7 +266,7 @@ ouroboros-ui/
 │   │   ├── test-runs/[id]/route.ts # GET /api/test-runs/{id} — one attempt's page: its suites and cases · #337
 │   │   ├── artifact-file.ts #   readArtifactFile() — AT.5's artifact download, streamed through and made safe · #341
 │   │   ├── artifacts/[id]/route.ts # GET /api/artifacts/{id} — the artifacts card's open ↗, on this origin
-│   │   ├── pull-requests.ts #   pullRequests.* — the PR page, forRuns() the by-run lookup, the two head actions · #363
+│   │   ├── pull-requests.ts #   pullRequests.* — the PR page, forRuns() the by-run lookup, the head actions, decideApproval() · #363 · #365
 │   │   ├── pull-requests-read.ts # readPageForPoll() — the PR page, for its poll
 │   │   ├── prs/[id]/route.ts #  GET /api/prs/{id} — the PR page, on this origin
 │   │   ├── runs/[id]/events/route.ts # GET /api/runs/{id}/events?after= — the transcript's tail, on this origin
@@ -451,16 +451,18 @@ ouroboros-ui/
 │   │   ├── view.ts          #   the head, the pill's hue, the red gates, the three actions by role and state
 │   │   ├── strip.ts         #   the revision cycle's steps, each a join; the ?rev= scope and its gates
 │   │   ├── revision-strip.tsx # err / live / ghosted / armed steps in their own scrolling wrapper
-│   │   ├── gates-slot.tsx   #   the scoped revision's snapshot, until #365 draws the card
+│   │   ├── gates.ts         #   the gates card: verdict treatments, the pill, where evidence leads, the approval offer · #365
+│   │   ├── gates-card.tsx   #   the seven rows for the scoped revision, the waiver popover, approve / decline
+│   │   ├── decline-dialog.tsx # Decline's required note
 │   │   ├── poll.ts          #   the reader and guard: the whole PR page
 │   │   ├── data.ts          #   readPr() — the first paint; runPullRequests() — which runs opened a PR
-│   │   ├── outcomes.ts · head-actions.ts # requestHumanReview() / returnToLoop() — the Server Actions
+│   │   ├── outcomes.ts · head-actions.ts # requestHumanReview() / returnToLoop() / decideApproval() — the Server Actions
 │   │   ├── pr-head.tsx      #   the eyebrow, the headline linked to the host, the four-element meta row
 │   │   ├── pr-actions.tsx   #   Request human review / Return to loop / Merge when all gates green
 │   │   ├── return-dialog.tsx #  the danger dialog: which red gates the agent receives
 │   │   ├── merge-plan-slot.tsx # where Merge when all gates green lands until #369 draws the card
 │   │   ├── pr-loading.tsx · pr-missing.tsx # the first read in flight; a PR that does not exist
-│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates, slot, dialog — one poll
+│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates card, slot, dialogs — one poll
 │   ├── workflows/           # the workflow studio's frame — mockup 04 · #147
 │   │   ├── view.ts          #   the trigger in words, the subline, the segments, the rail's items
 │   │   ├── states.ts        #   the five states, the head and the seat for each, the read-only note
@@ -3835,12 +3837,51 @@ recorded, and the address becomes `?rev=1` — so the view is linkable. Pressing
 the latest revision*, removes the scope. `?rev=` naming a revision the PR does not have is dropped.
 The head and the three actions always describe the latest revision.
 
-The gates land on a slot (`#gates`) until the Verification gates card
-([#365](https://github.com/NobuData/ouroboros/issues/365)) replaces its body.
+The gates land on the Verification gates card (`#gates`), below.
 
 The strip scrolls sideways **inside its own wrapper** — the one rule in `prs.css` that may — and
 brings the scoped or latest revision into view by moving that wrapper alone. The live pulse is
 inside a `prefers-reduced-motion` guard; standing still, the dot and the words say the same thing.
+
+### The verification gates card
+
+The card ([#365](https://github.com/NobuData/ouroboros/issues/365)) is mockup 12's seven rows, for
+the revision the strip scoped — revision 1 shows revision 1's verdicts. The header pill
+(`5 / 7 green`) is that revision's aggregate as the payload states it, never counted in the
+browser, and the evidence line is the engine's, drawn whole (`app/prs/gates.ts`).
+
+| Verdict | Mark | Drawn as |
+|---------|------|----------|
+| `green` | ✓ | ok |
+| `red` | ✗ | err |
+| `pending` | a pulsing dot | the mockup's gradient row and an `in progress` pill — a provider is evaluating |
+| `unavailable` | – | **standing still**: a dashed rule and `arrives with the provider stack` — no provider exists, so nothing spins |
+| `not_required` | ○ | grey, policy rather than a pass; human approval carries `auto-merge eligible` |
+| `waived` | ⊘ | warn, with a `waived` button that opens the waiver |
+
+Every mark is announced as its verdict in words.
+
+| Evidence composed from | The row's link |
+|------------------------|----------------|
+| `build_job` | the build farm |
+| `test_run`, `hil_measurement` | test results, on the attempt the revision was judged on |
+| `guardrail_evaluation` | the run console, where the guardrails card is |
+| nothing, a `vote`, an `approval` | none |
+
+A link is drawn only where it leads somewhere real: none for a PR no loop opened, and none for a
+test or rig line whose attempt is not known.
+
+**The human-approval row** offers *Request review* while nobody is waiting, and *Approve* and
+*Decline* while a review is — for an owner, admin or member, on the latest revision of an open PR.
+*Decline* asks for its note first, because a red gate says why. The service decides again on every
+press.
+
+**The waiver popover names no author.** The payload carries no waiver on a gate's row, so the
+popover shows the recorded line, which holds the reason, and says that no author is recorded.
+Out-of-scope highlighting for diff-vs-plan arrives with the changed-files card
+([#367](https://github.com/NobuData/ouroboros/issues/367)).
+
+The rows scroll sideways inside their own wrapper, so a long evidence line never moves the pane.
 
 ## Workflow Studio
 
@@ -5297,6 +5338,7 @@ workflow studio [#147](https://github.com/NobuData/ouroboros/issues/147) ·
 the React Flow canvas [#148](https://github.com/NobuData/ouroboros/issues/148) ·
 PR verification [#363](https://github.com/NobuData/ouroboros/issues/363) ·
 the revision cycle strip [#364](https://github.com/NobuData/ouroboros/issues/364) ·
+the verification gates card [#365](https://github.com/NobuData/ouroboros/issues/365) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

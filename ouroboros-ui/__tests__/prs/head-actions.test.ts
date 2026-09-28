@@ -1,14 +1,16 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/app/api/errors";
-import type { ReturnToLoopRequest } from "@/app/api/pull-requests";
+import type { ApprovalDecisionRequest, ReturnToLoopRequest } from "@/app/api/pull-requests";
 import {
   ACTION_INVALID,
   ACTION_INVALID_CODE,
   ACTION_UNREACHABLE,
   ACTION_UNREACHABLE_CODE,
+  MAX_APPROVAL_NOTE_LENGTH,
   MAX_REPLAY_KEY_LENGTH,
   MAX_RETURNED_GATES,
+  type ApprovalAnswer,
   type ReturnSelection,
 } from "@/app/prs/outcomes";
 
@@ -22,17 +24,21 @@ import { PR_514_ID, REV_2_ID, returned, review } from "../helpers/pull-requests"
 
 const requestReview = vi.fn();
 const sendReturn = vi.fn();
+const decide = vi.fn();
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/api/pull-requests", async (original) => ({
   ...(await original<typeof import("@/app/api/pull-requests")>()),
   pullRequests: {
+    decideApproval: (id: string, request: ApprovalDecisionRequest) => decide(id, request),
     requestReview: (id: string) => requestReview(id),
     returnToLoop: (id: string, request: ReturnToLoopRequest) => sendReturn(id, request),
   },
 }));
 
-const { requestHumanReview, returnToLoop } = await import("@/app/prs/head-actions");
+const { decideApproval, requestHumanReview, returnToLoop } = await import(
+  "@/app/prs/head-actions"
+);
 
 /** The refusal made before calling out. */
 const REFUSED = { ok: false, status: 422, code: ACTION_INVALID_CODE, reason: ACTION_INVALID };
@@ -47,6 +53,7 @@ const SELECTION: ReturnSelection = {
 beforeEach(() => {
   requestReview.mockReset();
   sendReturn.mockReset();
+  decide.mockReset();
 });
 
 describe("requestHumanReview", () => {
@@ -164,5 +171,96 @@ describe("returnToLoop", () => {
     const redirect = new Error("NEXT_REDIRECT");
     sendReturn.mockRejectedValueOnce(redirect);
     await expect(returnToLoop(PR_514_ID, SELECTION)).rejects.toBe(redirect);
+  });
+});
+
+describe("decideApproval (#365)", () => {
+  /** What the service answers an approval with. */
+  const answered = {
+    review: review({ state: "approved" }),
+    created: false,
+    humanApproval: null,
+    aggregate: null,
+  };
+
+  it("sends an approval without a note, and returns the service's answer", async () => {
+    decide.mockResolvedValue(answered);
+
+    expect(await decideApproval(PR_514_ID, { decision: "approve" })).toEqual({
+      ok: true,
+      outcome: answered,
+    });
+    expect(decide).toHaveBeenCalledExactlyOnceWith(PR_514_ID, { decision: "approve" });
+  });
+
+  it("sends a decline with its note, and an approval's note when it has one", async () => {
+    decide.mockResolvedValue(answered);
+
+    await decideApproval(PR_514_ID, { decision: "decline", note: "Overshoot is still 2.4%." });
+    await decideApproval(PR_514_ID, { decision: "approve", note: "Checked on the rig." });
+
+    expect(decide.mock.calls).toEqual([
+      [PR_514_ID, { decision: "decline", note: "Overshoot is still 2.4%." }],
+      [PR_514_ID, { decision: "approve", note: "Checked on the rig." }],
+    ]);
+  });
+
+  it("refuses what could not have come from the card, before calling out", async () => {
+    const bad: unknown[] = [
+      null,
+      "approve",
+      {},
+      { decision: "merge" },
+      { decision: "decline" },
+      { decision: "decline", note: "" },
+      { decision: "decline", note: " padded " },
+      { decision: "decline", note: 7 },
+      { decision: "approve", note: "x".repeat(MAX_APPROVAL_NOTE_LENGTH + 1) },
+    ];
+
+    for (const answer of bad) {
+      expect(await decideApproval(PR_514_ID, answer as ApprovalAnswer), JSON.stringify(answer)).toEqual(
+        REFUSED,
+      );
+    }
+    expect(await decideApproval("514", { decision: "approve" })).toEqual(REFUSED);
+    expect(decide).not.toHaveBeenCalled();
+  });
+
+  it("takes a note of exactly the longest length", async () => {
+    decide.mockResolvedValue(answered);
+
+    const note = "x".repeat(MAX_APPROVAL_NOTE_LENGTH);
+
+    expect(await decideApproval(PR_514_ID, { decision: "decline", note })).toMatchObject({
+      ok: true,
+    });
+  });
+
+  it("hands the service's refusal back in its own words — a viewer's 403 included", async () => {
+    decide.mockRejectedValue(new ApiError(403, "forbidden", "Only a contributor may answer."));
+
+    expect(await decideApproval(PR_514_ID, { decision: "approve" })).toEqual({
+      ok: false,
+      status: 403,
+      code: "forbidden",
+      reason: "Only a contributor may answer.",
+    });
+  });
+
+  it("says a dropped connection as unreachable, and rethrows anything else", async () => {
+    decide.mockRejectedValueOnce(new TypeError("fetch failed"));
+
+    expect(await decideApproval(PR_514_ID, { decision: "approve" })).toEqual({
+      ok: false,
+      status: 502,
+      code: ACTION_UNREACHABLE_CODE,
+      reason: ACTION_UNREACHABLE,
+    });
+
+    decide.mockRejectedValueOnce(new Error("NEXT_REDIRECT"));
+    await expect(decideApproval(PR_514_ID, { decision: "approve" })).rejects.toThrow(
+      "NEXT_REDIRECT",
+    );
   });
 });

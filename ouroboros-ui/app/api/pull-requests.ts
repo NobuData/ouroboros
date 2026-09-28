@@ -8,6 +8,7 @@
  * GET  /api/v1/pull-requests?runId=…,…             the PRs those runs opened — the by-run lookup
  * POST /api/v1/pull-requests/{id}/request-review   Request human review
  * POST /api/v1/pull-requests/{id}/return-to-loop   Return to loop, with the selected red gates
+ * POST /api/v1/pull-requests/{id}/approvals        Approve or decline — the gates card's row (#365)
  * ```
  *
  * The shape every other module under `app/api/` keeps: the generated client does the transport,
@@ -51,6 +52,12 @@ export type ReturnToLoop = components["schemas"]["ReturnToLoop"];
 
 /** What *Request human review* answers. */
 export type PrReviewOutcome = components["schemas"]["PrReviewOutcome"];
+
+/** What an approval slot is answered with — the decision, and its note. */
+export type ApprovalDecisionRequest = components["schemas"]["ApprovalDecisionRequest"];
+
+/** `approve` or `decline`. */
+export type ApprovalDecision = ApprovalDecisionRequest["decision"];
 
 /** A run's pull request, as a surface that links to its verification page holds it. */
 export interface PullRequestRef {
@@ -159,6 +166,29 @@ export const pullRequests = {
       await client.POST("/api/v1/pull-requests/{id}/request-review", {
         params: { path: { id } },
         body: {},
+      }),
+    );
+  },
+
+  /**
+   * Answer a PR's approval slot on its latest revision — the human-approval gate re-evaluates.
+   *
+   * @param id The PR's id.
+   * @param request The decision, and its note — required on a decline.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The answered slot, whether this call opened it, and the re-evaluated gate.
+   * @throws ApiError `403` for a viewer, `422 pr_decline_note_required`,
+   *   `409 pull_request_not_open`, `404 pull_request_not_found`.
+   */
+  async decideApproval(
+    id: string,
+    request: ApprovalDecisionRequest,
+    client: ApiClient = api(),
+  ): Promise<PrReviewOutcome> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/approvals", {
+        params: { path: { id } },
+        body: request,
       }),
     );
   },
