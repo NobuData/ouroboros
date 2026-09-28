@@ -28,6 +28,14 @@ import "server-only";
  * two round trips per render, and per poll, to draw nothing. Both operations are unchanged
  * and still read elsewhere (`app/shell/`); what went is this page's use of them.
  *
+ * ### One read follows the aggregate
+ *
+ * The completions card links a row's `PR #512` to its verification page
+ * ([#363](https://github.com/NobuData/ouroboros/issues/363)), and the aggregate names a pull
+ * request by number while the page is addressed by id. So once the aggregate is in, the rows that
+ * name one are looked up in a single request (`app/prs/data.ts`) — skipped entirely when no row
+ * does, and best-effort: a lookup that fails leaves the rows unlinked.
+ *
  * ### The page is measured from one clock reading
  *
  * The dashboard draws durations that are still running — a run's *Elapsed*
@@ -65,8 +73,9 @@ import { dashboard } from "@/app/api/dashboard";
 import { engine } from "@/app/api/engine";
 import { readReadiness } from "@/app/api/health";
 import { attempt } from "@/app/api/reading";
+import { runPullRequests } from "@/app/prs/data";
 
-import type { DashboardReadings } from "./view";
+import { type DashboardReadings, NO_PULL_REQUESTS, completionRunIds } from "./view";
 
 /**
  * Read the dashboard.
@@ -86,6 +95,13 @@ export async function readDashboard(access: Workspace): Promise<DashboardReading
     attempt(() => engine.status()),
   ]);
 
+  // The one read that depends on another: which of the completions card's rows name a pull
+  // request Ouroboros mirrors (#363). One request for all of them, none when no row names one,
+  // and best-effort — a failed lookup is rows that link nothing, never a degraded card.
+  const pullRequests = aggregate.ok
+    ? await runPullRequests(completionRunIds(aggregate.value.recentRuns))
+    : NO_PULL_REQUESTS;
+
   return {
     workspace: access.membership,
     user: access.session.user,
@@ -95,5 +111,6 @@ export async function readDashboard(access: Workspace): Promise<DashboardReading
     aggregate,
     readiness,
     engine: engineStatus,
+    pullRequests,
   };
 }

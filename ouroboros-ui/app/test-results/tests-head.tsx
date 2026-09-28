@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Chip, Eyebrow, Tag } from "@/app/ui";
@@ -10,7 +11,8 @@ import type { TestsHeadView } from "./view";
  *
  * The meta row is the mockup's four elements in the mockup's order: the pinned workflow's tag,
  * the pass-ratio pill (ok, warn or err by ratio), the attempt's ordinal within its loop, and the
- * runner, rig and duration line. Every value is `view.ts`'s; this file only draws.
+ * runner, rig and duration line. A run that opened a pull request adds a fifth: the link to its PR
+ * verification page (#363). Every value is `view.ts`'s; this file only draws.
  *
  * The headline links to the ticket on its tracker when there is a URL to build, and is plain text
  * otherwise — never a guessed link.
@@ -51,6 +53,11 @@ export function TestsHead({
           )}
           {view.ordinal !== null && <Tag>{view.ordinal}</Tag>}
           {view.machine !== null && <span className="tests-head__mono">{view.machine}</span>}
+          {view.pullRequest !== null && (
+            <Link className="tests-head__pr" href={view.pullRequest.href}>
+              {view.pullRequest.label}
+            </Link>
+          )}
         </div>
       </div>
       {actions !== null && <div className="tests-head__actions">{actions}</div>}

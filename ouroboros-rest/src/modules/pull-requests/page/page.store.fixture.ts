@@ -343,6 +343,12 @@ export class FakePageStore implements PageStore {
       .filter(
         (row) =>
           filter.reviewRequested === undefined || row.reviewRequested === filter.reviewRequested,
+      )
+      .filter(
+        (row) =>
+          filter.runIds === undefined ||
+          filter.runIds.length === 0 ||
+          (row.run !== null && filter.runIds.includes(row.run.id)),
       );
 
     return Promise.resolve({

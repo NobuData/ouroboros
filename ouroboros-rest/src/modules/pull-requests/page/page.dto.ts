@@ -44,6 +44,9 @@ export const MAX_RETURNED_GATES = 64;
 /** The longest note a return carries; the steer's own limit shortens it further if it must. */
 export const MAX_RETURN_NOTE_LENGTH = 1024;
 
+/** The most runs one listing narrows to — the page size's own ceiling. */
+export const MAX_LISTED_RUN_IDS = 100;
+
 /** V056's gate key: a built-in key or `custom:<name>`. */
 export const GATE_KEY_PATTERN =
   /^(build|test_suite|physical_hil|diff_vs_plan|secrets_license|model_review|human_approval|custom:[a-z0-9][a-z0-9_.-]{0,62})$/;
@@ -83,6 +86,18 @@ export class ListPullRequestsQuery extends PageQuery {
   @Transform(({ value }: { value: unknown }) => queryBoolean(value))
   @IsBoolean()
   reviewRequested?: boolean;
+
+  /**
+   * Only the PRs these runs opened — `?runId=<uuid>,<uuid>` or the parameter repeated. How a
+   * surface that holds runs and not PRs (the run console, test results, the dashboard's rows)
+   * finds the PR page ([#363](https://github.com/NobuData/ouroboros/issues/363)). A run of
+   * another workspace, or one that opened no PR, contributes no row. Absent is every run.
+   */
+  @IsOptional()
+  @Transform(({ value }: { value: unknown }) => labelList(value))
+  @ArrayMaxSize(MAX_LISTED_RUN_IDS)
+  @IsUUID("all", { each: true })
+  runId?: string[];
 }
 
 /** `POST /api/v1/pull-requests/{id}/return-to-loop`. */

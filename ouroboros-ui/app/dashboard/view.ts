@@ -35,6 +35,8 @@ import {
   elapsedOfSeconds,
   moneyOfCents,
 } from "@/app/format";
+import type { PullRequestRef } from "@/app/api/pull-requests";
+import { prPath } from "@/app/paths";
 import type { StatTone } from "@/app/ui/stat-card";
 
 /**
@@ -100,6 +102,13 @@ export interface DashboardReadings {
   readonly readiness: HealthReport | null;
   /** What the engine reported, or why the call did not reach it. */
   readonly engine: Reading<EngineStatus>;
+  /**
+   * The pull requests Ouroboros mirrors for the completions card's rows, by run id
+   * ([#363](https://github.com/NobuData/ouroboros/issues/363)) — what lets a row's `PR #512` link
+   * to its verification page. Best-effort: empty when the lookup failed or was not made, and the
+   * rows then link nothing.
+   */
+  readonly pullRequests: ReadonlyMap<string, PullRequestRef>;
 }
 
 /** What is drawn in place of a number that could not be read. */
@@ -1029,6 +1038,18 @@ export interface Completion {
    * stopped before there was a pull request to name.
    */
   readonly pair: string;
+  /**
+   * The pair's two halves apart, for a row whose pull request is a link
+   * ([#363](https://github.com/NobuData/ouroboros/issues/363)): the issue, and the pull request
+   * with its verification page. `null` for a run whose pull request Ouroboros does not mirror —
+   * the row is then {@link Completion.pair} alone, with nothing linked.
+   */
+  readonly linked: {
+    readonly issue: string;
+    readonly arrow: string;
+    readonly pullRequest: string;
+    readonly href: string;
+  } | null;
   /** The issue's title, as it was when the run started. */
   readonly issueTitle: string;
   /**
@@ -1070,6 +1091,12 @@ export const COMPLETIONS_SHOWN = 4;
 const PAIR_ARROW = "→";
 
 /**
+ * The sidebar entry a PR page opened from this card keeps lit — the dashboard's own
+ * (`app/shell/nav-modules.ts`).
+ */
+const COMPLETION_ORIGIN = "dashboard";
+
+/**
  * The no-break space the mockup puts inside `PR&nbsp;#512`.
  *
  * The pair is one value read as one thing, and a column narrow enough to break it would put
@@ -1095,8 +1122,28 @@ const NBSP = "\u00a0";
  */
 export function issuePair(issueNumber: number, prNumber: number | null): string {
   return prNumber === null
-    ? `#${issueNumber}`
-    : `#${issueNumber} ${PAIR_ARROW} PR${NBSP}#${prNumber}`;
+    ? issueLabel(issueNumber)
+    : `${issueLabel(issueNumber)} ${PAIR_ARROW} ${pullRequestLabel(prNumber)}`;
+}
+
+/**
+ * The pair's issue half.
+ *
+ * @param issueNumber The issue the loop ran against.
+ * @returns `#474`.
+ */
+export function issueLabel(issueNumber: number): string {
+  return `#${issueNumber}`;
+}
+
+/**
+ * The pair's pull request half, which does not break across lines.
+ *
+ * @param prNumber The pull request the run opened.
+ * @returns `PR #512`, with the mockup's no-break space.
+ */
+export function pullRequestLabel(prNumber: number): string {
+  return `PR${NBSP}#${prNumber}`;
 }
 
 /**
@@ -1164,6 +1211,50 @@ export function checksShortfall(passed: number | null, total: number | null): nu
   return total - passed;
 }
 
+/** No pull request is known — what a card is handed when the lookup was not made or failed. */
+export const NO_PULL_REQUESTS: ReadonlyMap<string, PullRequestRef> = new Map();
+
+/**
+ * The runs the completions card draws — the ones whose pull requests are worth looking up.
+ *
+ * @param runs The aggregate's `recentRuns`.
+ * @returns The ids of the shown runs that name a pull request. A row that names none has no
+ *   `PR #512` to link, so it is not asked about.
+ */
+export function completionRunIds(runs: readonly RunSummary[]): readonly string[] {
+  return runs
+    .slice(0, COMPLETIONS_SHOWN)
+    .filter((run) => run.prNumber !== null)
+    .map((run) => run.id);
+}
+
+/**
+ * A row's pair as a link to its PR verification page
+ * ([#363](https://github.com/NobuData/ouroboros/issues/363)).
+ *
+ * **Linked only when the page exists.** A run carries its pull request's *number*; the page is
+ * addressed by the *id* of the PR Ouroboros mirrors, and a run may name a number that was never
+ * mirrored. So the row links what the lookup found and nothing it did not — never a page that
+ * would answer *not found*.
+ *
+ * @param run The run.
+ * @param pullRequest The pull request Ouroboros mirrors for the run, or `undefined`.
+ * @returns The pair's halves and the link, or `null` when there is nothing to link.
+ */
+export function linkedPair(
+  run: RunSummary,
+  pullRequest: PullRequestRef | undefined,
+): Completion["linked"] {
+  if (run.prNumber === null || pullRequest === undefined) return null;
+
+  return {
+    issue: issueLabel(run.issueNumber),
+    arrow: PAIR_ARROW,
+    pullRequest: pullRequestLabel(run.prNumber),
+    href: prPath(pullRequest.id, COMPLETION_ORIGIN),
+  };
+}
+
 /**
  * The runs that have stopped, as the table's rows.
  *
@@ -1173,15 +1264,20 @@ export function checksShortfall(passed: number | null, total: number | null): nu
  * listing that shows all of them.
  *
  * @param runs The aggregate's `recentRuns`.
+ * @param pullRequests The pull requests Ouroboros mirrors, by run id (#363). Absent, no row links.
  * @returns The first {@link COMPLETIONS_SHOWN} of them, in the order they are drawn.
  */
-export function recentCompletions(runs: readonly RunSummary[]): readonly Completion[] {
+export function recentCompletions(
+  runs: readonly RunSummary[],
+  pullRequests: ReadonlyMap<string, PullRequestRef> = NO_PULL_REQUESTS,
+): readonly Completion[] {
   return runs.slice(0, COMPLETIONS_SHOWN).map((run) => {
     const shortfall = checksShortfall(run.checksPassed, run.checksTotal);
 
     return {
       id: run.id,
       pair: issuePair(run.issueNumber, run.prNumber),
+      linked: linkedPair(run, pullRequests.get(run.id)),
       issueTitle: run.issueTitle,
       model: run.model,
       status: run.status,

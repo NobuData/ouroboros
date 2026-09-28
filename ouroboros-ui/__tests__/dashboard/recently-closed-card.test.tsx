@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 import { RecentlyClosedCard } from "@/app/dashboard/recently-closed-card";
 import { COMPLETIONS_SHOWN, NO_VALUE } from "@/app/dashboard/view";
-import { ISSUES_PATH } from "@/app/paths";
+import { ISSUES_PATH, prPath } from "@/app/paths";
 
 import { closedRun, dashboardPayload, emptyDashboard, failed, read } from "../helpers/dashboard";
 
@@ -395,12 +395,58 @@ describe("a row the service could not describe completely", () => {
   });
 });
 
-describe("what the table does not pretend", () => {
-  it("links no row anywhere, since neither destination exists", () => {
-    // A row would open the run console or, for `needs human`, the inbox — both still unbuilt. The
-    // card head's *All issues →* is a link since #115, and is the head's rather than a row's.
+describe("the row's pull request (#363)", () => {
+  /** The table, inside the card. */
+  function table(): HTMLElement {
+    return within(region()).getByRole("table");
+  }
+
+  it("links no row while no pull request is known — the seed's were never mirrored", () => {
+    // A row would otherwise open a page that answers *not found*. The `needs human` row's inbox
+    // is still unbuilt, and the card head's *All issues →* is the head's rather than a row's.
     card();
 
-    expect(within(within(region()).getByRole("table")).queryAllByRole("link")).toHaveLength(0);
+    expect(within(table()).queryAllByRole("link")).toHaveLength(0);
+    expect(rows()[0]!.querySelector(".dash-closed__pair")?.textContent).toBe(
+      `#474 → PR${NBSP}#512`,
+    );
+  });
+
+  it("links the pull request of each row the lookup found, to its verification page", () => {
+    const recent = dashboardPayload().recentRuns.slice(0, COMPLETIONS_SHOWN);
+    const mirrored = new Map([
+      [recent[0]!.id, { id: "5eed003a-0000-4000-8000-000000000512", number: 512 }],
+      [recent[3]!.id, { id: "5eed003a-0000-4000-8000-000000000504", number: 504 }],
+    ]);
+
+    render(
+      <RecentlyClosedCard aggregate={read(dashboardPayload())} pullRequests={mirrored} />,
+    );
+
+    const links = within(table()).getAllByRole("link");
+
+    expect(links.map((link) => [link.textContent, link.getAttribute("href")])).toEqual([
+      [`PR${NBSP}#512`, prPath("5eed003a-0000-4000-8000-000000000512", "dashboard")],
+      [`PR${NBSP}#504`, prPath("5eed003a-0000-4000-8000-000000000504", "dashboard")],
+    ]);
+    expect(links.every((link) => link.classList.contains("dash-closed__pr"))).toBe(true);
+    // The pair reads the same, linked or not.
+    expect(rows()[0]!.querySelector(".dash-closed__pair")?.textContent).toBe(
+      `#474 → PR${NBSP}#512`,
+    );
+  });
+
+  it("links nothing in a row whose run names no pull request, whatever the lookup holds", () => {
+    const run = closedRun({ prNumber: null });
+
+    render(
+      <RecentlyClosedCard
+        aggregate={read(dashboardPayload({ recentRuns: [run] }))}
+        pullRequests={new Map([[run.id, { id: "5eed003a-0000-4000-8000-000000000512", number: 512 }]])}
+      />,
+    );
+
+    expect(within(table()).queryAllByRole("link")).toHaveLength(0);
+    expect(rows()[0]!.querySelector(".dash-closed__pair")?.textContent).toBe("#474");
   });
 });

@@ -2,7 +2,9 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Membership } from "@/app/api/membership";
+import { prPath } from "@/app/paths";
 import { ABORT_LABEL, CONTROLS_LABEL, PAUSE_LABEL, TAKEOVER_LABEL } from "@/app/runs/controls";
+import { VERIFICATION_LINK } from "@/app/runs/view";
 import { navRegistry } from "@/app/shell/nav-registry";
 
 import { membership, sessionUser } from "../helpers/login";
@@ -16,12 +18,16 @@ import { SEEDED_RUN_ID, runConsole } from "../helpers/runs";
 
 const requireWorkspace = vi.fn();
 const readRun = vi.fn();
+const runPullRequests = vi.fn();
 
 /** What `notFound()` throws, so the case can see it was called. */
 class NotFound extends Error {}
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/runs/data", () => ({ readRun: (id: string) => readRun(id) }));
+vi.mock("@/app/prs/data", () => ({
+  runPullRequests: (runIds: readonly string[]) => runPullRequests(runIds),
+}));
 vi.mock("@/app/runs/control-actions", () => ({ submitRunControl: vi.fn() }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -52,6 +58,7 @@ beforeEach(() => {
     membership: membership(),
   });
   readRun.mockReset().mockResolvedValue({ state: "found", value: runConsole() });
+  runPullRequests.mockReset().mockResolvedValue(new Map());
 });
 
 describe("the run console route", () => {
@@ -89,6 +96,35 @@ describe("the run console route", () => {
 
     await open({ from: "nowhere" });
     expect(navRegistry().origin).toBe("dashboard");
+  });
+});
+
+describe("the PR verification link (#363)", () => {
+  /** The run's pull request. */
+  const PULL_REQUEST = { id: "5eed003a-0000-4000-8000-000000000514", number: 514 };
+
+  it("looks the run's pull request up beside the run, and links its page, keeping the origin", async () => {
+    runPullRequests.mockResolvedValue(new Map([[SEEDED_RUN_ID, PULL_REQUEST]]));
+    await open({ from: "build-farm" });
+
+    expect(runPullRequests).toHaveBeenCalledExactlyOnceWith([SEEDED_RUN_ID]);
+    expect(screen.getByRole("link", { name: VERIFICATION_LINK })).toHaveAttribute(
+      "href",
+      prPath(PULL_REQUEST.id, "build-farm"),
+    );
+  });
+
+  it("draws no link for a run whose pull request is not mirrored", async () => {
+    await open();
+
+    expect(screen.queryByRole("link", { name: VERIFICATION_LINK })).toBeNull();
+  });
+
+  it("looks nothing up when the gate refuses", async () => {
+    requireWorkspace.mockRejectedValue(new Error("NEXT_REDIRECT"));
+
+    await expect(open()).rejects.toThrow("NEXT_REDIRECT");
+    expect(runPullRequests).not.toHaveBeenCalled();
   });
 });
 

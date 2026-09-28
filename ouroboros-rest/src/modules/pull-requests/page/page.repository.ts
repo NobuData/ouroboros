@@ -55,6 +55,8 @@ export interface PrListFilter {
   readonly states?: readonly PullRequestState[];
   /** Only PRs with (`true`) or without (`false`) an open approval slot; absent is both. */
   readonly reviewRequested?: boolean;
+  /** Only the PRs these runs opened; absent is every run. */
+  readonly runIds?: readonly string[];
 }
 
 /** The loop that opened a PR. */
@@ -431,6 +433,10 @@ export class PageRepository implements PageStore {
 
     if (filter.states !== undefined && filter.states.length > 0) {
       scoped = scoped.where("p.state", "in", [...filter.states]);
+    }
+
+    if (filter.runIds !== undefined && filter.runIds.length > 0) {
+      scoped = scoped.where("p.run_id", "in", [...filter.runIds]);
     }
 
     if (filter.reviewRequested !== undefined) {

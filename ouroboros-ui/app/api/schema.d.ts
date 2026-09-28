@@ -5827,6 +5827,12 @@ export interface paths {
          *     a human review nobody has answered yet (V065's open `pr_approvals` slot — mockup 16's inbox,
          *     #461, wraps the same record). `false` is the complement; absent is both.
          *
+         *     **`runId`** narrows to the PRs the named runs opened — `?runId=<uuid>,<uuid>`, or the
+         *     parameter repeated ([#363](https://github.com/NobuData/ouroboros/issues/363)). It is how a
+         *     surface that holds runs and not PRs — the run console, test results, the dashboard's rows —
+         *     finds the PR page. A run that opened no PR, or a run of another workspace, contributes no
+         *     row and is never a `404`.
+         *
          *     Every member may read it, a `viewer` included.
          */
         get: operations["listPullRequests"];
@@ -42984,6 +42990,8 @@ export interface operations {
                 state?: ("open" | "verifying" | "blocked" | "armed" | "merged" | "closed")[];
                 /** @description `true` — only PRs with an open approval slot. `false` — only PRs without one. */
                 reviewRequested?: boolean;
+                /** @description Narrow to the PRs these runs opened, comma-separated or repeated. */
+                runId?: string[];
                 /**
                  * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
                  *     million is a client's way of asking this service to hold a table in memory, and the
@@ -43083,7 +43091,8 @@ export interface operations {
             };
             /**
              * @description `validation_failed` — a `state` that is not a PR state, a `reviewRequested` that is not
-             *     `true` or `false`, or a `limit`/`offset` out of range.
+             *     `true` or `false`, a `runId` that is not a uuid or names more than 100 runs, or a
+             *     `limit`/`offset` out of range.
              */
             422: {
                 headers: {

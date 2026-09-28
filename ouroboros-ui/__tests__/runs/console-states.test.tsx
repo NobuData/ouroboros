@@ -3,6 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RunConsole, RunEventsPage } from "@/app/api/runs";
 import { clockTime } from "@/app/dashboard/view";
+import type { PullRequestRef } from "@/app/api/pull-requests";
+import { prPath } from "@/app/paths";
 import type { PollAnswer } from "@/app/poll";
 import type { RunPollOptions } from "@/app/runs/console-poll";
 import { CONTROLS_LABEL } from "@/app/runs/controls";
@@ -19,7 +21,12 @@ import {
 } from "@/app/runs/states";
 import { NO_ENTRIES, STEER_ENDED, STEER_READ_ONLY, STREAMING } from "@/app/runs/transcript";
 import type { TranscriptStreamOptions } from "@/app/runs/transcript-stream";
-import { SIMULATED_HEADLINE, STALE_HEADLINE, UNREAD_HEADLINE } from "@/app/runs/view";
+import {
+  SIMULATED_HEADLINE,
+  STALE_HEADLINE,
+  UNREAD_HEADLINE,
+  VERIFICATION_LINK,
+} from "@/app/runs/view";
 
 import {
   SEEDED_RUN_ID,
@@ -106,6 +113,7 @@ function draw(
     mayContribute?: boolean;
     poll?: RunPollOptions;
     initialError?: string | null;
+    pullRequest?: PullRequestRef | null;
   } = {},
 ) {
   return render(
@@ -118,6 +126,7 @@ function draw(
       mayControl={options.mayControl ?? true}
       origin={DASHBOARD_ORIGIN}
       poll={options.poll ?? QUIET}
+      pullRequest={options.pullRequest ?? null}
       transcript={STREAM}
     />,
   );
@@ -229,6 +238,27 @@ describe("a run that has ended", () => {
     expect(link).toHaveAttribute("href", "https://github.com/acme/helios-firmware/pull/512");
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  });
+
+  it("links an ended run to its PR verification page when its pull request is mirrored (#363)", async () => {
+    const pullRequest = { id: "5eed003a-0000-4000-8000-000000000512", number: 512 };
+
+    for (const status of ["merged", "failed", "canceled"] as const) {
+      const { unmount } = draw(ended(status), { pullRequest });
+      await settle();
+
+      const link = within(meta()).getByRole("link", { name: VERIFICATION_LINK });
+      expect(link).toHaveAttribute("href", prPath(pullRequest.id, DASHBOARD_ORIGIN.id));
+      expect(link).not.toHaveAttribute("target");
+      unmount();
+    }
+  });
+
+  it("links no verification page on the run's number alone (#363)", async () => {
+    draw(ended("merged"));
+    await settle();
+
+    expect(within(meta()).queryByRole("link", { name: VERIFICATION_LINK })).toBeNull();
   });
 
   it("offers no pull request for a run that failed or was canceled", async () => {

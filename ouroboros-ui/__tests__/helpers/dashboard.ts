@@ -535,6 +535,8 @@ export function readings(over: Partial<DashboardReadings> = {}): DashboardReadin
     aggregate: read(dashboardPayload()),
     readiness: healthReport(),
     engine: read(engineStatus()),
+    // The seed's closed runs name pull requests Ouroboros never mirrored, so none is known.
+    pullRequests: new Map(),
     ...over,
   };
 }

@@ -10,6 +10,7 @@ import {
   MODELS_PATH,
   PLANNING_PATH,
   PROVIDERS_PATH,
+  PRS_PATH,
   REGISTRY_PATH,
   RETURN_TO_PARAM,
   ROUTING_MATRIX_HASH,
@@ -20,6 +21,7 @@ import {
   SOURCES_PATH,
   WORKFLOWS_PATH,
   loginPath,
+  prPath,
   runPath,
   TESTS_ATTEMPT_PARAM,
   testsPath,
@@ -127,6 +129,13 @@ describe("the paths themselves", () => {
     expect(testsPath("5eed", { attempt: 3 })).toBe("/runs/5eed/tests?attempt=3");
     expect(testsPath("5eed", { from: "dashboard", attempt: 2 })).toBe("/runs/5eed/tests?from=dashboard&attempt=2");
     expect(testsPath("a/b?c", { from: "x&y=z" })).toBe("/runs/a%2Fb%3Fc/tests?from=x%26y%3Dz");
+  });
+
+  it("address one PR's verification page by its id, carrying where it was opened from (#363)", () => {
+    expect(PRS_PATH).toBe("/prs");
+    expect(prPath("5eed")).toBe("/prs/5eed");
+    expect(prPath("5eed", "build-farm")).toBe(`/prs/5eed?${RUN_ORIGIN_PARAM}=build-farm`);
+    expect(prPath("a/b?c", "x&y=z")).toBe("/prs/a%2Fb%3Fc?from=x%26y%3Dz");
   });
 
   it("give each Models surface a segment of its own", () => {

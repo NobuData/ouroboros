@@ -5,6 +5,7 @@ import {
   ApprovalDecisionDto,
   ListPullRequestsQuery,
   MAX_APPROVAL_NOTE_LENGTH,
+  MAX_LISTED_RUN_IDS,
   MAX_RETURNED_GATES,
   RequestReviewDto,
   ReturnToLoopDto,
@@ -54,6 +55,27 @@ describe("ListPullRequestsQuery", () => {
       "reviewRequested",
     ]);
     expect(queryBoolean(1)).toBe(1);
+  });
+
+  it("reads runId as a list of uuids, comma-separated or repeated (#363)", async () => {
+    const one = "5eed0009-0000-4000-8000-000000000482";
+    const two = "5eed0009-0000-4000-8000-000000000474";
+
+    expect(plainToInstance(ListPullRequestsQuery, { runId: one }).runId).toEqual([one]);
+    expect(plainToInstance(ListPullRequestsQuery, { runId: `${one},${two}` }).runId).toEqual([
+      one,
+      two,
+    ]);
+    expect(plainToInstance(ListPullRequestsQuery, { runId: [one, two] }).runId).toEqual([one, two]);
+    expect(plainToInstance(ListPullRequestsQuery, { runId: "" }).runId).toBeUndefined();
+    expect(await failing(ListPullRequestsQuery, { runId: `${one},${two}` })).toEqual([]);
+    expect(await failing(ListPullRequestsQuery, { runId: "482" })).toEqual(["runId"]);
+    expect(await failing(ListPullRequestsQuery, { runId: `${one},482` })).toEqual(["runId"]);
+    expect(
+      await failing(ListPullRequestsQuery, {
+        runId: Array.from({ length: MAX_LISTED_RUN_IDS + 1 }, () => one),
+      }),
+    ).toEqual(["runId"]);
   });
 
   it("keeps the page window's rules", async () => {

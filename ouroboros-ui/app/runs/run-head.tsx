@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 
 import { Chip, Eyebrow, Tag } from "@/app/ui";
@@ -16,7 +17,8 @@ import { NO_BRANCH, type RunHeadView } from "./view";
  * draws.
  *
  * A merged run adds a sixth: the pull request it opened (#314), which is what a reader wants from
- * the page once the run has landed.
+ * the page once the run has landed. A run whose pull request Ouroboros mirrors also links to its
+ * PR verification page (#363), where the gates and their evidence are.
  *
  * The run controls the mockup puts beside the head (*Pause loop*, *Take over in IDE*, *Abort
  * run*) are AQ.2's ([#310](https://github.com/NobuData/ouroboros/issues/310)): the screen
@@ -78,6 +80,11 @@ export function RunHead({
             >
               {view.pullRequest.label} ↗
             </a>
+          )}
+          {view.verification !== null && (
+            <Link className="run-head__pr" href={view.verification.href}>
+              {view.verification.label}
+            </Link>
           )}
         </div>
       </div>

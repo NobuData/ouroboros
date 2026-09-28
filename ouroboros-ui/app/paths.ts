@@ -269,6 +269,34 @@ export function testsPath(
 }
 
 /**
+ * The PR verification page ([#363](https://github.com/NobuData/ouroboros/issues/363)) — mockup 12.
+ *
+ * **A contextual surface with no sidebar entry of its own**, for {@link RUNS_PATH}'s reason: a PR
+ * is opened *from* somewhere — the run console, test results, a dashboard row — and the sidebar
+ * keeps that module lit. {@link prPath} carries where the reader came from in
+ * {@link RUN_ORIGIN_PARAM}.
+ */
+export const PRS_PATH = "/prs";
+
+/**
+ * The PR verification page for one PR — `/prs/5eed…?from=dashboard`.
+ *
+ * @param id The PR's id (a uuid) — what `GET /api/v1/pull-requests/{id}` is addressed by, never
+ *   the host's number, which two repositories of one workspace may share. Encoded anyway, for
+ *   {@link workflowPath}'s reason.
+ * @param from The sidebar entry id of the module linking here, so that entry stays active on the
+ *   page. Omitted, the page falls back to the dashboard.
+ * @returns The path.
+ */
+export function prPath(id: string, from?: string): string {
+  const path = `${PRS_PATH}/${encodeURIComponent(id)}`;
+
+  return from === undefined
+    ? path
+    : `${path}?${RUN_ORIGIN_PARAM}=${encodeURIComponent(from)}`;
+}
+
+/**
  * The routing matrix's heading, as an element id — where a **Used by** chip naming a route
  * goes ([#593](https://github.com/NobuData/ouroboros/issues/593)).
  *

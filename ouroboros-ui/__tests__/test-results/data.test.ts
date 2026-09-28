@@ -8,7 +8,8 @@ import { BUILD_2_ID, BUILD_3_ID, gate, timeline } from "../helpers/test-results"
 
 /**
  * The test-results page's first read (#335): the timeline decides found, missing or failed; the
- * tracker link and the selected attempt's gate ride along best-effort.
+ * tracker link, the selected attempt's gate and the run's pull request (#363) ride along
+ * best-effort.
  */
 
 vi.mock("server-only", () => ({}));
@@ -18,6 +19,9 @@ vi.mock("next/headers", () => ({
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
 const { readTests } = await import("@/app/test-results/data");
+
+/** The run's pull request. */
+const PULL_REQUEST = { id: "5eed003a-0000-4000-8000-000000000514", number: 514 };
 
 /**
  * Readers answering the seed.
@@ -30,6 +34,7 @@ function readers(over: Partial<TestsReaders> = {}): TestsReaders {
     timeline: vi.fn().mockResolvedValue(timeline()),
     repository: vi.fn().mockResolvedValue({ owner: "acme-robotics", name: "helios-firmware" }),
     gate: vi.fn((id: string) => Promise.resolve(gate({ testRunId: id }))),
+    pullRequest: vi.fn().mockResolvedValue(PULL_REQUEST),
     ...over,
   };
 }
@@ -44,9 +49,11 @@ describe("readTests", () => {
         timeline: timeline(),
         trackerUrl: "https://github.com/acme-robotics/helios-firmware/issues/482",
         gate: gate(),
+        pullRequest: PULL_REQUEST,
       },
     });
     expect(read.gate).toHaveBeenCalledExactlyOnceWith(BUILD_3_ID);
+    expect(read.pullRequest).toHaveBeenCalledExactlyOnceWith(SEEDED_RUN_ID);
   });
 
   it("reads the gate of the attempt the address names", async () => {
@@ -81,10 +88,29 @@ describe("readTests", () => {
     const reading = await readTests(
       SEEDED_RUN_ID,
       null,
-      readers({ repository: vi.fn().mockRejectedValue(refused), gate: vi.fn().mockRejectedValue(refused) }),
+      readers({
+        repository: vi.fn().mockRejectedValue(refused),
+        gate: vi.fn().mockRejectedValue(refused),
+        pullRequest: vi.fn().mockRejectedValue(refused),
+      }),
     );
 
-    expect(reading).toEqual({ state: "found", value: { timeline: timeline(), trackerUrl: null, gate: null } });
+    expect(reading).toEqual({
+      state: "found",
+      value: { timeline: timeline(), trackerUrl: null, gate: null, pullRequest: null },
+    });
+  });
+
+  it("names no pull request for a run that opened none (#363)", async () => {
+    const reading = await readTests(
+      SEEDED_RUN_ID,
+      null,
+      readers({ pullRequest: vi.fn().mockResolvedValue(null) }),
+    );
+
+    expect(reading).toEqual(
+      expect.objectContaining({ value: expect.objectContaining({ pullRequest: null }) }),
+    );
   });
 
   it("asks for no gate before any attempt has reported", async () => {

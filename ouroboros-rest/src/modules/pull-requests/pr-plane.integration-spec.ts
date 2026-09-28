@@ -755,6 +755,44 @@ describe("the PR plane, on the application's own services", () => {
       );
     });
 
+    it("finds the PR by its run for its own workspace, and nothing for another (#363)", async () => {
+      const listed = await as(
+        at.owner,
+        at,
+        "get",
+        `/api/v1/pull-requests?runId=${at.runId}`,
+      ).expect(200);
+      const elsewhereListed = await api
+        .as(stranger)("get", `/api/v1/pull-requests?runId=${at.runId}`)
+        .set(TENANT_HEADER, elsewhere.slug)
+        .expect(200);
+      const otherRun = "00000000-0000-4000-8000-000000000000";
+
+      expect((listed.body as { items: { id: string }[] }).items.map((row) => row.id)).toEqual([
+        at.prId,
+      ]);
+      expect((elsewhereListed.body as { items: unknown[] }).items).toEqual([]);
+      expect(
+        (
+          (await as(at.owner, at, "get", `/api/v1/pull-requests?runId=${otherRun}`).expect(200))
+            .body as { items: unknown[] }
+        ).items,
+      ).toEqual([]);
+      expect(
+        (
+          (
+            await as(
+              at.owner,
+              at,
+              "get",
+              `/api/v1/pull-requests?runId=${otherRun},${at.runId}`,
+            ).expect(200)
+          ).body as { items: { id: string }[] }
+        ).items.map((row) => row.id),
+      ).toEqual([at.prId]);
+      await as(at.owner, at, "get", "/api/v1/pull-requests?runId=482").expect(422);
+    });
+
     it("lists none of the PR to another workspace", async () => {
       const listed = await api
         .as(stranger)("get", "/api/v1/pull-requests")

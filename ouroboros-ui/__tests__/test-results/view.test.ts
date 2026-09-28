@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { Rerun } from "@/app/api/test-results";
+import { prPath } from "@/app/paths";
 import {
   GATE_CHECKING,
   NOT_REPORTED,
@@ -17,6 +18,7 @@ import {
   machineLine,
   passPill,
   passedDelta,
+  pullRequestLink,
   readinessReason,
   rerunOutcome,
   selectedAttempt,
@@ -75,7 +77,20 @@ describe("the head (mockup 11)", () => {
       pass: { label: "61/63 passed", tone: "warn", dot: undefined },
       ordinal: "build 3 of loop #1847",
       machine: "forge-01 + rig helios-rig-02 · 6m 12s",
+      pullRequest: null,
     });
+  });
+
+  it("links the run's pull request to its verification page, keeping the origin (#363)", () => {
+    const run = timeline();
+    const link = pullRequestLink({ id: "5eed003a-0000-4000-8000-000000000514", number: 514 }, "build-farm");
+
+    expect(link).toEqual({
+      label: "PR #514",
+      href: prPath("5eed003a-0000-4000-8000-000000000514", "build-farm"),
+    });
+    expect(testsHead(run, run.attempts[2]!, null, link).pullRequest).toBe(link);
+    expect(pullRequestLink(null, "build-farm")).toBeNull();
   });
 
   it("names the run alone before any attempt has reported", () => {

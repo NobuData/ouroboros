@@ -1,4 +1,7 @@
+import Link from "next/link";
+
 import type { Dashboard, RunStatus } from "@/app/api/dashboard";
+import type { PullRequestRef } from "@/app/api/pull-requests";
 import { ISSUES_PATH } from "@/app/paths";
 import {
   Button,
@@ -12,7 +15,7 @@ import {
   cx,
 } from "@/app/ui";
 
-import { type Completion, type Reading, recentCompletions } from "./view";
+import { type Completion, NO_PULL_REQUESTS, type Reading, recentCompletions } from "./view";
 
 /**
  * *Recently closed by the loop* ([#84](https://github.com/NobuData/ouroboros/issues/84)) —
@@ -47,13 +50,23 @@ import { type Completion, type Reading, recentCompletions } from "./view";
  * goes to {@link ISSUES_PATH} — the route the sidebar's **Issues** entry names — so the card and
  * the sidebar cannot disagree about where the backlog is.
  *
+ * **A row's `PR #512` links to its PR verification page**
+ * ([#363](https://github.com/NobuData/ouroboros/issues/363)) — when Ouroboros mirrors that pull
+ * request, and only then: the page's first read looks the rows' runs up, and a row whose pull
+ * request was never mirrored keeps its pair as text rather than linking a page that is not there.
+ *
  * @param props.aggregate The dashboard aggregate, or why it could not be read.
+ * @param props.pullRequests The pull requests Ouroboros mirrors, by run id. Absent, no row links.
  * @returns The card.
  */
 export function RecentlyClosedCard({
   aggregate,
-}: Readonly<{ aggregate: Reading<Dashboard> }>) {
-  const rows = aggregate.ok ? recentCompletions(aggregate.value.recentRuns) : [];
+  pullRequests = NO_PULL_REQUESTS,
+}: Readonly<{
+  aggregate: Reading<Dashboard>;
+  pullRequests?: ReadonlyMap<string, PullRequestRef>;
+}>) {
+  const rows = aggregate.ok ? recentCompletions(aggregate.value.recentRuns, pullRequests) : [];
 
   return (
     <Card as="section" fill className="dash-col--7" aria-labelledby={TITLE_ID}>
@@ -209,7 +222,20 @@ const COLUMNS: readonly Column<Completion>[] = [
     header: "Issue → PR",
     cell: (run) => (
       <span className="dash-closed__issue">
-        <span className="dash-closed__pair">{run.pair}</span>
+        <span className="dash-closed__pair">
+          {run.linked === null ? (
+            run.pair
+          ) : (
+            // The same characters as `run.pair`, with the pull request a link to its verification
+            // page (#363) — drawn only for a pull request Ouroboros mirrors.
+            <>
+              {run.linked.issue} {run.linked.arrow}{" "}
+              <Link className="dash-closed__pr" href={run.linked.href}>
+                {run.linked.pullRequest}
+              </Link>
+            </>
+          )}
+        </span>
         {/*
           A real space between the pair and the title, which the flex gap does not supply: a
           whitespace-only text node is not laid out as a flex item, so this changes nothing on

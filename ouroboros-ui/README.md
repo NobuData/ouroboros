@@ -263,6 +263,9 @@ ouroboros-ui/
 │   │   ├── test-results-read.ts # readTimelineForPoll() / readGateForPoll() — both, for their polls
 │   │   ├── runs/[id]/tests/route.ts # GET /api/runs/{id}/tests — the attempts timeline, on this origin
 │   │   ├── test-runs/[id]/rerun/route.ts # GET /api/test-runs/{id}/rerun — whether a runner could take a re-run
+│   │   ├── pull-requests.ts #   pullRequests.* — the PR page, forRuns() the by-run lookup, the two head actions · #363
+│   │   ├── pull-requests-read.ts # readPageForPoll() — the PR page, for its poll
+│   │   ├── prs/[id]/route.ts #  GET /api/prs/{id} — the PR page, on this origin
 │   │   ├── runs/[id]/events/route.ts # GET /api/runs/{id}/events?after= — the transcript's tail, on this origin
 │   │   ├── run-transcript.ts #  readRunTranscript() — AP.2's JSONL export, streamed through · #310
 │   │   ├── runs/[id]/controls/route.ts # GET /api/runs/{id}/controls — the chips' poll, on this origin
@@ -433,6 +436,17 @@ ouroboros-ui/
 │   │   ├── mark-route-slot.tsx # where Send failures back lands until #340 draws the card
 │   │   ├── tests-loading.tsx #  the first read in flight
 │   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip — two polls
+│   ├── prs/                 # mockup 12's PR verification: route, head and three actions · #363
+│   │   ├── view.ts          #   the head, the pill's hue, the red gates, the three actions by role and state
+│   │   ├── poll.ts          #   the reader and guard: the whole PR page
+│   │   ├── data.ts          #   readPr() — the first paint; runPullRequests() — which runs opened a PR
+│   │   ├── outcomes.ts · head-actions.ts # requestHumanReview() / returnToLoop() — the Server Actions
+│   │   ├── pr-head.tsx      #   the eyebrow, the headline linked to the host, the four-element meta row
+│   │   ├── pr-actions.tsx   #   Request human review / Return to loop / Merge when all gates green
+│   │   ├── return-dialog.tsx #  the danger dialog: which red gates the agent receives
+│   │   ├── merge-plan-slot.tsx # where Merge when all gates green lands until #369 draws the card
+│   │   ├── pr-loading.tsx · pr-missing.tsx # the first read in flight; a PR that does not exist
+│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, slot, dialog — one poll
 │   ├── workflows/           # the workflow studio's frame — mockup 04 · #147
 │   │   ├── view.ts          #   the trigger in words, the subline, the segments, the rail's items
 │   │   ├── states.ts        #   the five states, the head and the seat for each, the read-only note
@@ -3594,6 +3608,51 @@ Mark & Route itself is #340's; until then the page holds its slot, which names t
 Insights (mockup 15) is `soon`, so the flaky card's `quarantine watching (N)` is words with the
 sidebar's note, not a link to a page that does not exist.
 
+## PR verification
+
+`/prs/:id` ([#363](https://github.com/NobuData/ouroboros/issues/363)) is mockup 12's frame: the
+eyebrow (`PR Verification · PR #514 · Revision 2`), the headline linked to the PR on its host, the
+meta row (`loop #1847 · issue #482`, the aggregate pill, `head → base`, `+68 −15 · 3 files`) and the
+three head actions. A contextual surface like the run console: no sidebar entry, `?from=` keeps the
+originating module lit, and the breadcrumb leads back through the loop's run console. One poll on
+the I.8 cadence reads the whole page (`/api/prs/:id`).
+
+**`:id` is the PR's id, not the host's number** — two repositories of one workspace may both have a
+`#514`. The surfaces that link here hold runs, and a run's `prNumber` says neither that the page
+exists (it is set only at merge) nor that it does not (a number may name a PR that was never
+mirrored). So each surface looks its runs' PRs up on its server read — one request,
+`GET /api/v1/pull-requests?runId=a,b` (`runPullRequests()` in `app/prs/data.ts`), best-effort — and
+links only the PRs it found.
+
+| Links here | When |
+|------------|------|
+| Run console head | `PR verification`, for a run whose PR is mirrored |
+| Test results head | `PR #514`, for a run whose PR is mirrored |
+| Dashboard, *Recently closed* | the row's `PR #512`, for a row whose PR is mirrored — otherwise the pair stays text |
+
+The console and test results look up on their first read, so a PR opened while the page is open
+links after the next load. The dashboard looks up on every server render.
+
+**Both halves of the tag link.** The loop goes to its run console; the issue goes to the ticket's own
+URL from its canonical record, so a Jira or Linear ticket resolves as a GitHub one does. A URL that
+is not `http(s)` is drawn as text.
+
+**The pill is coloured by the PR's state**: `blocked` is err, `merged` is ok, `verifying` and `armed`
+are warn until every required gate is satisfied, `open` and `closed` take no hue.
+
+| Action | What it does | Off, with the reason printed, when | Drawn for |
+|--------|--------------|------------------------------------|-----------|
+| **Request human review** | opens the approval slot (#361) — human approval becomes required; the button then reads `review requested` | a review is waiting · sending · the PR is merged or closed · no revision | owner, admin, member |
+| **Return to loop** | opens a danger dialog listing the latest revision's red gates with their evidence; the selected gates become the steer (#361); the receipt links into the run console | no gate is red · no loop · the loop has finished · the PR is merged or closed · no revision | owner, admin, member |
+| **Merge when all gates green** | arms nothing: it moves focus to the Merge plan slot, where #369's card will state the terms | the PR is `open`, `blocked`, `armed`, `merged` or `closed` · no revision | owner, admin |
+
+**Roles decide what is drawn, never what is allowed.** A viewer is drawn no action and a member no
+arm affordance. The service refuses a viewer's head action (#361) on every press; it admits a
+member's arm only when the PR's pinned workflow auto-merges (#360), which this page does not draw.
+
+A return is sent with a replay key minted when the dialog opens, so a retry after a dropped
+connection answers the first correction round instead of queuing a second.
+
 ## Workflow Studio
 
 `/workflows` ([#147](https://github.com/NobuData/ouroboros/issues/147)) is
@@ -5047,6 +5106,7 @@ build farm [#256](https://github.com/NobuData/ouroboros/issues/256) ·
 the runners table [#257](https://github.com/NobuData/ouroboros/issues/257) ·
 workflow studio [#147](https://github.com/NobuData/ouroboros/issues/147) ·
 the React Flow canvas [#148](https://github.com/NobuData/ouroboros/issues/148) ·
+PR verification [#363](https://github.com/NobuData/ouroboros/issues/363) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
