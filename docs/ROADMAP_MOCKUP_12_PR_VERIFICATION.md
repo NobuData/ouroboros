@@ -445,7 +445,7 @@ seeds: PR#514 rev1(blocked: HIL 2.4%) → correction(attempt 4) → rev2(5/7, vo
 | AX.3 | #359 | 🟢 Done | ouroboros-rest: [AX.3] Criteria & evidence service | Claims CRUD, typed evidence resolution, waiver render + host annotation | mvp, pr, rest | N (after AW.3, AX.1) | Y | M | ouroboros-rest |
 | AX.4 | #360 | 🟢 Done | ouroboros-rest: [AX.4] Merge executor & host publishing | Armed intents, TOCTOU re-check, actions, evidence comments (V3/V9) | mvp, pr, rest | N (after AX.2, AW.4) | Y | L | ouroboros-rest |
 | AX.5 | #361 | 🟢 Done | ouroboros-rest: [AX.5] PR read APIs & head actions | Page payloads; return-to-loop + request-review compositions (V5) | mvp, pr, rest, runs | N (after AX.2, AP.4) | Y | M | ouroboros-rest |
-| AX.6 | #362 | 🟡 Open | ouroboros-rest: [AX.6] PR-plane integration tests | Sync, gate matrix, merge safety, publishing idempotency, isolation | mvp, pr, rest, ci | N (after AX.3–AX.5) | Y | M | ouroboros-rest |
+| AX.6 | #362 ✅ | 🟢 Done | ouroboros-rest: [AX.6] PR-plane integration tests | Sync, gate matrix, merge safety, publishing idempotency, isolation | mvp, pr, rest, ci | N (after AX.3–AX.5) | Y | M | ouroboros-rest |
 
 ### Issue AX.1 — ouroboros-rest: [AX.1] SPI PR capability & GitHub implementation
 
@@ -622,7 +622,29 @@ POST /prs/514/request-review ─▶ human_approval: required · needs-you
 
 ### Issue AX.6 — ouroboros-rest: [AX.6] PR-plane integration tests
 
-> **GitHub issue:** #362 · **Status:** 🟡 Open · **Parent epic:** #349
+> **GitHub issue:** #362 · **Status:** 🟢 Done · **Parent epic:** #349
+> **Delivered as `ouroboros-rest/src/modules/pull-requests/pr-plane.integration-spec.ts`**, with two
+> sync cases and a recorded-GitHub comment case beside it. Decided on #362:
+>
+> 1. **The application's own services, not hand-built ones.** The harness replaces one provider —
+>    the ticket-source registry — with the in-memory git host, so the routes, merge executor, gate
+>    engine and head actions all reach it, and each case reads the host's ledger.
+> 2. **The recorded GitHub half stays in `ticket-sources/providers/`**: `.dependency-cruiser.cjs`
+>    keeps the PR plane's suites on the fake. There, three publishes under two keys are two POSTs
+>    and four PATCHes.
+> 3. **Five TOCTOU paths, not four**: a head move is covered as a recorded revision
+>    (`head_moved`) and as a host-only push (`host_head_moved`). A control case merges the same
+>    scene, which shows the refusals come from the re-check.
+> 4. **The gate matrix runs at the aggregate**: 7 gates × 6 verdicts through V056's
+>    `pr_gate_aggregate` and the engine's `aggregate`, which must agree. The per-provider matrix
+>    stays in the unit suite.
+> 5. **Isolation is enumerated from the route table**: all 19 PR-scoped routes return `404`
+>    to another workspace, and the list shows it nothing.
+> 6. **Mutation checks demonstrated**: skipping the re-check's `gate_red` branch turns "disarms,
+>    never merges, when a gate flips red…" red; dropping the comment marker turns both publish
+>    cases red, plus both recorded-GitHub ones; a sync that stops notifying the engine turns
+>    the new-snapshot case red.
+> 7. **Added CI wall-clock ≈ 8 s** (38 + 2 + 1 integration cases).
 
 - **Problem Statement:** Merge safety, gate re-evaluation, and host
   publishing are the highest-stakes logic in the product.

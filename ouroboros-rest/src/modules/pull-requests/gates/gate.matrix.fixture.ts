@@ -189,7 +189,7 @@ const FAILING_ATTEMPT: AttemptFact = {
 const OVERSHOOT_FAIL: HilFact = { ...HIL[0], value: "2.4", verdict: "fail" };
 
 /** A new source file with no SPDX header. */
-const HEADERLESS =
+export const HEADERLESS =
   "--- drivers/can/isr_fastpath.c\n@@ -0,0 +1,2 @@\n+#include <zephyr/kernel.h>\n+void isr(void) {}\n";
 
 /** Every cell, gate by gate. */
