@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/app/api/errors";
-import { UNREACHABLE_GATE, UNREACHABLE_TIMELINE } from "@/app/test-results/poll";
+import { UNREACHABLE_GATE, UNREACHABLE_PAGE, UNREACHABLE_TIMELINE } from "@/app/test-results/poll";
 
 import { SEEDED_RUN_ID } from "../helpers/runs";
-import { BUILD_3_ID, gate, timeline } from "../helpers/test-results";
+import { BUILD_3_ID, gate, page, timeline } from "../helpers/test-results";
 
 /**
  * The test-results page's two reads, for its polls (#335): the translation is `poll-read.ts`'s,
@@ -18,7 +18,9 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { TEST_RUN_ID_INVALID, readGateForPoll, readTimelineForPoll } = await import("@/app/api/test-results-read");
+const { TEST_RUN_ID_INVALID, readGateForPoll, readPageForPoll, readTimelineForPoll } = await import(
+  "@/app/api/test-results-read"
+);
 
 describe("readTimelineForPoll", () => {
   it("hands the read the run and a deadline, and answers fresh", async () => {
@@ -70,6 +72,39 @@ describe("readGateForPoll", () => {
     expect(await readGateForPoll(BUILD_3_ID, vi.fn().mockRejectedValue(new TypeError("fetch failed")))).toEqual({
       state: "failed",
       reason: UNREACHABLE_GATE,
+      pollAfterSeconds: null,
+    });
+  });
+});
+
+describe("readPageForPoll (#337)", () => {
+  it("reads the page of the attempt the id names, with a deadline", async () => {
+    const read = vi.fn().mockResolvedValue(page());
+
+    expect(await readPageForPoll(BUILD_3_ID, read)).toEqual(expect.objectContaining({ state: "fresh", payload: page() }));
+    expect(read.mock.calls[0]![0]).toBe(BUILD_3_ID);
+    expect(read.mock.calls[0]![1]).toBeInstanceOf(AbortSignal);
+  });
+
+  it("refuses an id that is not a uuid without calling out", async () => {
+    const read = vi.fn();
+
+    for (const id of ["..", "not-an-id", `${BUILD_3_ID}/rerun`]) {
+      expect(await readPageForPoll(id, read)).toEqual({ state: "failed", reason: TEST_RUN_ID_INVALID, pollAfterSeconds: null });
+    }
+    expect(read).not.toHaveBeenCalled();
+  });
+
+  it("says the service's refusal, reads a 401 as gone, and a dropped read in its own words", async () => {
+    expect(
+      await readPageForPoll(BUILD_3_ID, vi.fn().mockRejectedValue(new ApiError(404, "test_run_not_found", "No such test run."))),
+    ).toEqual({ state: "failed", reason: "No such test run.", pollAfterSeconds: null });
+    expect(
+      await readPageForPoll(BUILD_3_ID, vi.fn().mockRejectedValue(new ApiError(401, "unauthenticated", "Sign in."))),
+    ).toEqual({ state: "gone" });
+    expect(await readPageForPoll(BUILD_3_ID, vi.fn().mockRejectedValue(new TypeError("fetch failed")))).toEqual({
+      state: "failed",
+      reason: UNREACHABLE_PAGE,
       pollAfterSeconds: null,
     });
   });

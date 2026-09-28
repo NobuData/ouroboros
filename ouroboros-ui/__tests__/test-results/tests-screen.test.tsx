@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { RerunAvailability, TestRunTimeline } from "@/app/api/test-results";
+import type { RerunAvailability, TestRunPage, TestRunTimeline } from "@/app/api/test-results";
 import type { CommitSource } from "@/app/runs/cards";
 import { BUILD_FARM_PATH, runPath } from "@/app/paths";
 import type { PollAnswer } from "@/app/poll";
@@ -85,6 +85,7 @@ function draw(
     mayContribute?: boolean;
     timelinePoll?: TestsPollOptions<TestRunTimeline>;
     gatePoll?: TestsPollOptions<RerunAvailability>;
+    pagePoll?: TestsPollOptions<TestRunPage>;
     send?: RerunSender;
   } = {},
 ) {
@@ -98,6 +99,7 @@ function draw(
       initialGate={options.initialGate === undefined ? gate() : options.initialGate}
       mayContribute={options.mayContribute ?? true}
       origin={options.origin ?? DASHBOARD_ORIGIN}
+      pagePoll={options.pagePoll ?? quiet()}
       runId={SEEDED_RUN_ID}
       send={options.send}
       timelinePoll={options.timelinePoll ?? quiet()}

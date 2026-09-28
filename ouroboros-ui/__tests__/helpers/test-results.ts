@@ -1,8 +1,11 @@
 import type {
   RerunAvailability,
   TestAttempt,
+  TestCaseResult,
+  TestRunPage,
   TestRunTimeline,
   TestStrip,
+  TestSuiteResult,
 } from "@/app/api/test-results";
 
 import { SEEDED_RUN_ID } from "./runs";
@@ -185,6 +188,137 @@ export function gate(over: Partial<RerunAvailability> = {}): RerunAvailability {
     pool: "hil",
     failedCases: 1,
     fullCases: 63,
+    ...over,
+  };
+}
+
+/** The id of `telemetry integration` in Build 3. */
+export const TELEMETRY_SUITE_ID = "5eed0032-0000-4000-8000-000000048302";
+
+/** The id of `PHYSICAL · HIL rig` in Build 3. */
+export const HIL_SUITE_ID = "5eed0032-0000-4000-8000-000000048305";
+
+/**
+ * A case.
+ *
+ * @param over What to change.
+ * @returns A case that passed first time in 412 ms, changed.
+ */
+export function testCase(over: Partial<TestCaseResult> = {}): TestCaseResult {
+  return {
+    id: "5eed0035-0000-4000-8000-000000000100",
+    caseKey: "a".repeat(64),
+    name: "case_01",
+    classname: null,
+    status: "passed",
+    retries: 0,
+    retryOutcomes: ["passed"],
+    durationMs: 412,
+    hasFailure: false,
+    flake: null,
+    ...over,
+  };
+}
+
+/**
+ * A suite.
+ *
+ * @param over What to change.
+ * @returns `unit · drivers` on `native_sim`, 24/24 with no case listed, changed.
+ */
+export function suite(over: Partial<TestSuiteResult> = {}): TestSuiteResult {
+  return {
+    id: "5eed0032-0000-4000-8000-000000048301",
+    name: "unit · drivers",
+    platform: "native_sim",
+    kind: "sim",
+    resultsFormat: "junit",
+    rig: null,
+    bench: null,
+    counts: { total: 24, passed: 24, failed: 0, flaky: 0, skipped: 0 },
+    cases: [],
+    ...over,
+  };
+}
+
+/**
+ * Build 3's five suites, as mockup 11 draws them (#337): the flaky case in `telemetry
+ * integration` (`failed, failed, passed` — `retry 2/3`) and the overshoot failure on the rig.
+ *
+ * @returns The suites, in the mockup's order.
+ */
+export function seededSuites(): TestSuiteResult[] {
+  return [
+    suite(),
+    suite({
+      id: TELEMETRY_SUITE_ID,
+      name: "telemetry integration",
+      platform: "qemu_cortex_m3",
+      counts: { total: 19, passed: 18, failed: 0, flaky: 1, skipped: 0 },
+      cases: [
+        testCase({ id: "5eed0035-0000-4000-8000-000000000201", name: "can_frame_order" }),
+        testCase({
+          id: FLAKY_CASE.caseId,
+          name: FLAKY_CASE.name,
+          status: "flaky",
+          retries: 2,
+          retryOutcomes: ["failed", "failed", "passed"],
+          durationMs: 3100,
+          hasFailure: true,
+        }),
+      ],
+    }),
+    suite({
+      id: "5eed0032-0000-4000-8000-000000048303",
+      name: "motor control",
+      platform: "qemu_cortex_m3",
+      counts: { total: 12, passed: 12, failed: 0, flaky: 0, skipped: 0 },
+    }),
+    suite({
+      id: "5eed0032-0000-4000-8000-000000048304",
+      name: "OTA update",
+      counts: { total: 6, passed: 6, failed: 0, flaky: 0, skipped: 0 },
+    }),
+    suite({
+      id: HIL_SUITE_ID,
+      name: "PHYSICAL · HIL rig",
+      platform: "rig:helios-rig-02",
+      kind: "physical",
+      resultsFormat: "hil",
+      rig: "helios-rig-02",
+      bench: "CAN bus + motor + power-cycler",
+      counts: { total: 2, passed: 1, failed: 1, flaky: 0, skipped: 0 },
+      cases: [
+        testCase({
+          id: OVERSHOOT_CASE.caseId,
+          name: OVERSHOOT_CASE.name,
+          status: "failed",
+          retryOutcomes: ["failed"],
+          durationMs: 61_000,
+          hasFailure: true,
+        }),
+        testCase({ id: "5eed0035-0000-4000-8000-000000000502", name: "power_loss_recovery", durationMs: null }),
+      ],
+    }),
+  ];
+}
+
+/**
+ * An attempt's page.
+ *
+ * @param over What to change.
+ * @returns Build 3's page, with the seeded suites.
+ */
+export function page(over: Partial<TestRunPage> = {}): TestRunPage {
+  return {
+    runId: SEEDED_RUN_ID,
+    testRun: attempt(3, { selection: "failed" }),
+    parseWarnings: [],
+    suites: seededSuites(),
+    physical: [],
+    classifications: [],
+    artifacts: [],
+    coverage: null,
     ...over,
   };
 }
