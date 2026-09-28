@@ -683,6 +683,90 @@ export function files(over: Partial<PrFiles> = {}): PrFiles {
   };
 }
 
+// --- the changed files card (#367) ---------------------------------------------------------
+
+/** The file the diff-vs-plan fixture flags. */
+export const ISR_PATH = "drivers/can/isr_fastpath.c";
+
+/** The test the mockup's change adds. */
+export const FRAME_ORDER_PATH = "tests/telemetry/test_frame_order.c";
+
+/** Mockup 12's diff sample, as the dev seed stores it — a header naming the path and the line. */
+export const MOCKUP_EXCERPT = [
+  `@@ ${TELEMETRY_PATH}:41 @@ static void can_isr_rx(const struct device *dev)`,
+  "     struct tlm_frame *slot = tlm_slot_claim();",
+  "-    slot->ts = k_cycle_get_32();",
+  "-    k_fifo_put(&telemetry_fifo, slot);",
+  "+    slot->ts  = k_cycle_get_32();",
+  "+    slot->seq = (uint16_t)atomic_inc(&tlm_seq);   /* ISR-ordered */",
+  "+    k_msgq_put(&telemetry_msgq, slot, K_NO_WAIT);",
+  "",
+].join("\n");
+
+/** A sample in the host sync's shape (`diffExcerptOf`, #352) — two of the three files. */
+export const HOST_EXCERPT = [
+  `--- ${TELEMETRY_PATH}`,
+  "@@ -41,3 +41,4 @@ static void can_isr_rx(const struct device *dev)",
+  "     struct tlm_frame *slot = tlm_slot_claim();",
+  "-    k_fifo_put(&telemetry_fifo, slot);",
+  "+    slot->seq = (uint16_t)atomic_inc(&tlm_seq);",
+  "+    k_msgq_put(&telemetry_msgq, slot, K_NO_WAIT);",
+  " }",
+  `--- ${ISR_PATH}`,
+  "@@ -7 +7,2 @@",
+  "-#define FAST 0",
+  "+#define FAST 1",
+  "+#define ORDERED 1",
+].join("\n");
+
+/**
+ * Mockup 12's Changed files card — `+68 −15`, its three rows and its excerpt.
+ *
+ * @param over What to change.
+ * @returns The snapshot, changed.
+ */
+export function mockupFiles(over: Partial<PrFiles> = {}): PrFiles {
+  return files({
+    rows: [
+      { path: TELEMETRY_PATH, additions: 38, deletions: 12 },
+      { path: ISR_PATH, additions: 9, deletions: 3 },
+      { path: FRAME_ORDER_PATH, additions: 21, deletions: 0 },
+    ],
+    diffExcerpt: MOCKUP_EXCERPT,
+    ...over,
+  });
+}
+
+/**
+ * The page with mockup 12's changed files (#367).
+ *
+ * @param over What else to change.
+ * @returns The page.
+ */
+export function filesPage(over: Parameters<typeof prPage>[0] = {}): PullRequestPage {
+  return matrixPage({ files: mockupFiles(), ...over });
+}
+
+/**
+ * The page with diff-vs-plan red on the latest revision (#358), naming what it flags.
+ *
+ * @param evidence The gate's line.
+ * @param over What else to change.
+ * @returns The page.
+ */
+export function outOfScopePage(
+  evidence: string | null = `1 out-of-scope edit: ${ISR_PATH}`,
+  over: Parameters<typeof prPage>[0] = {},
+): PullRequestPage {
+  const rows = gateRows({ diff_vs_plan: ["red", evidence] });
+
+  return filesPage({
+    revisions: [revisionOne(), { ...revisionTwo(), gates: { ...revisionTwo().gates, rows } }],
+    gates: { revisionId: REV_2_ID, aggregate: null, rows },
+    ...over,
+  });
+}
+
 /**
  * The page with mockup 12's matrix (#366): the revision cycle, the five claims and the files
  * snapshot.

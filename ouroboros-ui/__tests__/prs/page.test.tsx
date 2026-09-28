@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ADD_CLAIM_LABEL, CRITERIA_TITLE, WAIVE_LABEL } from "@/app/prs/criteria";
-import { FILES_TITLE } from "@/app/prs/files-slot";
+import { FILES_TITLE } from "@/app/prs/files";
 import { PR_MISSING_TITLE } from "@/app/prs/pr-missing";
 import { GATES_TITLE } from "@/app/prs/gates";
 import { ACTIONS_LABEL, MERGE_LABEL, RETURN_LABEL, REVIEW_LABEL } from "@/app/prs/view";

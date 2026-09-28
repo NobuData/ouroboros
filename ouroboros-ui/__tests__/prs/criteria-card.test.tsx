@@ -50,13 +50,11 @@ import {
   noOptions,
 } from "@/app/prs/evidence-options";
 import {
-  FILES_PENDING_CARD,
   FILES_TITLE,
   FULL_DIFF_LINK,
   HUNK_NOT_IN_SNAPSHOT,
-  NO_HUNK_CITED,
   citedLine,
-} from "@/app/prs/files-slot";
+} from "@/app/prs/files";
 import type { PrPollOptions } from "@/app/prs/poll";
 import { type CriteriaSenders, PrScreen } from "@/app/prs/pr-screen";
 import {
@@ -213,7 +211,7 @@ function card(): HTMLElement {
   return screen.getByRole("region", { name: CRITERIA_TITLE });
 }
 
-/** The changed files slot. */
+/** The changed files card. */
 function slot(): HTMLElement {
   return screen.getByRole("region", { name: FILES_TITLE });
 }
@@ -377,10 +375,10 @@ describe("the evidence links", () => {
     expect(hunk).toHaveClass("prv-crit__ref--hunk");
   });
 
-  it("bring the reader to the changed files at the range: the slot, focus and the address", () => {
+  it("bring the reader to the changed files at the range: the card, focus and the address", () => {
     draw();
 
-    expect(slot()).toHaveTextContent(NO_HUNK_CITED);
+    expect(slot()).not.toHaveTextContent("Cited:");
 
     fireEvent.click(within(card()).getByRole("link", { name: "hunk telemetry_buf.c:41–66" }));
 
@@ -388,7 +386,6 @@ describe("the evidence links", () => {
     expect(slot()).toHaveTextContent(
       citedLine({ path: TELEMETRY_PATH, lineStart: 41, lineEnd: 66 }),
     );
-    expect(slot()).toHaveTextContent(FILES_PENDING_CARD);
     expect(slot()).not.toHaveTextContent(HUNK_NOT_IN_SNAPSHOT);
     expect(slot()).toHaveFocus();
     expect(Element.prototype.scrollIntoView).toHaveBeenCalled();
@@ -415,7 +412,7 @@ describe("the evidence links", () => {
     document.removeEventListener("click", observe);
 
     expect(claimed).toBe(false);
-    expect(slot()).toHaveTextContent(NO_HUNK_CITED);
+    expect(slot()).not.toHaveTextContent("Cited:");
     expect(window.location.search).toBe("?from=dashboard");
   });
 
@@ -431,7 +428,7 @@ describe("the evidence links", () => {
     expect(slot()).toHaveTextContent(HUNK_NOT_IN_SNAPSHOT);
   });
 
-  it("link the whole diff on the host from the slot", () => {
+  it("link the whole diff on the host from the card", () => {
     draw();
 
     const link = within(slot()).getByRole("link", { name: new RegExp(FULL_DIFF_LINK) });

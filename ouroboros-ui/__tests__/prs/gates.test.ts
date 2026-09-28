@@ -14,12 +14,15 @@ import {
   approvalOffer,
   approvalOutcome,
   declineTitle,
+  flaggedLink,
   gateLink,
   gateRowView,
   gatesCard,
   gatesPill,
   rowReview,
 } from "@/app/prs/gates";
+import { FILES_ID } from "@/app/prs/criteria";
+import { FLAGGED_LINK } from "@/app/prs/files";
 import { gatesScope } from "@/app/prs/strip";
 
 import {
@@ -30,6 +33,7 @@ import {
   TESTS_RED,
   gateRow,
   gateRows,
+  outOfScopePage,
   review,
   revisionOne,
   revisionTwo,
@@ -313,6 +317,34 @@ describe("where the evidence leads", () => {
     expect(gateLink(citing("test_suite", "test_run", ATTEMPT_4_ID), noAttempt, head, "x")).toBeNull();
     expect(gateLink(citing("physical_hil", "hil_measurement"), noAttempt, head, "x")).toBeNull();
     expect(gateLink(citing("test_suite", "test_run", ATTEMPT_3_ID), scope, head, "x")).toBeNull();
+  });
+});
+
+describe("where a red diff-vs-plan leads (#367)", () => {
+  const page = outOfScopePage();
+  const red = gateRow("diff_vs_plan", "red");
+
+  it("leads to the page's changed files", () => {
+    expect(FLAGGED_LINK).toEqual({ label: "changed files →", href: `#${FILES_ID}` });
+    expect(flaggedLink(red, gatesScope(page, null)!, page)).toBe(FLAGGED_LINK);
+    expect(rowOf(page, "diff_vs_plan").flagged).toBe(FLAGGED_LINK);
+    expect(rowOf(page, "diff_vs_plan").link).toBeNull();
+  });
+
+  it("leads nowhere for another verdict or another gate", () => {
+    const scope = gatesScope(page, null)!;
+
+    for (const verdict of ["green", "pending", "waived", "not_required", "unavailable"] as const) {
+      expect(flaggedLink(gateRow("diff_vs_plan", verdict), scope, page), verdict).toBeNull();
+    }
+
+    expect(flaggedLink(gateRow("build", "red"), scope, page)).toBeNull();
+    expect(rowOf(page, "build").flagged).toBeNull();
+  });
+
+  it("leads nowhere from a revision whose files are not the ones on the page", () => {
+    expect(flaggedLink(red, gatesScope(page, 1)!, page)).toBeNull();
+    expect(flaggedLink(red, gatesScope(page, null)!, { ...page, files: null })).toBeNull();
   });
 });
 

@@ -41,7 +41,8 @@ import { CriteriaCard } from "./criteria-card";
 import { DeclineDialog } from "./decline-dialog";
 import { EvidenceDialog } from "./evidence-dialog";
 import { hunkPaths } from "./evidence-options";
-import { FilesSlot } from "./files-slot";
+import { filesCard } from "./files";
+import { type FilesArrival, FilesCard } from "./files-card";
 import { approvalOutcome, gatesCard } from "./gates";
 import { GatesCard } from "./gates-card";
 import { decideApproval, requestHumanReview, returnToLoop } from "./head-actions";
@@ -211,7 +212,11 @@ export interface PrScreenProps {
  * claims are about the PR, not a revision, so the strip's scope does not move it. Every change —
  * a claim added, evidence attached, a claim verified or waived — is drawn from its answer and
  * stands until a read made after it has caught up. A hunk reference brings the reader to the
- * Changed files slot and moves focus there, and the address follows (`?hunk=…`).
+ * Changed files card and moves focus there, and the address follows (`?hunk=…`).
+ *
+ * **The changed files are the latest revision's** ([#367](https://github.com/NobuData/ouroboros/issues/367)):
+ * the rows with their meters, and the bounded diff excerpt, labelled as one. A hunk reference
+ * scrolls the excerpt to its range, and a red diff-vs-plan gate links to the rows it flags.
  *
  * @param props See {@link PrScreenProps}.
  * @returns The screen.
@@ -266,8 +271,9 @@ export function PrScreen({
   const [attachingTo, setAttachingTo] = useState<string | null>(null);
   const [waiving, setWaiving] = useState<string | null>(null);
   const [hunk, setHunk] = useState<Hunk | null>(initialHunk);
-  const [hunkRequests, setHunkRequests] = useState(0);
-  const filesSlot = useRef<HTMLElement>(null);
+  const [arrival, setArrival] = useState<FilesArrival | null>(
+    initialHunk === null ? null : { kind: "hunk", seq: 0 },
+  );
 
   // The address names a revision this PR does not have. Dropped during render, so the gates of
   // the latest revision are never drawn under another revision's name.
@@ -287,16 +293,6 @@ export function PrScreen({
 
     window.history.replaceState(window.history.state, "", `${pathname}${next}${hash}`);
   }, [pageRead, scoped, hunk]);
-
-  // After a hunk reference was followed and the slot has drawn it: bring the changed files into
-  // the pane's view and put focus on them, for the merge plan slot's reason.
-  useEffect(() => {
-    if (hunkRequests === 0) return;
-
-    const region = filesSlot.current;
-    region?.scrollIntoView?.({ block: "start" });
-    region?.focus({ preventScroll: true });
-  }, [hunkRequests]);
 
   // After *Merge when all gates green* has handed off and the slot has drawn it: bring the slot
   // into the pane's view and put focus on it, so a keyboard or screen-reader user lands where a
@@ -512,7 +508,16 @@ export function PrScreen({
    */
   function followHunk(cited: Hunk): void {
     setHunk((current) => (sameHunk(current, cited) ? current : cited));
-    setHunkRequests((count) => count + 1);
+    arrive("hunk");
+  }
+
+  /**
+   * Bring the reader to the Changed files card — the card scrolls to what was followed.
+   *
+   * @param kind A hunk reference, or the gates card's link to the flagged files.
+   */
+  function arrive(kind: FilesArrival["kind"]): void {
+    setArrival((current) => ({ kind, seq: (current?.seq ?? 0) + 1 }));
   }
 
   /** Hand off to the Merge plan slot, and take the reader there. */
@@ -605,6 +610,7 @@ export function PrScreen({
         <GatesCard
           onApprove={() => void answerApproval({ decision: "approve" })}
           onDecline={() => setDeclining(true)}
+          onFlagged={() => arrive("flagged")}
           onFollowLatest={() => setScoped(null)}
           onRequestReview={() => void requestReview()}
           outcome={gateOutcome}
@@ -627,7 +633,7 @@ export function PrScreen({
         />
       )}
 
-      {page !== null && <FilesSlot files={page.files} hunk={hunk} ref={filesSlot} />}
+      {page !== null && <FilesCard arrival={arrival} view={filesCard(page, hunk)} />}
 
       {page !== null && actions !== null && actions.merge !== null && (
         <MergePlanSlot

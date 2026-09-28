@@ -461,7 +461,9 @@ ouroboros-ui/
 │   │   ├── evidence-target.ts # a cited test or measurement, resolved to its attempt when the link is followed
 │   │   ├── text-dialog.tsx · claim-dialog.tsx · waive-dialog.tsx # one required text: a claim, a waiver's reason
 │   │   ├── hunk.ts          #   a cited hunk and its ?hunk= address
-│   │   ├── files-slot.tsx   #   where a hunk reference lands until #367 draws the card
+│   │   ├── diff.ts          #   the stored diff sample, read into files, hunks and lines · #367
+│   │   ├── files.ts         #   the Changed files card: meters scaled against the set, the excerpt's honesty, out-of-scope rows
+│   │   ├── files-card.tsx   #   the file rows, the excerpt file by file, scrolling to what was followed
 │   │   ├── poll.ts          #   the reader and guard: the whole PR page
 │   │   ├── data.ts          #   readPr() — the first paint; runPullRequests() — which runs opened a PR
 │   │   ├── outcomes.ts · head-actions.ts # requestHumanReview() / returnToLoop() / decideApproval() — the Server Actions
@@ -470,7 +472,7 @@ ouroboros-ui/
 │   │   ├── return-dialog.tsx #  the danger dialog: which red gates the agent receives
 │   │   ├── merge-plan-slot.tsx # where Merge when all gates green lands until #369 draws the card
 │   │   ├── pr-loading.tsx · pr-missing.tsx # the first read in flight; a PR that does not exist
-│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates card, criteria matrix, slots, dialogs — one poll
+│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates card, criteria matrix, changed files, slots, dialogs — one poll
 │   ├── workflows/           # the workflow studio's frame — mockup 04 · #147
 │   │   ├── view.ts          #   the trigger in words, the subline, the segments, the rail's items
 │   │   ├── states.ts        #   the five states, the head and the seat for each, the read-only note
@@ -3886,7 +3888,9 @@ press.
 
 **The waiver popover names no author.** The payload carries no waiver on a gate's row, so the
 popover shows the recorded line, which holds the reason, and says that no author is recorded.
-Out-of-scope highlighting for diff-vs-plan arrives with the changed-files card
+
+**A red diff-vs-plan row links to the changed files it flags** (`changed files →`, `#files`),
+while the card shows the latest revision — the one the Changed files card draws
 ([#367](https://github.com/NobuData/ouroboros/issues/367)).
 
 The rows scroll sideways inside their own wrapper, so a long evidence line never moves the pane.
@@ -3938,13 +3942,49 @@ reference again before storing it.
 Every change is drawn from its answer, before the next poll, and stands until a read made after it
 has caught up.
 
-**A hunk reference lands on the Changed files slot** (`#files`) until the Changed files card
-([#367](https://github.com/NobuData/ouroboros/issues/367)) replaces its body: the slot takes
-focus, names the cited path and range, and links the whole diff on the host. #367 keeps the id and
-the `?hunk=` address, and scrolls its diff to the range.
+**A hunk reference lands on the Changed files card** (`#files`), which opens the cited file and
+scrolls its diff to the range — see below.
 
 The grid is the mockup's three columns and collapses per its rule (900px): the pill beside the
 claim, the evidence beneath both. It scrolls sideways inside its own wrapper.
+
+### The changed files card
+
+The card ([#367](https://github.com/NobuData/ouroboros/issues/367)) is mockup 12's *Changed
+files*: the latest revision's file rows and its diff excerpt (`app/prs/files.ts`, `diff.ts`).
+
+**The meters are a comparison.** Each row's additions and deletions are drawn against the largest
+file of the snapshot, so `+38 −12` fills its track and `+2 −1` barely marks it. The rest of the
+track is the unchanged remainder. The meter is a picture of the counts beside it, so it is hidden
+from the accessibility tree.
+
+**The excerpt says that it is one.** The service stores at most 16,384 characters of a diff
+([#352](https://github.com/NobuData/ouroboros/issues/352)). The card labels the sample
+`Excerpt — the full diff is on the host`, links the whole diff, and says:
+
+| When | The card says |
+|------|---------------|
+| the excerpt holds fewer files than changed | `1 of 3 changed files is in the excerpt.` |
+| the sample reaches its bound | that its last line may be cut short |
+| no sample is stored | so, and still draws the rows and the link |
+
+Each file of the excerpt is a disclosure: the first is open, the rest open on a press — all
+within what is stored. The lines take the transcript's del / add / ctx treatments, from the same
+tokens. The block scrolls sideways inside its own wrapper.
+
+| Followed | What happens |
+|----------|--------------|
+| a hunk reference of the matrix (`?hunk=path:41-66`) | the cited file opens, the first line of the range scrolls into view, the range is marked, and the card takes focus |
+| the same address, opened directly | the range scrolls into view; focus stays where it was |
+| a range the excerpt does not reach | the card says so, and is itself brought into view |
+| the gates card's `changed files →` | the first flagged row scrolls into view, and the card takes focus |
+
+**Out-of-scope rows** are drawn while diff-vs-plan
+([#358](https://github.com/NobuData/ouroboros/issues/358)) is red on the latest revision: the
+rows the gate's evidence line names take the err tint and `outside the planned file list`, and
+the card explains — `1 changed file falls outside the planned file list of the plan of issue
+#482.` The gate's line is bounded too, so what it had no room to name (`+3 more`) is stated, not
+guessed.
 
 ## Workflow Studio
 

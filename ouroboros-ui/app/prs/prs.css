@@ -961,11 +961,11 @@
   line-height: var(--lh-body);
 }
 
-/* ---------- the Changed files slot (#366) ---------- */
+/* ---------- the Changed files card (#367) ---------- */
 
 /*
- * Where a hunk reference lands until AY.5 (#367) draws the card itself: a region that takes
- * focus and names the range the matrix cited.
+ * The latest revision's changed files and its diff excerpt. The region takes focus when a hunk
+ * reference (#366) or the gates card's link (#365) brings the reader here.
  */
 .prv-files {
   margin-bottom: var(--sp-10);
@@ -974,6 +974,27 @@
 .prv-files:focus-visible {
   outline: 0.125rem solid var(--accent);
   outline-offset: 0.125rem;
+}
+
+/* Why rows are flagged: the diff-vs-plan gate's verdict, naming the plan. */
+.prv-files__scope {
+  margin: 0 0 var(--sp-3);
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-files__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prv-files__citation {
+  margin-top: var(--sp-5);
 }
 
 .prv-files__cited {
@@ -988,8 +1009,182 @@
 .prv-files__note {
   margin: 0 0 var(--sp-3);
   color: var(--ink-mut);
-  font-size: var(--t-sm);
+  font-size: var(--t-xs);
   line-height: var(--lh-body);
+}
+
+/* One changed file: the path gives way, the counts and the meter keep their measure. */
+.prv-file {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-6);
+  padding: var(--sp-4) var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.prv-file:last-child {
+  border-bottom: 0;
+}
+
+/* Outside the plan: the err tint, and a rule that says so without the hue. */
+.prv-file--flagged {
+  border-left: 0.125rem solid var(--err);
+  background: var(--err-tint);
+}
+
+.prv-file__path {
+  flex: 1 1 10rem;
+  min-width: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.prv-file__flag {
+  color: var(--err);
+  font-size: var(--t-xs);
+}
+
+.prv-file__counts {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.prv-file__add {
+  color: var(--ok);
+}
+
+.prv-file__del {
+  color: var(--err);
+}
+
+/* The tri-segment meter: its segments' lengths are the data, everything else is the sheet's. */
+.prv-file__meter {
+  flex: none;
+  width: 4.5rem;
+  height: 0.3125rem;
+  border-radius: var(--r-sm);
+}
+
+.prv-file__meter-rest {
+  fill: var(--raised);
+}
+
+.prv-file__meter-add {
+  fill: var(--ok);
+}
+
+.prv-file__meter-del {
+  fill: var(--err);
+}
+
+/* ---------- the diff excerpt (#367) ---------- */
+
+.prv-diff__label {
+  margin: var(--sp-6) 0 var(--sp-2);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.prv-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prv-diff__file {
+  min-width: 0;
+}
+
+/* A file of the excerpt: a disclosure drawn as its path. */
+.prv-diff__toggle {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.prv-diff__toggle::before {
+  content: "▸ ";
+}
+
+.prv-diff__toggle[aria-expanded="true"]::before {
+  content: "▾ ";
+}
+
+.prv-diff__toggle:hover {
+  color: var(--ink);
+}
+
+.prv-diff__toggle:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* The block scrolls sideways in its own wrapper, so a long line never moves the pane. */
+.prv-diff__scroll {
+  display: flex;
+  margin-top: var(--sp-3);
+  overflow-x: auto;
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+/* The shared diff treatments — the transcript's well, type and line tokens (runs.css). */
+.prv-diff__block {
+  flex: 1 0 auto;
+  margin: 0;
+  padding: var(--sp-4) var(--sp-6);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-loose);
+}
+
+.prv-diff__hunk {
+  display: block;
+}
+
+.prv-diff__line {
+  display: block;
+  white-space: pre;
+}
+
+.prv-diff__line--head {
+  color: var(--ink-faint);
+}
+
+.prv-diff__line--ctx {
+  color: var(--ink-faint);
+}
+
+.prv-diff__line--del {
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+.prv-diff__line--add {
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+/* Inside the cited range: a rule beside the line, so the mark survives without its hue. */
+.prv-diff__line--cited {
+  box-shadow: inset 0.1875rem 0 0 var(--accent);
 }
 
 /* ---------- the matrix's dialogs (#366) ---------- */

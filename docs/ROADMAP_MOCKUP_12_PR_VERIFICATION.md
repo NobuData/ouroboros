@@ -679,7 +679,7 @@ the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 | AY.2 | #364 ✅ | 🟢 Done | ouroboros-ui: [AY.2] Revision cycle strip | err/plain/live/ghosted steps with real joins (V4) | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.3 | #365 ✅ | 🟢 Done | ouroboros-ui: [AY.3] Verification gates card | Seven-row gate list with all verdict states + links | mvp, pr, ui, design | N (after AY.1) | Y | M | ouroboros-ui |
 | AY.4 | #366 ✅ | 🟢 Done | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
-| AY.5 | #367 | 🟡 Open | ouroboros-ui: [AY.5] Changed files & diff excerpt | File rows with proportional meters, diff block, host link | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
+| AY.5 | #367 ✅ | 🟢 Done | ouroboros-ui: [AY.5] Changed files & diff excerpt | File rows with proportional meters, diff block, host link | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.6 | #368 | 🟡 Open | ouroboros-ui: [AY.6] Review thread card | Author-kinded entries, blocking arcs, resolution states | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.7 | #369 | 🟡 Open | ouroboros-ui: [AY.7] Merge plan & spend cards | Plan editing, arm flow, truthful identity, spend rollup | mvp, pr, ui | N (after AY.3, AX.4) | Y | M | ouroboros-ui |
 | AY.8 | #370 | 🟡 Open | ouroboros-ui: [AY.8] PR states & e2e leg | Merged/blocked/conflict states, themes, sandbox e2e | mvp, pr, ui, ci | N (after AY.2–AY.7) | Y | M | ouroboros-ui, .github |
@@ -807,7 +807,8 @@ can: fix flaky telemetry frame order under ISR load
 >    `guardrail_evaluation` (diff-vs-plan, secrets & license) → the run console, where the
 >    guardrails card is. No *evidence sheet* exists, and none was built.
 > 5. **Out-of-scope highlighting is not drawn.** The changed-files card is #367's, and the paths
->    exist only as text inside the evidence line. **Open for #367.**
+>    exist only as text inside the evidence line. **Drawn by #367**, which reads them from that
+>    line and links the red row to `#files`.
 > 6. **The waiver popover has no author.** `PrGateRow` carries no waiver — the reason is inside
 >    the evidence line and the engine's `GateWaiver` names nobody — so the popover shows the
 >    recorded line and the gate's source, and says that no author is recorded. **Needs a REST
@@ -858,8 +859,8 @@ can: fix flaky telemetry frame order under ISR load
 >    attempts newest first (at most twelve) and redirects to test results with the suite (#337) or
 >    the measured case (#338) selected. Unresolvable answers the not-found page.
 > 3. **A hunk lands on a slot** (`#files`, `?hunk=path:41-66`) that takes focus and names the
->    cited range — AY.1's Merge plan slot precedent. **Open for #367**: replace the body, keep
->    the id and the address, and scroll the diff to the range.
+>    cited range — AY.1's Merge plan slot precedent. **Replaced by #367's card**, which keeps
+>    the id and the address and scrolls the diff to the range.
 > 4. **The picker cites tests, measurements and hunks** — the three the issue names — from the
 >    attempt the latest revision was judged on and that revision's files snapshot. Analysis notes
 >    and artifacts render and link, but are not authored here.
@@ -898,7 +899,31 @@ can: fix flaky telemetry frame order under ISR load
 
 ### Issue AY.5 — ouroboros-ui: [AY.5] Changed files & diff excerpt
 
-> **GitHub issue:** #367 · **Status:** 🟡 Open · **Parent epic:** #350
+> **GitHub issue:** #367 · **Status:** 🟢 Done · **Parent epic:** #350
+> **Delivered as `ouroboros-ui/app/prs/diff.ts`, `files.ts` and `files-card.tsx`**, replacing
+> AY.4's `files-slot.tsx` and keeping `#files` and `?hunk=`. No REST change. Decided on #367:
+>
+> 1. **A meter is scaled against the largest file of the snapshot**, as the issue states — not
+>    the mockup's inline widths, which are scaled against 70. `+38 −12` fills its track; `+9 −3`
+>    fills a quarter of it. The segments are lengths of an SVG track, so the card writes no style.
+> 2. **The excerpt is read in both shapes it is stored in**: the host sync's `--- path` then
+>    `@@ -a,b +c,d @@` (`diffExcerptOf`, #352), and the dev seed's `@@ path:41 @@`.
+> 3. **Honesty is stated, not implied**: the label `Excerpt — the full diff is on the host`, how
+>    many of the changed files the excerpt holds, and a note when the sample reaches the
+>    16,384-character bound and may end in a cut line.
+> 4. **Per-file expansion is a disclosure per file of the excerpt.** The first file is open, and
+>    so is a cited one. Nothing is fetched: it is all within the stored sample.
+> 5. **Out-of-scope rows are read from the gate's evidence line** (`2 out-of-scope edits: a, b`),
+>    because the payload carries them nowhere else. That line is bounded (`+3 more`), so what it
+>    had no room to name is stated rather than flagged. **A structured list on the page payload
+>    would be a REST follow-up**; it was not needed to meet the ticket.
+> 6. **Flags are the latest revision's.** The card draws the latest revision's snapshot, so the
+>    gates card links its red diff-vs-plan row to `#files` only while it shows that revision.
+> 7. **The explanation names the plan by its ticket** — `the plan of issue #482` — since the
+>    payload names no plan draft.
+> 8. **The link text stays `Full diff on the host`** (#366's), for any host.
+> 9. **A cited range the excerpt does not reach says so**, and the card itself is brought into
+>    view; a deleted line is at the place of the line that replaced it.
 
 - **Problem Statement:** File rows with proportional add/del meters and
   the diff excerpt block — the revision's material truth.

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState } from "react";
+import { type MouseEvent as ReactMouseEvent, useEffect, useId, useRef, useState } from "react";
 
 import { Button, Card, CardHead, Chip, Tag, cx } from "@/app/ui";
 
@@ -48,6 +48,8 @@ interface GateProps {
   readonly onApprove: () => void;
   /** *Decline* was pressed. */
   readonly onDecline: () => void;
+  /** The link to the flagged changed files was followed. */
+  readonly onFlagged: () => void;
 }
 
 /**
@@ -59,10 +61,12 @@ interface GateProps {
  * engine's line, which carries the reason, and why the gate is on the PR. The payload names no
  * author on a gate, and the popover says so rather than leaving a blank where a name belongs.
  *
+ * A red diff-vs-plan row links to the changed files it flags (#367), followed on this page.
+ *
  * @param props See {@link GateProps}.
  * @returns The row.
  */
-function Gate({ row, waiting, onRequestReview, onApprove, onDecline }: GateProps) {
+function Gate({ row, waiting, onRequestReview, onApprove, onDecline, onFlagged }: GateProps) {
   const panelId = useId();
   const titleId = useId();
   const [open, setOpen] = useState(false);
@@ -92,6 +96,20 @@ function Gate({ row, waiting, onRequestReview, onApprove, onDecline }: GateProps
       document.removeEventListener("mousedown", onPress);
     };
   }, [shown]);
+
+  /**
+   * Follow the flagged files on this page — unless the press asks for a new tab or window.
+   *
+   * @param event The press.
+   */
+  function followFlagged(event: ReactMouseEvent<HTMLAnchorElement>): void {
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+
+    event.preventDefault();
+    onFlagged();
+  }
 
   return (
     <li className={cx("prv-gate", ROW_CLASS[row.verdict])} ref={root}>
@@ -144,6 +162,11 @@ function Gate({ row, waiting, onRequestReview, onApprove, onDecline }: GateProps
             {row.link.label}
           </Link>
         )}
+        {row.flagged !== null && (
+          <a className="prv-gates__link" href={row.flagged.href} onClick={followFlagged}>
+            {row.flagged.label}
+          </a>
+        )}
       </div>
 
       {shown && (
@@ -172,6 +195,8 @@ export interface GatesCardProps {
   readonly onApprove: () => void;
   /** *Decline* was pressed — the screen opens the dialog. */
   readonly onDecline: () => void;
+  /** The link to the flagged changed files was followed — the screen brings them into view. */
+  readonly onFlagged: () => void;
   /** Whether an answer or a request is in flight — the row's buttons wait. */
   readonly sending: boolean;
   /** What became of the last answer, or `null`. */
@@ -198,6 +223,7 @@ export function GatesCard({
   onRequestReview,
   onApprove,
   onDecline,
+  onFlagged,
   sending,
   outcome,
 }: GatesCardProps) {
@@ -239,6 +265,7 @@ export function GatesCard({
                   key={row.key}
                   onApprove={onApprove}
                   onDecline={onDecline}
+                  onFlagged={onFlagged}
                   onRequestReview={onRequestReview}
                   row={row}
                   waiting={waiting}
