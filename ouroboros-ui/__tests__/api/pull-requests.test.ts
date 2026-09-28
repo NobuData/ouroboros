@@ -168,6 +168,45 @@ describe("pullRequests.requestReview", () => {
   });
 });
 
+describe("pullRequests.decideApproval (#365)", () => {
+  it("posts the decision and its note to the PR's approvals route and answers the slot", async () => {
+    const outcome = {
+      review: review({ state: "declined", note: "Overshoot is still 2.4%." }),
+      created: false,
+      humanApproval: null,
+      aggregate: null,
+    };
+    const { client, requests } = clientAnswering(outcome);
+
+    expect(
+      await pullRequests.decideApproval(
+        PR_514_ID,
+        { decision: "decline", note: "Overshoot is still 2.4%." },
+        client,
+      ),
+    ).toEqual(outcome);
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(
+      `http://rest.test:4000/api/v1/pull-requests/${PR_514_ID}/approvals`,
+    );
+    expect(await requests[0]?.json()).toEqual({
+      decision: "decline",
+      note: "Overshoot is still 2.4%.",
+    });
+  });
+
+  it("rejects with the service's refusal of a decline without a note", async () => {
+    const { client } = clientAnswering(
+      { code: "pr_decline_note_required", message: "A decline needs a note.", details: {} },
+      422,
+    );
+
+    await expect(
+      pullRequests.decideApproval(PR_514_ID, { decision: "decline" }, client),
+    ).rejects.toMatchObject({ status: 422, code: "pr_decline_note_required" });
+  });
+});
+
 describe("pullRequests.returnToLoop", () => {
   it("posts the gates, the revision and the replay key, and answers the control", async () => {
     const { client, requests } = stubClient(() => ({ body: returned() }));

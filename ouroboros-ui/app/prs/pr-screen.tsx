@@ -11,10 +11,18 @@ import { BREADCRUMB_LABEL, loopLabel } from "@/app/runs/view";
 import { setNavOrigin } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 
-import { GatesSlot } from "./gates-slot";
-import { requestHumanReview, returnToLoop } from "./head-actions";
+import { DeclineDialog } from "./decline-dialog";
+import { approvalOutcome, gatesCard } from "./gates";
+import { GatesCard } from "./gates-card";
+import { decideApproval, requestHumanReview, returnToLoop } from "./head-actions";
 import { MergePlanSlot } from "./merge-plan-slot";
-import type { ReturnOutcome, ReturnSelection, ReviewRequestOutcome } from "./outcomes";
+import type {
+  ApprovalAnswer,
+  ApprovalOutcome,
+  ReturnOutcome,
+  ReturnSelection,
+  ReviewRequestOutcome,
+} from "./outcomes";
 import { PrActions } from "./pr-actions";
 import { PrHead } from "./pr-head";
 import { type PrPollOptions, createPagePoll } from "./poll";
@@ -42,6 +50,9 @@ export type ReviewSender = (prId: string) => Promise<ReviewRequestOutcome>;
 
 /** How a return is sent. The Server Action in production; tests pass their own. */
 export type ReturnSender = (prId: string, selection: ReturnSelection) => Promise<ReturnOutcome>;
+
+/** How an approval is answered. The Server Action in production; tests pass their own. */
+export type ApprovalSender = (prId: string, answer: ApprovalAnswer) => Promise<ApprovalOutcome>;
 
 /** The breadcrumb's current page before the PR has been read. */
 export const PR_CRUMB = "Pull request";
@@ -81,6 +92,8 @@ export interface PrScreenProps {
   readonly sendReview?: ReviewSender;
   /** How to send a return. Defaults to the Server Action. */
   readonly sendReturn?: ReturnSender;
+  /** How to answer an approval. Defaults to the Server Action. */
+  readonly sendApproval?: ApprovalSender;
   /** How one opening of the return dialog is keyed. Defaults to {@link newReplayKey}. */
   readonly replayKey?: () => string | undefined;
 }
@@ -108,6 +121,11 @@ export interface PrScreenProps {
  * the view is linkable. A scope naming a revision the PR does not have is dropped, and the page
  * follows the latest. The head and its actions always describe the latest revision.
  *
+ * **The gates card draws the scoped revision's snapshot** ([#365](https://github.com/NobuData/ouroboros/issues/365)).
+ * Its human-approval row offers *Request review*, or *Approve* and *Decline* while a review is
+ * waiting — on the latest revision only, because an answer is honoured only there. *Decline*
+ * asks for its note first. The answered slot is drawn from the answer, before the next poll.
+ *
  * @param props See {@link PrScreenProps}.
  * @returns The screen.
  */
@@ -122,6 +140,7 @@ export function PrScreen({
   poll,
   sendReview = requestHumanReview,
   sendReturn = returnToLoop,
+  sendApproval = decideApproval,
   replayKey = newReplayKey,
 }: PrScreenProps) {
   const read = useKeyedPoll(prId, (id) => createPagePoll(id, poll));
@@ -142,6 +161,12 @@ export function PrScreen({
   const [chosen, setChosen] = useState<number | null>(null);
   const [focusRequests, setFocusRequests] = useState(0);
   const [scoped, setScoped] = useState<number | null>(initialRevision);
+  const [answering, setAnswering] = useState(false);
+  const [declining, setDeclining] = useState(false);
+  const [gateOutcome, setGateOutcome] = useState<{
+    readonly text: string;
+    readonly failed: boolean;
+  } | null>(null);
   const slot = useRef<HTMLElement>(null);
 
   // The address names a revision this PR does not have. Dropped during render, so the gates of
@@ -198,6 +223,33 @@ export function PrScreen({
   }
 
   /**
+   * Answer the approval slot, and say on the card what became of it.
+   *
+   * @param answer The decision and its note.
+   * @returns The outcome, for the decline dialog: it closes on an answer and draws a refusal.
+   */
+  async function answerApproval(answer: ApprovalAnswer): Promise<ApprovalOutcome> {
+    setAnswering(true);
+
+    try {
+      const outcome = await sendApproval(prId, answer);
+
+      if (outcome.ok) {
+        setAnsweredReview(outcome.outcome.review);
+        setGateOutcome({ text: approvalOutcome(answer.decision), failed: false });
+      } else if (answer.decision === "approve") {
+        // A refused decline is drawn in its dialog, which is still open.
+        setGateOutcome({ text: outcome.reason, failed: true });
+      }
+
+      return outcome;
+    } finally {
+      setAnswering(false);
+      read.refresh();
+    }
+  }
+
+  /**
    * Send the return the dialog confirmed, and draw its receipt.
    *
    * @param gates The gates selected.
@@ -236,7 +288,11 @@ export function PrScreen({
       ? null
       : actionsView({ page, answeredReview, mayContribute, mayArm, requestingReview });
   const run = page?.pullRequest.run ?? null;
-  const gates = page === null ? null : gatesScope(page, scoped);
+  const scope = page === null ? null : gatesScope(page, scoped);
+  const gates =
+    page === null || scope === null
+      ? null
+      : gatesCard({ page, scope, answeredReview, mayContribute, originId: origin.id });
 
   return (
     <main className="prv">
@@ -290,12 +346,31 @@ export function PrScreen({
         <RevisionStrip onScope={setScoped} scoped={scoped} steps={stripSteps(page)} />
       )}
 
-      {gates !== null && <GatesSlot onFollowLatest={() => setScoped(null)} scope={gates} />}
+      {gates !== null && (
+        <GatesCard
+          onApprove={() => void answerApproval({ decision: "approve" })}
+          onDecline={() => setDeclining(true)}
+          onFollowLatest={() => setScoped(null)}
+          onRequestReview={() => void requestReview()}
+          outcome={gateOutcome}
+          sending={answering || requestingReview}
+          view={gates}
+        />
+      )}
 
       {page !== null && actions !== null && actions.merge !== null && (
         <MergePlanSlot
           chosen={chosen !== null && chosen === revision?.seq ? chosen : null}
           ref={slot}
+        />
+      )}
+
+      {page !== null && (
+        <DeclineDialog
+          number={page.pullRequest.number}
+          onClose={() => setDeclining(false)}
+          onConfirm={(note) => answerApproval({ decision: "decline", note })}
+          open={declining}
         />
       )}
 

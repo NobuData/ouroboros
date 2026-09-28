@@ -8,8 +8,8 @@
  * header and the sidebar stay put while the pane scrolls. A breadcrumb orients the reader instead
  * (docs/DESIGN_SYSTEM_APP_SHELL.md).
  *
- * The revision cycle strip (#364) is the mockup's `.rev-strip`, and the one region here that
- * scrolls sideways — inside its own wrapper, so the pane never does.
+ * The revision cycle strip (#364) and the verification gates' rows (#365) are the two regions
+ * here that scroll sideways — each inside its own wrapper, so the pane never does.
  *
  * The pill, the tags, the eyebrow, the buttons, the banner and the card are the primitives in
  * app/ui/. Held to the two rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a
@@ -487,54 +487,55 @@
   }
 }
 
-/* ---------- the gates slot (#364) ---------- */
+/* ---------- the verification gates card (#365) ---------- */
 
-/* Where a revision step's scope lands until AY.3 (#365) draws the card itself. */
 .prv-gates {
   margin-bottom: var(--sp-10);
 }
 
+/* The mockup's `.card-link` and `.g-link`. */
+.prv-gates__link {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--t-xs);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.prv-gates__link:hover {
+  text-decoration: underline;
+}
+
+.prv-gates__link:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* Whose gates these are — the revision the strip scoped, or the latest. */
 .prv-gates__scope {
-  margin: 0 0 var(--sp-5);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-5);
+  margin: 0 0 var(--sp-3);
   color: var(--ink-dim);
   font-family: var(--f-mono);
   font-size: var(--t-xs);
   overflow-wrap: anywhere;
 }
 
+/* The rows scroll sideways in their own wrapper, so a long evidence line never moves the pane. */
+.prv-gates__scroll {
+  overflow-x: auto;
+}
+
 .prv-gates__rows {
   display: flex;
   flex-direction: column;
-  margin: 0 0 var(--sp-5);
+  min-width: 36rem;
+  margin: 0;
   padding: 0;
   list-style: none;
-}
-
-.prv-gates__row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-3) var(--sp-5);
-  padding: var(--sp-4) 0;
-  border-bottom: 1px solid var(--line);
-}
-
-.prv-gates__row:last-child {
-  border-bottom: 0;
-}
-
-.prv-gates__name {
-  flex: 0 0 11rem;
-  color: var(--ink);
-  font-size: var(--t-sm);
-}
-
-.prv-gates__evidence {
-  min-width: 0;
-  color: var(--ink-mut);
-  font-family: var(--f-mono);
-  font-size: var(--t-xs);
-  overflow-wrap: anywhere;
 }
 
 .prv-gates__note {
@@ -542,6 +543,189 @@
   color: var(--ink-mut);
   font-size: var(--t-xs);
   line-height: var(--lh-body);
+}
+
+.prv-gates__outcome {
+  margin: var(--sp-5) 0 0;
+  color: var(--ok);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.prv-gates__outcome--failed {
+  color: var(--err);
+}
+
+/* One gate: its line, and beneath a waived one its popover. */
+.prv-gate {
+  border-bottom: 1px solid var(--line);
+}
+
+/* The mockup's `.gate`. */
+.prv-gate__line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-5) var(--sp-3);
+}
+
+.prv-gate:last-child {
+  border-bottom: 0;
+}
+
+/* The mockup's `.g-mark`: a fixed column, so the names line up whatever the mark is. */
+.prv-gate__mark {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: var(--sp-9);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.prv-gate__name {
+  flex: none;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* The engine's line, whole: it is what makes a red gate actionable, so it is never cut short. */
+.prv-gate__evidence {
+  flex: 1 1 auto;
+  min-width: 7.5rem;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+}
+
+.prv-gate--green .prv-gate__mark {
+  color: var(--ok);
+}
+
+.prv-gate--red .prv-gate__mark,
+.prv-gate--red .prv-gate__name {
+  color: var(--err);
+}
+
+/* Policy, not outcome: grey, and never the pass's green. */
+.prv-gate--not-required .prv-gate__name {
+  color: var(--ink-mut);
+}
+
+.prv-gate--waived .prv-gate__mark,
+.prv-gate--waived .prv-gate__name {
+  color: var(--warn);
+}
+
+/* The mockup's `.gate.pending`: a provider is evaluating, so this row — and only this one — moves. */
+.prv-gate--pending {
+  background-image: linear-gradient(90deg, var(--accent-tint), transparent 28rem);
+}
+
+.prv-gate--pending .prv-gate__name {
+  color: var(--accent);
+}
+
+/*
+ * No provider exists, which is not a provider evaluating: no gradient, no dot, nothing that
+ * moves. A dashed rule and a stated note, so nobody waits for it.
+ */
+.prv-gate--unavailable {
+  border-bottom-style: dashed;
+}
+
+.prv-gate--unavailable .prv-gate__name {
+  color: var(--ink-faint);
+}
+
+.prv-gate__note {
+  flex: none;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  font-style: italic;
+  white-space: nowrap;
+}
+
+.prv-gate__dot {
+  flex: none;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: var(--r-round);
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .prv-gate__dot {
+    animation: prv-step-pulse 0.8s ease-in-out infinite alternate;
+  }
+}
+
+/*
+ * The waiver, opened by the row's button. In the row's own flow, beneath its line, so the
+ * scrolling wrapper never clips it.
+ */
+.prv-gate__popover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  max-width: 34rem;
+  margin: 0 var(--sp-3) var(--sp-5) var(--sp-11);
+  padding: var(--sp-6) var(--sp-7);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+}
+
+.prv-gate__popover-title,
+.prv-gate__popover-reason,
+.prv-gate__popover-note {
+  margin: 0;
+}
+
+.prv-gate__popover-title {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+.prv-gate__popover-reason {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-gate__popover-note {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- Decline's dialog (#365) ---------- */
+
+.prv-decline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.prv-decline__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+.prv-decline__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
 }
 
 /*

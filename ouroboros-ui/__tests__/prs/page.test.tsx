@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PR_MISSING_TITLE } from "@/app/prs/pr-missing";
-import { GATES_TITLE } from "@/app/prs/strip";
+import { GATES_TITLE } from "@/app/prs/gates";
 import { ACTIONS_LABEL, MERGE_LABEL, RETURN_LABEL, REVIEW_LABEL } from "@/app/prs/view";
 import { navRegistry } from "@/app/shell/nav-registry";
 
@@ -24,6 +24,7 @@ class NotFound extends Error {}
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
 vi.mock("@/app/prs/data", () => ({ readPr: (id: string) => readPr(id) }));
 vi.mock("@/app/prs/head-actions", () => ({
+  decideApproval: vi.fn(),
   requestHumanReview: vi.fn(),
   returnToLoop: vi.fn(),
 }));

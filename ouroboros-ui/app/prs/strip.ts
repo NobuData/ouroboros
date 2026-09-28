@@ -1,7 +1,7 @@
 /**
  * The revision cycle strip, as data ([#364](https://github.com/NobuData/ouroboros/issues/364)) —
  * mockup 12's `publish → verify → correct → re-publish`, decided here and drawn by
- * `revision-strip.tsx` and `gates-slot.tsx`.
+ * `revision-strip.tsx`; the gates it scopes are `gates.ts`'s.
  *
  * ```
  * [Revision 1 · err] → [Correction round · attempt 4] → [● Revision 2 · live] → [╌ Auto-merge]
@@ -406,35 +406,20 @@ export function scrollTarget(geometry: StripGeometry): number {
   return Math.max(0, leading - (viewWidth - stepWidth));
 }
 
-// --- the gates slot ------------------------------------------------------------------------
+// --- the gates' scope ----------------------------------------------------------------------
 
-/** The slot's title — the mockup's `VERIFICATION GATES`. */
-export const GATES_TITLE = "Verification gates";
-
-/** The slot's way back to the latest revision. */
-export const FOLLOW_LATEST = "Follow the latest revision";
-
-/** What the slot says when the revision on screen was never evaluated. */
-export const NO_GATES = "No gate has been evaluated on this revision.";
-
-/** A gate's verdict, in words. */
-export const VERDICT_WORDS: Readonly<Record<PrGateRow["verdict"], string>> = {
-  green: "green",
-  red: "red",
-  pending: "pending",
-  waived: "waived",
-  not_required: "not required",
-  unavailable: "unavailable",
-};
-
-/** The gates on screen, and whose they are. */
+/** The gates on screen, and whose they are — what `gates.ts` draws the card from (#365). */
 export interface GatesScope {
   /** The revision's ordinal. */
   readonly seq: number;
   /** Whether the reader chose it — `false` while the page follows the latest. */
   readonly scoped: boolean;
+  /** Whether it is the PR's latest revision — the only one an approval can be given on. */
+  readonly latest: boolean;
   /** `Revision 1 · 3f9c2ae · 2 gates red`. */
   readonly heading: string;
+  /** The revision, with its own snapshot and the attempt it was judged on. */
+  readonly revision: PrRevision;
   /** The revision's own rows, in the card's order. */
   readonly rows: readonly PrGateRow[];
 }
@@ -450,12 +435,15 @@ export interface GatesScope {
  */
 export function gatesScope(page: PullRequestPage, scoped: number | null): GatesScope | null {
   const chosen = scopedRevision(page, scoped);
-  const revision = chosen ?? page.revisions.at(-1) ?? null;
-  if (revision === null) return null;
+  const latest = page.revisions.at(-1) ?? null;
+  const revision = chosen ?? latest;
+  if (revision === null || latest === null) return null;
 
   return {
     seq: revision.seq,
     scoped: chosen !== null,
+    latest: revision.id === latest.id,
+    revision,
     heading:
       `Revision ${revision.seq} · ${shortSha(revision.headSha)} · ${snapshotSummary(revision)}`,
     rows: revision.gates.rows,
