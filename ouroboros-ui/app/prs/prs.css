@@ -9,7 +9,8 @@
  * (docs/DESIGN_SYSTEM_APP_SHELL.md).
  *
  * The revision cycle strip (#364) and the verification gates' rows (#365) are the two regions
- * here that scroll sideways — each inside its own wrapper, so the pane never does.
+ * here that scroll sideways — each inside its own wrapper, so the pane never does. The review
+ * thread (#368) scrolls downwards inside its own.
  *
  * The pill, the tags, the eyebrow, the buttons, the banner and the card are the primitives in
  * app/ui/. Held to the two rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a
@@ -1187,6 +1188,151 @@
   box-shadow: inset 0.1875rem 0 0 var(--accent);
 }
 
+/* ---------- the Review thread card (#368) ---------- */
+
+/*
+ * The mockup's `rev-entry` rows. The thread is the one region here that scrolls downwards: a
+ * long thread stays inside the entries' own wrapper, so the cards beneath it stay in reach.
+ */
+.prv-thread {
+  margin-bottom: var(--sp-10);
+}
+
+.prv-thread__scroll {
+  max-height: 32rem;
+  overflow-y: auto;
+}
+
+.prv-thread__scroll:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+.prv-thread__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prv-thread__note,
+.prv-thread__withheld {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* An entry this page will not draw is said to be withheld, in the hue of something to look at. */
+.prv-thread__withheld {
+  margin-top: var(--sp-5);
+  color: var(--warn);
+}
+
+.prv-thread__outcome {
+  margin: var(--sp-5) 0 0;
+  color: var(--ok);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-thread__outcome--failed {
+  color: var(--err);
+}
+
+/* One entry: who and when, what was said, how it was answered. */
+.prv-entry {
+  padding: var(--sp-5) var(--sp-2);
+  border-bottom: 1px solid var(--border);
+}
+
+.prv-entry:last-child {
+  border-bottom: 0;
+}
+
+.prv-entry__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  margin-bottom: var(--sp-3);
+}
+
+.prv-entry__author {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+/* The three author kinds. The kind is also said in words, so the hue is never the only signal. */
+.prv-entry__author--model {
+  color: var(--model);
+}
+
+.prv-entry__author--policy {
+  color: var(--ink-mut);
+}
+
+.prv-entry__author--human {
+  color: var(--ink);
+}
+
+/* Decision R4's watermark: the model hue, and the word. */
+.prv-entry__watermark {
+  border-style: dashed;
+}
+
+.prv-entry__time {
+  margin-left: auto;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.prv-entry__body {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+/* The mockup's `blocking`: the accent rule beside what was objected to. */
+.prv-entry--blocking .prv-entry__body {
+  padding-left: var(--sp-5);
+  border-left: 0.125rem solid var(--warn);
+}
+
+.prv-entry__reply {
+  margin: var(--sp-3) 0 0;
+  padding-left: var(--sp-5);
+  border-left: 0.125rem solid var(--border);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+  white-space: pre-line;
+}
+
+.prv-entry__resolved {
+  margin: var(--sp-3) 0 0;
+  color: var(--ok);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.prv-entry__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+}
+
 /* ---------- the matrix's dialogs (#366) ---------- */
 
 .prv-dialog {
@@ -1231,6 +1377,24 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--sp-4);
+}
+
+/* Reply & resolve (#368): who said it, above what they said; and the mirror switch's row. */
+.prv-resolve__author {
+  font-family: var(--f-mono);
+  overflow-wrap: anywhere;
+}
+
+.prv-resolve__mirror {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+.prv-resolve__mirror-note {
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
 }
 
 .prv-picker__kinds {

@@ -10,9 +10,12 @@ import {
   criterion,
   criterionId,
   prPage,
+  resolution,
   returned,
   review,
   summary,
+  threadEntry,
+  threadEntryId,
   waiver,
 } from "../helpers/pull-requests";
 import { SEEDED_RUN_ID } from "../helpers/runs";
@@ -346,5 +349,43 @@ describe("the criteria matrix's writes (#366, over #359)", () => {
     expect(requests[0]?.method).toBe("POST");
     expect(requests[0]?.url).toBe(`${BASE}/${CLAIM}/waive`);
     expect(await requests[0]?.json()).toEqual({ reason: "rig at 22°C only" });
+  });
+});
+
+describe("the review thread (#368)", () => {
+  const ENTRY = threadEntryId(4);
+
+  it("posts a resolution with its reply and answers the entry and the mirror", async () => {
+    const answer = resolution(threadEntry(), "Overflow path fixed.", {
+      state: "posted",
+      url: null,
+      error: null,
+    });
+    const { client, requests } = clientAnswering(answer);
+
+    expect(
+      await pullRequests.resolveThreadEntry(
+        PR_514_ID,
+        ENTRY,
+        { reply: "Overflow path fixed.", mirror: true },
+        client,
+      ),
+    ).toEqual(answer);
+    expect(requests[0]?.method).toBe("POST");
+    expect(new URL(requests[0]!.url).pathname).toBe(
+      `/api/v1/pull-requests/${PR_514_ID}/thread/${ENTRY}/resolve`,
+    );
+    expect(await requests[0]?.json()).toEqual({ reply: "Overflow path fixed.", mirror: true });
+  });
+
+  it("rejects with the service's refusal of an entry already resolved", async () => {
+    const { client } = clientAnswering(
+      { code: "pr_thread_entry_resolved", message: "Already resolved.", details: {} },
+      409,
+    );
+
+    await expect(
+      pullRequests.resolveThreadEntry(PR_514_ID, ENTRY, { mirror: false }, client),
+    ).rejects.toMatchObject({ status: 409, code: "pr_thread_entry_resolved" });
   });
 });

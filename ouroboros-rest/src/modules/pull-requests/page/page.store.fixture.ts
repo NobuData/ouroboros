@@ -30,6 +30,7 @@ import type {
   PrRunRow,
   RevisionRow,
   TestAttemptRow,
+  ThreadRow,
   ThreadRows,
 } from "./page.repository";
 import type { RouteCapRow } from "./page.spend";
@@ -427,6 +428,13 @@ export class FakePageStore implements PageStore {
   }
 
   /** @inheritdoc */
+  threadEntry(prId: string, entryId: string): Promise<ThreadRow | undefined> {
+    return Promise.resolve(
+      prId === PR ? this.threadRows.entries.find((row) => row.id === entryId) : undefined,
+    );
+  }
+
+  /** @inheritdoc */
   approval(prId: string): Promise<ApprovalRow | undefined> {
     return Promise.resolve(this.approvals.filter((row) => row.prId === prId).at(-1));
   }
@@ -550,6 +558,23 @@ export class FakePageStore implements PageStore {
           decidedAt: at(60),
           note,
         });
+        return Promise.resolve();
+      },
+      lockThreadEntry(prId: string, entryId: string): Promise<ThreadRow | undefined> {
+        return store.threadEntry(prId, entryId);
+      },
+      resolveThreadEntry(entryId: string, reply: string | null): Promise<void> {
+        const entries = store.threadRows.entries.map((row) =>
+          row.id === entryId && !row.resolved
+            ? { ...row, resolved: true, resolutionBody: reply }
+            : row,
+        );
+
+        store.threadRows = {
+          entries,
+          entryCount: entries.length,
+          openCount: entries.filter((row) => row.blocking && !row.resolved).length,
+        };
         return Promise.resolve();
       },
     });

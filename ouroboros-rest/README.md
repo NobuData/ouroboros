@@ -5110,6 +5110,7 @@ read, and its two composed head actions, over V065's `pr_approvals` and `pr_loop
 | `POST …/return-to-loop` `{gates, revisionId?, note?, idempotencyKey?}` | AP.4's correction round (steer + stage retry) whose text is the selected red gates' evidence; records the expected attempt | member+ |
 | `POST …/request-review` `{reviewer?}` | open the approval slot — human approval becomes required and pending; optional SPI `requestReview` | member+ |
 | `POST …/approvals` `{decision, note?}` | approve or decline (a decline needs a note) on the latest revision; the gate re-evaluates | member+ |
+| `POST …/thread/:entryId/resolve` `{reply?, mirror?}` | resolve a review-thread entry with the reply that resolves it; optionally mirror the reply to the host PR (#368) | member+ |
 
 **Return to loop is not a new control path** (V5). It calls `ControlsService.correctionRound` — the
 Mark & Route card's own composition (#332) — with `<gate_key>: <evidence>` per selected gate, in the
@@ -5128,6 +5129,19 @@ host's reason) is recorded on the slot and never fails the request. An approval 
 slot on the latest revision — opening one first when nobody asked — and the re-evaluation can flip
 the aggregate to merge-ready (and an armed plan then merges). An answer counts only on the revision
 it was given on. Audited as `pr_approval.requested`, `pr_approval.approved`, `pr_approval.declined`.
+
+**Reply and resolve is one act, and one-way**
+([#368](https://github.com/NobuData/ouroboros/issues/368), `page.thread.ts`). Under the PR's lock
+it raises `resolved` on an entry and writes `reply` as its `resolution_body` — V057's lifecycle, so
+*was blocking → "Addressed in attempt 4" → resolved* is written once. An entry already resolved is
+`409 pr_thread_entry_resolved`; a `policy_bot` entry states a rule and is
+`409 pr_thread_entry_not_resolvable`. **Nothing here authors an entry**: `author_kind`,
+`author_name` and `simulated` are untouched, so the route cannot invent a reviewer. The PR may be in
+any state. `mirror: true` posts the reply to the host PR (`page.mirror.ts`, keyed
+`thread.<entryId>`, carrying the entry's `simulated` watermark) and needs a reply
+(`422 pr_thread_mirror_needs_reply`); `posted` or `failed` with the host's reason is answered and
+never fails the request. The row does not record who resolved it — the trail does: audited as
+`pr_thread.resolved`, never with the reply.
 
 **Every step of the strip is a join** (V4): a revision's `testAttempt` is the attempt its own
 `test_suite` verdict cites; its `correction` is the classification on a case of the previous

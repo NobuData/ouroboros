@@ -7,8 +7,11 @@ import {
   MAX_APPROVAL_NOTE_LENGTH,
   MAX_LISTED_RUN_IDS,
   MAX_RETURNED_GATES,
+  MAX_THREAD_REPLY_LENGTH,
   RequestReviewDto,
+  ResolveThreadEntryDto,
   ReturnToLoopDto,
+  ThreadEntryParams,
   queryBoolean,
 } from "./page.dto";
 
@@ -138,5 +141,48 @@ describe("ApprovalDecisionDto", () => {
         note: "x".repeat(MAX_APPROVAL_NOTE_LENGTH + 1),
       }),
     ).toEqual(["note"]);
+  });
+});
+
+describe("ResolveThreadEntryDto (#368)", () => {
+  it("takes a reply, a mirror, both or neither", async () => {
+    expect(await failing(ResolveThreadEntryDto, {})).toEqual([]);
+    expect(await failing(ResolveThreadEntryDto, { reply: "Addressed in attempt 4" })).toEqual([]);
+    expect(
+      await failing(ResolveThreadEntryDto, { reply: "line one\nline two", mirror: true }),
+    ).toEqual([]);
+  });
+
+  it("refuses a reply that is empty, padded or over V057's bound", async () => {
+    expect(await failing(ResolveThreadEntryDto, { reply: "" })).toEqual(["reply"]);
+    expect(await failing(ResolveThreadEntryDto, { reply: " padded " })).toEqual(["reply"]);
+    expect(
+      await failing(ResolveThreadEntryDto, { reply: "x".repeat(MAX_THREAD_REPLY_LENGTH + 1) }),
+    ).toEqual(["reply"]);
+    expect(
+      await failing(ResolveThreadEntryDto, { reply: "x".repeat(MAX_THREAD_REPLY_LENGTH) }),
+    ).toEqual([]);
+  });
+
+  it("refuses a mirror that is not a boolean, and a field it does not know", async () => {
+    expect(await failing(ResolveThreadEntryDto, { mirror: "yes" })).toEqual(["mirror"]);
+    expect(await failing(ResolveThreadEntryDto, { authorKind: "model" })).toEqual(["authorKind"]);
+  });
+});
+
+describe("ThreadEntryParams (#368)", () => {
+  it("holds both ids to uuids", async () => {
+    expect(
+      await failing(ThreadEntryParams, {
+        id: "5eed003a-0000-4000-8000-000000000514",
+        entryId: "5eed0040-0000-4000-8000-000000005142",
+      }),
+    ).toEqual([]);
+    expect(
+      await failing(ThreadEntryParams, {
+        id: "5eed003a-0000-4000-8000-000000000514",
+        entryId: "2",
+      }),
+    ).toEqual(["entryId"]);
   });
 });

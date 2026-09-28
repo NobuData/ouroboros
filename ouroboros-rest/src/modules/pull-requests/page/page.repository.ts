@@ -283,6 +283,21 @@ export interface PageTransaction {
     revisionId: string,
     note: string | null,
   ): Promise<void>;
+  /**
+   * Lock one entry of a PR's review thread.
+   *
+   * @param prId - The PR.
+   * @param entryId - The entry.
+   * @returns It, or undefined when the PR's thread has no such entry.
+   */
+  lockThreadEntry(prId: string, entryId: string): Promise<ThreadRow | undefined>;
+  /**
+   * Resolve an entry — V057's one-way lifecycle: `resolved` is raised and the reply written with it.
+   *
+   * @param entryId - The entry, unresolved.
+   * @param reply - The resolving reply, or null.
+   */
+  resolveThreadEntry(entryId: string, reply: string | null): Promise<void>;
 }
 
 /** The page's store — what its unit suites stand in for. */
@@ -344,6 +359,12 @@ export interface PageStore {
    * @returns Its thread, oldest first, with `pr_thread_summary`'s counts.
    */
   thread(prId: string): Promise<ThreadRows>;
+  /**
+   * @param prId - The PR.
+   * @param entryId - An entry.
+   * @returns It, or undefined when the PR's thread has no such entry.
+   */
+  threadEntry(prId: string, entryId: string): Promise<ThreadRow | undefined>;
   /**
    * @param prId - The PR.
    * @returns Its newest approval slot, or undefined.
@@ -812,23 +833,7 @@ export class PageRepository implements PageStore {
   /** @inheritdoc */
   async thread(prId: string): Promise<ThreadRows> {
     const db = this.database.db;
-    const entries = await db
-      .selectFrom("pr_thread_entries as e")
-      .leftJoin("pr_revisions as v", "v.id", "e.revision_id")
-      .select([
-        "e.id",
-        "e.revision_id",
-        "v.revision_seq",
-        "e.author_kind",
-        "e.author_name",
-        "e.tag",
-        "e.body",
-        "e.blocking",
-        "e.resolved",
-        "e.resolution_body",
-        "e.simulated",
-        "e.created_at",
-      ])
+    const entries = await threadEntryQuery(db)
       .where("e.pr_id", "=", prId)
       .orderBy("e.created_at")
       .orderBy("e.id")
@@ -839,23 +844,20 @@ export class PageRepository implements PageStore {
     }>`select * from ouroboros.pr_thread_summary(${prId}::uuid)`.execute(db);
 
     return {
-      entries: entries.map((row) => ({
-        id: row.id,
-        revisionId: row.revision_id,
-        revisionSeq: row.revision_seq,
-        authorKind: row.author_kind,
-        authorName: row.author_name,
-        tag: row.tag,
-        body: row.body,
-        blocking: row.blocking,
-        resolved: row.resolved,
-        resolutionBody: row.resolution_body,
-        simulated: row.simulated,
-        createdAt: row.created_at,
-      })),
+      entries: entries.map(threadRow),
       entryCount: rows[0]?.entry_count ?? 0,
       openCount: rows[0]?.open_count ?? 0,
     };
+  }
+
+  /** @inheritdoc */
+  async threadEntry(prId: string, entryId: string): Promise<ThreadRow | undefined> {
+    const row = await threadEntryQuery(this.database.db)
+      .where("e.pr_id", "=", prId)
+      .where("e.id", "=", entryId)
+      .executeTakeFirst();
+
+    return row === undefined ? undefined : threadRow(row);
   }
 
   /** @inheritdoc */
@@ -1084,6 +1086,95 @@ class PgPageTransaction implements PageTransaction {
       .where("state", "=", "requested")
       .execute();
   }
+
+  /** @inheritdoc */
+  async lockThreadEntry(prId: string, entryId: string): Promise<ThreadRow | undefined> {
+    const locked = await this.trx
+      .selectFrom("pr_thread_entries")
+      .select("id")
+      .where("pr_id", "=", prId)
+      .where("id", "=", entryId)
+      .forUpdate()
+      .executeTakeFirst();
+
+    if (locked === undefined) {
+      return undefined;
+    }
+
+    const row = await threadEntryQuery(this.trx).where("e.id", "=", entryId).executeTakeFirst();
+
+    return row === undefined ? undefined : threadRow(row);
+  }
+
+  /** @inheritdoc */
+  async resolveThreadEntry(entryId: string, reply: string | null): Promise<void> {
+    await this.trx
+      .updateTable("pr_thread_entries")
+      .set({ resolved: true, resolution_body: reply })
+      .where("id", "=", entryId)
+      .where("resolved", "=", false)
+      .execute();
+  }
+}
+
+/**
+ * A review-thread entry with its revision's ordinal.
+ *
+ * @param reader - The connection or transaction.
+ * @returns The select, unfiltered.
+ */
+function threadEntryQuery(reader: Reader) {
+  return reader
+    .selectFrom("pr_thread_entries as e")
+    .leftJoin("pr_revisions as v", "v.id", "e.revision_id")
+    .select([
+      "e.id",
+      "e.revision_id",
+      "v.revision_seq",
+      "e.author_kind",
+      "e.author_name",
+      "e.tag",
+      "e.body",
+      "e.blocking",
+      "e.resolved",
+      "e.resolution_body",
+      "e.simulated",
+      "e.created_at",
+    ]);
+}
+
+/**
+ * @param row - A row of {@link threadEntryQuery}.
+ * @returns It, camel-cased.
+ */
+function threadRow(row: {
+  id: string;
+  revision_id: string | null;
+  revision_seq: number | null;
+  author_kind: PrThreadAuthorKind;
+  author_name: string;
+  tag: PrThreadTag;
+  body: string;
+  blocking: boolean;
+  resolved: boolean;
+  resolution_body: string | null;
+  simulated: boolean;
+  created_at: Date;
+}): ThreadRow {
+  return {
+    id: row.id,
+    revisionId: row.revision_id,
+    revisionSeq: row.revision_seq,
+    authorKind: row.author_kind,
+    authorName: row.author_name,
+    tag: row.tag,
+    body: row.body,
+    blocking: row.blocking,
+    resolved: row.resolved,
+    resolutionBody: row.resolution_body,
+    simulated: row.simulated,
+    createdAt: row.created_at,
+  };
 }
 
 /** The approval select, before its predicate. */

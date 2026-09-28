@@ -680,7 +680,7 @@ the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 | AY.3 | #365 ✅ | 🟢 Done | ouroboros-ui: [AY.3] Verification gates card | Seven-row gate list with all verdict states + links | mvp, pr, ui, design | N (after AY.1) | Y | M | ouroboros-ui |
 | AY.4 | #366 ✅ | 🟢 Done | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
 | AY.5 | #367 ✅ | 🟢 Done | ouroboros-ui: [AY.5] Changed files & diff excerpt | File rows with proportional meters, diff block, host link | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
-| AY.6 | #368 | 🟡 Open | ouroboros-ui: [AY.6] Review thread card | Author-kinded entries, blocking arcs, resolution states | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
+| AY.6 | #368 ✅ | 🟢 Done | ouroboros-ui: [AY.6] Review thread card | Author-kinded entries, blocking arcs, resolution states | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.7 | #369 | 🟡 Open | ouroboros-ui: [AY.7] Merge plan & spend cards | Plan editing, arm flow, truthful identity, spend rollup | mvp, pr, ui | N (after AY.3, AX.4) | Y | M | ouroboros-ui |
 | AY.8 | #370 | 🟡 Open | ouroboros-ui: [AY.8] PR states & e2e leg | Merged/blocked/conflict states, themes, sandbox e2e | mvp, pr, ui, ci | N (after AY.2–AY.7) | Y | M | ouroboros-ui, .github |
 
@@ -947,7 +947,40 @@ drivers/can/telemetry_buf.c  +38 −12  [▮add▮del░rest]
 
 ### Issue AY.6 — ouroboros-ui: [AY.6] Review thread card
 
-> **GitHub issue:** #368 · **Status:** 🟡 Open · **Parent epic:** #350
+> **GitHub issue:** #368 · **Status:** 🟢 Done · **Parent epic:** #350
+> **Delivered as `ouroboros-ui/app/prs/thread.ts`, `thread-card.tsx`, `thread-actions.ts` and
+> `resolve-dialog.tsx`**, over one additive REST route. Decided on #368:
+>
+> 1. **One additive REST route** (0.37.18), because nothing wrote the thread:
+>    `POST /api/v1/pull-requests/{id}/thread/{entryId}/resolve` `{reply?, mirror?}`
+>    (`page.thread.ts`). No migration.
+> 2. **A human reply is the resolving reply.** *Reply and resolve* is one act: it raises `resolved`
+>    and writes the reply as the entry's `resolution_body` — V057's one-way lifecycle, and the
+>    mockup's own arc. **Humans do not author new entries here**: V057's tags have none for a
+>    person's comment, and adding one would be a migration the ticket does not ask for.
+> 3. **The row does not say who resolved it**, so the audit trail does (`pr_thread.resolved`, with
+>    the person as the actor and never the reply). **A resolver on the row would be a DB
+>    follow-up.**
+> 4. **The header is counted in the page**, from the entries on screen — the payload's
+>    `entryCount` and `openCount` are not read.
+> 5. **An entry that cannot show its provenance is withheld, and the card says so**: an unknown
+>    kind, a blank author, or a model's entry without `simulated`. It is still counted, so a
+>    blocking one is still open. #371 brings the vote provenance that lets a real model entry draw.
+> 6. **The policy bot's entry is not resolvable** — it states the rule that applied — in the page
+>    and in the service (`409 pr_thread_entry_not_resolvable`).
+> 7. **Resolving is allowed in any PR state**: the thread is this plane's record, not the host's.
+> 8. **The mirror keeps the watermark.** The host comment names the entry's author, tag and
+>    `simulated`, quotes what was said and the reply, and is signed by the person. A host that
+>    refuses is answered (`mirror.state: failed`) and the resolution stands; how the mirror landed
+>    is not stored on the row.
+> 9. **`· rev N` is drawn only for an earlier revision** — the mockup's `second opinion · rev 1`
+>    beside a bare `policy` that the seed places on revision 2.
+> 10. **Entries are drawn oldest first, with the seed's own times** — the payload's order. The
+>     mockup's order and clock readings are not chronological and are not reproduced.
+> 11. **The card sits after Changed files and before the Merge plan slot**, in the page's single
+>     column; the mockup's side column arrives, if at all, with #370.
+> 12. **"Both themes" is asserted as it reduces to** — every hue a token, every length a rem — in
+>     `prs-styles.test.ts`; the e2e leg is AY.8's (#370).
 
 - **Problem Statement:** The thread's three author kinds, the blocking→
   resolved arc, and honest provenance (model entries only when real —

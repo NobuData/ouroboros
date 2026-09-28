@@ -47,6 +47,7 @@ import type {
   PrListRow,
   RevisionRow,
   TestAttemptRow,
+  ThreadRow,
   ThreadRows,
 } from "./page.repository";
 import type { SpendRollupResource } from "./page.spend";
@@ -236,6 +237,23 @@ export interface ThreadResource {
   readonly entryCount: number;
   readonly openCount: number;
   readonly entries: readonly ThreadEntryResource[];
+}
+
+/** How the host mirror of a resolving reply landed, on this request. */
+export interface ThreadMirrorResource {
+  /** `not_requested` — no mirror was asked for; `posted`; or `failed` — the host refused. */
+  readonly state: "not_requested" | "posted" | "failed";
+  /** The comment's page on the host, when posted and the host said. */
+  readonly url: string | null;
+  /** Why the host refused, on failure: a stable code and a sentence. Null otherwise. */
+  readonly error: { readonly code: string; readonly message: string } | null;
+}
+
+/** `POST /api/v1/pull-requests/{id}/thread/{entryId}/resolve`. */
+export interface ThreadResolutionResource {
+  /** The entry, resolved, with its reply. */
+  readonly entry: ThreadEntryResource;
+  readonly mirror: ThreadMirrorResource;
 }
 
 /** A person. */
@@ -453,6 +471,14 @@ export function reviewResource(row: ApprovalRow): ReviewResource {
 }
 
 /**
+ * @param row - One entry of the thread.
+ * @returns It, as the API describes it.
+ */
+export function threadEntryResource(row: ThreadRow): ThreadEntryResource {
+  return { ...row, createdAt: row.createdAt.toISOString() };
+}
+
+/**
  * @param rows - The thread and its counts.
  * @returns The card.
  */
@@ -460,7 +486,7 @@ export function threadResource(rows: ThreadRows): ThreadResource {
   return {
     entryCount: rows.entryCount,
     openCount: rows.openCount,
-    entries: rows.entries.map((entry) => ({ ...entry, createdAt: entry.createdAt.toISOString() })),
+    entries: rows.entries.map(threadEntryResource),
   };
 }
 

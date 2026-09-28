@@ -14,6 +14,7 @@
  * POST /api/v1/pull-requests/{id}/criteria/{criterionId}/evidence Cite evidence
  * POST /api/v1/pull-requests/{id}/criteria/{criterionId}/verify   Verify
  * POST /api/v1/pull-requests/{id}/criteria/{criterionId}/waive    Waive, and annotate the host PR
+ * POST /api/v1/pull-requests/{id}/thread/{entryId}/resolve        Reply and resolve (#368)
  * ```
  *
  * The shape every other module under `app/api/` keeps: the generated client does the transport,
@@ -87,6 +88,21 @@ export type PrCriterionWaived = components["schemas"]["PrCriterionWaived"];
 
 /** The changed-files snapshot of the latest revision. */
 export type PrFiles = components["schemas"]["PrFiles"];
+
+/** The review thread — every entry, oldest first. */
+export type PrThread = components["schemas"]["PrThread"];
+
+/** One entry of the review thread: who said it, what was said, and where it stands. */
+export type PrThreadEntry = components["schemas"]["PrThreadEntry"];
+
+/** `model`, `policy_bot` or `human`. */
+export type PrThreadAuthorKind = PrThreadEntry["authorKind"];
+
+/** What resolving an entry sends — the reply, and whether to mirror it to the host. */
+export type ResolveThreadEntryRequest = components["schemas"]["ResolveThreadEntryRequest"];
+
+/** What resolving an entry answers: the entry, resolved, and how the host mirror landed. */
+export type PrThreadResolution = components["schemas"]["PrThreadResolution"];
 
 /** A run's pull request, as a surface that links to its verification page holds it. */
 export interface PullRequestRef {
@@ -326,6 +342,33 @@ export const pullRequests = {
       await client.POST("/api/v1/pull-requests/{id}/criteria/{criterionId}/waive", {
         params: { path: { id, criterionId } },
         body: { reason },
+      }),
+    );
+  },
+
+  /**
+   * Resolve an entry of the review thread, with the reply that resolves it.
+   *
+   * @param id The PR's id.
+   * @param entryId The entry's id.
+   * @param request The reply, and whether to mirror it to the host PR.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The entry, resolved, and how the mirror landed — a host that refused is an answer,
+   *   not an error.
+   * @throws ApiError `403` for a viewer, `422 pr_thread_mirror_needs_reply`,
+   *   `409 pr_thread_entry_resolved` or `pr_thread_entry_not_resolvable`,
+   *   `404 pr_thread_entry_not_found` or `pull_request_not_found`.
+   */
+  async resolveThreadEntry(
+    id: string,
+    entryId: string,
+    request: ResolveThreadEntryRequest,
+    client: ApiClient = api(),
+  ): Promise<PrThreadResolution> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/thread/{entryId}/resolve", {
+        params: { path: { id, entryId } },
+        body: request,
       }),
     );
   },

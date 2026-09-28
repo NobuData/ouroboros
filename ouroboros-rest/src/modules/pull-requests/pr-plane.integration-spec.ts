@@ -17,7 +17,13 @@ import { aggregate } from "./gates/gate.engine";
 import { HEADERLESS } from "./gates/gate.matrix.fixture";
 import { EVIDENCE_COMMENT_KEY } from "./merge/merge.evidence";
 import { MergeExecutorService } from "./merge/merge.executor";
-import type { ReturnToLoopResource, ReviewOutcomeResource } from "./page/page.resources";
+import { threadMirrorKey } from "./page/page.mirror";
+import type {
+  PullRequestPageResource,
+  ReturnToLoopResource,
+  ReviewOutcomeResource,
+  ThreadResolutionResource,
+} from "./page/page.resources";
 import { composeSteer } from "./page/page.steer";
 import {
   HIL_RED_EVIDENCE,
@@ -51,7 +57,8 @@ import { PrSyncService } from "./pr-sync.service";
  *     headerless new file turns the license layer red with the file named.
  *   * **Head actions** — *Return to loop*'s steer is the selected gates' evidence, in the run's
  *     control and transcript; *Request human review* flips human approval and lists the PR as
- *     needing someone; an approval turns it green.
+ *     needing someone; an approval turns it green. *Reply and resolve* (#368) writes the arc
+ *     once, mirrors the reply under the entry's key, and leaves who said what untouched.
  *   * **Roles** — arm, merge, waive and approve refused server-side for a role that may not, even
  *     with a request the UI would never send, and nothing written.
  *   * **Isolation** — every route the epic added, enumerated from the route table, is a `404` to
@@ -437,6 +444,26 @@ describe("the PR plane, on the application's own services", () => {
     });
   });
 
+  /**
+   * Write one open, blocking review-thread entry — a seeded second opinion, watermarked.
+   *
+   * @param at - The scene.
+   * @returns The entry's id.
+   */
+  async function objection(at: PrPlaneScene): Promise<string> {
+    const { id } = await one<{ id: string }>(
+      api,
+      `insert into ${SCHEMA_NAME}.pr_thread_entries
+         (pr_id, revision_id, author_kind, author_name, tag, body, blocking, simulated)
+       values ($1, $2, 'model', 'cursor/composer-2', 'second opinion',
+               'PID velocity sample now lags by one telemetry period.', true, true)
+       returning id`,
+      [at.prId, at.revisionId],
+    );
+
+    return id;
+  }
+
   describe("head actions, over HTTP", () => {
     afterEach(clean);
 
@@ -557,13 +584,70 @@ describe("the PR plane, on the application's own services", () => {
 
       expect(approved.humanApproval).toMatchObject({ verdict: "green" });
     });
+
+    it("Reply and resolve writes the arc once, mirrors the reply under the entry's key, and the page reads it back (#368)", async () => {
+      const at = await prPlaneScene(api, host, "engine");
+      const entryId = await objection(at);
+      const path = `/api/v1/pull-requests/${at.prId}/thread/${entryId}/resolve`;
+      const reply = "Addressed in attempt 4 — sampling decoupled from telemetry drain.";
+
+      const resolved = bodyOf<ThreadResolutionResource>(
+        await as(at.owner, at, "post", path).send({ reply, mirror: true }).expect(200),
+      );
+      const page = bodyOf<PullRequestPageResource>(
+        await as(at.owner, at, "get", `/api/v1/pull-requests/${at.prId}`).expect(200),
+      );
+      const trail = await one<{ action: string; actor_id: string; detail: string }>(
+        api,
+        `select action, actor_id, detail::text as detail from ${SCHEMA_NAME}.audit_events
+          where organization_id = $1 and subject_type = 'pr_thread_entry' and subject_id = $2`,
+        [at.org, entryId],
+      );
+      const mirrored = commentsOn(at).filter(([, body]) =>
+        hasPrCommentMarker(body, threadMirrorKey(entryId)),
+      );
+
+      expect(resolved.entry).toMatchObject({
+        id: entryId,
+        authorKind: "model",
+        authorName: "cursor/composer-2",
+        simulated: true,
+        blocking: true,
+        resolved: true,
+        resolutionBody: reply,
+      });
+      expect(resolved.mirror).toMatchObject({ state: "posted", error: null });
+      expect(page.thread).toMatchObject({ entryCount: 1, openCount: 0 });
+      expect(page.thread.entries[0]).toEqual(resolved.entry);
+      expect(mirrored).toHaveLength(1);
+      expect(mirrored[0][1]).toContain(`> ${reply}`);
+      expect(mirrored[0][1]).toContain("cursor/composer-2 · second opinion · rev 1 · simulated");
+      expect(mirrored[0][1]).toContain(`**Resolved by:** ${at.owner.displayName}`);
+      expect(trail).toMatchObject({ action: "pr_thread.resolved", actor_id: at.owner.id });
+      expect(trail.detail).not.toContain("Addressed in attempt 4");
+
+      // One-way: a second resolution is refused, and the reply stands.
+      const again = await as(at.owner, at, "post", path).send({ reply: "Never mind." }).expect(409);
+      const stored = await one<{ resolution_body: string }>(
+        api,
+        `select resolution_body from ${SCHEMA_NAME}.pr_thread_entries where id = $1`,
+        [entryId],
+      );
+
+      expect(again.body).toMatchObject({ code: "pr_thread_entry_resolved" });
+      expect(stored.resolution_body).toBe(reply);
+      expect(
+        commentsOn(at).filter(([, body]) => hasPrCommentMarker(body, threadMirrorKey(entryId))),
+      ).toHaveLength(1);
+    });
   });
 
   describe("role gates, held server-side", () => {
     afterEach(clean);
 
-    it("refuses a viewer every write — arm, merge, approve, waive, return, review — even with a well-formed request", async () => {
+    it("refuses a viewer every write — arm, merge, approve, waive, return, review, resolve — even with a well-formed request", async () => {
       const at = await prPlaneScene(api, host, "engine");
+      const entryId = await objection(at);
       const viewer = await api.signUp();
       const criterion = await api.nest.get(CriteriaService).create(
         at.org,
@@ -584,6 +668,7 @@ describe("the PR plane, on the application's own services", () => {
         [`${base}/criteria/${criterion.id}/waive`, { reason: MOCKUP_WAIVER_REASON }],
         [`${base}/return-to-loop`, { gates: ["physical_hil"] }],
         [`${base}/request-review`, {}],
+        [`${base}/thread/${entryId}/resolve`, { reply: "Looks fine to me." }],
       ];
 
       for (const [path, body] of writes) {
@@ -595,16 +680,18 @@ describe("the PR plane, on the application's own services", () => {
         approvals: number;
         waivers: number;
         controls: number;
+        resolved: number;
       }>(
         api,
         `select (select count(*) from ${SCHEMA_NAME}.pr_merge_plans where pr_id = $1 and armed)::int as armed,
                 (select count(*) from ${SCHEMA_NAME}.pr_approvals where pr_id = $1)::int as approvals,
                 (select count(*) from ${SCHEMA_NAME}.pr_waivers where organization_id = $2)::int as waivers,
-                (select count(*) from ${SCHEMA_NAME}.run_controls where run_id = $3)::int as controls`,
+                (select count(*) from ${SCHEMA_NAME}.run_controls where run_id = $3)::int as controls,
+                (select count(*) from ${SCHEMA_NAME}.pr_thread_entries where pr_id = $1 and resolved)::int as resolved`,
         [at.prId, at.org, at.runId],
       );
 
-      expect(written).toEqual({ armed: 0, approvals: 0, waivers: 0, controls: 0 });
+      expect(written).toEqual({ armed: 0, approvals: 0, waivers: 0, controls: 0, resolved: 0 });
       expect(host.ledger().merged).toEqual([]);
     });
 
@@ -650,6 +737,7 @@ describe("the PR plane, on the application's own services", () => {
     let at: PrPlaneScene;
     let criterionId: string;
     let evidenceId: string;
+    let entryId: string;
     let stranger: Person;
     let elsewhere: Workspace;
     /** The scene's host — the top-level `beforeEach` swaps `host` before every case. */
@@ -673,6 +761,7 @@ describe("the PR plane, on the application's own services", () => {
 
       criterionId = created.id;
       evidenceId = cited.evidence[0].id;
+      entryId = await objection(at);
       stranger = await api.signUp();
       elsewhere = await api.workspace(stranger);
     });
@@ -690,6 +779,10 @@ describe("the PR plane, on the application's own services", () => {
       "POST /api/v1/pull-requests/:id/approvals": {
         path: () => pr("/approvals"),
         body: () => ({ decision: "approve" }),
+      },
+      "POST /api/v1/pull-requests/:id/thread/:entryId/resolve": {
+        path: () => pr(`/thread/${entryId}/resolve`),
+        body: () => ({ reply: "a stranger's reply" }),
       },
       "GET /api/v1/pull-requests/:id/merge-plan": { path: () => pr("/merge-plan") },
       "POST /api/v1/pull-requests/:id/merge-plan/arm": {
@@ -827,9 +920,11 @@ describe("the PR plane, on the application's own services", () => {
         claim: string;
         approvals: number;
         armed: number;
+        resolved: number;
       }>(
         api,
-        `select (select count(*) from ${SCHEMA_NAME}.pr_criteria where pr_id = $1)::int as criteria,
+        `select (select count(*) from ${SCHEMA_NAME}.pr_thread_entries where pr_id = $1 and resolved)::int as resolved,
+                (select count(*) from ${SCHEMA_NAME}.pr_criteria where pr_id = $1)::int as criteria,
                 (select count(*) from ${SCHEMA_NAME}.pr_criteria_evidence where criterion_id = $2)::int as evidence,
                 (select claim from ${SCHEMA_NAME}.pr_criteria where id = $2) as claim,
                 (select count(*) from ${SCHEMA_NAME}.pr_approvals where pr_id = $1)::int as approvals,
@@ -843,6 +938,7 @@ describe("the PR plane, on the application's own services", () => {
         claim: "Telemetry frames must arrive in ISR order under load",
         approvals: 0,
         armed: 0,
+        resolved: 0,
       });
       expect(sceneHost.ledger().merged).toEqual([]);
     });

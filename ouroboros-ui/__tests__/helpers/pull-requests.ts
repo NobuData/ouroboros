@@ -6,6 +6,9 @@ import type {
   PrGateRow,
   PrReview,
   PrRevision,
+  PrThread,
+  PrThreadEntry,
+  PrThreadResolution,
   PullRequestHead,
   PullRequestPage,
   PullRequestSummary,
@@ -776,4 +779,145 @@ export function outOfScopePage(
  */
 export function matrixPage(over: Parameters<typeof prPage>[0] = {}): PullRequestPage {
   return stripPage({ criteria: matrix(), files: files(), ...over });
+}
+
+/** The reply that resolved the mockup's second opinion. */
+export const ATTEMPT_4_REPLY = "Addressed in attempt 4 — sampling decoupled from telemetry drain.";
+
+/** The policy bot's rule text. */
+export const POLICY_RULE =
+  "Auto-merge eligible: standard-fix policy — no human review required for effort ≤ M with all gates green.";
+
+/** Where a mirrored reply landed on the host. */
+export const MIRROR_COMMENT_URL = `${HOST_URL}#issuecomment-5140002`;
+
+/**
+ * A thread entry's id.
+ *
+ * @param n Its ordinal.
+ * @returns The seed's id for it.
+ */
+export function threadEntryId(n: number): string {
+  return `5eed0040-0000-4000-8000-${String(5140 + n).padStart(12, "0")}`;
+}
+
+/**
+ * One entry of the review thread (#368).
+ *
+ * @param over What to change.
+ * @returns An open, blocking objection a person wrote about Revision 2, changed.
+ */
+export function threadEntry(over: Partial<PrThreadEntry> = {}): PrThreadEntry {
+  return {
+    id: threadEntryId(4),
+    revisionId: REV_2_ID,
+    revisionSeq: 2,
+    authorKind: "human",
+    authorName: "Priya N",
+    tag: "second opinion",
+    body: "The drain loop still allocates on overflow.",
+    blocking: true,
+    resolved: false,
+    resolutionBody: null,
+    simulated: false,
+    createdAt: "2026-09-27T14:33:10.000Z",
+    ...over,
+  };
+}
+
+/**
+ * Mockup 12's three entries, oldest first as the payload states them: the second opinion on
+ * Revision 1 that blocked and was resolved, the self-review, and the policy bot's rule. Both
+ * model entries carry the watermark.
+ *
+ * @returns The entries.
+ */
+export function mockupEntries(): PrThreadEntry[] {
+  return [
+    threadEntry({
+      id: threadEntryId(2),
+      revisionId: REV_1_ID,
+      revisionSeq: 1,
+      authorKind: "model",
+      authorName: "cursor/composer-2",
+      tag: "second opinion",
+      body: "PID velocity sample now lags by one telemetry period — measurable overshoot risk on hard e-stop.",
+      blocking: true,
+      resolved: true,
+      resolutionBody: ATTEMPT_4_REPLY,
+      simulated: true,
+      createdAt: "2026-09-27T14:12:44.000Z",
+    }),
+    threadEntry({
+      id: threadEntryId(1),
+      revisionId: null,
+      revisionSeq: null,
+      authorKind: "model",
+      authorName: "claude-fable-5",
+      tag: "self-review",
+      body: "ISR path is allocation-free; verified priority ceiling unchanged. Sequence counter wraps at 65535 with gap-tolerant comparison in the drain loop.",
+      blocking: false,
+      resolved: true,
+      simulated: true,
+      createdAt: "2026-09-27T14:29:07.000Z",
+    }),
+    threadEntry({
+      id: threadEntryId(3),
+      authorKind: "policy_bot",
+      authorName: "ouroboros policy bot",
+      tag: "policy",
+      body: POLICY_RULE,
+      blocking: false,
+      createdAt: "2026-09-27T14:31:52.000Z",
+    }),
+  ];
+}
+
+/**
+ * A thread.
+ *
+ * @param entries Its entries. Defaults to the mockup's.
+ * @param counts The payload's own counts — which the card does not read. Defaults to the truth.
+ * @returns The thread.
+ */
+export function thread(
+  entries: readonly PrThreadEntry[] = mockupEntries(),
+  counts: Partial<Pick<PrThread, "entryCount" | "openCount">> = {},
+): PrThread {
+  return {
+    entryCount: entries.length,
+    openCount: entries.filter((entry) => entry.blocking && !entry.resolved).length,
+    entries: [...entries],
+    ...counts,
+  };
+}
+
+/**
+ * The page with a review thread (#368) over the revision cycle.
+ *
+ * @param entries The thread's entries. Defaults to the mockup's.
+ * @param over What else to change.
+ * @returns The page.
+ */
+export function threadPage(
+  entries: readonly PrThreadEntry[] = mockupEntries(),
+  over: Parameters<typeof prPage>[0] = {},
+): PullRequestPage {
+  return stripPage({ thread: thread(entries), ...over });
+}
+
+/**
+ * What *Reply & resolve* answers.
+ *
+ * @param entry The entry as it was before.
+ * @param reply The resolving reply, or `null`.
+ * @param mirror How the mirror landed. Defaults to not requested.
+ * @returns The resolution.
+ */
+export function resolution(
+  entry: PrThreadEntry,
+  reply: string | null,
+  mirror: PrThreadResolution["mirror"] = { state: "not_requested", url: null, error: null },
+): PrThreadResolution {
+  return { entry: { ...entry, resolved: true, resolutionBody: reply }, mirror };
 }

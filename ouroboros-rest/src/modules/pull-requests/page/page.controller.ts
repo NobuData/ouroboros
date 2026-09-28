@@ -1,13 +1,14 @@
 /**
  * `/api/v1/pull-requests` — the PR page's reads and head actions (AX.5,
- * [#361](https://github.com/NobuData/ouroboros/issues/361)). `PageService` and `PageActionsService`
- * say what each does.
+ * [#361](https://github.com/NobuData/ouroboros/issues/361)). `PageService`, `PageActionsService`
+ * and `ThreadActionsService` say what each does.
  *
  * **The workspace is the session's, never the request's** — the criteria routes' rule. A PR of
  * another workspace is `404`.
  *
  * **Roles.** Reading is every member's, a `viewer` included. The head actions — *Return to loop*,
- * *Request human review* and approving or declining — are a contributor's: `owner`, `admin` or
+ * *Request human review* and approving or declining — and resolving a review-thread entry (#368)
+ * are a contributor's: `owner`, `admin` or
  * `member`, as a steer (AP.4) and a criterion's verification (#359) are.
  *
  * **`200` throughout** — the actions answer what they did and the re-evaluated state.
@@ -25,25 +26,31 @@ import {
   ListPullRequestsQuery,
   PullRequestParams,
   RequestReviewDto,
+  ResolveThreadEntryDto,
   ReturnToLoopDto,
+  ThreadEntryParams,
 } from "./page.dto";
 import type {
   PullRequestListResource,
   PullRequestPageResource,
   ReturnToLoopResource,
   ReviewOutcomeResource,
+  ThreadResolutionResource,
 } from "./page.resources";
 import { PageService } from "./page.service";
+import { ThreadActionsService } from "./page.thread";
 
 @Controller("pull-requests")
 export class PageController {
   /**
    * @param pages - The reads.
    * @param actions - The head actions.
+   * @param thread - The review thread's resolution.
    */
   constructor(
     private readonly pages: PageService,
     private readonly actions: PageActionsService,
+    private readonly thread: ThreadActionsService,
   ) {}
 
   /**
@@ -141,6 +148,31 @@ export class PageController {
     @Body() request: ApprovalDecisionDto,
   ): Promise<ReviewOutcomeResource> {
     return this.actions.decide(member.tenant.id, params.id, actor(member, "approvals"), request);
+  }
+
+  /**
+   * **Reply and resolve** — close out an entry of the review thread (#368).
+   *
+   * @param member - The membership.
+   * @param params - The PR and the entry.
+   * @param request - The reply, and whether to mirror it to the host.
+   * @returns The resolved entry and how the mirror landed.
+   */
+  @Post(":id/thread/:entryId/resolve")
+  @HttpCode(HttpStatus.OK)
+  @Roles(...CONTRIBUTORS)
+  resolveThreadEntry(
+    @CurrentMember() member: ActiveMembership,
+    @Param() params: ThreadEntryParams,
+    @Body() request: ResolveThreadEntryDto,
+  ): Promise<ThreadResolutionResource> {
+    return this.thread.resolve(
+      member.tenant.id,
+      params.id,
+      params.entryId,
+      actor(member, "thread/:entryId/resolve"),
+      request,
+    );
   }
 }
 
