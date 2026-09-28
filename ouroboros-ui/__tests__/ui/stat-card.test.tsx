@@ -114,3 +114,42 @@ describe("both palettes", () => {
     expect(light).toBe(dark);
   });
 });
+
+describe("mockup 11's additions (#335)", () => {
+  it.each([
+    ["ok", "ou-stat__value--ok"],
+    ["warn", "ou-stat__value--warn"],
+    ["err", "ou-stat__value--err"],
+  ] as const)("hues the figure %s only when asked", (tone, name) => {
+    const hued = render(<StatCard label="Passed" value="61" valueTone={tone} />).container;
+    const plain = render(<StatCard label="Total tests" value="63" />).container;
+
+    expect(hued.querySelector(".ou-stat__value")).toHaveClass(name);
+    expect(plain.querySelector(".ou-stat__value")?.className).toBe("ou-stat__value");
+  });
+
+  it("lets the accent win over a hue, so the present tense is never recoloured", () => {
+    const { container } = render(<StatCard accent label="Live" value="1" valueTone="err" />);
+
+    expect(container.querySelector(".ou-stat__value")).not.toHaveClass("ou-stat__value--err");
+  });
+
+  it("draws a composed line — text and a link — as the caller wrote it", () => {
+    render(
+      <StatCard
+        delta={
+          <>
+            passed on retry 2/3 · <a href="/insights">quarantine watching</a>
+          </>
+        }
+        label="Flaky"
+        value="1"
+      />,
+    );
+
+    const tile = screen.getByRole("region", { name: "Flaky" });
+
+    expect(tile.querySelector(".ou-stat__delta")).toHaveTextContent("passed on retry 2/3 · quarantine watching");
+    expect(screen.getByRole("link", { name: "quarantine watching" })).toHaveAttribute("href", "/insights");
+  });
+});

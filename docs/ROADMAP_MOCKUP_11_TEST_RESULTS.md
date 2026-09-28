@@ -769,7 +769,7 @@ tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AU.1 | #335 | 🟡 Open | ouroboros-ui: [AU.1] Test-results route, head & summary strip | Attempt-scoped route, actions, five stat cards | mvp, tests, ui, design | N (after #41, AT.5, BA-D.5) | Y | M | ouroboros-ui |
+| AU.1 | #335 ✅ | 🟢 Done | ouroboros-ui: [AU.1] Test-results route, head & summary strip | Attempt-scoped route, actions, five stat cards | mvp, tests, ui, design | N (after #41, AT.5, BA-D.5) | Y | M | ouroboros-ui |
 | AU.2 | #336 | 🟡 Open | ouroboros-ui: [AU.2] Build attempts timeline | err/warn/live/future attempt cards with arrows | mvp, tests, ui, design | N (after AU.1) | Y | S | ouroboros-ui |
 | AU.3 | #337 | 🟡 Open | ouroboros-ui: [AU.3] Suites card | Platform-tagged suite rows, meters, selection → filtering | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.4 | #338 | 🟡 Open | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
@@ -780,7 +780,7 @@ tokens (both themes; the mockup is dark-only).
 
 ### Issue AU.1 — ouroboros-ui: [AU.1] Test-results route, head & summary strip
 
-> **GitHub issue:** #335 · **Status:** 🟡 Open · **Parent epic:** #322
+> **GitHub issue:** #335 · **Status:** 🟢 Done · **Parent epic:** #322
 
 - **Problem Statement:** The frame: attempt-scoped route reachable from the
   run console's Test stage and the farm's job rows, the head actions, and
@@ -808,6 +808,35 @@ Test Results · Run #1847 · Build 3
 #482 — Fix flaky CAN-bus telemetry test   [Re-run failed (2)][Re-run full suite][Send failures ⟳]
 (63)(61 ▲12)(1 · motor overshoot)(1 flaky · watching↗)(6m12s · 4m sim + 2m12s physical)
 ```
+
+> **Delivered as `ouroboros-ui/app/test-results/`, `app/(app)/runs/[id]/tests/`, two poll routes
+> (`/api/runs/:id/tests`, `/api/test-runs/:id/rerun`) and a REST read,
+> `GET /api/v1/test-runs/:id/rerun`.** Decided on #335:
+>
+> 1. **The gate is a server read.** AT.4 queues a re-run whatever the fleet looks like (its
+>    decision 4), so nothing told the page *before* a press that no runner was eligible. The new
+>    read answers `readiness` (`runner_available` · `no_eligible_runner` · `pool_disabled` ·
+>    `no_source_build`) from the build the `POST` would copy and dispatch's own `candidates()`,
+>    with each scope's case count; the page disables both re-runs with the stated reason unless a
+>    runner is available, and polls it so a runner coming online switches them back on.
+> 2. **`Re-run failed (N)` is the gate's `failedCases`** — the distinct `failed` and `error` cases the
+>    `POST` carries. The seeded Build 3 reads **`(1)`**, not the mockup's `(2)`: its flaky case
+>    passed on retry and is not in the failed set.
+> 3. **The delta reads `▲ 12 vs build 1`**, the payload's label (AT.5's decision 1), where the mockup
+>    prints `vs build 2`.
+> 4. **The attempt is `?attempt=<ordinal>`**, replaced not pushed. Two polls on the I.8 cadence: the
+>    run's timeline (every attempt's strip, so a switch redraws the head and strip in one render) and
+>    the selected attempt's gate (rebuilt on a switch — another attempt's answer is never drawn).
+> 5. **The pass pill is `ok` at 100 %, `warn` at ≥ 90 % and `err` below**; a running attempt is the
+>    accent with a pulse.
+> 6. **Insights is still `soon`**, so the flaky card's `quarantine watching (N)` is drawn as the
+>    sidebar draws that entry — words with its note as the tooltip — and becomes a link to the entry's
+>    route when it goes live.
+> 7. **Mark & Route is a slot until #340**: *Send failures back to loop* stages the attempt's failed
+>    set there, scrolls it into view and focuses it; AU.6 keeps its id, ref and `staged` prop.
+> 8. **Cross-links**: the run console's Test stage (DSL key `test`, once reached) links here with the
+>    console's `?from=`, and a loop build's farm job cell adds *Test results* beside its console link.
+>    `StatCard` gained a figure hue and a node caption for mockup 11's coloured counts and link.
 
 ### Issue AU.2 — ouroboros-ui: [AU.2] Build attempts timeline
 

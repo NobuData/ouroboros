@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.13"
+  version: "0.37.14"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -17229,6 +17229,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
   /api/v1/test-runs/{id}/rerun:
+    get:
+      tags: [triage]
+      summary: Whether a re-run of a test run could be placed now
+      description: |-
+        Asked **before** anyone presses **Re-run failed (N)** or **Re-run full suite**
+        ([#335](https://github.com/NobuData/ouroboros/issues/335)), so the test-results head can
+        disable both with a stated reason instead of submitting into a void. It reads the build
+        the `POST` would copy and the eligibility dispatch itself reads, and writes nothing.
+
+        | `readiness` | means |
+        |---|---|
+        | `runner_available` | at least one runner is eligible for the build's pool and executor now |
+        | `no_eligible_runner` | none is: offline, drained, full, or without the executor |
+        | `pool_disabled` | the build's pool is disabled, so a submission would be refused |
+        | `no_source_build` | no farm build produced the attempt, so there is nothing to copy |
+
+        `failedCases` is the `N` of *Re-run failed (N)* — the distinct `failed` and `error` cases
+        `scope: failed` would carry — and `fullCases` every distinct case `scope: full` would.
+        Every member may read this, a `viewer` included.
+      operationId: getTestRunRerunAvailability
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/TestRunId"
+      responses:
+        "200":
+          description: The readiness, the pool, and each scope's case count.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RerunAvailability"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `test_run_not_found` — no test run with that id, **or none this caller may know
+            about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+            of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
     post:
       tags: [triage]
       summary: Re-run a test run's failed cases, or its full suite
@@ -21829,6 +21899,31 @@ components:
           type: string
           enum: [offered, queued_runner_available, queued_no_eligible_runner]
           description: Where the build honestly stands. Never *started*.
+
+    RerunAvailability:
+      type: object
+      title: RerunAvailability
+      additionalProperties: false
+      required: [testRunId, readiness, pool, failedCases, fullCases]
+      properties:
+        testRunId:
+          type: string
+          format: uuid
+        readiness:
+          type: string
+          enum: [runner_available, no_eligible_runner, pool_disabled, no_source_build]
+          description: Whether a re-run could be placed now. Anything but `runner_available` disables both actions.
+        pool:
+          type: [string, "null"]
+          description: The pool the re-run would be queued in; null when no farm build produced the attempt.
+        failedCases:
+          type: integer
+          minimum: 0
+          description: The distinct `failed` and `error` cases `scope` `failed` would carry.
+        fullCases:
+          type: integer
+          minimum: 0
+          description: Every distinct case `scope` `full` would carry.
 
     RunnerFlag:
       type: object

@@ -5380,7 +5380,25 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        /**
+         * Whether a re-run of a test run could be placed now
+         * @description Asked **before** anyone presses **Re-run failed (N)** or **Re-run full suite**
+         *     ([#335](https://github.com/NobuData/ouroboros/issues/335)), so the test-results head can
+         *     disable both with a stated reason instead of submitting into a void. It reads the build
+         *     the `POST` would copy and the eligibility dispatch itself reads, and writes nothing.
+         *
+         *     | `readiness` | means |
+         *     |---|---|
+         *     | `runner_available` | at least one runner is eligible for the build's pool and executor now |
+         *     | `no_eligible_runner` | none is: offline, drained, full, or without the executor |
+         *     | `pool_disabled` | the build's pool is disabled, so a submission would be refused |
+         *     | `no_source_build` | no farm build produced the attempt, so there is nothing to copy |
+         *
+         *     `failedCases` is the `N` of *Re-run failed (N)* — the distinct `failed` and `error` cases
+         *     `scope: failed` would carry — and `fullCases` every distinct case `scope: full` would.
+         *     Every member may read this, a `viewer` included.
+         */
+        get: operations["getTestRunRerunAvailability"];
         put?: never;
         /**
          * Re-run a test run's failed cases, or its full suite
@@ -7526,6 +7544,22 @@ export interface components {
              * @enum {string}
              */
             queueState: "offered" | "queued_runner_available" | "queued_no_eligible_runner";
+        };
+        /** RerunAvailability */
+        RerunAvailability: {
+            /** Format: uuid */
+            testRunId: string;
+            /**
+             * @description Whether a re-run could be placed now. Anything but `runner_available` disables both actions.
+             * @enum {string}
+             */
+            readiness: "runner_available" | "no_eligible_runner" | "pool_disabled" | "no_source_build";
+            /** @description The pool the re-run would be queued in; null when no farm build produced the attempt. */
+            pool: string | null;
+            /** @description The distinct `failed` and `error` cases `scope` `failed` would carry. */
+            failedCases: number;
+            /** @description Every distinct case `scope` `full` would carry. */
+            fullCases: number;
         };
         /** RunnerFlag */
         RunnerFlag: {
@@ -40364,6 +40398,127 @@ export interface operations {
              *     — `toggles.requeue` on anything but `infra_rig`. `control_payload_invalid` — a note of
              *     only whitespace. `validation_failed` — an id is not a uuid, or a field is the wrong shape.
              */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getTestRunRerunAvailability: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The test run — `test_runs.id`, one build attempt's results (V051). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0033-0000-4000-8000-000000000002
+                 */
+                id: components["parameters"]["TestRunId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The readiness, the pool, and each scope's case count. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RerunAvailability"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `test_run_not_found` — no test run with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member
+             *     of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
             422: {
                 headers: {
                     [name: string]: unknown;

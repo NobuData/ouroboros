@@ -23,6 +23,28 @@ import type { JobView } from "./dispatch.repository";
 export type DispatchQueueState =
   "offered" | "queued_runner_available" | "queued_no_eligible_runner";
 
+/**
+ * Whether a re-run of a build could be placed now (#335) — asked **before** anyone presses, so
+ * the test-results head can disable *Re-run failed* and *Re-run full suite* with a stated reason
+ * instead of submitting into a void:
+ *
+ *   * `runner_available` — at least one runner is eligible for the build's pool and executor now;
+ *   * `no_eligible_runner` — none is: offline, drained, full, or without the executor;
+ *   * `pool_disabled` — the build's pool is disabled, so a submission would be refused;
+ *   * `no_source_build` — no farm build produced the attempt, so there is nothing to copy.
+ *
+ * The same eligibility `queued_runner_available` reads, short of the live-session check.
+ */
+export type RerunReadiness =
+  "runner_available" | "no_eligible_runner" | "pool_disabled" | "no_source_build";
+
+/** A re-run's readiness, and the pool it would be queued in. */
+export interface RerunReadinessCheck {
+  readonly readiness: RerunReadiness;
+  /** The source build's pool, by name; null when there is no source build. */
+  readonly pool: string | null;
+}
+
 /** A re-run just submitted, and where it honestly stands. */
 export interface RerunDispatch {
   readonly job: BuildJobResource;

@@ -259,6 +259,10 @@ ouroboros-ui/
 │   │   ├── run-console.ts   #   readRunConsole() — the same read, answered for the console's poll
 │   │   ├── run-controls.ts  #   readRunControls() — the chips' read, 2 s while a control is on its way · #310
 │   │   ├── run-events.ts    #   readRunEvents() — one page of the transcript's tail, at the service's cadence · #312
+│   │   ├── test-results.ts  #   testResults.* — the timeline, the re-run gate, the re-run · #335
+│   │   ├── test-results-read.ts # readTimelineForPoll() / readGateForPoll() — both, for their polls
+│   │   ├── runs/[id]/tests/route.ts # GET /api/runs/{id}/tests — the attempts timeline, on this origin
+│   │   ├── test-runs/[id]/rerun/route.ts # GET /api/test-runs/{id}/rerun — whether a runner could take a re-run
 │   │   ├── runs/[id]/events/route.ts # GET /api/runs/{id}/events?after= — the transcript's tail, on this origin
 │   │   ├── run-transcript.ts #  readRunTranscript() — AP.2's JSONL export, streamed through · #310
 │   │   ├── runs/[id]/controls/route.ts # GET /api/runs/{id}/controls — the chips' poll, on this origin
@@ -417,6 +421,18 @@ ouroboros-ui/
 │   │   ├── view.ts          #   the four ways a trail lies, and what stops each
 │   │   ├── audit-actions.ts #   the Server Action — no arguments, so nothing to forge
 │   │   └── audit-trail.tsx  #   <AuditTrail /> — the button and its sheet, mountable
+│   ├── test-results/        # mockup 11's test results: head, actions, summary strip · #335
+│   │   ├── view.ts          #   the attempt, the head, the strip as the payload states it, the honest gate
+│   │   ├── poll.ts          #   the two readers and guards: the run's timeline, the attempt's gate
+│   │   ├── data.ts          #   readTests() — the first paint, the tracker link and the gate best-effort
+│   │   ├── rerun.ts · rerun-actions.ts # requestRerun() — the Server Action and what it answers
+│   │   ├── tests-head.tsx   #   the eyebrow, the linked headline and the four-element meta row
+│   │   ├── tests-actions.tsx #  Re-run failed (N) / Re-run full suite / Send failures back to loop ⟳
+│   │   ├── summary-strip.tsx #  the five StatCards, and the flaky card's honest link to insights
+│   │   ├── attempt-picker.tsx # Build 1 · 2 · 3 — which attempt the whole page reads
+│   │   ├── mark-route-slot.tsx # where Send failures back lands until #340 draws the card
+│   │   ├── tests-loading.tsx #  the first read in flight
+│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip — two polls
 │   ├── workflows/           # the workflow studio's frame — mockup 04 · #147
 │   │   ├── view.ts          #   the trigger in words, the subline, the segments, the rail's items
 │   │   ├── states.ts        #   the five states, the head and the seat for each, the read-only note
@@ -3549,6 +3565,34 @@ brings the loop back.
 Both dialogs trap Tab, close on Escape and return focus to the button that opened them
 (`ShellOverlay`, which gained `role` and `describedBy` for the abort). The e2e leg is
 `tests/e2e/specs/runs.spec.ts`, against the real simulated-run driver.
+
+## Test results
+
+`/runs/:id/tests` ([#335](https://github.com/NobuData/ouroboros/issues/335)) is mockup 11's frame:
+the eyebrow (`Test Results · Run #1847 · Build 3`), the headline linked to its tracker, the meta row
+(pin tag, pass-ratio pill, `build 3 of loop #1847`, runner + rig + duration), the three actions and
+the five-stat summary strip. A contextual surface like the run console: no sidebar entry, `?from=`
+keeps the originating module lit, and the breadcrumb leads back through the console. The run
+console's Test stage and a loop build's farm job cell link here.
+
+**One attempt is the page's state** — `?attempt=<ordinal>`, the latest by default, replaced rather
+than pushed. Two polls on the I.8 cadence: the run's timeline (`/api/runs/:id/tests`), which carries
+every attempt's strip, so switching redraws the head and the strip in one render; and the selected
+attempt's re-run gate (`/api/test-runs/:id/rerun`), rebuilt on a switch so another attempt's answer
+is never drawn.
+
+**The page formats; it derives nothing.** The strip's `▲ 12 vs build 1`, the wall-time split and the
+re-run's `N` are the payload's (AT.5 #333, and `GET /api/v1/test-runs/:id/rerun`).
+
+| Action | What it does | Off, with the reason printed, when |
+|--------|--------------|------------------------------------|
+| **Re-run failed (N)** | queues the failed set as a new build (AT.4 #332) and says the honest queue state | a viewer · no eligible runner · pool disabled · no farm build · nothing failed · checking |
+| **Re-run full suite** | queues every case the same way | the same, bar *nothing failed* |
+| **Send failures back to loop ⟳** | stages the failed set on Mark & Route and focuses it — a navigation, not a dispatch | nothing failed |
+
+Mark & Route itself is #340's; until then the page holds its slot, which names the staged cases.
+Insights (mockup 15) is `soon`, so the flaky card's `quarantine watching (N)` is words with the
+sidebar's note, not a link to a page that does not exist.
 
 ## Workflow Studio
 

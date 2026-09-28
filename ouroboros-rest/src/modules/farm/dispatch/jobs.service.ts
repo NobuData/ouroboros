@@ -65,6 +65,7 @@ import {
   type BuildJobResource,
   type DispatchQueueState,
   type RerunDispatch,
+  type RerunReadinessCheck,
 } from "./jobs.resources";
 
 @Injectable()
@@ -196,6 +197,47 @@ export class FarmJobsService {
     const resource = await this.resource(organizationId, job.id);
 
     return { job: resource, queueState: await this.queueState(resource, job) };
+  }
+
+  /**
+   * Whether {@link submitRerun} of a build could be placed now — the same checks, and the
+   * eligibility dispatch reads, with nothing written (#335). A disabled pool and a missing build
+   * are answered as readiness states rather than thrown, because the question is asked by a read.
+   *
+   * @param organizationId - The workspace, from the session.
+   * @param sourceJobId - The build a re-run would copy, or undefined when there is none.
+   * @returns The readiness and the pool the re-run would be queued in.
+   */
+  async rerunReadiness(
+    organizationId: string,
+    sourceJobId: string | undefined,
+  ): Promise<RerunReadinessCheck> {
+    const source =
+      sourceJobId === undefined
+        ? undefined
+        : await this.repository.view(organizationId, sourceJobId);
+    if (!source) return { readiness: "no_source_build", pool: null };
+
+    const pool = await this.repository.pool(organizationId, source.poolName);
+    if (!pool?.enabled) return { readiness: "pool_disabled", pool: source.poolName };
+
+    const { job } = source;
+    const candidates = await this.repository.candidates(
+      {
+        id: job.id,
+        organization_id: organizationId,
+        pool_id: job.pool_id,
+        executor: job.executor,
+        command: job.command,
+        commit_sha: job.commit_sha,
+      },
+      this.now(),
+    );
+
+    return {
+      readiness: candidates.length > 0 ? "runner_available" : "no_eligible_runner",
+      pool: source.poolName,
+    };
   }
 
   /**

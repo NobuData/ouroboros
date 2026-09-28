@@ -485,6 +485,18 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* The Test stage's way to its results page (#335) — a quiet link under the node. */
+.run-step__tests {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  text-decoration: none;
+}
+
+.run-step__tests:hover {
+  text-decoration: underline;
+}
+
 /* The warn note wraps — never truncates: it is the story of why the loop went backwards. */
 .run-step__note {
   max-width: 12rem;

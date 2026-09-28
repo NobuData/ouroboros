@@ -20,7 +20,7 @@ import {
 } from "@/app/farm/runners";
 import { FIRST_RUN_STEPS_LABEL } from "@/app/farm/states";
 import { NOT_MEASURED, SOON_MARK } from "@/app/farm/view";
-import { runPath } from "@/app/paths";
+import { runPath, testsPath } from "@/app/paths";
 import type { PollAnswer } from "@/app/poll";
 
 import {
@@ -562,6 +562,25 @@ describe("the current-job cell", () => {
 
     // The hand-submitted build beside it still opens the sheet.
     expect(jobControl("#472")).toHaveTextContent("#472 HIL test rig · finishing");
+  });
+
+  it("links a loop's build to its test results too, keeping the farm as the origin (#335)", () => {
+    const runId = "7f000009-0000-4000-8000-000000000001";
+    const page = seededFarm();
+    draw({
+      ...page,
+      runners: page.runners.map((runner) =>
+        runner.currentJob?.number === 479
+          ? { ...runner, currentJob: { ...runner.currentJob, runId } }
+          : runner,
+      ),
+    });
+
+    const tests = within(card()).getByRole("link", { name: "Test results of #479" });
+    expect(tests).toHaveAttribute("href", testsPath(runId, { from: "build-farm" }));
+
+    // A build no loop opened has no test-results page to link to.
+    expect(within(card()).queryByRole("link", { name: "Test results of #472" })).toBeNull();
   });
 
   it("closes from its own control and on Escape", () => {

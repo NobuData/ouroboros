@@ -684,6 +684,19 @@
   color: var(--accent);
 }
 
+/* Mockup 11's coloured counts: passed, failed and flaky figures in their state's hue (#335). */
+.ou-stat__value--ok {
+  color: var(--ok);
+}
+
+.ou-stat__value--warn {
+  color: var(--warn);
+}
+
+.ou-stat__value--err {
+  color: var(--err);
+}
+
 /*
  * Mockup 08's `4/5`: the `/5` is the same figure said more quietly — smaller, and in the faint
  * ink whether or not the figure is accented, which is why the colour is set here rather than

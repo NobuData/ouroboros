@@ -265,6 +265,11 @@ describe("the test plane", () => {
         code: "test_run_not_found",
         ownerReads: false,
       },
+      "GET /api/v1/test-runs/:id/rerun": {
+        path: () => `/api/v1/test-runs/${play.builds[1].testRunId}/rerun`,
+        code: "test_run_not_found",
+        ownerReads: true,
+      },
       "POST /api/v1/test-runs/:id/rerun": {
         path: () => `/api/v1/test-runs/${play.builds[1].testRunId}/rerun`,
         body: { scope: "failed" },

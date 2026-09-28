@@ -3,13 +3,16 @@
 import Link from "next/link";
 import { memo } from "react";
 
-import { runPath } from "@/app/paths";
+import { runPath, testsPath } from "@/app/paths";
 import { BUILD_FARM_ORIGIN } from "@/app/runs/origin";
 import { Chip, Meter, cx } from "@/app/ui";
 import type { MeterTone } from "@/app/ui";
 
 import { BEARER_FALLBACK_NOTE, RUNNER_PILLS, type RunnerStatus } from "./runners";
 import { NOT_MEASURED } from "./view";
+
+/** The job cell's link to its run's test results (#335). */
+export const JOB_TESTS_LINK = "Test results";
 
 import "./runner-actions.css";
 
@@ -133,6 +136,10 @@ export const RunnerStatusCell = memo(function RunnerStatusCell({
  * and `JOB_SHEET_NOTE`). Either way it stays in the tab order — unlike the row's inert `⋯` —
  * because it is the one thing in the row that acts.
  *
+ * A loop's build also links to **its test results** (`/runs/:id/tests`,
+ * [#335](https://github.com/NobuData/ouroboros/issues/335)) — the page a build's outcome is read
+ * on — beside the console link, with the same `?from=build-farm`.
+ *
  * @param props.jobId The job's id — what `onOpen` is called with — or `null` for a machine
  *   running nothing.
  * @param props.number `#479`, or `null` for a machine running nothing.
@@ -163,14 +170,23 @@ export const RunnerJobCell = memo(function RunnerJobCell({
 
   if (runId !== null) {
     return (
-      <Link
-        className="farm-runners__job"
-        href={runPath(runId, BUILD_FARM_ORIGIN.id)}
-        title={title ?? undefined}
-      >
-        <span className="farm-runners__job-number">{number}</span>{" "}
-        <span className="farm-runners__job-note">{note}</span>
-      </Link>
+      <span className="farm-runners__job-links">
+        <Link
+          className="farm-runners__job"
+          href={runPath(runId, BUILD_FARM_ORIGIN.id)}
+          title={title ?? undefined}
+        >
+          <span className="farm-runners__job-number">{number}</span>{" "}
+          <span className="farm-runners__job-note">{note}</span>
+        </Link>
+        <Link
+          aria-label={`${JOB_TESTS_LINK} of ${number}`}
+          className="farm-runners__tests"
+          href={testsPath(runId, { from: BUILD_FARM_ORIGIN.id })}
+        >
+          {JOB_TESTS_LINK}
+        </Link>
+      </span>
     );
   }
 

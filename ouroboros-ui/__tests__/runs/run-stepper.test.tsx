@@ -2,7 +2,14 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RunStepper } from "@/app/runs/run-stepper";
-import { NO_STAGES, STEPPER_LABEL, STEPPER_TITLE, type StepperView, runStepper } from "@/app/runs/stepper";
+import {
+  NO_STAGES,
+  STEPPER_LABEL,
+  STEPPER_TITLE,
+  TEST_RESULTS_LINK,
+  type StepperView,
+  runStepper,
+} from "@/app/runs/stepper";
 
 import { SEEDED_NOTE, runConsole, seededStages, timelineStage } from "../helpers/runs";
 
@@ -225,5 +232,49 @@ describe("the narrow viewport", () => {
     expect(wrapper.scrollLeft).toBe(500);
     // The pane is never asked to move.
     expect(scrollIntoView).not.toHaveBeenCalled();
+  });
+});
+
+describe("the Test stage's link to its results (#335)", () => {
+  const HREF = "/runs/5eed/tests?from=dashboard";
+
+  /**
+   * The seed with the Test stage at a status.
+   *
+   * @param status The Test stage's status.
+   * @returns The stepper.
+   */
+  function withTest(status: "pending" | "active" | "succeeded" | "failed" | "skipped"): StepperView {
+    return runStepper(
+      runConsole({
+        stages: seededStages().map((stage) => (stage.stageKey === "test" ? { ...stage, status } : stage)),
+      }),
+    );
+  }
+
+  it("links the Test stage, once the loop has reached it, to the page it is given", () => {
+    for (const status of ["active", "succeeded", "failed"] as const) {
+      const { unmount } = render(
+        <RunStepper onSelect={vi.fn()} selected={null} testsHref={HREF} view={withTest(status)} />,
+      );
+
+      const link = screen.getByRole("link", { name: TEST_RESULTS_LINK });
+      expect(link).toHaveAttribute("href", HREF);
+      expect(steps().find((step) => step.contains(link))).toHaveTextContent("Test");
+      unmount();
+    }
+  });
+
+  it("links nothing before the loop reaches Test, for a skipped one, or without an address", () => {
+    for (const status of ["pending", "skipped"] as const) {
+      const { unmount } = render(
+        <RunStepper onSelect={vi.fn()} selected={null} testsHref={HREF} view={withTest(status)} />,
+      );
+      expect(screen.queryByRole("link", { name: TEST_RESULTS_LINK })).toBeNull();
+      unmount();
+    }
+
+    draw(withTest("active"));
+    expect(screen.queryByRole("link", { name: TEST_RESULTS_LINK })).toBeNull();
   });
 });
