@@ -105,6 +105,22 @@ describe("GET /runs/:id/test-runs — the mockup's strip and timeline", () => {
     expect(attempts[2].rigs).toEqual(["helios-rig-02"]);
   });
 
+  it("says when each attempt's report last arrived", async () => {
+    const { attempts } = await service.timeline(ORG, RUN);
+
+    expect(attempts.map((attempt) => attempt.lastReceivedAt)).toEqual([
+      "2026-09-20T13:53:12.000Z",
+      "2026-09-20T13:54:06.000Z",
+      "2026-09-20T13:54:29.400Z",
+      "2026-09-20T13:54:54.000Z",
+    ]);
+    for (const attempt of attempts) {
+      expect(Date.parse(attempt.lastReceivedAt)).toBeGreaterThanOrEqual(
+        Date.parse(attempt.startedAt),
+      );
+    }
+  });
+
   it("heads the card with the run's branch, loop and start", async () => {
     const { run } = await service.timeline(ORG, RUN);
 

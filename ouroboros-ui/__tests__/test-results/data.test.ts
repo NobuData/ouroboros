@@ -20,6 +20,9 @@ vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
 const { readTests } = await import("@/app/test-results/data");
 
+/** When the read is made, in the cases that pin the clock. */
+const READ_AT = Date.parse("2026-09-19T14:45:00.000Z");
+
 /** The run's pull request. */
 const PULL_REQUEST = { id: "5eed003a-0000-4000-8000-000000000514", number: 514 };
 
@@ -32,7 +35,10 @@ const PULL_REQUEST = { id: "5eed003a-0000-4000-8000-000000000514", number: 514 }
 function readers(over: Partial<TestsReaders> = {}): TestsReaders {
   return {
     timeline: vi.fn().mockResolvedValue(timeline()),
-    repository: vi.fn().mockResolvedValue({ owner: "acme-robotics", name: "helios-firmware" }),
+    context: vi.fn().mockResolvedValue({
+      repository: { owner: "acme-robotics", name: "helios-firmware" },
+      stageKeys: ["plan", "implement", "build", "test", "pr"],
+    }),
     gate: vi.fn((id: string) => Promise.resolve(gate({ testRunId: id }))),
     page: vi.fn().mockResolvedValue(page()),
     pullRequest: vi.fn().mockResolvedValue(PULL_REQUEST),
@@ -44,7 +50,7 @@ describe("readTests", () => {
   it("finds the timeline, builds the tracker link, and reads the latest attempt's gate", async () => {
     const read = readers();
 
-    expect(await readTests(SEEDED_RUN_ID, null, read)).toEqual({
+    expect(await readTests(SEEDED_RUN_ID, null, read, () => READ_AT)).toEqual({
       state: "found",
       value: {
         timeline: timeline(),
@@ -53,6 +59,8 @@ describe("readTests", () => {
         gate: gate(),
         page: page(),
         pullRequest: PULL_REQUEST,
+        hasTestStage: true,
+        readAt: READ_AT,
       },
     });
     expect(read.gate).toHaveBeenCalledExactlyOnceWith(BUILD_3_ID);
@@ -94,11 +102,12 @@ describe("readTests", () => {
       SEEDED_RUN_ID,
       null,
       readers({
-        repository: vi.fn().mockRejectedValue(refused),
+        context: vi.fn().mockRejectedValue(refused),
         gate: vi.fn().mockRejectedValue(refused),
         page: vi.fn().mockRejectedValue(refused),
         pullRequest: vi.fn().mockRejectedValue(refused),
       }),
+      () => READ_AT,
     );
 
     expect(reading).toEqual({
@@ -110,8 +119,53 @@ describe("readTests", () => {
         gate: null,
         page: null,
         pullRequest: null,
+        hasTestStage: null,
+        readAt: READ_AT,
       },
     });
+  });
+
+  it("says a workflow whose stages name no test stage has none (#342)", async () => {
+    const reading = await readTests(
+      SEEDED_RUN_ID,
+      null,
+      readers({
+        timeline: vi.fn().mockResolvedValue(timeline({ attempts: [] })),
+        context: vi.fn().mockResolvedValue({
+          repository: { owner: "acme-robotics", name: "helios-firmware" },
+          stageKeys: ["plan", "implement", "pr"],
+        }),
+      }),
+    );
+
+    expect(reading).toEqual(
+      expect.objectContaining({ value: expect.objectContaining({ hasTestStage: false }) }),
+    );
+  });
+
+  it("does not say a run that has reported no stage lacks a test stage (#342)", async () => {
+    const reading = await readTests(
+      SEEDED_RUN_ID,
+      null,
+      readers({
+        context: vi.fn().mockResolvedValue({
+          repository: { owner: "acme-robotics", name: "helios-firmware" },
+          stageKeys: [],
+        }),
+      }),
+    );
+
+    expect(reading).toEqual(
+      expect.objectContaining({ value: expect.objectContaining({ hasTestStage: null }) }),
+    );
+  });
+
+  it("stamps the read with the clock's own instant (#342)", async () => {
+    const before = Date.now();
+    const reading = await readTests(SEEDED_RUN_ID, null, readers());
+
+    expect(reading.state).toBe("found");
+    if (reading.state === "found") expect(reading.value.readAt).toBeGreaterThanOrEqual(before);
   });
 
   it("names no pull request for a run that opened none (#363)", async () => {

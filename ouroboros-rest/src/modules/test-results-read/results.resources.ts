@@ -113,6 +113,11 @@ export interface AttemptResource {
   readonly status: TestRunStatus;
   readonly commitSha: string | null;
   readonly startedAt: string;
+  /**
+   * When a report for this attempt last arrived — `test_runs.updated_at`, which every results
+   * write moves. What the page's ingest-lag banner names (#342).
+   */
+  readonly lastReceivedAt: string;
   /** `failed` for *re-run of failed set*, `full` for a full re-run; null for an ordinary build. */
   readonly selection: TestSelectionScope | null;
   readonly build: AttemptBuildResource | null;
@@ -397,6 +402,7 @@ export function attemptResource(row: AttemptRow, context: AttemptContext): Attem
     status: row.status,
     commitSha: row.commit_sha,
     startedAt: row.started_at.toISOString(),
+    lastReceivedAt: row.updated_at.toISOString(),
     selection: row.test_selection?.scope ?? null,
     build:
       row.build_job_id === null

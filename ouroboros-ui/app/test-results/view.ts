@@ -42,12 +42,6 @@ export const STRIP_LABEL = "Summary";
 /** The actions' accessible name. */
 export const ACTIONS_LABEL = "Test actions";
 
-/** What the page says while its first read is in flight. */
-export const READING_TESTS = "Reading the test results…";
-
-/** What the page says when the run has no attempt to show yet. */
-export const NO_ATTEMPTS = "No build of this run has reported test results yet.";
-
 /** The banner's headline when the first read failed and nothing is on screen. */
 export const UNREAD_HEADLINE = "These test results could not be read.";
 

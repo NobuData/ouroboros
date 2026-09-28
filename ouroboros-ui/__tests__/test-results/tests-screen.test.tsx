@@ -11,13 +11,13 @@ import type { NavEntry } from "@/app/shell/nav";
 import { MARK_ROUTE_TITLE, NOTHING_STAGED, STAGED_LABEL } from "@/app/test-results/mark-route-slot";
 import type { TestsPollOptions } from "@/app/test-results/poll";
 import type { RerunOutcome } from "@/app/test-results/rerun";
+import { NO_RESULTS_NOTE } from "@/app/test-results/states";
 import { InsightsLink, SummaryStrip } from "@/app/test-results/summary-strip";
 import { type RerunSender, TestsScreen } from "@/app/test-results/tests-screen";
 import { PR_PLANE_NOTE, TIMELINE_LIST_LABEL, TIMELINE_TITLE } from "@/app/test-results/timeline";
 import {
   ACTIONS_LABEL,
   GATE_CHECKING,
-  NO_ATTEMPTS,
   STALE_HEADLINE,
   STRIP_LABEL,
   UNREAD_HEADLINE,
@@ -536,7 +536,7 @@ describe("the shell and the frame", () => {
   it("says a run with no reported attempt has none, with no actions", () => {
     draw({ initial: timeline({ attempts: [] }), initialGate: null });
 
-    expect(screen.getByText(NO_ATTEMPTS)).toBeInTheDocument();
+    expect(screen.getByText(NO_RESULTS_NOTE)).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: ACTIONS_LABEL })).toBeNull();
     expect(screen.getByText("Test Results · Run #1847")).toBeInTheDocument();
   });

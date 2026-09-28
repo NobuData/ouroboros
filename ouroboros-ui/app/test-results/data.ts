@@ -10,12 +10,14 @@ import "server-only";
  *
  * Four reads ride along, each **best-effort**, because neither is the page's reason to exist:
  *
- * - **The run console's snapshot, for the tracker link and the commit links.** The timeline names
- *   the issue by number and each attempt's commit by sha; the repository they live in is the
- *   console's (`head.repository`), and `trackerUrl` and `commitSource` build from it exactly as
- *   the run console does. Unreadable, the headline and the shas
+ * - **The run console's snapshot, for the tracker link, the commit links and the stages.** The
+ *   timeline names the issue by number and each attempt's commit by sha; the repository they live
+ *   in is the console's (`head.repository`), and `trackerUrl` and `commitSource` build from it
+ *   exactly as the run console does. Unreadable, the headline and the shas
  *   ([#336](https://github.com/NobuData/ouroboros/issues/336)) are plain text rather than guessed
- *   links.
+ *   links. Its stages say whether the run's workflow has a test stage at all
+ *   ([#342](https://github.com/NobuData/ouroboros/issues/342)); unreadable, that is unknown, and
+ *   the page never reports unknown as absent.
  * - **The selected attempt's re-run gate**, so the buttons can be honest on first paint. Unreadable,
  *   they say they are checking, and the gate's poll answers within one interval.
  * - **The selected attempt's page** ([#337](https://github.com/NobuData/ouroboros/issues/337)),
@@ -37,6 +39,7 @@ import {
 } from "@/app/api/test-results";
 import { runPullRequests } from "@/app/prs/data";
 import { type CommitSource, commitSource } from "@/app/runs/cards";
+import { TEST_STAGE_KEY } from "@/app/runs/stepper";
 import { trackerUrl } from "@/app/runs/view";
 
 import { selectedAttempt } from "./view";
@@ -54,6 +57,18 @@ export interface TestsFirstRead {
   readonly page: TestRunPage | null;
   /** The run's pull request, or `null` when it opened none or it could not be looked up. */
   readonly pullRequest: PullRequestRef | null;
+  /** Whether the run's stages include the test stage, or `null` when that is not known. */
+  readonly hasTestStage: boolean | null;
+  /** When this read was made, in epoch milliseconds — the ingest-lag banner's first clock. */
+  readonly readAt: number;
+}
+
+/** What the run console's snapshot is read for. */
+export interface RunContext {
+  /** The repository the run's issue and commits live in. */
+  readonly repository: Parameters<typeof trackerUrl>[0];
+  /** The DSL node id of each of the run's stages. */
+  readonly stageKeys: readonly string[];
 }
 
 /** What the first read found. */
@@ -65,7 +80,7 @@ export type TestsReading =
 /** How the reads are made. Replaced in tests. */
 export interface TestsReaders {
   readonly timeline: (runId: string) => Promise<TestRunTimeline>;
-  readonly repository: (runId: string) => Promise<Parameters<typeof trackerUrl>[0]>;
+  readonly context: (runId: string) => Promise<RunContext>;
   readonly gate: (testRunId: string) => Promise<RerunAvailability>;
   readonly page: (testRunId: string) => Promise<TestRunPage>;
   readonly pullRequest: (runId: string) => Promise<PullRequestRef | null>;
@@ -74,7 +89,14 @@ export interface TestsReaders {
 /** The production readers, over the request-scoped client. */
 const READERS: TestsReaders = {
   timeline: (runId) => testResults.timeline(runId),
-  repository: async (runId) => (await runs.console(runId)).head.repository,
+  context: async (runId) => {
+    const snapshot = await runs.console(runId);
+
+    return {
+      repository: snapshot.head.repository,
+      stageKeys: snapshot.timeline.stages.map((stage) => stage.stageKey),
+    };
+  },
   gate: (testRunId) => testResults.rerunAvailability(testRunId),
   page: (testRunId) => testResults.page(testRunId),
   pullRequest: async (runId) => (await runPullRequests([runId])).get(runId) ?? null,
@@ -99,17 +121,33 @@ async function optional<T>(read: Promise<T>): Promise<T | null> {
 }
 
 /**
+ * Whether a run's workflow has a test stage, as far as its stages say.
+ *
+ * @param context The run's context, or `null` when it could not be read.
+ * @returns `true` or `false` once the run has reported its stages; `null` when the context could
+ *   not be read or the run has reported no stage yet — a run that has named no stage has not
+ *   said it lacks one.
+ */
+export function hasTestStage(context: RunContext | null): boolean | null {
+  if (context === null || context.stageKeys.length === 0) return null;
+
+  return context.stageKeys.includes(TEST_STAGE_KEY);
+}
+
+/**
  * Read one run's test results for the page.
  *
  * @param runId The run's id, from the URL.
  * @param attemptSeq The attempt `?attempt=` asked for, or `null` for the latest.
  * @param readers How to read. Replaced in tests.
+ * @param now The clock, in epoch milliseconds. Replaced in tests.
  * @returns The reading. An error that is not the API's own is rethrown.
  */
 export async function readTests(
   runId: string,
   attemptSeq: number | null,
   readers: TestsReaders = READERS,
+  now: () => number = Date.now,
 ): Promise<TestsReading> {
   let timeline: TestRunTimeline;
 
@@ -123,8 +161,8 @@ export async function readTests(
   }
 
   const attempt = selectedAttempt(timeline.attempts, attemptSeq);
-  const [repository, gate, page, pullRequest] = await Promise.all([
-    optional(readers.repository(runId)),
+  const [context, gate, page, pullRequest] = await Promise.all([
+    optional(readers.context(runId)),
     attempt === null ? Promise.resolve(null) : optional(readers.gate(attempt.id)),
     attempt === null ? Promise.resolve(null) : optional(readers.page(attempt.id)),
     optional(readers.pullRequest(runId)),
@@ -134,11 +172,14 @@ export async function readTests(
     state: "found",
     value: {
       timeline,
-      trackerUrl: repository === null ? null : trackerUrl(repository, timeline.run.issueNumber),
-      commitSource: repository === null ? null : commitSource(repository),
+      trackerUrl:
+        context === null ? null : trackerUrl(context.repository, timeline.run.issueNumber),
+      commitSource: context === null ? null : commitSource(context.repository),
       gate,
       page,
       pullRequest,
+      hasTestStage: hasTestStage(context),
+      readAt: now(),
     },
   };
 }

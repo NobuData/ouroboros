@@ -3843,6 +3843,27 @@ Mark & Route itself is #340's; until then the page holds its slot, which names t
 Insights (mockup 15) is `soon`, so the flaky card's `quarantine watching (N)` is words with the
 sidebar's note, not a link to a page that does not exist.
 
+### Test-results states
+
+Mockup 11 draws one state: a mid-flight build whose results have parsed. AU.8
+([#342](https://github.com/NobuData/ouroboros/issues/342)) draws the rest
+([`states.ts`](app/test-results/states.ts)), all in both palettes:
+
+| State | What the page does |
+|---|---|
+| **Build running** | The figures are what has parsed so far, so they are **labelled `partial`** above the strip, with the count reported and the sentence *not the final result*. The pill is the live hue with `· running` — a mid-parse `40/63` is never a verdict's hue — and the timeline's live card pulses. |
+| **No test stage** | A run with no attempt whose reported stages name no `test` stage says its workflow has none, names the workflow, and links to it. Stages that could not be read, or a run that has reported none, are *unknown* and never reported as absent. |
+| **No results** | A run with no attempt otherwise says *No test results yet* and links to its run console, where the build is. No strip, cards or actions are drawn. |
+| **Parse warning** | The attempt's typed warnings (#329) are a banner naming each file, where in it, what failed to parse, and **what is therefore missing** — per code, from the parser's own rule. It has no retry: the same bytes read the same. |
+| **Gone quiet** (ingest lag) | A **running** attempt whose last report (`lastReceivedAt`) is **two minutes** old gets DASH-I.7's banner: *No results received since 14:02 — Build 3's uploads have gone quiet*, and why that may be. *Check again* asks the service now. A failed refresh's banner takes precedence, and a finished build never gets it. |
+| **Member / viewer** | A member may re-run; a viewer is told why they cannot. No waive is offered to anyone — it and classify arrive with Mark & Route (#340). |
+| **Loading** | [`loading.tsx`](<app/(app)/runs/[id]/tests/loading.tsx>) — skeletons for the head, the timeline, the strip, the suites and the cards, still and hidden from the accessibility tree. |
+| **Error** | A run that could not be read is the retry banner with nothing invented beneath it. A run that does not exist (or is another workspace's) is [`not-found.tsx`](<app/(app)/runs/[id]/tests/not-found.tsx>), the page's own. An `?attempt=` naming a build the run never made says so and names the build shown instead. |
+
+The e2e suite's leg 19 (`tests/e2e/specs/test-results.spec.ts`) draws these against the seed. Its
+live chain — upload → parse → classify → correction → re-run → green — is **parked** on #340, #265
+and #991, so #342 stays open as the milestone's gate.
+
 ## PR verification
 
 `/prs/:id` ([#363](https://github.com/NobuData/ouroboros/issues/363)) is mockup 12's frame: the

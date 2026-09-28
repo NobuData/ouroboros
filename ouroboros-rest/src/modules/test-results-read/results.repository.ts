@@ -53,6 +53,8 @@ export interface AttemptRow {
   readonly status: TestRunStatus;
   readonly commit_sha: string | null;
   readonly started_at: Date;
+  /** `test_runs.updated_at` — moved by every results write, so it is when a report last arrived. */
+  readonly updated_at: Date;
   readonly total: number;
   readonly passed: number;
   readonly failed: number;
@@ -243,6 +245,7 @@ export class ResultsRepository {
         "t.status",
         "t.commit_sha",
         "t.started_at",
+        "t.updated_at",
         "t.total",
         "t.passed",
         "t.failed",

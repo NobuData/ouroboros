@@ -7742,6 +7742,13 @@ export interface components {
             /** Format: date-time */
             startedAt: string;
             /**
+             * Format: date-time
+             * @description When a report for this attempt last arrived. Every results write moves it, so a
+             *     running attempt whose instant has stopped moving has stopped receiving uploads —
+             *     what the page's ingest-lag banner names.
+             */
+            lastReceivedAt: string;
+            /**
              * @description `failed` for a *re-run of the failed set*, `full` for a full re-run, null for an
              *     ordinary build.
              * @enum {string|null}
