@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.37.11",
+    "version": "0.37.12",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -109,6 +109,10 @@
     {
       "name": "pr-merge",
       "description": "**Merge when all gates green** — the merge plan and executor of the PR Verification page\n(mockup 12, issue [#360](https://github.com/NobuData/ouroboros/issues/360), decisions\n**V3**/**V9**): an arm that records the revision it promised about, a re-check inside the\ntransaction that holds the PR so no gate can move between the check and the merge, designed\ndisarm reasons instead of a blind merge, verified post-merge actions, and an honest merge\nidentity."
+    },
+    {
+      "name": "pr-page",
+      "description": "**The PR Verification page** — its reads and composed head actions (mockup 12, issue\n[#361](https://github.com/NobuData/ouroboros/issues/361), decisions **V5**/**V8**): the list\nfor navigation and needs-you surfaces, the whole page payload with per-revision gate snapshots\nand an honest spend rollup, *Return to loop* as an AP.4 correction round carrying the red\ngates' evidence, and *Request human review* and its approval as a gate mutation."
     },
     {
       "name": "farm",
@@ -19979,6 +19983,543 @@
         }
       }
     },
+    "/api/v1/pull-requests": {
+      "get": {
+        "tags": [
+          "pr-page"
+        ],
+        "summary": "The workspace's pull requests, for navigation and the needs-you surfaces",
+        "description": "Every PR mirrored into the workspace, most recently updated first\n([#361](https://github.com/NobuData/ouroboros/issues/361)), each with its latest revision,\nthat revision's gate aggregate (`5 of 7 green`) and whether an approval slot is open.\n\n**`state`** narrows to one or more states — `?state=verifying,blocked`, or the parameter\nrepeated. **`reviewRequested=true`** is the needs-you feed: only PRs where somebody asked for\na human review nobody has answered yet (V065's open `pr_approvals` slot — mockup 16's inbox,\n#461, wraps the same record). `false` is the complement; absent is both.\n\nEvery member may read it, a `viewer` included.",
+        "operationId": "listPullRequests",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "description": "Narrow to these states, comma-separated or repeated.",
+            "style": "form",
+            "explode": false,
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "open",
+                  "verifying",
+                  "blocked",
+                  "armed",
+                  "merged",
+                  "closed"
+                ]
+              }
+            }
+          },
+          {
+            "name": "reviewRequested",
+            "in": "query",
+            "required": false,
+            "description": "`true` — only PRs with an open approval slot. `false` — only PRs without one.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page. A workspace with no PRs gets an empty one.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PullRequestList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — `X-Ouro-Tenant` names a workspace you are not a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a `state` that is not a PR state, a `reviewRequested` that is not\n`true` or `false`, or a `limit`/`offset` out of range.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pull-requests/{id}": {
+      "get": {
+        "tags": [
+          "pr-page"
+        ],
+        "summary": "The whole PR Verification page in one payload",
+        "description": "Every region of mockup 12 ([#361](https://github.com/NobuData/ouroboros/issues/361)):\n\n* **`pullRequest`** — the head: title, state, branches, `+68 −15 · 3 files`, the loop\n  (`loop #1847`, its model) and the ticket (`issue #482`).\n* **`revisions`** — the revision-cycle strip, oldest first. **Each revision carries its own\n  gate snapshot** (V056's per-revision results and aggregate), so the gates card can be\n  scoped to Revision 1's `2 gates red` after Revision 2 turned them green. `testAttempt` is\n  the attempt the revision's own test verdict cites (`attempt 4`); `correction` is what\n  bridged the previous revision to it — the classification on a case of the previous\n  revision's attempt, and any *Return to loop* sent from it (decision **V4**: joins, not\n  prose).\n* **`gates`** — the latest revision's snapshot (the same object as the last revision's).\n* **`criteria`** — `GET …/criteria`'s matrix (#359). **`plan`** — `GET …/merge-plan`'s plan\n  (#360), written with the defaults when the PR had none.\n* **`files`** — the latest revision's changed files, totals, diff excerpt and the host's full\n  diff. **`thread`** — the review thread with `pr_thread_summary`'s counts (`3 entries · 0\n  open`).\n* **`spend`** — decision **V8**: the run's whole ledger (*Loop total*) and its\n  `verify`-tagged share (*Verification*) against the budget stage's route cap. **Unpriced is\n  never `$0`**: a ledger with no prices has a `null` cost, and `withinCap` is `null` when it\n  cannot honestly be said. Null for a PR no loop opened.\n* **`review`** — the newest approval slot; **`loopReturn`** — the newest *Return to loop*.\n\nEvery member may read it, a `viewer` included.",
+        "operationId": "getPullRequestPage",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/PullRequestId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PullRequestPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pull_request_not_found` — no pull request with that id, **or none this caller may know\nabout** (a PR of another workspace is `404`, never `403`). Or `tenant_not_found`, when\n`X-Ouro-Tenant` names a workspace you are not a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pull-requests/{id}/return-to-loop": {
+      "post": {
+        "tags": [
+          "pr-page"
+        ],
+        "summary": "Return to loop — send the selected red gates' evidence back to the agent",
+        "description": "The head's danger action ([#361](https://github.com/NobuData/ouroboros/issues/361), decision\n**V5**). **Not a new control path**: it is AP.4's correction round\n([#306](https://github.com/NobuData/ouroboros/issues/306),\n[#332](https://github.com/NobuData/ouroboros/issues/332)) — a steer plus a stage retry —\nwhose text is the selected gates' evidence lines, one per gate in the card's order:\n\n    physical_hil: overshoot 2.4% > 2.0% · rig helios-rig-02\n\nand the optional `note` after a blank line, as `note: …`. So the agent receives what the\ngates measured, and the run console's transcript shows exactly that. A different selection\nis a different steer.\n\nEvery selected gate must be **red** on the revision (`revisionId`, default the latest) —\n`422 pr_gate_not_red` names each that is not, with its verdict. The control is queued with\nAP.4's role policy, TTL and audit trigger; a run that has finished answers it `rejected`\n(then nothing is recorded and `skipped` says why). Otherwise the return is recorded\n(V065's `pr_loop_returns`) with **the attempt the next revision is expected from** — the\ncurrent stage's attempt plus one. `idempotencyKey` makes a replay answer the first control.",
+        "operationId": "returnPullRequestToLoop",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/PullRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReturnToLoopRequest"
+              },
+              "example": {
+                "gates": [
+                  "physical_hil"
+                ],
+                "revisionId": "5eed003b-0000-4000-8000-000000005141"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The queued correction round, the steer's text and the recorded expectation.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReturnToLoop"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `viewer`. Head actions are an `owner`'s, `admin`'s or `member`'s.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pull_request_not_found` — no such pull request in this workspace (another workspace's is\n`404`). `pr_revision_not_found` — `revisionId` is not one of this PR's revisions. Or\n`tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`pull_request_not_open` — the PR is merged or closed. `pull_request_has_no_run` — no loop\nopened it, so there is no agent to return to. `pull_request_has_no_revision` — nothing is\nrecorded yet. `control_key_reused` — the `idempotencyKey` named a different request.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`pr_gate_not_red` — a selected gate is not red on the revision (`details.gates`).\n`validation_failed` — no gates, a gate twice, something that is not a gate key, a padded\nnote, or a `revisionId` that is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pull-requests/{id}/request-review": {
+      "post": {
+        "tags": [
+          "pr-page"
+        ],
+        "summary": "Request human review — human approval becomes a required, pending gate",
+        "description": "The head's *Request human review* ([#361](https://github.com/NobuData/ouroboros/issues/361),\ndecision **V5**). **A gate mutation, not a message**: it opens the PR's approval slot\n(V065's `pr_approvals`, about the latest revision) and the gate engine re-evaluates\n`human_approval` under the PR's lock — required from now on, whatever the policy or org\nconfig said, and `pending` until someone approves or declines. The open slot is the PR's\n**needs-you item**: `GET /api/v1/pull-requests?reviewRequested=true` lists it.\n\nOne question, not a queue: while a slot is open, asking again answers it (`created:\nfalse`). `reviewer` optionally asks a git-host login too (SPI `requestReview`); how that\nlanded — `requested`, `unsupported` (the host declares no reviews) or `failed` with the\nhost's reason — is recorded on the slot and **never fails the request**. The response\ncarries the re-evaluated gate and the latest aggregate. Audited as `pr_approval.requested`.",
+        "operationId": "requestPullRequestReview",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/PullRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequestReviewRequest"
+              },
+              "example": {
+                "reviewer": "priya-n"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The slot, whether this call opened it, and the re-evaluated gate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrReviewOutcome"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `viewer`. Head actions are an `owner`'s, `admin`'s or `member`'s.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pull_request_not_found` — no pull request with that id, **or none this caller may know\nabout** (a PR of another workspace is `404`, never `403`). Or `tenant_not_found`, when\n`X-Ouro-Tenant` names a workspace you are not a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`pull_request_not_open` — the PR is merged or closed. `pull_request_has_no_revision` —\nnothing is recorded yet to review.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an empty or padded `reviewer`, or one over 255 characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/pull-requests/{id}/approvals": {
+      "post": {
+        "tags": [
+          "pr-page"
+        ],
+        "summary": "Approve or decline — the human-approval gate re-evaluates",
+        "description": "Answer the PR's approval slot ([#361](https://github.com/NobuData/ouroboros/issues/361)) on\nits **latest revision**: `approve` turns `human_approval` green, `decline` turns it red and\n**needs a note** (`422 pr_decline_note_required` — a red gate says why). With no slot open\n— a policy that routes the PR to a person, where nobody asked first — one is opened and\nanswered in the same transaction (`created: true`).\n\nThe gate engine re-evaluates under the PR's lock, so an approval can flip the aggregate to\nmerge-ready — and an armed plan (#360) then merges. An answer is honoured only on the\nrevision it was given on: a later push needs a fresh one. Audited as `pr_approval.approved`\nor `pr_approval.declined`, never with the note.",
+        "operationId": "decidePullRequestApproval",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/PullRequestId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              },
+              "example": {
+                "decision": "approve",
+                "note": "bench numbers look right"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answered slot and the re-evaluated gate and aggregate.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrReviewOutcome"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — a `viewer`. Head actions are an `owner`'s, `admin`'s or `member`'s.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`pull_request_not_found` — no pull request with that id, **or none this caller may know\nabout** (a PR of another workspace is `404`, never `403`). Or `tenant_not_found`, when\n`X-Ouro-Tenant` names a workspace you are not a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`pull_request_not_open` — the PR is merged or closed. `pull_request_has_no_revision` —\nnothing is recorded yet to approve.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`pr_decline_note_required` — a decline with no note. `validation_failed` — a decision other\nthan `approve` or `decline`, or a padded note, or one over 2000 characters.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and `details`\nis empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/farm/jobs": {
       "post": {
         "tags": [
@@ -25623,6 +26164,1546 @@
                 }
               }
             }
+          }
+        }
+      },
+      "PrRun": {
+        "type": "object",
+        "title": "PrRun",
+        "description": "The loop that opened a PR — `loop",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "loopSeq",
+          "issueNumber",
+          "model",
+          "workflowTag",
+          "workflowVersionPin",
+          "status",
+          "finishedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "loopSeq": {
+            "type": "integer",
+            "examples": [
+              1847
+            ]
+          },
+          "issueNumber": {
+            "type": "integer",
+            "examples": [
+              482
+            ]
+          },
+          "model": {
+            "type": "string",
+            "description": "The loop's model — the strip's model pill.",
+            "examples": [
+              "claude-fable-5"
+            ]
+          },
+          "workflowTag": {
+            "type": "string",
+            "examples": [
+              "standard-fix"
+            ]
+          },
+          "workflowVersionPin": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "examples": [
+              14
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "coding",
+              "building",
+              "review",
+              "merged",
+              "needs_human",
+              "failed",
+              "canceled"
+            ]
+          },
+          "finishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "PrTicket": {
+        "type": "object",
+        "title": "PrTicket",
+        "description": "The ticket a PR closes — `issue",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "key",
+          "title",
+          "url"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "key": {
+            "type": "string",
+            "description": "The tracker's own key — `#482`, `HEL-12`."
+          },
+          "title": {
+            "type": "string"
+          },
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "PullRequestHead": {
+        "type": "object",
+        "title": "PullRequestHead",
+        "description": "A PR's head — the page's `h1` and meta chips.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "number",
+          "url",
+          "title",
+          "state",
+          "headBranch",
+          "baseBranch",
+          "additions",
+          "deletions",
+          "changedFiles",
+          "mergedAt",
+          "mergedBy",
+          "run",
+          "ticket",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              514
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "verifying",
+              "blocked",
+              "armed",
+              "merged",
+              "closed"
+            ]
+          },
+          "headBranch": {
+            "type": "string"
+          },
+          "baseBranch": {
+            "type": "string"
+          },
+          "additions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deletions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "changedFiles": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mergedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "mergedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "run": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ticket": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrTicket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PrGateAggregate": {
+        "type": "object",
+        "title": "PrGateAggregate",
+        "description": "`pr_gate_aggregate` over the revision's required gates — `5 of 7 green`.",
+        "additionalProperties": false,
+        "required": [
+          "requiredCount",
+          "greenCount",
+          "redCount",
+          "satisfiedCount",
+          "mergeReady"
+        ],
+        "properties": {
+          "requiredCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "greenCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "redCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "satisfiedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Green, waived or not required."
+          },
+          "mergeReady": {
+            "type": "boolean",
+            "description": "Every required gate satisfied — the merge precondition."
+          }
+        }
+      },
+      "PrRevisionRef": {
+        "type": "object",
+        "title": "PrRevisionRef",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "seq",
+          "headSha",
+          "pushedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "headSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{7,40}$"
+          },
+          "pushedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PullRequestSummary": {
+        "type": "object",
+        "title": "PullRequestSummary",
+        "description": "One row of the listing — the head, the latest revision and its aggregate, and the needs-you flag.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "number",
+          "url",
+          "title",
+          "state",
+          "headBranch",
+          "baseBranch",
+          "additions",
+          "deletions",
+          "changedFiles",
+          "mergedAt",
+          "mergedBy",
+          "run",
+          "ticket",
+          "createdAt",
+          "updatedAt",
+          "latestRevision",
+          "gates",
+          "reviewRequested"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "number": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              514
+            ]
+          },
+          "url": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "open",
+              "verifying",
+              "blocked",
+              "armed",
+              "merged",
+              "closed"
+            ]
+          },
+          "headBranch": {
+            "type": "string"
+          },
+          "baseBranch": {
+            "type": "string"
+          },
+          "additions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deletions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "changedFiles": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "mergedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "mergedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "run": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrRun"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ticket": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrTicket"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "latestRevision": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrRevisionRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "gates": {
+            "description": "The latest revision's aggregate, or null when there is no revision.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrGateAggregate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reviewRequested": {
+            "type": "boolean",
+            "description": "An approval slot is open — the PR needs a person."
+          }
+        }
+      },
+      "PullRequestList": {
+        "type": "object",
+        "title": "PullRequestList",
+        "description": "One page of PRs, most recently updated first — the",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PullRequestSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "PrGateEvidenceRef": {
+        "type": "object",
+        "title": "PrGateEvidenceRef",
+        "description": "The row a gate's evidence line was composed from (V056).",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "build_job",
+              "test_run",
+              "hil_measurement",
+              "guardrail_evaluation",
+              "vote",
+              "approval"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "PrGateRow": {
+        "type": "object",
+        "title": "PrGateRow",
+        "description": "One gate's newest verdict on one revision.",
+        "additionalProperties": false,
+        "required": [
+          "key",
+          "label",
+          "required",
+          "sortOrder",
+          "source",
+          "verdict",
+          "evidence",
+          "evidenceRef",
+          "evaluatedAt",
+          "providerVersion"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "description": "A built-in gate key or `custom:<name>`.",
+            "examples": [
+              "physical_hil"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "examples": [
+              "Physical HIL"
+            ]
+          },
+          "required": {
+            "type": "boolean"
+          },
+          "sortOrder": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "source": {
+            "type": "string",
+            "description": "Why the PR has the gate — `standard-fix@v14 pin`, `… + review requested`."
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "green",
+              "red",
+              "pending",
+              "waived",
+              "not_required",
+              "unavailable"
+            ]
+          },
+          "evidence": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The row's mono line — `overshoot 1.7% ≤ 2.0% · rig helios-rig-02`."
+          },
+          "evidenceRef": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrGateEvidenceRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evaluatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "providerVersion": {
+            "type": "string"
+          }
+        }
+      },
+      "PrGateSnapshot": {
+        "type": "object",
+        "title": "PrGateSnapshot",
+        "description": "One revision's gates card.",
+        "additionalProperties": false,
+        "required": [
+          "revisionId",
+          "aggregate",
+          "rows"
+        ],
+        "properties": {
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "aggregate": {
+            "description": "Null when the revision was never evaluated.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrGateAggregate"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrGateRow"
+            }
+          }
+        }
+      },
+      "PrClassification": {
+        "type": "object",
+        "title": "PrClassification",
+        "description": "A failure classification on a case of an attempt (V055).",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "testRunId",
+          "class",
+          "subtype",
+          "note",
+          "actor",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "testRunId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "class": {
+            "type": "string",
+            "enum": [
+              "product_bug",
+              "test_update",
+              "flake_retry",
+              "infra_rig"
+            ]
+          },
+          "subtype": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The correction note, when a person wrote one."
+          },
+          "actor": {
+            "type": "string",
+            "enum": [
+              "human",
+              "heuristic",
+              "model"
+            ],
+            "description": "Who picked the class — the provenance behind a model pill."
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PrLoopReturn": {
+        "type": "object",
+        "title": "PrLoopReturn",
+        "description": "A recorded *Return to loop* (V065).",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "revisionId",
+          "controlId",
+          "gateKeys",
+          "expected",
+          "requestedBy",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The revision whose red gates were sent back."
+          },
+          "controlId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The AP.4 correction round it queued."
+          },
+          "gateKeys": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "expected": {
+            "description": "The attempt the next revision is expected from, or null when the run had no stage.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "stageKey",
+                  "attempt"
+                ],
+                "properties": {
+                  "stageKey": {
+                    "type": "string"
+                  },
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PrRevision": {
+        "type": "object",
+        "title": "PrRevision",
+        "description": "One step of the revision-cycle strip, with its own gate snapshot.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "seq",
+          "headSha",
+          "pushedAt",
+          "testAttempt",
+          "stageAttempt",
+          "commitMessage",
+          "gates",
+          "correction"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "seq": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "headSha": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{7,40}$"
+          },
+          "pushedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "testAttempt": {
+            "description": "The attempt the revision's own test verdict cites — `attempt 4`.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "id",
+                  "attemptSeq"
+                ],
+                "properties": {
+                  "id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "attemptSeq": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stageAttempt": {
+            "description": "The stage attempt the push is linked to by sha (V052), or null.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "stageKey",
+                  "attempt"
+                ],
+                "properties": {
+                  "stageKey": {
+                    "type": "string"
+                  },
+                  "attempt": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "commitMessage": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "gates": {
+            "$ref": "#/components/schemas/PrGateSnapshot"
+          },
+          "correction": {
+            "description": "What bridged the previous revision to this one; null on the first.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "fromRevisionId",
+                  "classification",
+                  "loopReturn"
+                ],
+                "properties": {
+                  "fromRevisionId": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "classification": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/PrClassification"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "loopReturn": {
+                    "oneOf": [
+                      {
+                        "$ref": "#/components/schemas/PrLoopReturn"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "PrFiles": {
+        "type": "object",
+        "title": "PrFiles",
+        "description": "The changed-files card — the latest revision's snapshot.",
+        "additionalProperties": false,
+        "required": [
+          "revisionId",
+          "additions",
+          "deletions",
+          "rows",
+          "diffExcerpt",
+          "fullDiffUrl"
+        ],
+        "properties": {
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "additions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "deletions": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "additions",
+                "deletions"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string"
+                },
+                "additions": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "deletions": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "diffExcerpt": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "fullDiffUrl": {
+            "type": "string"
+          }
+        }
+      },
+      "PrThreadEntry": {
+        "type": "object",
+        "title": "PrThreadEntry",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "revisionId",
+          "revisionSeq",
+          "authorKind",
+          "authorName",
+          "tag",
+          "body",
+          "blocking",
+          "resolved",
+          "resolutionBody",
+          "simulated",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "revisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "revisionSeq": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "`rev 1` — null for a PR-wide entry."
+          },
+          "authorKind": {
+            "type": "string",
+            "enum": [
+              "model",
+              "policy_bot",
+              "human"
+            ]
+          },
+          "authorName": {
+            "type": "string"
+          },
+          "tag": {
+            "type": "string",
+            "enum": [
+              "self-review",
+              "second opinion",
+              "policy"
+            ]
+          },
+          "body": {
+            "type": "string"
+          },
+          "blocking": {
+            "type": "boolean"
+          },
+          "resolved": {
+            "type": "boolean"
+          },
+          "resolutionBody": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "simulated": {
+            "type": "boolean"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PrThread": {
+        "type": "object",
+        "title": "PrThread",
+        "description": "The review thread — `3 entries · 0 open`.",
+        "additionalProperties": false,
+        "required": [
+          "entryCount",
+          "openCount",
+          "entries"
+        ],
+        "properties": {
+          "entryCount": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "openCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Blocking and unresolved."
+          },
+          "entries": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PrThreadEntry"
+            }
+          }
+        }
+      },
+      "PrSpendLine": {
+        "type": "object",
+        "title": "PrSpendLine",
+        "additionalProperties": false,
+        "required": [
+          "tokens",
+          "tokensIn",
+          "tokensOut",
+          "costCents",
+          "unpricedEvents"
+        ],
+        "properties": {
+          "tokens": {
+            "type": "integer",
+            "minimum": 0,
+            "examples": [
+              284000
+            ]
+          },
+          "tokensIn": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "tokensOut": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "costCents": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cents as a decimal string — `\"152.0000\"`. **Null when every row is unpriced, never\n`\"0\"`**: zero reads as free, and the truth is unknown."
+          },
+          "unpricedEvents": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Rows with no price; a non-null cost beside a non-zero count is a lower bound."
+          }
+        }
+      },
+      "PrSpend": {
+        "type": "object",
+        "title": "PrSpend",
+        "description": "The Spend card (V8) — a grouping of the run's ledger, not a counter.",
+        "additionalProperties": false,
+        "required": [
+          "loop",
+          "verification",
+          "verificationTag",
+          "cap",
+          "withinCap"
+        ],
+        "properties": {
+          "loop": {
+            "$ref": "#/components/schemas/PrSpendLine"
+          },
+          "verification": {
+            "$ref": "#/components/schemas/PrSpendLine"
+          },
+          "verificationTag": {
+            "type": "string",
+            "description": "The `task_kind` the verification line sums.",
+            "examples": [
+              "verify"
+            ]
+          },
+          "cap": {
+            "description": "The budget stage's route cap, or null when it sets none.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "cents",
+                  "routeTag"
+                ],
+                "properties": {
+                  "cents": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "examples": [
+                      250
+                    ]
+                  },
+                  "routeTag": {
+                    "type": "string",
+                    "examples": [
+                      "implement-primary"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "withinCap": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "Null when it cannot honestly be said — nothing priced, no cap, or a lower bound under it."
+          }
+        }
+      },
+      "PrPerson": {
+        "type": "object",
+        "title": "PrPerson",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "PrReview": {
+        "type": "object",
+        "title": "PrReview",
+        "description": "A human-approval slot (V065). An open one is the PR's needs-you item.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "state",
+          "requestedRevisionId",
+          "requestedBy",
+          "requestedAt",
+          "host",
+          "decidedRevisionId",
+          "decidedBy",
+          "decidedAt",
+          "note"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "approved",
+              "declined"
+            ]
+          },
+          "requestedRevisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "requestedBy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrPerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "requestedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "host": {
+            "description": "The SPI `requestReview`, or null when no host login was asked.",
+            "oneOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": [
+                  "reviewer",
+                  "state",
+                  "detail"
+                ],
+                "properties": {
+                  "reviewer": {
+                    "type": "string"
+                  },
+                  "state": {
+                    "type": "string",
+                    "enum": [
+                      "requested",
+                      "unsupported",
+                      "failed"
+                    ]
+                  },
+                  "detail": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decidedRevisionId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The revision the answer was given on — honoured only while it is the latest."
+          },
+          "decidedBy": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrPerson"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "decidedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "PullRequestPage": {
+        "type": "object",
+        "title": "PullRequestPage",
+        "description": "Every region of mockup 12's PR Verification page.",
+        "additionalProperties": false,
+        "required": [
+          "pullRequest",
+          "revisions",
+          "gates",
+          "criteria",
+          "files",
+          "thread",
+          "plan",
+          "spend",
+          "review",
+          "loopReturn"
+        ],
+        "properties": {
+          "pullRequest": {
+            "$ref": "#/components/schemas/PullRequestHead"
+          },
+          "revisions": {
+            "type": "array",
+            "description": "Oldest first, each with its own snapshot.",
+            "items": {
+              "$ref": "#/components/schemas/PrRevision"
+            }
+          },
+          "gates": {
+            "description": "The latest revision's snapshot, or null with no revision.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrGateSnapshot"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "criteria": {
+            "$ref": "#/components/schemas/CriteriaMatrix"
+          },
+          "files": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrFiles"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "thread": {
+            "$ref": "#/components/schemas/PrThread"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/PrMergePlan"
+          },
+          "spend": {
+            "description": "Null for a PR no loop opened.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrSpend"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "review": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrReview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "loopReturn": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrLoopReturn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "ReturnToLoopRequest": {
+        "type": "object",
+        "title": "ReturnToLoopRequest",
+        "additionalProperties": false,
+        "required": [
+          "gates"
+        ],
+        "properties": {
+          "gates": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "uniqueItems": true,
+            "description": "The red gates whose evidence the steer carries.",
+            "items": {
+              "type": "string",
+              "pattern": "^(build|test_suite|physical_hil|diff_vs_plan|secrets_license|model_review|human_approval|custom:[a-z0-9][a-z0-9_.-]{0,62})$"
+            }
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The revision the gates were selected on. Defaults to the latest."
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "An instruction appended after the evidence as `note:` — not empty, not padded."
+          },
+          "idempotencyKey": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "A replay with the same key answers the first control."
+          }
+        }
+      },
+      "ReturnToLoop": {
+        "type": "object",
+        "title": "ReturnToLoop",
+        "additionalProperties": false,
+        "required": [
+          "control",
+          "payload",
+          "revisionId",
+          "gates",
+          "loopReturn",
+          "skipped"
+        ],
+        "properties": {
+          "control": {
+            "$ref": "#/components/schemas/RunControl"
+          },
+          "payload": {
+            "type": "string",
+            "description": "The steer's text — the selected gates' evidence lines."
+          },
+          "revisionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "gates": {
+            "type": "array",
+            "description": "The gates returned, in the card's order.",
+            "items": {
+              "type": "string"
+            }
+          },
+          "loopReturn": {
+            "description": "The record, or null when the queue rejected the control.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrLoopReturn"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "skipped": {
+            "type": "array",
+            "description": "What did not happen, and why.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RequestReviewRequest": {
+        "type": "object",
+        "title": "RequestReviewRequest",
+        "additionalProperties": false,
+        "properties": {
+          "reviewer": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "A git-host login to ask on the PR itself — optional, and never fails the request."
+          }
+        }
+      },
+      "ApprovalDecisionRequest": {
+        "type": "object",
+        "title": "ApprovalDecisionRequest",
+        "additionalProperties": false,
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "approve",
+              "decline"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000,
+            "description": "Optional on an approve, required on a decline."
+          }
+        }
+      },
+      "PrReviewOutcome": {
+        "type": "object",
+        "title": "PrReviewOutcome",
+        "additionalProperties": false,
+        "required": [
+          "review",
+          "created",
+          "humanApproval",
+          "aggregate"
+        ],
+        "properties": {
+          "review": {
+            "$ref": "#/components/schemas/PrReview"
+          },
+          "created": {
+            "type": "boolean",
+            "description": "Whether this call opened the slot."
+          },
+          "humanApproval": {
+            "description": "Human approval on the latest revision after re-evaluation.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrGateRow"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "aggregate": {
+            "description": "The latest revision's aggregate after re-evaluation.",
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/PrGateAggregate"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         }
       },

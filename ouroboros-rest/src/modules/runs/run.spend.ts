@@ -14,6 +14,11 @@
  * `"0"`, which would say the run cost nothing about a run whose model simply has no price in the
  * catalog. `unpricedEvents` is what makes a partial sum legible: a non-null cost with unpriced
  * rows beside it is a lower bound, and the caller is told how many rows it is missing.
+ *
+ * **One slice, by tag.** The PR page's Spend card (AX.5,
+ * [#361](https://github.com/NobuData/ouroboros/issues/361), decision **V8**) splits the same ledger
+ * into the loop total and its verification-tagged share. That share is this statement with a
+ * `task_kind` predicate — a grouping, not a second counter.
  */
 
 import { sql, type Kysely, type Transaction } from "kysely";
@@ -40,11 +45,16 @@ export interface SpendTotals {
  *
  * @param reader - The connection or transaction to read through.
  * @param run - `runs.id`. The caller has already established that the run is one it may read.
+ * @param taskKind - Optional: sum only the rows V020's `task_kind` tags with this name.
  * @returns The two token sums, the cost as a decimal string (`null` per the rule above), and how
  *   many attributed rows carry no price.
  */
-export async function readSpendTotals(reader: SpendReader, run: string): Promise<SpendTotals> {
-  const row = await reader
+export async function readSpendTotals(
+  reader: SpendReader,
+  run: string,
+  taskKind?: string,
+): Promise<SpendTotals> {
+  let query = reader
     .selectFrom("token_usage")
     .select([
       sql<string>`coalesce(sum(tokens_in), 0)`.as("tokens_in"),
@@ -52,8 +62,13 @@ export async function readSpendTotals(reader: SpendReader, run: string): Promise
       sql<string | null>`sum(cost_cents)`.as("cost_cents"),
       sql<string>`count(*) filter (where cost_cents is null)`.as("unpriced"),
     ])
-    .where("run_id", "=", run)
-    .executeTakeFirstOrThrow();
+    .where("run_id", "=", run);
+
+  if (taskKind !== undefined) {
+    query = query.where("task_kind", "=", taskKind);
+  }
+
+  const row = await query.executeTakeFirstOrThrow();
 
   return {
     tokensIn: Number(row.tokens_in),

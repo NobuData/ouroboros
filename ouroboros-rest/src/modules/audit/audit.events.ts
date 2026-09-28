@@ -61,7 +61,8 @@ export type AuditSubjectType =
   | "test_case"
   | "test_run"
   | "pr_waiver"
-  | "pr_criterion";
+  | "pr_criterion"
+  | "pr_approval";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -291,6 +292,23 @@ export const PR_CRITERION_UNVERIFIED_EVENT = "pr_criterion.unverified";
 export const PR_CRITERION_WAIVED_EVENT = "pr_criterion.waived";
 
 /**
+ * A person asked for a human review of a PR — *Request human review* opened an approval slot (AX.5,
+ * [#361](https://github.com/NobuData/ouroboros/issues/361), decision **V5**). Subject
+ * `pr_approval`; the detail carries the PR, the revision asked about and whether a host reviewer
+ * was asked.
+ *
+ * **A family of its own, `pr_approval`.** *Who approved the code that merged* is its own question,
+ * and `action like 'pr_approval.%'` answers it whole.
+ */
+export const PR_APPROVAL_REQUESTED_EVENT = "pr_approval.requested";
+
+/** A reviewer approved a PR's slot (#361). Subject `pr_approval`; never the note. */
+export const PR_APPROVAL_APPROVED_EVENT = "pr_approval.approved";
+
+/** A reviewer declined a PR's slot (#361). Subject `pr_approval`; never the note. */
+export const PR_APPROVAL_DECLINED_EVENT = "pr_approval.declined";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -331,6 +349,9 @@ export const AUDIT_ACTIONS = [
   PR_CRITERION_VERIFIED_EVENT,
   PR_CRITERION_UNVERIFIED_EVENT,
   PR_CRITERION_WAIVED_EVENT,
+  PR_APPROVAL_REQUESTED_EVENT,
+  PR_APPROVAL_APPROVED_EVENT,
+  PR_APPROVAL_DECLINED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

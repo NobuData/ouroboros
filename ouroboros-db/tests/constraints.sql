@@ -22559,6 +22559,305 @@ select pg_temp.must_hold(
 delete from ouroboros.organization where "id" in ('org-v064', 'org-v064b');
 
 -- ===========================================================================
+-- V065 — approval slots, loop returns and the approval evidence link (#361, AX.5)
+-- ===========================================================================
+--
+-- Mockup 12's two composed head actions record what they did: *Request human review* opens an
+-- approval slot that is answered once, and *Return to loop* records the AP.4 correction round it
+-- queued with the attempt the next revision is expected from. Asserted: a slot opens requested and
+-- at most one is open per PR; it is answered once, with the answer's fields together and a note on
+-- a decline, and is frozen afterwards but for set-null keys and a late host answer; its revisions
+-- are its own PR's; the host request's columns travel together; the gate evidence link now resolves
+-- `approval` in the PR's workspace while `vote` stays reserved; a loop return names 1–64 distinct
+-- gate keys, a control of the PR's own run, once per control, and a complete expectation; the app
+-- role opens and answers slots and appends returns, and deletes neither.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v065',  'Review Works',       'review-works',       now()),
+  ('org-v065b', 'Other Review Works', 'other-review-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a6500000-0000-0000-0000-00000000000a', 'Ken S',   'ken@review-works.dev',   true),
+  ('a6500000-0000-0000-0000-00000000000b', 'Priya N', 'priya@review-works.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a6510000-0000-0000-0000-00000000000a', 'org-v065', 'review-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a651f000-0000-0000-0000-00000000000a', 'a6510000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a6520000-0000-0000-0000-000000000482', 'org-v065', 'a651f000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'review', 'Review', 7, 8, now() - interval '1 hour'),
+    ('a6520000-0000-0000-0000-000000000483', 'org-v065', 'a651f000-0000-0000-0000-00000000000a',
+     483, 'Another loop', 'standard-fix', 'claude-fable-5',
+     'coding', 'Implement', 4, 8, now() - interval '1 hour');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config) values
+  ('a6500000-0000-0000-0000-0000000000a1', 'org-v065', 'github', 'GitHub · review-works',
+   '{"login": "review-works", "repos": ["helios-firmware"]}'),
+  ('a6500000-0000-0000-0000-0000000000b1', 'org-v065b', 'github', 'GitHub · other',
+   '{"login": "other-review-works", "repos": ["helios-firmware"]}');
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, run_id)
+  values
+    ('a65a0000-0000-0000-0000-000000000514', 'org-v065', 'a6500000-0000-0000-0000-0000000000a1',
+     514, 'https://github.com/review-works/helios-firmware/pull/514',
+     'can: fix flaky telemetry frame order', 'loop/482-canbus-flake', 'main',
+     'a6520000-0000-0000-0000-000000000482'),
+    ('a65a0000-0000-0000-0000-000000000515', 'org-v065', 'a6500000-0000-0000-0000-0000000000a1',
+     515, 'https://github.com/review-works/helios-firmware/pull/515',
+     'docs: another PR', 'docs/x', 'main', null),
+    ('a65a0000-0000-0000-0000-000000000077', 'org-v065b', 'a6500000-0000-0000-0000-0000000000b1',
+     77, 'https://github.com/other-review-works/helios-firmware/pull/77',
+     'somebody else''s change', 'sandbox/docs', 'main', null);
+
+insert into ouroboros.pr_revisions (id, pr_id, revision_seq, head_sha, pushed_at) values
+  ('a65b0000-0000-0000-0000-000000000001', 'a65a0000-0000-0000-0000-000000000514', 1, '3f9c2ae',
+   now() - interval '30 minutes'),
+  ('a65b0000-0000-0000-0000-000000000002', 'a65a0000-0000-0000-0000-000000000514', 2, 'b7e41d0',
+   now() - interval '10 minutes'),
+  ('a65b0000-0000-0000-0000-000000000515', 'a65a0000-0000-0000-0000-000000000515', 1, 'c81d4e7',
+   now() - interval '10 minutes'),
+  ('a65b0000-0000-0000-0000-000000000077', 'a65a0000-0000-0000-0000-000000000077', 1, 'a3f19c2',
+   now() - interval '10 minutes');
+
+-- --- a slot opens requested, one at a time -------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.pr_approvals', 'pr_approvals_state')
+    = array['approved', 'declined', 'requested'],
+  'an approval slot is requested, approved or declined');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_approvals (pr_id, state, decided_by, decided_at, note)
+    values ('a65a0000-0000-0000-0000-000000000514', 'approved',
+            'a6500000-0000-0000-0000-00000000000b', now(), 'pre-approved')$$,
+  'a slot opens as requested — it is answered afterwards', 'pr_approvals_lifecycle');
+
+insert into ouroboros.pr_approvals (id, pr_id, requested_revision_id, requested_by) values
+  ('a65c0000-0000-0000-0000-000000000001', 'a65a0000-0000-0000-0000-000000000514',
+   'a65b0000-0000-0000-0000-000000000002', 'a6500000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_approvals (pr_id, requested_by)
+    values ('a65a0000-0000-0000-0000-000000000514', 'a6500000-0000-0000-0000-00000000000b')$$,
+  'at most one open slot per PR — a second request answers the first', 'pr_approvals_one_open');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_approvals (pr_id, requested_revision_id)
+    values ('a65a0000-0000-0000-0000-000000000515', 'a65b0000-0000-0000-0000-000000000002')$$,
+  'a slot''s revision is one of its own PR''s', 'pr_approvals_revision_of_pr');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_approvals (pr_id, note)
+    values ('a65a0000-0000-0000-0000-000000000515', 'a note before anybody answered')$$,
+  'an open slot carries no answer', 'pr_approvals_decision_fields_when_answered');
+
+-- --- the host request travels together -----------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.pr_approvals', 'pr_approvals_host_request')
+    = array['failed', 'requested', 'unsupported'],
+  'a host review request is requested, unsupported or failed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_approvals set host_request = 'requested'
+     where id = 'a65c0000-0000-0000-0000-000000000001'$$,
+  'a host request names the login it asked', 'pr_approvals_host_complete');
+
+update ouroboros.pr_approvals
+   set host_reviewer = 'priya-n', host_request = 'failed',
+       host_detail = 'Reviews may only be requested from collaborators.'
+ where id = 'a65c0000-0000-0000-0000-000000000001';
+
+-- --- answered once --------------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pr_approvals set state = 'approved'
+     where id = 'a65c0000-0000-0000-0000-000000000001'$$,
+  'an answer carries its instant', 'pr_approvals_decided_when_answered');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_approvals
+       set state = 'declined', decided_at = now(), decided_by = 'a6500000-0000-0000-0000-00000000000b',
+           decided_revision_id = 'a65b0000-0000-0000-0000-000000000002'
+     where id = 'a65c0000-0000-0000-0000-000000000001'$$,
+  'a decline says why', 'pr_approvals_declined_has_note');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_approvals
+       set state = 'approved', decided_at = now(), note = repeat('n', 2001)
+     where id = 'a65c0000-0000-0000-0000-000000000001'$$,
+  'a note is at most 2000 characters', 'pr_approvals_note_bounded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_approvals set requested_at = now() - interval '1 day'
+     where id = 'a65c0000-0000-0000-0000-000000000001'$$,
+  'when a review was asked for is fixed', 'pr_approvals_lifecycle');
+
+update ouroboros.pr_approvals
+   set state = 'approved', decided_at = now(), decided_by = 'a6500000-0000-0000-0000-00000000000b',
+       decided_revision_id = 'a65b0000-0000-0000-0000-000000000002', note = 'bench numbers look right'
+ where id = 'a65c0000-0000-0000-0000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_approvals set note = 'on second thought'
+     where id = 'a65c0000-0000-0000-0000-000000000001'$$,
+  'an answered slot is final — request a new review instead', 'pr_approvals_lifecycle');
+
+select pg_temp.must_reject(
+  $$update ouroboros.pr_approvals set state = 'requested', decided_at = null, decided_by = null,
+                                      decided_revision_id = null, note = null
+     where id = 'a65c0000-0000-0000-0000-000000000001'$$,
+  'and is not reopened', 'pr_approvals_lifecycle');
+
+update ouroboros.pr_approvals set host_request = 'requested', host_detail = null
+ where id = 'a65c0000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select state = 'approved' and host_request = 'requested'
+     from ouroboros.pr_approvals where id = 'a65c0000-0000-0000-0000-000000000001'),
+  'a host''s late answer still lands on an answered slot');
+
+insert into ouroboros.pr_approvals (id, pr_id, requested_revision_id, requested_by) values
+  ('a65c0000-0000-0000-0000-000000000002', 'a65a0000-0000-0000-0000-000000000514',
+   'a65b0000-0000-0000-0000-000000000002', 'a6500000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.pr_approvals
+    where pr_id = 'a65a0000-0000-0000-0000-000000000514'),
+  'once the slot is answered, the next request opens a new one');
+
+-- --- the evidence link resolves approval; vote stays reserved ---------------------------------------
+insert into ouroboros.pr_gate_definitions (id, pr_id, gate_key, source, label) values
+  ('a65d0000-0000-0000-0000-000000000001', 'a65a0000-0000-0000-0000-000000000514',
+   'human_approval', 'standard-fix@v14 pin + review requested', 'Human approval');
+
+insert into ouroboros.pr_gate_results
+    (definition_id, revision_id, verdict, evidence, evidence_ref, provider_version)
+  values ('a65d0000-0000-0000-0000-000000000001', 'a65b0000-0000-0000-0000-000000000002', 'green',
+          'approved by Priya N — bench numbers look right',
+          '{"kind": "approval", "id": "a65c0000-0000-0000-0000-000000000001"}',
+          'gate-human_approval@1.0.0');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.pr_gate_results
+    where definition_id = 'a65d0000-0000-0000-0000-000000000001'
+      and evidence_ref ->> 'kind' = 'approval'),
+  'human approval cites the slot its verdict came from');
+
+insert into ouroboros.pr_approvals (id, pr_id) values
+  ('a65c0000-0000-0000-0000-000000000077', 'a65a0000-0000-0000-0000-000000000077');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results
+      (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a65d0000-0000-0000-0000-000000000001', 'a65b0000-0000-0000-0000-000000000002',
+            'green', '{"kind": "approval", "id": "a65c0000-0000-0000-0000-000000000077"}', 'x')$$,
+  'an approval of another workspace''s PR does not resolve',
+  'pr_gate_results_evidence_ref_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_gate_results
+      (definition_id, revision_id, verdict, evidence_ref, provider_version)
+    values ('a65d0000-0000-0000-0000-000000000001', 'a65b0000-0000-0000-0000-000000000002',
+            'pending', '{"kind": "vote", "id": "a65c0000-0000-0000-0000-000000000001"}', 'x')$$,
+  'vote is still reserved until AZ.1', 'pr_gate_results_evidence_ref_resolves');
+
+-- --- a loop return --------------------------------------------------------------------------------
+insert into ouroboros.run_controls (id, run_id, kind, payload, retry_stage, requested_by, expires_at)
+  values
+    ('a65e0000-0000-0000-0000-000000000001', 'a6520000-0000-0000-0000-000000000482', 'steer',
+     'physical_hil: overshoot 2.4% > 2.0% · rig helios-rig-02', true,
+     'a6500000-0000-0000-0000-00000000000a', now() + interval '10 minutes'),
+    ('a65e0000-0000-0000-0000-000000000483', 'a6520000-0000-0000-0000-000000000483', 'steer',
+     'another loop''s steer', true,
+     'a6500000-0000-0000-0000-00000000000a', now() + interval '10 minutes');
+
+insert into ouroboros.pr_loop_returns
+    (id, pr_id, revision_id, control_id, gate_keys, expected_stage_key, expected_attempt, requested_by)
+  values ('a65f0000-0000-0000-0000-000000000001', 'a65a0000-0000-0000-0000-000000000514',
+          'a65b0000-0000-0000-0000-000000000001', 'a65e0000-0000-0000-0000-000000000001',
+          array['physical_hil', 'test_suite'], 'implement', 3, 'a6500000-0000-0000-0000-00000000000a');
+
+insert into ouroboros.pr_loop_returns (pr_id, revision_id, control_id, gate_keys)
+  values ('a65a0000-0000-0000-0000-000000000514', 'a65b0000-0000-0000-0000-000000000001',
+          'a65e0000-0000-0000-0000-000000000001', array['physical_hil'])
+  on conflict (control_id) do nothing;
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(gate_keys = array['physical_hil', 'test_suite'])
+     from ouroboros.pr_loop_returns where control_id = 'a65e0000-0000-0000-0000-000000000001'),
+  'one loop return per control — a replay records nothing twice');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_loop_returns (pr_id, control_id, gate_keys)
+    values ('a65a0000-0000-0000-0000-000000000514', 'a65e0000-0000-0000-0000-000000000483',
+            array['build'])$$,
+  'the control is a control of the PR''s own run', 'pr_loop_returns_control_of_pr_run');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_loop_returns (pr_id, control_id, gate_keys)
+    values ('a65a0000-0000-0000-0000-000000000515', 'a65e0000-0000-0000-0000-000000000001',
+            array['build'])$$,
+  'a PR no loop opened has no control to record', 'pr_loop_returns_control_of_pr_run');
+
+select pg_temp.must_hold(
+  not ouroboros.pr_loop_return_gate_keys_valid(array[]::text[])
+  and not ouroboros.pr_loop_return_gate_keys_valid(array['build', 'build'])
+  and not ouroboros.pr_loop_return_gate_keys_valid(array['Build'])
+  and not ouroboros.pr_loop_return_gate_keys_valid(array['build', null])
+  and ouroboros.pr_loop_return_gate_keys_valid(array['custom:bench.thermal', 'physical_hil']),
+  'gate keys are 1–64 distinct keys under V056''s rule');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_loop_returns (pr_id, control_id, gate_keys, expected_attempt)
+    values ('a65a0000-0000-0000-0000-000000000514', 'a65e0000-0000-0000-0000-000000000001',
+            array['build'], 4)$$,
+  'an expected attempt names its stage', 'pr_loop_returns_expectation_complete');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.pr_loop_returns (pr_id, control_id, gate_keys)
+    values ('a65a0000-0000-0000-0000-000000000514', 'a65e0000-0000-0000-0000-000000000001',
+            array['Build'])$$,
+  'and a return names gate keys', 'pr_loop_returns_gate_keys');
+
+-- --- lifecycle: a removed reviewer is released, a deleted PR takes its slots and returns ---------------
+delete from ouroboros."user" where "id" = 'a6500000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  (select decided_by is null and state = 'approved' from ouroboros.pr_approvals
+    where id = 'a65c0000-0000-0000-0000-000000000001'),
+  'a removed reviewer is released from the answer, which stands');
+
+delete from ouroboros.pull_requests where id = 'a65a0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.pr_approvals where pr_id = 'a65a0000-0000-0000-0000-000000000514')
+  and (select count(*) = 0 from ouroboros.pr_loop_returns
+        where pr_id = 'a65a0000-0000-0000-0000-000000000514'),
+  'a deleted PR takes its slots and loop returns');
+
+-- --- grants ----------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.pr_approvals', 'select')
+  and has_table_privilege('ouroboros_app', 'ouroboros.pr_approvals', 'insert')
+  and has_table_privilege('ouroboros_app', 'ouroboros.pr_approvals', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.pr_approvals', 'delete')
+  and has_table_privilege('ouroboros_app', 'ouroboros.pr_loop_returns', 'select')
+  and has_table_privilege('ouroboros_app', 'ouroboros.pr_loop_returns', 'insert')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.pr_loop_returns', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.pr_loop_returns', 'delete'),
+  'the app role opens and answers slots and appends returns, and deletes neither');
+
+delete from ouroboros.runs where organization_id = 'org-v065';
+delete from ouroboros.organization where "id" in ('org-v065', 'org-v065b');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

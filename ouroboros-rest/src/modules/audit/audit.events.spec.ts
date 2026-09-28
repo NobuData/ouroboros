@@ -34,6 +34,9 @@ import {
   PR_CRITERION_VERIFIED_EVENT,
   PR_CRITERION_UNVERIFIED_EVENT,
   PR_CRITERION_WAIVED_EVENT,
+  PR_APPROVAL_APPROVED_EVENT,
+  PR_APPROVAL_DECLINED_EVENT,
+  PR_APPROVAL_REQUESTED_EVENT,
 } from "./audit.events";
 
 /**
@@ -113,6 +116,9 @@ describe("the vocabulary", () => {
       "pr_criterion.verified",
       "pr_criterion.unverified",
       "pr_criterion.waived",
+      "pr_approval.requested",
+      "pr_approval.approved",
+      "pr_approval.declined",
     ]);
   });
 
@@ -132,8 +138,8 @@ describe("the vocabulary", () => {
   it("files each event under a family somebody would think to filter on", () => {
     // Nine provider events, one credential-delivery event, three about the workspace's GitHub
     // token, thirteen about its build farm — its machines, the pools they run in and the
-    // builds sent to them — three decisions about its failing tests (#332), and three about
-    // whether a PR does what its ticket said (#359). The
+    // builds sent to them — three decisions about its failing tests (#332), three about
+    // whether a PR does what its ticket said (#359), and three about who approved a PR (#361). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -143,6 +149,7 @@ describe("the vocabulary", () => {
     expect([...families].sort()).toEqual([
       "credential",
       "github",
+      "pr_approval",
       "pr_criterion",
       "provider",
       "runner",
@@ -187,6 +194,9 @@ describe("the vocabulary", () => {
       PR_CRITERION_VERIFIED_EVENT,
       PR_CRITERION_UNVERIFIED_EVENT,
       PR_CRITERION_WAIVED_EVENT,
+      PR_APPROVAL_REQUESTED_EVENT,
+      PR_APPROVAL_APPROVED_EVENT,
+      PR_APPROVAL_DECLINED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

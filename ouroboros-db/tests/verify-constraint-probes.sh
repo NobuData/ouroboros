@@ -369,6 +369,17 @@
 # assertion, which names the rule that went. AW.5's section stands behind them, and is what
 # covers each machine and each evidence kind from one PR's point of view.
 #
+# V065 (#361, AX.5) adds the head actions' records. Its section is the one that catches each:
+#
+#   AX.5 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   one open approval slot per PR                drop pr_approvals_one_open
+#   a slot opens requested and is answered once  drop the pr_approvals_lifecycle trigger
+#   a loop return's control is the PR's run's    drop the pr_loop_returns_control_of_pr_run trigger
+#
+# The evidence-link probe above rewrites V065's version of pr_gate_evidence_ref_resolves(),
+# which resolves `approval` too — workspace-blind like every other kind in the mutation.
+#
 # Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
 # is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
 # by the latter first, so the rewrite reads the function back from the catalogue and adds the one
@@ -532,7 +543,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console, #328 test results, #356 PR domain\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console, #328 test results, #356 PR domain, #361 PR head actions\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -1521,6 +1532,8 @@ as \$probe\$
              select 1 from ouroboros.hil_measurements m where m.id = (p_ref ->> 'id')::uuid)
            when p_ref ->> 'kind' = 'guardrail_evaluation' then exists (
              select 1 from ouroboros.guardrail_evaluations g where g.id = (p_ref ->> 'id')::uuid)
+           when p_ref ->> 'kind' = 'approval' then exists (
+             select 1 from ouroboros.pr_approvals a where a.id = (p_ref ->> 'id')::uuid)
            else false
          end
 \$probe\$;"
@@ -1542,6 +1555,18 @@ expect_red 'a gate may answer with a seventh verdict' \
 expect_red "a gate may cite another workspace's row" \
   'and of the PR.s own workspace .*pr_gate_results_evidence_ref_resolves did not fire' \
   "$gate_evidence_any_workspace"
+
+expect_red 'a PR may hold two open approval slots' \
+  'at most one open slot per PR .*pr_approvals_one_open did not fire' \
+  'drop index ouroboros.pr_approvals_one_open;'
+
+expect_red 'an approval slot may open already answered and be rewritten once answered' \
+  'a slot opens as requested .*pr_approvals_lifecycle did not fire' \
+  'drop trigger pr_approvals_lifecycle on ouroboros.pr_approvals;'
+
+expect_red "a loop return may record another run's control" \
+  'the control is a control of the PR.s own run .*pr_loop_returns_control_of_pr_run did not fire' \
+  'drop trigger pr_loop_returns_control_of_pr_run on ouroboros.pr_loop_returns;'
 
 expect_red 'a criterion may cite a hunk of a file the revision never touched' \
   'a hunk.s path is a file the revision changed .*pr_criteria_evidence_resolves did not fire' \

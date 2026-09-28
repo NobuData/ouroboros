@@ -13,7 +13,7 @@
  * physical_hil     overshoot 1.7% ≤ 2.0% · rig helios-rig-02             hil_measurement
  * diff_vs_plan     all hunks map to planned files · 0 out-of-scope edits —
  * secrets_license  clean (headers + manifest delta)                      guardrail_evaluation
- * human_approval   not required by policy                                —
+ * human_approval   not required by policy · approved by Ken              approval (a slot, AX.5)
  * model_review     unavailable — arrives with the provider stack         —   (never pending: AZ.1, #371)
  * ```
  *
@@ -419,16 +419,59 @@ export const secretsLicenseProvider: GateProvider = {
 };
 
 /**
- * `human_approval` — the policy's answer; approval records arrive with AX.5 (#361).
+ * `human_approval` — an approval slot's answer, else the policy's (AX.5,
+ * [#361](https://github.com/NobuData/ouroboros/issues/361), decision **V5**).
  *
- * A person must approve when the pinned terminal does not auto-merge. Routing's `add_vote` rules
- * ask for a second *model*, which is `model_review`'s question, not this one — so a vote rule
- * leaves an auto-merging policy's human approval `not_required`, as mockup 12's Revision 2 reads.
+ * ```
+ * newest slot            on this revision?   verdict        evidence
+ * requested              —                   pending        review requested by Ken — awaiting approval
+ * approved               yes                 green          approved by Ken — <note>
+ * declined               yes                 red            declined by Ken — <note>
+ * approved | declined    no (a later push)   pending        approved on an earlier revision — this one needs a fresh review
+ * none                   —                   the policy's answer, below
+ * ```
+ *
+ * A person asking for a review is what flips a policy's `not_required` to a question someone must
+ * answer, so any slot takes precedence over the policy. Without one, a person must approve when the
+ * pinned terminal does not auto-merge. Routing's `add_vote` rules ask for a second *model*, which
+ * is `model_review`'s question, not this one — so a vote rule leaves an auto-merging policy's human
+ * approval `not_required`, as mockup 12's Revision 2 reads.
  */
 export const humanApprovalProvider: GateProvider = {
   key: "human_approval",
   version: `gate-human_approval@${GATE_PROVIDER_RELEASE}`,
-  evaluate({ review }): GateOutcome {
+  evaluate({ review, approval, revision }): GateOutcome {
+    if (approval !== null) {
+      const evidenceRef = { kind: "approval", id: approval.id } as const;
+
+      if (approval.state === "requested") {
+        const by = approval.requestedBy === null ? "" : ` by ${approval.requestedBy}`;
+
+        return {
+          verdict: "pending",
+          evidence: `review requested${by} — awaiting approval`,
+          evidenceRef,
+        };
+      }
+
+      if (approval.decidedRevisionId !== revision.id) {
+        return {
+          verdict: "pending",
+          evidence: `${approval.state} on an earlier revision — this one needs a fresh review`,
+          evidenceRef,
+        };
+      }
+
+      const who = approval.decidedBy ?? "a former member";
+      const note = approval.note === null ? "" : ` — ${approval.note}`;
+
+      return {
+        verdict: approval.state === "approved" ? "green" : "red",
+        evidence: `${approval.state} by ${who}${note}`,
+        evidenceRef,
+      };
+    }
+
     if (review?.autoMerges === true) {
       return { verdict: "not_required", evidence: "not required by policy", evidenceRef: null };
     }

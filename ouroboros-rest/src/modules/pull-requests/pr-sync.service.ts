@@ -41,6 +41,7 @@ import type {
   PrCommentInput,
   PrCommentResult,
   PullRequestSnapshot,
+  ReviewRequestResult,
 } from "../ticket-sources/ticket-source.pr";
 import {
   supportsPullRequests,
@@ -188,6 +189,30 @@ export class PrSyncService {
   ): Promise<MergePrResult> {
     return this.withHost(organizationId, sourceId, (provider, context) =>
       provider.mergePR(context, prNumber, input),
+    );
+  }
+
+  /**
+   * Ask a person on the host to review a PR — *Request human review*'s optional host half (AX.5,
+   * #361).
+   *
+   * @param organizationId - The workspace asking.
+   * @param sourceId - The git-host source the PR lives on.
+   * @param prNumber - The host's number.
+   * @param login - The host login to ask.
+   * @returns Who is asked now, or null when the provider declares no reviews.
+   * @throws {NotFoundError} `pr_source_not_found` for a source the workspace does not have.
+   * @throws {ConflictError} `pr_source_has_no_pull_requests` for a tracker without PRs.
+   * @throws {TicketSourceError} The host's refusal, classified by the provider.
+   */
+  async requestReview(
+    organizationId: string,
+    sourceId: string,
+    prNumber: number,
+    login: string,
+  ): Promise<ReviewRequestResult | null> {
+    return this.withHost(organizationId, sourceId, (provider, context) =>
+      provider.requestReview(context, prNumber, login),
     );
   }
 

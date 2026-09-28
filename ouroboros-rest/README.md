@@ -4959,7 +4959,7 @@ and a verdict snapshot per gate per revision appended to `pr_gate_results` (V056
 | `diff_vs_plan` | the pin has a `checks` gate node | `all hunks map to planned files · 0 out-of-scope edits` | red naming the out-of-scope paths; not required with no plan |
 | `secrets_license` | the pin has a `checks` gate node | `clean (headers + manifest delta)` | red with AP.3's secrets fail or the license layer's first finding |
 | `model_review` | an `add_vote` rule matches the ticket (#194) | — | **`unavailable`, never `pending`**, until AZ.1 (#371) |
-| `human_approval` | always | — | `not_required` when the terminal auto-merges; pending otherwise (approvals: AX.5, #361) |
+| `human_approval` | always; required whatever org config says once a review is requested (#361) | `approved by Priya N — <note>` | an approval slot answers first: `pending` while requested, red on a decline, `pending` again after a push; else `not_required` when the terminal auto-merges, pending otherwise |
 
 Each definition's `source` names what produced it — `standard-fix@v14 pin`, `ouroboros default`
 for a PR without a readable pin (everything required), or `org config`. Org config is read
@@ -4968,7 +4968,8 @@ allow-list) until the org policy document's resolver (#481) rebinds it.
 
 **Triggers.** The PR sync (`revision_pushed` / `pr_synced`), the artifact upload's parse
 (`test_run_parsed`), the gateway's `job.finish` (`build_job_finished`) and the change-set report
-(`guardrail_evaluated`) notify the `GATE_EVIDENCE` sink after their own transaction commits. Each
+(`guardrail_evaluated`) notify the `GATE_EVIDENCE` sink after their own transaction commits, and
+the PR page's head actions do too when an approval slot moves (`approval_recorded`, #361). Each
 event re-evaluates only the gates it can move, plus any gate never judged on the revision. The
 sink never throws into its caller.
 
@@ -5058,6 +5059,47 @@ re-check), merge (the person it was made for, V064).
 
 **Not wired yet:** the dry-run policy (#382) and the policy document's `auto_merge` rule (#481);
 explicit ticket closing — the SPI has no member for it, so a failed keyword close is reported.
+
+### PR page reads & head actions
+
+AX.5 ([#361](https://github.com/NobuData/ouroboros/issues/361)), decisions **V5** and **V8**, in
+[`src/modules/pull-requests/page/`](src/modules/pull-requests/page). Mockup 12's whole page in one
+read, and its two composed head actions, over V065's `pr_approvals` and `pr_loop_returns`.
+
+| route | what | who |
+| ----- | ---- | --- |
+| `GET /api/v1/pull-requests` | the workspace's PRs, newest update first, each with its latest revision's aggregate; `?state=verifying,blocked`, `?reviewRequested=true` (the needs-you feed), `limit`/`offset` | every member |
+| `GET /api/v1/pull-requests/:id` | head, revisions **each with its own gate snapshot**, current gates, criteria (#359), files + diff excerpt, thread + open count, merge plan (#360), spend, review, loop return | every member |
+| `POST …/return-to-loop` `{gates, revisionId?, note?, idempotencyKey?}` | AP.4's correction round (steer + stage retry) whose text is the selected red gates' evidence; records the expected attempt | member+ |
+| `POST …/request-review` `{reviewer?}` | open the approval slot — human approval becomes required and pending; optional SPI `requestReview` | member+ |
+| `POST …/approvals` `{decision, note?}` | approve or decline (a decline needs a note) on the latest revision; the gate re-evaluates | member+ |
+
+**Return to loop is not a new control path** (V5). It calls `ControlsService.correctionRound` — the
+Mark & Route card's own composition (#332) — with `<gate_key>: <evidence>` per selected gate, in the
+card's order, and the person's note after a blank line as `note: …`. Every selected gate must be red
+on the revision (`422 pr_gate_not_red`); the revision defaults to the latest, and can be an earlier
+one the gates card was scoped to. A queued control is recorded in `pr_loop_returns` with the current
+stage's next attempt — the next revision's expectation; a rejected one (the run has finished) records
+nothing.
+
+**Request human review is a gate mutation.** It opens V065's approval slot — at most one open per PR,
+so asking again answers the open one — under the PR's `for update` lock, then notifies the gate
+engine (`approval_recorded`), which materializes `human_approval` as required (`… + review
+requested`) and `pending`. The open slot is the PR's needs-you item until mockup 16's inbox (#461)
+wraps it. A named `reviewer` is asked on the host; `requested`, `unsupported` or `failed` (with the
+host's reason) is recorded on the slot and never fails the request. An approval answers the open
+slot on the latest revision — opening one first when nobody asked — and the re-evaluation can flip
+the aggregate to merge-ready (and an armed plan then merges). An answer counts only on the revision
+it was given on. Audited as `pr_approval.requested`, `pr_approval.approved`, `pr_approval.declined`.
+
+**Every step of the strip is a join** (V4): a revision's `testAttempt` is the attempt its own
+`test_suite` verdict cites; its `correction` is the classification on a case of the previous
+revision's attempt and any loop return sent from it.
+
+**Spend is a grouping, not a counter** (V8): the run's whole ledger and its `task_kind = 'verify'`
+share, both through `readSpendTotals`, against the budget stage's route cap (the console's rule).
+**Unpriced is never `$0`** — a ledger with no prices is token counts and a `null` cost, and
+`withinCap` is `null` whenever it cannot honestly be said.
 
 ## Container
 
@@ -5240,6 +5282,7 @@ ouroboros-rest/
 │       ├── pull-requests/  # the PR plane: SPI sync (#357), gates/ (#358)
 │       │                   #   criteria/ — claims, typed evidence, verify, waive + annotate · #359
 │       │                   #   merge/ — arm, TOCTOU re-check, merge, actions, evidence comment · #360
+│       │                   #   page/ — the page read, return-to-loop, request-review, approvals · #361
 │       ├── triage/         # Mark & Route: hints, classify, re-run, waive  · #332
 │       │                   #   triage.rules.ts — the three heuristic rules, pure
 │       │                   #   triage.contract.ts — /v0/triage, held to schemas/triage/v0.json

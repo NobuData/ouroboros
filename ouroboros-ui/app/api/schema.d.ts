@@ -5791,6 +5791,175 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pull-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace's pull requests, for navigation and the needs-you surfaces
+         * @description Every PR mirrored into the workspace, most recently updated first
+         *     ([#361](https://github.com/NobuData/ouroboros/issues/361)), each with its latest revision,
+         *     that revision's gate aggregate (`5 of 7 green`) and whether an approval slot is open.
+         *
+         *     **`state`** narrows to one or more states — `?state=verifying,blocked`, or the parameter
+         *     repeated. **`reviewRequested=true`** is the needs-you feed: only PRs where somebody asked for
+         *     a human review nobody has answered yet (V065's open `pr_approvals` slot — mockup 16's inbox,
+         *     #461, wraps the same record). `false` is the complement; absent is both.
+         *
+         *     Every member may read it, a `viewer` included.
+         */
+        get: operations["listPullRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The whole PR Verification page in one payload
+         * @description Every region of mockup 12 ([#361](https://github.com/NobuData/ouroboros/issues/361)):
+         *
+         *     * **`pullRequest`** — the head: title, state, branches, `+68 −15 · 3 files`, the loop
+         *       (`loop #1847`, its model) and the ticket (`issue #482`).
+         *     * **`revisions`** — the revision-cycle strip, oldest first. **Each revision carries its own
+         *       gate snapshot** (V056's per-revision results and aggregate), so the gates card can be
+         *       scoped to Revision 1's `2 gates red` after Revision 2 turned them green. `testAttempt` is
+         *       the attempt the revision's own test verdict cites (`attempt 4`); `correction` is what
+         *       bridged the previous revision to it — the classification on a case of the previous
+         *       revision's attempt, and any *Return to loop* sent from it (decision **V4**: joins, not
+         *       prose).
+         *     * **`gates`** — the latest revision's snapshot (the same object as the last revision's).
+         *     * **`criteria`** — `GET …/criteria`'s matrix (#359). **`plan`** — `GET …/merge-plan`'s plan
+         *       (#360), written with the defaults when the PR had none.
+         *     * **`files`** — the latest revision's changed files, totals, diff excerpt and the host's full
+         *       diff. **`thread`** — the review thread with `pr_thread_summary`'s counts (`3 entries · 0
+         *       open`).
+         *     * **`spend`** — decision **V8**: the run's whole ledger (*Loop total*) and its
+         *       `verify`-tagged share (*Verification*) against the budget stage's route cap. **Unpriced is
+         *       never `$0`**: a ledger with no prices has a `null` cost, and `withinCap` is `null` when it
+         *       cannot honestly be said. Null for a PR no loop opened.
+         *     * **`review`** — the newest approval slot; **`loopReturn`** — the newest *Return to loop*.
+         *
+         *     Every member may read it, a `viewer` included.
+         */
+        get: operations["getPullRequestPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/return-to-loop": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Return to loop — send the selected red gates' evidence back to the agent
+         * @description The head's danger action ([#361](https://github.com/NobuData/ouroboros/issues/361), decision
+         *     **V5**). **Not a new control path**: it is AP.4's correction round
+         *     ([#306](https://github.com/NobuData/ouroboros/issues/306),
+         *     [#332](https://github.com/NobuData/ouroboros/issues/332)) — a steer plus a stage retry —
+         *     whose text is the selected gates' evidence lines, one per gate in the card's order:
+         *
+         *         physical_hil: overshoot 2.4% > 2.0% · rig helios-rig-02
+         *
+         *     and the optional `note` after a blank line, as `note: …`. So the agent receives what the
+         *     gates measured, and the run console's transcript shows exactly that. A different selection
+         *     is a different steer.
+         *
+         *     Every selected gate must be **red** on the revision (`revisionId`, default the latest) —
+         *     `422 pr_gate_not_red` names each that is not, with its verdict. The control is queued with
+         *     AP.4's role policy, TTL and audit trigger; a run that has finished answers it `rejected`
+         *     (then nothing is recorded and `skipped` says why). Otherwise the return is recorded
+         *     (V065's `pr_loop_returns`) with **the attempt the next revision is expected from** — the
+         *     current stage's attempt plus one. `idempotencyKey` makes a replay answer the first control.
+         */
+        post: operations["returnPullRequestToLoop"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/request-review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Request human review — human approval becomes a required, pending gate
+         * @description The head's *Request human review* ([#361](https://github.com/NobuData/ouroboros/issues/361),
+         *     decision **V5**). **A gate mutation, not a message**: it opens the PR's approval slot
+         *     (V065's `pr_approvals`, about the latest revision) and the gate engine re-evaluates
+         *     `human_approval` under the PR's lock — required from now on, whatever the policy or org
+         *     config said, and `pending` until someone approves or declines. The open slot is the PR's
+         *     **needs-you item**: `GET /api/v1/pull-requests?reviewRequested=true` lists it.
+         *
+         *     One question, not a queue: while a slot is open, asking again answers it (`created:
+         *     false`). `reviewer` optionally asks a git-host login too (SPI `requestReview`); how that
+         *     landed — `requested`, `unsupported` (the host declares no reviews) or `failed` with the
+         *     host's reason — is recorded on the slot and **never fails the request**. The response
+         *     carries the re-evaluated gate and the latest aggregate. Audited as `pr_approval.requested`.
+         */
+        post: operations["requestPullRequestReview"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve or decline — the human-approval gate re-evaluates
+         * @description Answer the PR's approval slot ([#361](https://github.com/NobuData/ouroboros/issues/361)) on
+         *     its **latest revision**: `approve` turns `human_approval` green, `decline` turns it red and
+         *     **needs a note** (`422 pr_decline_note_required` — a red gate says why). With no slot open
+         *     — a policy that routes the PR to a person, where nobody asked first — one is opened and
+         *     answered in the same transaction (`created: true`).
+         *
+         *     The gate engine re-evaluates under the PR's lock, so an approval can flip the aggregate to
+         *     merge-ready — and an armed plan (#360) then merges. An answer is honoured only on the
+         *     revision it was given on: a later push needs a fresh one. Audited as `pr_approval.approved`
+         *     or `pr_approval.declined`, never with the note.
+         */
+        post: operations["decidePullRequestApproval"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/farm/jobs": {
         parameters: {
             query?: never;
@@ -8025,6 +8194,452 @@ export interface components {
                 action: components["schemas"]["PrMergeAction"];
                 detail: string;
             }[];
+        };
+        /**
+         * PrRun
+         * @description The loop that opened a PR — `loop
+         */
+        PrRun: {
+            /** Format: uuid */
+            id: string;
+            /** @example 1847 */
+            loopSeq: number;
+            /** @example 482 */
+            issueNumber: number;
+            /**
+             * @description The loop's model — the strip's model pill.
+             * @example claude-fable-5
+             */
+            model: string;
+            /** @example standard-fix */
+            workflowTag: string;
+            /** @example 14 */
+            workflowVersionPin: number | null;
+            /** @enum {string} */
+            status: "coding" | "building" | "review" | "merged" | "needs_human" | "failed" | "canceled";
+            /** Format: date-time */
+            finishedAt: string | null;
+        };
+        /**
+         * PrTicket
+         * @description The ticket a PR closes — `issue
+         */
+        PrTicket: {
+            /** Format: uuid */
+            id: string;
+            /** @description The tracker's own key — `#482`, `HEL-12`. */
+            key: string;
+            title: string;
+            url: string;
+        };
+        /**
+         * PullRequestHead
+         * @description A PR's head — the page's `h1` and meta chips.
+         */
+        PullRequestHead: {
+            /** Format: uuid */
+            id: string;
+            /** @example 514 */
+            number: number;
+            url: string;
+            title: string;
+            /** @enum {string} */
+            state: "open" | "verifying" | "blocked" | "armed" | "merged" | "closed";
+            headBranch: string;
+            baseBranch: string;
+            additions: number;
+            deletions: number;
+            changedFiles: number;
+            /** Format: date-time */
+            mergedAt: string | null;
+            mergedBy: string | null;
+            run: components["schemas"]["PrRun"] | null;
+            ticket: components["schemas"]["PrTicket"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * PrGateAggregate
+         * @description `pr_gate_aggregate` over the revision's required gates — `5 of 7 green`.
+         */
+        PrGateAggregate: {
+            requiredCount: number;
+            greenCount: number;
+            redCount: number;
+            /** @description Green, waived or not required. */
+            satisfiedCount: number;
+            /** @description Every required gate satisfied — the merge precondition. */
+            mergeReady: boolean;
+        };
+        /** PrRevisionRef */
+        PrRevisionRef: {
+            /** Format: uuid */
+            id: string;
+            seq: number;
+            headSha: string;
+            /** Format: date-time */
+            pushedAt: string;
+        };
+        /**
+         * PullRequestSummary
+         * @description One row of the listing — the head, the latest revision and its aggregate, and the needs-you flag.
+         */
+        PullRequestSummary: {
+            /** Format: uuid */
+            id: string;
+            /** @example 514 */
+            number: number;
+            url: string;
+            title: string;
+            /** @enum {string} */
+            state: "open" | "verifying" | "blocked" | "armed" | "merged" | "closed";
+            headBranch: string;
+            baseBranch: string;
+            additions: number;
+            deletions: number;
+            changedFiles: number;
+            /** Format: date-time */
+            mergedAt: string | null;
+            mergedBy: string | null;
+            run: components["schemas"]["PrRun"] | null;
+            ticket: components["schemas"]["PrTicket"] | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            latestRevision: components["schemas"]["PrRevisionRef"] | null;
+            /** @description The latest revision's aggregate, or null when there is no revision. */
+            gates: components["schemas"]["PrGateAggregate"] | null;
+            /** @description An approval slot is open — the PR needs a person. */
+            reviewRequested: boolean;
+        };
+        /**
+         * PullRequestList
+         * @description One page of PRs, most recently updated first — the
+         */
+        PullRequestList: {
+            items: components["schemas"]["PullRequestSummary"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        /**
+         * PrGateEvidenceRef
+         * @description The row a gate's evidence line was composed from (V056).
+         */
+        PrGateEvidenceRef: {
+            /** @enum {string} */
+            kind: "build_job" | "test_run" | "hil_measurement" | "guardrail_evaluation" | "vote" | "approval";
+            /** Format: uuid */
+            id: string;
+        };
+        /**
+         * PrGateRow
+         * @description One gate's newest verdict on one revision.
+         */
+        PrGateRow: {
+            /**
+             * @description A built-in gate key or `custom:<name>`.
+             * @example physical_hil
+             */
+            key: string;
+            /** @example Physical HIL */
+            label: string;
+            required: boolean;
+            sortOrder: number;
+            /** @description Why the PR has the gate — `standard-fix@v14 pin`, `… + review requested`. */
+            source: string;
+            /** @enum {string} */
+            verdict: "green" | "red" | "pending" | "waived" | "not_required" | "unavailable";
+            /** @description The row's mono line — `overshoot 1.7% ≤ 2.0% · rig helios-rig-02`. */
+            evidence: string | null;
+            evidenceRef: components["schemas"]["PrGateEvidenceRef"] | null;
+            /** Format: date-time */
+            evaluatedAt: string;
+            providerVersion: string;
+        };
+        /**
+         * PrGateSnapshot
+         * @description One revision's gates card.
+         */
+        PrGateSnapshot: {
+            /** Format: uuid */
+            revisionId: string;
+            /** @description Null when the revision was never evaluated. */
+            aggregate: components["schemas"]["PrGateAggregate"] | null;
+            rows: components["schemas"]["PrGateRow"][];
+        };
+        /**
+         * PrClassification
+         * @description A failure classification on a case of an attempt (V055).
+         */
+        PrClassification: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            testRunId: string;
+            /** @enum {string} */
+            class: "product_bug" | "test_update" | "flake_retry" | "infra_rig";
+            subtype: string | null;
+            /** @description The correction note, when a person wrote one. */
+            note: string | null;
+            /**
+             * @description Who picked the class — the provenance behind a model pill.
+             * @enum {string}
+             */
+            actor: "human" | "heuristic" | "model";
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * PrLoopReturn
+         * @description A recorded *Return to loop* (V065).
+         */
+        PrLoopReturn: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * Format: uuid
+             * @description The revision whose red gates were sent back.
+             */
+            revisionId: string | null;
+            /**
+             * Format: uuid
+             * @description The AP.4 correction round it queued.
+             */
+            controlId: string;
+            gateKeys: string[];
+            /** @description The attempt the next revision is expected from, or null when the run had no stage. */
+            expected: {
+                stageKey: string;
+                attempt: number;
+            } | null;
+            requestedBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * PrRevision
+         * @description One step of the revision-cycle strip, with its own gate snapshot.
+         */
+        PrRevision: {
+            /** Format: uuid */
+            id: string;
+            seq: number;
+            headSha: string;
+            /** Format: date-time */
+            pushedAt: string;
+            /** @description The attempt the revision's own test verdict cites — `attempt 4`. */
+            testAttempt: {
+                /** Format: uuid */
+                id: string;
+                attemptSeq: number;
+            } | null;
+            /** @description The stage attempt the push is linked to by sha (V052), or null. */
+            stageAttempt: {
+                stageKey: string;
+                attempt: number;
+            } | null;
+            commitMessage: string | null;
+            gates: components["schemas"]["PrGateSnapshot"];
+            /** @description What bridged the previous revision to this one; null on the first. */
+            correction: {
+                /** Format: uuid */
+                fromRevisionId: string;
+                classification: components["schemas"]["PrClassification"] | null;
+                loopReturn: components["schemas"]["PrLoopReturn"] | null;
+            } | null;
+        };
+        /**
+         * PrFiles
+         * @description The changed-files card — the latest revision's snapshot.
+         */
+        PrFiles: {
+            /** Format: uuid */
+            revisionId: string;
+            additions: number;
+            deletions: number;
+            rows: {
+                path: string;
+                additions: number;
+                deletions: number;
+            }[];
+            diffExcerpt: string | null;
+            fullDiffUrl: string;
+        };
+        /** PrThreadEntry */
+        PrThreadEntry: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            revisionId: string | null;
+            /** @description `rev 1` — null for a PR-wide entry. */
+            revisionSeq: number | null;
+            /** @enum {string} */
+            authorKind: "model" | "policy_bot" | "human";
+            authorName: string;
+            /** @enum {string} */
+            tag: "self-review" | "second opinion" | "policy";
+            body: string;
+            blocking: boolean;
+            resolved: boolean;
+            resolutionBody: string | null;
+            simulated: boolean;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * PrThread
+         * @description The review thread — `3 entries · 0 open`.
+         */
+        PrThread: {
+            entryCount: number;
+            /** @description Blocking and unresolved. */
+            openCount: number;
+            entries: components["schemas"]["PrThreadEntry"][];
+        };
+        /** PrSpendLine */
+        PrSpendLine: {
+            /** @example 284000 */
+            tokens: number;
+            tokensIn: number;
+            tokensOut: number;
+            /**
+             * @description Cents as a decimal string — `"152.0000"`. **Null when every row is unpriced, never
+             *     `"0"`**: zero reads as free, and the truth is unknown.
+             */
+            costCents: string | null;
+            /** @description Rows with no price; a non-null cost beside a non-zero count is a lower bound. */
+            unpricedEvents: number;
+        };
+        /**
+         * PrSpend
+         * @description The Spend card (V8) — a grouping of the run's ledger, not a counter.
+         */
+        PrSpend: {
+            loop: components["schemas"]["PrSpendLine"];
+            verification: components["schemas"]["PrSpendLine"];
+            /**
+             * @description The `task_kind` the verification line sums.
+             * @example verify
+             */
+            verificationTag: string;
+            /** @description The budget stage's route cap, or null when it sets none. */
+            cap: {
+                /** @example 250 */
+                cents: number;
+                /** @example implement-primary */
+                routeTag: string;
+            } | null;
+            /** @description Null when it cannot honestly be said — nothing priced, no cap, or a lower bound under it. */
+            withinCap: boolean | null;
+        };
+        /** PrPerson */
+        PrPerson: {
+            id: string;
+            name: string;
+        };
+        /**
+         * PrReview
+         * @description A human-approval slot (V065). An open one is the PR's needs-you item.
+         */
+        PrReview: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            state: "requested" | "approved" | "declined";
+            /** Format: uuid */
+            requestedRevisionId: string | null;
+            requestedBy: components["schemas"]["PrPerson"] | null;
+            /** Format: date-time */
+            requestedAt: string;
+            /** @description The SPI `requestReview`, or null when no host login was asked. */
+            host: {
+                reviewer: string;
+                /** @enum {string} */
+                state: "requested" | "unsupported" | "failed";
+                detail: string | null;
+            } | null;
+            /**
+             * Format: uuid
+             * @description The revision the answer was given on — honoured only while it is the latest.
+             */
+            decidedRevisionId: string | null;
+            decidedBy: components["schemas"]["PrPerson"] | null;
+            /** Format: date-time */
+            decidedAt: string | null;
+            note: string | null;
+        };
+        /**
+         * PullRequestPage
+         * @description Every region of mockup 12's PR Verification page.
+         */
+        PullRequestPage: {
+            pullRequest: components["schemas"]["PullRequestHead"];
+            /** @description Oldest first, each with its own snapshot. */
+            revisions: components["schemas"]["PrRevision"][];
+            /** @description The latest revision's snapshot, or null with no revision. */
+            gates: components["schemas"]["PrGateSnapshot"] | null;
+            criteria: components["schemas"]["CriteriaMatrix"];
+            files: components["schemas"]["PrFiles"] | null;
+            thread: components["schemas"]["PrThread"];
+            plan: components["schemas"]["PrMergePlan"];
+            /** @description Null for a PR no loop opened. */
+            spend: components["schemas"]["PrSpend"] | null;
+            review: components["schemas"]["PrReview"] | null;
+            loopReturn: components["schemas"]["PrLoopReturn"] | null;
+        };
+        /** ReturnToLoopRequest */
+        ReturnToLoopRequest: {
+            /** @description The red gates whose evidence the steer carries. */
+            gates: string[];
+            /**
+             * Format: uuid
+             * @description The revision the gates were selected on. Defaults to the latest.
+             */
+            revisionId?: string;
+            /** @description An instruction appended after the evidence as `note:` — not empty, not padded. */
+            note?: string;
+            /** @description A replay with the same key answers the first control. */
+            idempotencyKey?: string;
+        };
+        /** ReturnToLoop */
+        ReturnToLoop: {
+            control: components["schemas"]["RunControl"];
+            /** @description The steer's text — the selected gates' evidence lines. */
+            payload: string;
+            /** Format: uuid */
+            revisionId: string;
+            /** @description The gates returned, in the card's order. */
+            gates: string[];
+            /** @description The record, or null when the queue rejected the control. */
+            loopReturn: components["schemas"]["PrLoopReturn"] | null;
+            /** @description What did not happen, and why. */
+            skipped: string[];
+        };
+        /** RequestReviewRequest */
+        RequestReviewRequest: {
+            /** @description A git-host login to ask on the PR itself — optional, and never fails the request. */
+            reviewer?: string;
+        };
+        /** ApprovalDecisionRequest */
+        ApprovalDecisionRequest: {
+            /** @enum {string} */
+            decision: "approve" | "decline";
+            /** @description Optional on an approve, required on a decline. */
+            note?: string;
+        };
+        /** PrReviewOutcome */
+        PrReviewOutcome: {
+            review: components["schemas"]["PrReview"];
+            /** @description Whether this call opened the slot. */
+            created: boolean;
+            /** @description Human approval on the latest revision after re-evaluation. */
+            humanApproval: components["schemas"]["PrGateRow"] | null;
+            /** @description The latest revision's aggregate after re-evaluation. */
+            aggregate: components["schemas"]["PrGateAggregate"] | null;
         };
         /** RunControl */
         RunControl: {
@@ -42185,6 +42800,722 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listPullRequests: {
+        parameters: {
+            query?: {
+                /** @description Narrow to these states, comma-separated or repeated. */
+                state?: ("open" | "verifying" | "blocked" | "armed" | "merged" | "closed")[];
+                /** @description `true` — only PRs with an open approval slot. `false` — only PRs without one. */
+                reviewRequested?: boolean;
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. A workspace with no PRs gets an empty one. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullRequestList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — `X-Ouro-Tenant` names a workspace you are not a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a `state` that is not a PR state, a `reviewRequested` that is not
+             *     `true` or `false`, or a `limit`/`offset` out of range.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPullRequestPage: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PullRequestPage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about** (a PR of another workspace is `404`, never `403`). Or `tenant_not_found`, when
+             *     `X-Ouro-Tenant` names a workspace you are not a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    returnPullRequestToLoop: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "gates": [
+                 *         "physical_hil"
+                 *       ],
+                 *       "revisionId": "5eed003b-0000-4000-8000-000000005141"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ReturnToLoopRequest"];
+            };
+        };
+        responses: {
+            /** @description The queued correction round, the steer's text and the recorded expectation. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReturnToLoop"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a `viewer`. Head actions are an `owner`'s, `admin`'s or `member`'s. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no such pull request in this workspace (another workspace's is
+             *     `404`). `pr_revision_not_found` — `revisionId` is not one of this PR's revisions. Or
+             *     `tenant_not_found`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_open` — the PR is merged or closed. `pull_request_has_no_run` — no loop
+             *     opened it, so there is no agent to return to. `pull_request_has_no_revision` — nothing is
+             *     recorded yet. `control_key_reused` — the `idempotencyKey` named a different request.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pr_gate_not_red` — a selected gate is not red on the revision (`details.gates`).
+             *     `validation_failed` — no gates, a gate twice, something that is not a gate key, a padded
+             *     note, or a `revisionId` that is not a uuid.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    requestPullRequestReview: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "reviewer": "priya-n"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RequestReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description The slot, whether this call opened it, and the re-evaluated gate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrReviewOutcome"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a `viewer`. Head actions are an `owner`'s, `admin`'s or `member`'s. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about** (a PR of another workspace is `404`, never `403`). Or `tenant_not_found`, when
+             *     `X-Ouro-Tenant` names a workspace you are not a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_open` — the PR is merged or closed. `pull_request_has_no_revision` —
+             *     nothing is recorded yet to review.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an empty or padded `reviewer`, or one over 255 characters. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    decidePullRequestApproval: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "decision": "approve",
+                 *       "note": "bench numbers look right"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ApprovalDecisionRequest"];
+            };
+        };
+        responses: {
+            /** @description The answered slot and the re-evaluated gate and aggregate. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrReviewOutcome"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a `viewer`. Head actions are an `owner`'s, `admin`'s or `member`'s. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about** (a PR of another workspace is `404`, never `403`). Or `tenant_not_found`, when
+             *     `X-Ouro-Tenant` names a workspace you are not a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_open` — the PR is merged or closed. `pull_request_has_no_revision` —
+             *     nothing is recorded yet to approve.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pr_decline_note_required` — a decline with no note. `validation_failed` — a decision other
+             *     than `approve` or `decline`, or a padded note, or one over 2000 characters.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;

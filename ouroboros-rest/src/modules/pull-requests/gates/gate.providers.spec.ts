@@ -6,6 +6,7 @@ import {
   HIL,
   MATRIX_GATES,
   PROVIDER_MATRIX,
+  REQUESTED_APPROVAL,
   REVISION_2,
   factsWith,
   type MatrixCell,
@@ -344,5 +345,54 @@ describe("the line helpers", () => {
     expect(sameCommit("B7E41D0AA", "b7e41d0")).toBe(true);
     expect(sameCommit("b7e41d0", "3f9c2ae")).toBe(false);
     expect(sameCommit("b7e4", "b7e41d0")).toBe(false);
+  });
+});
+
+describe("human_approval (AX.5)", () => {
+  const human = GATE_PROVIDERS.get("human_approval");
+
+  it("asks for a fresh review when the answer was given on an earlier revision", () => {
+    for (const state of ["approved", "declined"] as const) {
+      expect(
+        human?.evaluate(
+          factsWith({
+            approval: {
+              ...REQUESTED_APPROVAL,
+              state,
+              decidedBy: "Priya N",
+              decidedRevisionId: "rev-1",
+              note: "n",
+            },
+          }),
+        ),
+      ).toEqual({
+        verdict: "pending",
+        evidence: `${state} on an earlier revision — this one needs a fresh review`,
+        evidenceRef: { kind: "approval", id: REQUESTED_APPROVAL.id },
+      });
+    }
+  });
+
+  it("names nobody it cannot name — a departed requester or reviewer", () => {
+    expect(
+      human?.evaluate(factsWith({ approval: { ...REQUESTED_APPROVAL, requestedBy: null } }))
+        .evidence,
+    ).toBe("review requested — awaiting approval");
+    expect(
+      human?.evaluate(
+        factsWith({
+          approval: {
+            ...REQUESTED_APPROVAL,
+            state: "approved",
+            decidedRevisionId: "rev-2",
+          },
+        }),
+      ).evidence,
+    ).toBe("approved by a former member");
+  });
+
+  it("lets a slot win over an auto-merging policy — asking is what flips it", () => {
+    expect(REVISION_2.review?.autoMerges).toBe(true);
+    expect(human?.evaluate(factsWith({ approval: REQUESTED_APPROVAL })).verdict).toBe("pending");
   });
 });

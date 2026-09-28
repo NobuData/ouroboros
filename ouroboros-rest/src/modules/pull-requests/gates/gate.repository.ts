@@ -3,8 +3,8 @@
  *
  * AX.2 ([#358](https://github.com/NobuData/ouroboros/issues/358)), over V056's gate tables and the
  * evidence systems they cite: `build_jobs` (V040), `test_runs` · `test_suites` · `test_cases`
- * (V051), `hil_measurements` (V053), `run_pr_intents` · `pr_waivers` (V055) and
- * `v_run_guardrails_latest` (V048). The pinned policy, the ticket and the vote rules are read with
+ * (V051), `hil_measurements` (V053), `run_pr_intents` · `pr_waivers` (V055),
+ * `v_run_guardrails_latest` (V048) and `pr_approvals` (V065, #361). The pinned policy, the ticket and the vote rules are read with
  * `GuardrailsRepository`'s own statements, so "the run's policy" has one reading in the service.
  *
  * ## One transaction per evaluation, with the PR row locked
@@ -41,6 +41,7 @@ import {
 import type { GateEvidenceEvent } from "./gate.evidence";
 import type { GateAggregate, LatestResult } from "./gate.engine";
 import type {
+  ApprovalFact,
   AttemptFact,
   BuildFact,
   GateDefinitionSpec,
@@ -108,6 +109,14 @@ export interface GateTransaction {
    * @returns The evidence at the revision's head.
    */
   evidence(pr: GatePr, revision: GateRevision): Promise<EvidenceRows>;
+  /**
+   * The PR's newest human-approval slot (V065) — read before the definitions are materialized,
+   * because a requested review makes `human_approval` required.
+   *
+   * @param pr - The PR.
+   * @returns The slot, or null when there has never been one.
+   */
+  approval(pr: GatePr): Promise<ApprovalFact | null>;
   /**
    * Insert the definitions not yet stored, and update the ones whose policy moved.
    *
@@ -189,6 +198,7 @@ export class GateRepository implements GateStore {
     switch (event.kind) {
       case "revision_pushed":
       case "pr_synced":
+      case "approval_recorded":
         ids = await open.where("pull_requests.id", "=", event.prId).execute();
         break;
       case "guardrail_evaluated":
@@ -366,6 +376,38 @@ class PgGateTransaction implements GateTransaction {
       waivedCaseKeys: [...new Set(waivers.flatMap((waiver) => waiver.case_keys))].sort(),
       secrets: secrets === undefined ? null : { id: secrets.id, verdict: secrets.verdict },
     };
+  }
+
+  /** @inheritdoc */
+  async approval(pr: GatePr): Promise<ApprovalFact | null> {
+    const row = await this.trx
+      .selectFrom("pr_approvals")
+      .leftJoin("user as requester", "requester.id", "pr_approvals.requested_by")
+      .leftJoin("user as reviewer", "reviewer.id", "pr_approvals.decided_by")
+      .select([
+        "pr_approvals.id",
+        "pr_approvals.state",
+        "pr_approvals.decided_revision_id",
+        "pr_approvals.note",
+        "requester.name as requested_by_name",
+        "reviewer.name as decided_by_name",
+      ])
+      .where("pr_approvals.pr_id", "=", pr.id)
+      .orderBy("pr_approvals.requested_at", "desc")
+      .orderBy("pr_approvals.id", "desc")
+      .limit(1)
+      .executeTakeFirst();
+
+    return row === undefined
+      ? null
+      : {
+          id: row.id,
+          state: row.state,
+          requestedBy: row.requested_by_name,
+          decidedBy: row.decided_by_name,
+          decidedRevisionId: row.decided_revision_id,
+          note: row.note,
+        };
   }
 
   /**
