@@ -143,11 +143,19 @@ export class CriteriaService {
    * @throws {NotFoundError} `pull_request_not_found`.
    */
   async matrix(organizationId: string, prId: string): Promise<CriteriaMatrixResource> {
-    await this.prOrThrow(organizationId, prId);
+    const pr = await this.prOrThrow(organizationId, prId);
 
-    const criteria = await this.resources(await this.store.criteria(prId));
+    const [criteria, draft] = await Promise.all([
+      this.store.criteria(prId).then((rows) => this.resources(rows)),
+      pr.ticket_id === null ? undefined : this.store.planDraft(organizationId, pr.ticket_id),
+    ]);
 
-    return { prId, counts: criteriaCounts(criteria), criteria };
+    return {
+      prId,
+      planContext: draft !== undefined,
+      counts: criteriaCounts(criteria),
+      criteria,
+    };
   }
 
   // --- authoring ---------------------------------------------------------------------------

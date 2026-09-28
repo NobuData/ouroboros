@@ -88,14 +88,19 @@ describe("the shell", () => {
     expect(CODE).toMatch(/\.prv-return__evidence \{[^}]*overflow-wrap: anywhere;/);
   });
 
-  it("scrolls sideways in the strip's and the gates' own wrappers and nowhere else (#364, #365)", () => {
+  it("scrolls sideways in the strip's, the gates' and the matrix's own wrappers and nowhere else (#364, #365, #366)", () => {
     const scrolling = [...CODE.matchAll(/([^{}]+)\{[^}]*overflow(?:-x)?:\s*(?:scroll|auto)[^}]*\}/g)].map(
       (match) => match[1]!.trim(),
     );
 
-    expect(scrolling).toEqual([".prv-strip__scroll", ".prv-gates__scroll"]);
+    expect(scrolling).toEqual([
+      ".prv-strip__scroll",
+      ".prv-gates__scroll",
+      ".prv-criteria__scroll",
+    ]);
     expect(CODE).toMatch(/\.prv-strip__scroll \{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.prv-gates__scroll \{[^}]*overflow-x: auto;/);
+    expect(CODE).toMatch(/\.prv-criteria__scroll \{[^}]*overflow-x: auto;/);
     expect(CODE).not.toMatch(/overflow(-y)?:\s*(scroll|auto)/);
   });
 
@@ -191,5 +196,33 @@ describe("the verification gates card (#365)", () => {
     expect(rule(".prv-gate__evidence")).toMatch(/white-space: nowrap;/);
     expect(rule(".prv-gate__evidence")).not.toMatch(/text-overflow|overflow: hidden/);
     expect(rule(".prv-gate__popover")).not.toMatch(/position:/);
+  });
+});
+
+describe("the criteria matrix (#366)", () => {
+  it("draws the mockup's three columns: claim, evidence, pill", () => {
+    expect(CODE).toMatch(
+      /\.prv-crit \{[^}]*grid-template-columns: minmax\(11\.25rem, 1\.1fr\) minmax\(12\.5rem, 1\.3fr\) auto;/,
+    );
+  });
+
+  it("collapses per the mockup's rule: the pill beside the claim, the evidence beneath both", () => {
+    const narrow = /@media \(max-width: 56\.25rem\) \{([\s\S]*?\n)\}/.exec(CODE)?.[1] ?? "";
+
+    expect(narrow).toMatch(/\.prv-crit \{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/);
+    expect(narrow).toMatch(/\.prv-crit__evidence \{[^}]*grid-column: 1 \/ -1;/);
+  });
+
+  it("quotes the claim in the sheet, so the marks are never part of the words", () => {
+    expect(CODE).toMatch(/\.prv-crit__claim::before \{[^}]*content: "“";/);
+    expect(CODE).toMatch(/\.prv-crit__claim::after \{[^}]*content: "”";/);
+  });
+
+  it("gives the waived row the warn treatment, from the warn token", () => {
+    expect(CODE).toMatch(/\.prv-crit--waived \{[^}]*background: var\(--warn-tint\);/);
+  });
+
+  it("lets a long evidence line break rather than widen the grid", () => {
+    expect(CODE).toMatch(/\.prv-crit__evidence \{[^}]*overflow-wrap: anywhere;/);
   });
 });

@@ -63,6 +63,14 @@ vi.mock("@/app/prs/head-actions", () => ({
   requestHumanReview: vi.fn(),
   returnToLoop: vi.fn(),
 }));
+vi.mock("@/app/prs/criteria-actions", () => ({
+  addClaim: vi.fn(),
+  attachEvidence: vi.fn(),
+  importFromPlan: vi.fn(),
+  readEvidenceOptions: vi.fn(),
+  verifyClaim: vi.fn(),
+  waiveClaim: vi.fn(),
+}));
 
 /** A poll that never answers — the page shows the server's first read. */
 const QUIET: PrPollOptions = { read: () => new Promise(() => {}), visible: () => true };

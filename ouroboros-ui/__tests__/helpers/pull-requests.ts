@@ -1,4 +1,8 @@
 import type {
+  CriteriaMatrix,
+  PrCriterion,
+  PrEvidence,
+  PrFiles,
   PrGateRow,
   PrReview,
   PrRevision,
@@ -195,6 +199,7 @@ export function prPage(
     },
     criteria: {
       prId: PR_514_ID,
+      planContext: false,
       counts: { total: 0, verified: 0, waived: 0, unverified: 0 },
       criteria: [],
     },
@@ -434,4 +439,257 @@ export function revisionTwo(over: Partial<PrRevision> = {}): PrRevision {
  */
 export function stripPage(over: Parameters<typeof prPage>[0] = {}): PullRequestPage {
   return prPage({ revisions: [revisionOne(), revisionTwo()], ...over });
+}
+
+// --- the acceptance criteria matrix (#366) -------------------------------------------------
+
+/** The host comment the waive of the thermal claim posted. */
+export const WAIVE_COMMENT_URL = `${HOST_URL}#issuecomment-5140001`;
+
+/** Why the thermal claim was waived — mockup 12's. */
+export const THERMAL_REASON = "rig runs at 22°C only — thermal chamber not in bench";
+
+/** The file the mockup's hunk is in. */
+export const TELEMETRY_PATH = "drivers/can/telemetry_buf.c";
+
+/** The frame-order test case cited by the first claim — a row of Build 4. */
+export const CITED_CASE_ID = "5eed0035-0000-4000-8000-000000048201";
+
+/** The overshoot measurement cited by the second claim. */
+export const CITED_MEASUREMENT_ID = "5eed0036-0000-4000-8000-000000048201";
+
+/**
+ * A claim's id.
+ *
+ * @param n Its ordinal in the matrix, from 1.
+ * @returns The uuid.
+ */
+export function criterionId(n: number): string {
+  return `5eed0050-0000-4000-8000-00000000000${n}`;
+}
+
+/**
+ * A citation's id.
+ *
+ * @param n Its ordinal among the seed's citations, from 1.
+ * @returns The uuid.
+ */
+export function evidenceId(n: number): string {
+  return `5eed0051-0000-4000-8000-00000000000${n}`;
+}
+
+/**
+ * One citation.
+ *
+ * @param over What to change: its fields, and any part of its reference.
+ * @returns An analysis note read on Revision 2, changed.
+ */
+export function evidence(
+  over: Partial<Omit<PrEvidence, "ref">> & { readonly ref?: Partial<PrEvidence["ref"]> } = {},
+): PrEvidence {
+  const { ref, ...fields } = over;
+
+  return {
+    id: evidenceId(1),
+    criterionId: criterionId(1),
+    kind: "analysis_note",
+    displayText: "test asserts on seq gaps, not sleep-based",
+    createdAt: "2026-09-27T14:35:00.000Z",
+    ...fields,
+    ref: {
+      testCaseId: null,
+      hilMeasurementId: null,
+      testArtifactId: null,
+      revisionId: null,
+      path: null,
+      lineStart: null,
+      lineEnd: null,
+      ...ref,
+    },
+  };
+}
+
+/**
+ * One claim.
+ *
+ * @param over What to change.
+ * @returns A manual claim nobody has cited evidence for, changed.
+ */
+export function criterion(over: Partial<PrCriterion> = {}): PrCriterion {
+  return {
+    id: criterionId(1),
+    prId: PR_514_ID,
+    claim: "Telemetry frames must arrive in ISR order under load",
+    source: "manual",
+    status: "unverified",
+    sortOrder: 1,
+    createdBy: KEN.id,
+    createdAt: "2026-09-27T14:33:00.000Z",
+    updatedAt: "2026-09-27T14:33:00.000Z",
+    evidence: [],
+    waiver: null,
+    ...over,
+  };
+}
+
+/**
+ * A waiver.
+ *
+ * @param over What to change about its annotation.
+ * @returns The thermal waiver, annotated on the host, changed.
+ */
+export function waiver(
+  over: Partial<NonNullable<PrCriterion["waiver"]>["annotation"]> = {},
+): NonNullable<PrCriterion["waiver"]> {
+  return {
+    id: "5eed0052-0000-4000-8000-000000000001",
+    reason: THERMAL_REASON,
+    author: KEN.name,
+    createdAt: "2026-09-27T14:45:00.000Z",
+    annotation: {
+      state: "annotated",
+      commentId: "5140001",
+      url: WAIVE_COMMENT_URL,
+      annotatedAt: "2026-09-27T14:45:01.000Z",
+      ...over,
+    },
+  };
+}
+
+/**
+ * Mockup 12's five claims: four verified — by a test and a hunk, a measurement, and two analysis
+ * notes — and the thermal claim waived and annotated on the PR.
+ *
+ * @returns The claims, in the matrix's order.
+ */
+export function mockupCriteria(): PrCriterion[] {
+  return [
+    criterion({
+      status: "verified",
+      source: "plan",
+      evidence: [
+        evidence({
+          kind: "test_case",
+          displayText: "test_frame_order_under_load (10⁶ frames, 0 reordered)",
+          ref: { testCaseId: CITED_CASE_ID },
+        }),
+        evidence({
+          id: evidenceId(2),
+          kind: "hunk",
+          displayText: "hunk telemetry_buf.c:41–66",
+          ref: { revisionId: REV_2_ID, path: TELEMETRY_PATH, lineStart: 41, lineEnd: 66 },
+        }),
+      ],
+    }),
+    criterion({
+      id: criterionId(2),
+      claim: "No regression in e-stop response envelope",
+      status: "verified",
+      source: "plan",
+      sortOrder: 2,
+      evidence: [
+        evidence({
+          id: evidenceId(3),
+          criterionId: criterionId(2),
+          kind: "hil_measurement",
+          displayText: "HIL overshoot 1.7% vs 2.0% limit (was 2.4% in rev 1)",
+          ref: { hilMeasurementId: CITED_MEASUREMENT_ID },
+        }),
+      ],
+    }),
+    criterion({
+      id: criterionId(3),
+      claim: "Fix must not mask real ordering bugs in tests",
+      status: "verified",
+      sortOrder: 3,
+      evidence: [
+        evidence({
+          id: evidenceId(4),
+          criterionId: criterionId(3),
+          ref: { revisionId: REV_2_ID },
+        }),
+      ],
+    }),
+    criterion({
+      id: criterionId(4),
+      claim: "Zero heap allocation in ISR fast path",
+      status: "verified",
+      sortOrder: 4,
+      evidence: [
+        evidence({
+          id: evidenceId(5),
+          criterionId: criterionId(4),
+          displayText: "static K_MSGQ_DEFINE · stack analysis clean",
+          ref: { revisionId: REV_2_ID },
+        }),
+      ],
+    }),
+    criterion({
+      id: criterionId(5),
+      claim: "Flake must not reappear across temperature range",
+      status: "waived",
+      sortOrder: 5,
+      waiver: waiver(),
+    }),
+  ];
+}
+
+/**
+ * A matrix.
+ *
+ * @param criteria Its claims. Defaults to mockup 12's.
+ * @param planContext Whether there is a plan to import from. Defaults to none.
+ * @returns The matrix, its counts taken from the claims.
+ */
+export function matrix(
+  criteria: readonly PrCriterion[] = mockupCriteria(),
+  planContext = false,
+): CriteriaMatrix {
+  const count = (status: PrCriterion["status"]): number =>
+    criteria.filter((each) => each.status === status).length;
+
+  return {
+    prId: PR_514_ID,
+    planContext,
+    counts: {
+      total: criteria.length,
+      verified: count("verified"),
+      waived: count("waived"),
+      unverified: count("unverified"),
+    },
+    criteria: [...criteria],
+  };
+}
+
+/**
+ * The latest revision's files snapshot — mockup 12's `+68 −15 · 3 files`.
+ *
+ * @param over What to change.
+ * @returns The snapshot, changed.
+ */
+export function files(over: Partial<PrFiles> = {}): PrFiles {
+  return {
+    revisionId: REV_2_ID,
+    additions: 68,
+    deletions: 15,
+    rows: [
+      { path: TELEMETRY_PATH, additions: 38, deletions: 12 },
+      { path: "drivers/can/telemetry_buf.h", additions: 6, deletions: 1 },
+      { path: "tests/integration/test_telemetry.c", additions: 24, deletions: 2 },
+    ],
+    diffExcerpt: null,
+    fullDiffUrl: `${HOST_URL}/files`,
+    ...over,
+  };
+}
+
+/**
+ * The page with mockup 12's matrix (#366): the revision cycle, the five claims and the files
+ * snapshot.
+ *
+ * @param over What else to change.
+ * @returns The page.
+ */
+export function matrixPage(over: Parameters<typeof prPage>[0] = {}): PullRequestPage {
+  return stripPage({ criteria: matrix(), files: files(), ...over });
 }

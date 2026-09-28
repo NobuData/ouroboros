@@ -336,6 +336,9 @@ export const BEACON_CASE_ID = "5eed0035-0000-4000-8000-000000000504";
 /** The id of the power-loss case on the rig in Build 3. */
 export const POWER_LOSS_CASE_ID = "5eed0035-0000-4000-8000-000000000502";
 
+/** The id of the overshoot measurement. */
+export const MEASUREMENT_ID = "5eed0036-0000-4000-8000-000000000001";
+
 /**
  * A measurement.
  *
@@ -344,6 +347,7 @@ export const POWER_LOSS_CASE_ID = "5eed0035-0000-4000-8000-000000000502";
  */
 export function measurement(over: Partial<Measurement> = {}): Measurement {
   return {
+    id: MEASUREMENT_ID,
     metric: "overshoot_pct",
     value: 2.4,
     unit: "%",

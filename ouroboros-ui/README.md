@@ -266,7 +266,7 @@ ouroboros-ui/
 │   │   ├── test-runs/[id]/route.ts # GET /api/test-runs/{id} — one attempt's page: its suites and cases · #337
 │   │   ├── artifact-file.ts #   readArtifactFile() — AT.5's artifact download, streamed through and made safe · #341
 │   │   ├── artifacts/[id]/route.ts # GET /api/artifacts/{id} — the artifacts card's open ↗, on this origin
-│   │   ├── pull-requests.ts #   pullRequests.* — the PR page, forRuns() the by-run lookup, the head actions, decideApproval() · #363 · #365
+│   │   ├── pull-requests.ts #   pullRequests.* — the PR page, forRuns() the by-run lookup, the head actions, decideApproval(), the criteria matrix's writes · #363 · #365 · #366
 │   │   ├── pull-requests-read.ts # readPageForPoll() — the PR page, for its poll
 │   │   ├── prs/[id]/route.ts #  GET /api/prs/{id} — the PR page, on this origin
 │   │   ├── runs/[id]/events/route.ts # GET /api/runs/{id}/events?after= — the transcript's tail, on this origin
@@ -454,6 +454,14 @@ ouroboros-ui/
 │   │   ├── gates.ts         #   the gates card: verdict treatments, the pill, where evidence leads, the approval offer · #365
 │   │   ├── gates-card.tsx   #   the seven rows for the scoped revision, the waiver popover, approve / decline
 │   │   ├── decline-dialog.tsx # Decline's required note
+│   │   ├── criteria.ts      #   the criteria matrix: where evidence leads, the pills, the offers by role, answers until a read catches up · #366
+│   │   ├── criteria-card.tsx #  the claims-to-evidence grid: links, the note disclosure, the waived pill's host link
+│   │   ├── criteria-actions.ts # addClaim() / importFromPlan() / readEvidenceOptions() / attachEvidence() / verifyClaim() / waiveClaim()
+│   │   ├── evidence-options.ts · evidence-dialog.tsx # the typed picker: tests, measurements, hunks — only what exists
+│   │   ├── evidence-target.ts # a cited test or measurement, resolved to its attempt when the link is followed
+│   │   ├── text-dialog.tsx · claim-dialog.tsx · waive-dialog.tsx # one required text: a claim, a waiver's reason
+│   │   ├── hunk.ts          #   a cited hunk and its ?hunk= address
+│   │   ├── files-slot.tsx   #   where a hunk reference lands until #367 draws the card
 │   │   ├── poll.ts          #   the reader and guard: the whole PR page
 │   │   ├── data.ts          #   readPr() — the first paint; runPullRequests() — which runs opened a PR
 │   │   ├── outcomes.ts · head-actions.ts # requestHumanReview() / returnToLoop() / decideApproval() — the Server Actions
@@ -462,7 +470,7 @@ ouroboros-ui/
 │   │   ├── return-dialog.tsx #  the danger dialog: which red gates the agent receives
 │   │   ├── merge-plan-slot.tsx # where Merge when all gates green lands until #369 draws the card
 │   │   ├── pr-loading.tsx · pr-missing.tsx # the first read in flight; a PR that does not exist
-│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates card, slot, dialogs — one poll
+│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates card, criteria matrix, slots, dialogs — one poll
 │   ├── workflows/           # the workflow studio's frame — mockup 04 · #147
 │   │   ├── view.ts          #   the trigger in words, the subline, the segments, the rail's items
 │   │   ├── states.ts        #   the five states, the head and the seat for each, the read-only note
@@ -3883,6 +3891,61 @@ Out-of-scope highlighting for diff-vs-plan arrives with the changed-files card
 
 The rows scroll sideways inside their own wrapper, so a long evidence line never moves the pane.
 
+### The acceptance criteria matrix
+
+The card ([#366](https://github.com/NobuData/ouroboros/issues/366)) is mockup 12's *Does the PR do
+what the ticket says?* — every claim quoted, mapped to its evidence, with a status pill
+(`app/prs/criteria.ts`). The matrix is the PR's own: the strip's `?rev=` scope does not move it.
+Each evidence line is the service's composed text, as stored
+([#359](https://github.com/NobuData/ouroboros/issues/359)); what the card adds is where it leads.
+
+| Evidence | Leads to |
+|----------|----------|
+| `test_case` | `/prs/:id/evidence/:evidenceId`, which redirects to test results on the attempt that ran the case, its suite selected |
+| `hil_measurement` | the same address, redirecting to that attempt's physical card, the measured case selected |
+| `build_artifact` | the artifact's file |
+| `hunk` | this page's changed files (`#files`), and the address becomes `?hunk=path:41-66` |
+| `analysis_note` | nowhere — the note is the evidence, and opens in place |
+
+A citation names a row, not the attempt it ran in, so a test or measurement link is resolved on
+the server **when it is followed** (`app/prs/evidence-target.ts`) — newest attempt first, at most
+twelve. One that cannot be resolved answers the not-found page.
+
+| Status | Pill |
+|--------|------|
+| `verified` | `✓ verified` |
+| `unverified` | `unverified`, with a ring |
+| `waived`, annotated | `waived · annotated on PR ↗`, **linked to the host comment** the waive posted |
+| `waived`, host refused | `waived · annotation failed`, no link, and *Waive again* is the retry |
+
+Every row says where its claim came from: `manual`, `plan`, or `extracted · reserved`
+([#372](https://github.com/NobuData/ouroboros/issues/372)).
+
+| Control | Drawn for | Notes |
+|---------|-----------|-------|
+| *+ Add claim* | owner, admin, member | one required text, recorded as `manual` |
+| *Import from plan* | owner, admin, member | **only when the payload's `planContext` is true**; rows are labelled `plan` |
+| *Attach evidence* | owner, admin, member | the typed picker, below |
+| *Verify* | owner, admin, member | **inert, with the reason shown, until evidence is attached** |
+| *Waive* / *Waive again* | owner, admin | the reason is required and is posted on the host PR; waiving again edits the same comment |
+
+**The evidence picker offers only what exists.** Tests and measurements are the rows of the
+attempt the latest revision was judged on, read when the picker opens; hunks are ranges of the
+paths in the latest revision's files snapshot. There is no free-text reference to type — the one
+free-text field is the optional qualifier (`10⁶ frames, 0 reordered`). The service resolves every
+reference again before storing it.
+
+Every change is drawn from its answer, before the next poll, and stands until a read made after it
+has caught up.
+
+**A hunk reference lands on the Changed files slot** (`#files`) until the Changed files card
+([#367](https://github.com/NobuData/ouroboros/issues/367)) replaces its body: the slot takes
+focus, names the cited path and range, and links the whole diff on the host. #367 keeps the id and
+the `?hunk=` address, and scrolls its diff to the range.
+
+The grid is the mockup's three columns and collapses per its rule (900px): the pill beside the
+claim, the evidence beneath both. It scrolls sideways inside its own wrapper.
+
 ## Workflow Studio
 
 `/workflows` ([#147](https://github.com/NobuData/ouroboros/issues/147)) is
@@ -5339,6 +5402,7 @@ the React Flow canvas [#148](https://github.com/NobuData/ouroboros/issues/148) �
 PR verification [#363](https://github.com/NobuData/ouroboros/issues/363) ·
 the revision cycle strip [#364](https://github.com/NobuData/ouroboros/issues/364) ·
 the verification gates card [#365](https://github.com/NobuData/ouroboros/issues/365) ·
+the acceptance criteria matrix [#366](https://github.com/NobuData/ouroboros/issues/366) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

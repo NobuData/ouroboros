@@ -105,6 +105,8 @@ export interface CaseRow {
 
 /** One HIL measurement. `value` and `limit_value` are `numeric`, so strings. */
 export interface MeasurementRow {
+  /** `hil_measurements.id` — what a criterion's evidence cites (#366). */
+  readonly id: string;
   readonly test_case_id: string;
   readonly procedure: string;
   readonly metric: string;
@@ -370,6 +372,7 @@ export class ResultsRepository {
           .onRef("s.organization_id", "=", "c.organization_id"),
       )
       .select([
+        "m.id",
         "m.test_case_id",
         "m.procedure",
         "m.metric",

@@ -211,6 +211,8 @@ export interface SuiteResource {
 
 /** One HIL measurement: the value, its limit, and how it compares with an earlier build. */
 export interface MeasurementResource {
+  /** `hil_measurements.id` — what the criteria matrix's evidence picker cites (#366). */
+  readonly id: string;
   readonly metric: string;
   readonly value: number;
   readonly unit: string;
@@ -532,6 +534,7 @@ export function physicalResources(
         status: row.status,
         procedure: own[0].procedure,
         measurements: own.map((each) => ({
+          id: each.id,
           metric: each.metric,
           value: Number(each.value),
           unit: each.unit,

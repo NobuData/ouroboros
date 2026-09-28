@@ -7838,6 +7838,11 @@ export interface components {
         };
         /** HilMeasurementResult */
         HilMeasurementResult: {
+            /**
+             * Format: uuid
+             * @description `hil_measurements.id` — what a criterion's `hil_measurement` evidence cites ([#366](https://github.com/NobuData/ouroboros/issues/366)).
+             */
+            id: string;
             metric: string;
             /** @description The worst trial's value — `2.4`. */
             value: number;
@@ -8126,6 +8131,8 @@ export interface components {
         CriteriaMatrix: {
             /** Format: uuid */
             prId: string;
+            /** @description Whether `…/criteria/import` has a plan to read — the PR has a ticket and a plan draft with a body was pushed as it. The matrix shows *Import from plan* exactly when this is true ([#366](https://github.com/NobuData/ouroboros/issues/366)). */
+            planContext: boolean;
             counts: components["schemas"]["CriteriaCounts"];
             criteria: components["schemas"]["PrCriterion"][];
         };

@@ -22,6 +22,8 @@ import {
   SOURCES_PATH,
   WORKFLOWS_PATH,
   loginPath,
+  PR_HUNK_PARAM,
+  prEvidencePath,
   prPath,
   runPath,
   TESTS_ATTEMPT_PARAM,
@@ -162,6 +164,19 @@ describe("the paths themselves", () => {
   it("name the PR page's revision scope apart from where it was opened from (#364)", () => {
     expect(PR_REVISION_PARAM).toBe("rev");
     expect(PR_REVISION_PARAM).not.toBe(RUN_ORIGIN_PARAM);
+  });
+
+  it("name the PR page's cited hunk apart from its other parameters (#366)", () => {
+    expect(PR_HUNK_PARAM).toBe("hunk");
+    expect(new Set([PR_HUNK_PARAM, PR_REVISION_PARAM, RUN_ORIGIN_PARAM]).size).toBe(3);
+  });
+
+  it("address one citation of a PR's matrix, carrying where the page was opened from (#366)", () => {
+    expect(prEvidencePath("5eed", "e1")).toBe("/prs/5eed/evidence/e1");
+    expect(prEvidencePath("5eed", "e1", "build-farm")).toBe(
+      `/prs/5eed/evidence/e1?${RUN_ORIGIN_PARAM}=build-farm`,
+    );
+    expect(prEvidencePath("a/b", "c?d", "x&y")).toBe("/prs/a%2Fb/evidence/c%3Fd?from=x%26y");
   });
 
   it("give each Models surface a segment of its own", () => {

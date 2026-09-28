@@ -42,6 +42,17 @@ function caseId(attempt: number, suite: number, n: number): string {
   return `5eed0033-0000-4000-8000-0000482${String(attempt)}${String(suite).padStart(2, "0")}${String(n).padStart(2, "0")}`;
 }
 
+/**
+ * A measurement's id — `hil_measurements.id`.
+ *
+ * @param attempt - The attempt's ordinal.
+ * @param n - The measurement's ordinal within the attempt.
+ * @returns The uuid.
+ */
+export function measurementId(attempt: number, n: number): string {
+  return `5eed0035-0000-4000-8000-0000482${String(attempt)}00${String(n).padStart(2, "0")}`;
+}
+
 /** A 64-hex case key, the same in every attempt. */
 function caseKey(suite: number, n: number): string {
   return `${String(suite).padStart(2, "0")}${String(n).padStart(2, "0")}`.padEnd(64, "a");
@@ -289,6 +300,7 @@ export function mockupUniverse(): Universe {
     const overshoot = attempt === 4 ? "1.7" : "2.4";
     universe.measurements.push(
       {
+        id: measurementId(attempt, 1),
         organization_id: ORG,
         test_run_id: testRunId,
         test_case_id: caseId(attempt, 5, 1),
@@ -303,6 +315,7 @@ export function mockupUniverse(): Universe {
         trials: [{ trial: 1 }, { trial: 2 }, { trial: 3 }],
       },
       {
+        id: measurementId(attempt, 2),
         organization_id: ORG,
         test_run_id: testRunId,
         test_case_id: caseId(attempt, 5, 2),

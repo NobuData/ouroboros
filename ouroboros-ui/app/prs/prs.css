@@ -728,6 +728,355 @@
   gap: var(--sp-4);
 }
 
+/* ---------- the acceptance criteria matrix (#366) ---------- */
+
+.prv-criteria {
+  margin-bottom: var(--sp-10);
+}
+
+/* A link out of the card's head — the ticket on its tracker, the whole diff on the host. */
+.prv-criteria__link {
+  flex: none;
+  color: var(--accent);
+  font-size: var(--t-xs);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.prv-criteria__link:hover {
+  text-decoration: underline;
+}
+
+.prv-criteria__link:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+.prv-criteria__intro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-6);
+  margin: 0 0 var(--sp-3);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.prv-criteria__counts {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+}
+
+.prv-criteria__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The grid scrolls sideways in its own wrapper, so a long evidence line never moves the pane. */
+.prv-criteria__scroll {
+  overflow-x: auto;
+}
+
+.prv-criteria__rows {
+  display: flex;
+  flex-direction: column;
+  min-width: 40rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prv-criteria__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-top: var(--sp-6);
+}
+
+.prv-criteria__outcome {
+  margin: var(--sp-5) 0 0;
+  color: var(--ok);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.prv-criteria__outcome--failed {
+  color: var(--err);
+}
+
+/* The mockup's `.crit`: claim, evidence, pill — and beneath them what the reader may do. */
+.prv-crit {
+  display: grid;
+  grid-template-columns: minmax(11.25rem, 1.1fr) minmax(12.5rem, 1.3fr) auto;
+  gap: var(--sp-2) var(--sp-7);
+  align-items: center;
+  padding: var(--sp-5) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.prv-crit:last-child {
+  border-bottom: 0;
+}
+
+/* The waived row's warn treatment: an unmet claim let through is read before its neighbours. */
+.prv-crit--waived {
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+}
+
+.prv-crit__claim-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-4);
+  min-width: 0;
+}
+
+.prv-crit__claim {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The quote treatment: the claim is somebody's words, and the marks are not part of them. */
+.prv-crit__claim::before {
+  content: "“";
+  color: var(--ink-faint);
+}
+
+.prv-crit__claim::after {
+  content: "”";
+  color: var(--ink-faint);
+}
+
+.prv-crit__evidence {
+  min-width: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* An evidence line that leads somewhere: underlined, so it is a link without its hue. */
+.prv-crit__ref {
+  color: var(--ink-dim);
+  text-decoration: underline;
+  text-underline-offset: 0.1875rem;
+}
+
+.prv-crit__ref:hover {
+  color: var(--ink);
+}
+
+.prv-crit__ref--hunk {
+  color: var(--accent);
+}
+
+.prv-crit__ref--hunk:hover {
+  color: var(--accent);
+}
+
+.prv-crit__ref:focus-visible,
+.prv-crit__note-toggle:focus-visible,
+.prv-crit__pill-link:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* An analysis note: a disclosure drawn as its line, opening in place. */
+.prv-crit__note-toggle {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink-dim);
+  font: inherit;
+  text-align: left;
+  text-decoration: underline dotted;
+  text-underline-offset: 0.1875rem;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.prv-crit__note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-3) 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.prv-crit__note-text {
+  color: var(--ink);
+  white-space: pre-wrap;
+}
+
+.prv-crit__note-read {
+  color: var(--ink-mut);
+}
+
+.prv-crit__waiver {
+  color: var(--ink-dim);
+}
+
+.prv-crit__none {
+  color: var(--ink-faint);
+}
+
+.prv-crit__status {
+  justify-self: end;
+  white-space: nowrap;
+}
+
+.prv-crit__pill-link {
+  display: inline-flex;
+  border-radius: var(--r-md);
+  text-decoration: none;
+}
+
+.prv-crit__pill-link:hover {
+  text-decoration: underline;
+}
+
+.prv-crit__foot {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-4);
+}
+
+.prv-crit__foot-note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the Changed files slot (#366) ---------- */
+
+/*
+ * Where a hunk reference lands until AY.5 (#367) draws the card itself: a region that takes
+ * focus and names the range the matrix cited.
+ */
+.prv-files {
+  margin-bottom: var(--sp-10);
+}
+
+.prv-files:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+.prv-files__cited {
+  margin: 0 0 var(--sp-3);
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-files__note {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the matrix's dialogs (#366) ---------- */
+
+.prv-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.prv-dialog__lead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+/* The claim a dialog is about, quoted as the matrix quotes it. */
+.prv-dialog__claim {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-dialog__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.prv-dialog__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+.prv-dialog__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+.prv-picker__kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-7);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.prv-picker__legend {
+  margin-bottom: var(--sp-3);
+  padding: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+.prv-picker__kind {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  cursor: pointer;
+}
+
+.prv-picker__radio {
+  accent-color: var(--accent);
+}
+
+.prv-picker__range {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-6);
+}
+
 /*
  * The mockup's steps (1100px and 640px). On a narrow pane the actions sit under the meta row and
  * read from the left, as the head does.
@@ -750,5 +1099,24 @@
 @media (max-width: 40rem) {
   .prv {
     padding-inline: var(--sp-6);
+  }
+}
+
+/*
+ * The mockup's responsive rule for the matrix (900px): the pill sits beside the claim and the
+ * evidence takes the full width beneath both.
+ */
+@media (max-width: 56.25rem) {
+  .prv-criteria__rows {
+    min-width: 20rem;
+  }
+
+  .prv-crit {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .prv-crit__evidence {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 }

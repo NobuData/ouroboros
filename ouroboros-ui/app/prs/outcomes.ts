@@ -1,13 +1,23 @@
 /**
  * What the head's Server Actions (`head-actions.ts`) answer, and the sentences they answer with
- * ([#363](https://github.com/NobuData/ouroboros/issues/363)) — and the gates card's approval
- * ([#365](https://github.com/NobuData/ouroboros/issues/365)).
+ * ([#363](https://github.com/NobuData/ouroboros/issues/363)) — the gates card's approval
+ * ([#365](https://github.com/NobuData/ouroboros/issues/365)), and the criteria matrix's actions
+ * (`criteria-actions.ts`, [#366](https://github.com/NobuData/ouroboros/issues/366)).
  *
  * Kept apart from the actions because a `"use server"` module may export async functions only,
  * and the page and its tests need to name these too.
  */
 
-import type { ApprovalDecision, PrReviewOutcome, ReturnToLoop } from "@/app/api/pull-requests";
+import type {
+  ApprovalDecision,
+  CriteriaImport,
+  PrCriterion,
+  PrCriterionWaived,
+  PrReviewOutcome,
+  ReturnToLoop,
+} from "@/app/api/pull-requests";
+
+import type { EvidenceOptions } from "./evidence-options";
 
 /** The code a refusal made before calling out carries. */
 export const ACTION_INVALID_CODE = "validation_failed";
@@ -70,3 +80,26 @@ export interface ReturnSelection {
   /** A key that makes a retry of the same press answer the first control. */
   readonly replayKey?: string;
 }
+
+// --- the criteria matrix (#366) ------------------------------------------------------------
+
+/** The longest claim — the service's `MAX_CLAIM_LENGTH`. */
+export const MAX_CLAIM_LENGTH = 1024;
+
+/** The longest waiver reason — the service's `MAX_REASON_LENGTH`. */
+export const MAX_WAIVE_REASON_LENGTH = 4096;
+
+/** What an action of the matrix answers: what the service answered, or the refusal. */
+export type CriteriaAnswer<T> = { readonly ok: true; readonly answer: T } | ActionRefusal;
+
+/** What became of *Add claim*, *Attach evidence* and *Verify* — the claim. */
+export type CriterionOutcome = CriteriaAnswer<PrCriterion>;
+
+/** What became of *Import from plan*. */
+export type ImportOutcome = CriteriaAnswer<CriteriaImport>;
+
+/** What became of *Waive* — the claim, and what the host did with the annotation. */
+export type WaiveOutcome = CriteriaAnswer<PrCriterionWaived>;
+
+/** What became of the picker's read. */
+export type OptionsOutcome = CriteriaAnswer<EvidenceOptions>;

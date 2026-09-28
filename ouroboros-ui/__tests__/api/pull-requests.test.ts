@@ -4,12 +4,16 @@ import { ApiError } from "@/app/api/errors";
 
 import { clientAnswering, stubClient } from "../helpers/api";
 import {
+  ATTEMPT_4_ID,
   PR_514_ID,
   REV_2_ID,
+  criterion,
+  criterionId,
   prPage,
   returned,
   review,
   summary,
+  waiver,
 } from "../helpers/pull-requests";
 import { SEEDED_RUN_ID } from "../helpers/runs";
 
@@ -238,5 +242,109 @@ describe("pullRequests.returnToLoop", () => {
     await expect(
       pullRequests.returnToLoop(PR_514_ID, { gates: ["build"] }, client),
     ).rejects.toMatchObject({ status: 422, code: "pr_gate_not_red" });
+  });
+});
+
+describe("the criteria matrix's writes (#366, over #359)", () => {
+  const BASE = `http://rest.test:4000/api/v1/pull-requests/${PR_514_ID}/criteria`;
+  const CLAIM = criterionId(1);
+
+  it("posts a claim to the PR's criteria and answers it", async () => {
+    const { client, requests } = clientAnswering(criterion(), 201);
+
+    expect(await pullRequests.createCriterion(PR_514_ID, "Frames in ISR order", client)).toEqual(
+      criterion(),
+    );
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(BASE);
+    expect(await requests[0]?.json()).toEqual({ claim: "Frames in ISR order" });
+  });
+
+  it("posts an import and answers what was written", async () => {
+    const answer = { draftId: "d", imported: [], alreadyPresent: ["x"], tooLong: [] };
+    const { client, requests } = clientAnswering(answer);
+
+    expect(await pullRequests.importCriteria(PR_514_ID, client)).toEqual(answer);
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(`${BASE}/import`);
+  });
+
+  it("rejects with the service's refusal of a PR with no plan", async () => {
+    const { client } = clientAnswering(
+      { code: "plan_context_missing", message: "No plan draft.", details: {} },
+      409,
+    );
+
+    await expect(pullRequests.importCriteria(PR_514_ID, client)).rejects.toMatchObject({
+      status: 409,
+      code: "plan_context_missing",
+    });
+  });
+
+  it("posts a typed reference to the claim's evidence and answers the claim", async () => {
+    const { client, requests } = clientAnswering(criterion(), 201);
+    const reference = {
+      kind: "test_case" as const,
+      caseKey: "a".repeat(64),
+      testRunId: ATTEMPT_4_ID,
+    };
+
+    expect(await pullRequests.attachEvidence(PR_514_ID, CLAIM, reference, client)).toEqual(
+      criterion(),
+    );
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(`${BASE}/${CLAIM}/evidence`);
+    expect(await requests[0]?.json()).toEqual(reference);
+  });
+
+  it("rejects with the service's refusal of a reference that does not resolve", async () => {
+    const { client } = clientAnswering(
+      { code: "evidence_unresolved", message: "It does not resolve.", details: {} },
+      422,
+    );
+
+    await expect(
+      pullRequests.attachEvidence(
+        PR_514_ID,
+        CLAIM,
+        { kind: "hunk", path: "a.c", lineStart: 1, lineEnd: 2 },
+        client,
+      ),
+    ).rejects.toMatchObject({ status: 422, code: "evidence_unresolved" });
+  });
+
+  it("posts a verify and answers the claim", async () => {
+    const { client, requests } = clientAnswering(criterion({ status: "verified" }));
+
+    expect((await pullRequests.verifyCriterion(PR_514_ID, CLAIM, client)).status).toBe("verified");
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(`${BASE}/${CLAIM}/verify`);
+  });
+
+  it("rejects with the service's refusal of a verify with no evidence", async () => {
+    const { client } = clientAnswering(
+      { code: "criterion_evidence_required", message: "Cite evidence first.", details: {} },
+      409,
+    );
+
+    await expect(pullRequests.verifyCriterion(PR_514_ID, CLAIM, client)).rejects.toMatchObject({
+      status: 409,
+      code: "criterion_evidence_required",
+    });
+  });
+
+  it("posts a waive with its reason and answers the claim and the annotation", async () => {
+    const answer = {
+      criterion: criterion({ status: "waived", waiver: waiver() }),
+      annotation: { state: "annotated", mode: "created", error: null },
+    };
+    const { client, requests } = clientAnswering(answer);
+
+    expect(await pullRequests.waiveCriterion(PR_514_ID, CLAIM, "rig at 22°C only", client)).toEqual(
+      answer,
+    );
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(`${BASE}/${CLAIM}/waive`);
+    expect(await requests[0]?.json()).toEqual({ reason: "rig at 22°C only" });
   });
 });

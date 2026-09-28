@@ -2,8 +2,9 @@ import { notFound } from "next/navigation";
 
 import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
-import { PR_REVISION_PARAM, RUN_ORIGIN_PARAM } from "@/app/paths";
+import { PR_HUNK_PARAM, PR_REVISION_PARAM, RUN_ORIGIN_PARAM } from "@/app/paths";
 import { readPr } from "@/app/prs/data";
+import { hunkParam } from "@/app/prs/hunk";
 import { PrScreen } from "@/app/prs/pr-screen";
 import { revisionParam } from "@/app/prs/strip";
 import { runOrigin } from "@/app/runs/origin";
@@ -25,8 +26,12 @@ import { runOrigin } from "@/app/runs/origin";
  * **`?rev=` scopes the gates** to one revision's snapshot (#364), so a revision view is linkable.
  * A value that is not a revision's ordinal is ignored, and the page follows the latest.
  *
+ * **`?hunk=` cites a hunk** of the changed files (#366), so a hunk reference of the criteria
+ * matrix is linkable. A value that is not a path and a line range is ignored. Waiving a claim is
+ * drawn for an owner or admin only, as arming is.
+ *
  * @param props.params The PR's id.
- * @param props.searchParams The query — `?from=` and `?rev=`.
+ * @param props.searchParams The query — `?from=`, `?rev=` and `?hunk=`.
  * @returns The screen, or the not-found page for a PR this workspace cannot see.
  */
 export default async function Page({
@@ -48,8 +53,10 @@ export default async function Page({
     <PrScreen
       initial={reading.state === "found" ? reading.value : null}
       initialError={reading.state === "failed" ? reading.reason : null}
+      initialHunk={hunkParam(query[PR_HUNK_PARAM])}
       initialRevision={revisionParam(query[PR_REVISION_PARAM])}
       mayArm={mayAdminister(membership.roles)}
+      mayWaive={mayAdminister(membership.roles)}
       mayContribute={mayContribute(membership.roles)}
       origin={origin}
       prId={id}
