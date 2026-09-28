@@ -8,6 +8,9 @@
  * header and the sidebar stay put while the pane scrolls. A breadcrumb orients the reader instead
  * (docs/DESIGN_SYSTEM_APP_SHELL.md).
  *
+ * The revision cycle strip (#364) is the mockup's `.rev-strip`, and the one region here that
+ * scrolls sideways — inside its own wrapper, so the pane never does.
+ *
  * The pill, the tags, the eyebrow, the buttons, the banner and the card are the primitives in
  * app/ui/. Held to the two rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a
  * token from app/tokens.css, which is what makes both palettes one sheet — the mockup is dark
@@ -299,6 +302,245 @@
   margin: 0;
   color: var(--ink-mut);
   font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the revision cycle strip (#364) ---------- */
+
+.prv-strip {
+  margin-bottom: var(--sp-10);
+}
+
+.prv-strip__empty {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/*
+ * The one region of this page that scrolls sideways: the strip inside its own wrapper, so a
+ * narrow pane never does. The padding keeps a step's focus ring and the live glow unclipped.
+ */
+.prv-strip__scroll {
+  overflow-x: auto;
+  padding: var(--sp-2) var(--sp-2) var(--sp-3);
+}
+
+.prv-strip__steps {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prv-strip__item {
+  display: flex;
+  flex: 1 0 auto;
+  align-items: stretch;
+  gap: var(--sp-5);
+}
+
+/* The mockup's `.rev-arrow` — drawn, not written, so the steps read as a list. */
+.prv-strip__item + .prv-strip__item::before {
+  content: "→";
+  flex: none;
+  align-self: center;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-md);
+}
+
+/* The mockup's `.rev-step`. */
+.prv-step {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 12.5rem;
+  max-width: 26rem;
+  padding: var(--sp-5) var(--sp-7);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink-dim);
+  font-family: var(--f-ui);
+  text-align: left;
+}
+
+/* A revision is a button: pressing it scopes the gates to its snapshot. */
+.prv-step--revision {
+  cursor: pointer;
+}
+
+.prv-step--revision:hover {
+  border-color: var(--line-control);
+}
+
+.prv-step--revision:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+.prv-step__label {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+}
+
+.prv-step__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* Said in words as well as drawn, so the scope is never carried by the border alone. */
+.prv-step__scope {
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.prv-step--correction .prv-step__label {
+  color: var(--ink-mut);
+}
+
+.prv-step--err {
+  border-color: var(--err-line);
+}
+
+.prv-step--err .prv-step__label {
+  color: var(--err);
+}
+
+.prv-step--live {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+  box-shadow: 0 0 var(--sp-8) calc(-1 * var(--sp-3)) var(--accent-glow);
+}
+
+.prv-step--live .prv-step__label {
+  color: var(--accent);
+}
+
+/* What would happen: dashed, and empty. */
+.prv-step--ghosted {
+  border-style: dashed;
+  background: transparent;
+}
+
+.prv-step--ghosted .prv-step__label {
+  color: var(--ink-faint);
+}
+
+/* What will happen: the promise is live, so the dash closes and the label takes the accent. */
+.prv-step--armed {
+  border-color: var(--accent-line);
+  background: transparent;
+}
+
+.prv-step--armed .prv-step__label {
+  color: var(--accent);
+}
+
+.prv-step--scoped,
+.prv-step--scoped:hover {
+  border-color: var(--accent);
+}
+
+/*
+ * The mockup's `.dot.pulse`. The movement is inside a reduced-motion guard and carries nothing
+ * the label does not say — a reader who asked for less motion sees the same dot, standing still.
+ */
+.prv-step__dot {
+  flex: none;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  border-radius: var(--r-round);
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .prv-step__dot {
+    animation: prv-step-pulse 0.8s ease-in-out infinite alternate;
+  }
+}
+
+/* Out and back, by alternating — the halo of `ou-chip-pulse`, at the same 1.6s period. */
+@keyframes prv-step-pulse {
+  from {
+    box-shadow: 0 0 0 0 var(--accent-glow);
+  }
+
+  to {
+    box-shadow: 0 0 0 0.3125rem transparent;
+  }
+}
+
+/* ---------- the gates slot (#364) ---------- */
+
+/* Where a revision step's scope lands until AY.3 (#365) draws the card itself. */
+.prv-gates {
+  margin-bottom: var(--sp-10);
+}
+
+.prv-gates__scope {
+  margin: 0 0 var(--sp-5);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.prv-gates__rows {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--sp-5);
+  padding: 0;
+  list-style: none;
+}
+
+.prv-gates__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-5);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.prv-gates__row:last-child {
+  border-bottom: 0;
+}
+
+.prv-gates__name {
+  flex: 0 0 11rem;
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.prv-gates__evidence {
+  min-width: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.prv-gates__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
   line-height: var(--lh-body);
 }
 

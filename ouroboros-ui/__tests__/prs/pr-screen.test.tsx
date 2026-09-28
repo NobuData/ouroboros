@@ -603,7 +603,10 @@ describe("role gating", () => {
 
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
     expect(screen.queryByRole("group", { name: ACTIONS_LABEL })).toBeNull();
-    expect(screen.queryAllByRole("button")).toHaveLength(0);
+    // The strip's revisions are navigation, not actions: a viewer may scope the gates (#364).
+    expect(
+      screen.queryAllByRole("button").filter((button) => button.closest(".prv-strip") === null),
+    ).toHaveLength(0);
   });
 });
 

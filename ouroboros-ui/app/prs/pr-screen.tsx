@@ -11,6 +11,7 @@ import { BREADCRUMB_LABEL, loopLabel } from "@/app/runs/view";
 import { setNavOrigin } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 
+import { GatesSlot } from "./gates-slot";
 import { requestHumanReview, returnToLoop } from "./head-actions";
 import { MergePlanSlot } from "./merge-plan-slot";
 import type { ReturnOutcome, ReturnSelection, ReviewRequestOutcome } from "./outcomes";
@@ -18,6 +19,8 @@ import { PrActions } from "./pr-actions";
 import { PrHead } from "./pr-head";
 import { type PrPollOptions, createPagePoll } from "./poll";
 import { ReturnDialog } from "./return-dialog";
+import { RevisionStrip } from "./revision-strip";
+import { gatesScope, scopedRevision, stripSteps, withRevision } from "./strip";
 import {
   NO_REVISION,
   type OutcomeView,
@@ -66,6 +69,8 @@ export interface PrScreenProps {
   readonly initialError: string | null;
   /** The module the page was opened from. */
   readonly origin: RunOrigin;
+  /** The revision the address scopes the gates to — `?rev=` — or `null`. `null` when absent. */
+  readonly initialRevision?: number | null;
   /** Whether the reader may take a head action — owner, admin or member. `false` when absent. */
   readonly mayContribute?: boolean;
   /** Whether the reader may arm a merge — owner or admin. `false` when absent. */
@@ -98,6 +103,11 @@ export interface PrScreenProps {
  * the dialog; its receipt links into the run console, where the steer appears. *Merge when all
  * gates green* arms nothing: it brings the reader to the Merge plan slot and moves focus there.
  *
+ * **The revision cycle strip scopes the gates** ([#364](https://github.com/NobuData/ouroboros/issues/364)):
+ * pressing a revision shows that revision's own snapshot, and the address follows (`?rev=1`) so
+ * the view is linkable. A scope naming a revision the PR does not have is dropped, and the page
+ * follows the latest. The head and its actions always describe the latest revision.
+ *
  * @param props See {@link PrScreenProps}.
  * @returns The screen.
  */
@@ -106,6 +116,7 @@ export function PrScreen({
   initial,
   initialError,
   origin,
+  initialRevision = null,
   mayContribute = false,
   mayArm = false,
   poll,
@@ -130,7 +141,27 @@ export function PrScreen({
   const [returning, setReturning] = useState<{ readonly key: string | undefined } | null>(null);
   const [chosen, setChosen] = useState<number | null>(null);
   const [focusRequests, setFocusRequests] = useState(0);
+  const [scoped, setScoped] = useState<number | null>(initialRevision);
   const slot = useRef<HTMLElement>(null);
+
+  // The address names a revision this PR does not have. Dropped during render, so the gates of
+  // the latest revision are never drawn under another revision's name.
+  if (page !== null && scoped !== null && scopedRevision(page, scoped) === null) {
+    setScoped(null);
+  }
+
+  // The address follows the scope, however it changed — a press or a dropping. Not before the
+  // page has been read: a scope that cannot be checked yet is kept as the address states it.
+  const pageRead = page !== null;
+  useEffect(() => {
+    if (!pageRead) return;
+
+    const { pathname, search, hash } = window.location;
+    const next = withRevision(search, scoped);
+    if (next === search) return;
+
+    window.history.replaceState(window.history.state, "", `${pathname}${next}${hash}`);
+  }, [pageRead, scoped]);
 
   // After *Merge when all gates green* has handed off and the slot has drawn it: bring the slot
   // into the pane's view and put focus on it, so a keyboard or screen-reader user lands where a
@@ -205,6 +236,7 @@ export function PrScreen({
       ? null
       : actionsView({ page, answeredReview, mayContribute, mayArm, requestingReview });
   const run = page?.pullRequest.run ?? null;
+  const gates = page === null ? null : gatesScope(page, scoped);
 
   return (
     <main className="prv">
@@ -253,6 +285,12 @@ export function PrScreen({
           view={head}
         />
       )}
+
+      {page !== null && (
+        <RevisionStrip onScope={setScoped} scoped={scoped} steps={stripSteps(page)} />
+      )}
+
+      {gates !== null && <GatesSlot onFollowLatest={() => setScoped(null)} scope={gates} />}
 
       {page !== null && actions !== null && actions.merge !== null && (
         <MergePlanSlot

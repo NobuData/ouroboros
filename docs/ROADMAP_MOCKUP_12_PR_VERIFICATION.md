@@ -676,7 +676,7 @@ the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AY.1 | #363 ✅ | 🟢 Done | ouroboros-ui: [AY.1] PR route, head & actions | `/prs/:id` frame, meta, the three composed actions | mvp, pr, ui, design | N (after #41, AX.5, BA-D.5) | Y | M | ouroboros-ui |
-| AY.2 | #364 | 🟡 Open | ouroboros-ui: [AY.2] Revision cycle strip | err/plain/live/ghosted steps with real joins (V4) | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
+| AY.2 | #364 ✅ | 🟢 Done | ouroboros-ui: [AY.2] Revision cycle strip | err/plain/live/ghosted steps with real joins (V4) | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.3 | #365 | 🟡 Open | ouroboros-ui: [AY.3] Verification gates card | Seven-row gate list with all verdict states + links | mvp, pr, ui, design | N (after AY.1) | Y | M | ouroboros-ui |
 | AY.4 | #366 | 🟡 Open | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
 | AY.5 | #367 | 🟡 Open | ouroboros-ui: [AY.5] Changed files & diff excerpt | File rows with proportional meters, diff block, host link | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
@@ -736,7 +736,34 @@ can: fix flaky telemetry frame order under ISR load
 
 ### Issue AY.2 — ouroboros-ui: [AY.2] Revision cycle strip
 
-> **GitHub issue:** #364 · **Status:** 🟡 Open · **Parent epic:** #350
+> **GitHub issue:** #364 · **Status:** 🟢 Done · **Parent epic:** #350
+> **Delivered as `ouroboros-ui/app/prs/strip.ts`, `revision-strip.tsx` and `gates-slot.tsx`**, over
+> the page AY.1 already reads (`revisions[]` with their snapshots and corrections, and `plan`).
+> Decided on #364:
+>
+> 1. **The blocking reason names the red gates by their labels** — `blocked: Test suite, Physical
+>    HIL ✗` on the seed, two named and the rest counted. Only *required* red gates block. The
+>    mockup's `HIL overshoot fail` is a sentence nothing stores, so it is not reproduced.
+> 2. **The meta line is the sha and the aggregate** — `3f9c2ae · 2 gates red`,
+>    `b7e41d0 · 5/7 gates green`. The mockup's third part (`second-model review voting`) is a
+>    pending gate's state, which the gates card (#365) draws.
+> 3. **Err wins over live.** A revision whose own snapshot has a red required gate is `err`, the
+>    latest one included; `live` is the latest revision of a `verifying` or `armed` PR.
+> 4. **The model pill needs `actor = model`**, and names the loop's model (`run.model`) — the
+>    payload's classification says *that* a model classified, not which. No loop, no pill.
+> 5. **A correction step needs a record.** Two revisions bridged by neither a classification nor
+>    a loop return are drawn with no step between them. A loop return alone is said as
+>    `returned to the loop with 2 gates`.
+> 6. **The future step is left out of a merged or closed PR**; the merged treatment is AY.8's
+>    (#370). Armed is said in words as well — `Auto-merge (squash) — armed`.
+> 7. **The scope is `?rev=<ordinal>`**, written with `replaceState` beside `?from=`. Absent, the
+>    page follows the latest revision; pressing the scoped step again, or *Follow the latest
+>    revision*, removes it. An ordinal the PR does not have is dropped from the address.
+> 8. **#365 is not built, so the scope lands on a slot** (`#gates`, `GatesSlot`) that names the
+>    scoped revision and lists its snapshot's rows as recorded — AY.1's Merge plan slot
+>    precedent. AY.3 replaces the body and keeps the id and `gatesScope(page, scoped)`.
+> 9. **The head and *Return to loop* still describe the latest revision**; returning from an
+>    earlier one arrives with #365, as AY.1 decided.
 
 - **Problem Statement:** The strip narrates the loop's convergence — and
   every step must be a join, not prose (V4).

@@ -10,6 +10,7 @@ import {
   MODELS_PATH,
   PLANNING_PATH,
   PROVIDERS_PATH,
+  PR_REVISION_PARAM,
   PRS_PATH,
   REGISTRY_PATH,
   RETURN_TO_PARAM,
@@ -156,6 +157,11 @@ describe("the paths themselves", () => {
     expect(prPath("5eed")).toBe("/prs/5eed");
     expect(prPath("5eed", "build-farm")).toBe(`/prs/5eed?${RUN_ORIGIN_PARAM}=build-farm`);
     expect(prPath("a/b?c", "x&y=z")).toBe("/prs/a%2Fb%3Fc?from=x%26y%3Dz");
+  });
+
+  it("name the PR page's revision scope apart from where it was opened from (#364)", () => {
+    expect(PR_REVISION_PARAM).toBe("rev");
+    expect(PR_REVISION_PARAM).not.toBe(RUN_ORIGIN_PARAM);
   });
 
   it("give each Models surface a segment of its own", () => {

@@ -86,12 +86,53 @@ describe("the shell", () => {
     expect(CODE).toMatch(/\.prv-head__main \{[^}]*min-width: 0;/);
     expect(CODE).toMatch(/\.prv-head__title \{[^}]*overflow-wrap: anywhere;/);
     expect(CODE).toMatch(/\.prv-return__evidence \{[^}]*overflow-wrap: anywhere;/);
-    expect(CODE).not.toMatch(/overflow(-x)?:\s*(scroll|auto)/);
+  });
+
+  it("scrolls sideways in the strip's own wrapper and nowhere else (#364)", () => {
+    const scrolling = [...CODE.matchAll(/([^{}]+)\{[^}]*overflow(?:-x)?:\s*(?:scroll|auto)[^}]*\}/g)].map(
+      (match) => match[1]!.trim(),
+    );
+
+    expect(scrolling).toEqual([".prv-strip__scroll"]);
+    expect(CODE).toMatch(/\.prv-strip__scroll \{[^}]*overflow-x: auto;/);
+    expect(CODE).not.toMatch(/overflow(-y)?:\s*(scroll|auto)/);
+  });
+
+  it("keeps a step from shrinking below its measure, so the strip scrolls rather than squeezes", () => {
+    expect(CODE).toMatch(/\.prv-step \{[^}]*min-width: 12\.5rem;/);
+    expect(CODE).toMatch(/\.prv-strip__item \{[^}]*flex: 1 0 auto;/);
   });
 
   it("reads the actions from the left on a narrow pane", () => {
     expect(CODE).toMatch(
       /@media \(max-width: 68\.75rem\)\s*\{\s*\.prv-actions\s*\{\s*align-items: flex-start;/,
     );
+  });
+});
+
+describe("the revision cycle strip (#364)", () => {
+  it("draws each treatment apart: err, live, ghosted dashed and armed solid", () => {
+    expect(CODE).toMatch(/\.prv-step--err \{[^}]*border-color: var\(--err-line\);/);
+    expect(CODE).toMatch(/\.prv-step--live \{[^}]*border-color: var\(--accent-line\);/);
+    expect(CODE).toMatch(/\.prv-step--ghosted \{[^}]*border-style: dashed;/);
+    expect(CODE).toMatch(/\.prv-step--armed \{[^}]*border-color: var\(--accent-line\);/);
+    expect(CODE).not.toMatch(/\.prv-step--armed \{[^}]*dashed/);
+  });
+
+  it("moves the live dot only for a reader who has not asked for less motion", () => {
+    const guarded = CODE.match(
+      /@media \(prefers-reduced-motion: no-preference\)\s*\{([\s\S]*?\})\s*\}/,
+    )?.[1];
+
+    expect(guarded).toMatch(/\.prv-step__dot \{[^}]*animation: prv-step-pulse/);
+
+    const unguarded = CODE.replace(
+      /@media \(prefers-reduced-motion: no-preference\)\s*\{[\s\S]*?\}\s*\}/g,
+      " ",
+    );
+
+    expect(unguarded).not.toMatch(/animation:/);
+    // Standing still, the dot is still drawn — the state is not in the movement.
+    expect(unguarded).toMatch(/\.prv-step__dot \{[^}]*background: var\(--accent\);/);
   });
 });

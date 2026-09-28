@@ -447,8 +447,11 @@ ouroboros-ui/
 │   │   ├── mark-route-slot.tsx # where Send failures back lands until #340 draws the card
 │   │   ├── tests-loading.tsx #  the first read in flight
 │   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites, physical, artifacts — three polls and the farm's
-│   ├── prs/                 # mockup 12's PR verification: route, head and three actions · #363
+│   ├── prs/                 # mockup 12's PR verification: route, head, three actions, revision strip · #363 · #364
 │   │   ├── view.ts          #   the head, the pill's hue, the red gates, the three actions by role and state
+│   │   ├── strip.ts         #   the revision cycle's steps, each a join; the ?rev= scope and its gates
+│   │   ├── revision-strip.tsx # err / live / ghosted / armed steps in their own scrolling wrapper
+│   │   ├── gates-slot.tsx   #   the scoped revision's snapshot, until #365 draws the card
 │   │   ├── poll.ts          #   the reader and guard: the whole PR page
 │   │   ├── data.ts          #   readPr() — the first paint; runPullRequests() — which runs opened a PR
 │   │   ├── outcomes.ts · head-actions.ts # requestHumanReview() / returnToLoop() — the Server Actions
@@ -457,7 +460,7 @@ ouroboros-ui/
 │   │   ├── return-dialog.tsx #  the danger dialog: which red gates the agent receives
 │   │   ├── merge-plan-slot.tsx # where Merge when all gates green lands until #369 draws the card
 │   │   ├── pr-loading.tsx · pr-missing.tsx # the first read in flight; a PR that does not exist
-│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, slot, dialog — one poll
+│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates, slot, dialog — one poll
 │   ├── workflows/           # the workflow studio's frame — mockup 04 · #147
 │   │   ├── view.ts          #   the trigger in words, the subline, the segments, the rail's items
 │   │   ├── states.ts        #   the five states, the head and the seat for each, the read-only note
@@ -3815,6 +3818,30 @@ member's arm only when the PR's pinned workflow auto-merges (#360), which this p
 A return is sent with a replay key minted when the dialog opens, so a retry after a dropped
 connection answers the first correction round instead of queuing a second.
 
+### The revision cycle strip
+
+The strip ([#364](https://github.com/NobuData/ouroboros/issues/364)) is mockup 12's
+`publish → verify → correct → re-publish`. Every step is a join over the page's payload
+(`app/prs/strip.ts`); none is a stored sentence.
+
+| Step | Read from | Drawn as |
+|------|-----------|----------|
+| **Revision** | `revisions[]` and each one's own gate snapshot | `err` when a required gate is red, with the reason composed from those gates' labels · `live` with a pulse for the latest revision while the PR is `verifying` or `armed` · otherwise plain |
+| **Correction round** | `revisions[n].correction` — the classification (#332) or loop return that bridged the two | the note, and a model pill **only** when the classification's `actor` is `model`; no step when nothing was recorded |
+| **Auto-merge** | `plan.strategy`, `plan.armed`, the loop's workflow tag | dashed while unarmed, solid and `— armed` while armed; left out of a merged or closed PR |
+
+**A revision step scopes the gates.** Pressing *Revision 1* shows revision 1's snapshot as it was
+recorded, and the address becomes `?rev=1` — so the view is linkable. Pressing it again, or *Follow
+the latest revision*, removes the scope. `?rev=` naming a revision the PR does not have is dropped.
+The head and the three actions always describe the latest revision.
+
+The gates land on a slot (`#gates`) until the Verification gates card
+([#365](https://github.com/NobuData/ouroboros/issues/365)) replaces its body.
+
+The strip scrolls sideways **inside its own wrapper** — the one rule in `prs.css` that may — and
+brings the scoped or latest revision into view by moving that wrapper alone. The live pulse is
+inside a `prefers-reduced-motion` guard; standing still, the dot and the words say the same thing.
+
 ## Workflow Studio
 
 `/workflows` ([#147](https://github.com/NobuData/ouroboros/issues/147)) is
@@ -5269,6 +5296,7 @@ the runners table [#257](https://github.com/NobuData/ouroboros/issues/257) ·
 workflow studio [#147](https://github.com/NobuData/ouroboros/issues/147) ·
 the React Flow canvas [#148](https://github.com/NobuData/ouroboros/issues/148) ·
 PR verification [#363](https://github.com/NobuData/ouroboros/issues/363) ·
+the revision cycle strip [#364](https://github.com/NobuData/ouroboros/issues/364) ·
 full epic [#5](https://github.com/NobuData/ouroboros/issues/5).
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module

@@ -334,3 +334,104 @@ export function summary(over: Partial<PullRequestSummary> = {}): PullRequestSumm
     ...over,
   };
 }
+
+/** The correction note that bridged Revision 1 to Revision 2 — mockup 12's. */
+export const CORRECTION_NOTE = "PID sampling moved off telemetry path";
+
+/** Build 3 — the attempt Revision 1 was judged on. */
+export const ATTEMPT_3_ID = "5eed0031-0000-4000-8000-000000004823";
+
+/** Build 4 — the attempt Revision 2 was judged on. */
+export const ATTEMPT_4_ID = "5eed0031-0000-4000-8000-000000004824";
+
+/**
+ * The classification that bridged the two revisions (#332).
+ *
+ * @param over What to change.
+ * @returns A product bug a model classified on Build 3, with the correction note, changed.
+ */
+export function classification(
+  over: Partial<NonNullable<NonNullable<PrRevision["correction"]>["classification"]>> = {},
+): NonNullable<NonNullable<PrRevision["correction"]>["classification"]> {
+  return {
+    id: "5eed0042-0000-4000-8000-000000000001",
+    testRunId: ATTEMPT_3_ID,
+    class: "product_bug",
+    subtype: null,
+    note: CORRECTION_NOTE,
+    actor: "model",
+    createdAt: "2026-09-27T14:20:00.000Z",
+    ...over,
+  };
+}
+
+/**
+ * Revision 1 as the strip reads it (#364): pushed at 14:10, judged on Build 3, the test suite and
+ * the physical HIL gates red.
+ *
+ * @param over What to change.
+ * @returns The revision.
+ */
+export function revisionOne(over: Partial<PrRevision> = {}): PrRevision {
+  return revision({
+    id: REV_1_ID,
+    seq: 1,
+    headSha: "3f9c2ae",
+    pushedAt: "2026-09-27T14:10:00.000Z",
+    testAttempt: { id: ATTEMPT_3_ID, attemptSeq: 3 },
+    gates: {
+      revisionId: REV_1_ID,
+      aggregate: {
+        requiredCount: 7,
+        greenCount: 3,
+        redCount: 2,
+        satisfiedCount: 4,
+        mergeReady: false,
+      },
+      rows: gateRows({ test_suite: ["red", TESTS_RED], physical_hil: ["red", HIL_RED] }),
+    },
+    ...over,
+  });
+}
+
+/**
+ * Revision 2 as the strip reads it (#364): pushed at 14:31 after the correction round, judged on
+ * Build 4, five of seven gates green.
+ *
+ * @param over What to change.
+ * @returns The revision.
+ */
+export function revisionTwo(over: Partial<PrRevision> = {}): PrRevision {
+  return revision({
+    pushedAt: "2026-09-27T14:31:00.000Z",
+    testAttempt: { id: ATTEMPT_4_ID, attemptSeq: 4 },
+    gates: {
+      revisionId: REV_2_ID,
+      aggregate: {
+        requiredCount: 7,
+        greenCount: 5,
+        redCount: 0,
+        satisfiedCount: 6,
+        mergeReady: false,
+      },
+      rows: gateRows(),
+    },
+    correction: {
+      fromRevisionId: REV_1_ID,
+      classification: classification(),
+      loopReturn: null,
+    },
+    ...over,
+  });
+}
+
+/**
+ * The page with mockup 12's revision cycle (#364): Revision 1 blocked, the correction round,
+ * Revision 2 live, and the merge plan unarmed.
+ *
+ * @param over What else to change.
+ * @returns The page.
+ */
+export function stripPage(over: Parameters<typeof prPage>[0] = {}): PullRequestPage {
+  return prPage({ revisions: [revisionOne(), revisionTwo()], ...over });
+}
