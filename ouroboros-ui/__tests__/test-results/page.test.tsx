@@ -66,7 +66,7 @@ beforeEach(() => {
   holding(["owner"]);
   readTests.mockReset().mockResolvedValue({
     state: "found",
-    value: { timeline: timeline(), trackerUrl: null, gate: gate(), pullRequest: null },
+    value: { timeline: timeline(), trackerUrl: null, commitSource: null, gate: gate(), pullRequest: null },
   });
 });
 
@@ -123,6 +123,7 @@ describe("the test-results route", () => {
       value: {
         timeline: timeline(),
         trackerUrl: null,
+        commitSource: null,
         gate: gate(),
         pullRequest: { id: "5eed003a-0000-4000-8000-000000000514", number: 514 },
       },
@@ -133,6 +134,28 @@ describe("the test-results route", () => {
       "href",
       prPath("5eed003a-0000-4000-8000-000000000514", "build-farm"),
     );
+  });
+
+  it("links the timeline's shas through the commit source the read found (#336)", async () => {
+    readTests.mockResolvedValue({
+      state: "found",
+      value: {
+        timeline: timeline(),
+        trackerUrl: null,
+        commitSource: { kind: "github", owner: "acme-robotics", name: "helios-firmware" },
+        gate: gate(),
+        pullRequest: null,
+      },
+    });
+    await open();
+
+    for (const link of screen.getAllByRole("link", { name: "f42b9a0" })) {
+      expect(link).toHaveAttribute(
+        "href",
+        "https://github.com/acme-robotics/helios-firmware/commit/f42b9a0",
+      );
+    }
+    expect(screen.getAllByRole("link", { name: "f42b9a0" })).toHaveLength(3);
   });
 
   it("switches the re-runs on for a member and off, with the reason, for a viewer", async () => {

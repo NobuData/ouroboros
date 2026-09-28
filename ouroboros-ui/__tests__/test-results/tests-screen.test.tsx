@@ -2,6 +2,7 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { RerunAvailability, TestRunTimeline } from "@/app/api/test-results";
+import type { CommitSource } from "@/app/runs/cards";
 import { BUILD_FARM_PATH, runPath } from "@/app/paths";
 import type { PollAnswer } from "@/app/poll";
 import { BUILD_FARM_ORIGIN, DASHBOARD_ORIGIN, type RunOrigin } from "@/app/runs/origin";
@@ -12,6 +13,7 @@ import type { TestsPollOptions } from "@/app/test-results/poll";
 import type { RerunOutcome } from "@/app/test-results/rerun";
 import { InsightsLink, SummaryStrip } from "@/app/test-results/summary-strip";
 import { type RerunSender, TestsScreen } from "@/app/test-results/tests-screen";
+import { PR_PLANE_NOTE, TIMELINE_LIST_LABEL, TIMELINE_TITLE } from "@/app/test-results/timeline";
 import {
   ACTIONS_LABEL,
   GATE_CHECKING,
@@ -24,11 +26,19 @@ import {
 } from "@/app/test-results/view";
 
 import { SEEDED_RUN_ID } from "../helpers/runs";
-import { BUILD_1_ID, BUILD_3_ID, OVERSHOOT_CASE, gate, strip, timeline } from "../helpers/test-results";
+import {
+  BUILD_1_ID,
+  BUILD_3_ID,
+  OVERSHOOT_CASE,
+  gate,
+  mockupAttempts,
+  strip,
+  timeline,
+} from "../helpers/test-results";
 
 /**
- * The test-results frame (#335), rendered: the seeded head and strip against mockup 11, an attempt
- * switch that redraws every region and the address, the re-runs gated with a visible reason, *Send
+ * The test-results frame (#335), rendered: the seeded head and strip against mockup 11, the build
+ * attempts timeline (#336) whose cards switch the attempt and redraw every region and the address, the re-runs gated with a visible reason, *Send
  * failures back to loop* focusing Mark & Route with the failed set staged, the flaky card's honest
  * link to insights, and the shell's contextual-surface contract.
  */
@@ -70,6 +80,7 @@ function draw(
     initialError?: string | null;
     initialAttempt?: number | null;
     initialGate?: RerunAvailability | null;
+    commitSource?: CommitSource | null;
     origin?: RunOrigin;
     mayContribute?: boolean;
     timelinePoll?: TestsPollOptions<TestRunTimeline>;
@@ -79,6 +90,7 @@ function draw(
 ) {
   return render(
     <TestsScreen
+      commitSource={options.commitSource ?? null}
       gatePoll={options.gatePoll ?? quiet()}
       initial={options.initial === undefined ? timeline() : options.initial}
       initialAttempt={options.initialAttempt ?? null}
@@ -104,6 +116,20 @@ function meta(): string[] {
 /** One stat card, by its caption. */
 function stat(label: string): HTMLElement {
   return within(screen.getByRole("region", { name: STRIP_LABEL })).getByRole("region", { name: label });
+}
+
+/** A timeline card's button, by its build. */
+function build(attemptSeq: number): HTMLElement {
+  return within(screen.getByRole("region", { name: TIMELINE_TITLE })).getByRole("button", {
+    name: new RegExp(`^Build ${attemptSeq}\\b`),
+  });
+}
+
+/** The timeline's cards, as text. */
+function timelineCards(): string[] {
+  return within(screen.getByRole("list", { name: TIMELINE_LIST_LABEL }))
+    .getAllByRole("listitem")
+    .map((card) => card.textContent ?? "");
 }
 
 /** A head action, by its label. */
@@ -216,10 +242,11 @@ describe("switching attempts", () => {
     window.history.replaceState(null, "", `/runs/${SEEDED_RUN_ID}/tests?from=build-farm`);
     draw({ origin: BUILD_FARM_ORIGIN });
 
-    fireEvent.click(screen.getByRole("button", { name: "Build 1" }));
+    fireEvent.click(build(1));
 
     expect(window.location.search).toBe("?from=build-farm&attempt=1");
-    expect(screen.getByRole("button", { name: "Build 1" })).toHaveAttribute("aria-pressed", "true");
+    expect(build(1)).toHaveAttribute("aria-pressed", "true");
+    expect(build(3)).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText("Test Results · Run #1847 · Build 1")).toBeInTheDocument();
     expect(meta()).toEqual([
       "standard-fix v14",
@@ -246,6 +273,111 @@ describe("switching attempts", () => {
     draw({ gatePoll: answering(gate({ readiness: "no_eligible_runner" })), initialGate: null });
 
     expect(await screen.findByText(/No runner in pool hil can take a build right now/)).toBeInTheDocument();
+  });
+});
+
+describe("the build attempts timeline (#336)", () => {
+  it("sits between the head and the strip, with the seeded cards and the latest attempt pressed", () => {
+    draw({
+      commitSource: { kind: "github", owner: "acme-robotics", name: "helios-firmware" },
+      initial: timeline({ attempts: mockupAttempts() }),
+    });
+
+    expect(timelineCards()).toEqual([
+      "Build 1 49/63 · 14 failed ✗13:52:41 · a3f19c2",
+      "Build 2 61/63 · 2 failed14:21:07 · c81d4e7",
+      "Build 3 running re-run of failed set14:38:19 · f42b9a0",
+      "NextPublish to PR #514 when greenauto · gated on 63/63",
+    ]);
+    expect(build(3)).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("link", { name: "f42b9a0" })).toHaveAttribute(
+      "href",
+      "https://github.com/acme-robotics/helios-firmware/commit/f42b9a0",
+    );
+
+    const regions = [...document.querySelectorAll(".tests-head, .tests-timeline, .tests-strip")];
+    expect(regions.map((region) => region.className.split(" ").find((name) => name.startsWith("tests-")))).toEqual([
+      "tests-head",
+      "tests-timeline",
+      "tests-strip",
+    ]);
+  });
+
+  it("leaves the shas plain when the page was handed no commit source", () => {
+    draw();
+
+    expect(within(screen.getByRole("region", { name: TIMELINE_TITLE })).queryByRole("link")).toBeNull();
+  });
+
+  it("is drawn for a run with one attempt — the story has a first card", () => {
+    draw({ initial: timeline({ attempts: [mockupAttempts()[0]!] }) });
+
+    expect(timelineCards()).toHaveLength(2);
+    expect(build(1)).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("draws the future card's honest variant from the projection, note included", () => {
+    draw({
+      initial: timeline({ next: { ...timeline().next, pullRequest: null, activation: "none", gate: null } }),
+    });
+
+    expect(timelineCards().at(-1)).toBe(`Nextauto · gated on 63/63${PR_PLANE_NOTE}`);
+  });
+
+  it("re-scopes every region to one attempt — never a mix of two", () => {
+    draw({ initial: timeline({ attempts: mockupAttempts() }), initialGate: null });
+
+    for (const [attemptSeq, passed] of [
+      [1, "49"],
+      [2, "61"],
+      [3, "61"],
+      [1, "49"],
+    ] as const) {
+      fireEvent.click(build(attemptSeq));
+
+      expect(screen.getByText(`Test Results · Run #1847 · Build ${attemptSeq}`)).toBeInTheDocument();
+      expect(meta()[2]).toBe(`build ${attemptSeq} of loop #1847`);
+      expect(stat("Passed")).toHaveTextContent(new RegExp(`^Passed${passed}`));
+      expect(window.location.search).toBe(`?attempt=${attemptSeq}`);
+      expect(
+        screen.getAllByRole("button", { pressed: true }).map((button) => button.textContent),
+      ).toEqual([expect.stringMatching(new RegExp(`^Build ${attemptSeq}`))]);
+    }
+  });
+
+  it("updates the live card on poll as the running build progresses and finishes", async () => {
+    const finished = timeline({ attempts: mockupAttempts() });
+    finished.attempts[2] = {
+      ...finished.attempts[2]!,
+      status: "complete",
+      strip: strip({ passed: 63, failed: 0, failedCases: [], flaky: 0, flakyCases: [] }),
+    };
+    draw({ initial: timeline({ attempts: mockupAttempts() }), timelinePoll: answering(finished) });
+
+    expect(await screen.findByRole("button", { name: "Build 3 63/63 · all passed ✓" })).toBeInTheDocument();
+    expect(build(3).closest("li")).toHaveClass("tests-timeline__card--ok");
+    expect(document.querySelector(".tests-timeline__pulse")).toBeNull();
+  });
+
+  it("draws a build the poll newly reports, and follows it as the latest", async () => {
+    const grown = timeline({
+      attempts: [...mockupAttempts().slice(0, 2), { ...mockupAttempts()[2]!, status: "complete" }],
+    });
+    grown.attempts.push({
+      ...mockupAttempts()[2]!,
+      id: "5eed0033-0000-4000-8000-000000000004",
+      attemptSeq: 4,
+    });
+    draw({ initial: timeline({ attempts: mockupAttempts() }), timelinePoll: answering(grown) });
+
+    expect(await screen.findByRole("button", { name: /^Build 4/ })).toHaveAttribute("aria-pressed", "true");
+    expect(build(4).closest("li")).toHaveClass("tests-timeline__card--live");
+  });
+
+  it("is not drawn before any attempt has reported", () => {
+    draw({ initial: timeline({ attempts: [] }), initialGate: null });
+
+    expect(screen.queryByRole("region", { name: TIMELINE_TITLE })).toBeNull();
   });
 });
 
@@ -336,7 +468,7 @@ describe("Send failures back to loop", () => {
     draw();
 
     fireEvent.click(action(/^Send failures back/));
-    fireEvent.click(screen.getByRole("button", { name: "Build 2" }));
+    fireEvent.click(build(2));
 
     expect(screen.queryByRole("list", { name: STAGED_LABEL })).toBeNull();
   });

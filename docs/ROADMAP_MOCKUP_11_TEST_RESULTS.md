@@ -770,7 +770,7 @@ tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AU.1 | #335 ✅ | 🟢 Done | ouroboros-ui: [AU.1] Test-results route, head & summary strip | Attempt-scoped route, actions, five stat cards | mvp, tests, ui, design | N (after #41, AT.5, BA-D.5) | Y | M | ouroboros-ui |
-| AU.2 | #336 | 🟡 Open | ouroboros-ui: [AU.2] Build attempts timeline | err/warn/live/future attempt cards with arrows | mvp, tests, ui, design | N (after AU.1) | Y | S | ouroboros-ui |
+| AU.2 | #336 ✅ | 🟢 Done | ouroboros-ui: [AU.2] Build attempts timeline | err/warn/live/future attempt cards with arrows | mvp, tests, ui, design | N (after AU.1) | Y | S | ouroboros-ui |
 | AU.3 | #337 | 🟡 Open | ouroboros-ui: [AU.3] Suites card | Platform-tagged suite rows, meters, selection → filtering | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.4 | #338 | 🟡 Open | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.5 | #339 | 🟡 Open | ouroboros-ui: [AU.5] Failure detail card | Test path, rig log block, honest triage slot | mvp, tests, ui, design | N (after AU.3/AU.4) | Y | M | ouroboros-ui |
@@ -840,7 +840,7 @@ Test Results · Run #1847 · Build 3
 
 ### Issue AU.2 — ouroboros-ui: [AU.2] Build attempts timeline
 
-> **GitHub issue:** #336 · **Status:** 🟡 Open · **Parent epic:** #322
+> **GitHub issue:** #336 · **Status:** 🟢 Done · **Parent epic:** #322
 
 - **Problem Statement:** The attempts strip tells the loop's convergence
   story — err → warn → live → gated future — and switches the page's
@@ -863,6 +863,25 @@ Test Results · Run #1847 · Build 3
 ```
 [Build 1 · 49/63 ✗ err] → [Build 2 · 61/63 warn] → [Build 3 ●running failed set] → [Next ╌ gated 63/63]
 ```
+
+> **Delivered as `ouroboros-ui/app/test-results/timeline.ts` and `attempts-timeline.tsx`.** Decided
+> on #336:
+>
+> 1. **The timeline replaces AU.1's interim attempt picker** — it is the page's one selector, drawn
+>    for a single attempt too, and calls the screen's `selectAttempt` (`?attempt=`, replaced).
+> 2. **The Next card is activated only when the projection names a PR *and* `gate_armed`**; every
+>    other state prints `auto · gated on N/N` with the note *PR publishing activates with the PR
+>    plane* (prefixed by *Block PR until green is stored* for `intent_stored`). No PR number is
+>    printed for a gate nothing holds.
+> 3. **A card's hue is the head pill's rule** (`ok` 100 %, `warn` ≥ 90 %, `err` below); an errored
+>    build is `err` whatever it counted, and an attempt with no cases is neutral.
+> 4. **The live card says what is running, from `selection`**, and carries no count — the running
+>    count is the head's pill. It redraws on the timeline's poll.
+> 5. **Times are UTC**, so server and browser render the same digits. Shas link through the run
+>    console's `commitUrl` (GitHub · GitLab · Bitbucket) from the console's repository, read
+>    best-effort; without a source they are plain text.
+> 6. **The strip scrolls its own wrapper**, set by `scrollLeft` — never `scrollIntoView`, which
+>    would move the pane.
 
 ### Issue AU.3 — ouroboros-ui: [AU.3] Suites card
 
