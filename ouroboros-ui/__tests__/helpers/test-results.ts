@@ -1,7 +1,9 @@
 import type {
   RerunAvailability,
+  TestArtifact,
   TestAttempt,
   TestCaseResult,
+  TestCoverage,
   TestRunPage,
   TestRunTimeline,
   TestStrip,
@@ -462,4 +464,92 @@ export function mockupPage(over: Partial<TestRunPage> = {}): TestRunPage {
     physical: mockupPhysical(),
     ...over,
   });
+}
+
+/** The id of `junit-build3.xml` in Build 3. */
+export const JUNIT_ARTIFACT_ID = "5eed0038-0000-4000-8000-000000048231";
+
+/** The id of `rig-capture-estop.csv` in Build 3. */
+export const CAPTURE_ARTIFACT_ID = "5eed0038-0000-4000-8000-000000048232";
+
+/** The id of `serial-console.log` in Build 3. */
+export const LOG_ARTIFACT_ID = "5eed0038-0000-4000-8000-000000048233";
+
+/** The id of `coverage.info` in Build 3. */
+export const COVERAGE_ARTIFACT_ID = "5eed0038-0000-4000-8000-000000048234";
+
+/**
+ * An attempt's coverage.
+ *
+ * @param over What to change.
+ * @returns Build 3's — `87.4%`, `+0.6` against Build 2 — changed.
+ */
+export function coverage(over: Partial<TestCoverage> = {}): TestCoverage {
+  return { percent: 87.4, linesCovered: 4475, linesTotal: 5120, delta: 0.6, versusAttemptSeq: 2, ...over };
+}
+
+/**
+ * A first attempt's coverage: no earlier one to measure against, so no delta at all.
+ *
+ * @returns `86.8%`, with neither `delta` nor `versusAttemptSeq`.
+ */
+export function firstCoverage(): TestCoverage {
+  return { percent: 86.8, linesCovered: 4444, linesTotal: 5120 };
+}
+
+/**
+ * An artifact.
+ *
+ * @param over What to change. An `expired` state that names no `href` is given none.
+ * @returns `junit-build3.xml` — 48 KB, live, whole, read inline, kept thirty days — changed.
+ */
+export function artifact(over: Partial<TestArtifact> = {}): TestArtifact {
+  const id = over.id ?? JUNIT_ARTIFACT_ID;
+  const expired = over.state === "expired";
+
+  return {
+    id,
+    name: "junit-build3.xml",
+    kind: "junit",
+    sizeBytes: 48_213,
+    checksum: `sha256:${"0".repeat(64)}`,
+    createdAt: "2026-09-19T14:45:00.000Z",
+    retainedUntil: "2026-10-19T14:45:00.000Z",
+    retentionDays: 30,
+    state: "available",
+    expiredAt: expired ? "2026-10-19T15:00:00.000Z" : null,
+    truncated: false,
+    truncationNote: null,
+    preview: "inline",
+    href: expired ? null : `/api/v1/artifacts/${id}`,
+    coverage: null,
+    ...over,
+  };
+}
+
+/**
+ * Build 3's four artifacts, as mockup 11 draws them (#341) and AT.5's seed states them.
+ *
+ * @returns `junit-build3.xml`, `rig-capture-estop.csv` (2.1 MB, a download), `serial-console.log`
+ *   and the coverage report carrying `87.4% (+0.6%)`.
+ */
+export function mockupArtifacts(): TestArtifact[] {
+  return [
+    artifact(),
+    artifact({
+      id: CAPTURE_ARTIFACT_ID,
+      name: "rig-capture-estop.csv",
+      kind: "capture",
+      sizeBytes: 2_202_010,
+      preview: "download",
+    }),
+    artifact({ id: LOG_ARTIFACT_ID, name: "serial-console.log", kind: "log", sizeBytes: 184_320 }),
+    artifact({
+      id: COVERAGE_ARTIFACT_ID,
+      name: "coverage.info",
+      kind: "coverage",
+      sizeBytes: 91_822,
+      coverage: coverage(),
+    }),
+  ];
 }

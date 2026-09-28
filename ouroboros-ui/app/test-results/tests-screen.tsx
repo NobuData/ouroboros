@@ -20,6 +20,9 @@ import { BREADCRUMB_LABEL } from "@/app/runs/view";
 import { setNavOrigin } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 
+import { artifactsView } from "./artifacts";
+import type { ArtifactReader } from "./artifact-viewer";
+import { ArtifactsCard } from "./artifacts-card";
 import { AttemptsTimeline } from "./attempts-timeline";
 import { MarkRouteSlot, type StagedFailures } from "./mark-route-slot";
 import {
@@ -165,14 +168,17 @@ export interface TestsScreenProps {
   readonly farmPoll?: FarmPollOptions;
   /** How to send a re-run. Defaults to the Server Action. */
   readonly send?: RerunSender;
+  /** How the artifacts card's viewer reads a file; production passes none. */
+  readonly artifactRead?: ArtifactReader;
 }
 
 /**
  * The test-results frame ([#335](https://github.com/NobuData/ouroboros/issues/335)) — mockup 11's
  * breadcrumb, head, actions, build attempts timeline
  * ([#336](https://github.com/NobuData/ouroboros/issues/336)), summary strip, suites card
- * ([#337](https://github.com/NobuData/ouroboros/issues/337)) and physical-tests card
- * ([#338](https://github.com/NobuData/ouroboros/issues/338)), for one attempt of one run.
+ * ([#337](https://github.com/NobuData/ouroboros/issues/337)), physical-tests card
+ * ([#338](https://github.com/NobuData/ouroboros/issues/338)) and artifacts card
+ * ([#341](https://github.com/NobuData/ouroboros/issues/341)), for one attempt of one run.
  *
  * **A contextual surface.** It renders in the shell's content pane and adds no chrome of its own,
  * so the header and the sidebar stay put while the pane scrolls. It has no sidebar entry: the
@@ -208,6 +214,9 @@ export interface TestsScreenProps {
  * whether a runner of the rig's name is connected. Until it answers, and whenever it cannot, the
  * `rig online` pill is omitted.
  *
+ * **The artifacts card reads the attempt's page too** — its files, its tombstones and its
+ * coverage — and is keyed by the attempt, so an open viewer closes when the attempt changes.
+ *
  * **The actions are honestly gated** (`actionsView`), and *Send failures back to loop* stages the
  * failed set on the Mark & Route slot and moves focus there.
  *
@@ -233,6 +242,7 @@ export function TestsScreen({
   pagePoll,
   farmPoll,
   send = requestRerun,
+  artifactRead,
 }: TestsScreenProps) {
   const timelineRead = useKeyedPoll(runId, (id) => createTimelinePoll(id, timelinePoll));
 
@@ -507,6 +517,11 @@ export function TestsScreen({
           <MarkRouteSlot
             ref={slot}
             staged={staged !== null && staged.testRunId === attempt.id ? staged : null}
+          />
+          <ArtifactsCard
+            key={attempt.id}
+            read={artifactRead}
+            view={onScreen === null ? null : artifactsView(onScreen)}
           />
         </>
       )}

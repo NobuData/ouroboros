@@ -824,6 +824,184 @@
   color: var(--ink-faint);
 }
 
+/* ---------- the artifacts card (#341) ---------- */
+
+.tests-artifacts {
+  margin-bottom: var(--sp-10);
+}
+
+/* Reading, and a build that uploaded nothing. */
+.tests-artifacts__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The card's own wrapper: a long list scrolls inside it, and the pane never does. */
+.tests-artifacts__scroll {
+  max-height: 40rem;
+  overflow: auto;
+}
+
+.tests-artifacts__list {
+  min-width: 18rem;
+  margin: 0;
+  padding: var(--sp-2);
+  list-style: none;
+}
+
+/* The mockup's `.art`: a mono line on a hairline. */
+.tests-artifacts__row {
+  padding: var(--sp-4) var(--sp-1);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.tests-artifacts__row:last-child {
+  border-bottom: 0;
+}
+
+.tests-artifacts__row:hover {
+  color: var(--ink);
+}
+
+/* A tombstone: the name stays, struck through, and nothing on the row invites a press. */
+.tests-artifacts__row[data-expired="true"],
+.tests-artifacts__row[data-expired="true"]:hover {
+  color: var(--ink-faint);
+}
+
+.tests-artifacts__row[data-expired="true"] .tests-artifacts__name {
+  text-decoration: line-through;
+}
+
+.tests-artifacts__line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.tests-artifacts__icon {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  color: var(--ink-faint);
+}
+
+.tests-artifacts__name {
+  flex: 1 1 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* The mockup's `.a-size`. */
+.tests-artifacts__size {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.tests-artifacts__delta {
+  font-weight: 600;
+}
+
+.tests-artifacts__delta--ok {
+  color: var(--ok);
+}
+
+.tests-artifacts__delta--err {
+  color: var(--err);
+}
+
+.tests-artifacts__delta--neutral {
+  color: var(--ink-faint);
+}
+
+/* The mockup's `.a-open`: a button for a file read in place, a link for one that is saved. */
+.tests-artifacts__open {
+  flex: none;
+  padding: var(--sp-1) var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.tests-artifacts__open:focus-visible,
+.tests-artifacts__viewer-link:focus-visible,
+.tests-artifacts__text:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* Why an upload was cut short. */
+.tests-artifacts__reason {
+  margin: var(--sp-2) 0 0;
+  color: var(--warn);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The inline viewer, beneath its row. */
+.tests-artifacts__viewer {
+  margin-top: var(--sp-4);
+  padding: var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.tests-artifacts__viewer-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-4);
+}
+
+.tests-artifacts__viewer-name {
+  flex: 1 1 0;
+  min-width: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.tests-artifacts__viewer-link {
+  border-radius: var(--r-sm);
+  color: var(--accent);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+}
+
+.tests-artifacts__viewer-note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The file's text: it scrolls both ways inside the viewer, and never wraps a log's columns. */
+.tests-artifacts__text {
+  max-height: 24rem;
+  margin: 0 0 var(--sp-3);
+  padding: var(--sp-3);
+  overflow: auto;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  white-space: pre;
+  tab-size: 4;
+}
+
 /* ---------- the Mark & Route slot ---------- */
 
 /*
