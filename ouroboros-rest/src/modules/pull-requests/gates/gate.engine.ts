@@ -19,7 +19,10 @@
  *
  * **The state** (V052's graph): any red required gate → `blocked`, otherwise `verifying`. Arming
  * is AX.4's act (#360), so a merge-ready revision stays `verifying` and is reported as
- * armed-ready; an `armed` PR whose aggregate stops being merge-ready is disarmed to `verifying`.
+ * armed-ready. An `armed` PR stays armed while its gates are only pending — arming *"when all gates
+ * go green"* is a promise about gates that have not reported yet — and leaves `armed` only for a
+ * red gate, through `verifying` to `blocked`; the merge executor's listener disarms its plan with
+ * the reason in the same breath.
  */
 
 import type { PrGateVerdict, PullRequestState } from "../../db/schema";
@@ -172,7 +175,7 @@ export function aggregate(
  * open       → verifying, then blocked when red         (open has no edge to blocked)
  * verifying  → blocked when red
  * blocked    → verifying when no longer red
- * armed      → stays armed while merge-ready; otherwise verifying, then blocked when red
+ * armed      → stays armed until a gate is red; then verifying, then blocked
  * merged, closed → nothing — the host owns those
  * ```
  *
@@ -191,10 +194,7 @@ export function statePath(current: PullRequestState, result: GateAggregate): Pul
     case "open":
       return target === "blocked" ? ["verifying", "blocked"] : ["verifying"];
     case "armed":
-      if (result.mergeReady) {
-        return [];
-      }
-      return target === "blocked" ? ["verifying", "blocked"] : ["verifying"];
+      return target === "blocked" ? ["verifying", "blocked"] : [];
     default:
       return current === target ? [] : [target];
   }

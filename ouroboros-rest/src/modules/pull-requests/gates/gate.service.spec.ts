@@ -4,6 +4,7 @@ import type { PullRequestState } from "../../db/schema";
 import { readFixture } from "../../workflows/dsl.golden.fixture";
 import { aggregate, type GateAggregate, type LatestResult } from "./gate.engine";
 import type { GateEvidenceEvent } from "./gate.evidence";
+import { GateListeners, type GateEvaluated } from "./gate.listeners";
 import { ATTEMPT, BUILD, FILES, HEAD, HIL, REVISION_2 } from "./gate.matrix.fixture";
 import { DEFAULT_ORG_GATE_CONFIG, type OrgGateConfig, type OrgGatePolicy } from "./gate.policy";
 import type {
@@ -339,6 +340,43 @@ describe("GateEngineService", () => {
     ).resolves.toBeUndefined();
 
     expect(error).toHaveBeenCalledTimes(2);
+    error.mockRestore();
+  });
+
+  it("tells every listener about each evaluation, after it, with the aggregate's verdict", async () => {
+    const listeners = new GateListeners();
+    const heard: GateEvaluated[] = [];
+
+    listeners.add({ gateEvaluated: (evaluated) => heard.push(evaluated) });
+    store.push(REV_2);
+    service = new GateEngineService(store, org(), listeners);
+
+    await service.notify("org-358", { kind: "revision_pushed", prId: "pr-514" });
+
+    expect(heard).toEqual([
+      {
+        prId: "pr-514",
+        organizationId: "org-358",
+        revisionId: "rev-2",
+        state: "verifying",
+        mergeReady: false,
+        redCount: 0,
+      },
+    ]);
+  });
+
+  it("tells no listener about an evaluation that failed", async () => {
+    const error = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    const listeners = new GateListeners();
+    const heard: GateEvaluated[] = [];
+
+    listeners.add({ gateEvaluated: (evaluated) => heard.push(evaluated) });
+    service = new GateEngineService(store, org(), listeners);
+    store.transaction = () => Promise.reject(new Error("connection reset"));
+
+    await service.notify("org-358", { kind: "revision_pushed", prId: "pr-514" });
+
+    expect(heard).toEqual([]);
     error.mockRestore();
   });
 });

@@ -5668,6 +5668,129 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pull-requests/{id}/merge-plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The merge plan of a pull request, and why a re-check last disarmed it
+         * @description Mockup 12's **Merge plan** card ([#360](https://github.com/NobuData/ouroboros/issues/360),
+         *     decision **V3**) — the strategy, the commit message, the three action toggles, the armed
+         *     *merge when all gates green* intent (who, when, against which revision), and once merged,
+         *     what the merge did and as whom. A PR without a plan is given one with the defaults (squash ·
+         *     delete branch · the templated `Closes #N.` message · close and comment on, back-annotate off).
+         *
+         *     `disarmReason` is set when the executor's re-check disarmed the plan rather than merge it —
+         *     `code` is one of `head_moved`, `gate_red`, `host_not_open`, `host_head_moved`,
+         *     `host_conflict`, `host_refused`, and `message` is the card's sentence. Arming again clears
+         *     it. Every member may read this, a `viewer` included.
+         */
+        get: operations["getPullRequestMergePlan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/merge-plan/arm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge when all gates green — arm the plan against the revision you looked at
+         * @description The PR page's primary action ([#360](https://github.com/NobuData/ouroboros/issues/360),
+         *     decision **V3**). Arming is a promise about the future, so it records what it promised —
+         *     who, when, and **the revision whose gates the person looked at**. A `revisionId` that is no
+         *     longer the PR's latest is refused (`merge_revision_stale`): the person has not seen the new
+         *     head's gates.
+         *
+         *     From then on the executor listens to the gate engine. When the last required gate turns
+         *     green it **re-checks inside a transaction holding the PR row** — the armed revision is
+         *     still the head, no required gate is red, every one is satisfied, the host still reports the
+         *     PR open, at that head, without a conflict — and only then asks the host to merge. Any
+         *     failure disarms with a reason (`GET …/merge-plan`'s `disarmReason`) rather than merging; a
+         *     gate that is merely still running leaves the arm in place. A PR whose gates are already
+         *     green is merged at once.
+         *
+         *     Only a `verifying` PR can be armed — a `blocked` one has a red gate. Arming a plan already
+         *     armed against the same revision answers it unchanged. Audited as `pr_merge_plan.armed`,
+         *     naming the person. `owner` or `admin`, or a `member` when the PR's pinned workflow ends in
+         *     an auto-merge terminal.
+         */
+        post: operations["armPullRequestMergePlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/merge-plan/disarm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disarm the merge plan
+         * @description Withdraw the *merge when all gates green* intent
+         *     ([#360](https://github.com/NobuData/ouroboros/issues/360)). The safe direction, so any
+         *     `owner`, `admin` or `member` may. An armed PR goes back to `verifying`. Disarming a plan
+         *     that is not armed answers it unchanged. Audited as `pr_merge_plan.disarmed`, naming the
+         *     person.
+         */
+        post: operations["disarmPullRequestMergePlan"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/pull-requests/{id}/merge-plan/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Merge now, through the same re-check an armed merge passes
+         * @description The direct merge ([#360](https://github.com/NobuData/ouroboros/issues/360), decision
+         *     **V3**) for a PR whose gates are already green. The same re-check inside the same
+         *     transaction as an armed merge, then the host merge with the plan's strategy, message and
+         *     branch deletion, then the post-merge actions — **the ticket's closure verified, never
+         *     assumed**, the evidence summary (gate table, criteria matrix, spend) published as one host
+         *     comment **edited rather than re-posted**, the epic note when toggled, and the run finalized
+         *     as `merged`. `mergedResult.identityUsed` is who the host recorded; while merges are made with
+         *     the workspace's token it is never a `[bot]` identity.
+         *
+         *     A refused re-check answers `409 merge_recheck_failed` with `details.reason` — the designed
+         *     code — and `details.disarmed`, whether an armed plan was disarmed by it. An action switched
+         *     on that did not happen is listed in `failedActions` — a ticket the host left open among them.
+         *     Audited as `pr_merge_plan.merged`, naming the person. `owner` or `admin`, or a `member` when
+         *     the PR's pinned workflow ends in an auto-merge terminal.
+         */
+        post: operations["mergePullRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/farm/jobs": {
         parameters: {
             query?: never;
@@ -7824,6 +7947,84 @@ export interface components {
         PrCriterionWaived: {
             criterion: components["schemas"]["PrCriterion"];
             annotation: components["schemas"]["PrAnnotationOutcome"];
+        };
+        /** ArmMergePlanRequest */
+        ArmMergePlanRequest: {
+            /**
+             * Format: uuid
+             * @description The revision whose gates the person looked at — `pr_revisions.id`. Refused when it is
+             *     no longer the PR's latest.
+             */
+            revisionId: string;
+        };
+        /**
+         * PrMergeAction
+         * @enum {string}
+         */
+        PrMergeAction: "close_ticket" | "comment_evidence" | "back_annotate_epic" | "delete_branch";
+        /**
+         * PrMergeRefusalCode
+         * @description Why the executor's re-check refused a merge. `gates_pending` never disarms; every other
+         *     code disarms an armed plan.
+         * @enum {string}
+         */
+        PrMergeRefusalCode: "head_moved" | "gate_red" | "gates_pending" | "host_not_open" | "host_head_moved" | "host_conflict" | "host_refused";
+        /** PrMergePlan */
+        PrMergePlan: {
+            /** Format: uuid */
+            prId: string;
+            /** @enum {string} */
+            strategy: "squash" | "merge" | "rebase";
+            deleteBranch: boolean;
+            /** @description The merge commit's message — the PR's title and a `Closes <key>.` trailer unless edited. */
+            commitMessage: string;
+            closeTicket: boolean;
+            commentEvidence: boolean;
+            backAnnotateEpic: boolean;
+            /** Format: uuid */
+            epicId: string | null;
+            /** @description The *merge when all gates green* intent. */
+            armed: boolean;
+            /** @description Who armed it, while armed. */
+            armedBy: string | null;
+            /** Format: date-time */
+            armedAt: string | null;
+            /**
+             * Format: uuid
+             * @description The revision the arm applies to, while armed.
+             */
+            armedAgainstRevisionId: string | null;
+            /** @description Why the executor's re-check disarmed the plan — null after a manual disarm and once armed again. */
+            disarmReason: {
+                code: components["schemas"]["PrMergeRefusalCode"];
+                message: string;
+            } | null;
+            /** @description What the merge did, once it has. Final. */
+            mergedResult: {
+                sha: string;
+                /** @description Who the host recorded as merging — never a `[bot]` identity while merges are token-based. */
+                identityUsed: string;
+                actionsExecuted: components["schemas"]["PrMergeAction"][];
+                /** Format: date-time */
+                mergedAt: string;
+            } | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** PrMergeOutcome */
+        PrMergeOutcome: {
+            plan: components["schemas"]["PrMergePlan"];
+            /** @description The canonical ticket's closure as the host reports it after the merge — null for a PR without a ticket. */
+            ticket: {
+                key: string;
+                closed: boolean;
+                detail: string | null;
+            } | null;
+            /** @description The actions switched on that did not run, each with its reason. */
+            failedActions: {
+                action: components["schemas"]["PrMergeAction"];
+                detail: string;
+            }[];
         };
         /** RunControl */
         RunControl: {
@@ -41423,6 +41624,567 @@ export interface operations {
              * @description `validation_failed` — no reason, a blank or padded one, one over 4096 characters, or an id
              *     that is not a uuid.
              */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getPullRequestMergePlan: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrMergePlan"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    armPullRequestMergePlan: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "revisionId": "5eed003b-0000-4000-8000-000000000002"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ArmMergePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description The armed plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrMergePlan"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `viewer`. `merge_not_policy_eligible` — a `member`, on a PR whose pinned
+             *     workflow does not auto-merge.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `merge_revision_stale` — a newer revision exists. `merge_plan_not_armable` — the PR is
+             *     not `verifying` (a red gate, gates never evaluated, or merged or closed).
+             *     `merge_plan_merged` — the plan has merged and is final.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a missing `revisionId`, or an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    disarmPullRequestMergePlan: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The disarmed plan. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrMergePlan"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a `viewer`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `merge_plan_merged` — the plan has merged and is final. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    mergePullRequest: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The final plan, the ticket's closure, and any action that did not run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrMergeOutcome"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `viewer`. `merge_not_policy_eligible` — a `member`, on a PR whose pinned
+             *     workflow does not auto-merge.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `merge_recheck_failed` — the re-check refused the merge; `details.reason` is one of
+             *     `head_moved`, `gate_red`, `gates_pending`, `host_not_open`, `host_head_moved`,
+             *     `host_conflict` or `host_refused`. `merge_plan_merged` — the plan has merged and is final.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id that is not a uuid. */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -396,7 +396,11 @@ describe("TABLE_COLUMNS", () => {
     // The eighty-second to eighty-fourth are V054's `flake_score_formulas`, `flake_scores` and
     // `flake_scorer_runs`, mirrored by AT.3 (#331) — the flake scorer that writes a score per case
     // and a bookkeeping row per nightly pass.
-    expect(TABLE_NAMES).toHaveLength(84);
+    //
+    // The eighty-fifth and eighty-sixth are V058's `pr_merge_plans` and V064's
+    // `planning_epic_notes`, mirrored by AX.4 (#360) — the merge executor that arms, re-checks,
+    // merges and back-annotates the epic.
+    expect(TABLE_NAMES).toHaveLength(86);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

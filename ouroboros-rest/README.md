@@ -4977,8 +4977,9 @@ latest one is not appended, and the PR row is locked per evaluation. Only the la
 judged, so a push leaves the previous revision's verdicts intact.
 
 **State.** After each evaluation, `pr_gate_aggregate(revision)` moves `pull_requests.state` along
-V052's graph: a red required gate is `blocked`, otherwise `verifying`; an `armed` PR that stops
-being merge-ready is disarmed. Merge-ready is reported as armed-ready — arming is AX.4's (#360).
+V052's graph: a red required gate is `blocked`, otherwise `verifying`. An `armed` PR stays armed
+while its gates are only pending and leaves `armed` for a red gate. Every evaluation is then told
+to `GateListeners` — the merge executor (#360) fires or disarms there.
 
 **The license layer states its scope** (decision V7, option 3-A): SPDX headers on the revision's
 diff sample (every added `SPDX-License-Identifier:` expression against the allow-list, and a new
@@ -5018,6 +5019,45 @@ SPI's `commentPR`, which now also answers the comment's `url`. A re-waive is a n
 **edit** of the same comment. A host refusal is answered as `annotation.state: failed`, recorded
 on the waiver (V062), never thrown; waiving again retries. Audited as `pr_criterion.verified`,
 `pr_criterion.unverified` and `pr_criterion.waived`.
+
+### PR merge executor
+
+AX.4 ([#360](https://github.com/NobuData/ouroboros/issues/360)), decisions **V3** and **V9**, in
+[`src/modules/pull-requests/merge/`](src/modules/pull-requests/merge). Mockup 12's **Merge when all
+gates green** over V058's `pr_merge_plans` and V064's `planning_epic_notes`.
+
+| route | what | who |
+| ----- | ---- | --- |
+| `GET /api/v1/pull-requests/:id/merge-plan` | the plan, `disarmReason {code, message}`, `mergedResult` (written with the defaults if absent) | every member |
+| `POST …/merge-plan/arm` `{revisionId}` | arm against the revision looked at; fires at once when already green | owner, admin; a member when the pin auto-merges |
+| `POST …/merge-plan/disarm` | withdraw the intent | member+ |
+| `POST …/merge-plan/merge` | merge now, through the same re-check | owner, admin; a member when the pin auto-merges |
+
+**The re-check runs inside the transaction that holds the PR row** — the gate engine's own
+`for update` lock — so no verdict can land between the check and the merge. In order: the armed
+revision is still the head (`head_moved`), no required gate is red (`gate_red`), every one is
+satisfied (`gates_pending` — the only refusal that leaves an arm standing), the host reports it
+open (`host_not_open`), at the verified head (`host_head_moved` — a push not yet synced), without a
+conflict (`host_conflict`). A host that refuses the merge itself — branch protection, a required
+check — is `host_refused`. Every refusal of an armed plan disarms it with `<code>: <sentence>` in
+`disarm_reason`; there is no retry.
+
+**Event-driven.** The executor registers on `GateListeners` at boot; each evaluation schedules a
+re-check of that PR (chained per PR, never blocking the engine), and a PR nobody armed costs one
+plan read.
+
+**After the merge**, still in the transaction: the canonical ticket's closure is read back from
+`mergePR`'s verified closures — a key no keyword could close (`PROJ-142`, another repository) is
+reported, never assumed; the evidence summary (gate table, criteria matrix, spend) is published as
+one host comment keyed `evidence-summary`, **edited** on every re-publish; the epic note is written
+when toggled; the run becomes `merged` with its `pr_number` (the dashboard's outcome); and
+`merged_result` records the sha, the identity the host recorded — `configured token` rather than any
+`[bot]` claim while merges are token-based — and the actions that actually ran. The PR mirror is
+synced after commit. Audited by V058's trigger: arm (who armed), disarm (who, or nobody for a
+re-check), merge (the person it was made for, V064).
+
+**Not wired yet:** the dry-run policy (#382) and the policy document's `auto_merge` rule (#481);
+explicit ticket closing — the SPI has no member for it, so a failed keyword close is reported.
 
 ## Container
 
@@ -5199,6 +5239,7 @@ ouroboros-rest/
 │       │   └── installer/  # /install.sh · /runner/<version>/<file> — the agent's installer · #248
 │       ├── pull-requests/  # the PR plane: SPI sync (#357), gates/ (#358)
 │       │                   #   criteria/ — claims, typed evidence, verify, waive + annotate · #359
+│       │                   #   merge/ — arm, TOCTOU re-check, merge, actions, evidence comment · #360
 │       ├── triage/         # Mark & Route: hints, classify, re-run, waive  · #332
 │       │                   #   triage.rules.ts — the three heuristic rules, pure
 │       │                   #   triage.contract.ts — /v0/triage, held to schemas/triage/v0.json

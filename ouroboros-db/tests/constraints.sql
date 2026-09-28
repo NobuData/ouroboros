@@ -20919,7 +20919,8 @@ select pg_temp.must_hold(
   'a re-check''s disarm has no person behind it, and says so');
 
 select pg_temp.must_hold(
-  (select actor_id is null and detail ->> 'sha' = '9a1f0c2'
+  -- V064 (#360): the merged row names updated_by — here still the person of the edits above.
+  (select actor_id = 'a5800000-0000-0000-0000-00000000000a' and detail ->> 'sha' = '9a1f0c2'
           and detail ->> 'identity_used' = 'pat:ken-token'
           and detail -> 'actions_executed' = '["close_ticket", "comment_evidence", "delete_branch"]'
           and (detail ->> 'was_armed')::boolean
@@ -22423,6 +22424,139 @@ delete from ouroboros.organization where "id" = 'org-v063';
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.test_case_history where organization_id = 'org-v063'),
   'and the V063 fixture leaves nothing behind');
+
+-- ===========================================================================
+-- V064 — the merge executor's epic note and the merge's actor (#360, AX.4)
+-- ===========================================================================
+--
+-- The back-annotation toggle writes one `planning_epic_notes` row per epic and PR, idempotently,
+-- about a PR of the epic's own workspace, never edited; and the `pr_merge_plan.merged` audit row
+-- names `updated_by` — the person the merge was made for. Asserted: the note round-trips and a
+-- second write under the same key adds nothing; the kind vocabulary, the body rule and the
+-- workspace rule refuse; a deleted PR releases the note and a deleted epic takes it; the merged
+-- row's actor is the person the executor set; the app role inserts and reads notes only.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v064',  'Note Works',       'note-works',       now()),
+  ('org-v064b', 'Other Note Works', 'other-note-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a6400000-0000-0000-0000-00000000000a', 'Ken S', 'ken@note-works.dev', true);
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config) values
+  ('a6400000-0000-0000-0000-0000000000a1', 'org-v064', 'github', 'GitHub · note-works',
+   '{"login": "note-works", "repos": ["helios-firmware"]}'),
+  ('a6400000-0000-0000-0000-0000000000b1', 'org-v064b', 'github', 'GitHub · other',
+   '{"login": "other-note-works", "repos": ["helios-firmware"]}');
+
+insert into ouroboros.planning_epics (id, organization_id, name, sort_order) values
+  ('a6420000-0000-0000-0000-00000000ee01', 'org-v064', 'OTA hardening', 1);
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, additions, deletions, changed_files)
+  values
+    ('a64a0000-0000-0000-0000-000000000514', 'org-v064', 'a6400000-0000-0000-0000-0000000000a1',
+     514, 'https://github.com/note-works/helios-firmware/pull/514',
+     'fix(can): preserve ISR frame order in telemetry path', 'loop/482-canbus-flake', 'main', 68, 15, 3),
+    ('a64a0000-0000-0000-0000-000000000077', 'org-v064b', 'a6400000-0000-0000-0000-0000000000b1',
+     77, 'https://github.com/other-note-works/helios-firmware/pull/77',
+     'docs: somebody else''s change', 'sandbox/docs', 'main', 4, 1, 1);
+
+insert into ouroboros.pr_revisions (id, pr_id, revision_seq, head_sha, pushed_at) values
+  ('a64b0000-0000-0000-0000-000000000001', 'a64a0000-0000-0000-0000-000000000514', 1, 'c81d3e4',
+   now() - interval '5 minutes');
+
+-- --- the note: written once, idempotently ------------------------------------------------------------
+insert into ouroboros.planning_epic_notes (id, epic_id, pr_id, body) values
+  ('a64c0000-0000-0000-0000-000000000001', 'a6420000-0000-0000-0000-00000000ee01',
+   'a64a0000-0000-0000-0000-000000000514',
+   'merged PR #514 — fix(can): preserve ISR frame order in telemetry path (Closes #482.)');
+
+insert into ouroboros.planning_epic_notes (epic_id, pr_id, body) values
+  ('a6420000-0000-0000-0000-00000000ee01', 'a64a0000-0000-0000-0000-000000000514', 'again')
+  on conflict (epic_id, pr_id, kind) do nothing;
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(kind = 'pr_merged') and bool_and(body like 'merged PR #514%')
+     from ouroboros.planning_epic_notes where epic_id = 'a6420000-0000-0000-0000-00000000ee01'),
+  'the back-annotation lands once as a pr_merged note, and a retried merge adds nothing');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epic_notes (epic_id, pr_id, body) values
+      ('a6420000-0000-0000-0000-00000000ee01', 'a64a0000-0000-0000-0000-000000000514', 'twice')$$,
+  'one note per epic, PR and kind', 'planning_epic_notes_pr_kind_key');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.planning_epic_notes', 'planning_epic_notes_kind') = array['pr_merged'],
+  'a note''s kind is pr_merged');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epic_notes (epic_id, kind, body) values
+      ('a6420000-0000-0000-0000-00000000ee01', 'pr_reverted', 'reverted')$$,
+  'and nothing else yet', 'planning_epic_notes_kind');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epic_notes (epic_id, body) values
+      ('a6420000-0000-0000-0000-00000000ee01', '   ')$$,
+  'a note says something', 'planning_epic_notes_body_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epic_notes (epic_id, body) values
+      ('a6420000-0000-0000-0000-00000000ee01', repeat('x', 2049))$$,
+  'in at most 2048 characters', 'planning_epic_notes_body_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.planning_epic_notes (epic_id, pr_id, body) values
+      ('a6420000-0000-0000-0000-00000000ee01', 'a64a0000-0000-0000-0000-000000000077', 'leak')$$,
+  'about a PR of the epic''s own workspace', 'planning_epic_notes_pr_in_organization');
+
+-- --- the merged row names the person the merge was made for ------------------------------------------
+insert into ouroboros.pr_merge_plans (id, pr_id) values
+  ('a64d0000-0000-0000-0000-000000000514', 'a64a0000-0000-0000-0000-000000000514');
+
+update ouroboros.pr_merge_plans
+   set armed = true, armed_by = 'a6400000-0000-0000-0000-00000000000a', armed_at = now(),
+       armed_against_revision_id = 'a64b0000-0000-0000-0000-000000000001'
+ where id = 'a64d0000-0000-0000-0000-000000000514';
+
+update ouroboros.pr_merge_plans
+   set armed = false, armed_by = null, armed_at = null, armed_against_revision_id = null,
+       updated_by = 'a6400000-0000-0000-0000-00000000000a',
+       merged_result = '{"sha": "9a1f0c2", "identity_used": "ken-s",
+                         "actions_executed": ["comment_evidence"], "merged_at": "2026-09-27T10:00:00Z"}'
+ where id = 'a64d0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select actor_id = 'a6400000-0000-0000-0000-00000000000a' and detail ->> 'identity_used' = 'ken-s'
+          and (detail ->> 'was_armed')::boolean
+     from ouroboros.audit_events
+    where subject_id = 'a64d0000-0000-0000-0000-000000000514' and action = 'pr_merge_plan.merged'),
+  'the merge''s audit row names the person it was made for, beside the host identity it used');
+
+-- --- lifecycle: a deleted PR releases its note, a deleted epic takes it ----------------------------------
+delete from ouroboros.pull_requests where id = 'a64a0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select pr_id is null from ouroboros.planning_epic_notes
+    where id = 'a64c0000-0000-0000-0000-000000000001'),
+  'a deleted PR releases its note, which stays as the roadmap''s history');
+
+delete from ouroboros.planning_epics where id = 'a6420000-0000-0000-0000-00000000ee01';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.planning_epic_notes
+    where id = 'a64c0000-0000-0000-0000-000000000001'),
+  'and a deleted epic takes its notes');
+
+-- --- grants ----------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.planning_epic_notes', 'select')
+  and has_table_privilege('ouroboros_app', 'ouroboros.planning_epic_notes', 'insert')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.planning_epic_notes', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.planning_epic_notes', 'delete'),
+  'the app role writes a note and reads it, and can neither edit nor delete one');
+
+delete from ouroboros.organization where "id" in ('org-v064', 'org-v064b');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

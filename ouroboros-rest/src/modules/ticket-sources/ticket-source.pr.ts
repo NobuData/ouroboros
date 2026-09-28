@@ -162,6 +162,13 @@ export interface PullRequestSnapshot {
   readonly mergedAt: Date | null;
   /** The host login that merged it, or null — only ever set on a merged PR. */
   readonly mergedBy: string | null;
+  /**
+   * Whether the host could merge it now without a conflict — `false` for a conflict, `null` while
+   * the host has not worked it out yet (GitHub computes it in the background) and on a PR that is
+   * not open. The merge executor's re-check (AX.4, [#360](https://github.com/NobuData/ouroboros/issues/360))
+   * refuses on `false` rather than asking the host to merge a conflict.
+   */
+  readonly mergeable: boolean | null;
   /** When the host last changed it. */
   readonly updatedAt: Date;
 }

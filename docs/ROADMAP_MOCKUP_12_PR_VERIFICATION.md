@@ -443,7 +443,7 @@ seeds: PR#514 rev1(blocked: HIL 2.4%) → correction(attempt 4) → rev2(5/7, vo
 | AX.1 | #357 | 🟢 Done | ouroboros-rest: [AX.1] SPI PR capability & GitHub implementation | create/sync/merge/comment/review-request + PR event ingestion | mvp, pr, sources, rest | N (after AL.2, WF-Q.3) | Y | L | ouroboros-rest |
 | AX.2 | #358 | 🟢 Done | ouroboros-rest: [AX.2] Gate engine & providers | Declarative defs from policy; six MVP providers; revision snapshots | mvp, pr, rest | N (after AW.2, AX.1) | Y | L | ouroboros-rest |
 | AX.3 | #359 | 🟢 Done | ouroboros-rest: [AX.3] Criteria & evidence service | Claims CRUD, typed evidence resolution, waiver render + host annotation | mvp, pr, rest | N (after AW.3, AX.1) | Y | M | ouroboros-rest |
-| AX.4 | #360 | 🟡 Open | ouroboros-rest: [AX.4] Merge executor & host publishing | Armed intents, TOCTOU re-check, actions, evidence comments (V3/V9) | mvp, pr, rest | N (after AX.2, AW.4) | Y | L | ouroboros-rest |
+| AX.4 | #360 | 🟢 Done | ouroboros-rest: [AX.4] Merge executor & host publishing | Armed intents, TOCTOU re-check, actions, evidence comments (V3/V9) | mvp, pr, rest | N (after AX.2, AW.4) | Y | L | ouroboros-rest |
 | AX.5 | #361 | 🟡 Open | ouroboros-rest: [AX.5] PR read APIs & head actions | Page payloads; return-to-loop + request-review compositions (V5) | mvp, pr, rest, runs | N (after AX.2, AP.4) | Y | M | ouroboros-rest |
 | AX.6 | #362 | 🟡 Open | ouroboros-rest: [AX.6] PR-plane integration tests | Sync, gate matrix, merge safety, publishing idempotency, isolation | mvp, pr, rest, ci | N (after AX.3–AX.5) | Y | M | ouroboros-rest |
 
@@ -549,7 +549,7 @@ waive {reason: "thermal chamber not in bench"} ─▶ AS.4 waiver + PR annotatio
 
 ### Issue AX.4 — ouroboros-rest: [AX.4] Merge executor & host publishing
 
-> **GitHub issue:** #360 · **Status:** 🟡 Open · **Parent epic:** #349
+> **GitHub issue:** #360 · **Status:** 🟢 Done · **Parent epic:** #349
 
 - **Problem Statement:** The primary button: armed auto-merge that fires
   safely when the last gate flips, executes the plan's actions, and

@@ -144,6 +144,8 @@ const pullPayload = z.object({
   state: z.enum(["open", "closed"]),
   merged_at: z.string().nullish(),
   merged_by: z.object({ login: z.string() }).nullish(),
+  // Null while GitHub is still computing it, and absent from the listing payloads.
+  mergeable: z.boolean().nullish(),
   head: z.object({
     ref: z.string(),
     sha: z.string(),
@@ -646,6 +648,7 @@ export function snapshotOf(pull: PullPayload): PullRequestSnapshot {
     changedFiles: pull.changed_files ?? 0,
     mergedAt: state === "merged" ? instantOf(pull.merged_at ?? "", PULL_ROUTE) : null,
     mergedBy: state === "merged" ? (pull.merged_by?.login ?? null) : null,
+    mergeable: state === "open" ? (pull.mergeable ?? null) : null,
     updatedAt: instantOf(pull.updated_at, PULL_ROUTE),
   };
 }

@@ -202,6 +202,12 @@ export function snapshotViolations(pr: unknown, at: string): string[] {
     violations.push(`${at}: mergedBy is only ever set on a merged PR`);
   }
 
+  if (snapshot.mergeable !== null && typeof snapshot.mergeable !== "boolean") {
+    violations.push(`${at}: mergeable must be true, false or null`);
+  } else if (snapshot.mergeable !== null && snapshot.state !== "open") {
+    violations.push(`${at}: mergeable is only ever known on an open PR`);
+  }
+
   if (!(snapshot.updatedAt instanceof Date) || Number.isNaN(snapshot.updatedAt.getTime())) {
     violations.push(`${at}: updatedAt must be a valid Date`);
   }

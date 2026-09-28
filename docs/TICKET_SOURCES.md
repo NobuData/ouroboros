@@ -601,7 +601,7 @@ capabilities().pr = {
 };
 
 createPR(context, { branch, base, title, body })   → { number, url } | null
-getPR(context, n)                                  → PullRequestSnapshot
+getPR(context, n)                                  → PullRequestSnapshot   (mergeable: boolean | null)
 syncPR(context, n, knownHeadSha)                   → { pr, revision | null }
 mergePR(context, n, { strategy, message, deleteBranch }) → { sha, alreadyMerged, branchDeleted, closures[] }
 commentPR(context, n, { key, body })               → { commentId, url | null, mode: "created" | "edited" | "unchanged" }
@@ -635,6 +635,12 @@ description with `closingReferences` and read each issue back. Keyword closing s
 across repositories and on a merge into a non-default branch; report those as
 `{ closed: false, detail }` rather than failing a merge that already happened.
 
+**Mergeability is the host's own answer.** A snapshot's `mergeable` is `false` for a conflict,
+`true` for a clean merge, and `null` while the host has not worked it out (GitHub computes it in the
+background) or on a PR that is not open. The merge executor's re-check (AX.4,
+[#360](https://github.com/NobuData/ouroboros/issues/360)) refuses a `false` before asking to merge,
+and lets a `null` through to the merge request, which the host refuses if there is a conflict.
+
 **Every member is idempotent** — `createPR` answers the open PR for the same branch and base,
 `mergePR` of a merged PR merges nothing (`alreadyMerged: true`), `requestReview` asks once.
 
@@ -665,7 +671,7 @@ The PR plane of a source is its **push target** (the first enabled repository): 
 | Member | GitHub |
 |---|---|
 | `createPR` | `GET …/pulls?head=owner:branch&base=…&state=open`, else `POST …/pulls` |
-| `getPR` / `syncPR` | `GET …/pulls/{n}`; when the head moved, every page of `GET …/pulls/{n}/files`. `pushedAt` is the PR's `updated_at` — GitHub reports no push time |
+| `getPR` / `syncPR` | `GET …/pulls/{n}`; when the head moved, every page of `GET …/pulls/{n}/files`. `pushedAt` is the PR's `updated_at` — GitHub reports no push time. `mergeable` is the payload's own, null while GitHub computes it (#360) |
 | `mergePR` | strategy gate (no request) → `GET …/pulls/{n}` → `PUT …/pulls/{n}/merge` with the message's first line as `commit_title` and the rest as `commit_message` → `DELETE …/git/refs/heads/{b}` (`422` = already gone) → `GET …/issues/{N}` per closing reference |
 | `commentPR` | `GET …/issues/{n}/comments`, then `PATCH …/issues/comments/{id}` or `POST …/issues/{n}/comments`. `url` is the comment's `html_url` (null when absent or not https) — what a criterion waiver's *annotated on PR* pill links to (#359) |
 | `requestReview` | `POST …/pulls/{n}/requested_reviewers` |
@@ -680,6 +686,13 @@ columns, `state` by rule (`pr-sync.state.ts` — the host's `open`/`closed`/`mer
 `verifying`/`blocked`/`armed`, walking `closed → open → merged` for a reopen it missed), and the
 next `pr_revisions` row when the head moved (`on conflict (pr_id, head_sha) do nothing`). An
 unchanged PR is not updated.
+
+The merge executor (AX.4, [#360](https://github.com/NobuData/ouroboros/issues/360)) reaches the
+host only through the same service — `get` for its re-check, `merge` once the re-check passed,
+`comment` for the evidence summary (keyed `evidence-summary`, so it is edited on every re-publish),
+and `sync` to mirror the merge after its transaction commits. The in-memory host simulates the two
+refusals it has to handle: `host.conflict(n)` (the PR reads `mergeable: false` and its merge answers
+`405`) and `host.protect()` (branch protection — still mergeable, and the merge answers `405`).
 
 ---
 

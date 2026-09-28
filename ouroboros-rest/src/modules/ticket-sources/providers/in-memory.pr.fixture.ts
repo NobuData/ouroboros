@@ -122,6 +122,8 @@ export interface InMemoryPull {
   readonly comments: Map<number, string>;
   /** Who is asked to review. */
   readonly reviewers: Set<string>;
+  /** Whether it conflicts with its base — {@link InMemoryPrHost.conflict}. */
+  conflicted: boolean;
 }
 
 /** What a host holds that a PR operation could have changed, counted from its own state. */
@@ -148,6 +150,8 @@ export interface InMemoryPrHostOptions {
   readonly project?: string;
   /** The strategies the repository allows. All three unless given. */
   readonly strategies?: readonly MergeStrategy[];
+  /** The login a merge is recorded as — the token's owner. {@link IN_MEMORY_MERGER} unless given. */
+  readonly merger?: string;
 }
 
 /**
@@ -175,6 +179,9 @@ export class InMemoryPrHost {
   /** The project key. */
   readonly project: string;
 
+  /** Who a merge is recorded as. */
+  readonly merger: string;
+
   /** The accepted token's digest, or null. */
   private readonly tokenDigest: string | null;
 
@@ -192,6 +199,9 @@ export class InMemoryPrHost {
   /** The refusal every request meets until {@link recover}, or null. */
   private refusal: InMemoryTrackerRefusal | null = null;
 
+  /** Whether branch protection refuses every merge — {@link protect}. */
+  private protectedBase = false;
+
   /**
    * @param options - The token, the project and the allowed strategies.
    */
@@ -200,6 +210,7 @@ export class InMemoryPrHost {
 
     this.tokenDigest = token === null ? null : digestOf(token);
     this.project = options.project ?? IN_MEMORY_PROJECT;
+    this.merger = options.merger ?? IN_MEMORY_MERGER;
     this.strategies = new Set(options.strategies ?? ["merge", "squash", "rebase"]);
     this.branches.set(IN_MEMORY_DEFAULT_BRANCH, [{ sha: this.nextSha(), files: [] }]);
   }
@@ -256,6 +267,30 @@ export class InMemoryPrHost {
   /** Answer requests again. */
   recover(): void {
     this.refusal = null;
+  }
+
+  /**
+   * Make a PR conflict with its base, or stop it conflicting — the sandbox's merge conflict. A
+   * conflicted PR reports `mergeable: false` and its merge is refused with `405`, as GitHub's is.
+   *
+   * @param number - The PR.
+   * @param conflicted - Whether it conflicts.
+   */
+  conflict(number: number, conflicted = true): void {
+    const pull = this.pullOf(number);
+
+    pull.conflicted = conflicted;
+    this.touch(pull);
+  }
+
+  /**
+   * Switch branch protection on or off. Protection the PR does not satisfy is invisible to
+   * `mergeable` — the PR still merges cleanly — and refuses the merge itself with `405`.
+   *
+   * @param on - Whether merges are refused.
+   */
+  protect(on = true): void {
+    this.protectedBase = on;
   }
 
   /**
@@ -339,6 +374,7 @@ export class InMemoryPrHost {
       updated: "",
       comments: new Map(),
       reviewers: new Set(),
+      conflicted: false,
     };
 
     this.pulls.set(pull.number, pull);
@@ -396,8 +432,8 @@ export class InMemoryPrHost {
    * @param message - The message — its closing keywords close issues, on a merge into the default
    *   branch and in this repository only.
    * @returns The merge commit's sha.
-   * @throws {InMemoryTrackerRefusal} `405` for a PR that is not open or a strategy the repository
-   *   has switched off.
+   * @throws {InMemoryTrackerRefusal} `405` for a PR that is not open, a strategy the repository
+   *   has switched off, a conflict ({@link conflict}) or branch protection ({@link protect}).
    */
   merge(
     token: string | null,
@@ -410,7 +446,12 @@ export class InMemoryPrHost {
 
     const pull = this.pullOf(number);
 
-    if (pull.state !== "open" || !this.strategies.has(strategy)) {
+    if (
+      pull.state !== "open" ||
+      !this.strategies.has(strategy) ||
+      pull.conflicted ||
+      this.protectedBase
+    ) {
       throw new InMemoryTrackerRefusal(405);
     }
 
@@ -1044,7 +1085,8 @@ export class InMemoryPrTicketSourceProvider
       deletions: files.reduce((sum, file) => sum + file.deletions, 0),
       changedFiles: files.length,
       mergedAt: pull.mergedAt === null ? null : new Date(pull.mergedAt),
-      mergedBy: pull.state === "merged" ? IN_MEMORY_MERGER : null,
+      mergedBy: pull.state === "merged" ? this.host.merger : null,
+      mergeable: pull.state === "open" ? !pull.conflicted : null,
       updatedAt: new Date(pull.updated),
     };
   }
