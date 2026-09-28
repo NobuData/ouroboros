@@ -1,6 +1,6 @@
-"""The five scenarios, played through the fake control plane.
+"""The six scenarios, played through the fake control plane.
 
-Each one is checked for the story the issue gives it, and all five are checked for the rules
+Each one is checked for the story the issue gives it, and all six are checked for the rules
 every run the driver writes must keep: every entry is in order, every write is keyed, every
 stage key is a node of the pinned workflow, and model output always names its model.
 """
@@ -52,13 +52,14 @@ def _model_bodies(fake: FakeControlPlane) -> list[str]:
 # --- every scenario -------------------------------------------------------------------------
 
 
-def test_there_are_the_five_scenarios_the_issues_name() -> None:
+def test_there_are_the_six_scenarios_the_issues_name() -> None:
     assert list(SCENARIOS) == [
         "happy-path",
         "482-gate-return",
         "guardrail-violation",
         "control-responsive",
         "correction-round",
+        "failing-hil",
     ]
 
 
@@ -350,3 +351,82 @@ def test_an_ordinary_steer_while_holding_does_not_start_a_new_attempt() -> None:
     assert _play("correction-round", fake) == "needs_human"
 
     assert fake.acks == [("steer", {"attempt": 1})]
+
+
+# --- failing-hil (#334) ---------------------------------------------------------------------
+
+
+def _test_results(fake: FakeControlPlane) -> list[str]:
+    """The run console's ``run_tests`` results, in order."""
+    return [
+        e["payload"]["result"]
+        for e in fake.events
+        if e["actor"] == "tool" and e.get("toolTag") == "run_tests" and e.get("payload")
+    ]
+
+
+def test_failing_hil_without_a_correction_round_needs_a_human_after_two_rig_builds() -> (
+    None
+):
+    fake = FakeControlPlane()
+
+    assert _play("failing-hil", fake) == "needs_human"
+
+    assert [commit["sha"] for commit in fake.commits] == ["a3f19c2", "c81d4e7"]
+    assert [r.split(" · ")[0] for r in _test_results(fake)] == [
+        "49 passed, 14 failed",
+        "61 passed, 2 failed",
+    ]
+    assert fake.stage_log[-1] == ("implement", 1, "failed")
+    assert fake.acks == []
+
+
+def test_failing_hil_turns_green_on_the_correction_rounds_build() -> None:
+    fake = FakeControlPlane()
+    fake.queue(
+        QueuedControl(
+            kind="steer", payload=NOTE, retry_stage=True, release_on=("implement", 1)
+        )
+    )
+
+    assert _play("failing-hil", fake) == "completed"
+
+    # Mockup 11's attempt cards: a3f19c2 49/63 · c81d4e7 61/63 · f42b9a0 63/63.
+    assert [commit["sha"] for commit in fake.commits] == [
+        "a3f19c2",
+        "c81d4e7",
+        "f42b9a0",
+    ]
+    assert [r.split(" · ")[0] for r in _test_results(fake)][:3] == [
+        "49 passed, 14 failed",
+        "61 passed, 2 failed",
+        "63 passed, 0 failed",
+    ]
+    log = fake.stage_log
+    assert log.index(("implement", 1, "failed")) < log.index(("implement", 2, "active"))
+    assert ("implement", 2, "succeeded") in log
+    assert ("open-pr", 1, "succeeded") in log
+    assert fake.acks == [
+        ("steer", {"effect": "correction round queued: implement attempt 2"})
+    ]
+    attempt_two = [
+        e["body"]
+        for e in fake.events
+        if e["actor"] == "model" and e["stageKey"] == "implement" and e["attempt"] == 2
+    ]
+    assert any(NOTE in body for body in attempt_two)
+
+
+def test_failing_hil_says_the_results_are_the_rigs_uploads() -> None:
+    fake = FakeControlPlane()
+
+    _play("failing-hil", fake)
+
+    sent = [
+        e["body"]
+        for e in fake.events
+        if e["actor"] == "system"
+        and "sent to rig helios-rig-02" in (e.get("body") or "")
+    ]
+    assert len(sent) == 2
+    assert all("uploads its JUnit and HIL reports" in body for body in sent)

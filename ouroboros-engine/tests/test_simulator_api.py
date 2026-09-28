@@ -154,6 +154,7 @@ def test_the_scenarios_are_listed(dev: TestClient) -> None:
         "guardrail-violation",
         "control-responsive",
         "correction-round",
+        "failing-hil",
     ]
 
 

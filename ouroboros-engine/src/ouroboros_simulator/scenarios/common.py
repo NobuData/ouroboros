@@ -161,6 +161,31 @@ def delivery(session: RunSession, *, gate_attempt: int = 1) -> None:
     session.stage("open-pr", "succeeded")
 
 
+def await_correction(
+    session: RunSession, stage_key: str, *, steps: int, seconds: float
+) -> Steer | None:
+    """Hold a stage at safe boundaries until a correction round asks for its next attempt.
+
+    Mark & Route's *Queue correction round* (#332) arrives as a steer with ``retryStage``;
+    each boundary is a checkpoint, so the steer is fetched and recorded while the loop waits.
+
+    Args:
+        session: The open run.
+        stage_key: The stage being held.
+        steps: How many boundaries to wait before giving up.
+        seconds: Scripted seconds between them.
+
+    Returns:
+        The correction, or ``None`` when none arrived within ``steps`` boundaries.
+    """
+    for _ in range(steps):
+        session.work(seconds)
+        correction = session.correction_for(stage_key)
+        if correction is not None:
+            return correction
+    return None
+
+
 def quote(steer: Steer) -> str:
     """Quote a steer back in a transcript entry, shortened.
 
