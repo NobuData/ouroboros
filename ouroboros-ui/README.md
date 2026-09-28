@@ -425,7 +425,7 @@ ouroboros-ui/
 │   │   ├── view.ts          #   the four ways a trail lies, and what stops each
 │   │   ├── audit-actions.ts #   the Server Action — no arguments, so nothing to forge
 │   │   └── audit-trail.tsx  #   <AuditTrail /> — the button and its sheet, mountable
-│   ├── test-results/        # mockup 11's test results: head, actions, timeline, strip, suites · #335 #336 #337
+│   ├── test-results/        # mockup 11's test results: head, actions, timeline, strip, suites, physical · #335–#338
 │   │   ├── view.ts          #   the attempt, the head, the strip as the payload states it, the honest gate
 │   │   ├── poll.ts          #   the readers and guards: the run's timeline, the attempt's gate and page
 │   │   ├── data.ts          #   readTests() — the first paint, the tracker link and the gate best-effort
@@ -437,9 +437,11 @@ ouroboros-ui/
 │   │   ├── attempts-timeline.tsx # err → warn → live → future — and which attempt the whole page reads
 │   │   ├── suites.ts        #   a suite's status hue, the selection by name, the retry chip, the row keys · #337
 │   │   ├── suites-card.tsx  #   the suite rows, the selected one, and each suite's case drill
+│   │   ├── physical.ts      #   the measured line composed from stored fields, the breach, the rig's presence · #338
+│   │   ├── physical-card.tsx #  the rig groups, their ptest rows, and the selected case
 │   │   ├── mark-route-slot.tsx # where Send failures back lands until #340 draws the card
 │   │   ├── tests-loading.tsx #  the first read in flight
-│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites — three polls
+│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites, physical — three polls and the farm's
 │   ├── prs/                 # mockup 12's PR verification: route, head and three actions · #363
 │   │   ├── view.ts          #   the head, the pill's hue, the red gates, the three actions by role and state
 │   │   ├── poll.ts          #   the reader and guard: the whole PR page
@@ -3670,6 +3672,54 @@ selection, drops `?suite=` and says so on the card — another suite's data is n
 
 Platform tags are plain tags — there is no platform page, so nothing links to one. A long or wide
 list scrolls inside the card's own wrapper.
+
+### Physical tests card
+
+`PhysicalCard` ([#338](https://github.com/NobuData/ouroboros/issues/338)) sits beneath the suites:
+one group per physical suite — `Rig helios-rig-02`, its bench — and one row per case: name and
+pass/FAIL pill, what the rig did, and what it measured. It reads the attempt's page (`suites` and
+`physical`), so it adds no read of its own for its rows.
+
+**The measured line is composed from stored fields**, by one rule for every row:
+
+```
+<metric> <value><unit> vs limit <limit><unit> (<comparative>)
+```
+
+| Stored | Printed |
+|--------|---------|
+| `overshoot_pct` · 2.4 · `%` · limit 2 · `max` | `overshoot 2.4% vs limit 2.0%` — the value in the err hue |
+| `reordered_frames` · 0 · `count` · limit 0 · context `was 37 in build 1` | `reordered frames 0 vs limit 0 (was 37 in build 1)` |
+| `slot_b_fallback_ms` · 412 · `ms` · limit 500 | `slot b fallback 412ms vs limit 500ms` |
+
+- The **metric** is its identifier with underscores as spaces, less a last word that only repeats
+  the unit (`_pct` beside `%`, `_ms` beside `ms`).
+- The **value and limit** are printed to the more precise one's decimals; `count` is printed bare.
+- The **err hue is a comparison**: above a `max`, below a `min` — a `min` limit needs no special case.
+- The **comparative** is the stored `context`, and is absent when none is stored.
+- The mockup's `in 10⁶` is a sample size the payload does not serve, so it is not printed.
+
+**The `rig online` pill is omitted unless it is true.** The screen polls the build farm
+(`/api/farm`, only while a physical suite is on screen) and the pill is drawn when a runner **of the
+rig's name** is `online`, `building` or `draining`. No such runner, an offline one, or a farm that
+could not be read draws no pill — never an *offline* nobody observed.
+
+**A suite with no measurements degrades**: a rig that emitted only JUnit renders plain pass/fail rows
+under *structured measurements need the HIL schema*, with no limit and no measured line.
+
+**Selection is a name, in the address** — `?case=`, replaced beside `?attempt=` and `?suite=`,
+nothing selected by default, cleared by pressing the selected row again. It is what the
+failure-detail card (#339) is scoped by (`physicalView(...).scope`).
+
+| The suites card has selected | The physical card draws |
+|------------------------------|-------------------------|
+| nothing | every rig group |
+| a physical suite | that rig's group alone |
+| a simulated suite | no group, and *`<suite>` is a simulated suite — it has no physical tests.* |
+
+A selected case that the attempt did not run on a rig, or that the selected suite does not hold, is
+cleared — here and in the address — and the card says so. A long or wide list scrolls inside the
+card's own wrapper.
 
 Mark & Route itself is #340's; until then the page holds its slot, which names the staged cases.
 Insights (mockup 15) is `soon`, so the flaky card's `quarantine watching (N)` is words with the

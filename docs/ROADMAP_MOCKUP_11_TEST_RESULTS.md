@@ -772,7 +772,7 @@ tokens (both themes; the mockup is dark-only).
 | AU.1 | #335 ✅ | 🟢 Done | ouroboros-ui: [AU.1] Test-results route, head & summary strip | Attempt-scoped route, actions, five stat cards | mvp, tests, ui, design | N (after #41, AT.5, BA-D.5) | Y | M | ouroboros-ui |
 | AU.2 | #336 ✅ | 🟢 Done | ouroboros-ui: [AU.2] Build attempts timeline | err/warn/live/future attempt cards with arrows | mvp, tests, ui, design | N (after AU.1) | Y | S | ouroboros-ui |
 | AU.3 | #337 ✅ | 🟢 Done | ouroboros-ui: [AU.3] Suites card | Platform-tagged suite rows, meters, selection → filtering | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
-| AU.4 | #338 | 🟡 Open | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
+| AU.4 | #338 ✅ | 🟢 Done | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.5 | #339 | 🟡 Open | ouroboros-ui: [AU.5] Failure detail card | Test path, rig log block, honest triage slot | mvp, tests, ui, design | N (after AU.3/AU.4) | Y | M | ouroboros-ui |
 | AU.6 | #340 | 🟡 Open | ouroboros-ui: [AU.6] Mark & Route card | Classify radios with hints, note, toggles, routing actions | mvp, tests, ui | N (after AU.5, AT.4) | Y | L | ouroboros-ui |
 | AU.7 | #341 | 🟡 Open | ouroboros-ui: [AU.7] Artifacts card & downloads | Artifact rows, sizes, coverage delta, tombstones | mvp, tests, ui | N (after AU.1, AT.5) | Y | S | ouroboros-ui |
@@ -930,7 +930,7 @@ PHYSICAL · HIL rig [rig:helios-rig-02] ▓▓░░ 1/2
 
 ### Issue AU.4 — ouroboros-ui: [AU.4] Physical tests card
 
-> **GitHub issue:** #338 · **Status:** 🟡 Open · **Parent epic:** #322
+> **GitHub issue:** #338 · **Status:** 🟢 Done · **Parent epic:** #322
 
 - **Problem Statement:** HIL rows carry the page's most distinctive
   content: procedure prose, measured values against limits, comparatives
@@ -955,6 +955,28 @@ Motor overshoot on e-stop release                    (FAIL)
 dyno bench releases e-stop under 2 Nm load, 3 trials
 measured: overshoot 2.4% vs limit 2.0%   ◀ selected · syncs failure detail
 ```
+
+> **Delivered as `ouroboros-ui/app/test-results/physical.ts` and `physical-card.tsx`**, over the
+> attempt's page #337 already reads (`suites` and `physical`). Decided on #338:
+>
+> 1. **One composition rule for every row**: `<metric> <value><unit> vs limit <limit><unit>
+>    (<comparative>)`. The metric is its identifier with underscores as spaces, less a last word
+>    that repeats the unit; value and limit share the more precise one's decimals; `count` prints
+>    bare. So the frame-order row reads `reordered frames 0 vs limit 0 (was 37 in build 1)`.
+> 2. **`in 10⁶` is not printed.** The sample size lives in the stored trials, and the payload
+>    serves only their count.
+> 3. **The breach is a comparison** — above a `max`, below a `min` — not the stored verdict.
+> 4. **A rig maps to a runner by name.** The pill is drawn when the farm (`/api/farm`, polled only
+>    while a rig is on screen) holds a connected runner named as the rig, and omitted otherwise.
+>    The seeded fleet has no `helios-rig-02`, so the seeded page draws no pill.
+> 5. **The selected case is a name, in `?case=`**, nothing selected by default; pressing the
+>    selected row clears it.
+> 6. **The suites card filters this one**: a physical suite leaves its rig's group, a simulated
+>    suite leaves none and the card says why. A case outside the scope, or one the attempt did not
+>    run on a rig, is cleared with a notice.
+> 7. **The mockup's four rows are a UI fixture.** The seed holds two HIL cases (#328, decision 4).
+> 8. **#339 is scoped by `physicalView(...).scope`** (`caseId`, `name`, `suiteId`, `status`,
+>    `hasFailure`), which the screen already computes.
 
 ### Issue AU.5 — ouroboros-ui: [AU.5] Failure detail card
 

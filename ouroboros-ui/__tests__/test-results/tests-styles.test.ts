@@ -70,8 +70,9 @@ describe("the build attempts timeline (#336)", () => {
   it("scrolls sideways inside its own wrapper, so the content pane never does", () => {
     expect(CODE).toMatch(/\.tests-timeline__scroll\s*\{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.tests-timeline__list\s*\{[^}]*width: max-content;/);
-    // Nothing else on the page may scroll or overflow sideways, but the suites card's wrapper (#337).
-    expect([...CODE.matchAll(/overflow(?:-x)?:\s*(auto|scroll)/g)]).toHaveLength(2);
+    // Nothing else on the page may scroll or overflow sideways, but the suites card's wrapper
+    // (#337) and the physical-tests card's (#338).
+    expect([...CODE.matchAll(/overflow(?:-x)?:\s*(auto|scroll)/g)]).toHaveLength(3);
   });
 
   it("makes the wrapper the cards' offset parent, which is what scrolling it alone relies on", () => {
@@ -140,6 +141,35 @@ describe("the suites card (#337)", () => {
     for (const tone of ["err", "warn", "ok"]) {
       expect(CODE).toMatch(new RegExp(`\\.tests-suites__count--${tone}\\s*\\{\\s*color: var\\(--${tone}\\);`));
     }
+  });
+});
+
+describe("the physical-tests card (#338)", () => {
+  it("scrolls a long or wide list inside its own wrapper, so the content pane never does", () => {
+    const wrapper = CODE.match(/\.tests-physical__scroll\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(wrapper).toMatch(/overflow: auto;/);
+    expect(wrapper).toMatch(/max-height: [\d.]+rem;/);
+    expect(CODE).toMatch(/\.tests-physical__group\s*\{[^}]*min-width: [\d.]+rem;/);
+  });
+
+  it("draws a breached value in the err hue, from the token", () => {
+    expect(CODE).toMatch(/\.tests-physical__value--breached\s*\{[^}]*color: var\(--err\);/);
+  });
+
+  it("insets a selected row in the accent, and the failing one in the err hue", () => {
+    const selected = CODE.match(/\.tests-physical__row\[data-selected="true"\]\s*\{([^}]*)\}/)?.[1] ?? "";
+    const failing =
+      CODE.match(/\.tests-physical__row\[data-selected="true"\]\[data-failing="true"\]\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(selected).toMatch(/box-shadow: inset [^;]*var\(--accent\);/);
+    expect(failing).toMatch(/box-shadow: inset [^;]*var\(--err\);/);
+  });
+
+  it("stretches the row's button over the row, with a visible focus ring", () => {
+    expect(CODE).toMatch(/\.tests-physical__row\s*\{[^}]*position: relative;/);
+    expect(CODE).toMatch(/\.tests-physical__select::after\s*\{[^}]*inset: 0;/);
+    expect(CODE).toMatch(/\.tests-physical__select:focus-visible::after\s*\{[^}]*outline: [^;]*var\(--accent\);/);
   });
 });
 

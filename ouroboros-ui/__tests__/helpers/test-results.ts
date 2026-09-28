@@ -8,6 +8,8 @@ import type {
   TestSuiteResult,
 } from "@/app/api/test-results";
 
+import type { Measurement, PhysicalCase } from "@/app/test-results/physical";
+
 import { SEEDED_RUN_ID } from "./runs";
 
 /**
@@ -321,4 +323,143 @@ export function page(over: Partial<TestRunPage> = {}): TestRunPage {
     coverage: null,
     ...over,
   };
+}
+
+/** The id of the frame-order case on the rig in Build 3. */
+export const FRAME_ORDER_CASE_ID = "5eed0035-0000-4000-8000-000000000503";
+
+/** The id of the beacon case on the rig in Build 3. */
+export const BEACON_CASE_ID = "5eed0035-0000-4000-8000-000000000504";
+
+/** The id of the power-loss case on the rig in Build 3. */
+export const POWER_LOSS_CASE_ID = "5eed0035-0000-4000-8000-000000000502";
+
+/**
+ * A measurement.
+ *
+ * @param over What to change.
+ * @returns The overshoot — `2.4 %` against a `max` of `2.0`, failed, with no comparative — changed.
+ */
+export function measurement(over: Partial<Measurement> = {}): Measurement {
+  return {
+    metric: "overshoot_pct",
+    value: 2.4,
+    unit: "%",
+    limit: 2,
+    limitKind: "max",
+    verdict: "fail",
+    comparative: null,
+    trials: 3,
+    ...over,
+  };
+}
+
+/**
+ * A measured case.
+ *
+ * @param over What to change.
+ * @returns The overshoot case on the HIL suite, changed.
+ */
+export function physicalCase(over: Partial<PhysicalCase> = {}): PhysicalCase {
+  return {
+    caseId: OVERSHOOT_CASE.caseId,
+    name: "Motor overshoot on e-stop release",
+    classname: null,
+    suiteId: HIL_SUITE_ID,
+    status: "failed",
+    procedure: "dyno bench releases e-stop under 2 Nm load, 3 trials",
+    measurements: [measurement()],
+    ...over,
+  };
+}
+
+/**
+ * Mockup 11's four physical rows (#338), as stored fields: each one a case of the HIL suite and
+ * its measurement. The frame order alone carries a comparative — Build 1 measured 37.
+ *
+ * @returns The four measured cases, in the mockup's order.
+ */
+export function mockupPhysical(): PhysicalCase[] {
+  return [
+    physicalCase({
+      caseId: POWER_LOSS_CASE_ID,
+      name: "Power-loss mid-flash recovery",
+      status: "passed",
+      procedure: "power-cycler kills 24V rail at 40 / 60 / 80% of OTA write",
+      measurements: [
+        measurement({ metric: "slot_b_fallback_ms", value: 412, unit: "ms", limit: 500, verdict: "pass" }),
+      ],
+    }),
+    physicalCase({
+      caseId: FRAME_ORDER_CASE_ID,
+      name: "CAN bus frame order under 90% load",
+      status: "passed",
+      procedure: "traffic generator floods bus at 900 kbit/s for 60s",
+      measurements: [
+        measurement({
+          metric: "reordered_frames",
+          value: 0,
+          unit: "count",
+          limit: 0,
+          verdict: "pass",
+          comparative: "was 37 in build 1",
+          trials: 1,
+        }),
+      ],
+    }),
+    physicalCase(),
+    physicalCase({
+      caseId: BEACON_CASE_ID,
+      name: "BLE beacon in dual-slot-corrupt state",
+      status: "passed",
+      procedure: "both firmware slots checksum-corrupted deliberately, cold boot",
+      measurements: [
+        measurement({ metric: "recovery_beacon_s", value: 1.8, unit: "s", limit: 3, verdict: "pass" }),
+      ],
+    }),
+  ];
+}
+
+/**
+ * The HIL suite with the mockup's four cases (#338), to go with {@link mockupPhysical}.
+ *
+ * @param over What to change.
+ * @returns The suite, 3/4, on `rig:helios-rig-02`.
+ */
+export function mockupRigSuite(over: Partial<TestSuiteResult> = {}): TestSuiteResult {
+  return suite({
+    id: HIL_SUITE_ID,
+    name: "PHYSICAL · HIL rig",
+    platform: "rig:helios-rig-02",
+    kind: "physical",
+    resultsFormat: "hil",
+    rig: "helios-rig-02",
+    bench: "CAN bus + motor + power-cycler",
+    counts: { total: 4, passed: 3, failed: 1, flaky: 0, skipped: 0 },
+    cases: mockupPhysical().map((each) =>
+      testCase({
+        id: each.caseId,
+        name: each.name,
+        status: each.status,
+        retryOutcomes: [each.status === "failed" ? "failed" : "passed"],
+        hasFailure: each.status === "failed",
+      }),
+    ),
+    ...over,
+  });
+}
+
+/**
+ * Build 3's page as mockup 11 draws its physical card (#338): the four simulated suites, and the
+ * rig's suite with its four measured cases.
+ *
+ * @param over What to change.
+ * @returns The page.
+ */
+export function mockupPage(over: Partial<TestRunPage> = {}): TestRunPage {
+  return page({
+    suites: [...seededSuites().filter((each) => each.kind !== "physical"), mockupRigSuite()],
+    physical: mockupPhysical(),
+    ...over,
+  });
 }

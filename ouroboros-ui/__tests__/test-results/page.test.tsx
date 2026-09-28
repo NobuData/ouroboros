@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { prPath } from "@/app/paths";
 import { navRegistry } from "@/app/shell/nav-registry";
+import { PHYSICAL_TITLE } from "@/app/test-results/physical";
 import { SUITES_TITLE } from "@/app/test-results/suites";
 import { ACTIONS_LABEL, VIEWER_REASON } from "@/app/test-results/view";
 
 import { membership, sessionUser } from "../helpers/login";
 import { SEEDED_RUN_ID } from "../helpers/runs";
-import { gate, page, timeline } from "../helpers/test-results";
+import { gate, mockupPage, page, timeline } from "../helpers/test-results";
 
 /**
  * The test-results route (#335): the gate first, then one read — a run this workspace cannot see
@@ -199,5 +200,19 @@ describe("the test-results route", () => {
 
     const card = within(screen.getByRole("region", { name: SUITES_TITLE }));
     expect(card.queryByRole("button", { pressed: true })).toBeNull();
+  });
+
+  it("draws the physical tests the read found, with the one ?case= names selected (#338)", async () => {
+    readTests.mockResolvedValue({
+      state: "found",
+      value: { timeline: timeline(), trackerUrl: null, commitSource: null, gate: gate(), page: mockupPage(), pullRequest: null },
+    });
+    await open({ case: "Motor overshoot on e-stop release" });
+
+    const card = within(screen.getByRole("region", { name: PHYSICAL_TITLE }));
+    expect(card.getByRole("button", { pressed: true })).toHaveTextContent("Motor overshoot on e-stop release");
+    expect(card.getByText(/overshoot/, { selector: ".tests-physical__measured" })).toHaveTextContent(
+      "measured: overshoot 2.4% vs limit 2.0%",
+    );
   });
 });
