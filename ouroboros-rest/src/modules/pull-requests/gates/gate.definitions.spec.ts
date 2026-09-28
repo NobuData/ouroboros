@@ -5,6 +5,7 @@ import {
   DEFAULT_SOURCE,
   GATE_LABELS,
   ORG_CONFIG_SOURCE,
+  REVIEW_REQUESTED_SOURCE,
   materializeDefinitions,
   type DefinitionInput,
 } from "./gate.definitions";
@@ -120,6 +121,25 @@ describe("materializeDefinitions", () => {
     });
     // An override that agrees with the pin changes nothing, so the pin stays the provenance.
     expect(gates.build).toMatchObject({ required: true, source: "standard-fix@v14 pin" });
+  });
+
+  it("makes human approval required once a review is requested, over org config (AX.5)", () => {
+    const org = {
+      ...DEFAULT_ORG_GATE_CONFIG,
+      overrides: { human_approval: { disabled: true } },
+    };
+
+    expect(byKey({ ...PR_514, org }).human_approval).toMatchObject({
+      required: false,
+      disabled: true,
+    });
+    expect(byKey({ ...PR_514, org, reviewRequested: true }).human_approval).toMatchObject({
+      required: true,
+      disabled: false,
+      source: `standard-fix@v14 pin + ${REVIEW_REQUESTED_SOURCE}`,
+    });
+    // The request touches no other gate.
+    expect(byKey({ ...PR_514, reviewRequested: true }).build).toEqual(byKey(PR_514).build);
   });
 
   it("is a pure function of its inputs", () => {

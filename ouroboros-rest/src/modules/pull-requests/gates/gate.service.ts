@@ -25,9 +25,11 @@
  * **Every evaluation is told to {@link GateListeners}** after its transaction commits — the merge
  * executor (AX.4, #360) fires an armed plan there, or disarms it.
  *
- * **Not wired yet, deliberately:** a gate-level waiver action and approval records (AX.5, #361), a
- * second-model provider (AZ.1, #371), and the org policy document's resolver (#481), which rebinds
- * {@link ORG_GATE_POLICY}.
+ * **Approval slots** (AX.5, #361) are read first: a requested review makes `human_approval`
+ * required (`reviewRequested`), and the newest slot is what its provider answers from.
+ *
+ * **Not wired yet, deliberately:** a gate-level waiver action, a second-model provider (AZ.1,
+ * #371), and the org policy document's resolver (#481), which rebinds {@link ORG_GATE_POLICY}.
  */
 
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
@@ -97,8 +99,8 @@ export function derivePolicy(sources: PolicySources): DerivedPolicy {
 }
 
 /**
- * Gate-level waivers. None exist until AX.5's waiver action (#361) writes them; the engine's
- * overlay is in place for when it does.
+ * Gate-level waivers. None exist until a gate waiver action writes them; the engine's overlay is in
+ * place for when it does.
  */
 const NO_GATE_WAIVERS: readonly GateWaiver[] = Object.freeze([]);
 
@@ -181,12 +183,14 @@ export class GateEngineService implements GateEvidenceSink {
       const sources = await tx.policySources(pr);
       const org = await this.org.forOrganization(pr.organizationId);
       const derived = derivePolicy(sources);
+      const approval = await tx.approval(pr);
       const specs = materializeDefinitions({
         pin: derived.pin,
         policy: derived.policy,
         voteRules: derived.voteRules,
         blockUntilGreen: sources.blockUntilGreen,
         org,
+        reviewRequested: approval !== null,
       });
       const definitions = await tx.upsertDefinitions(pr.id, specs);
       const idle = {
@@ -219,6 +223,7 @@ export class GateEngineService implements GateEvidenceSink {
         planFiles: sources.ticket.planFiles,
         secrets: evidence.secrets,
         license: org.license,
+        approval,
       };
       const latest = new Map(
         (await tx.latestResults(revision.id)).map((row) => [row.definitionId, row]),

@@ -400,7 +400,11 @@ describe("TABLE_COLUMNS", () => {
     // The eighty-fifth and eighty-sixth are V058's `pr_merge_plans` and V064's
     // `planning_epic_notes`, mirrored by AX.4 (#360) — the merge executor that arms, re-checks,
     // merges and back-annotates the epic.
-    expect(TABLE_NAMES).toHaveLength(86);
+    //
+    // The eighty-seventh to eighty-ninth are V057's `pr_thread_entries` and V065's `pr_approvals`
+    // and `pr_loop_returns`, mirrored by AX.5 (#361) — the PR page's read and its two composed head
+    // actions, Request human review and Return to loop.
+    expect(TABLE_NAMES).toHaveLength(89);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

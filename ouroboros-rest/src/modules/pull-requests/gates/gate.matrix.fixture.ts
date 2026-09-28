@@ -13,6 +13,7 @@ import { BUILT_IN_GATE_KEYS, type BuiltInGateKey, type PrGateVerdict } from "../
 import { DEFAULT_LICENSE_ALLOW_LIST } from "./gate.policy";
 import { GATE_PROVIDERS } from "./gate.providers";
 import type {
+  ApprovalFact,
   AttemptFact,
   BuildFact,
   GateDefinitionSpec,
@@ -102,6 +103,17 @@ export const REVISION_2: GateFacts = {
   planFiles: ["drivers/can/telemetry_buf.c", "drivers/can/isr_fastpath.c", "tests/telemetry/"],
   secrets: { id: "5eed0030-0000-4000-8000-000000000003", verdict: "pass" },
   license: { allow: DEFAULT_LICENSE_ALLOW_LIST, deny: [] },
+  approval: null,
+};
+
+/** An approval slot (V065, #361) — Ken asked, and nobody has answered yet. */
+export const REQUESTED_APPROVAL: ApprovalFact = {
+  id: "5eed0042-0000-4000-8000-000000000514",
+  state: "requested",
+  requestedBy: "Ken S",
+  decidedBy: null,
+  decidedRevisionId: null,
+  note: null,
 };
 
 /**
@@ -381,56 +393,57 @@ export const PROVIDER_MATRIX: readonly MatrixCell[] = [
   },
   {
     gate: "human_approval",
+    verdict: "pending",
+    how: "a person asked for a review of an auto-merging PR (AX.5)",
+    facts: factsWith({ approval: REQUESTED_APPROVAL }),
+    evidence: "review requested by Ken S — awaiting approval",
+  },
+  {
+    gate: "human_approval",
     verdict: "green",
-    how: "an approval record — AX.5's, through a provider that reads them",
-    facts: REVISION_2,
-    providers: new Map([
-      ...GATE_PROVIDERS,
-      [
-        "human_approval",
-        {
-          key: "human_approval",
-          version: "test",
-          evaluate: () => ({ verdict: "green", evidence: "approved by Ken", evidenceRef: null }),
-        },
-      ],
-    ]),
+    how: "an approval on this revision (AX.5)",
+    facts: factsWith({
+      approval: {
+        ...REQUESTED_APPROVAL,
+        state: "approved",
+        decidedBy: "Priya N",
+        decidedRevisionId: "rev-2",
+        note: "bench numbers look right",
+      },
+    }),
+    evidence: "approved by Priya N — bench numbers look right",
   },
   {
     gate: "human_approval",
     verdict: "red",
-    how: "a rejection — AX.5's, through a provider that reads them",
-    facts: REVISION_2,
-    providers: new Map([
-      ...GATE_PROVIDERS,
-      [
-        "human_approval",
-        {
-          key: "human_approval",
-          version: "test",
-          evaluate: () => ({ verdict: "red", evidence: "changes requested", evidenceRef: null }),
-        },
-      ],
-    ]),
+    how: "a decline on this revision (AX.5)",
+    facts: factsWith({
+      approval: {
+        ...REQUESTED_APPROVAL,
+        state: "declined",
+        decidedBy: "Priya N",
+        decidedRevisionId: "rev-2",
+        note: "needs the thermal run",
+      },
+    }),
+    evidence: "declined by Priya N — needs the thermal run",
   },
   ...overlays("human_approval", REVISION_2).filter((cell) => cell.verdict !== "waived"),
   {
     gate: "human_approval",
     verdict: "waived",
-    how: "a gate-level waiver over a rejection",
-    facts: REVISION_2,
+    how: "a gate-level waiver over a decline",
+    facts: factsWith({
+      approval: {
+        ...REQUESTED_APPROVAL,
+        state: "declined",
+        decidedBy: "Priya N",
+        decidedRevisionId: "rev-2",
+        note: "changes requested",
+      },
+    }),
     waivers: [{ gateKey: "human_approval", reason: "owner override" }],
-    providers: new Map([
-      ...GATE_PROVIDERS,
-      [
-        "human_approval",
-        {
-          key: "human_approval",
-          version: "test",
-          evaluate: () => ({ verdict: "red", evidence: "changes requested", evidenceRef: null }),
-        },
-      ],
-    ]),
+    evidence: "waived: owner override · declined by Priya N — changes requested",
   },
 
   // model_review

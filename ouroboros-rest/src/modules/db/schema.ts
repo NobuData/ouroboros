@@ -1710,6 +1710,91 @@ export interface PrCriteriaEvidenceTable {
   created_at: Stamped;
 }
 
+/** `pr_thread_entries.author_kind` (V057) — who wrote a review-thread entry. */
+export type PrThreadAuthorKind = "model" | "policy_bot" | "human";
+
+/** `pr_thread_entries.tag` (V057) — the chip beside the author. */
+export type PrThreadTag = "self-review" | "second opinion" | "policy";
+
+/**
+ * `ouroboros.pr_thread_entries` — one entry of a PR's review thread (V057,
+ * [#354](https://github.com/NobuData/ouroboros/issues/354)), read by the PR page (AX.5,
+ * [#361](https://github.com/NobuData/ouroboros/issues/361)). What was said is fixed; only the
+ * one-way lifecycle (`blocking` → `resolved` with its reply) moves.
+ */
+export interface PrThreadEntriesTable {
+  id: Generated<string>;
+  pr_id: string;
+  /** The revision the entry was about — `second opinion · rev 1`. Null for a PR-wide entry. */
+  revision_id: string | null;
+  author_kind: PrThreadAuthorKind;
+  /** An Ouroboros user — human entries only. */
+  author_id: string | null;
+  /** The mono label — `claude-fable-5`, `ouroboros policy bot`. */
+  author_name: string;
+  tag: PrThreadTag;
+  body: string;
+  blocking: Generated<boolean>;
+  resolved: Generated<boolean>;
+  /** The resolving reply — `Addressed in attempt 4 — …`. */
+  resolution_body: string | null;
+  /** R4's watermark: required on a model entry until AZ.1 (#371). */
+  simulated: Generated<boolean>;
+  created_at: Stamped;
+}
+
+/** `pr_approvals.state` (V065) — where a human-approval slot stands. */
+export type PrApprovalState = "requested" | "approved" | "declined";
+
+/** `pr_approvals.host_request` (V065) — how the optional SPI `requestReview` landed. */
+export type PrApprovalHostRequest = "requested" | "unsupported" | "failed";
+
+/**
+ * `ouroboros.pr_approvals` — one human-approval slot of a PR (V065, AX.5,
+ * [#361](https://github.com/NobuData/ouroboros/issues/361), decision **V5**): opened by *Request
+ * human review*, answered once by an approve or a decline. At most one open slot per PR; the open
+ * slot is the PR's needs-you item. `pr_approvals_lifecycle` freezes an answered slot.
+ */
+export interface PrApprovalsTable {
+  id: Generated<string>;
+  pr_id: string;
+  state: Generated<PrApprovalState>;
+  requested_revision_id: string | null;
+  requested_by: string | null;
+  requested_at: Generated<Date>;
+  /** The git-host login asked, set with {@link PrApprovalsTable.host_request}. */
+  host_reviewer: string | null;
+  host_request: PrApprovalHostRequest | null;
+  /** The host's refusal, at most 512 characters. */
+  host_detail: string | null;
+  /** The revision the reviewer answered on — the gate honours the answer only while it is the latest. */
+  decided_revision_id: string | null;
+  decided_by: string | null;
+  decided_at: Date | null;
+  /** The reviewer's note — required on a decline, at most 2000 characters. */
+  note: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.pr_loop_returns` — one *Return to loop* of a PR (V065, AX.5,
+ * [#361](https://github.com/NobuData/ouroboros/issues/361), decision **V5**): the AP.4 correction
+ * round it queued, the revision and gates whose evidence the steer carried, and the attempt the
+ * next revision is expected from. Appended, never edited; one row per control.
+ */
+export interface PrLoopReturnsTable {
+  id: Generated<string>;
+  pr_id: string;
+  revision_id: string | null;
+  control_id: string;
+  gate_keys: string[];
+  expected_stage_key: string | null;
+  expected_attempt: number | null;
+  requested_by: string | null;
+  created_at: Stamped;
+}
+
 /**
  * `guardrail_evaluations.check` — which of the card's four rows a verdict is (V048, decision
  * **R5**).
@@ -5196,6 +5281,9 @@ export interface Database {
   pr_criteria: PrCriteriaTable;
   pr_criteria_evidence: PrCriteriaEvidenceTable;
   pr_merge_plans: PrMergePlansTable;
+  pr_thread_entries: PrThreadEntriesTable;
+  pr_approvals: PrApprovalsTable;
+  pr_loop_returns: PrLoopReturnsTable;
   guardrail_evaluations: GuardrailEvaluationsTable;
   run_controls: RunControlsTable;
   run_ingest_receipts: RunIngestReceiptsTable;
@@ -5514,6 +5602,49 @@ export const TABLE_COLUMNS = {
     "updated_by",
     "created_at",
     "updated_at",
+  ],
+  pr_thread_entries: [
+    "id",
+    "pr_id",
+    "revision_id",
+    "author_kind",
+    "author_id",
+    "author_name",
+    "tag",
+    "body",
+    "blocking",
+    "resolved",
+    "resolution_body",
+    "simulated",
+    "created_at",
+  ],
+  pr_approvals: [
+    "id",
+    "pr_id",
+    "state",
+    "requested_revision_id",
+    "requested_by",
+    "requested_at",
+    "host_reviewer",
+    "host_request",
+    "host_detail",
+    "decided_revision_id",
+    "decided_by",
+    "decided_at",
+    "note",
+    "created_at",
+    "updated_at",
+  ],
+  pr_loop_returns: [
+    "id",
+    "pr_id",
+    "revision_id",
+    "control_id",
+    "gate_keys",
+    "expected_stage_key",
+    "expected_attempt",
+    "requested_by",
+    "created_at",
   ],
   guardrail_evaluations: [
     "id",
@@ -6334,6 +6465,12 @@ export type PrWaiver = Selectable<PrWaiversTable>;
 export type PrMergePlan = Selectable<PrMergePlansTable>;
 /** An epic note row (V064). */
 export type PlanningEpicNote = Selectable<PlanningEpicNotesTable>;
+/** A review-thread entry row (V057). */
+export type PrThreadEntry = Selectable<PrThreadEntriesTable>;
+/** A human-approval slot row (V065). */
+export type PrApproval = Selectable<PrApprovalsTable>;
+/** A loop-return row (V065). */
+export type PrLoopReturn = Selectable<PrLoopReturnsTable>;
 
 /** A row of `ouroboros.tenant_domains`, as a `select` returns it. */
 export type TenantDomain = Selectable<TenantDomainsTable>;

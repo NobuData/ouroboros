@@ -43,4 +43,21 @@ describe("readSpendTotals", () => {
     expect(database.statements[0].sql).toContain("sum(cost_cents)");
     expect(database.statements[0].sql).not.toContain("coalesce(sum(cost_cents)");
   });
+
+  it("sums one tag's slice when asked — the Spend card's verification share (#361)", async () => {
+    const database = recordingDatabase();
+    database.answers({
+      rows: [{ tokens_in: "32800", tokens_out: "8200", cost_cents: "19.0000", unpriced: "0" }],
+    });
+
+    expect(await readSpendTotals(database.service.db, RUN, "verify")).toMatchObject({
+      tokensIn: 32_800,
+      tokensOut: 8_200,
+      costCents: "19.0000",
+    });
+
+    const [statement] = database.statements;
+    expect(statement.sql).toContain('"task_kind" = $2');
+    expect(statement.parameters).toEqual([RUN, "verify"]);
+  });
 });

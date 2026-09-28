@@ -22,6 +22,7 @@ import type {
   GuardrailVerdict,
   HilLimitKind,
   HilVerdict,
+  PrApprovalState,
   PrGateEvidenceRef,
   PrGateKey,
   PrGateVerdict,
@@ -147,6 +148,25 @@ export interface SecretsFact {
 }
 
 /**
+ * The PR's newest human-approval slot (V065, AX.5
+ * [#361](https://github.com/NobuData/ouroboros/issues/361)) — what `human_approval` reads.
+ */
+export interface ApprovalFact {
+  /** `pr_approvals.id` — the gate's evidence link. */
+  readonly id: string;
+  /** `requested`, `approved` or `declined`. */
+  readonly state: PrApprovalState;
+  /** The display name of who asked for the review, or null when they are gone. */
+  readonly requestedBy: string | null;
+  /** The display name of who answered, or null while open or when they are gone. */
+  readonly decidedBy: string | null;
+  /** The revision the answer was given on — the gate honours it only while it is the latest. */
+  readonly decidedRevisionId: string | null;
+  /** The reviewer's note — always present on a decline. */
+  readonly note: string | null;
+}
+
+/**
  * Everything one evaluation judges — gathered by the repository, read by every provider.
  *
  * A fact that could not be found is `null` (or empty), never guessed: the provider turns absence
@@ -175,6 +195,8 @@ export interface GateFacts {
   readonly secrets: SecretsFact | null;
   /** The workspace's license allow-list. */
   readonly license: LicensePolicy;
+  /** The PR's newest human-approval slot, or null when nobody asked for or gave a review. */
+  readonly approval: ApprovalFact | null;
 }
 
 /** One gate definition as the engine materializes it — a `pr_gate_definitions` row minus ids. */

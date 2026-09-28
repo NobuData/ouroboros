@@ -694,6 +694,11 @@ and `sync` to mirror the merge after its transaction commits. The in-memory host
 refusals it has to handle: `host.conflict(n)` (the PR reads `mergeable: false` and its merge answers
 `405`) and `host.protect()` (branch protection — still mergeable, and the merge answers `405`).
 
+The PR page's *Request human review* (AX.5, [#361](https://github.com/NobuData/ouroboros/issues/361))
+asks a named host login through the service's `requestReview`. The approval slot is the product's
+record; the host request is a courtesy, so a provider without `reviews` (`null`) is recorded as
+`unsupported` and a refusal as `failed` with its message, and neither fails the request.
+
 ---
 
 ## 8. Writing one

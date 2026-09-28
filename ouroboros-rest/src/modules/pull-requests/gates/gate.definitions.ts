@@ -13,7 +13,9 @@
  * diff_vs_plan      the pin holds on its checks
  * secrets_license   the pin holds on its checks
  * model_review      an add_vote escalation rule matches the ticket (#194)
- * human_approval    always — the policy owns the question; its verdict is the policy's answer
+ * human_approval    always — the policy owns the question; its verdict is the policy's answer.
+ *                   Once a person asks for a review (AX.5, #361) it is required whatever org config
+ *                   says, with the source `… + review requested`
  * ```
  *
  * A PR with no run, or a pin that cannot be read, gets every gate required with the source
@@ -52,6 +54,9 @@ export const DEFAULT_SOURCE = "ouroboros default";
 /** The provenance of a gate org config overrode. */
 export const ORG_CONFIG_SOURCE = "org config";
 
+/** What a requested review appends to `human_approval`'s provenance. */
+export const REVIEW_REQUESTED_SOURCE = "review requested";
+
 /** What a PR's gate set is materialized from. */
 export interface DefinitionInput {
   /** The run's pin — `standard-fix` and `14` — or null for a PR without a run or an unpinned run. */
@@ -64,6 +69,11 @@ export interface DefinitionInput {
   readonly blockUntilGreen: boolean;
   /** The workspace's gate configuration. */
   readonly org: OrgGateConfig;
+  /**
+   * Whether a person has asked for a human review of the PR — any approval slot exists (V065).
+   * Optional; absent means no.
+   */
+  readonly reviewRequested?: boolean;
 }
 
 /**
@@ -105,6 +115,13 @@ export function materializeDefinitions(input: DefinitionInput): GateDefinitionSp
     } else if (override?.required !== undefined && override.required !== required) {
       required = override.required;
       source = ORG_CONFIG_SOURCE;
+    }
+
+    // A person asked for a review: the gate is theirs to answer, not config's to switch off.
+    if (gateKey === "human_approval" && input.reviewRequested === true) {
+      required = true;
+      disabled = false;
+      source = `${pinSource} + ${REVIEW_REQUESTED_SOURCE}`;
     }
 
     return {

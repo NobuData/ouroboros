@@ -5,7 +5,15 @@ import { readFixture } from "../../workflows/dsl.golden.fixture";
 import { aggregate, type GateAggregate, type LatestResult } from "./gate.engine";
 import type { GateEvidenceEvent } from "./gate.evidence";
 import { GateListeners, type GateEvaluated } from "./gate.listeners";
-import { ATTEMPT, BUILD, FILES, HEAD, HIL, REVISION_2 } from "./gate.matrix.fixture";
+import {
+  ATTEMPT,
+  BUILD,
+  FILES,
+  HEAD,
+  HIL,
+  REQUESTED_APPROVAL,
+  REVISION_2,
+} from "./gate.matrix.fixture";
 import { DEFAULT_ORG_GATE_CONFIG, type OrgGateConfig, type OrgGatePolicy } from "./gate.policy";
 import type {
   EvidenceRows,
@@ -16,6 +24,7 @@ import type {
 } from "./gate.repository";
 import { GateEngineService, derivePolicy } from "./gate.service";
 import type {
+  ApprovalFact,
   GateDefinitionSpec,
   GatePr,
   GateResultRow,
@@ -68,6 +77,8 @@ class MemoryStore implements GateStore {
     ],
     blockUntilGreen: false,
   };
+  /** The PR's newest approval slot (V065). */
+  approval: ApprovalFact | null = null;
   /** Events `targets` has been asked about. */
   readonly asked: GateEvidenceEvent[] = [];
 
@@ -100,6 +111,7 @@ class MemoryStore implements GateStore {
         ),
       policySources: () => Promise.resolve(store.sources),
       evidence: () => Promise.resolve(store.evidence),
+      approval: () => Promise.resolve(store.approval),
       upsertDefinitions: (_prId, specs) => {
         for (const spec of specs) {
           const index = store.definitions.findIndex((row) => row.gateKey === spec.gateKey);
@@ -323,6 +335,67 @@ describe("GateEngineService", () => {
       verdict: "not_required",
       evidence: "not required by org config",
       required: false,
+    });
+  });
+
+  it("flips human approval to a required question when a review is requested (AX.5)", async () => {
+    store.push(REV_2);
+    await service.evaluate("pr-514");
+    service = new GateEngineService(
+      store,
+      org({ ...DEFAULT_ORG_GATE_CONFIG, overrides: { human_approval: { disabled: true } } }),
+    );
+
+    store.approval = REQUESTED_APPROVAL;
+    await service.notify("org-358", { kind: "approval_recorded", prId: "pr-514" });
+
+    const human = store.definitions.find((row) => row.gateKey === "human_approval");
+    expect(human).toMatchObject({
+      required: true,
+      source: "standard-fix@v14 pin + review requested",
+    });
+    expect(store.rowsFor("rev-2").slice(7)).toEqual([
+      expect.objectContaining({
+        gateKey: "human_approval",
+        verdict: "pending",
+        evidence: "review requested by Ken S — awaiting approval",
+        evidenceRef: { kind: "approval", id: REQUESTED_APPROVAL.id },
+      }),
+    ]);
+    expect(store.asked.at(-1)).toEqual({ kind: "approval_recorded", prId: "pr-514" });
+  });
+
+  it("re-evaluates only human approval on an approval event, and an approval can flip the aggregate", async () => {
+    store.push(REV_2);
+    store.sources = { ...store.sources, rules: [] };
+    store.approval = REQUESTED_APPROVAL;
+    await service.evaluate("pr-514");
+
+    expect(store.aggregateOf("rev-2")).toMatchObject({
+      requiredCount: 6,
+      satisfiedCount: 5,
+      mergeReady: false,
+    });
+
+    store.approval = {
+      ...REQUESTED_APPROVAL,
+      state: "approved",
+      decidedBy: "Priya N",
+      decidedRevisionId: "rev-2",
+    };
+    const result = await service.notify("org-358", { kind: "approval_recorded", prId: "pr-514" });
+
+    expect(result).toBeUndefined();
+    expect(
+      store
+        .rowsFor("rev-2")
+        .slice(7)
+        .map((row) => [row.gateKey, row.verdict]),
+    ).toEqual([["human_approval", "green"]]);
+    expect(store.aggregateOf("rev-2")).toMatchObject({
+      requiredCount: 6,
+      satisfiedCount: 6,
+      mergeReady: true,
     });
   });
 

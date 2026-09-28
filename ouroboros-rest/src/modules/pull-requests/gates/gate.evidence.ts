@@ -11,7 +11,8 @@
  * test run parsed    (farm/artifacts/upload.service.ts, #329)  ─┐
  * build job finished (farm/gateway/agent.connection.ts, #252)  ─┼─▶ notify(event) ─▶ affected gates only
  * guardrail evaluated (ingest/ingest.service.ts, #305)          ─┤
- * revision pushed    (pull-requests/pr-sync.service.ts, #357)  ─┘   (a sync without a push: pr_synced)
+ * revision pushed    (pull-requests/pr-sync.service.ts, #357)  ─┤   (a sync without a push: pr_synced)
+ * approval recorded  (pull-requests/actions/, #361)            ─┘   (a review requested, approved or declined)
  * ```
  *
  * **Called after commit, and never failing its caller.** Every emitter notifies once its own
@@ -60,13 +61,21 @@ export interface GuardrailEvaluatedEvent {
   readonly runId: string;
 }
 
+/** A human-approval slot was opened or answered (AX.5, #361). */
+export interface ApprovalRecordedEvent {
+  readonly kind: "approval_recorded";
+  /** `pull_requests.id`. */
+  readonly prId: string;
+}
+
 /** Something that may change a gate's verdict. */
 export type GateEvidenceEvent =
   | RevisionPushedEvent
   | PrSyncedEvent
   | TestRunParsedEvent
   | BuildJobFinishedEvent
-  | GuardrailEvaluatedEvent;
+  | GuardrailEvaluatedEvent
+  | ApprovalRecordedEvent;
 
 /**
  * Which gates each event can move — the "affected gates only" rule. A revision push moves them
@@ -80,6 +89,7 @@ export const AFFECTED_GATES: Readonly<
   test_run_parsed: ["test_suite", "physical_hil"] as const,
   build_job_finished: ["build"] as const,
   guardrail_evaluated: ["secrets_license"] as const,
+  approval_recorded: ["human_approval"] as const,
 });
 
 /** What an emitter calls. */
