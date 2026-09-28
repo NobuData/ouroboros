@@ -6,6 +6,7 @@
  *
  * ```
  * GET  /api/v1/runs/{id}/test-runs      the attempts, each with its strip — the page's frame
+ * GET  /api/v1/test-runs/{id}           one attempt's page — its suites and their cases (#337)
  * GET  /api/v1/test-runs/{id}/rerun     whether a re-run could be placed now, and each scope's N
  * POST /api/v1/test-runs/{id}/rerun     Re-run failed (N) / Re-run full suite
  * ```
@@ -30,6 +31,15 @@ export type TestStrip = components["schemas"]["TestStrip"];
 
 /** The run a timeline belongs to. */
 export type TestTimelineRun = components["schemas"]["TestTimelineRun"];
+
+/** One attempt's page payload — the suites card reads its `suites` (#337). */
+export type TestRunPage = components["schemas"]["TestRunPage"];
+
+/** One suite on one platform — a row of the suites card. */
+export type TestSuiteResult = components["schemas"]["TestSuiteResult"];
+
+/** One case of a suite, with its retries — a row of the case drill. */
+export type TestCaseResult = components["schemas"]["TestCaseResult"];
 
 /** Whether a re-run of an attempt could be placed now. */
 export type RerunAvailability = components["schemas"]["RerunAvailability"];
@@ -75,6 +85,28 @@ export const testResults = {
     return unwrap(
       await client.GET("/api/v1/runs/{id}/test-runs", {
         params: { path: { id: runId } },
+        signal,
+      }),
+    );
+  },
+
+  /**
+   * Read one attempt's page — its suites, each with its counts and cases.
+   *
+   * @param testRunId The attempt's id.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @param signal Aborts the read — the poll route's timeout.
+   * @returns The attempt's page payload.
+   * @throws ApiError `404 test_run_not_found` for an attempt that is not this workspace's.
+   */
+  async page(
+    testRunId: string,
+    client: ApiClient = api(),
+    signal?: AbortSignal,
+  ): Promise<TestRunPage> {
+    return unwrap(
+      await client.GET("/api/v1/test-runs/{id}", {
+        params: { path: { id: testRunId } },
         signal,
       }),
     );

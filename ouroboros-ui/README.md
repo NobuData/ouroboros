@@ -259,10 +259,11 @@ ouroboros-ui/
 │   │   ├── run-console.ts   #   readRunConsole() — the same read, answered for the console's poll
 │   │   ├── run-controls.ts  #   readRunControls() — the chips' read, 2 s while a control is on its way · #310
 │   │   ├── run-events.ts    #   readRunEvents() — one page of the transcript's tail, at the service's cadence · #312
-│   │   ├── test-results.ts  #   testResults.* — the timeline, the re-run gate, the re-run · #335
-│   │   ├── test-results-read.ts # readTimelineForPoll() / readGateForPoll() — both, for their polls
+│   │   ├── test-results.ts  #   testResults.* — the timeline, the re-run gate, the re-run · #335 — the attempt's page · #337
+│   │   ├── test-results-read.ts # readTimelineForPoll() / readGateForPoll() / readPageForPoll() — for their polls
 │   │   ├── runs/[id]/tests/route.ts # GET /api/runs/{id}/tests — the attempts timeline, on this origin
 │   │   ├── test-runs/[id]/rerun/route.ts # GET /api/test-runs/{id}/rerun — whether a runner could take a re-run
+│   │   ├── test-runs/[id]/route.ts # GET /api/test-runs/{id} — one attempt's page: its suites and cases · #337
 │   │   ├── pull-requests.ts #   pullRequests.* — the PR page, forRuns() the by-run lookup, the two head actions · #363
 │   │   ├── pull-requests-read.ts # readPageForPoll() — the PR page, for its poll
 │   │   ├── prs/[id]/route.ts #  GET /api/prs/{id} — the PR page, on this origin
@@ -424,9 +425,9 @@ ouroboros-ui/
 │   │   ├── view.ts          #   the four ways a trail lies, and what stops each
 │   │   ├── audit-actions.ts #   the Server Action — no arguments, so nothing to forge
 │   │   └── audit-trail.tsx  #   <AuditTrail /> — the button and its sheet, mountable
-│   ├── test-results/        # mockup 11's test results: head, actions, timeline, summary strip · #335 #336
+│   ├── test-results/        # mockup 11's test results: head, actions, timeline, strip, suites · #335 #336 #337
 │   │   ├── view.ts          #   the attempt, the head, the strip as the payload states it, the honest gate
-│   │   ├── poll.ts          #   the two readers and guards: the run's timeline, the attempt's gate
+│   │   ├── poll.ts          #   the readers and guards: the run's timeline, the attempt's gate and page
 │   │   ├── data.ts          #   readTests() — the first paint, the tracker link and the gate best-effort
 │   │   ├── rerun.ts · rerun-actions.ts # requestRerun() — the Server Action and what it answers
 │   │   ├── tests-head.tsx   #   the eyebrow, the linked headline and the four-element meta row
@@ -434,9 +435,11 @@ ouroboros-ui/
 │   │   ├── summary-strip.tsx #  the five StatCards, and the flaky card's honest link to insights
 │   │   ├── timeline.ts      #   the attempt cards, the honest Next card (T8), where the strip scrolls · #336
 │   │   ├── attempts-timeline.tsx # err → warn → live → future — and which attempt the whole page reads
+│   │   ├── suites.ts        #   a suite's status hue, the selection by name, the retry chip, the row keys · #337
+│   │   ├── suites-card.tsx  #   the suite rows, the selected one, and each suite's case drill
 │   │   ├── mark-route-slot.tsx # where Send failures back lands until #340 draws the card
 │   │   ├── tests-loading.tsx #  the first read in flight
-│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip — two polls
+│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites — three polls
 │   ├── prs/                 # mockup 12's PR verification: route, head and three actions · #363
 │   │   ├── view.ts          #   the head, the pill's hue, the red gates, the three actions by role and state
 │   │   ├── poll.ts          #   the reader and guard: the whole PR page
@@ -3636,6 +3639,37 @@ No PR number is printed for a gate nothing holds. The strip scrolls sideways ins
 — the content pane never does — and brings the selected card into view by scrolling that wrapper
 alone. The pulse's halo moves only under `prefers-reduced-motion: no-preference`; the dot, the
 accent and the words are drawn either way.
+
+### Suites card
+
+`SuitesCard` ([#337](https://github.com/NobuData/ouroboros/issues/337)) sits beneath the strip: one
+row per suite — name, platform tag, meter, `passed/total` — read from the attempt's page
+(`GET /api/v1/test-runs/:id`, polled at `/api/test-runs/:id` and rebuilt on an attempt switch).
+
+**A row's hue is its status, not its ratio.** The payload states no suite status, so it is read from
+the suite's counts and kind:
+
+| Suite | Hue | Seeded row |
+|-------|-----|-----------|
+| every case passed or skipped | `ok` | `unit · drivers` 24/24 |
+| something did not pass, in simulation (`kind: sim`) | `err` | `telemetry integration` 18/19 |
+| something did not pass, on a rig (`kind: physical`) | `warn` | `PHYSICAL · HIL rig` 1/2 |
+| nothing ran | neutral, empty meter | — |
+
+**Selection is a name, in the address** — `?suite=telemetry+integration`, replaced beside
+`?attempt=`, nothing selected by default, and cleared by pressing the selected row again. It is what
+the physical-tests (#338) and failure-detail (#339) cards are scoped by (`suitesView(...).scope`).
+On an attempt switch the suite is found again **by name**; a build that did not run it clears the
+selection, drops `?suite=` and says so on the card — another suite's data is never drawn under it.
+
+| Gesture | Does |
+|---------|------|
+| click a row · Enter / Space on its button | selects the suite (or clears it, when selected) |
+| Arrow Up / Down · Home / End | moves focus between rows |
+| the row's chevron | lists the suite's cases: status, duration, and `retry 2/3` for a case that ran more than once |
+
+Platform tags are plain tags — there is no platform page, so nothing links to one. A long or wide
+list scrolls inside the card's own wrapper.
 
 Mark & Route itself is #340's; until then the page holds its slot, which names the staged cases.
 Insights (mockup 15) is `soon`, so the flaky card's `quarantine watching (N)` is words with the

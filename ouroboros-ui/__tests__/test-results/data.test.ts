@@ -4,12 +4,12 @@ import { ApiError } from "@/app/api/errors";
 import type { TestsReaders } from "@/app/test-results/data";
 
 import { SEEDED_RUN_ID } from "../helpers/runs";
-import { BUILD_2_ID, BUILD_3_ID, gate, timeline } from "../helpers/test-results";
+import { BUILD_2_ID, BUILD_3_ID, gate, page, timeline } from "../helpers/test-results";
 
 /**
  * The test-results page's first read (#335): the timeline decides found, missing or failed; the
  * tracker link, the commit source (#336), the selected attempt's gate and the run's pull request (#363) ride along
- * best-effort.
+ * best-effort, and so does the selected attempt's page, for the suites card (#337).
  */
 
 vi.mock("server-only", () => ({}));
@@ -34,6 +34,7 @@ function readers(over: Partial<TestsReaders> = {}): TestsReaders {
     timeline: vi.fn().mockResolvedValue(timeline()),
     repository: vi.fn().mockResolvedValue({ owner: "acme-robotics", name: "helios-firmware" }),
     gate: vi.fn((id: string) => Promise.resolve(gate({ testRunId: id }))),
+    page: vi.fn().mockResolvedValue(page()),
     pullRequest: vi.fn().mockResolvedValue(PULL_REQUEST),
     ...over,
   };
@@ -50,10 +51,12 @@ describe("readTests", () => {
         trackerUrl: "https://github.com/acme-robotics/helios-firmware/issues/482",
         commitSource: { kind: "github", owner: "acme-robotics", name: "helios-firmware" },
         gate: gate(),
+        page: page(),
         pullRequest: PULL_REQUEST,
       },
     });
     expect(read.gate).toHaveBeenCalledExactlyOnceWith(BUILD_3_ID);
+    expect(read.page).toHaveBeenCalledExactlyOnceWith(BUILD_3_ID);
     expect(read.pullRequest).toHaveBeenCalledExactlyOnceWith(SEEDED_RUN_ID);
   });
 
@@ -63,6 +66,7 @@ describe("readTests", () => {
     await readTests(SEEDED_RUN_ID, 2, read);
 
     expect(read.gate).toHaveBeenCalledExactlyOnceWith(BUILD_2_ID);
+    expect(read.page).toHaveBeenCalledExactlyOnceWith(BUILD_2_ID);
   });
 
   it("reads another workspace's run, and an id that is not one, as missing", async () => {
@@ -92,13 +96,21 @@ describe("readTests", () => {
       readers({
         repository: vi.fn().mockRejectedValue(refused),
         gate: vi.fn().mockRejectedValue(refused),
+        page: vi.fn().mockRejectedValue(refused),
         pullRequest: vi.fn().mockRejectedValue(refused),
       }),
     );
 
     expect(reading).toEqual({
       state: "found",
-      value: { timeline: timeline(), trackerUrl: null, commitSource: null, gate: null, pullRequest: null },
+      value: {
+        timeline: timeline(),
+        trackerUrl: null,
+        commitSource: null,
+        gate: null,
+        page: null,
+        pullRequest: null,
+      },
     });
   });
 
@@ -114,12 +126,13 @@ describe("readTests", () => {
     );
   });
 
-  it("asks for no gate before any attempt has reported", async () => {
+  it("asks for no gate and no page before any attempt has reported", async () => {
     const read = readers({ timeline: vi.fn().mockResolvedValue(timeline({ attempts: [] })) });
 
     expect(await readTests(SEEDED_RUN_ID, null, read)).toEqual(
-      expect.objectContaining({ value: expect.objectContaining({ gate: null }) }),
+      expect.objectContaining({ value: expect.objectContaining({ gate: null, page: null }) }),
     );
     expect(read.gate).not.toHaveBeenCalled();
+    expect(read.page).not.toHaveBeenCalled();
   });
 });

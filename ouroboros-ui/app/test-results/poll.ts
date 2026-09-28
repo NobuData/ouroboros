@@ -1,23 +1,25 @@
 /**
- * The test-results page's two polls — `app/poll.ts`'s loop over one run's attempts and over one
- * attempt's re-run gate ([#335](https://github.com/NobuData/ouroboros/issues/335)).
+ * The test-results page's polls — `app/poll.ts`'s loop over one run's attempts, over one
+ * attempt's re-run gate ([#335](https://github.com/NobuData/ouroboros/issues/335)) and over one
+ * attempt's page, for its suites ([#337](https://github.com/NobuData/ouroboros/issues/337)).
  *
  * `app/runs/console-poll.ts` is the same file for the run console, and the argument is the
  * same: the page is the browser asking, on the shared I.8 cadence
  * ([#87](https://github.com/NobuData/ouroboros/issues/87)), for what it has open — so a running
  * build's strip moves without a reload.
  *
- * **Two loops, keyed differently, on purpose.** The timeline is the *run's*: it carries every
+ * **Loops keyed differently, on purpose.** The timeline is the *run's*: it carries every
  * attempt's strip, so switching attempts redraws the head and the strip from the answer already
  * held, in the same render. The gate is the *attempt's*: it is rebuilt the moment the attempt
  * changes, and until its first answer the actions say they are checking — a gate read for
- * Build 2 is never drawn under Build 3's head.
+ * Build 2 is never drawn under Build 3's head. The page is the attempt's for the same reason:
+ * Build 2's suites are never drawn under Build 3's head.
  *
  * **Framework-free**, so each reader is a unit test against a stubbed `fetch`; the screen meets
  * them through `app/issues/use-keyed-poll.ts`.
  */
 
-import type { RerunAvailability, TestRunTimeline } from "@/app/api/test-results";
+import type { RerunAvailability, TestRunPage, TestRunTimeline } from "@/app/api/test-results";
 import {
   type Poll,
   type PollOptions,
@@ -31,6 +33,15 @@ export const TIMELINE_ENDPOINT = "/api/runs";
 
 /** Where the browser asks for an attempt's gate — this origin, `/api/test-runs/:id/rerun`. */
 export const GATE_ENDPOINT = "/api/test-runs";
+
+/** Where the browser asks for an attempt's page — this origin, `/api/test-runs/:id`. */
+export const PAGE_ENDPOINT = "/api/test-runs";
+
+/** What is said when something answered and this client could not read it as an attempt's page. */
+export const UNREADABLE_PAGE = "The suites could not be read.";
+
+/** What is said when nothing answered the page's read at all. */
+export const UNREACHABLE_PAGE = "The suites could not be reached.";
 
 /** What is said when something answered and this client could not read it as a timeline. */
 export const UNREADABLE_TIMELINE = "The test results could not be read.";
@@ -68,6 +79,57 @@ export function timelineUrl(runId: string): string {
  */
 export function gateUrl(testRunId: string): string {
   return `${GATE_ENDPOINT}/${encodeURIComponent(testRunId)}/rerun`;
+}
+
+/**
+ * The address the page polls for an attempt's page.
+ *
+ * @param testRunId The attempt's id.
+ * @returns `/api/test-runs/<id>`, the id encoded.
+ */
+export function pageUrl(testRunId: string): string {
+  return `${PAGE_ENDPOINT}/${encodeURIComponent(testRunId)}`;
+}
+
+/**
+ * Whether a parsed body is an attempt's page.
+ *
+ * Structural rather than exhaustive: the suites card reaches for the attempt's id and each
+ * suite's name, platform, kind, counts and cases, and a body carrying those is the page for every
+ * purpose it has.
+ *
+ * @param value A parsed response body.
+ * @returns `true` when it can be read as a {@link TestRunPage}.
+ */
+export function isTestRunPage(value: unknown): value is TestRunPage {
+  if (typeof value !== "object" || value === null) return false;
+
+  const candidate = value as Partial<TestRunPage>;
+
+  return (
+    typeof candidate.testRun === "object" &&
+    candidate.testRun !== null &&
+    typeof candidate.testRun.id === "string" &&
+    Array.isArray(candidate.suites) &&
+    candidate.suites.every((suite: unknown) => {
+      if (typeof suite !== "object" || suite === null) return false;
+
+      const row = suite as Record<string, unknown>;
+      const counts = row.counts as Record<string, unknown> | null | undefined;
+
+      return (
+        typeof row.id === "string" &&
+        typeof row.name === "string" &&
+        typeof row.platform === "string" &&
+        typeof row.kind === "string" &&
+        typeof counts === "object" &&
+        counts !== null &&
+        typeof counts.total === "number" &&
+        typeof counts.passed === "number" &&
+        Array.isArray(row.cases)
+      );
+    })
+  );
 }
 
 /**
@@ -161,6 +223,29 @@ export function createGatePoll(
       requestPayload(url, etag, isRerunAvailability, {
         unreachable: UNREACHABLE_GATE,
         unreadable: UNREADABLE_GATE,
+      }));
+
+  return createPoll(read, options);
+}
+
+/**
+ * Build the page's loop over one attempt ([#337](https://github.com/NobuData/ouroboros/issues/337)).
+ *
+ * @param testRunId The attempt's id.
+ * @param options Test seams; production passes none.
+ * @returns The poll. It is inert until `start` is called.
+ */
+export function createPagePoll(
+  testRunId: string,
+  options: TestsPollOptions<TestRunPage> = {},
+): Poll<TestRunPage> {
+  const url = pageUrl(testRunId);
+  const read: PollReader<TestRunPage> =
+    options.read ??
+    ((etag) =>
+      requestPayload(url, etag, isTestRunPage, {
+        unreachable: UNREACHABLE_PAGE,
+        unreadable: UNREADABLE_PAGE,
       }));
 
   return createPoll(read, options);

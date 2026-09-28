@@ -240,6 +240,13 @@ export function runPath(id: string, from?: string): string {
 export const TESTS_ATTEMPT_PARAM = "attempt";
 
 /**
+ * The query parameter naming the suite the test-results page has selected — its name, the
+ * `telemetry integration` of mockup 11 (#337). A name rather than an id, because a suite's id is
+ * one attempt's and its name is what survives a switch between them. Absent, nothing is selected.
+ */
+export const TESTS_SUITE_PARAM = "suite";
+
+/**
  * The test-results page for one run — `/runs/7f00…/tests?from=build-farm&attempt=3`
  * ([#335](https://github.com/NobuData/ouroboros/issues/335)).
  *
@@ -248,19 +255,20 @@ export const TESTS_ATTEMPT_PARAM = "attempt";
  * opened from stays lit. The run console's Test stage and the build farm's job cells link here.
  *
  * @param id The run's id (a uuid). Encoded anyway, for {@link workflowPath}'s reason.
- * @param options Where the reader came from — a sidebar entry id — and the attempt to open, by
- *   its ordinal. Either may be omitted: the page then falls back to the dashboard and the latest
- *   attempt.
+ * @param options Where the reader came from — a sidebar entry id — the attempt to open, by
+ *   its ordinal, and the suite to select, by its name (#337). Any may be omitted: the page then
+ *   falls back to the dashboard, the latest attempt and no selection.
  * @returns The path.
  */
 export function testsPath(
   id: string,
-  options: { readonly from?: string; readonly attempt?: number } = {},
+  options: { readonly from?: string; readonly attempt?: number; readonly suite?: string } = {},
 ): string {
   const query = new URLSearchParams();
 
   if (options.from !== undefined) query.set(RUN_ORIGIN_PARAM, options.from);
   if (options.attempt !== undefined) query.set(TESTS_ATTEMPT_PARAM, String(options.attempt));
+  if (options.suite !== undefined) query.set(TESTS_SUITE_PARAM, options.suite);
 
   const search = query.toString();
   const path = `${RUNS_PATH}/${encodeURIComponent(id)}/tests`;

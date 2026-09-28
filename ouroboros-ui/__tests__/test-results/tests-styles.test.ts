@@ -70,8 +70,8 @@ describe("the build attempts timeline (#336)", () => {
   it("scrolls sideways inside its own wrapper, so the content pane never does", () => {
     expect(CODE).toMatch(/\.tests-timeline__scroll\s*\{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.tests-timeline__list\s*\{[^}]*width: max-content;/);
-    // Nothing else on the page may scroll or overflow sideways.
-    expect([...CODE.matchAll(/overflow(?:-x)?:\s*(auto|scroll)/g)]).toHaveLength(1);
+    // Nothing else on the page may scroll or overflow sideways, but the suites card's wrapper (#337).
+    expect([...CODE.matchAll(/overflow(?:-x)?:\s*(auto|scroll)/g)]).toHaveLength(2);
   });
 
   it("makes the wrapper the cards' offset parent, which is what scrolling it alone relies on", () => {
@@ -105,6 +105,40 @@ describe("the build attempts timeline (#336)", () => {
       expect(CODE).toMatch(
         new RegExp(`\\.tests-timeline__card--${tone} \\.tests-timeline__result\\s*\\{\\s*color: var\\(--${tone}\\);`),
       );
+    }
+  });
+});
+
+describe("the suites card (#337)", () => {
+  it("scrolls a long or wide list inside its own wrapper, so the content pane never does", () => {
+    const wrapper = CODE.match(/\.tests-suites__scroll\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(wrapper).toMatch(/overflow: auto;/);
+    expect(wrapper).toMatch(/max-height: [\d.]+rem;/);
+    expect(CODE).toMatch(/\.tests-suites__list\s*\{[^}]*min-width: [\d.]+rem;/);
+  });
+
+  it("draws the selected row as an accent inset, which no status hue is", () => {
+    const selected = CODE.match(/\.tests-suites__row\[data-selected="true"\]\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(selected).toMatch(/box-shadow: inset [^;]*var\(--accent\);/);
+    expect(selected).not.toMatch(/var\(--(ok|warn|err)\)/);
+  });
+
+  it("gives both of a row's buttons a visible focus ring", () => {
+    expect(CODE).toMatch(/\.tests-suites__select:focus-visible::after\s*\{[^}]*outline: [^;]*var\(--accent\);/);
+    expect(CODE).toMatch(/\.tests-suites__toggle:focus-visible\s*\{[^}]*outline: [^;]*var\(--accent\);/);
+  });
+
+  it("stretches the row's button over the row, and lifts the chevron above it", () => {
+    expect(CODE).toMatch(/\.tests-suites__row\s*\{[^}]*position: relative;/);
+    expect(CODE).toMatch(/\.tests-suites__select::after\s*\{[^}]*inset: 0;/);
+    expect(CODE).toMatch(/\.tests-suites__toggle\s*\{[^}]*z-index: 1;/);
+  });
+
+  it("gives each status its own hue on the count, from the tokens", () => {
+    for (const tone of ["err", "warn", "ok"]) {
+      expect(CODE).toMatch(new RegExp(`\\.tests-suites__count--${tone}\\s*\\{\\s*color: var\\(--${tone}\\);`));
     }
   });
 });

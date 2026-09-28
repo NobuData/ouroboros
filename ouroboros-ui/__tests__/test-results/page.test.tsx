@@ -3,11 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { prPath } from "@/app/paths";
 import { navRegistry } from "@/app/shell/nav-registry";
+import { SUITES_TITLE } from "@/app/test-results/suites";
 import { ACTIONS_LABEL, VIEWER_REASON } from "@/app/test-results/view";
 
 import { membership, sessionUser } from "../helpers/login";
 import { SEEDED_RUN_ID } from "../helpers/runs";
-import { gate, timeline } from "../helpers/test-results";
+import { gate, page, timeline } from "../helpers/test-results";
 
 /**
  * The test-results route (#335): the gate first, then one read — a run this workspace cannot see
@@ -168,5 +169,35 @@ describe("the test-results route", () => {
     holding(["viewer"]);
     await open();
     expect(screen.getByText(VIEWER_REASON)).toBeInTheDocument();
+  });
+
+  it("draws the suites the read found, with the one ?suite= names selected (#337)", async () => {
+    readTests.mockResolvedValue({
+      state: "found",
+      value: {
+        timeline: timeline(),
+        trackerUrl: null,
+        commitSource: null,
+        gate: gate(),
+        page: page(),
+        pullRequest: null,
+      },
+    });
+    await open({ suite: "telemetry integration" });
+
+    const card = within(screen.getByRole("region", { name: SUITES_TITLE }));
+    expect(card.getByRole("button", { name: "telemetry integration" })).toHaveAttribute("aria-pressed", "true");
+    expect(card.getByRole("button", { name: "unit · drivers" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("selects nothing when the address names no suite (#337)", async () => {
+    readTests.mockResolvedValue({
+      state: "found",
+      value: { timeline: timeline(), trackerUrl: null, commitSource: null, gate: gate(), page: page(), pullRequest: null },
+    });
+    await open();
+
+    const card = within(screen.getByRole("region", { name: SUITES_TITLE }));
+    expect(card.queryByRole("button", { pressed: true })).toBeNull();
   });
 });

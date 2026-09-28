@@ -24,6 +24,7 @@ import {
   prPath,
   runPath,
   TESTS_ATTEMPT_PARAM,
+  TESTS_SUITE_PARAM,
   testsPath,
   safeReturnTo,
   workflowPath,
@@ -129,6 +130,16 @@ describe("the paths themselves", () => {
     expect(testsPath("5eed", { attempt: 3 })).toBe("/runs/5eed/tests?attempt=3");
     expect(testsPath("5eed", { from: "dashboard", attempt: 2 })).toBe("/runs/5eed/tests?from=dashboard&attempt=2");
     expect(testsPath("a/b?c", { from: "x&y=z" })).toBe("/runs/a%2Fb%3Fc/tests?from=x%26y%3Dz");
+  });
+
+  it("carry the selected suite by name, beside the attempt (#337)", () => {
+    expect(TESTS_SUITE_PARAM).toBe("suite");
+    expect(testsPath("5eed", { attempt: 3, suite: "telemetry integration" })).toBe(
+      "/runs/5eed/tests?attempt=3&suite=telemetry+integration",
+    );
+    expect(testsPath("5eed", { suite: "unit · drivers&x=1" })).toBe(
+      `/runs/5eed/tests?suite=${encodeURIComponent("unit · drivers&x=1").replace(/%20/g, "+")}`,
+    );
   });
 
   it("address one PR's verification page by its id, carrying where it was opened from (#363)", () => {

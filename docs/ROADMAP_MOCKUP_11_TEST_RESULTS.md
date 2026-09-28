@@ -771,7 +771,7 @@ tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | AU.1 | #335 ✅ | 🟢 Done | ouroboros-ui: [AU.1] Test-results route, head & summary strip | Attempt-scoped route, actions, five stat cards | mvp, tests, ui, design | N (after #41, AT.5, BA-D.5) | Y | M | ouroboros-ui |
 | AU.2 | #336 ✅ | 🟢 Done | ouroboros-ui: [AU.2] Build attempts timeline | err/warn/live/future attempt cards with arrows | mvp, tests, ui, design | N (after AU.1) | Y | S | ouroboros-ui |
-| AU.3 | #337 | 🟡 Open | ouroboros-ui: [AU.3] Suites card | Platform-tagged suite rows, meters, selection → filtering | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
+| AU.3 | #337 ✅ | 🟢 Done | ouroboros-ui: [AU.3] Suites card | Platform-tagged suite rows, meters, selection → filtering | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.4 | #338 | 🟡 Open | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.5 | #339 | 🟡 Open | ouroboros-ui: [AU.5] Failure detail card | Test path, rig log block, honest triage slot | mvp, tests, ui, design | N (after AU.3/AU.4) | Y | M | ouroboros-ui |
 | AU.6 | #340 | 🟡 Open | ouroboros-ui: [AU.6] Mark & Route card | Classify radios with hints, note, toggles, routing actions | mvp, tests, ui | N (after AU.5, AT.4) | Y | L | ouroboros-ui |
@@ -885,7 +885,7 @@ Test Results · Run #1847 · Build 3
 
 ### Issue AU.3 — ouroboros-ui: [AU.3] Suites card
 
-> **GitHub issue:** #337 · **Status:** 🟡 Open · **Parent epic:** #322
+> **GitHub issue:** #337 · **Status:** 🟢 Done · **Parent epic:** #322
 
 - **Problem Statement:** The suite grid — name, platform tag, meter,
   count, selection — is the page's navigation spine into cases.
@@ -905,6 +905,28 @@ Test Results · Run #1847 · Build 3
 unit · drivers [native_sim] ▓▓▓▓▓ 24/24 · telemetry integration [qemu] ▓▓▓▓░ 18/19 ◀ sel
 PHYSICAL · HIL rig [rig:helios-rig-02] ▓▓░░ 1/2
 ```
+
+> **Delivered as `ouroboros-ui/app/test-results/suites.ts` and `suites-card.tsx`**, over a new read
+> of AT.5's `GET /api/v1/test-runs/:id` (`/api/test-runs/:id` on the UI's origin, polled per
+> attempt). Decided on #337:
+>
+> 1. **A suite's status is read from its counts and its kind** — the payload states none. Nothing
+>    failing (every case passed or skipped) is `ok`; otherwise a `sim` suite is `err` and a
+>    `physical` one is `warn`; a suite nothing ran in is neutral. This is the mockup's colouring
+>    (`18/19` err, `1/2` warn), and a flaky case counts as not passed.
+> 2. **The selection is a name, in `?suite=`** (replaced, beside `?attempt=`), and **nothing is
+>    selected by default**. Pressing the selected row clears it.
+> 3. **An attempt switch resolves the selection by name** — by platform too when two suites share
+>    one. A build without that suite clears the selection, drops `?suite=` and says
+>    *`<name>` did not run in Build N — selection cleared.* It is not restored on a later switch.
+> 4. **Selecting and opening are separate gestures**: the row selects, a chevron lists the cases.
+>    Several drills may be open; what is open is not in the address.
+> 5. **The retry chip is the strip's arithmetic** — the index of the first pass over the runs taken
+>    (`failed, failed, passed` → `retry 2/3`) — drawn for any case that ran more than once.
+> 6. **The head carries no `twister · zephyr 4.1` tag**: the payload names no test framework, and
+>    the card prints nothing it was not told.
+> 7. **#338 and #339 are scoped by `suitesView(...).scope`** (`id`, `name`, `platform`, `kind`),
+>    which the screen already computes.
 
 ### Issue AU.4 — ouroboros-ui: [AU.4] Physical tests card
 
