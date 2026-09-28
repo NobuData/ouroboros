@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.17"
+  version: "0.37.18"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -19100,6 +19100,110 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/pull-requests/{id}/thread/{entryId}/resolve:
+    post:
+      tags: [pr-page]
+      summary: Reply and resolve — close out an entry of the review thread
+      description: |-
+        Resolve one entry of the PR's review thread
+        ([#368](https://github.com/NobuData/ouroboros/issues/368)), with the reply that resolves
+        it: *was blocking → "Addressed in attempt 4" → resolved*.
+
+        **Reply and resolve are one act, and one-way** (V057): `resolved` is raised and `reply` is
+        written as the entry's `resolutionBody` with it; neither is rewritten afterwards, so an
+        entry already resolved is `409 pr_thread_entry_resolved`. `reply` is optional — an entry
+        may simply be dealt with.
+
+        **Nothing here authors an entry.** Who said what — `authorKind`, `authorName`, `simulated`
+        — is untouched, and a `policy_bot` entry, which states a rule rather than an objection, is
+        `409 pr_thread_entry_not_resolvable`. The PR may be in any state: the thread is this
+        plane's record, not the host's.
+
+        **`mirror: true`** also posts the reply to the host PR as a comment, keyed by the entry and
+        carrying the entry's watermark. It needs a reply (`422 pr_thread_mirror_needs_reply`). A
+        host that refuses is **answered, not thrown** — `mirror.state: failed` with its reason —
+        and the resolution stands.
+
+        Audited as `pr_thread.resolved` with the person as the actor, never with the reply.
+      operationId: resolvePullRequestThreadEntry
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+        - $ref: "#/components/parameters/ThreadEntryId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResolveThreadEntryRequest"
+            example:
+              reply: Addressed in attempt 4 — sampling decoupled from telemetry drain.
+              mirror: true
+      responses:
+        "200":
+          description: The resolved entry, and how the host mirror landed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrThreadResolution"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `viewer`. Resolving is an `owner`'s, `admin`'s or `member`'s.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pr_thread_entry_not_found` — this PR's thread has no such entry.
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about** (a PR of another workspace is `404`, never `403`). Or `tenant_not_found`, when
+            `X-Ouro-Tenant` names a workspace you are not a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `pr_thread_entry_resolved` — the entry is already resolved, and a resolution and its
+            reply are not rewritten. `pr_thread_entry_not_resolvable` — a policy entry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `pr_thread_mirror_needs_reply` — `mirror` with no `reply`. `validation_failed` — an id
+            that is not a uuid, a reply that is empty, padded or over 8192 characters, or a
+            `mirror` that is not a boolean.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/farm/jobs:
     post:
       tags: [farm]
@@ -20077,6 +20181,16 @@ components:
         type: string
         format: uuid
       example: 5eed003e-0000-4000-8000-000000005141
+
+    ThreadEntryId:
+      name: entryId
+      in: path
+      required: true
+      description: The entry — `pr_thread_entries.id`, one entry of this PR's review thread (V057).
+      schema:
+        type: string
+        format: uuid
+      example: 5eed0040-0000-4000-8000-000000005142
 
     EvidenceId:
       name: evidenceId
@@ -23719,6 +23833,59 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/PrThreadEntry"
+
+    ResolveThreadEntryRequest:
+      type: object
+      title: ResolveThreadEntryRequest
+      additionalProperties: false
+      properties:
+        reply:
+          type: string
+          minLength: 1
+          maxLength: 8192
+          description: |-
+            The resolving reply — written as the entry's `resolutionBody`. Neither empty nor
+            padded. Optional.
+        mirror:
+          type: boolean
+          description: Also post the reply to the host PR as a comment. Needs a `reply`.
+
+    PrThreadMirror:
+      type: object
+      title: PrThreadMirror
+      description: How the host mirror of a resolving reply landed, on this request.
+      additionalProperties: false
+      required: [state, url, error]
+      properties:
+        state:
+          type: string
+          enum: [not_requested, posted, failed]
+        url:
+          type: [string, "null"]
+          description: The comment's page on the host, when posted and the host said.
+        error:
+          description: Why the host refused, on failure.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [code, message]
+              properties:
+                code:
+                  type: string
+                message:
+                  type: string
+            - type: "null"
+
+    PrThreadResolution:
+      type: object
+      title: PrThreadResolution
+      additionalProperties: false
+      required: [entry, mirror]
+      properties:
+        entry:
+          $ref: "#/components/schemas/PrThreadEntry"
+        mirror:
+          $ref: "#/components/schemas/PrThreadMirror"
 
     PrSpendLine:
       type: object

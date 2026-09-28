@@ -2,7 +2,8 @@
  * What the head's Server Actions (`head-actions.ts`) answer, and the sentences they answer with
  * ([#363](https://github.com/NobuData/ouroboros/issues/363)) — the gates card's approval
  * ([#365](https://github.com/NobuData/ouroboros/issues/365)), and the criteria matrix's actions
- * (`criteria-actions.ts`, [#366](https://github.com/NobuData/ouroboros/issues/366)).
+ * (`criteria-actions.ts`, [#366](https://github.com/NobuData/ouroboros/issues/366)) and the
+ * review thread's (`thread-actions.ts`, [#368](https://github.com/NobuData/ouroboros/issues/368)).
  *
  * Kept apart from the actions because a `"use server"` module may export async functions only,
  * and the page and its tests need to name these too.
@@ -14,6 +15,7 @@ import type {
   PrCriterion,
   PrCriterionWaived,
   PrReviewOutcome,
+  PrThreadResolution,
   ReturnToLoop,
 } from "@/app/api/pull-requests";
 
@@ -103,3 +105,19 @@ export type WaiveOutcome = CriteriaAnswer<PrCriterionWaived>;
 
 /** What became of the picker's read. */
 export type OptionsOutcome = CriteriaAnswer<EvidenceOptions>;
+
+// --- the review thread (#368) --------------------------------------------------------------
+
+/** The longest resolving reply — the service's `MAX_THREAD_REPLY_LENGTH` (V057). */
+export const MAX_THREAD_REPLY_LENGTH = 8192;
+
+/** What *Reply & resolve* is sent with. */
+export interface ThreadResolveRequest {
+  /** The resolving reply, neither empty nor padded — or absent, to resolve without one. */
+  readonly reply?: string;
+  /** Whether to post the reply on the host PR too. Needs a reply. */
+  readonly mirror: boolean;
+}
+
+/** What became of *Reply & resolve* — the entry, and what the host did with the mirror. */
+export type ThreadResolveOutcome = CriteriaAnswer<PrThreadResolution>;

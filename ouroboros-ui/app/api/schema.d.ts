@@ -5984,6 +5984,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/pull-requests/{id}/thread/{entryId}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reply and resolve — close out an entry of the review thread
+         * @description Resolve one entry of the PR's review thread
+         *     ([#368](https://github.com/NobuData/ouroboros/issues/368)), with the reply that resolves
+         *     it: *was blocking → "Addressed in attempt 4" → resolved*.
+         *
+         *     **Reply and resolve are one act, and one-way** (V057): `resolved` is raised and `reply` is
+         *     written as the entry's `resolutionBody` with it; neither is rewritten afterwards, so an
+         *     entry already resolved is `409 pr_thread_entry_resolved`. `reply` is optional — an entry
+         *     may simply be dealt with.
+         *
+         *     **Nothing here authors an entry.** Who said what — `authorKind`, `authorName`, `simulated`
+         *     — is untouched, and a `policy_bot` entry, which states a rule rather than an objection, is
+         *     `409 pr_thread_entry_not_resolvable`. The PR may be in any state: the thread is this
+         *     plane's record, not the host's.
+         *
+         *     **`mirror: true`** also posts the reply to the host PR as a comment, keyed by the entry and
+         *     carrying the entry's watermark. It needs a reply (`422 pr_thread_mirror_needs_reply`). A
+         *     host that refuses is **answered, not thrown** — `mirror.state: failed` with its reason —
+         *     and the resolution stands.
+         *
+         *     Audited as `pr_thread.resolved` with the person as the actor, never with the reply.
+         */
+        post: operations["resolvePullRequestThreadEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/farm/jobs": {
         parameters: {
             query?: never;
@@ -8546,6 +8585,36 @@ export interface components {
             /** @description Blocking and unresolved. */
             openCount: number;
             entries: components["schemas"]["PrThreadEntry"][];
+        };
+        /** ResolveThreadEntryRequest */
+        ResolveThreadEntryRequest: {
+            /**
+             * @description The resolving reply — written as the entry's `resolutionBody`. Neither empty nor
+             *     padded. Optional.
+             */
+            reply?: string;
+            /** @description Also post the reply to the host PR as a comment. Needs a `reply`. */
+            mirror?: boolean;
+        };
+        /**
+         * PrThreadMirror
+         * @description How the host mirror of a resolving reply landed, on this request.
+         */
+        PrThreadMirror: {
+            /** @enum {string} */
+            state: "not_requested" | "posted" | "failed";
+            /** @description The comment's page on the host, when posted and the host said. */
+            url: string | null;
+            /** @description Why the host refused, on failure. */
+            error: {
+                code: string;
+                message: string;
+            } | null;
+        };
+        /** PrThreadResolution */
+        PrThreadResolution: {
+            entry: components["schemas"]["PrThreadEntry"];
+            mirror: components["schemas"]["PrThreadMirror"];
         };
         /** PrSpendLine */
         PrSpendLine: {
@@ -16826,6 +16895,11 @@ export interface components {
          * @example 5eed003e-0000-4000-8000-000000005141
          */
         CriterionId: string;
+        /**
+         * @description The entry — `pr_thread_entries.id`, one entry of this PR's review thread (V057).
+         * @example 5eed0040-0000-4000-8000-000000005142
+         */
+        ThreadEntryId: string;
         /**
          * @description The evidence — `pr_criteria_evidence.id`, one citation of this criterion (V057).
          * @example 5eed003f-0000-4000-8000-000000051411
@@ -43686,6 +43760,168 @@ export interface operations {
             /**
              * @description `pr_decline_note_required` — a decline with no note. `validation_failed` — a decision other
              *     than `approve` or `decline`, or a padded note, or one over 2000 characters.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resolvePullRequestThreadEntry: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+                /**
+                 * @description The entry — `pr_thread_entries.id`, one entry of this PR's review thread (V057).
+                 * @example 5eed0040-0000-4000-8000-000000005142
+                 */
+                entryId: components["parameters"]["ThreadEntryId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "reply": "Addressed in attempt 4 — sampling decoupled from telemetry drain.",
+                 *       "mirror": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["ResolveThreadEntryRequest"];
+            };
+        };
+        responses: {
+            /** @description The resolved entry, and how the host mirror landed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrThreadResolution"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a `viewer`. Resolving is an `owner`'s, `admin`'s or `member`'s. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pr_thread_entry_not_found` — this PR's thread has no such entry.
+             *     `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about** (a PR of another workspace is `404`, never `403`). Or `tenant_not_found`, when
+             *     `X-Ouro-Tenant` names a workspace you are not a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pr_thread_entry_resolved` — the entry is already resolved, and a resolution and its
+             *     reply are not rewritten. `pr_thread_entry_not_resolvable` — a policy entry.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pr_thread_mirror_needs_reply` — `mirror` with no `reply`. `validation_failed` — an id
+             *     that is not a uuid, a reply that is empty, padded or over 8192 characters, or a
+             *     `mirror` that is not a boolean.
              */
             422: {
                 headers: {

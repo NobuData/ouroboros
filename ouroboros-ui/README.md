@@ -464,6 +464,9 @@ ouroboros-ui/
 │   │   ├── diff.ts          #   the stored diff sample, read into files, hunks and lines · #367
 │   │   ├── files.ts         #   the Changed files card: meters scaled against the set, the excerpt's honesty, out-of-scope rows
 │   │   ├── files-card.tsx   #   the file rows, the excerpt file by file, scrolling to what was followed
+│   │   ├── thread.ts        #   the Review thread card: the header counted from the rows, provenance as a condition of rendering · #368
+│   │   ├── thread-card.tsx  #   the entries in their own scrolling wrapper: author kind, tag, watermark, the blocking → resolved arc
+│   │   ├── thread-actions.ts · resolve-dialog.tsx # resolveEntry() — Reply & resolve, with the optional host mirror
 │   │   ├── poll.ts          #   the reader and guard: the whole PR page
 │   │   ├── data.ts          #   readPr() — the first paint; runPullRequests() — which runs opened a PR
 │   │   ├── outcomes.ts · head-actions.ts # requestHumanReview() / returnToLoop() / decideApproval() — the Server Actions
@@ -472,7 +475,7 @@ ouroboros-ui/
 │   │   ├── return-dialog.tsx #  the danger dialog: which red gates the agent receives
 │   │   ├── merge-plan-slot.tsx # where Merge when all gates green lands until #369 draws the card
 │   │   ├── pr-loading.tsx · pr-missing.tsx # the first read in flight; a PR that does not exist
-│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates card, criteria matrix, changed files, slots, dialogs — one poll
+│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates card, criteria matrix, changed files, review thread, slots, dialogs — one poll
 │   ├── workflows/           # the workflow studio's frame — mockup 04 · #147
 │   │   ├── view.ts          #   the trigger in words, the subline, the segments, the rail's items
 │   │   ├── states.ts        #   the five states, the head and the seat for each, the read-only note
@@ -3985,6 +3988,43 @@ rows the gate's evidence line names take the err tint and `outside the planned f
 the card explains — `1 changed file falls outside the planned file list of the plan of issue
 #482.` The gate's line is bounded too, so what it had no room to name (`+3 more`) is stated, not
 guessed.
+
+### The review thread card
+
+The card ([#368](https://github.com/NobuData/ouroboros/issues/368)) is mockup 12's *Review
+thread* (`app/prs/thread.ts`): every entry of the PR, oldest first, whichever revision it was
+about.
+
+| Part | What is drawn |
+|------|---------------|
+| author | the mono label, in its kind's hue — and the kind in words (`model`, `policy bot`, `person`) for a screen reader |
+| tag | `self-review`, `second opinion`, `policy`; `· rev 1` when the entry is about an earlier revision |
+| pill | `blocking` on an unanswered objection, `was blocking` once it is resolved |
+| watermark | `simulated` on a seeded or simulated entry (decision R4) |
+| body | what was said; a blocking entry takes the accent rule beside it |
+| reply · `✓ resolved` | the resolving reply, and the resolve line, beneath a resolved entry |
+
+**The header is counted from the rows** — `3 entries · 0 open`, where *open* is blocking and
+unresolved. The payload's own counts are not read, so the header cannot disagree with the entries
+beneath it.
+
+**Provenance is a condition of rendering.** An entry is drawn only when it names its author and
+a kind this page knows, and a **model's entry only when it carries the `simulated` watermark**:
+until [#371](https://github.com/NobuData/ouroboros/issues/371) produces real votes, an
+unwatermarked model entry is an invented reviewer. What is refused is withheld, **said to be**
+(`1 entry is withheld…`), and still counted — a blocking entry this page will not draw is still
+open.
+
+**Reply & resolve** is offered to an owner, admin or member on an unresolved entry — never on the
+policy bot's, which states a rule. The dialog takes an optional reply and an optional *post the
+reply on the PR*, inert while there is no reply. It is sent once
+(`POST …/thread/{entryId}/resolve`) and only a reply and a flag are sent, so nothing here can
+author an entry. The resolved entry is drawn from the answer and stands until a read made after it
+has caught up. A host that refuses the mirror is said on the card: the entry is resolved, the
+reply was not posted, and why.
+
+`No review entries yet` is the empty state. A long thread scrolls inside the entries' own
+wrapper, which takes focus so the keyboard can scroll it.
 
 ## Workflow Studio
 

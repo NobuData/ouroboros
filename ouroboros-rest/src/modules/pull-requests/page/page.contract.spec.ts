@@ -7,6 +7,7 @@ import { criteriaCounts } from "../criteria/criteria.resources";
 import { mergePlanResource } from "../merge/merge.resources";
 import { PageActionsService } from "./page.actions";
 import { PageService } from "./page.service";
+import { ThreadActionsService } from "./page.thread";
 import { FakePageStore, KEN, ORG, PR, REV_1, totals } from "./page.store.fixture";
 
 /**
@@ -165,6 +166,35 @@ describe("the PR page keeps its OpenAPI contract", () => {
     ).toBeUndefined();
   });
 
+  it("POST …/thread/{entryId}/resolve sends a PrThreadResolution, mirrored or refused (#368)", async () => {
+    const open = "5eed0040-0000-4000-8000-000000005144";
+    const resolution = async (comment: () => Promise<never> | Promise<object>) => {
+      const store = new FakePageStore();
+      const [seeded] = store.threadRows.entries;
+      store.threadRows = {
+        ...store.threadRows,
+        entries: [{ ...seeded, id: open, resolved: false, resolutionBody: null }],
+      };
+
+      return wire(
+        await new ThreadActionsService(
+          store,
+          { comment: comment as never },
+          { record: () => Promise.resolve("1") },
+        ).resolve(ORG, PR, open, ACTOR, { reply: "Addressed in attempt 4", mirror: true }),
+      );
+    };
+
+    const posted = await resolution(() =>
+      Promise.resolve({ commentId: "c-1", url: null, mode: "created" }),
+    );
+    const refused = await resolution(() => Promise.reject(new Error("socket hang up")));
+
+    expect(validatorFor("PrThreadResolution")(posted)).toBeUndefined();
+    expect(validatorFor("PrThreadResolution")(refused)).toBeUndefined();
+    expect(refused).toMatchObject({ entry: { resolved: true }, mirror: { state: "failed" } });
+  });
+
   it("documents every head action's refusals by code", () => {
     const paths = document().paths as Record<
       string,
@@ -177,5 +207,9 @@ describe("the PR page keeps its OpenAPI contract", () => {
     expect(text("return-to-loop", "409")).toContain("pull_request_has_no_run");
     expect(text("approvals", "422")).toContain("pr_decline_note_required");
     expect(text("request-review", "409")).toContain("pull_request_not_open");
+    expect(text("thread/{entryId}/resolve", "409")).toContain("pr_thread_entry_resolved");
+    expect(text("thread/{entryId}/resolve", "409")).toContain("pr_thread_entry_not_resolvable");
+    expect(text("thread/{entryId}/resolve", "404")).toContain("pr_thread_entry_not_found");
+    expect(text("thread/{entryId}/resolve", "422")).toContain("pr_thread_mirror_needs_reply");
   });
 });

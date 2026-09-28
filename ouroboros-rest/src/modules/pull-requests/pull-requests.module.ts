@@ -33,6 +33,7 @@ import { PageActionsService } from "./page/page.actions";
 import { PageController } from "./page/page.controller";
 import { PageRepository } from "./page/page.repository";
 import { PageService } from "./page/page.service";
+import { ThreadActionsService } from "./page/page.thread";
 import { PrMirrorRepository } from "./pr-sync.repository";
 import { PrSyncService } from "./pr-sync.service";
 
@@ -50,6 +51,7 @@ import { PrSyncService } from "./pr-sync.service";
     PageRepository,
     PageService,
     PageActionsService,
+    ThreadActionsService,
   ],
   exports: [PrSyncService],
 })

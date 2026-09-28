@@ -27,6 +27,18 @@ export const PAGE_ERRORS = {
 
   /** A decline with no note — a red gate says why. */
   declineNoteRequired: "pr_decline_note_required",
+
+  /** An `entryId` that is not an entry of this PR's review thread. */
+  threadEntryNotFound: "pr_thread_entry_not_found",
+
+  /** The entry is already resolved — a resolution, and its reply, are fixed (V057). */
+  threadEntryResolved: "pr_thread_entry_resolved",
+
+  /** A policy entry states a rule; there is nothing in it to resolve. */
+  threadEntryNotResolvable: "pr_thread_entry_not_resolvable",
+
+  /** A mirror asked for with no reply — there is nothing to post to the host. */
+  threadMirrorNeedsReply: "pr_thread_mirror_needs_reply",
 } as const;
 
 /**
@@ -100,5 +112,50 @@ export function declineNoteRequired(): InvalidRequestError {
   return new InvalidRequestError(
     PAGE_ERRORS.declineNoteRequired,
     "A decline needs a note: the human-approval gate goes red, and it has to say why.",
+  );
+}
+
+/**
+ * @param prId - The PR.
+ * @param entryId - The entry asked for.
+ * @returns `404 pr_thread_entry_not_found`.
+ */
+export function threadEntryNotFound(prId: string, entryId: string): NotFoundError {
+  return new NotFoundError(
+    PAGE_ERRORS.threadEntryNotFound,
+    "No such entry on this pull request's review thread.",
+    { prId, entryId },
+  );
+}
+
+/**
+ * @param entryId - The entry.
+ * @returns `409 pr_thread_entry_resolved`.
+ */
+export function threadEntryResolved(entryId: string): ConflictError {
+  return new ConflictError(
+    PAGE_ERRORS.threadEntryResolved,
+    "The entry is already resolved — a resolution and its reply are not rewritten.",
+    { entryId },
+  );
+}
+
+/**
+ * @param entryId - The entry.
+ * @returns `409 pr_thread_entry_not_resolvable`.
+ */
+export function threadEntryNotResolvable(entryId: string): ConflictError {
+  return new ConflictError(
+    PAGE_ERRORS.threadEntryNotResolvable,
+    "A policy entry states the rule that applied; there is nothing in it to resolve.",
+    { entryId },
+  );
+}
+
+/** @returns `422 pr_thread_mirror_needs_reply`. */
+export function threadMirrorNeedsReply(): InvalidRequestError {
+  return new InvalidRequestError(
+    PAGE_ERRORS.threadMirrorNeedsReply,
+    "Mirroring to the host needs a reply: the reply is what is posted.",
   );
 }

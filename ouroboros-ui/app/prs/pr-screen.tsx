@@ -57,15 +57,28 @@ import type {
   ReturnOutcome,
   ReturnSelection,
   ReviewRequestOutcome,
+  ThreadResolveOutcome,
+  ThreadResolveRequest,
   WaiveOutcome,
 } from "./outcomes";
 import { PrActions } from "./pr-actions";
 import { PrHead } from "./pr-head";
 import { type PrPollOptions, createPagePoll } from "./poll";
+import { ResolveDialog } from "./resolve-dialog";
 import { ReturnDialog } from "./return-dialog";
 import type { TextDialogOutcome } from "./text-dialog";
 import { RevisionStrip } from "./revision-strip";
 import { gatesScope, scopedRevision, stripSteps, withRevision } from "./strip";
+import {
+  ENTRY_GONE,
+  type LocalEntry,
+  type ThreadOutcome,
+  resolveOutcome,
+  threadCard,
+  withResolved,
+} from "./thread";
+import { resolveEntry } from "./thread-actions";
+import { ThreadCard } from "./thread-card";
 import {
   NO_REVISION,
   type OutcomeView,
@@ -125,6 +138,17 @@ const CRITERIA_SENDERS: CriteriaSenders = {
   waive: waiveClaim,
 };
 
+/**
+ * How the review thread resolves an entry
+ * ([#368](https://github.com/NobuData/ouroboros/issues/368)). The Server Action in production;
+ * tests pass their own.
+ */
+export type EntryResolver = (
+  prId: string,
+  entryId: string,
+  request: ThreadResolveRequest,
+) => Promise<ThreadResolveOutcome>;
+
 /** What is said when the claim a dialog was opened for is no longer on the page. */
 export const CLAIM_GONE = "That claim is no longer on this PR.";
 
@@ -178,6 +202,8 @@ export interface PrScreenProps {
   readonly sendApproval?: ApprovalSender;
   /** How one opening of the return dialog is keyed. Defaults to {@link newReplayKey}. */
   readonly replayKey?: () => string | undefined;
+  /** How a thread entry is resolved. Defaults to the Server Action. */
+  readonly sendResolve?: EntryResolver;
 }
 
 /**
@@ -218,6 +244,11 @@ export interface PrScreenProps {
  * the rows with their meters, and the bounded diff excerpt, labelled as one. A hunk reference
  * scrolls the excerpt to its range, and a red diff-vs-plan gate links to the rows it flags.
  *
+ * **The review thread is the PR's own too** ([#368](https://github.com/NobuData/ouroboros/issues/368)):
+ * every entry, whichever revision it was about. *Reply & resolve* opens its dialog; the resolved
+ * entry is drawn from the answer and stands until a read made after it has caught up, and the
+ * header's open count follows because it is counted from the rows.
+ *
  * @param props See {@link PrScreenProps}.
  * @returns The screen.
  */
@@ -238,6 +269,7 @@ export function PrScreen({
   sendReturn = returnToLoop,
   sendApproval = decideApproval,
   replayKey = newReplayKey,
+  sendResolve = resolveEntry,
 }: PrScreenProps) {
   const read = useKeyedPoll(prId, (id) => createPagePoll(id, poll));
 
@@ -270,6 +302,10 @@ export function PrScreen({
   const [addingClaim, setAddingClaim] = useState(false);
   const [attachingTo, setAttachingTo] = useState<string | null>(null);
   const [waiving, setWaiving] = useState<string | null>(null);
+  const [resolving, setResolving] = useState<string | null>(null);
+  const [resolved, setResolved] = useState<readonly LocalEntry[]>([]);
+  const [threadSending, setThreadSending] = useState(false);
+  const [threadOutcome, setThreadOutcome] = useState<ThreadOutcome | null>(null);
   const [hunk, setHunk] = useState<Hunk | null>(initialHunk);
   const [arrival, setArrival] = useState<FilesArrival | null>(
     initialHunk === null ? null : { kind: "hunk", seq: 0 },
@@ -502,6 +538,39 @@ export function PrScreen({
   }
 
   /**
+   * Resolve the entry the dialog was opened for, with what it confirmed.
+   *
+   * @param request The reply, and whether to mirror it.
+   * @returns The outcome, for the dialog: it closes on a resolution — mirrored or not, which the
+   *   card then says — and draws a refusal.
+   */
+  async function confirmResolve(request: ThreadResolveRequest): Promise<TextDialogOutcome> {
+    if (resolving === null) return { ok: false, reason: ENTRY_GONE };
+
+    const entryId = resolving;
+
+    setThreadSending(true);
+
+    try {
+      const outcome = await sendResolve(prId, entryId, request);
+      if (!outcome.ok) return outcome;
+
+      const at = now();
+
+      setResolved((current) => [
+        ...standing(current, read.snapshot.updatedAt),
+        { entry: outcome.answer.entry, at },
+      ]);
+      setThreadOutcome(resolveOutcome(outcome.answer));
+
+      return { ok: true };
+    } finally {
+      setThreadSending(false);
+      read.refresh();
+    }
+  }
+
+  /**
    * Follow a hunk reference to the changed files.
    *
    * @param cited The hunk.
@@ -542,6 +611,10 @@ export function PrScreen({
           search: withRevision(`?${RUN_ORIGIN_PARAM}=${encodeURIComponent(origin.id)}`, scoped),
         });
   const waived = criteria.find((each) => each.id === waiving) ?? null;
+  const entries =
+    page === null ? [] : withResolved(page.thread, resolved, read.snapshot.updatedAt);
+  const thread = page === null ? null : threadCard({ page, entries, mayContribute });
+  const answered = entries.find((each) => each.id === resolving) ?? null;
   const head = page === null ? null : prHead(page, origin.id);
   const actions =
     page === null
@@ -635,6 +708,15 @@ export function PrScreen({
 
       {page !== null && <FilesCard arrival={arrival} view={filesCard(page, hunk)} />}
 
+      {thread !== null && (
+        <ThreadCard
+          onResolve={setResolving}
+          outcome={threadOutcome}
+          sending={threadSending}
+          view={thread}
+        />
+      )}
+
       {page !== null && actions !== null && actions.merge !== null && (
         <MergePlanSlot
           chosen={chosen !== null && chosen === revision?.seq ? chosen : null}
@@ -664,6 +746,16 @@ export function PrScreen({
             onConfirm={confirmWaive}
           />
         </>
+      )}
+
+      {page !== null && (
+        <ResolveDialog
+          entry={
+            answered === null ? null : { author: answered.authorName, body: answered.body }
+          }
+          onClose={() => setResolving(null)}
+          onConfirm={confirmResolve}
+        />
       )}
 
       {page !== null && (

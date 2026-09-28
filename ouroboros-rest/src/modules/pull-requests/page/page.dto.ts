@@ -30,7 +30,9 @@ import { PULL_REQUEST_STATES, type PullRequestState } from "../../db/schema";
 import { MAX_IDEMPOTENCY_KEY_LENGTH } from "../../ingest/ingest.dto";
 import { PageQuery } from "../../tenancy/pagination";
 
-export { PullRequestParams } from "../criteria/criteria.dto";
+import { PullRequestParams } from "../criteria/criteria.dto";
+
+export { PullRequestParams };
 
 /** V065's `pr_approvals_note_bounded` — at most 2000. */
 export const MAX_APPROVAL_NOTE_LENGTH = 2000;
@@ -43,6 +45,9 @@ export const MAX_RETURNED_GATES = 64;
 
 /** The longest note a return carries; the steer's own limit shortens it further if it must. */
 export const MAX_RETURN_NOTE_LENGTH = 1024;
+
+/** V057's `pr_thread_entries_resolution_when_resolved` — a resolving reply is at most 8192. */
+export const MAX_THREAD_REPLY_LENGTH = 8192;
 
 /** The most runs one listing narrows to — the page size's own ceiling. */
 export const MAX_LISTED_RUN_IDS = 100;
@@ -169,4 +174,29 @@ export class ApprovalDecisionDto {
   @MaxLength(MAX_APPROVAL_NOTE_LENGTH)
   @IsString()
   note?: string;
+}
+
+/** The path of `/api/v1/pull-requests/{id}/thread/{entryId}…`. */
+export class ThreadEntryParams extends PullRequestParams {
+  /** `pr_thread_entries.id`, a uuid (V057). */
+  @IsUUID()
+  entryId!: string;
+}
+
+/** `POST /api/v1/pull-requests/{id}/thread/{entryId}/resolve`. */
+export class ResolveThreadEntryDto {
+  /** The resolving reply — *Addressed in attempt 4 — …*. Optional: an entry may simply be resolved. */
+  @IsOptional()
+  @Matches(TRIMMED, { message: "reply must not be empty or padded with whitespace" })
+  @MaxLength(MAX_THREAD_REPLY_LENGTH)
+  @IsString()
+  reply?: string;
+
+  /**
+   * `true` — also post the reply to the host PR as a comment. Needs a reply
+   * (`422 pr_thread_mirror_needs_reply`). A host refusal is answered, never thrown.
+   */
+  @IsOptional()
+  @IsBoolean()
+  mirror?: boolean;
 }

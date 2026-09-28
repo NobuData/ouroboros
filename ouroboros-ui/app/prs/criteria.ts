@@ -469,10 +469,10 @@ export interface LocalCriterion {
  * @returns The locals no read has caught up with: a read made after an answer has seen what the
  *   answer wrote, so the read is then the newer statement.
  */
-export function standing(
-  locals: readonly LocalCriterion[],
+export function standing<T extends { readonly at: number }>(
+  locals: readonly T[],
   readAt: number | null,
-): readonly LocalCriterion[] {
+): readonly T[] {
   return readAt === null ? locals : locals.filter((local) => local.at >= readAt);
 }
 

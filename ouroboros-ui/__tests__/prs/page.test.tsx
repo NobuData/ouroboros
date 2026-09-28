@@ -47,6 +47,9 @@ vi.mock("@/app/prs/criteria-actions", () => ({
   verifyClaim: vi.fn(),
   waiveClaim: vi.fn(),
 }));
+vi.mock("@/app/prs/thread-actions", () => ({
+  resolveEntry: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new NotFound();

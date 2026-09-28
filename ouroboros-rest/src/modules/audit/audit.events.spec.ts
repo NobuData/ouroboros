@@ -36,6 +36,7 @@ import {
   PR_CRITERION_WAIVED_EVENT,
   PR_APPROVAL_APPROVED_EVENT,
   PR_APPROVAL_DECLINED_EVENT,
+  PR_THREAD_RESOLVED_EVENT,
   PR_APPROVAL_REQUESTED_EVENT,
 } from "./audit.events";
 
@@ -119,6 +120,7 @@ describe("the vocabulary", () => {
       "pr_approval.requested",
       "pr_approval.approved",
       "pr_approval.declined",
+      "pr_thread.resolved",
     ]);
   });
 
@@ -139,7 +141,8 @@ describe("the vocabulary", () => {
     // Nine provider events, one credential-delivery event, three about the workspace's GitHub
     // token, thirteen about its build farm — its machines, the pools they run in and the
     // builds sent to them — three decisions about its failing tests (#332), three about
-    // whether a PR does what its ticket said (#359), and three about who approved a PR (#361). The
+    // whether a PR does what its ticket said (#359), three about who approved a PR (#361), and one
+    // about who resolved a review-thread entry (#368). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -151,6 +154,7 @@ describe("the vocabulary", () => {
       "github",
       "pr_approval",
       "pr_criterion",
+      "pr_thread",
       "provider",
       "runner",
       "triage",
@@ -197,6 +201,7 @@ describe("the vocabulary", () => {
       PR_APPROVAL_REQUESTED_EVENT,
       PR_APPROVAL_APPROVED_EVENT,
       PR_APPROVAL_DECLINED_EVENT,
+      PR_THREAD_RESOLVED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

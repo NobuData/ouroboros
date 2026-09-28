@@ -88,22 +88,37 @@ describe("the shell", () => {
     expect(CODE).toMatch(/\.prv-return__evidence \{[^}]*overflow-wrap: anywhere;/);
   });
 
-  it("scrolls sideways in the strip's, the gates', the matrix's and the diff's own wrappers and nowhere else (#364–#367)", () => {
-    const scrolling = [...CODE.matchAll(/([^{}]+)\{[^}]*overflow(?:-x)?:\s*(?:scroll|auto)[^}]*\}/g)].map(
-      (match) => match[1]!.trim(),
-    );
+  it("scrolls sideways in the strip's, the gates', the matrix's and the diff's own wrappers, downwards in the thread's, and nowhere else (#364–#368)", () => {
+    const scrolling = [
+      ...CODE.matchAll(/([^{}]+)\{[^}]*overflow(?:-[xy])?:\s*(?:scroll|auto)[^}]*\}/g),
+    ].map((match) => match[1]!.trim());
 
     expect(scrolling).toEqual([
       ".prv-strip__scroll",
       ".prv-gates__scroll",
       ".prv-criteria__scroll",
       ".prv-diff__scroll",
+      ".prv-thread__scroll",
     ]);
     expect(CODE).toMatch(/\.prv-strip__scroll \{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.prv-gates__scroll \{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.prv-criteria__scroll \{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.prv-diff__scroll \{[^}]*overflow-x: auto;/);
-    expect(CODE).not.toMatch(/overflow(-y)?:\s*(scroll|auto)/);
+    expect(CODE).not.toMatch(/overflow:\s*(scroll|auto)/);
+  });
+
+  it("scrolls a long thread inside the card's own wrapper, bounded in rem (#368)", () => {
+    expect(CODE).toMatch(/\.prv-thread__scroll \{[^}]*max-height: 32rem;[^}]*overflow-y: auto;/);
+    expect([...CODE.matchAll(/overflow-y:\s*(?:scroll|auto)/g)]).toHaveLength(1);
+  });
+
+  it("draws the blocking rule, the reply's rule and the watermark as classes (#368)", () => {
+    expect(CODE).toMatch(
+      /\.prv-entry--blocking \.prv-entry__body \{[^}]*border-left: 0\.125rem solid var\(--warn\);/,
+    );
+    expect(CODE).toMatch(/\.prv-entry__reply \{[^}]*border-left: 0\.125rem solid var\(--border\);/);
+    expect(CODE).toMatch(/\.prv-entry__author--model \{[^}]*color: var\(--model\);/);
+    expect(CODE).toMatch(/\.prv-entry__resolved \{[^}]*color: var\(--ok\);/);
   });
 
   it("keeps a step from shrinking below its measure, so the strip scrolls rather than squeezes", () => {

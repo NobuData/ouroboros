@@ -62,7 +62,8 @@ export type AuditSubjectType =
   | "test_run"
   | "pr_waiver"
   | "pr_criterion"
-  | "pr_approval";
+  | "pr_approval"
+  | "pr_thread_entry";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -309,6 +310,18 @@ export const PR_APPROVAL_APPROVED_EVENT = "pr_approval.approved";
 export const PR_APPROVAL_DECLINED_EVENT = "pr_approval.declined";
 
 /**
+ * A person resolved an entry of a PR's review thread
+ * ([#368](https://github.com/NobuData/ouroboros/issues/368)). Subject `pr_thread_entry`; the
+ * detail carries the PR, whether the entry was blocking, whether a reply was written and how its
+ * host mirror landed — never the reply.
+ *
+ * **A family of its own, `pr_thread`.** The row records what was said and not who resolved it, so
+ * *who cleared the objection that blocked this PR* is answered here, by
+ * `action like 'pr_thread.%'`.
+ */
+export const PR_THREAD_RESOLVED_EVENT = "pr_thread.resolved";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -352,6 +365,7 @@ export const AUDIT_ACTIONS = [
   PR_APPROVAL_REQUESTED_EVENT,
   PR_APPROVAL_APPROVED_EVENT,
   PR_APPROVAL_DECLINED_EVENT,
+  PR_THREAD_RESOLVED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */
