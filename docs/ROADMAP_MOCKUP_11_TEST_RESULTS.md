@@ -443,7 +443,7 @@ seeds: build1 49/63 ✗ → build2 61/63 → build3 live · 5 suites · HIL fail
 | AT.3 | #331 ✅ | 🟢 Done | ouroboros-rest: [AT.3] Flake scorer & quarantine service | Retry-truth marking, history scoring, nightly candidates | mvp, tests, rest | N (after AS.3, AT.1) | Y | M | ouroboros-rest |
 | AT.4 | #332 ✅ | 🟢 Done | ouroboros-rest: [AT.4] Classification & routing service | Heuristic hints, classify API, correction/re-run dispatch (T6/T7) | mvp, tests, rest, runs | N (after AS.4, AP.4, AH.4) | Y | L | ouroboros-rest |
 | AT.5 | #333 ✅ | 🟢 Done | ouroboros-rest: [AT.5] Test-results read APIs & artifact serving | Page payloads, attempt timelines, artifact downloads, retention | mvp, tests, rest | N (after AT.1, AS.4) | Y | M | ouroboros-rest |
-| AT.6 | #334 | 🟡 Open | ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios | Parser fixtures, routing compositions, AP.5 test scenarios | mvp, tests, rest, ci | N (after AT.2–AT.5, AP.5) | Y | M | ouroboros-rest, ouroboros-engine |
+| AT.6 | #334 ✅ | 🟢 Done | ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios | Parser fixtures, routing compositions, AP.5 test scenarios | mvp, tests, rest, ci | N (after AT.2–AT.5, AP.5) | Y | M | ouroboros-rest, ouroboros-engine |
 
 ### Issue AT.1 — ouroboros-rest: [AT.1] Result parser SPI (JUnit · HIL · coverage)
 
@@ -713,7 +713,7 @@ GET /test-runs/:id ─▶ {suites[5], hil[4], failure, flake, classifications, a
 
 ### Issue AT.6 — ouroboros-rest: [AT.6] Test-plane integration tests & driver scenarios
 
-> **GitHub issue:** #334 · **Status:** 🟡 Open · **Parent epic:** #321
+> **GitHub issue:** #334 · **Status:** 🟢 Done · **Parent epic:** #321
 
 - **Problem Statement:** The parse→score→classify→route chain and the
   upload path are the correctness core; the simulated driver needs
@@ -736,6 +736,27 @@ GET /test-runs/:id ─▶ {suites[5], hil[4], failure, flake, classifications, a
 suites: parse ✓ · upload ✓ · flake ✓ · hints ✓ · route ✓ · retention ✓ · isolation ✓
 driver: fail→classify→correct→green scenario for e2e
 ```
+
+> **Delivered as `ouroboros-rest/src/modules/test-plane/`, a retention suite on both store drivers,
+> flake window boundaries, and the simulator's `failing-hil` scenario.** Decided on #334:
+>
+> 1. **The upload half of `failing-HIL` plays on the REST harness, not in the Python driver.** A
+>    run's build — and so its upload token, which only reaches a machine in a runner's `job.offer`
+>    — needs `FarmJobsService.submitForRun`, which nothing routes until AJ.3 (#265). The harness
+>    scenario enrols a rig through the real routes, takes each build's offer over the gateway and
+>    uploads with its token (no direct result writes), classifies over the public API and claims
+>    the steer as the executor. The Python `failing-hil` scenario plays the run-console half with
+>    the same builds and figures and holds for the correction round. AU.8's live replay (#342)
+>    needs AJ.3 first.
+> 2. **Build 3 is green (`63/63`)**, as the issue's story says, where mockup 11 draws Build 3 still
+>    running. Two figures the mockup leaves open are chosen and named in the fixture: Build 1's
+>    fourteen failures (twelve telemetry cases and both HIL cases) and Build 3's overshoot (1.6%).
+> 3. **Isolation is enumerated from the route table**: every route under `/test-runs`,
+>    `/artifacts`, `/flakes`, `/runs/:id/test-runs` and the upload, so a new route without a case
+>    fails. The upload names no workspace, so its refusal is the token's `401`, not a `404`.
+> 4. **Mutation checks demonstrated**: replacing every suite on re-parse turns `is idempotent…`
+>    red; dropping the token-hash comparison turns `is job-scoped…` red on both drivers.
+> 5. **Added CI wall-clock ≈ 10 s** (17 + 6 + 1 integration cases, one extra MinIO container).
 
 ---
 

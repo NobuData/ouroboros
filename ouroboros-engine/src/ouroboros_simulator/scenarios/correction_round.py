@@ -20,6 +20,7 @@ from ouroboros_simulator.scenarios.common import (
     TEST_ADDED,
     Outcome,
     Scenario,
+    await_correction,
     changed,
     delivery,
     diff,
@@ -62,12 +63,9 @@ def run(session: RunSession) -> Outcome:
         "2 tests still fail. Holding at a safe boundary for a person to Mark & Route the "
         "failure; a correction round will start attempt 2 with their note."
     )
-    correction = None
-    for _ in range(WAIT_STEPS):
-        session.work(WAIT_SECONDS)
-        correction = session.correction_for("implement")
-        if correction is not None:
-            break
+    correction = await_correction(
+        session, "implement", steps=WAIT_STEPS, seconds=WAIT_SECONDS
+    )
 
     session.stage("implement", "failed")
     if correction is None:

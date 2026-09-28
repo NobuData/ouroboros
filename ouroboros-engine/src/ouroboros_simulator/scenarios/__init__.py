@@ -7,15 +7,17 @@
 | ``guardrail-violation`` | A CI edit and a planted secret: fail verdicts with evidence |
 | ``control-responsive`` | Pause mid-stage, resume, steer a branch, abort from a running state |
 | ``correction-round`` | Tests fail, the loop holds, a Mark & Route correction round starts attempt 2 |
+| ``failing-hil`` | Mockup 11: rig builds fail 14 then 2 of 63, a correction round, Build 3 green |
 
 Each is a plain function over :class:`~ouroboros_simulator.session.RunSession`, so a script
-reads as the story it tells. Every control is honoured in all five; ``control-responsive``
+reads as the story it tells. Every control is honoured in all six; ``control-responsive``
 is the one built to be pressed.
 """
 
 from ouroboros_simulator.scenarios import (
     control_responsive,
     correction_round,
+    failing_hil,
     gate_return,
     guardrail_violation,
     happy_path,
@@ -31,6 +33,7 @@ SCENARIOS: dict[str, Scenario] = {
         guardrail_violation.SCENARIO,
         control_responsive.SCENARIO,
         correction_round.SCENARIO,
+        failing_hil.SCENARIO,
     )
 }
 

@@ -391,6 +391,7 @@ never posts a verdict. It never touches the database.
 | `guardrail-violation` | A change-set editing `.github/workflows/` and planting an AWS key id: REST fails `ci_config` and `secrets` with evidence, and the attempt stops for a person |
 | `control-responsive` | A long `implement` with a safe boundary between tool calls: pause mid-stage, resume, steer the approach, or abort |
 | `correction-round` | `implement`'s tests fail and the loop holds for Mark & Route: a correction round (a steer with `retryStage`, [#332](https://github.com/NobuData/ouroboros/issues/332)) starts attempt 2 with the note as its planning context; without one the run ends `needs_human` |
+| `failing-hil` | Mockup 11's story ([#334](https://github.com/NobuData/ouroboros/issues/334)): `implement` sends Build 1 (`49/63`, 14 failed) and Build 2 (`61/63`, the motor overshoot 2.4% > 2.0%) to rig `helios-rig-02`, holds for Mark & Route, and the correction round's Build 3 is `63/63`; without one the run ends `needs_human`. The results are the farm's: the rig's uploads go through REST's upload path, replayed with the same figures by `ouroboros-rest`'s `test-plane` suite |
 
 ```bash
 # against a running stack (yarn dev, or compose, which publishes REST on :4000)
@@ -406,7 +407,7 @@ started with the simulator secret set also serves the driver, behind the interna
 
 | Path | Answers |
 |---|---|
-| `GET /dev/scenarios` | The five scenarios |
+| `GET /dev/scenarios` | The six scenarios |
 | `POST /dev/simulations` | `{scenario, speed?, target?}` → `202 {id, state: running}`. At most four run at once (`429`) |
 | `GET /dev/simulations/{id}` | `runId` once the run opens, `result` once it ends |
 
@@ -692,7 +693,7 @@ ouroboros-engine/
 │   └── settings.py     # pydantic-settings, OURO_*
 ├── src/ouroboros_simulator/  # the simulated-run driver — NOT in the wheel      · #307
 │   ├── session.py      #   one run: reports through the client, honours controls
-│   ├── scenarios/      #   the five scripts, over the session
+│   ├── scenarios/      #   the six scripts, over the session
 │   ├── runner.py       #   open a run, play a scenario, say what happened
 │   ├── transport.py    #   urllib, retrying 502/503/504 with the same key
 │   ├── clock.py        #   real timestamps, compressed waits

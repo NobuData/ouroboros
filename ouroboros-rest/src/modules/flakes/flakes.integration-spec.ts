@@ -469,6 +469,52 @@ describe("the flake scorer, against a migrated database", () => {
     }
   });
 
+  it("holds formula 1's window boundaries: three observations, the band between thresholds, twenty runs", async () => {
+    // AT.6 (#334): each boundary of V054's formula 1, crossed in both directions by parses alone.
+    const at = await bench();
+    const policy = parseFlakePolicy("retry-once");
+    const runId = await run(at, 482);
+    let seq = 0;
+
+    /** Parse `count` more attempts of one outcome, each a minute newer than the last. */
+    const builds = async (count: number, outcome: Outcome) => {
+      for (let n = 0; n < count; n += 1) {
+        seq += 1;
+        await parse(at, await attempt(at, runId, seq, 100 - seq), outcome, policy);
+      }
+    };
+
+    // Under min_observations (3) the state is kept, however high the score.
+    await builds(2, "flaky");
+    const caseKey = await telemetryKey(at);
+    expect(await scoreRow(at, caseKey)).toMatchObject({
+      score: "1.0000",
+      window_runs: 2,
+      state: "healthy",
+    });
+
+    // The third observation crosses watch_at (0.25) upwards.
+    await builds(1, "flaky");
+    expect(await scoreRow(at, caseKey)).toMatchObject({ window_runs: 3, state: "watching" });
+
+    // Six clean builds sink it to 0.2351 — inside the band, so it keeps watching.
+    await builds(6, "passed");
+    expect(await scoreRow(at, caseKey)).toMatchObject({ score: "0.2351", state: "watching" });
+
+    // Six more reach 0.0964, under clear_below (0.10): healthy, downwards.
+    await builds(6, "passed");
+    expect(await scoreRow(at, caseKey)).toMatchObject({ score: "0.0964", state: "healthy" });
+
+    // Twenty clean builds fill the window; the flakes have fallen out of it entirely.
+    await builds(8, "passed");
+    expect(await scoreRow(at, caseKey)).toMatchObject({
+      score: "0.0000",
+      window_runs: 20,
+      state: "healthy",
+      formula_version: 1,
+    });
+  });
+
   it("never writes quarantined — a score of 1 watches, and a quarantined case stays put", async () => {
     const at = await bench();
     const policy = parseFlakePolicy("retry-once");

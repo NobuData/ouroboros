@@ -4944,6 +4944,42 @@ Coverage's `delta` is **absent**, not zero, with no earlier attempt that has cov
 `parseWarnings` (#329) are on the page payload for the banner. Everything is scoped to the session's
 workspace, and another workspace's run, attempt, case or artifact is a `404`.
 
+### Test-plane suites & mutation checks
+
+AT.6 ([#334](https://github.com/NobuData/ouroboros/issues/334)) certifies the test plane — parse →
+score → classify → route, and the upload — under `yarn test:integration`, beside AT.1–AT.5's own
+suites:
+
+| Suite | Holds |
+| ----- | ----- |
+| `test-results/test-results.integration-spec.ts` | the parser matrix as trees V051/V053 accept; idempotent re-parse; `case_key` stability; typed warnings for malformed input (AT.1) |
+| `farm/artifacts/upload.integration-spec.ts` | token scope and single use, cross-job replay refused, quota warning, truncation manifests, checksum refusal — declared twice, local volume and MinIO, unchanged (AT.2) |
+| `flakes/flakes.integration-spec.ts` | sanctioned vs unsanctioned retries, formula 1's window boundaries (three observations, the band between thresholds, twenty runs) crossed both ways, `formula_version` stamping, the nightly cap (AT.3) |
+| `triage/triage.integration-spec.ts` | hints with `confidence: null`, the correction round's steer and attempt increment, dispatch carrying only the failed set, the infra flag, audit rows (AT.4); `triage.rules.spec.ts` replays the hint matrix, every rule firing and not |
+| `test-results-read/artifact.retention.integration-spec.ts` | the sweep removes bytes, leaves tombstones (`410`, `state: expired`), honours each workspace's `retained_until`, leaves another driver's rows — local volume and MinIO |
+| `test-plane/test-plane.integration-spec.ts` | the **`failing-HIL` scenario** replayed, and **isolation**: every route the epic added, enumerated from the route table, `404`s another workspace |
+
+**The `failing-HIL` scenario** (`test-plane/failing-hil.scenario.fixture.ts`) plays mockup 11's
+story on the real contracts: a run opened as the simulated driver, a rig enrolled through the real
+routes, and three builds each offered over the gateway and uploaded with the offer's single-use
+token — Build 1 `49/63`, Build 2 `61/63` (overshoot 2.4% > 2.0%), a `product_bug` classification
+with the correction note, the steer claimed and attempt 2 opened, Build 3 `63/63`. No result is
+written to the database directly. The build submission is `FarmJobsService.submitForRun`, the seam
+AJ.3 ([#265](https://github.com/NobuData/ouroboros/issues/265)) will route; the figures are in
+`test-plane/failing-hil.fixture.ts`, pinned against the mockup by its spec. ouroboros-engine's
+simulator plays the run-console half as its `failing-hil` scenario.
+
+**Mutation checks.** Removing the mechanism turns the named test red:
+
+| Remove | Red test |
+| ------ | -------- |
+| idempotent re-parse (`replaceTree` replacing every suite rather than by durable key) | `is idempotent: a re-parse keeps every id and count, duplicates nothing and spares classifications` |
+| the upload token scope check (`uploadTokenMatches` in `UploadService.admit`) | `is job-scoped: one job's token is refused on another job, and the other's on it` (both drivers) |
+
+```bash
+yarn test:integration src/modules/test-plane src/modules/test-results-read src/modules/flakes
+```
+
 ### PR gate engine
 
 AX.2 ([#358](https://github.com/NobuData/ouroboros/issues/358)), decision **V2**, in
@@ -5290,6 +5326,7 @@ ouroboros-rest/
 │       │                   #   results.strip.ts — ▲ deltas, T8's activation state, pure
 │       │                   #   artifact.serving.ts — type, inline or attachment, safe headers
 │       │                   #   artifact.retention.ts — the hourly sweep that leaves tombstones
+│       ├── test-plane/     # suites only: the failing-HIL scenario + isolation     · #334
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
