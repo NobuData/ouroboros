@@ -16,6 +16,7 @@
  * Framework-free, so every rule is a unit test without rendering.
  */
 
+import type { PullRequestRef } from "@/app/api/pull-requests";
 import type {
   RerunAvailability,
   RerunScope,
@@ -25,6 +26,7 @@ import type {
   TestStrip,
 } from "@/app/api/test-results";
 import { spanOfMs } from "@/app/format";
+import { prPath } from "@/app/paths";
 import { runHeadline, workflowCaption } from "@/app/runs/view";
 import type { ChipDot, ChipTone, StatTone, StatValueTone } from "@/app/ui";
 
@@ -214,6 +216,32 @@ export interface TestsHeadView {
   readonly ordinal: string | null;
   /** `forge-01 + rig helios-rig-02 · 6m 12s`, or `null`. */
   readonly machine: string | null;
+  /** The run's PR verification page (#363), or `null` for a run that opened no pull request. */
+  readonly pullRequest: PullRequestLink | null;
+}
+
+/** The head's link to the run's PR verification page. */
+export interface PullRequestLink {
+  /** `PR #514`. */
+  readonly label: string;
+  /** The PR's page. */
+  readonly href: string;
+}
+
+/**
+ * The link to the run's PR verification page.
+ *
+ * @param pullRequest The run's pull request — its id and the host's number — or `null`.
+ * @param originId The module the page was opened from, which the PR page keeps lit.
+ * @returns `PR #514`, linked to the PR's page; `null` for a run that opened none.
+ */
+export function pullRequestLink(
+  pullRequest: PullRequestRef | null,
+  originId?: string,
+): PullRequestLink | null {
+  return pullRequest === null
+    ? null
+    : { label: `PR #${pullRequest.number}`, href: prPath(pullRequest.id, originId) };
 }
 
 /**
@@ -222,12 +250,14 @@ export interface TestsHeadView {
  * @param timeline The run's timeline.
  * @param attempt The attempt the page reads, or `null` before any.
  * @param trackerUrl The ticket's page on its tracker, or `null` when there is none to build.
+ * @param pullRequest The link to the run's PR verification page, or `null`.
  * @returns The head.
  */
 export function testsHead(
   timeline: TestRunTimeline,
   attempt: TestAttempt | null,
   trackerUrl: string | null,
+  pullRequest: PullRequestLink | null = null,
 ): TestsHeadView {
   const { run } = timeline;
 
@@ -239,6 +269,7 @@ export function testsHead(
     pass: attempt === null ? null : passPill(attempt),
     ordinal: attempt === null ? null : attemptOrdinal(attempt.attemptSeq, run.loopSeq),
     machine: attempt === null ? null : machineLine(attempt),
+    pullRequest,
   };
 }
 

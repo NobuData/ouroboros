@@ -3,7 +3,8 @@
  * page payload in one call (AX.5, [#361](https://github.com/NobuData/ouroboros/issues/361)).
  *
  * ```
- * GET /api/v1/pull-requests          ─▶ Page<summary>          (?state=…, ?reviewRequested=true)
+ * GET /api/v1/pull-requests          ─▶ Page<summary>          (?state=…, ?reviewRequested=true,
+ *                                                                 ?runId=…,… — #363's by-run lookup)
  * GET /api/v1/pull-requests/:id      ─▶ { pullRequest, revisions[+snapshots], gates, criteria,
  *                                          files, thread, plan, spend, review, loopReturn }
  * ```
@@ -91,6 +92,7 @@ export class PageService {
       {
         ...(query.state === undefined ? {} : { states: query.state }),
         ...(query.reviewRequested === undefined ? {} : { reviewRequested: query.reviewRequested }),
+        ...(query.runId === undefined ? {} : { runIds: query.runId }),
       },
       window,
     );

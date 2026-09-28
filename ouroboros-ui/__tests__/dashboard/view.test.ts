@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LoopPulse } from "@/app/api/dashboard";
+import { prPath } from "@/app/paths";
 
 import {
   ACTIVITY_NOT_READ,
@@ -22,12 +23,14 @@ import {
   activeLoops,
   checksLabel,
   checksShortfall,
+  completionRunIds,
   countOf,
   cycleTime,
   daypartAt,
   firstName,
   greeting,
   issuePair,
+  linkedPair,
   loopsLiveStat,
   mergedStat,
   moreActiveLoops,
@@ -707,6 +710,50 @@ describe("recentCompletions", () => {
     ]);
     expect(rows.map((row) => row.cycle)).toEqual(["11m", "19m", "6m", "42m"]);
     expect(rows.map((row) => row.checks)).toEqual(["14/14", "14/14", "12/12", "13/14"]);
+  });
+
+  it("links a row's pull request only when Ouroboros mirrors it, in the pair's own characters (#363)", () => {
+    const prId = "5eed003a-0000-4000-8000-000000000512";
+    const mirrored = new Map([[SEEDED_COMPLETIONS[0]!.id, { id: prId, number: 512 }]]);
+    const [first, second] = recentCompletions(SEEDED_COMPLETIONS, mirrored);
+
+    expect(first?.linked).toEqual({
+      issue: "#474",
+      arrow: "\u2192",
+      pullRequest: "PR\u00a0#512",
+      href: prPath(prId, "dashboard"),
+    });
+    expect(`${first?.linked?.issue} ${first?.linked?.arrow} ${first?.linked?.pullRequest}`).toBe(
+      first?.pair,
+    );
+    // Named by number, never mirrored: text, not a link to a page that is not there.
+    expect(second?.linked).toBeNull();
+    expect(recentCompletions(SEEDED_COMPLETIONS).every((row) => row.linked === null)).toBe(true);
+  });
+
+  it("links nothing for a run that names no pull request (#363)", () => {
+    const run = { ...SEEDED_COMPLETIONS[0]!, prNumber: null };
+    const [row] = recentCompletions([run], new Map([[run.id, { id: "x", number: 512 }]]));
+
+    expect(row?.linked).toBeNull();
+    expect(row?.pair).toBe("#474");
+    expect(linkedPair(SEEDED_COMPLETIONS[0]!, undefined)).toBeNull();
+  });
+
+  it("asks only about the shown rows that name a pull request (#363)", () => {
+    const runs = [
+      ...SEEDED_COMPLETIONS.slice(0, 2),
+      { ...SEEDED_COMPLETIONS[2]!, prNumber: null },
+      ...SEEDED_COMPLETIONS.slice(3),
+      { ...SEEDED_COMPLETIONS[0]!, id: "5eed0009-0000-4000-8000-000000000999" },
+    ];
+
+    expect(completionRunIds(runs)).toEqual([
+      SEEDED_COMPLETIONS[0]!.id,
+      SEEDED_COMPLETIONS[1]!.id,
+      SEEDED_COMPLETIONS[3]!.id,
+    ]);
+    expect(completionRunIds([])).toEqual([]);
   });
 
   it("marks the one row that is short of its own total, and says how short", () => {

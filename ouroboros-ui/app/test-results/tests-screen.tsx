@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
+import type { PullRequestRef } from "@/app/api/pull-requests";
 import type {
   RerunAvailability,
   RerunScope,
@@ -29,6 +30,7 @@ import {
   TESTS_CRUMB,
   UNREAD_HEADLINE,
   actionsView,
+  pullRequestLink,
   rerunOutcome,
   selectedAttempt,
   stripView,
@@ -74,6 +76,8 @@ export interface TestsScreenProps {
   readonly initialGate?: RerunAvailability | null;
   /** The ticket on its tracker, or `null`. */
   readonly trackerUrl: string | null;
+  /** The run's pull request, or `null` when it opened none. `null` when absent. */
+  readonly pullRequest?: PullRequestRef | null;
   /** The module the page was opened from. */
   readonly origin: RunOrigin;
   /** Whether the reader may start a build — owner, admin or member. `false` when absent. */
@@ -119,6 +123,7 @@ export function TestsScreen({
   initialAttempt,
   initialGate = null,
   trackerUrl,
+  pullRequest = null,
   origin,
   mayContribute = false,
   timelinePoll,
@@ -210,7 +215,10 @@ export function TestsScreen({
     setFocusRequests((count) => count + 1);
   }
 
-  const head = timeline === null ? null : testsHead(timeline, attempt, trackerUrl);
+  const head =
+    timeline === null
+      ? null
+      : testsHead(timeline, attempt, trackerUrl, pullRequestLink(pullRequest, origin.id));
   const actions =
     attempt === null
       ? null

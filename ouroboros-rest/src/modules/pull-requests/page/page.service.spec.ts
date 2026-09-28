@@ -1,6 +1,6 @@
 import { NotFoundError } from "../../errors/error.envelope";
 import { PageService } from "./page.service";
-import { FakePageStore, ORG, OTHER_ORG, PR, REV_1, REV_2 } from "./page.store.fixture";
+import { FakePageStore, ORG, OTHER_ORG, PR, REV_1, REV_2, RUN } from "./page.store.fixture";
 
 /**
  * `PageService` over the in-memory store (AX.5, [#361](https://github.com/NobuData/ouroboros/issues/361))
@@ -111,6 +111,17 @@ describe("PageService.list", () => {
     expect((await service().list(ORG, { state: ["verifying", "blocked"] })).total).toBe(1);
     expect((await service().list(ORG, { reviewRequested: true })).total).toBe(0);
     expect((await service().list(ORG, { reviewRequested: false })).total).toBe(1);
+  });
+
+  it("narrows to the PRs the named runs opened — the by-run lookup (#363)", async () => {
+    const other = "5eed0009-0000-4000-8000-000000000999";
+
+    expect((await service().list(ORG, { runId: [RUN] })).items.map((row) => row.id)).toEqual([PR]);
+    expect((await service().list(ORG, { runId: [other, RUN] })).items.map((row) => row.id)).toEqual(
+      [PR],
+    );
+    expect((await service().list(ORG, { runId: [other] })).items).toEqual([]);
+    expect((await service().list(OTHER_ORG, { runId: [RUN] })).items).toEqual([]);
   });
 
   it("lists nothing of another workspace", async () => {

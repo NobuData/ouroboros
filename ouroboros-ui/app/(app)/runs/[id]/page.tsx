@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
 import { RUN_ORIGIN_PARAM } from "@/app/paths";
+import { runPullRequests } from "@/app/prs/data";
 import { readRun } from "@/app/runs/data";
 import { runOrigin } from "@/app/runs/origin";
 import { STAGE_PARAM } from "@/app/runs/stepper";
@@ -24,6 +25,9 @@ import { RunScreen } from "@/app/runs/run-screen";
  * a role. The service checks again on every press. Steering the transcript (#312) is
  * `mayContribute` — owner, admin or member — by the same argument.
  *
+ * The run's pull request is looked up beside the run (#363), best-effort, so the head can link to
+ * its PR verification page; a run that opened none, or a lookup that failed, draws no link.
+ *
  * @param props.params The run's id.
  * @param props.searchParams The query — `?from=`, and `?stage=`, the stage the timeline and the
  *   transcript are filtered to (#311); the screen checks it against the run's stages.
@@ -41,7 +45,7 @@ export default async function Page({
   const query = await searchParams;
   const origin = runOrigin(query[RUN_ORIGIN_PARAM]);
   const stage = query[STAGE_PARAM];
-  const reading = await readRun(id);
+  const [reading, pullRequests] = await Promise.all([readRun(id), runPullRequests([id])]);
 
   if (reading.state === "missing") notFound();
 
@@ -54,6 +58,7 @@ export default async function Page({
       mayContribute={mayContribute(membership.roles)}
       mayControl={mayAdminister(membership.roles)}
       origin={origin}
+      pullRequest={pullRequests.get(id) ?? null}
     />
   );
 }

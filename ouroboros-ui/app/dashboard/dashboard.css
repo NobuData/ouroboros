@@ -281,6 +281,16 @@
   white-space: nowrap;
 }
 
+/* The pair's pull request, as the way into its verification page (#363). */
+.dash-closed__pr {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.dash-closed__pr:hover {
+  text-decoration: underline;
+}
+
 /*
  * The title takes what is left, at the measure the active-loops table holds its own to and
  * for the same reason: the table scrolls sideways inside its own box, so a long title

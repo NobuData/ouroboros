@@ -12,6 +12,8 @@
 
 import type { RunStatus } from "@/app/api/dashboard";
 import type { RunConsole, RunRepository } from "@/app/api/runs";
+import type { PullRequestRef } from "@/app/api/pull-requests";
+import { prPath } from "@/app/paths";
 import type { ChipDot, ChipTone } from "@/app/ui";
 
 /** The eyebrow's fixed half — `Run Console · Loop #1847`. */
@@ -36,6 +38,9 @@ export const COPY_BRANCH_FAILED = "Could not copy the branch name";
 
 /** The pull request link's text on a merged run — `PR #512`. */
 export const PR_LINK_PREFIX = "PR";
+
+/** The link to a run's PR verification page (#363). */
+export const VERIFICATION_LINK = "PR verification";
 
 /** What stands in the meta row while the run has no branch yet. */
 export const NO_BRANCH = "no branch yet";
@@ -134,6 +139,19 @@ export interface RunHeadView {
    * landed (#314) — or `null` for any other run, or when there is no URL to build.
    */
   readonly pullRequest: RunPullRequest | null;
+  /**
+   * The run's PR verification page (#363) — for any run whose pull request Ouroboros mirrors,
+   * whatever became of the run — or `null` when it has none.
+   */
+  readonly verification: RunVerification | null;
+}
+
+/** The meta row's link to the PR verification page. */
+export interface RunVerification {
+  /** `PR verification`. */
+  readonly label: string;
+  /** The PR's page. */
+  readonly href: string;
 }
 
 /** The meta row's pull request link. */
@@ -156,6 +174,27 @@ export function runPullRequest(snapshot: RunConsole): RunPullRequest | null {
   const url = pullRequestUrl(snapshot.head.repository, snapshot.run.prNumber);
 
   return url === null ? null : { label: `${PR_LINK_PREFIX} #${snapshot.run.prNumber}`, url };
+}
+
+/**
+ * The link to the run's PR verification page ([#363](https://github.com/NobuData/ouroboros/issues/363)).
+ *
+ * **Offered on the PR Ouroboros mirrors, not on the run's `prNumber`.** The run carries a number
+ * only once it has merged, and a run may carry a number for a PR that was never mirrored — so the
+ * number says neither that the page exists nor that it does not. The console's first read looks
+ * the run's PR up (`app/prs/data.ts`), and this draws what it found.
+ *
+ * @param pullRequest The run's pull request, or `null` when it has none or the lookup failed.
+ * @param originId The module the console was opened from, which the PR page keeps lit.
+ * @returns The link, or `null`.
+ */
+export function runVerification(
+  pullRequest: PullRequestRef | null,
+  originId?: string,
+): RunVerification | null {
+  return pullRequest === null
+    ? null
+    : { label: VERIFICATION_LINK, href: prPath(pullRequest.id, originId) };
 }
 
 /**
@@ -284,9 +323,13 @@ export function runElapsed(snapshot: RunConsole): RunElapsed {
  * The whole head from one snapshot.
  *
  * @param snapshot The run console snapshot.
+ * @param verification The link to the run's PR verification page, or `null`.
  * @returns What `run-head.tsx` draws.
  */
-export function runHead(snapshot: RunConsole): RunHeadView {
+export function runHead(
+  snapshot: RunConsole,
+  verification: RunVerification | null = null,
+): RunHeadView {
   const { run, head } = snapshot;
 
   return {
@@ -303,5 +346,6 @@ export function runHead(snapshot: RunConsole): RunHeadView {
     simulated: head.simulated,
     elapsed: runElapsed(snapshot),
     pullRequest: runPullRequest(snapshot),
+    verification,
   };
 }

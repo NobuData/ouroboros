@@ -3,12 +3,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 import type { Workspace } from "@/app/api/access";
 
+import { completionRunIds } from "@/app/dashboard/view";
+
 import { dashboardPayload, engineStatus, healthReport } from "../helpers/dashboard";
 import { membership, sessionUser } from "../helpers/login";
 
 /**
  * The dashboard's reader: three calls, one object, and a failure that stays inside its own
- * card.
+ * card — then one lookup of the completions card's pull requests (#363), which follows the
+ * aggregate because it is of the aggregate's rows.
  *
  * The three resources are replaced rather than driven — each has a suite of its own in
  * `__tests__/api/`, and repeating them here would be testing the client twice while testing
@@ -25,11 +28,15 @@ import { membership, sessionUser } from "../helpers/login";
 const read = vi.fn();
 const readReadiness = vi.fn();
 const status = vi.fn();
+const runPullRequests = vi.fn();
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/app/api/dashboard", () => ({ dashboard: { read: () => read() } }));
 vi.mock("@/app/api/health", () => ({ readReadiness: () => readReadiness() }));
 vi.mock("@/app/api/engine", () => ({ engine: { status: () => status() } }));
+vi.mock("@/app/prs/data", () => ({
+  runPullRequests: (runIds: readonly string[]) => runPullRequests(runIds),
+}));
 
 const { readDashboard } = await import("@/app/dashboard/data");
 
@@ -49,6 +56,7 @@ beforeEach(() => {
   read.mockReset().mockResolvedValue(dashboardPayload());
   readReadiness.mockReset().mockResolvedValue(healthReport());
   status.mockReset().mockResolvedValue(engineStatus());
+  runPullRequests.mockReset().mockResolvedValue(new Map());
 });
 
 describe("readDashboard", () => {
@@ -80,15 +88,15 @@ describe("readDashboard", () => {
     // if they were in flight at once.
     const started: string[] = [];
     const gate = Promise.withResolvers<void>();
-    const hold = (name: string) => () => {
+    const hold = (name: string, answer: unknown) => () => {
       started.push(name);
       if (started.length === 3) gate.resolve();
-      return gate.promise;
+      return gate.promise.then(() => answer);
     };
 
-    read.mockImplementation(hold("aggregate"));
-    readReadiness.mockImplementation(hold("readiness"));
-    status.mockImplementation(hold("engine"));
+    read.mockImplementation(hold("aggregate", dashboardPayload()));
+    readReadiness.mockImplementation(hold("readiness", healthReport()));
+    status.mockImplementation(hold("engine", engineStatus()));
 
     await readDashboard(ACCESS);
 
@@ -102,6 +110,56 @@ describe("readDashboard", () => {
     await readDashboard(ACCESS);
 
     expect(read).toHaveBeenCalledExactlyOnceWith();
+  });
+});
+
+describe("the completions card's pull requests (#363)", () => {
+  it("looks up, in one request, the shown rows that name a pull request", async () => {
+    const mirrored = new Map([
+      [
+        dashboardPayload().recentRuns[0]!.id,
+        { id: "5eed003a-0000-4000-8000-000000000512", number: 512 },
+      ],
+    ]);
+    runPullRequests.mockResolvedValue(mirrored);
+
+    const readings = await readDashboard(ACCESS);
+
+    expect(runPullRequests).toHaveBeenCalledExactlyOnceWith(
+      completionRunIds(dashboardPayload().recentRuns),
+    );
+    expect(readings.pullRequests).toBe(mirrored);
+  });
+
+  it("asks only once the aggregate is in — the lookup is of its rows", async () => {
+    const order: string[] = [];
+    read.mockImplementation(() => {
+      order.push("aggregate");
+      return Promise.resolve(dashboardPayload());
+    });
+    runPullRequests.mockImplementation(() => {
+      order.push("pull requests");
+      return Promise.resolve(new Map());
+    });
+
+    await readDashboard(ACCESS);
+
+    expect(order).toEqual(["aggregate", "pull requests"]);
+  });
+
+  it("asks nothing when the aggregate could not be read, and knows no pull request", async () => {
+    read.mockRejectedValue(new ApiError(500, "internal_error", "Something went wrong.", {}));
+
+    const readings = await readDashboard(ACCESS);
+
+    expect(runPullRequests).not.toHaveBeenCalled();
+    expect(readings.pullRequests.size).toBe(0);
+  });
+
+  it("lets a redirect from the lookup through", async () => {
+    runPullRequests.mockRejectedValue(new Error("NEXT_REDIRECT /login"));
+
+    await expect(readDashboard(ACCESS)).rejects.toThrow("NEXT_REDIRECT /login");
   });
 });
 

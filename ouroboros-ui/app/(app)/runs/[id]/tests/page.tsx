@@ -51,6 +51,7 @@ export default async function Page({
       initialGate={found?.gate ?? null}
       mayContribute={mayContribute(membership.roles)}
       origin={origin}
+      pullRequest={found?.pullRequest ?? null}
       runId={id}
       trackerUrl={found?.trackerUrl ?? null}
     />

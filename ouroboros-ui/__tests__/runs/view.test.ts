@@ -1,9 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import type { RunStatus } from "@/app/api/dashboard";
+import { prPath } from "@/app/paths";
 import {
   RUN_STATUS_LABEL,
   RUN_STATUS_TONE,
+  VERIFICATION_LINK,
   loopLabel,
   runEyebrow,
   runElapsed,
@@ -11,6 +13,7 @@ import {
   runHeadline,
   pullRequestUrl,
   runPullRequest,
+  runVerification,
   trackerUrl,
   workflowCaption,
 } from "@/app/runs/view";
@@ -42,6 +45,34 @@ describe("the seeded head", () => {
     expect(view.simulated).toBe(false);
     expect(view.loopLabel).toBe("Loop #1847");
     expect(view.pullRequest).toBeNull();
+    expect(view.verification).toBeNull();
+  });
+});
+
+describe("the PR verification link (#363)", () => {
+  /** The run's pull request, as the page's first read finds it. */
+  const PULL_REQUEST = { id: "5eed003a-0000-4000-8000-000000000514", number: 514 };
+
+  it("links the pull request Ouroboros mirrors, keeping the origin", () => {
+    expect(runVerification(PULL_REQUEST, "build-farm")).toEqual({
+      label: VERIFICATION_LINK,
+      href: prPath(PULL_REQUEST.id, "build-farm"),
+    });
+    expect(runVerification(PULL_REQUEST)?.href).toBe(prPath(PULL_REQUEST.id));
+  });
+
+  it("is carried by the head, whatever became of the run", () => {
+    const statuses: RunStatus[] = ["coding", "review", "merged", "needs_human", "failed", "canceled"];
+    const link = runVerification(PULL_REQUEST, "dashboard");
+
+    for (const status of statuses) {
+      expect(runHead(runConsole({ run: { status } }), link).verification).toBe(link);
+    }
+  });
+
+  it("is not offered on the run's number alone — a number says nothing about the page", () => {
+    expect(runVerification(null, "dashboard")).toBeNull();
+    expect(runHead(runConsole({ run: { status: "merged", prNumber: 512 } })).verification).toBeNull();
   });
 });
 

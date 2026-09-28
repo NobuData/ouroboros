@@ -1,6 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { prPath } from "@/app/paths";
 import { navRegistry } from "@/app/shell/nav-registry";
 import { ACTIONS_LABEL, VIEWER_REASON } from "@/app/test-results/view";
 
@@ -65,7 +66,7 @@ beforeEach(() => {
   holding(["owner"]);
   readTests.mockReset().mockResolvedValue({
     state: "found",
-    value: { timeline: timeline(), trackerUrl: null, gate: gate() },
+    value: { timeline: timeline(), trackerUrl: null, gate: gate(), pullRequest: null },
   });
 });
 
@@ -114,6 +115,24 @@ describe("the test-results route", () => {
 
     await open({ from: "nowhere" });
     expect(navRegistry().origin).toBe("dashboard");
+  });
+
+  it("links the run's pull request to its verification page, keeping the origin (#363)", async () => {
+    readTests.mockResolvedValue({
+      state: "found",
+      value: {
+        timeline: timeline(),
+        trackerUrl: null,
+        gate: gate(),
+        pullRequest: { id: "5eed003a-0000-4000-8000-000000000514", number: 514 },
+      },
+    });
+    await open({ from: "build-farm" });
+
+    expect(screen.getByRole("link", { name: "PR #514" })).toHaveAttribute(
+      "href",
+      prPath("5eed003a-0000-4000-8000-000000000514", "build-farm"),
+    );
   });
 
   it("switches the re-runs on for a member and off, with the reason, for a viewer", async () => {

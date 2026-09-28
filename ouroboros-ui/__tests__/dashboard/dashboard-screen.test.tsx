@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { DashboardScreen } from "@/app/dashboard/dashboard-screen";
-import { ISSUES_PATH, RUNS_PATH, WORKFLOWS_PATH } from "@/app/paths";
+import { ISSUES_PATH, PRS_PATH, RUNS_PATH, WORKFLOWS_PATH, prPath } from "@/app/paths";
 import {
   ACTIVITY_NOT_READ,
   NOT_READ,
@@ -223,6 +223,7 @@ describe("the page head's actions", () => {
 
     // …and the head's *Edit workflows*, since #147 built the studio it names.
     // …and each active loop's issue, since #309 built the run console it opens.
+    // A closed row's pull request links only when Ouroboros mirrors it (#363) — the seed's do not.
     const hrefs = screen.getAllByRole("link").map((link) => link.getAttribute("href"));
     const consoles = hrefs.filter((href) => href?.startsWith(`${RUNS_PATH}/`));
 
@@ -233,6 +234,27 @@ describe("the page head's actions", () => {
       ISSUES_PATH,
       ISSUES_PATH,
     ]);
+  });
+});
+
+describe("the completions card's pull requests (#363)", () => {
+  it("links the rows whose pull requests the page's read found, and no others", () => {
+    const [first, second] = dashboardPayload().recentRuns;
+    const prId = "5eed003a-0000-4000-8000-000000000512";
+
+    render(
+      <DashboardScreen
+        readings={readings({ pullRequests: new Map([[first!.id, { id: prId, number: 512 }]]) })}
+      />,
+    );
+
+    const pulls = screen
+      .getAllByRole("link")
+      .map((link) => link.getAttribute("href"))
+      .filter((href) => href?.startsWith(`${PRS_PATH}/`));
+
+    expect(pulls).toEqual([prPath(prId, "dashboard")]);
+    expect(second?.prNumber).not.toBeNull();
   });
 });
 

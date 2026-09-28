@@ -5105,7 +5105,7 @@ read, and its two composed head actions, over V065's `pr_approvals` and `pr_loop
 
 | route | what | who |
 | ----- | ---- | --- |
-| `GET /api/v1/pull-requests` | the workspace's PRs, newest update first, each with its latest revision's aggregate; `?state=verifying,blocked`, `?reviewRequested=true` (the needs-you feed), `limit`/`offset` | every member |
+| `GET /api/v1/pull-requests` | the workspace's PRs, newest update first, each with its latest revision's aggregate; `?state=verifying,blocked`, `?reviewRequested=true` (the needs-you feed), `?runId=a,b` (the PRs those runs opened — #363's by-run lookup), `limit`/`offset` | every member |
 | `GET /api/v1/pull-requests/:id` | head, revisions **each with its own gate snapshot**, current gates, criteria (#359), files + diff excerpt, thread + open count, merge plan (#360), spend, review, loop return | every member |
 | `POST …/return-to-loop` `{gates, revisionId?, note?, idempotencyKey?}` | AP.4's correction round (steer + stage retry) whose text is the selected red gates' evidence; records the expected attempt | member+ |
 | `POST …/request-review` `{reviewer?}` | open the approval slot — human approval becomes required and pending; optional SPI `requestReview` | member+ |

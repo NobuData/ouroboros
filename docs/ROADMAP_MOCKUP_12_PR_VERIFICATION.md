@@ -675,7 +675,7 @@ the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| AY.1 | #363 | 🟡 Open | ouroboros-ui: [AY.1] PR route, head & actions | `/prs/:id` frame, meta, the three composed actions | mvp, pr, ui, design | N (after #41, AX.5, BA-D.5) | Y | M | ouroboros-ui |
+| AY.1 | #363 ✅ | 🟢 Done | ouroboros-ui: [AY.1] PR route, head & actions | `/prs/:id` frame, meta, the three composed actions | mvp, pr, ui, design | N (after #41, AX.5, BA-D.5) | Y | M | ouroboros-ui |
 | AY.2 | #364 | 🟡 Open | ouroboros-ui: [AY.2] Revision cycle strip | err/plain/live/ghosted steps with real joins (V4) | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.3 | #365 | 🟡 Open | ouroboros-ui: [AY.3] Verification gates card | Seven-row gate list with all verdict states + links | mvp, pr, ui, design | N (after AY.1) | Y | M | ouroboros-ui |
 | AY.4 | #366 | 🟡 Open | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
@@ -686,7 +686,29 @@ the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 
 ### Issue AY.1 — ouroboros-ui: [AY.1] PR route, head & actions
 
-> **GitHub issue:** #363 · **Status:** 🟡 Open · **Parent epic:** #350
+> **GitHub issue:** #363 · **Status:** 🟢 Done · **Parent epic:** #350
+> **Delivered as `ouroboros-ui/app/prs/` and the route `/prs/:id`.** Decided on #363:
+>
+> 1. **`:id` is the PR's id, and inbound links are looked up by run.** The surfaces that link here
+>    hold runs, and `runs.pr_number` says neither that the page exists (it is written only at
+>    merge) nor that it does not (the dev seed's closed runs name PRs that were never mirrored).
+>    So the run console, test results and the dashboard's rows each ask
+>    `GET /api/v1/pull-requests?runId=a,b` (additive, REST 0.37.16) on their server read and link
+>    only the PRs found. The console and test results look up on first read, so a PR opened while
+>    the page is open links after the next load.
+> 2. **The console keeps #314's host link.** The PR page is a second link, `PR verification`,
+>    offered for any run whose PR is mirrored, whatever became of the run.
+> 3. **The merge button is drawn for owner and admin only**, as the issue says. The service
+>    (#360) also admits a member whose PR's pinned workflow auto-merges; the page draws no arm
+>    affordance for that member. AY.7 (#369) owns the arm flow.
+> 4. **Merge when all gates green arms nothing.** It moves focus to the Merge plan slot
+>    (`#merge-plan`), which AY.7 replaces with the card; AY.7 keeps the id, the ref and `chosen`.
+> 5. **Return to loop acts on the latest revision's red gates**, all selected to begin with, and
+>    is sent with a replay key minted when the dialog opens. Scoping the dialog to an earlier
+>    revision arrives with the gates card (#365).
+> 6. **A reason several actions share is printed once** under the row; each inert button is
+>    described by it.
+> 7. **#49's placeholder was never built**, so there was nothing to retire.
 
 - **Problem Statement:** The frame: PR-scoped route reachable from runs,
   test results, and the dashboard's recently-closed rows; the meta row;

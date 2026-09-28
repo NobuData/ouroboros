@@ -16,15 +16,20 @@ import "server-only";
  *   plain text rather than a guessed link.
  * - **The selected attempt's re-run gate**, so the buttons can be honest on first paint. Unreadable,
  *   they say they are checking, and the gate's poll answers within one interval.
+ * - **The run's pull request** ([#363](https://github.com/NobuData/ouroboros/issues/363)), so the
+ *   head can link to its verification page. The timeline names no PR, so it is looked up by run;
+ *   unreadable, or for a run that opened none, the head draws no link.
  */
 
 import { isApiError } from "@/app/api/errors";
+import type { PullRequestRef } from "@/app/api/pull-requests";
 import { runs } from "@/app/api/runs";
 import {
   type RerunAvailability,
   type TestRunTimeline,
   testResults,
 } from "@/app/api/test-results";
+import { runPullRequests } from "@/app/prs/data";
 import { trackerUrl } from "@/app/runs/view";
 
 import { selectedAttempt } from "./view";
@@ -36,6 +41,8 @@ export interface TestsFirstRead {
   readonly trackerUrl: string | null;
   /** The selected attempt's gate, or `null` when there is no attempt or it could not be read. */
   readonly gate: RerunAvailability | null;
+  /** The run's pull request, or `null` when it opened none or it could not be looked up. */
+  readonly pullRequest: PullRequestRef | null;
 }
 
 /** What the first read found. */
@@ -49,6 +56,7 @@ export interface TestsReaders {
   readonly timeline: (runId: string) => Promise<TestRunTimeline>;
   readonly repository: (runId: string) => Promise<Parameters<typeof trackerUrl>[0]>;
   readonly gate: (testRunId: string) => Promise<RerunAvailability>;
+  readonly pullRequest: (runId: string) => Promise<PullRequestRef | null>;
 }
 
 /** The production readers, over the request-scoped client. */
@@ -56,6 +64,7 @@ const READERS: TestsReaders = {
   timeline: (runId) => testResults.timeline(runId),
   repository: async (runId) => (await runs.console(runId)).head.repository,
   gate: (testRunId) => testResults.rerunAvailability(testRunId),
+  pullRequest: async (runId) => (await runPullRequests([runId])).get(runId) ?? null,
 };
 
 /**
@@ -101,9 +110,10 @@ export async function readTests(
   }
 
   const attempt = selectedAttempt(timeline.attempts, attemptSeq);
-  const [repository, gate] = await Promise.all([
+  const [repository, gate, pullRequest] = await Promise.all([
     optional(readers.repository(runId)),
     attempt === null ? Promise.resolve(null) : optional(readers.gate(attempt.id)),
+    optional(readers.pullRequest(runId)),
   ]);
 
   return {
@@ -112,6 +122,7 @@ export async function readTests(
       timeline,
       trackerUrl: repository === null ? null : trackerUrl(repository, timeline.run.issueNumber),
       gate,
+      pullRequest,
     },
   };
 }

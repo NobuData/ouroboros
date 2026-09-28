@@ -105,7 +105,7 @@ export function DashboardScreen({
         <ActiveLoopsCard aggregate={aggregate} readAt={readings.readAt} />
         <PulseCard aggregate={aggregate} workspace={readings.workspace} />
         <SystemCard rows={systemRows(readings.readiness, readings.engine)} />
-        <RecentlyClosedCard aggregate={aggregate} />
+        <RecentlyClosedCard aggregate={aggregate} pullRequests={readings.pullRequests} />
         <QueueCard aggregate={aggregate} />
       </div>
     </main>

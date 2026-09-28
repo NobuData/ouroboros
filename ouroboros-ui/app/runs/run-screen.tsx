@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import type { PullRequestRef } from "@/app/api/pull-requests";
 import type { RunConsole } from "@/app/api/runs";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { testsPath } from "@/app/paths";
@@ -31,6 +32,7 @@ import {
   STALE_HEADLINE,
   UNREAD_HEADLINE,
   runHead,
+  runVerification,
 } from "./view";
 
 import "./runs.css";
@@ -83,6 +85,8 @@ import "./runs.css";
  * banner says the same thing for a stronger reason.
  *
  * @param props.initialStage The `?stage=` the page was opened with, or `null`.
+ * @param props.pullRequest The run's pull request, as the page's first read found it (#363), or
+ *   `null` — the head then draws no link to a PR verification page.
  * @param props.mayControl Whether the reader may pause, abort or take over — owner or admin.
  *   `false` when absent, erring the way `mayAdminister` does.
  * @param props.mayContribute Whether the reader may steer — owner, admin or member. `false` when
@@ -100,6 +104,7 @@ export function RunScreen({
   initialError,
   origin,
   initialStage = null,
+  pullRequest = null,
   mayControl = false,
   mayContribute = false,
   poll,
@@ -113,6 +118,7 @@ export function RunScreen({
   initialError: string | null;
   origin: RunOrigin;
   initialStage?: string | null;
+  pullRequest?: PullRequestRef | null;
   mayControl?: boolean;
   mayContribute?: boolean;
   poll?: RunPollOptions;
@@ -128,7 +134,7 @@ export function RunScreen({
   const data = snapshot.data ?? initial;
   // A poll's own verdict supersedes the server's once it has one — either way.
   const error = snapshot.updatedAt === null ? (snapshot.error ?? initialError) : snapshot.error;
-  const view = data === null ? null : runHead(data);
+  const view = data === null ? null : runHead(data, runVerification(pullRequest, origin.id));
   const stepper = data === null ? null : runStepper(data);
 
   const [requestedStage, setRequestedStage] = useState<string | null>(initialStage);

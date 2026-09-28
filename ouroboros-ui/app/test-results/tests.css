@@ -124,6 +124,18 @@
   overflow-wrap: anywhere;
 }
 
+/* The run's pull request, as the way into its verification page (#363). */
+.tests-head__pr {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.tests-head__pr:hover {
+  text-decoration: underline;
+}
+
 .tests-head__actions {
   flex: 0 1 auto;
   min-width: 0;
