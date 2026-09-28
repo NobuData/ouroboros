@@ -743,6 +743,19 @@ describe("CriteriaService", () => {
     );
   });
 
+  it("says on the matrix whether there is a plan to import from", async () => {
+    const { service, store } = build();
+
+    expect((await service.matrix(ORG, PR_ID)).planContext).toBe(false);
+
+    store.draft = { id: "draft-1", body: "## Acceptance criteria\n- [ ] Frames in ISR order" };
+    expect((await service.matrix(ORG, PR_ID)).planContext).toBe(true);
+
+    // A PR with no ticket has no plan, whatever drafts exist.
+    store.prs.set(PR_ID, { ...(store.prs.get(PR_ID) as CriteriaPrRow), ticket_id: null });
+    expect((await service.matrix(ORG, PR_ID)).planContext).toBe(false);
+  });
+
   it("reorders only by a permutation of the PR's criteria", async () => {
     const { service } = build();
     const a = await service.create(ORG, PR_ID, KEN, { claim: "A" });

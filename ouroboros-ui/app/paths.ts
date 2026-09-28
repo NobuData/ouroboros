@@ -308,6 +308,35 @@ export const PRS_PATH = "/prs";
 export const PR_REVISION_PARAM = "rev";
 
 /**
+ * The query parameter naming the hunk the PR page's changed files are brought to — a path and a
+ * line range, `drivers/can/telemetry_buf.c:41-66`
+ * ([#366](https://github.com/NobuData/ouroboros/issues/366)). Read through `hunkParam`
+ * (`app/prs/hunk.ts`). Absent, no hunk is cited.
+ */
+export const PR_HUNK_PARAM = "hunk";
+
+/**
+ * Where one piece of a PR's evidence leads — `/prs/5eed…/evidence/5eed…?from=dashboard`
+ * ([#366](https://github.com/NobuData/ouroboros/issues/366)).
+ *
+ * A citation of a test case or a measurement names a row, not the attempt it ran in, so the
+ * address is resolved on the server when it is followed and answers with a redirect to the
+ * test-results page, on that attempt, with the row selected.
+ *
+ * @param prId The PR's id. Encoded, for {@link workflowPath}'s reason.
+ * @param evidenceId The citation's id. Encoded likewise.
+ * @param from The sidebar entry id of the module the PR page was opened from.
+ * @returns The path.
+ */
+export function prEvidencePath(prId: string, evidenceId: string, from?: string): string {
+  const path = `${PRS_PATH}/${encodeURIComponent(prId)}/evidence/${encodeURIComponent(evidenceId)}`;
+
+  return from === undefined
+    ? path
+    : `${path}?${RUN_ORIGIN_PARAM}=${encodeURIComponent(from)}`;
+}
+
+/**
  * The PR verification page for one PR — `/prs/5eed…?from=dashboard`.
  *
  * @param id The PR's id (a uuid) — what `GET /api/v1/pull-requests/{id}` is addressed by, never

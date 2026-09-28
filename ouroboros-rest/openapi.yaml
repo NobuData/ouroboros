@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.16"
+  version: "0.37.17"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -22451,8 +22451,14 @@ components:
       type: object
       title: HilMeasurementResult
       additionalProperties: false
-      required: [metric, value, unit, limit, limitKind, verdict, comparative, trials]
+      required: [id, metric, value, unit, limit, limitKind, verdict, comparative, trials]
       properties:
+        id:
+          type: string
+          format: uuid
+          description: >-
+            `hil_measurements.id` — what a criterion's `hil_measurement` evidence cites
+            ([#366](https://github.com/NobuData/ouroboros/issues/366)).
         metric:
           type: string
         value:
@@ -22960,11 +22966,17 @@ components:
       type: object
       title: CriteriaMatrix
       additionalProperties: false
-      required: [prId, counts, criteria]
+      required: [prId, planContext, counts, criteria]
       properties:
         prId:
           type: string
           format: uuid
+        planContext:
+          type: boolean
+          description: >-
+            Whether `…/criteria/import` has a plan to read — the PR has a ticket and a plan draft
+            with a body was pushed as it. The matrix shows *Import from plan* exactly when this is
+            true ([#366](https://github.com/NobuData/ouroboros/issues/366)).
         counts:
           $ref: "#/components/schemas/CriteriaCounts"
         criteria:

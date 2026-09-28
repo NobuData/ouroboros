@@ -10,6 +10,7 @@ import { TRIAGE_ERRORS } from "../triage/triage.errors";
 import { RESULTS_ERRORS } from "./results.errors";
 import {
   attemptId,
+  measurementId,
   FakeResultsRepository,
   mockupUniverse,
   ORG,
@@ -234,6 +235,7 @@ describe("GET /test-runs/:id — Build 3's page payload", () => {
         procedure: "traffic generator floods bus at 900 kbit/s for 60s",
         measurements: [
           expect.objectContaining({
+            id: measurementId(3, 2),
             value: 0,
             limit: 0,
             verdict: "pass",

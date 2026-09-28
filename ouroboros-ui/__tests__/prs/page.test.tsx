@@ -1,13 +1,24 @@
 import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { ADD_CLAIM_LABEL, CRITERIA_TITLE, WAIVE_LABEL } from "@/app/prs/criteria";
+import { FILES_TITLE } from "@/app/prs/files-slot";
 import { PR_MISSING_TITLE } from "@/app/prs/pr-missing";
 import { GATES_TITLE } from "@/app/prs/gates";
 import { ACTIONS_LABEL, MERGE_LABEL, RETURN_LABEL, REVIEW_LABEL } from "@/app/prs/view";
 import { navRegistry } from "@/app/shell/nav-registry";
 
 import { membership, sessionUser } from "../helpers/login";
-import { PR_514_ID, blockedPage, prPage, stripPage } from "../helpers/pull-requests";
+import {
+  PR_514_ID,
+  TELEMETRY_PATH,
+  blockedPage,
+  criterion,
+  matrix,
+  matrixPage,
+  prPage,
+  stripPage,
+} from "../helpers/pull-requests";
 
 /**
  * The PR verification route (#363): the gate first, then one read — a PR this workspace cannot
@@ -27,6 +38,14 @@ vi.mock("@/app/prs/head-actions", () => ({
   decideApproval: vi.fn(),
   requestHumanReview: vi.fn(),
   returnToLoop: vi.fn(),
+}));
+vi.mock("@/app/prs/criteria-actions", () => ({
+  addClaim: vi.fn(),
+  attachEvidence: vi.fn(),
+  importFromPlan: vi.fn(),
+  readEvidenceOptions: vi.fn(),
+  verifyClaim: vi.fn(),
+  waiveClaim: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -120,6 +139,50 @@ describe("the PR verification route", () => {
 
     await open({ from: "nowhere" });
     expect(navRegistry().origin).toBe("dashboard");
+  });
+
+  it("cites the hunk ?hunk= names, and ignores what is not a path and a range (#366)", async () => {
+    readPr.mockResolvedValue({ state: "found", value: matrixPage() });
+
+    const cited = await open({ hunk: `${TELEMETRY_PATH}:41-66` });
+    expect(screen.getByRole("region", { name: FILES_TITLE })).toHaveTextContent(
+      `Cited: ${TELEMETRY_PATH} · lines 41–66`,
+    );
+    cited.unmount();
+
+    await open({ hunk: "not-a-hunk" });
+    expect(screen.getByRole("region", { name: FILES_TITLE })).not.toHaveTextContent("Cited:");
+  });
+
+  it("draws the matrix's controls by role: waive for an owner or admin only (#366)", async () => {
+    readPr.mockResolvedValue({
+      state: "found",
+      value: matrixPage({ criteria: matrix([criterion()]) }),
+    });
+
+    /** The labels of the matrix's controls, in order. */
+    const controls = (): (string | null)[] =>
+      within(screen.getByRole("region", { name: CRITERIA_TITLE }))
+        .getAllByRole("button")
+        .map((button) => button.textContent);
+
+    holding(["admin"]);
+    const admin = await open();
+    expect(controls()).toContain(WAIVE_LABEL);
+    expect(controls()).toContain(ADD_CLAIM_LABEL);
+    admin.unmount();
+
+    holding(["member"]);
+    const member = await open();
+    expect(controls()).not.toContain(WAIVE_LABEL);
+    expect(controls()).toContain(ADD_CLAIM_LABEL);
+    member.unmount();
+
+    holding(["viewer"]);
+    await open();
+    expect(
+      within(screen.getByRole("region", { name: CRITERIA_TITLE })).queryAllByRole("button"),
+    ).toEqual([]);
   });
 
   it("scopes the gates to the revision ?rev= names, and ignores what is not an ordinal (#364)", async () => {

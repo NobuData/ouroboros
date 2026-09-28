@@ -678,7 +678,7 @@ the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 | AY.1 | #363 ✅ | 🟢 Done | ouroboros-ui: [AY.1] PR route, head & actions | `/prs/:id` frame, meta, the three composed actions | mvp, pr, ui, design | N (after #41, AX.5, BA-D.5) | Y | M | ouroboros-ui |
 | AY.2 | #364 ✅ | 🟢 Done | ouroboros-ui: [AY.2] Revision cycle strip | err/plain/live/ghosted steps with real joins (V4) | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.3 | #365 ✅ | 🟢 Done | ouroboros-ui: [AY.3] Verification gates card | Seven-row gate list with all verdict states + links | mvp, pr, ui, design | N (after AY.1) | Y | M | ouroboros-ui |
-| AY.4 | #366 | 🟡 Open | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
+| AY.4 | #366 ✅ | 🟢 Done | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
 | AY.5 | #367 | 🟡 Open | ouroboros-ui: [AY.5] Changed files & diff excerpt | File rows with proportional meters, diff block, host link | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.6 | #368 | 🟡 Open | ouroboros-ui: [AY.6] Review thread card | Author-kinded entries, blocking arcs, resolution states | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.7 | #369 | 🟡 Open | ouroboros-ui: [AY.7] Merge plan & spend cards | Plan editing, arm flow, truthful identity, spend rollup | mvp, pr, ui | N (after AY.3, AX.4) | Y | M | ouroboros-ui |
@@ -845,7 +845,31 @@ can: fix flaky telemetry frame order under ISR load
 
 ### Issue AY.4 — ouroboros-ui: [AY.4] Acceptance criteria matrix
 
-> **GitHub issue:** #366 · **Status:** 🟡 Open · **Parent epic:** #350
+> **GitHub issue:** #366 · **Status:** 🟢 Done · **Parent epic:** #350
+> **Delivered as `ouroboros-ui/app/prs/criteria.ts`, `criteria-card.tsx`, `criteria-actions.ts`,
+> `evidence-options.ts`, `evidence-dialog.tsx`, `evidence-target.ts`, `hunk.ts` and
+> `files-slot.tsx`**, over AX.3's routes. Decided on #366:
+>
+> 1. **Two additive REST fields** (0.37.17), because the ticket could not be met without them:
+>    `HilMeasurementResult.id`, so the picker can cite a measurement, and
+>    `CriteriaMatrix.planContext`, so *Import from plan* is shown exactly when there is a plan.
+> 2. **A test or measurement link is resolved when followed.** A citation names a row, not its
+>    attempt, so the matrix links to `/prs/:id/evidence/:evidenceId`, which reads the run's
+>    attempts newest first (at most twelve) and redirects to test results with the suite (#337) or
+>    the measured case (#338) selected. Unresolvable answers the not-found page.
+> 3. **A hunk lands on a slot** (`#files`, `?hunk=path:41-66`) that takes focus and names the
+>    cited range — AY.1's Merge plan slot precedent. **Open for #367**: replace the body, keep
+>    the id and the address, and scroll the diff to the range.
+> 4. **The picker cites tests, measurements and hunks** — the three the issue names — from the
+>    attempt the latest revision was judged on and that revision's files snapshot. Analysis notes
+>    and artifacts render and link, but are not authored here.
+> 5. **Waive is owner or admin; everything else is owner, admin or member** — the service's rule.
+>    A host that refuses the annotation leaves `waived · annotation failed` with no link, and
+>    *Waive again* is the retry.
+> 6. **The matrix is not scoped by the strip**: claims are the PR's, not a revision's.
+> 7. **The inbox amendment is not taken up.** The matrix has no *review it in your inbox* link,
+>    and the inbox is #461/#462/#466's, all open.
+> 8. **"Sandbox e2e" is AY.8's** (#370); the flows are asserted in the UI suite here.
 
 - **Problem Statement:** The matrix — quoted claims, mono evidence with
   hunk accents, verified/waived pills — plus the authoring and waive

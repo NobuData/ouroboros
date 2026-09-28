@@ -3,30 +3,66 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 
-import type { PrReview, PullRequestPage } from "@/app/api/pull-requests";
+import type {
+  AttachEvidenceRequest,
+  PrCriterion,
+  PrReview,
+  PullRequestPage,
+} from "@/app/api/pull-requests";
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
-import { runPath } from "@/app/paths";
+import { RUN_ORIGIN_PARAM, runPath } from "@/app/paths";
 import type { RunOrigin } from "@/app/runs/origin";
 import { BREADCRUMB_LABEL, loopLabel } from "@/app/runs/view";
 import { setNavOrigin } from "@/app/shell/nav-registry";
 import { RetryBanner } from "@/app/ui";
 
+import { ClaimDialog } from "./claim-dialog";
+import {
+  CLAIM_ADDED,
+  CLAIM_VERIFIED,
+  type CriteriaOutcome,
+  EVIDENCE_ATTACHED,
+  type LocalCriterion,
+  criteriaCard,
+  importOutcome,
+  standing,
+  waiveOutcome,
+  withLocal,
+} from "./criteria";
+import {
+  addClaim,
+  attachEvidence,
+  importFromPlan,
+  readEvidenceOptions,
+  verifyClaim,
+  waiveClaim,
+} from "./criteria-actions";
+import { CriteriaCard } from "./criteria-card";
 import { DeclineDialog } from "./decline-dialog";
+import { EvidenceDialog } from "./evidence-dialog";
+import { hunkPaths } from "./evidence-options";
+import { FilesSlot } from "./files-slot";
 import { approvalOutcome, gatesCard } from "./gates";
 import { GatesCard } from "./gates-card";
 import { decideApproval, requestHumanReview, returnToLoop } from "./head-actions";
+import { type Hunk, sameHunk, withHunk } from "./hunk";
 import { MergePlanSlot } from "./merge-plan-slot";
 import type {
   ApprovalAnswer,
   ApprovalOutcome,
+  CriterionOutcome,
+  ImportOutcome,
+  OptionsOutcome,
   ReturnOutcome,
   ReturnSelection,
   ReviewRequestOutcome,
+  WaiveOutcome,
 } from "./outcomes";
 import { PrActions } from "./pr-actions";
 import { PrHead } from "./pr-head";
 import { type PrPollOptions, createPagePoll } from "./poll";
 import { ReturnDialog } from "./return-dialog";
+import type { TextDialogOutcome } from "./text-dialog";
 import { RevisionStrip } from "./revision-strip";
 import { gatesScope, scopedRevision, stripSteps, withRevision } from "./strip";
 import {
@@ -42,6 +78,7 @@ import {
   returnReceipt,
   reviewOutcome,
 } from "./view";
+import { WaiveDialog } from "./waive-dialog";
 
 import "./prs.css";
 
@@ -53,6 +90,42 @@ export type ReturnSender = (prId: string, selection: ReturnSelection) => Promise
 
 /** How an approval is answered. The Server Action in production; tests pass their own. */
 export type ApprovalSender = (prId: string, answer: ApprovalAnswer) => Promise<ApprovalOutcome>;
+
+/**
+ * How the criteria matrix writes ([#366](https://github.com/NobuData/ouroboros/issues/366)). The
+ * Server Actions in production; tests pass their own.
+ */
+export interface CriteriaSenders {
+  /** *Add claim*. */
+  readonly addClaim: (prId: string, claim: string) => Promise<CriterionOutcome>;
+  /** *Import from plan*. */
+  readonly importFromPlan: (prId: string) => Promise<ImportOutcome>;
+  /** The picker's read of what can be cited. */
+  readonly readOptions: (prId: string) => Promise<OptionsOutcome>;
+  /** *Attach evidence*. */
+  readonly attach: (
+    prId: string,
+    criterionId: string,
+    request: AttachEvidenceRequest,
+  ) => Promise<CriterionOutcome>;
+  /** *Verify*. */
+  readonly verify: (prId: string, criterionId: string) => Promise<CriterionOutcome>;
+  /** *Waive*. */
+  readonly waive: (prId: string, criterionId: string, reason: string) => Promise<WaiveOutcome>;
+}
+
+/** The matrix's Server Actions. */
+const CRITERIA_SENDERS: CriteriaSenders = {
+  addClaim,
+  importFromPlan,
+  readOptions: readEvidenceOptions,
+  attach: attachEvidence,
+  verify: verifyClaim,
+  waive: waiveClaim,
+};
+
+/** What is said when the claim a dialog was opened for is no longer on the page. */
+export const CLAIM_GONE = "That claim is no longer on this PR.";
 
 /** The breadcrumb's current page before the PR has been read. */
 export const PR_CRUMB = "Pull request";
@@ -86,6 +159,14 @@ export interface PrScreenProps {
   readonly mayContribute?: boolean;
   /** Whether the reader may arm a merge — owner or admin. `false` when absent. */
   readonly mayArm?: boolean;
+  /** Whether the reader may waive a claim — owner or admin (#359). `false` when absent. */
+  readonly mayWaive?: boolean;
+  /** The hunk the address cites — `?hunk=` — or `null`. `null` when absent. */
+  readonly initialHunk?: Hunk | null;
+  /** How the criteria matrix writes. Defaults to the Server Actions. */
+  readonly criteriaSenders?: CriteriaSenders;
+  /** The clock an answer is timed by, in epoch milliseconds. Defaults to `Date.now`. */
+  readonly now?: () => number;
   /** Test seams for the page's poll; production passes none. */
   readonly poll?: PrPollOptions;
   /** How to send a review request. Defaults to the Server Action. */
@@ -126,6 +207,12 @@ export interface PrScreenProps {
  * waiting — on the latest revision only, because an answer is honoured only there. *Decline*
  * asks for its note first. The answered slot is drawn from the answer, before the next poll.
  *
+ * **The criteria matrix is always the PR's own** ([#366](https://github.com/NobuData/ouroboros/issues/366)):
+ * claims are about the PR, not a revision, so the strip's scope does not move it. Every change —
+ * a claim added, evidence attached, a claim verified or waived — is drawn from its answer and
+ * stands until a read made after it has caught up. A hunk reference brings the reader to the
+ * Changed files slot and moves focus there, and the address follows (`?hunk=…`).
+ *
  * @param props See {@link PrScreenProps}.
  * @returns The screen.
  */
@@ -137,6 +224,10 @@ export function PrScreen({
   initialRevision = null,
   mayContribute = false,
   mayArm = false,
+  mayWaive = false,
+  initialHunk = null,
+  criteriaSenders = CRITERIA_SENDERS,
+  now = Date.now,
   poll,
   sendReview = requestHumanReview,
   sendReturn = returnToLoop,
@@ -168,6 +259,15 @@ export function PrScreen({
     readonly failed: boolean;
   } | null>(null);
   const slot = useRef<HTMLElement>(null);
+  const [locals, setLocals] = useState<readonly LocalCriterion[]>([]);
+  const [criteriaSending, setCriteriaSending] = useState(false);
+  const [criteriaOutcome, setCriteriaOutcome] = useState<CriteriaOutcome | null>(null);
+  const [addingClaim, setAddingClaim] = useState(false);
+  const [attachingTo, setAttachingTo] = useState<string | null>(null);
+  const [waiving, setWaiving] = useState<string | null>(null);
+  const [hunk, setHunk] = useState<Hunk | null>(initialHunk);
+  const [hunkRequests, setHunkRequests] = useState(0);
+  const filesSlot = useRef<HTMLElement>(null);
 
   // The address names a revision this PR does not have. Dropped during render, so the gates of
   // the latest revision are never drawn under another revision's name.
@@ -182,11 +282,21 @@ export function PrScreen({
     if (!pageRead) return;
 
     const { pathname, search, hash } = window.location;
-    const next = withRevision(search, scoped);
+    const next = withHunk(withRevision(search, scoped), hunk);
     if (next === search) return;
 
     window.history.replaceState(window.history.state, "", `${pathname}${next}${hash}`);
-  }, [pageRead, scoped]);
+  }, [pageRead, scoped, hunk]);
+
+  // After a hunk reference was followed and the slot has drawn it: bring the changed files into
+  // the pane's view and put focus on them, for the merge plan slot's reason.
+  useEffect(() => {
+    if (hunkRequests === 0) return;
+
+    const region = filesSlot.current;
+    region?.scrollIntoView?.({ block: "start" });
+    region?.focus({ preventScroll: true });
+  }, [hunkRequests]);
 
   // After *Merge when all gates green* has handed off and the slot has drawn it: bring the slot
   // into the pane's view and put focus on it, so a keyboard or screen-reader user lands where a
@@ -274,6 +384,137 @@ export function PrScreen({
     return answer;
   }
 
+  /**
+   * Draw a claim from an answer, until a read made after it has caught up.
+   *
+   * @param changed The claims as the answer stated them.
+   */
+  function keep(changed: readonly PrCriterion[]): void {
+    const at = now();
+
+    setLocals((current) => [
+      ...standing(current, read.snapshot.updatedAt),
+      ...changed.map((criterion) => ({ criterion, at })),
+    ]);
+  }
+
+  /**
+   * Send one change of the matrix — one at a time — and refresh the page after it.
+   *
+   * @param send The change.
+   * @returns What it answered.
+   */
+  async function change<T>(send: () => Promise<T>): Promise<T> {
+    setCriteriaSending(true);
+
+    try {
+      return await send();
+    } finally {
+      setCriteriaSending(false);
+      read.refresh();
+    }
+  }
+
+  /**
+   * Add the claim the dialog confirmed.
+   *
+   * @param claim The claim, trimmed.
+   * @returns The outcome, for the dialog: it closes on a claim added and draws a refusal.
+   */
+  async function confirmClaim(claim: string): Promise<TextDialogOutcome> {
+    const outcome = await change(() => criteriaSenders.addClaim(prId, claim));
+    if (!outcome.ok) return outcome;
+
+    keep([outcome.answer]);
+    setCriteriaOutcome({ text: CLAIM_ADDED, failed: false });
+
+    return { ok: true };
+  }
+
+  /** Import the plan's acceptance criteria, and say what became of it. */
+  async function importPlan(): Promise<void> {
+    if (criteriaSending) return;
+
+    const outcome = await change(() => criteriaSenders.importFromPlan(prId));
+
+    if (outcome.ok) {
+      keep(outcome.answer.imported);
+      setCriteriaOutcome(importOutcome(outcome.answer));
+    } else {
+      setCriteriaOutcome({ text: outcome.reason, failed: true });
+    }
+  }
+
+  /**
+   * Attach the evidence the picker confirmed to the claim it was opened for.
+   *
+   * @param request The reference.
+   * @returns The outcome, for the picker: it closes on a citation and draws a refusal.
+   */
+  async function confirmEvidence(request: AttachEvidenceRequest): Promise<CriterionOutcome> {
+    if (attachingTo === null) {
+      return { ok: false, status: 404, code: "criterion_not_found", reason: CLAIM_GONE };
+    }
+
+    const criterionId = attachingTo;
+    const outcome = await change(() => criteriaSenders.attach(prId, criterionId, request));
+
+    if (outcome.ok) {
+      keep([outcome.answer]);
+      setCriteriaOutcome({ text: EVIDENCE_ATTACHED, failed: false });
+    }
+
+    return outcome;
+  }
+
+  /**
+   * Verify a claim, and say on the card what became of it.
+   *
+   * @param criterionId The claim.
+   */
+  async function verify(criterionId: string): Promise<void> {
+    if (criteriaSending) return;
+
+    const outcome = await change(() => criteriaSenders.verify(prId, criterionId));
+
+    if (outcome.ok) {
+      keep([outcome.answer]);
+      setCriteriaOutcome({ text: CLAIM_VERIFIED, failed: false });
+    } else {
+      setCriteriaOutcome({ text: outcome.reason, failed: true });
+    }
+  }
+
+  /**
+   * Waive the claim the dialog was opened for, with the reason it confirmed.
+   *
+   * @param reason Why, trimmed.
+   * @returns The outcome, for the dialog: it closes on a waiver — annotated or not, which the
+   *   card then says — and draws a refusal.
+   */
+  async function confirmWaive(reason: string): Promise<TextDialogOutcome> {
+    if (waiving === null) return { ok: false, reason: CLAIM_GONE };
+
+    const criterionId = waiving;
+    const outcome = await change(() => criteriaSenders.waive(prId, criterionId, reason));
+    if (!outcome.ok) return outcome;
+
+    keep([outcome.answer.criterion]);
+    setCriteriaOutcome(waiveOutcome(outcome.answer));
+
+    return { ok: true };
+  }
+
+  /**
+   * Follow a hunk reference to the changed files.
+   *
+   * @param cited The hunk.
+   */
+  function followHunk(cited: Hunk): void {
+    setHunk((current) => (sameHunk(current, cited) ? current : cited));
+    setHunkRequests((count) => count + 1);
+  }
+
   /** Hand off to the Merge plan slot, and take the reader there. */
   function handOff(): void {
     if (revision === null) return;
@@ -282,6 +523,20 @@ export function PrScreen({
     setFocusRequests((count) => count + 1);
   }
 
+  const criteria =
+    page === null ? [] : withLocal(page.criteria, locals, read.snapshot.updatedAt);
+  const matrix =
+    page === null
+      ? null
+      : criteriaCard({
+          page,
+          criteria,
+          mayContribute,
+          mayWaive,
+          originId: origin.id,
+          search: withRevision(`?${RUN_ORIGIN_PARAM}=${encodeURIComponent(origin.id)}`, scoped),
+        });
+  const waived = criteria.find((each) => each.id === waiving) ?? null;
   const head = page === null ? null : prHead(page, origin.id);
   const actions =
     page === null
@@ -358,11 +613,51 @@ export function PrScreen({
         />
       )}
 
+      {matrix !== null && (
+        <CriteriaCard
+          onAddClaim={() => setAddingClaim(true)}
+          onAttach={setAttachingTo}
+          onHunk={followHunk}
+          onImport={() => void importPlan()}
+          onVerify={(criterionId) => void verify(criterionId)}
+          onWaive={setWaiving}
+          outcome={criteriaOutcome}
+          sending={criteriaSending}
+          view={matrix}
+        />
+      )}
+
+      {page !== null && <FilesSlot files={page.files} hunk={hunk} ref={filesSlot} />}
+
       {page !== null && actions !== null && actions.merge !== null && (
         <MergePlanSlot
           chosen={chosen !== null && chosen === revision?.seq ? chosen : null}
           ref={slot}
         />
+      )}
+
+      {page !== null && (
+        <>
+          <ClaimDialog
+            onClose={() => setAddingClaim(false)}
+            onConfirm={confirmClaim}
+            open={addingClaim}
+          />
+          <EvidenceDialog
+            claim={criteria.find((each) => each.id === attachingTo)?.claim ?? null}
+            loadOptions={() => criteriaSenders.readOptions(prId)}
+            onClose={() => setAttachingTo(null)}
+            onConfirm={confirmEvidence}
+            paths={hunkPaths(page.files)}
+            revisionId={page.files?.revisionId ?? null}
+          />
+          <WaiveDialog
+            again={waived?.status === "waived"}
+            claim={waived?.claim ?? null}
+            onClose={() => setWaiving(null)}
+            onConfirm={confirmWaive}
+          />
+        </>
       )}
 
       {page !== null && (

@@ -38,7 +38,7 @@ function wire(value: unknown): unknown {
 }
 
 /** The matrix and plan the page composes, as their own services answer them. */
-const MATRIX = { prId: PR, counts: criteriaCounts([]), criteria: [] };
+const MATRIX = { prId: PR, planContext: false, counts: criteriaCounts([]), criteria: [] };
 const PLAN = mergePlanResource({
   id: "5eed0041-0000-4000-8000-000000000514",
   prId: PR,

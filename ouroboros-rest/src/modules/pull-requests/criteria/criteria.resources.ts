@@ -100,6 +100,11 @@ export interface CriteriaCountsResource {
 /** `GET /api/v1/pull-requests/{id}/criteria` — the matrix. */
 export interface CriteriaMatrixResource {
   readonly prId: string;
+  /**
+   * Whether the import has a plan to read: the PR has a ticket and a plan draft with a body was
+   * pushed as it. The matrix shows *Import from plan* exactly when this is true (#366).
+   */
+  readonly planContext: boolean;
   readonly counts: CriteriaCountsResource;
   /** In the matrix's order. */
   readonly criteria: readonly CriterionResource[];

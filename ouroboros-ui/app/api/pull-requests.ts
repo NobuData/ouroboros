@@ -9,6 +9,11 @@
  * POST /api/v1/pull-requests/{id}/request-review   Request human review
  * POST /api/v1/pull-requests/{id}/return-to-loop   Return to loop, with the selected red gates
  * POST /api/v1/pull-requests/{id}/approvals        Approve or decline — the gates card's row (#365)
+ * POST /api/v1/pull-requests/{id}/criteria                        Add claim (#366, over #359)
+ * POST /api/v1/pull-requests/{id}/criteria/import                 Import from plan
+ * POST /api/v1/pull-requests/{id}/criteria/{criterionId}/evidence Cite evidence
+ * POST /api/v1/pull-requests/{id}/criteria/{criterionId}/verify   Verify
+ * POST /api/v1/pull-requests/{id}/criteria/{criterionId}/waive    Waive, and annotate the host PR
  * ```
  *
  * The shape every other module under `app/api/` keeps: the generated client does the transport,
@@ -58,6 +63,30 @@ export type ApprovalDecisionRequest = components["schemas"]["ApprovalDecisionReq
 
 /** `approve` or `decline`. */
 export type ApprovalDecision = ApprovalDecisionRequest["decision"];
+
+/** The acceptance criteria matrix — every claim, in the card's order. */
+export type CriteriaMatrix = components["schemas"]["CriteriaMatrix"];
+
+/** One claim of the matrix, with its evidence and — when waived — its waiver. */
+export type PrCriterion = components["schemas"]["PrCriterion"];
+
+/** One citation of a claim: the composed line and the typed reference. */
+export type PrEvidence = components["schemas"]["PrEvidence"];
+
+/** `test_case`, `hil_measurement`, `hunk`, `analysis_note` or `build_artifact`. */
+export type PrEvidenceKind = PrEvidence["kind"];
+
+/** What citing evidence sends — one typed reference. */
+export type AttachEvidenceRequest = components["schemas"]["AttachEvidenceRequest"];
+
+/** What *Import from plan* answers. */
+export type CriteriaImport = components["schemas"]["CriteriaImport"];
+
+/** What a waive answers: the waived claim, and what the host did with the annotation. */
+export type PrCriterionWaived = components["schemas"]["PrCriterionWaived"];
+
+/** The changed-files snapshot of the latest revision. */
+export type PrFiles = components["schemas"]["PrFiles"];
 
 /** A run's pull request, as a surface that links to its verification page holds it. */
 export interface PullRequestRef {
@@ -189,6 +218,114 @@ export const pullRequests = {
       await client.POST("/api/v1/pull-requests/{id}/approvals", {
         params: { path: { id } },
         body: request,
+      }),
+    );
+  },
+
+  /**
+   * Author one claim — `manual`, the only provenance authoring writes.
+   *
+   * @param id The PR's id.
+   * @param claim The claim, neither empty nor padded.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The claim, last in the matrix and `unverified`.
+   * @throws ApiError `403` for a viewer, `404 pull_request_not_found`.
+   */
+  async createCriterion(id: string, claim: string, client: ApiClient = api()): Promise<PrCriterion> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/criteria", {
+        params: { path: { id } },
+        body: { claim },
+      }),
+    );
+  },
+
+  /**
+   * Import the acceptance criteria the ticket's plan states, as `plan` rows.
+   *
+   * @param id The PR's id.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns What was written, what the PR already had, and what was too long to be a claim.
+   * @throws ApiError `403` for a viewer, `409 plan_context_missing` or `plan_criteria_missing`,
+   *   `404 pull_request_not_found`.
+   */
+  async importCriteria(id: string, client: ApiClient = api()): Promise<CriteriaImport> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/criteria/import", {
+        params: { path: { id } },
+      }),
+    );
+  },
+
+  /**
+   * Cite one piece of evidence for a claim — a typed reference the service resolves first.
+   *
+   * @param id The PR's id.
+   * @param criterionId The claim's id.
+   * @param request The reference.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The claim, with the citation — and its composed line — among its evidence.
+   * @throws ApiError `403` for a viewer, `422 evidence_unresolved` or `hunk_outside_snapshot`,
+   *   `404 criterion_not_found` or `pull_request_not_found`.
+   */
+  async attachEvidence(
+    id: string,
+    criterionId: string,
+    request: AttachEvidenceRequest,
+    client: ApiClient = api(),
+  ): Promise<PrCriterion> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/criteria/{criterionId}/evidence", {
+        params: { path: { id, criterionId } },
+        body: request,
+      }),
+    );
+  },
+
+  /**
+   * Mark a claim verified — refused while it has no evidence.
+   *
+   * @param id The PR's id.
+   * @param criterionId The claim's id.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The claim, `verified`.
+   * @throws ApiError `403` for a viewer, `409 criterion_evidence_required` or `criterion_waived`,
+   *   `404 criterion_not_found` or `pull_request_not_found`.
+   */
+  async verifyCriterion(
+    id: string,
+    criterionId: string,
+    client: ApiClient = api(),
+  ): Promise<PrCriterion> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/criteria/{criterionId}/verify", {
+        params: { path: { id, criterionId } },
+      }),
+    );
+  },
+
+  /**
+   * Waive a claim and annotate the host PR. Waiving again edits the same host comment.
+   *
+   * @param id The PR's id.
+   * @param criterionId The claim's id.
+   * @param reason Why, neither empty nor padded.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The claim, `waived`, and what the host did with the annotation — a host that
+   *   refused is an answer, not an error.
+   * @throws ApiError `403` for anyone but an owner or admin, `409 criterion_waiver_needs_run`,
+   *   `404 criterion_not_found` or `pull_request_not_found`.
+   */
+  async waiveCriterion(
+    id: string,
+    criterionId: string,
+    reason: string,
+    client: ApiClient = api(),
+  ): Promise<PrCriterionWaived> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/criteria/{criterionId}/waive", {
+        params: { path: { id, criterionId } },
+        body: { reason },
       }),
     );
   },
