@@ -301,6 +301,13 @@ export function testsPath(
 export const PRS_PATH = "/prs";
 
 /**
+ * The query parameter naming the revision the PR page's gates are scoped to — its ordinal, the
+ * `1` of *Revision 1* ([#364](https://github.com/NobuData/ouroboros/issues/364)). Absent, the
+ * page follows the latest revision.
+ */
+export const PR_REVISION_PARAM = "rev";
+
+/**
  * The PR verification page for one PR — `/prs/5eed…?from=dashboard`.
  *
  * @param id The PR's id (a uuid) — what `GET /api/v1/pull-requests/{id}` is addressed by, never

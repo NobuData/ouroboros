@@ -2,9 +2,10 @@ import { notFound } from "next/navigation";
 
 import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
-import { RUN_ORIGIN_PARAM } from "@/app/paths";
+import { PR_REVISION_PARAM, RUN_ORIGIN_PARAM } from "@/app/paths";
 import { readPr } from "@/app/prs/data";
 import { PrScreen } from "@/app/prs/pr-screen";
+import { revisionParam } from "@/app/prs/strip";
 import { runOrigin } from "@/app/runs/origin";
 
 /**
@@ -21,8 +22,11 @@ import { runOrigin } from "@/app/runs/origin";
  * sees no arm affordance. The screen is handed two booleans rather than a role, and the service
  * checks again on every press.
  *
+ * **`?rev=` scopes the gates** to one revision's snapshot (#364), so a revision view is linkable.
+ * A value that is not a revision's ordinal is ignored, and the page follows the latest.
+ *
  * @param props.params The PR's id.
- * @param props.searchParams The query — `?from=`.
+ * @param props.searchParams The query — `?from=` and `?rev=`.
  * @returns The screen, or the not-found page for a PR this workspace cannot see.
  */
 export default async function Page({
@@ -34,7 +38,8 @@ export default async function Page({
 }>) {
   const { membership } = await requireWorkspace();
   const { id } = await params;
-  const origin = runOrigin((await searchParams)[RUN_ORIGIN_PARAM]);
+  const query = await searchParams;
+  const origin = runOrigin(query[RUN_ORIGIN_PARAM]);
   const reading = await readPr(id);
 
   if (reading.state === "missing") notFound();
@@ -43,6 +48,7 @@ export default async function Page({
     <PrScreen
       initial={reading.state === "found" ? reading.value : null}
       initialError={reading.state === "failed" ? reading.reason : null}
+      initialRevision={revisionParam(query[PR_REVISION_PARAM])}
       mayArm={mayAdminister(membership.roles)}
       mayContribute={mayContribute(membership.roles)}
       origin={origin}

@@ -2,11 +2,12 @@ import { render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { PR_MISSING_TITLE } from "@/app/prs/pr-missing";
+import { GATES_TITLE } from "@/app/prs/strip";
 import { ACTIONS_LABEL, MERGE_LABEL, RETURN_LABEL, REVIEW_LABEL } from "@/app/prs/view";
 import { navRegistry } from "@/app/shell/nav-registry";
 
 import { membership, sessionUser } from "../helpers/login";
-import { PR_514_ID, blockedPage, prPage } from "../helpers/pull-requests";
+import { PR_514_ID, blockedPage, prPage, stripPage } from "../helpers/pull-requests";
 
 /**
  * The PR verification route (#363): the gate first, then one read — a PR this workspace cannot
@@ -118,6 +119,21 @@ describe("the PR verification route", () => {
 
     await open({ from: "nowhere" });
     expect(navRegistry().origin).toBe("dashboard");
+  });
+
+  it("scopes the gates to the revision ?rev= names, and ignores what is not an ordinal (#364)", async () => {
+    readPr.mockResolvedValue({ state: "found", value: stripPage() });
+
+    const scoped = await open({ rev: "1" });
+    expect(screen.getByRole("region", { name: GATES_TITLE })).toHaveTextContent(
+      "Revision 1 · 3f9c2ae · 2 gates red",
+    );
+    scoped.unmount();
+
+    await open({ rev: "latest" });
+    expect(screen.getByRole("region", { name: GATES_TITLE })).toHaveTextContent(
+      "Revision 2 · b7e41d0 · 5/7 gates green",
+    );
   });
 
   it("says it is reading while the first read is in flight", () => {
