@@ -195,6 +195,48 @@ describe("the PR sync, against a migrated database", () => {
     expect(row.merged_at).toBeInstanceOf(Date);
   });
 
+  it("writes the host's content back over a local edit — the host owns it (AX.6)", async () => {
+    const { organizationId, sourceId, prNumber, service } = await sandbox();
+
+    await service.sync(organizationId, sourceId, prNumber);
+
+    const mirrored = await prRow(sourceId);
+
+    await api.sql.query(
+      `update ${SCHEMA_NAME}.pull_requests set title = 'edited here', additions = 0
+        where source_id = $1`,
+      [sourceId],
+    );
+    await service.sync(organizationId, sourceId, prNumber);
+
+    expect(await prRow(sourceId)).toMatchObject({
+      title: mirrored.title,
+      additions: mirrored.additions,
+      deletions: mirrored.deletions,
+    });
+  });
+
+  it("mirrors a PR once: concurrent syncs leave one row and one revision, and V052 refuses a second mirror (AX.6)", async () => {
+    const { organizationId, sourceId, prNumber, service } = await sandbox();
+    const outcomes = await Promise.allSettled([
+      service.sync(organizationId, sourceId, prNumber),
+      service.sync(organizationId, sourceId, prNumber),
+    ]);
+    const pr = await prRow(sourceId);
+
+    expect(outcomes.some((outcome) => outcome.status === "fulfilled")).toBe(true);
+    expect(await revisions(pr.id)).toHaveLength(1);
+    await expect(
+      api.sql.query(
+        `insert into ${SCHEMA_NAME}.pull_requests
+                (organization_id, source_id, external_number, external_url, title, head_branch,
+                 base_branch, state)
+         values ($1, $2, $3, 'https://example.test/pull/1', 'a second mirror', 'b', 'main', 'open')`,
+        [organizationId, sourceId, prNumber],
+      ),
+    ).rejects.toMatchObject({ constraint: "pull_requests_source_number_key" });
+  });
+
   it("walks a PR reopened and merged between syncs through V052's graph", async () => {
     const { organizationId, sourceId, host, prNumber, service } = await sandbox();
 

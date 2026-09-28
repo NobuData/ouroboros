@@ -5138,6 +5138,35 @@ share, both through `readSpendTotals`, against the budget stage's route cap (the
 **Unpriced is never `$0`** — a ledger with no prices is token counts and a `null` cost, and
 `withinCap` is `null` whenever it cannot honestly be said.
 
+### PR-plane suites & mutation checks
+
+AX.6 ([#362](https://github.com/NobuData/ouroboros/issues/362)) covers the three PR-plane failures
+that throw nothing: a merge re-check that stopped checking, a comment marker that stopped
+deduplicating, and a gate engine that stopped re-judging. The suites run under
+`yarn test:integration`, beside AX.1–AX.5's own suites:
+
+| Suite | Holds |
+| ----- | ----- |
+| `pull-requests/pr-plane.integration-spec.ts` | **TOCTOU**: gate flips red, a new revision recorded, the host's head moved, host conflict, branch protection — each disarms with its reason and nothing merges (plus a control case that merges). **Publish**: evidence summaries and waiver annotations edited under their keys across repeated publishes and the merge. **Gates**: 7 gates × 6 verdicts through V056's aggregate and the engine's; a synced push is a new snapshot, and the prior one is left intact; a headerless new file is license-red with the file named. **Head actions**: the steer and transcript equal the selected gates' evidence; review requests flip human approval, ask the host and list the PR as needs-you. **Roles**: refusals held server-side. **Isolation**: every PR route, enumerated from the route table, `404`s another workspace |
+| `pull-requests/pr-sync.integration-spec.ts` | also: a local edit of host-owned content is written back on the next sync; concurrent syncs mirror once, and V052 refuses a second mirror |
+| `ticket-sources/providers/github.pr.integration-spec.ts` | also: on recorded GitHub, three publishes under two keys are two POSTs and four PATCHes |
+
+The scene (`pull-requests/pr-plane.integration.fixture.ts`) is mockup 12's PR on the in-memory git
+host. It reaches the host through **the application's own services**: the harness replaces the
+ticket-source registry and nothing else, and swaps in a fresh host for each case.
+
+**Mutation checks.** Removing the mechanism turns the named test red:
+
+| Remove | Red test |
+| ------ | -------- |
+| the re-check's `gate_red` branch (`recheckVerification`) | `disarms, never merges, when a gate flips red between arm and fire` |
+| the comment marker (`withPrCommentMarker`) | `edits the evidence summary across repeated publishes…`, `keeps one comment per key…` (fake and recorded GitHub) |
+| the sync's gate-engine notification (`PrSyncService.sync`) | `judges a revision synced from the host as a new snapshot, leaving the prior one intact` |
+
+```bash
+env -u OURO_DATABASE_URL yarn test:integration src/modules/pull-requests
+```
+
 ## Container
 
 [`Dockerfile`](Dockerfile) is the production image

@@ -2,11 +2,14 @@ import { ApiHarness } from "../../../testing/harness.fixture";
 import { SCHEMA_NAME } from "../../db/schema";
 import { GithubRateLimiter } from "../../github/github.rate-limit";
 import { PrMirrorRepository } from "../../pull-requests/pr-sync.repository";
+import { waiverAnnotationKey } from "../../pull-requests/criteria/criteria.annotation";
+import { EVIDENCE_COMMENT_KEY } from "../../pull-requests/merge/merge.evidence";
 import { PrSyncService } from "../../pull-requests/pr-sync.service";
 import { FIRST_PUSH, SECOND_PUSH } from "../conformance.pr.fixture";
 import { TicketSourceRegistry } from "../ticket-source.registry";
 import { insertSource } from "../ticket-sync.integration.fixture";
 import { TicketSourcesService } from "../ticket-sources.service";
+import { CREATE_COMMENT_ROUTE, UPDATE_COMMENT_ROUTE } from "./github.pr";
 import { GithubTicketSourceProvider } from "./github.provider";
 import {
   SOURCE_LOGIN,
@@ -44,7 +47,12 @@ describe("the GitHub PR round trip, against a migrated database", () => {
 
   afterEach(() => api.truncate());
 
-  it("creates a branch and PR, detects revision 2 after a second push, merges squash with delete, verifies the close, and edits its comment", async () => {
+  /**
+   * A GitHub source on a recorded repository, its provider, and the PR sync over both.
+   *
+   * @returns Everything a case needs.
+   */
+  async function recorded() {
     const { organizationId, sourceId } = await insertSource(api, {
       kind: "github",
       displayName: "GitHub · acme-robotics",
@@ -71,6 +79,13 @@ describe("the GitHub PR round trip, against a migrated database", () => {
       cursor: null,
       syncedAt: null,
     };
+
+    return { organizationId, sourceId, github, provider, sources, service, source };
+  }
+
+  it("creates a branch and PR, detects revision 2 after a second push, merges squash with delete, verifies the close, and edits its comment", async () => {
+    const { organizationId, sourceId, github, provider, sources, service, source } =
+      await recorded();
 
     // Create a branch and PR.
     github.push("loop/482-canbus-flake", FIRST_PUSH);
@@ -154,5 +169,38 @@ describe("the GitHub PR round trip, against a migrated database", () => {
       revisionSeq: 2,
       newRevision: false,
     });
+  });
+  it("keeps one comment per key across repeated publishes through the PR sync — PATCH, never a second POST (AX.6)", async () => {
+    const { organizationId, sourceId, github, service } = await recorded();
+
+    github.push("loop/482-canbus-flake", FIRST_PUSH);
+
+    const prNumber = github.open("loop/482-canbus-flake", "can: fix flaky telemetry frame order");
+    const keys = [
+      EVIDENCE_COMMENT_KEY,
+      waiverAnnotationKey("5eed0040-0000-4000-8000-000000000001"),
+    ];
+    const modes: string[] = [];
+
+    for (const round of [1, 2, 3]) {
+      for (const key of keys) {
+        const published = await service.comment(organizationId, sourceId, prNumber, {
+          key,
+          body: `${key} · publish ${String(round)}`,
+        });
+
+        modes.push(published.mode);
+      }
+    }
+
+    const routes = github.calls.map((call) => call.route);
+
+    expect(modes).toEqual(["created", "created", "edited", "edited", "edited", "edited"]);
+    expect(routes.filter((route) => route === CREATE_COMMENT_ROUTE)).toHaveLength(2);
+    expect(routes.filter((route) => route === UPDATE_COMMENT_ROUTE)).toHaveLength(4);
+    expect(github.ledger().comments.map(([, , body]) => body.split("\n")[0])).toEqual([
+      `${EVIDENCE_COMMENT_KEY} · publish 3`,
+      `${keys[1]} · publish 3`,
+    ]);
   });
 });
