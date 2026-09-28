@@ -775,7 +775,7 @@ tokens (both themes; the mockup is dark-only).
 | AU.4 | #338 ✅ | 🟢 Done | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.5 | #339 | 🟡 Open | ouroboros-ui: [AU.5] Failure detail card | Test path, rig log block, honest triage slot | mvp, tests, ui, design | N (after AU.3/AU.4) | Y | M | ouroboros-ui |
 | AU.6 | #340 | 🟡 Open | ouroboros-ui: [AU.6] Mark & Route card | Classify radios with hints, note, toggles, routing actions | mvp, tests, ui | N (after AU.5, AT.4) | Y | L | ouroboros-ui |
-| AU.7 | #341 | 🟡 Open | ouroboros-ui: [AU.7] Artifacts card & downloads | Artifact rows, sizes, coverage delta, tombstones | mvp, tests, ui | N (after AU.1, AT.5) | Y | S | ouroboros-ui |
+| AU.7 | #341 ✅ | 🟢 Done | ouroboros-ui: [AU.7] Artifacts card & downloads | Artifact rows, sizes, coverage delta, tombstones | mvp, tests, ui | N (after AU.1, AT.5) | Y | S | ouroboros-ui |
 | AU.8 | #342 | 🟡 Open | ouroboros-ui: [AU.8] Test-results states & e2e leg | Running/empty/error states, themes, full-chain e2e | mvp, tests, ui, ci | N (after AU.2–AU.7) | Y | M | ouroboros-ui, .github |
 
 ### Issue AU.1 — ouroboros-ui: [AU.1] Test-results route, head & summary strip
@@ -1039,7 +1039,7 @@ TRIAGE  [heuristic · new-failure ∩ diff-paths → product bug]  · "AI narrat
 
 ### Issue AU.7 — ouroboros-ui: [AU.7] Artifacts card & downloads
 
-> **GitHub issue:** #341 · **Status:** 🟡 Open · **Parent epic:** #322
+> **GitHub issue:** #341 · **Status:** 🟢 Done · **Parent epic:** #322
 
 - **Problem Statement:** The artifacts row list with sizes, the coverage
   delta line, retention labeling, and safe open/download.
@@ -1057,6 +1057,25 @@ TRIAGE  [heuristic · new-failure ∩ diff-paths → product bug]  · "AI narrat
 ```
 junit-build3.xml ↗ · rig-capture-estop.csv 2.1MB ↗ · serial-console.log ↗ · coverage 87.4% (+0.6%) ↗
 ```
+
+> **Delivered as `ouroboros-ui/app/test-results/artifacts.ts`, `artifacts-card.tsx` and
+> `artifact-viewer.tsx`**, over the attempt's page #337 already reads (`artifacts` and `coverage`),
+> and `app/api/artifact-file.ts` behind `GET /api/artifacts/:id`. Decided on #341:
+>
+> 1. **`retained Nd` is composed from the artifacts' `retentionDays`** — AT.5 serves the policy per
+>    artifact, as it stood at upload. One value is `retained 30d`; several are a range
+>    (`retained 7–30d`); no live file is no tag.
+> 2. **A size is notable from 1 MB**, printed in binary units — 2,202,010 bytes is the mockup's
+>    `2.1 MB`, and the 48 KB report prints none.
+> 3. **The coverage row is the live coverage report**, drawn last and labelled with the figures. An
+>    expired report keeps its tombstone and the figures get a row with nothing to open.
+> 4. **A measured delta of zero is `(±0.0%)`**, neutral. An absent one prints nothing.
+> 5. **The viewer is in the card, beneath its row**, not in the address. It reads at most 512 KB.
+> 6. **The file's address is built from the artifact's id.** `href` is read only as *openable*.
+> 7. **This hop sets `nosniff` and the sandboxing CSP itself** on every answer, and passes on only
+>    `Content-Type` and `Content-Disposition`.
+> 8. **The e2e round-trip is #342's leg** (*artifacts download*); this issue's tests are the unit
+>    and screen tests in `ouroboros-ui/__tests__`.
 
 ### Issue AU.8 — ouroboros-ui: [AU.8] Test-results states & e2e leg
 

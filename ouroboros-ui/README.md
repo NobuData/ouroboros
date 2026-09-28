@@ -264,6 +264,8 @@ ouroboros-ui/
 │   │   ├── runs/[id]/tests/route.ts # GET /api/runs/{id}/tests — the attempts timeline, on this origin
 │   │   ├── test-runs/[id]/rerun/route.ts # GET /api/test-runs/{id}/rerun — whether a runner could take a re-run
 │   │   ├── test-runs/[id]/route.ts # GET /api/test-runs/{id} — one attempt's page: its suites and cases · #337
+│   │   ├── artifact-file.ts #   readArtifactFile() — AT.5's artifact download, streamed through and made safe · #341
+│   │   ├── artifacts/[id]/route.ts # GET /api/artifacts/{id} — the artifacts card's open ↗, on this origin
 │   │   ├── pull-requests.ts #   pullRequests.* — the PR page, forRuns() the by-run lookup, the two head actions · #363
 │   │   ├── pull-requests-read.ts # readPageForPoll() — the PR page, for its poll
 │   │   ├── prs/[id]/route.ts #  GET /api/prs/{id} — the PR page, on this origin
@@ -425,7 +427,7 @@ ouroboros-ui/
 │   │   ├── view.ts          #   the four ways a trail lies, and what stops each
 │   │   ├── audit-actions.ts #   the Server Action — no arguments, so nothing to forge
 │   │   └── audit-trail.tsx  #   <AuditTrail /> — the button and its sheet, mountable
-│   ├── test-results/        # mockup 11's test results: head, actions, timeline, strip, suites, physical · #335–#338
+│   ├── test-results/        # mockup 11's test results: head, actions, timeline, strip, suites, physical, artifacts · #335–#338 #341
 │   │   ├── view.ts          #   the attempt, the head, the strip as the payload states it, the honest gate
 │   │   ├── poll.ts          #   the readers and guards: the run's timeline, the attempt's gate and page
 │   │   ├── data.ts          #   readTests() — the first paint, the tracker link and the gate best-effort
@@ -439,9 +441,12 @@ ouroboros-ui/
 │   │   ├── suites-card.tsx  #   the suite rows, the selected one, and each suite's case drill
 │   │   ├── physical.ts      #   the measured line composed from stored fields, the breach, the rig's presence · #338
 │   │   ├── physical-card.tsx #  the rig groups, their ptest rows, and the selected case
+│   │   ├── artifacts.ts     #   the retention tag, the notable size, the coverage delta, tombstones, the bounded read · #341
+│   │   ├── artifacts-card.tsx # the art rows, their open affordances, and which viewer is open
+│   │   ├── artifact-viewer.tsx # a text artifact read in place, as text
 │   │   ├── mark-route-slot.tsx # where Send failures back lands until #340 draws the card
 │   │   ├── tests-loading.tsx #  the first read in flight
-│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites, physical — three polls and the farm's
+│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites, physical, artifacts — three polls and the farm's
 │   ├── prs/                 # mockup 12's PR verification: route, head and three actions · #363
 │   │   ├── view.ts          #   the head, the pill's hue, the red gates, the three actions by role and state
 │   │   ├── poll.ts          #   the reader and guard: the whole PR page
@@ -3720,6 +3725,46 @@ failure-detail card (#339) is scoped by (`physicalView(...).scope`).
 A selected case that the attempt did not run on a rig, or that the selected suite does not hold, is
 cleared — here and in the address — and the card says so. A long or wide list scrolls inside the
 card's own wrapper.
+
+### Artifacts card
+
+`ArtifactsCard` ([#341](https://github.com/NobuData/ouroboros/issues/341)) is the page's last card:
+one row per file the build uploaded, and its coverage. It reads the attempt's page (`artifacts` and
+`coverage`), so it adds no read of its own for its rows.
+
+| The payload says | The row draws |
+|------------------|---------------|
+| a live file | its kind's icon, its name, and **↗** |
+| `sizeBytes` of 1 MB or more | the size beside the name — `rig-capture-estop.csv 2.1 MB` (binary units) |
+| `preview: "inline"` | **↗** is a button: the file is read in place, beneath its row |
+| `preview: "download"` | **↗** is a link with `download`: the file is saved |
+| `state: "expired"` | a tombstone — the original name struck through, `expired`, and **no** affordance |
+| `truncated` | `truncated`, and *Cut short on upload — `<truncationNote>`* |
+| a live `coverage` report | the coverage row, drawn last: `coverage 87.4% (+0.6%)`, opening the report |
+
+- **`retained Nd` is the workspace's policy.** It is composed from the artifacts' own
+  `retentionDays` — `retained 7d` under a seven-day policy — and is a range (`retained 7–30d`) when
+  the policy changed between uploads. With no live file there is no tag.
+- **The coverage delta is absent, not zero.** A first attempt prints `coverage 86.8%` and nothing
+  else. A rise is in the ok hue, a fall in the err hue, and a delta that was measured and is zero
+  prints `(±0.0%)`, neutral.
+- **Coverage outlives its report.** When the report has expired it keeps its tombstone, and the
+  figures are drawn on a row of their own with nothing to open.
+
+**Files are read through this origin.** `GET /api/artifacts/:id` (`app/api/artifact-file.ts`)
+streams AT.5's `GET /api/v1/artifacts/:id` over the visitor's session. The address is built from the
+artifact's id; the payload's `href` is only read as *there is something to open*. Of the service's
+headers only `Content-Type` and `Content-Disposition` travel back, and every answer — a refusal
+included — is given `X-Content-Type-Options: nosniff` and
+`Content-Security-Policy: sandbox; default-src 'none'` by this hop, because the bytes are the
+runner's and this is the product's own origin. The first byte is awaited for thirty seconds; the
+body is not timed.
+
+**The inline viewer draws text and nothing else.** The file goes into a `<pre>` as a text node, so
+markup in a log is characters. It reads at most 512 KB and says when the file is longer, leaving the
+rest to the **Download** link beside it. One viewer is open at a time; it closes when its artifact
+expires or the attempt changes, and closing it aborts a read in flight. A `410` reads as *expired*;
+any other failure says why and offers a retry.
 
 Mark & Route itself is #340's; until then the page holds its slot, which names the staged cases.
 Insights (mockup 15) is `soon`, so the flaky card's `quarantine watching (N)` is words with the

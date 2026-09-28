@@ -9,6 +9,7 @@
  * GET  /api/v1/test-runs/{id}           one attempt's page — its suites and their cases (#337)
  * GET  /api/v1/test-runs/{id}/rerun     whether a re-run could be placed now, and each scope's N
  * POST /api/v1/test-runs/{id}/rerun     Re-run failed (N) / Re-run full suite
+ * GET  /api/v1/artifacts/{id}           one artifact's file — streamed by `artifact-file.ts` (#341)
  * ```
  *
  * The shape every other module under `app/api/` keeps: the generated client does the transport,
@@ -41,6 +42,12 @@ export type TestSuiteResult = components["schemas"]["TestSuiteResult"];
 /** One case of a suite, with its retries — a row of the case drill. */
 export type TestCaseResult = components["schemas"]["TestCaseResult"];
 
+/** One artifact of an attempt — a live file, or the tombstone the retention sweep left (#341). */
+export type TestArtifact = components["schemas"]["TestArtifact"];
+
+/** An attempt's coverage — `87.4% (+0.6%)`, the delta absent when there is no earlier one. */
+export type TestCoverage = components["schemas"]["TestCoverage"];
+
 /** Whether a re-run of an attempt could be placed now. */
 export type RerunAvailability = components["schemas"]["RerunAvailability"];
 
@@ -53,7 +60,7 @@ export type Rerun = components["schemas"]["Rerun"];
 /** `failed` — the failed set — or `full`. */
 export type RerunScope = Rerun["scope"];
 
-/** A test run's id: `test_runs.id`, a uuid (V051). */
+/** A test run's id — and an artifact's: `test_runs.id` (V051), `test_artifacts.id` (V055), uuids. */
 const TEST_RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -64,6 +71,17 @@ const TEST_RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * @returns `true` for a uuid.
  */
 export function isTestRunId(value: unknown): value is string {
+  return typeof value === "string" && TEST_RUN_ID.test(value);
+}
+
+/**
+ * Whether a value can be an artifact's id — `test_artifacts.id`, a uuid (V055). Checked by every
+ * hop that puts one in a path itself, for the reason `isRunId` gives.
+ *
+ * @param value What arrived.
+ * @returns `true` for a uuid.
+ */
+export function isArtifactId(value: unknown): value is string {
   return typeof value === "string" && TEST_RUN_ID.test(value);
 }
 

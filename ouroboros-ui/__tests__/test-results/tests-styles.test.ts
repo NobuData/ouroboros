@@ -71,8 +71,8 @@ describe("the build attempts timeline (#336)", () => {
     expect(CODE).toMatch(/\.tests-timeline__scroll\s*\{[^}]*overflow-x: auto;/);
     expect(CODE).toMatch(/\.tests-timeline__list\s*\{[^}]*width: max-content;/);
     // Nothing else on the page may scroll or overflow sideways, but the suites card's wrapper
-    // (#337) and the physical-tests card's (#338).
-    expect([...CODE.matchAll(/overflow(?:-x)?:\s*(auto|scroll)/g)]).toHaveLength(3);
+    // (#337), the physical-tests card's (#338), and the artifacts card's and its viewer's (#341).
+    expect([...CODE.matchAll(/overflow(?:-x)?:\s*(auto|scroll)/g)]).toHaveLength(5);
   });
 
   it("makes the wrapper the cards' offset parent, which is what scrolling it alone relies on", () => {
@@ -170,6 +170,44 @@ describe("the physical-tests card (#338)", () => {
     expect(CODE).toMatch(/\.tests-physical__row\s*\{[^}]*position: relative;/);
     expect(CODE).toMatch(/\.tests-physical__select::after\s*\{[^}]*inset: 0;/);
     expect(CODE).toMatch(/\.tests-physical__select:focus-visible::after\s*\{[^}]*outline: [^;]*var\(--accent\);/);
+  });
+});
+
+describe("the artifacts card (#341)", () => {
+  it("scrolls a long list inside its own wrapper, so the content pane never does", () => {
+    const wrapper = CODE.match(/\.tests-artifacts__scroll\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(wrapper).toMatch(/overflow: auto;/);
+    expect(wrapper).toMatch(/max-height: [\d.]+rem;/);
+    expect(CODE).toMatch(/\.tests-artifacts__list\s*\{[^}]*min-width: [\d.]+rem;/);
+  });
+
+  it("scrolls a file's text inside the viewer, both ways, without wrapping its columns", () => {
+    const file = CODE.match(/\.tests-artifacts__text\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(file).toMatch(/overflow: auto;/);
+    expect(file).toMatch(/max-height: [\d.]+rem;/);
+    expect(file).toMatch(/white-space: pre;/);
+  });
+
+  it("colours the coverage delta ok or err, from the tokens", () => {
+    expect(CODE).toMatch(/\.tests-artifacts__delta--ok\s*\{\s*color: var\(--ok\);/);
+    expect(CODE).toMatch(/\.tests-artifacts__delta--err\s*\{\s*color: var\(--err\);/);
+  });
+
+  it("draws a tombstone faint and struck through, even under the pointer", () => {
+    expect(CODE).toMatch(
+      /\.tests-artifacts__row\[data-expired="true"\],\s*\.tests-artifacts__row\[data-expired="true"\]:hover\s*\{\s*color: var\(--ink-faint\);/,
+    );
+    expect(CODE).toMatch(
+      /\.tests-artifacts__row\[data-expired="true"\] \.tests-artifacts__name\s*\{\s*text-decoration: line-through;/,
+    );
+  });
+
+  it("gives the affordance, the viewer's link and the file a visible focus ring", () => {
+    expect(CODE).toMatch(
+      /\.tests-artifacts__open:focus-visible,\s*\.tests-artifacts__viewer-link:focus-visible,\s*\.tests-artifacts__text:focus-visible\s*\{[^}]*outline: [^;]*var\(--accent\);/,
+    );
   });
 });
 
