@@ -11,7 +11,7 @@
  * **`not_applicable` means "there was no policy to judge against"**, uniformly:
  *
  * ```
- * allowed_paths    no plan file list declares a scope
+ * allowed_paths    no plan file list declares a scope, and the repository protects no path
  * ci_config        no model stage's touch_ci permission can be resolved from the pin
  * secrets          no file in the report carried diff hunks — nothing was scanned
  * review_required  review is not required: the pin auto-merges and no vote rule applies
@@ -77,6 +77,11 @@ export interface GuardrailInput {
   readonly planFiles?: readonly string[];
   /** The pinned stage's permissions, or `undefined` when none can be resolved. */
   readonly permissions?: StagePermissions;
+  /**
+   * The repository's protected-path globs (`protected_path_policies`, V067), or `undefined` /
+   * empty when it protects nothing. A change-set path matching one fails `allowed_paths`.
+   */
+  readonly protectedPaths?: readonly string[];
   /** The pinned policy, or `undefined` when the pinned document could not be read. */
   readonly review?: ReviewPolicy;
 }
@@ -110,9 +115,14 @@ function counted(count: number, noun: string): string {
  * CI registry when the stage may touch CI — so a permitted CI edit is judged once, by
  * `ci_config`, rather than failing here as well.
  *
+ * **Protected paths are judged first, and win** (#380, the #305 amendment). A path matching one
+ * of the repository's protected globs fails the check even when the plan declares it: a
+ * protected path is one the workspace said a run may not touch, and a plan is only an estimate.
+ * With protected paths but no plan, the check still runs — against the protected paths alone.
+ *
  * @param input - The change-set and the policy.
  * @returns The verdict. A failure names the first offending path, in code-unit order, and the
- *   scope glob it came closest to.
+ *   protected glob it matched or the scope glob it came closest to.
  */
 export function checkAllowedPaths(input: GuardrailInput): GuardrailVerdictRow {
   const declared = widenToScope(input.planFiles ?? []);
@@ -121,13 +131,34 @@ export function checkAllowedPaths(input: GuardrailInput): GuardrailVerdictRow {
     rulesetVersion: null,
     changeSetSeq: input.changeSetSeq,
   };
+  const guarded = protectedTouches(input);
 
-  if (declared.length === 0) {
+  if (guarded.length > 0) {
     return {
       ...base,
-      verdict: "not_applicable",
-      evidence: safeEvidence({ detail: "No plan file list declares a scope for this run." }),
+      verdict: "fail",
+      evidence: safeEvidence({
+        path: guarded[0].path,
+        glob: guarded[0].glob,
+        detail: `${counted(guarded.length, "path")} inside a protected path.`,
+      }),
     };
+  }
+
+  if (declared.length === 0) {
+    return (input.protectedPaths ?? []).length === 0
+      ? {
+          ...base,
+          verdict: "not_applicable",
+          evidence: safeEvidence({ detail: "No plan file list declares a scope for this run." }),
+        }
+      : {
+          ...base,
+          verdict: "pass",
+          evidence: safeEvidence({
+            detail: "No protected path touched. No plan file list declares a scope for this run.",
+          }),
+        };
   }
 
   const scope = new GlobSet(
@@ -151,6 +182,28 @@ export function checkAllowedPaths(input: GuardrailInput): GuardrailVerdictRow {
       detail: `${counted(outside.length, "path")} outside the declared scope.`,
     }),
   };
+}
+
+/**
+ * The change-set paths that fall inside a protected path.
+ *
+ * @param input - The change-set and the repository's protected globs.
+ * @returns Each offending path with the first protected glob it matched, in code-unit order of
+ *   path — empty when nothing is protected or nothing protected was touched.
+ */
+function protectedTouches(input: GuardrailInput): { path: string; glob: string }[] {
+  const globs = input.protectedPaths ?? [];
+
+  if (globs.length === 0) {
+    return [];
+  }
+
+  const guard = new GlobSet(globs);
+
+  return input.files
+    .map((file) => ({ path: file.path, glob: guard.match(file.path) }))
+    .filter((entry): entry is { path: string; glob: string } => entry.glob !== undefined)
+    .sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0));
 }
 
 /**

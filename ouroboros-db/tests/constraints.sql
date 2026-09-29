@@ -22960,6 +22960,387 @@ select pg_temp.must_hold(
 delete from ouroboros.organization where "id" = 'org-v066';
 
 -- ===========================================================================
+-- V067 — onboarding wizard state, detection scans and protected paths (#380, BA.1)
+-- ===========================================================================
+--
+-- Mockup 13's step rail and *"We already figured this out"* card. Asserted: wizard state
+-- round-trips per repository and a second repository gets its own row; no step-status column
+-- exists (decision O1); re-scans version by `scan_seq` and the previous scan stays queryable;
+-- all six mockup rows are representable with their value lines, verdicts and evidence; the
+-- `detected | measured` label is a CHECK and a row flips with an update; scan duration is data;
+-- `row_key` admits `custom:*`; protected-path globs keep their provenance; and the picked ticket
+-- is a canonical ticket of the same workspace, from any tracker.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v067', 'Acme Robotics', 'acme-robotics-v067', now()),
+  ('org-v067-other', 'Other Works', 'other-works-v067', now());
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config) values
+  ('a6700000-0000-0000-0000-0000000000a1', 'org-v067', 'github', 'GitHub · acme-robotics',
+   '{"login": "acme-robotics", "repos": ["helios-firmware"]}'),
+  ('a6700000-0000-0000-0000-0000000000a2', 'org-v067', 'jira', 'Jira · HEL', '{}'),
+  ('a6700000-0000-0000-0000-0000000000a3', 'org-v067-other', 'github', 'GitHub · other', '{}');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a6710000-0000-0000-0000-000000000488', 'org-v067', 'a6700000-0000-0000-0000-0000000000a1',
+     '488', '#488', 'https://github.com/acme-robotics/helios-firmware/issues/488',
+     'docs: fix typo in README', 'open', now(), now()),
+    ('a6710000-0000-0000-0000-000000000142', 'org-v067', 'a6700000-0000-0000-0000-0000000000a2',
+     '10142', 'HEL-142', 'https://acme.atlassian.net/browse/HEL-142',
+     'docs: clarify flashing steps', 'open', now(), now()),
+    ('a6710000-0000-0000-0000-000000000999', 'org-v067-other',
+     'a6700000-0000-0000-0000-0000000000a3', '999', '#999',
+     'https://github.com/other/repo/issues/999', 'someone else''s issue', 'open', now(), now());
+
+-- --- O1: the wizard stores no step status ---------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(column_name::text order by column_name::text)
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'onboarding_state')
+  = array['completed_at', 'created_at', 'dismissed', 'id', 'organization_id',
+          'picked_ticket_id', 'repo_ref', 'selected_template', 'updated_at'],
+  'onboarding_state has exactly its wizard-owned columns and no step-status column (O1)');
+
+select pg_temp.must_hold(
+  (select obj_description('ouroboros.onboarding_state'::regclass, 'pg_class') like '%NO step-status%'),
+  'the derivation contract is stated on the table itself, not only in the migration');
+
+-- --- wizard state round-trips per repository ------------------------------------------------------
+insert into ouroboros.onboarding_state
+    (id, organization_id, repo_ref, selected_template, picked_ticket_id)
+  values
+    ('a6720000-0000-0000-0000-000000000001', 'org-v067', 'acme-robotics/helios-firmware',
+     'quick-fixes', 'a6710000-0000-0000-0000-000000000488');
+
+select pg_temp.must_hold(
+  (select selected_template = 'quick-fixes'
+          and picked_ticket_id = 'a6710000-0000-0000-0000-000000000488'
+          and dismissed = false and completed_at is null
+     from ouroboros.onboarding_state where id = 'a6720000-0000-0000-0000-000000000001'),
+  'wizard state reads back as written, not dismissed and not completed by default');
+
+insert into ouroboros.onboarding_state (id, organization_id, repo_ref, picked_ticket_id) values
+  ('a6720000-0000-0000-0000-000000000002', 'org-v067', 'acme-robotics/atlas-bootloader',
+   'a6710000-0000-0000-0000-000000000142');
+
+update ouroboros.onboarding_state set completed_at = now(), dismissed = true
+ where id = 'a6720000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select selected_template is null and completed_at is null and dismissed = false
+     from ouroboros.onboarding_state where id = 'a6720000-0000-0000-0000-000000000002'),
+  'a second repository has its own independent wizard state');
+
+select pg_temp.must_hold(
+  (select picked_ticket_id = 'a6710000-0000-0000-0000-000000000142'
+     from ouroboros.onboarding_state where id = 'a6720000-0000-0000-0000-000000000002'),
+  'a Jira-sourced ticket is picked exactly as a GitHub one is');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.onboarding_state (organization_id, repo_ref)
+    values ('org-v067', 'acme-robotics/helios-firmware')$$,
+  'one wizard state per repository per workspace',
+  'onboarding_state_organization_repo_key');
+
+insert into ouroboros.onboarding_state (organization_id, repo_ref) values
+  ('org-v067-other', 'acme-robotics/helios-firmware');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.onboarding_state
+    where repo_ref = 'acme-robotics/helios-firmware'),
+  'the same repository in another workspace is another wizard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.onboarding_state (organization_id, repo_ref, picked_ticket_id)
+    values ('org-v067', 'acme-robotics/zephyr-drivers', 'a6710000-0000-0000-0000-000000000999')$$,
+  'a wizard cannot pick another workspace''s ticket',
+  'onboarding_state_ticket_in_organization');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.onboarding_state (organization_id, repo_ref, selected_template)
+    values ('org-v067', 'acme-robotics/zephyr-drivers', 'Quick Fixes')$$,
+  'a template is named by its slug',
+  'onboarding_state_template_slug');
+
+select pg_temp.must_reject(
+  $$update ouroboros.onboarding_state set completed_at = created_at - interval '1 second'
+     where id = 'a6720000-0000-0000-0000-000000000002'$$,
+  'a wizard is not completed before it started',
+  'onboarding_state_completed_after_created');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.onboarding_state (organization_id, repo_ref)
+    values ('org-v067', 'helios-firmware')$$,
+  'a repo_ref names its owner as well as its name',
+  'repo_ref_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.onboarding_state (organization_id, repo_ref)
+    values ('org-v067', 'acme-robotics/..')$$,
+  'a repo_ref segment is a name, not a path',
+  'repo_ref_format');
+
+insert into ouroboros.onboarding_state (organization_id, repo_ref) values
+  ('org-v067', 'platform/firmware/helios');
+
+delete from ouroboros.tickets where id = 'a6710000-0000-0000-0000-000000000142';
+
+select pg_temp.must_hold(
+  (select picked_ticket_id is null from ouroboros.onboarding_state
+    where id = 'a6720000-0000-0000-0000-000000000002'),
+  'a deleted ticket un-picks itself and leaves the wizard state');
+
+-- --- detection: all six mockup rows, their evidence, and the scan's duration ----------------------
+insert into ouroboros.repo_detection_scans
+    (organization_id, repo_ref, scan_seq, scanned_at, duration_ms, pack_versions,
+     probe_budget_used)
+  values
+    ('org-v067', 'acme-robotics/helios-firmware', 1, now() - interval '1 day', 41000,
+     '{"core": "1.0.0"}', 18);
+
+insert into ouroboros.repo_detections
+    (organization_id, repo_ref, scan_seq, row_key, verdict, value, evidence)
+  values
+    ('org-v067', 'acme-robotics/helios-firmware', 1, 'language', 'ok', 'C 90%',
+     '{"probes": [{"api": "languages", "hit": true}]}');
+
+insert into ouroboros.repo_detection_scans
+    (organization_id, repo_ref, scan_seq, duration_ms, pack_versions, probe_budget_used)
+  values
+    ('org-v067', 'acme-robotics/helios-firmware', 2, 38000, '{"core": "1.0.0"}', 21);
+
+insert into ouroboros.repo_detections
+    (organization_id, repo_ref, scan_seq, row_key, verdict, value, evidence)
+  values
+    ('org-v067', 'acme-robotics/helios-firmware', 2, 'language', 'ok',
+     'C 92% · Zephyr RTOS 4.1',
+     '{"probes": [{"api": "languages", "hit": true}, {"path": "prj.conf", "hit": true}]}'),
+    ('org-v067', 'acme-robotics/helios-firmware', 2, 'build', 'ok',
+     'west + twister (found west.yml)',
+     '{"probes": [{"path": "west.yml", "hit": true}, {"path": "CMakeLists.txt", "hit": true}]}'),
+    ('org-v067', 'acme-robotics/helios-firmware', 2, 'devcontainer', 'ok',
+     'found .devcontainer.json → env ready in 38s (snapshotted)',
+     '{"probes": [{"path": ".devcontainer.json", "hit": true, "parsed": true}]}'),
+    ('org-v067', 'acme-robotics/helios-firmware', 2, 'tests', 'ok', '5 suites, 63 tests',
+     '{"probes": [{"path": "tests/", "hit": true}], "suites": 5, "tests": 63}'),
+    ('org-v067', 'acme-robotics/helios-firmware', 2, 'protected_paths', 'ok',
+     'boot/, keys/ suggested · edit',
+     '{"probes": [{"path": "boot/", "hit": true}, {"path": "keys/", "hit": true}]}'),
+    ('org-v067', 'acme-robotics/helios-firmware', 2, 'conventions', 'warn',
+     'No CONTRIBUTING.md — we''ll learn your conventions from merged PRs instead.',
+     '{"probes": [{"path": "CONTRIBUTING.md", "hit": false}]}');
+
+select pg_temp.must_hold(
+  (select count(*) = 6
+          and count(*) filter (where verdict = 'warn' and row_key = 'conventions') = 1
+          and bool_and(label = 'detected')
+          and bool_and(duration_ms = 38000 and scan_seq = 2)
+     from ouroboros.repo_detections_latest
+    where organization_id = 'org-v067' and repo_ref = 'acme-robotics/helios-firmware'),
+  'the latest scan shows all six rows, labelled detected, with the scan''s 38s duration');
+
+select pg_temp.must_hold(
+  (select value = 'west + twister (found west.yml)'
+          and evidence -> 'probes' -> 0 ->> 'path' = 'west.yml'
+     from ouroboros.repo_detections_latest
+    where organization_id = 'org-v067' and repo_ref = 'acme-robotics/helios-firmware'
+      and row_key = 'build'),
+  'a row carries its exact value line and the probe that produced it');
+
+select pg_temp.must_hold(
+  (select value = 'C 90%' from ouroboros.repo_detections
+    where organization_id = 'org-v067' and repo_ref = 'acme-robotics/helios-firmware'
+      and scan_seq = 1 and row_key = 'language'),
+  'a re-scan versions: the previous scan remains queryable');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.repo_detection_scans (organization_id, repo_ref, scan_seq, duration_ms)
+    values ('org-v067', 'acme-robotics/helios-firmware', 2, 1000)$$,
+  'a scan number is taken once per repository',
+  'repo_detection_scans_seq_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.repo_detections
+      (organization_id, repo_ref, scan_seq, row_key, verdict, value)
+    values ('org-v067', 'acme-robotics/helios-firmware', 2, 'build', 'ok', 'make')$$,
+  'one row per key per scan',
+  'repo_detections_scan_row_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.repo_detections
+      (organization_id, repo_ref, scan_seq, row_key, verdict, value)
+    values ('org-v067-other', 'acme-robotics/helios-firmware', 2, 'build', 'ok', 'make')$$,
+  'a detection row cannot hang off another workspace''s scan',
+  'repo_detections_scan_fkey');
+
+-- --- the honesty label is a CHECK, and flips without a schema change -------------------------------
+update ouroboros.repo_detections
+   set label = 'measured', value = 'found .devcontainer.json → env ready in 38s (measured)'
+ where organization_id = 'org-v067' and repo_ref = 'acme-robotics/helios-firmware'
+   and scan_seq = 2 and row_key = 'devcontainer';
+
+select pg_temp.must_hold(
+  (select label = 'measured' from ouroboros.repo_detections_latest
+    where organization_id = 'org-v067' and row_key = 'devcontainer'),
+  'a row flips to measured with an update');
+
+select pg_temp.must_reject(
+  $$update ouroboros.repo_detections set label = 'guessed'
+     where organization_id = 'org-v067' and row_key = 'tests'$$,
+  'the label is detected or measured',
+  'repo_detections_label');
+
+select pg_temp.must_reject(
+  $$update ouroboros.repo_detections set verdict = 'unknown'
+     where organization_id = 'org-v067' and row_key = 'tests'$$,
+  'the verdict is ok, warn or missing',
+  'repo_detections_verdict');
+
+-- --- row_key: six rows plus a custom:* escape --------------------------------------------------------
+insert into ouroboros.repo_detections
+    (organization_id, repo_ref, scan_seq, row_key, verdict, value)
+  values
+    ('org-v067', 'acme-robotics/helios-firmware', 2, 'custom:license', 'missing', 'No LICENSE');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.repo_detections
+      (organization_id, repo_ref, scan_seq, row_key, verdict, value)
+    values ('org-v067', 'acme-robotics/helios-firmware', 2, 'linting', 'ok', 'eslint')$$,
+  'an unknown row key needs the custom: prefix',
+  'repo_detections_row_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.repo_detections
+      (organization_id, repo_ref, scan_seq, row_key, verdict, value)
+    values ('org-v067', 'acme-robotics/helios-firmware', 2, 'custom:', 'ok', 'x')$$,
+  'a custom row key names its row',
+  'repo_detections_row_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.repo_detections
+      (organization_id, repo_ref, scan_seq, row_key, verdict, value, evidence)
+    values ('org-v067', 'acme-robotics/helios-firmware', 2, 'custom:x', 'ok', 'x', '[]')$$,
+  'evidence is an object',
+  'repo_detections_evidence_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.repo_detections
+      (organization_id, repo_ref, scan_seq, row_key, verdict, value)
+    values ('org-v067', 'acme-robotics/helios-firmware', 2, 'custom:x', 'ok', '  ')$$,
+  'a row prints something',
+  'repo_detections_value_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.repo_detection_scans (organization_id, repo_ref, scan_seq, duration_ms)
+    values ('org-v067', 'acme-robotics/helios-firmware', 3, -1)$$,
+  'a scan does not take negative time',
+  'repo_detection_scans_duration_nonnegative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.repo_detection_scans (organization_id, repo_ref, scan_seq, duration_ms)
+    values ('org-v067', 'acme-robotics/helios-firmware', 0, 1)$$,
+  'scans are numbered from 1',
+  'repo_detection_scans_seq_positive');
+
+-- --- protected paths: globs with provenance ---------------------------------------------------------
+insert into ouroboros.protected_path_policies (id, organization_id, repo_ref, path_glob) values
+  ('a6730000-0000-0000-0000-000000000001', 'org-v067', 'acme-robotics/helios-firmware', 'boot/**'),
+  ('a6730000-0000-0000-0000-000000000002', 'org-v067', 'acme-robotics/helios-firmware', 'keys/**');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and bool_and(source = 'suggested')
+     from ouroboros.protected_path_policies where organization_id = 'org-v067'),
+  'a detected protected path is suggested by default');
+
+update ouroboros.protected_path_policies set path_glob = 'keys/*.pem', source = 'edited'
+ where id = 'a6730000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select path_glob = 'keys/*.pem' and source = 'edited'
+     from ouroboros.protected_path_policies where id = 'a6730000-0000-0000-0000-000000000002'),
+  'a person''s edit is recorded as edited');
+
+select pg_temp.must_reject(
+  $$update ouroboros.protected_path_policies set source = 'suggested'
+     where id = 'a6730000-0000-0000-0000-000000000002'$$,
+  'an edited protected path never returns to suggested',
+  'protected_path_policies_provenance');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.protected_path_policies (organization_id, repo_ref, path_glob)
+    values ('org-v067', 'acme-robotics/helios-firmware', 'boot/**')$$,
+  'a glob is protected once per repository',
+  'protected_path_policies_repo_glob_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.protected_path_policies (organization_id, repo_ref, path_glob, source)
+    values ('org-v067', 'acme-robotics/helios-firmware', 'infra/**', 'inferred')$$,
+  'provenance is suggested or edited',
+  'protected_path_policies_source');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.protected_path_policies (organization_id, repo_ref, path_glob)
+    values ('org-v067', 'acme-robotics/helios-firmware', '/etc/**')$$,
+  'a protected glob is relative to the repository root',
+  'protected_path_policies_glob_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.protected_path_policies (organization_id, repo_ref, path_glob)
+    values ('org-v067', 'acme-robotics/helios-firmware', 'boot/../keys/**')$$,
+  'a protected glob has no .. segment',
+  'protected_path_policies_glob_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.protected_path_policies (organization_id, repo_ref, path_glob)
+    values ('org-v067', 'acme-robotics/helios-firmware', 'boot\**')$$,
+  'a protected glob uses forward slashes',
+  'protected_path_policies_glob_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.protected_path_policies (organization_id, repo_ref, path_glob)
+    values ('org-v067', 'acme-robotics/helios-firmware', ' ')$$,
+  'a protected glob says something',
+  'protected_path_policies_glob_format');
+
+-- --- grants -----------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.onboarding_state', 'insert')
+  and has_table_privilege('ouroboros_app', 'ouroboros.onboarding_state', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.onboarding_state', 'delete'),
+  'the app role writes wizard state and does not delete it');
+
+select pg_temp.must_hold(
+  not has_table_privilege('ouroboros_app', 'ouroboros.repo_detection_scans', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.repo_detection_scans', 'delete'),
+  'a scan is appended, never edited');
+
+select pg_temp.must_hold(
+  has_column_privilege('ouroboros_app', 'ouroboros.repo_detections', 'label', 'update')
+  and not has_column_privilege('ouroboros_app', 'ouroboros.repo_detections', 'row_key', 'update')
+  and not has_column_privilege('ouroboros_app', 'ouroboros.repo_detections', 'scan_seq', 'update'),
+  'a detection row can be re-labelled measured, but not moved to another scan or key');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.repo_detections_latest', 'select')
+  and has_table_privilege('ouroboros_app', 'ouroboros.protected_path_policies', 'insert')
+  and has_table_privilege('ouroboros_app', 'ouroboros.protected_path_policies', 'update')
+  and has_table_privilege('ouroboros_app', 'ouroboros.protected_path_policies', 'delete'),
+  'the app role reads the card and manages protected paths');
+
+-- --- a workspace takes everything with it ------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v067', 'org-v067-other');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.repo_detections where organization_id like 'org-v067%')
+  and (select count(*) = 0 from ouroboros.repo_detection_scans where organization_id like 'org-v067%')
+  and (select count(*) = 0 from ouroboros.onboarding_state where organization_id like 'org-v067%')
+  and (select count(*) = 0 from ouroboros.protected_path_policies
+        where organization_id like 'org-v067%'),
+  'a deleted workspace takes its wizard, scans, detections and protected paths');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

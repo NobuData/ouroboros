@@ -404,7 +404,10 @@ describe("TABLE_COLUMNS", () => {
     // The eighty-seventh to eighty-ninth are V057's `pr_thread_entries` and V065's `pr_approvals`
     // and `pr_loop_returns`, mirrored by AX.5 (#361) — the PR page's read and its two composed head
     // actions, Request human review and Return to loop.
-    expect(TABLE_NAMES).toHaveLength(89);
+    //
+    // The ninetieth is V067's `protected_path_policies`, mirrored by BA.1 (#380) — the globs AP.3's
+    // `allowed_paths` check reads, so a change touching a protected path fails.
+    expect(TABLE_NAMES).toHaveLength(90);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

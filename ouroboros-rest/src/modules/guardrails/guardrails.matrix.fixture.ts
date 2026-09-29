@@ -99,6 +99,37 @@ export const RULE_MATRIX: readonly MatrixCell[] = [
     because: "no plan declares a scope",
     input: { ...MOCKUP_INPUT, planFiles: [] },
   },
+  {
+    check: "allowed_paths",
+    verdict: "fail",
+    because: "a path inside a protected path fails even though the plan declares it (#380)",
+    input: {
+      ...withFile("boot/mcuboot.conf"),
+      planFiles: ["boot/mcuboot.conf"],
+      protectedPaths: ["boot/**", "keys/**"],
+    },
+    evidence: {
+      path: "boot/mcuboot.conf",
+      glob: "boot/**",
+      detail: "1 path inside a protected path.",
+    },
+  },
+  {
+    check: "allowed_paths",
+    verdict: "pass",
+    because: "no plan declares a scope but no protected path is touched (#380)",
+    input: { ...MOCKUP_INPUT, planFiles: [], protectedPaths: ["boot/**", "keys/**"] },
+    evidence: {
+      detail: "No protected path touched. No plan file list declares a scope for this run.",
+    },
+  },
+  {
+    check: "allowed_paths",
+    verdict: "pass",
+    because: "protected paths exist and the change stays inside the plan's scope (#380)",
+    input: { ...MOCKUP_INPUT, protectedPaths: ["boot/**", "keys/**"] },
+    evidence: null,
+  },
 
   // --- ci_config -----------------------------------------------------------------------------
   {

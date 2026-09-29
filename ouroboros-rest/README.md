@@ -4675,7 +4675,7 @@ the report's own transaction, by four checks against the run's pinned policy:
 
 | check             | judged against                                                                 | `not_applicable` when                         |
 | ----------------- | ------------------------------------------------------------------------------ | --------------------------------------------- |
-| `allowed_paths`   | the plan's declared files (`issue_estimates.breakdown.files`) widened to their directories — `drivers/can/a.c` admits `drivers/can/**` — plus the CI registry when the stage may touch CI | the run's issue has no plan                   |
+| `allowed_paths`   | the repository's protected paths (`protected_path_policies`, V067 / [#380](https://github.com/NobuData/ouroboros/issues/380)) first — a touched protected path fails even inside the plan — then the plan's declared files (`issue_estimates.breakdown.files`) widened to their directories — `drivers/can/a.c` admits `drivers/can/**` — plus the CI registry when the stage may touch CI | the run's issue has no plan and the repository protects no path |
 | `ci_config`       | a versioned CI-file registry (`ci-v1`) × the pinned model stage's `touch_ci`   | the pin has no model stage with permissions   |
 | `secrets`         | the embedded ruleset `v3` (option 3-A) over the report's **added** hunk lines  | no file in the report carried `hunks`         |
 | `review_required` | the pin's terminal (`open_pr_automerge`?) × enabled `add_vote` escalation rules matching the ticket | review is not required — auto-merge eligible |

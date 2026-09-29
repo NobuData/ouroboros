@@ -392,6 +392,19 @@
 # without its `when`, the trigger fires for the stamp as it did before V066, and that is the
 # regression the rule exists to refuse: a listing ordered by *most recently synced*.
 #
+# V067 (#380, BA.1) adds the onboarding wizard's state, detection scans and protected paths. Its
+# section is the one that catches each:
+#
+#   BA.1 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a row is detected or measured (O2)           drop repo_detections_label
+#   row_key is the six rows or custom:*          drop repo_detections_row_key
+#   a re-scan takes a new scan_seq               drop repo_detection_scans_seq_key (cascades
+#                                                  to the detections' scan foreign key)
+#   an edited protected path stays edited        drop the protected_path_policies_provenance trigger
+#   the picked ticket is the workspace's own     drop the onboarding_state_ticket_in_organization
+#                                                  trigger
+#
 # Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
 # is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
 # by the latter first, so the rewrite reads the function back from the catalogue and adds the one
@@ -1590,6 +1603,26 @@ expect_red "a sync that found nothing new may move a PR's updated_at" \
    create trigger pull_requests_touch_updated_at
      before update on ouroboros.pull_requests
      for each row execute function ouroboros.touch_updated_at();'
+
+expect_red 'a detection row may carry a label other than detected or measured' \
+  'the label is detected or measured .*repo_detections_label did not fire' \
+  'alter table ouroboros.repo_detections drop constraint repo_detections_label;'
+
+expect_red 'a detection row key may be anything' \
+  'an unknown row key needs the custom: prefix .*repo_detections_row_key did not fire' \
+  'alter table ouroboros.repo_detections drop constraint repo_detections_row_key;'
+
+expect_red 'a re-scan may reuse a scan number' \
+  'a scan number is taken once per repository .*repo_detection_scans_seq_key did not fire' \
+  'alter table ouroboros.repo_detection_scans drop constraint repo_detection_scans_seq_key cascade;'
+
+expect_red 'an edited protected path may return to suggested' \
+  'an edited protected path never returns to suggested .*protected_path_policies_provenance did not fire' \
+  'drop trigger protected_path_policies_provenance on ouroboros.protected_path_policies;'
+
+expect_red "a wizard may pick another workspace's ticket" \
+  'a wizard cannot pick another workspace.s ticket .*onboarding_state_ticket_in_organization did not fire' \
+  'drop trigger onboarding_state_ticket_in_organization on ouroboros.onboarding_state;'
 
 expect_red 'a criterion may cite a hunk of a file the revision never touched' \
   'a hunk.s path is a file the revision changed .*pr_criteria_evidence_resolves did not fire' \
