@@ -25166,6 +25166,241 @@ select pg_temp.must_hold(
   'a deleted workspace takes its playbooks');
 
 -- ===========================================================================
+-- V073 — environment recipes (#408, BE.4)
+-- ===========================================================================
+--
+-- Mockup 14's Repo Profile card's Environment block. Asserted: the mockup's four-command recipe
+-- round-trips with its order and comments; an edit is a new version and the previous one stays
+-- readable; versions are dense and immutable; source tells a detected draft from an edited
+-- recipe, and a re-scan cannot supersede an edit; commands are typed; a repository with no
+-- recipe reads as no row; no snapshot, boot-time or prebuild-schedule column exists; the consumer
+-- contract names all three consumers.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v073',       'Acme Robotics', 'acme-robotics-v073', now()),
+  ('org-v073-other', 'Other Works',   'other-works-v073',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a7300000-0000-0000-0000-00000000000a', 'Maya Chen', 'maya@v073.example', true);
+
+-- --- v1 is detected: a west.yml repository is a west workspace ------------------------------------
+insert into ouroboros.env_recipes (organization_id, repo_ref, version, commands, source) values
+  ('org-v073', 'acme-robotics/helios-firmware', 1,
+   '[{"command": "west init -m https://github.com/acme-robotics/helios-manifest"},
+     {"command": "west update"}]', 'detected');
+
+-- --- v2 and v3 are edits — v3 is the mockup's four commands -----------------------------------------
+insert into ouroboros.env_recipes
+    (organization_id, repo_ref, version, commands, source, updated_by, updated_at)
+values
+  ('org-v073', 'acme-robotics/helios-firmware', 2,
+   '[{"command": "west init -m https://github.com/acme-robotics/helios-manifest"},
+     {"command": "west update --narrow -o=--depth=1"},
+     {"command": "zephyr-sdk-install 0.17.1 --toolchains arm-zephyr-eabi"}]',
+   'edited', 'a7300000-0000-0000-0000-00000000000a', now() - interval '3 days');
+
+insert into ouroboros.env_recipes
+    (organization_id, repo_ref, version, commands, source, updated_by)
+values
+  ('org-v073', 'acme-robotics/helios-firmware', 3,
+   '[{"command": "west init -m https://github.com/acme-robotics/helios-manifest",
+      "comment": "manifest repo"},
+     {"command": "west update --narrow -o=--depth=1", "comment": "shallow module fetch"},
+     {"command": "zephyr-sdk-install 0.17.2 --toolchains arm-zephyr-eabi",
+      "comment": "SDK + ARM toolchain"},
+     {"command": "ccache --set-config=max_size=8G", "comment": "shared build cache"}]',
+   'edited', 'a7300000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select array_agg(e ->> 'command' order by n)
+     from ouroboros.env_recipes_current c,
+          jsonb_array_elements(c.commands) with ordinality as x(e, n)
+    where c.organization_id = 'org-v073' and c.repo_ref = 'acme-robotics/helios-firmware')
+  = array['west init -m https://github.com/acme-robotics/helios-manifest',
+          'west update --narrow -o=--depth=1',
+          'zephyr-sdk-install 0.17.2 --toolchains arm-zephyr-eabi',
+          'ccache --set-config=max_size=8G'],
+  'the mockup''s four-command recipe round-trips in order');
+
+select pg_temp.must_hold(
+  (select array_agg(e ->> 'comment' order by n)
+     from ouroboros.env_recipes_current c,
+          jsonb_array_elements(c.commands) with ordinality as x(e, n)
+    where c.organization_id = 'org-v073' and c.repo_ref = 'acme-robotics/helios-firmware')
+  = array['manifest repo', 'shallow module fetch', 'SDK + ARM toolchain', 'shared build cache'],
+  'the mockup recipe''s comments round-trip intact');
+
+select pg_temp.must_hold(
+  (select version = 3 and source = 'edited'
+     from ouroboros.env_recipes_current
+    where organization_id = 'org-v073' and repo_ref = 'acme-robotics/helios-firmware'),
+  'the current recipe is the newest version');
+
+select pg_temp.must_hold(
+  (select commands -> 2 ->> 'command' = 'zephyr-sdk-install 0.17.1 --toolchains arm-zephyr-eabi'
+          and updated_by = 'a7300000-0000-0000-0000-00000000000a'
+          and updated_at < now() - interval '2 days'
+     from ouroboros.env_recipes
+    where organization_id = 'org-v073' and repo_ref = 'acme-robotics/helios-firmware'
+      and version = 2),
+  'editing keeps the previous version readable, with who and when');
+
+select pg_temp.must_hold(
+  (select array_agg(source order by version) from ouroboros.env_recipes
+    where organization_id = 'org-v073' and repo_ref = 'acme-robotics/helios-firmware')
+  = array['detected', 'edited', 'edited'],
+  'source tells a detection-seeded draft from a user-edited recipe');
+
+-- --- versions are dense and immutable ---------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.env_recipes (organization_id, repo_ref, version, commands, source)
+    values ('org-v073', 'acme-robotics/helios-firmware', 5, '[{"command": "make"}]', 'edited')$$,
+  'a recipe version skips no number', 'env_recipes_next_version');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.env_recipes (organization_id, repo_ref, version, commands, source)
+    values ('org-v073', 'acme-robotics/atlas-control', 2, '[{"command": "make"}]', 'edited')$$,
+  'a repository''s first recipe is v1', 'env_recipes_next_version');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.env_recipes (organization_id, repo_ref, version, commands, source)
+    values ('org-v073', 'acme-robotics/helios-firmware', 0, '[{"command": "make"}]', 'edited')$$,
+  'a recipe version is positive', 'env_recipes_version_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.env_recipes
+       set commands = '[{"command": "zephyr-sdk-install 0.17.3"}]'
+     where organization_id = 'org-v073' and version = 3$$,
+  'an environment recipe version is never revised in place', 'env_recipes_no_update');
+
+select pg_temp.must_reject(
+  $$update ouroboros.env_recipes set source = 'detected'
+     where organization_id = 'org-v073' and version = 2$$,
+  'an environment recipe''s source is never revised in place', 'env_recipes_no_update');
+
+-- --- source and provenance --------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.env_recipes (organization_id, repo_ref, version, commands, source)
+    values ('org-v073', 'acme-robotics/helios-firmware', 4, '[{"command": "west update"}]',
+            'detected')$$,
+  'a detected draft cannot supersede an edited recipe', 'env_recipes_provenance');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.env_recipes (organization_id, repo_ref, version, commands, source)
+    values ('org-v073', 'acme-robotics/helios-firmware', 4, '[{"command": "make"}]',
+            'scraped')$$,
+  'source is detected or edited', 'env_recipes_source_valid');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.env_recipes
+      (organization_id, repo_ref, version, commands, source, updated_by)
+    values ('org-v073', 'acme-robotics/sensor-hub', 1, '[{"command": "make"}]', 'detected',
+            'a7300000-0000-0000-0000-00000000000a')$$,
+  'a detected draft names no person', 'env_recipes_detected_unattributed');
+
+-- A second repository re-detected before anyone edits it: detected may follow detected.
+insert into ouroboros.env_recipes (organization_id, repo_ref, version, commands, source) values
+  ('org-v073', 'acme-robotics/sensor-hub', 1, '[{"command": "pip install -r requirements.txt"}]',
+   'detected'),
+  ('org-v073', 'acme-robotics/sensor-hub', 2, '[{"command": "uv sync"}]', 'detected');
+
+select pg_temp.must_hold(
+  (select version = 2 and source = 'detected' and updated_by is null
+     from ouroboros.env_recipes_current
+    where organization_id = 'org-v073' and repo_ref = 'acme-robotics/sensor-hub'),
+  'a detected draft may be re-detected until a person edits it');
+
+-- --- commands are typed --------------------------------------------------------------------------
+select pg_temp.must_hold(
+  ouroboros.env_recipe_commands_typed('[{"command": "make"}]')
+  and ouroboros.env_recipe_commands_typed('[{"command": "make", "comment": "build"}]')
+  and not ouroboros.env_recipe_commands_typed(null)
+  and not ouroboros.env_recipe_commands_typed('[]')
+  and not ouroboros.env_recipe_commands_typed('{"command": "make"}')
+  and not ouroboros.env_recipe_commands_typed('["make"]')
+  and not ouroboros.env_recipe_commands_typed('[{"comment": "no command"}]')
+  and not ouroboros.env_recipe_commands_typed('[{"command": "  "}]')
+  and not ouroboros.env_recipe_commands_typed('[{"command": 7}]')
+  and not ouroboros.env_recipe_commands_typed('[{"command": "a\nb"}]')
+  and not ouroboros.env_recipe_commands_typed('[{"command": "make", "comment": ""}]')
+  and not ouroboros.env_recipe_commands_typed('[{"command": "make", "comment": 1}]')
+  and not ouroboros.env_recipe_commands_typed('[{"command": "make", "cwd": "build"}]')
+  and not ouroboros.env_recipe_commands_typed(
+        jsonb_build_array(jsonb_build_object('command', repeat('x', 2001))))
+  and not ouroboros.env_recipe_commands_typed(
+        jsonb_build_array(jsonb_build_object('command', 'make', 'comment', repeat('x', 301))))
+  and not ouroboros.env_recipe_commands_typed(
+        (select jsonb_agg(jsonb_build_object('command', 'step ' || n))
+           from generate_series(1, 65) as n))
+  and ouroboros.env_recipe_commands_typed(
+        (select jsonb_agg(jsonb_build_object('command', 'step ' || n))
+           from generate_series(1, 64) as n)),
+  'recipe commands are 1–64 {command, comment?} single lines, nothing else');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.env_recipes (organization_id, repo_ref, version, commands, source)
+    values ('org-v073', 'acme-robotics/helios-firmware', 4,
+            '[{"command": "make", "shell": "bash"}]', 'edited')$$,
+  'malformed recipe commands are refused', 'env_recipes_commands_typed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.env_recipes (organization_id, repo_ref, version, commands, source)
+    values ('org-v073', 'not a repo', 1, '[{"command": "make"}]', 'edited')$$,
+  'a recipe names a repository as owner/name', 'repo_ref_format');
+
+-- --- a repository with no recipe --------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(c.id is null)
+     from (values ('acme-robotics/atlas-control')) as repo(repo_ref)
+     left join ouroboros.env_recipes_current c
+       on c.organization_id = 'org-v073' and c.repo_ref = repo.repo_ref),
+  'a repository with no recipe reads as no current row, a valid state');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.env_recipes_current
+               where organization_id = 'org-v073-other'),
+  'another workspace sees none of this workspace''s recipes');
+
+-- --- what does not live here ------------------------------------------------------------------------
+select pg_temp.must_hold(
+  not exists (select 1 from information_schema.columns
+               where table_schema = 'ouroboros'
+                 and table_name in ('env_recipes', 'env_recipes_current')
+                 and column_name ~ '(snapshot|boot|prebuild|schedule|cold|warm|duration|_ms$|_s$|nightly|rebuild)'),
+  'no snapshot, boot-time or prebuild-schedule column exists on env_recipes');
+
+select pg_temp.must_hold(
+  obj_description('ouroboros.env_recipes'::regclass, 'pg_class') ~ 'farm container-pool setup'
+  and obj_description('ouroboros.env_recipes'::regclass, 'pg_class') ~ 'BD\.4, #399'
+  and obj_description('ouroboros.env_recipes'::regclass, 'pg_class') ~ 'AR\.1, #315',
+  'the recipe''s three consumers are named in the catalogue');
+
+-- --- grants -----------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.env_recipes', 'select')
+  and has_table_privilege('ouroboros_app', 'ouroboros.env_recipes', 'insert')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.env_recipes', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.env_recipes', 'delete')
+  and has_table_privilege('ouroboros_app', 'ouroboros.env_recipes_current', 'select'),
+  'the app role appends recipe versions and never edits or deletes them');
+
+-- --- deletes --------------------------------------------------------------------------------------
+delete from ouroboros."user" where "id" = 'a7300000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and bool_and(updated_by is null)
+     from ouroboros.env_recipes
+    where organization_id = 'org-v073' and repo_ref = 'acme-robotics/helios-firmware'
+      and source = 'edited'),
+  'removing a person clears their attribution and keeps their recipe versions');
+
+delete from ouroboros.organization where "id" in ('org-v073', 'org-v073-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.env_recipes
+               where organization_id in ('org-v073', 'org-v073-other')),
+  'a deleted workspace takes its environment recipes');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

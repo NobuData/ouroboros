@@ -455,6 +455,16 @@
 #   deleting the source run keeps the playbook   re-add playbooks_source_run_fk as cascade
 #   no count column exists                       add a run_count column
 #
+# V073 (#408, BE.4) adds environment recipes:
+#
+#   BE.4 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   versions are dense from 1                    drop the env_recipes_next_version trigger
+#   an edit is a new version, never a rewrite    drop the env_recipes_no_update trigger
+#   a re-scan cannot supersede an edit           drop the env_recipes_provenance trigger
+#   commands are typed                           drop env_recipes_commands_typed
+#   no snapshot field exists                     add a boot_seconds column
+#
 # Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
 # is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
 # by the latter first, so the rewrite reads the function back from the catalogue and adds the one
@@ -1813,6 +1823,26 @@ expect_red 'deleting a source run may take its playbook' \
 expect_red 'a playbook may store a run counter' \
   'no run count column exists on playbooks' \
   'alter table ouroboros.playbooks add column run_count integer not null default 0;'
+
+expect_red 'an environment recipe version may skip a number' \
+  'a recipe version skips no number .*env_recipes_next_version did not fire' \
+  'drop trigger env_recipes_next_version on ouroboros.env_recipes;'
+
+expect_red 'an environment recipe may be revised in place' \
+  'an environment recipe version is never revised in place .*env_recipes_no_update did not fire' \
+  'drop trigger env_recipes_no_update on ouroboros.env_recipes;'
+
+expect_red 'a detected recipe may supersede an edited one' \
+  'a detected draft cannot supersede an edited recipe .*env_recipes_provenance did not fire' \
+  'drop trigger env_recipes_provenance on ouroboros.env_recipes;'
+
+expect_red 'environment recipe commands may be untyped' \
+  'malformed recipe commands are refused .*env_recipes_commands_typed did not fire' \
+  'alter table ouroboros.env_recipes drop constraint env_recipes_commands_typed;'
+
+expect_red 'an environment recipe may store a boot time' \
+  'no snapshot, boot-time or prebuild-schedule column exists on env_recipes' \
+  'alter table ouroboros.env_recipes add column boot_seconds integer;'
 
 
 printf '\n'
