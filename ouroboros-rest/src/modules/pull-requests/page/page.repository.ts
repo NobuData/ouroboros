@@ -96,6 +96,8 @@ export interface PrHeadRow {
   readonly mergedBy: string | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
+  /** When the sync last asked the host and was answered (V066, #370); null before any sync. */
+  readonly syncedAt: Date | null;
   readonly run: PrRunRow | null;
   readonly ticket: PrTicketRow | null;
 }
@@ -564,6 +566,7 @@ export class PageRepository implements PageStore {
         "p.merged_by",
         "p.created_at",
         "p.updated_at",
+        "p.synced_at",
         "r.id as run_id",
         "r.loop_seq",
         "r.issue_number",
@@ -600,6 +603,7 @@ export class PageRepository implements PageStore {
           mergedBy: row.merged_by,
           createdAt: row.created_at,
           updatedAt: row.updated_at,
+          syncedAt: row.synced_at,
           run:
             row.run_id === null
               ? null

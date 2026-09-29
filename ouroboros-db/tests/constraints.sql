@@ -22858,6 +22858,108 @@ delete from ouroboros.runs where organization_id = 'org-v065';
 delete from ouroboros.organization where "id" in ('org-v065', 'org-v065b');
 
 -- ===========================================================================
+-- V066 — the PR's sync stamp (#370, AY.8)
+-- ===========================================================================
+--
+-- The PR page's sync-lag banner says when the host was last asked about a PR, which is a
+-- different clock from when the mirror last changed. Asserted: the stamp is null until a sync
+-- writes it; a sync that found nothing new moves `synced_at` and leaves `updated_at` where it
+-- was; a change to anything else still stamps `updated_at`, beside the stamp or without it; a
+-- supplied `updated_at` is still the server's to overwrite; and a PR is not synced before it was
+-- mirrored.
+--
+-- The PR is inserted with its two instants an hour and two hours back, because this file is one
+-- transaction: `now()` is the same instant throughout, so a row written at `now()` could not
+-- show whether its `updated_at` had moved.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v066', 'Sync Works', 'sync-works', now());
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config) values
+  ('a6600000-0000-0000-0000-0000000000a1', 'org-v066', 'github', 'GitHub · sync-works',
+   '{"login": "sync-works", "repos": ["helios-firmware"]}');
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, created_at, updated_at)
+  values
+    ('a66a0000-0000-0000-0000-000000000514', 'org-v066', 'a6600000-0000-0000-0000-0000000000a1',
+     514, 'https://github.com/sync-works/helios-firmware/pull/514',
+     'can: fix flaky telemetry frame order', 'loop/482-canbus-flake', 'main',
+     now() - interval '2 hours', now() - interval '1 hour');
+
+select pg_temp.must_hold(
+  (select synced_at is null from ouroboros.pull_requests
+    where id = 'a66a0000-0000-0000-0000-000000000514'),
+  'a PR no sync has written has no sync stamp — never now() by default');
+
+-- --- a sync that found nothing new: the stamp moves, updated_at does not --------------------------
+update ouroboros.pull_requests set synced_at = now() - interval '5 minutes'
+ where id = 'a66a0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select synced_at = now() - interval '5 minutes' and updated_at = now() - interval '1 hour'
+     from ouroboros.pull_requests where id = 'a66a0000-0000-0000-0000-000000000514'),
+  'a stamp alone moves synced_at and leaves updated_at where it was');
+
+-- The same statement again, unchanged in every column: still nothing to stamp.
+update ouroboros.pull_requests set synced_at = now(), title = title
+ where id = 'a66a0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select synced_at = now() and updated_at = now() - interval '1 hour'
+     from ouroboros.pull_requests where id = 'a66a0000-0000-0000-0000-000000000514'),
+  'and a column written with the value it already had is not a change');
+
+-- --- a supplied updated_at is a change, and is the server''s to overwrite -------------------------
+update ouroboros.pull_requests set synced_at = now(), updated_at = '2000-01-01T00:00:00Z'
+ where id = 'a66a0000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select updated_at = now() from ouroboros.pull_requests
+    where id = 'a66a0000-0000-0000-0000-000000000514'),
+  'a stamp cannot carry a backdated updated_at past the touch trigger');
+
+-- --- a real change still stamps updated_at, beside the stamp or without it ------------------------
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, created_at, updated_at)
+  values
+    ('a66a0000-0000-0000-0000-000000000515', 'org-v066', 'a6600000-0000-0000-0000-0000000000a1',
+     515, 'https://github.com/sync-works/helios-firmware/pull/515',
+     'docs: another PR', 'docs/x', 'main',
+     now() - interval '2 hours', now() - interval '1 hour'),
+    ('a66a0000-0000-0000-0000-000000000516', 'org-v066', 'a6600000-0000-0000-0000-0000000000a1',
+     516, 'https://github.com/sync-works/helios-firmware/pull/516',
+     'docs: a third PR', 'docs/y', 'main',
+     now() - interval '2 hours', now() - interval '1 hour');
+
+update ouroboros.pull_requests set synced_at = now(), title = 'docs: another PR, retitled'
+ where id = 'a66a0000-0000-0000-0000-000000000515';
+
+update ouroboros.pull_requests set state = 'verifying'
+ where id = 'a66a0000-0000-0000-0000-000000000516';
+
+select pg_temp.must_hold(
+  (select updated_at = now() and synced_at = now() from ouroboros.pull_requests
+    where id = 'a66a0000-0000-0000-0000-000000000515')
+  and (select updated_at = now() and synced_at is null from ouroboros.pull_requests
+        where id = 'a66a0000-0000-0000-0000-000000000516'),
+  'a sync that changed the PR stamps both; a change by the plane stamps updated_at alone');
+
+-- --- a PR is not synced before it was mirrored ----------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.pull_requests set synced_at = created_at - interval '1 second'
+     where id = 'a66a0000-0000-0000-0000-000000000514'$$,
+  'a sync stamp is not earlier than the PR''s mirroring',
+  'pull_requests_synced_after_created');
+
+select pg_temp.must_hold(
+  has_column_privilege('ouroboros_app', 'ouroboros.pull_requests', 'synced_at', 'update'),
+  'the app role writes the stamp — V052''s table-wide grant covers the column');
+
+delete from ouroboros.organization where "id" = 'org-v066';
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

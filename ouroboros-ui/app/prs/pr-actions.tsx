@@ -35,18 +35,24 @@ export interface PrActionsProps {
  * *Return to loop* opens a dialog and *Merge when all gates green* is a hand-off: neither acts on
  * the press alone. What was decided is `view.ts`'s; this file only draws it.
  *
+ * **A blocked PR leads with the way back** ([#370](https://github.com/NobuData/ouroboros/issues/370)):
+ * *Return to loop* is drawn first, and the merge gives up the primary treatment — one per view,
+ * and the thing to do next is not a merge that cannot happen.
+ *
  * @param props See {@link PrActionsProps}.
  * @returns The actions.
  */
 export function PrActions({ view, outcome, onRequestReview, onReturn, onMerge }: PrActionsProps) {
   const notes = useId();
-  // Each reason once, in the buttons' order: a merged PR switches all three off for one reason,
-  // and that reason is one sentence rather than three.
+  const returning = view.promoted === "returnToLoop";
+  // Each reason once, in the buttons' order: several actions switched off for one reason are
+  // told it in one sentence rather than three.
   const reasons = [
     ...new Set(
-      [view.review, view.returnToLoop, view.merge].flatMap((action) =>
-        action === null || action.reason === null ? [] : [action.reason],
-      ),
+      (returning
+        ? [view.returnToLoop, view.review, view.merge]
+        : [view.review, view.returnToLoop, view.merge]
+      ).flatMap((action) => (action === null || action.reason === null ? [] : [action.reason])),
     ),
   ];
 
@@ -60,36 +66,39 @@ export function PrActions({ view, outcome, onRequestReview, onReturn, onMerge }:
     return action.reason === null ? undefined : `${notes}-${reasons.indexOf(action.reason)}`;
   }
 
+  const review = view.review !== null && (
+    <Button
+      aria-describedby={described(view.review)}
+      onClick={onRequestReview}
+      reason={view.review.reason ?? undefined}
+      tone="ghost"
+    >
+      {view.review.label}
+    </Button>
+  );
+  const returnToLoop = view.returnToLoop !== null && (
+    <Button
+      aria-describedby={described(view.returnToLoop)}
+      aria-haspopup="dialog"
+      onClick={onReturn}
+      reason={view.returnToLoop.reason ?? undefined}
+      tone="danger"
+    >
+      {view.returnToLoop.label}
+    </Button>
+  );
+
   return (
     <div aria-label={ACTIONS_LABEL} className="prv-actions" role="group">
       <div className="prv-actions__row">
-        {view.review !== null && (
-          <Button
-            aria-describedby={described(view.review)}
-            onClick={onRequestReview}
-            reason={view.review.reason ?? undefined}
-            tone="ghost"
-          >
-            {view.review.label}
-          </Button>
-        )}
-        {view.returnToLoop !== null && (
-          <Button
-            aria-describedby={described(view.returnToLoop)}
-            aria-haspopup="dialog"
-            onClick={onReturn}
-            reason={view.returnToLoop.reason ?? undefined}
-            tone="danger"
-          >
-            {view.returnToLoop.label}
-          </Button>
-        )}
+        {returning ? returnToLoop : review}
+        {returning ? review : returnToLoop}
         {view.merge !== null && (
           <Button
             aria-describedby={described(view.merge)}
             onClick={onMerge}
             reason={view.merge.reason ?? undefined}
-            tone="primary"
+            tone={returning ? "default" : "primary"}
           >
             {view.merge.label}
           </Button>

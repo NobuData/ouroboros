@@ -1145,6 +1145,12 @@ check_contains "$VERIFICATION_BODY" "date_trunc\('day', now\(\) at time zone 'ut
 check_contains "$VERIFICATION_BODY" 'run\.started_at \+ make_interval' \
   'every other instant is an offset into the run'
 
+# The PR's sync stamp (V066, #370) is absent from the file entirely, for the sources seed's
+# reason: no sync has run against #514, so the page's sync-lag banner says so rather than
+# reading a stamp the seed made up.
+check_absent "$VERIFICATION_BODY" 'synced_at' \
+  'the verification seed writes no synced_at, because no sync has run against PR #514'
+
 # **Derived numbers derive.** The aggregate is V056's function's, the head's counts are the
 # snapshot's sum, the snapshot is the console's change-set, the gate lines are composed from the
 # rows they cite, the message is V058's template, and Build 4's figures are #328's recipes — so

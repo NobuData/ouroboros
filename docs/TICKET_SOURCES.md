@@ -685,7 +685,11 @@ the mirror's latest head, and writes **one transaction** with the PR row locked:
 columns, `state` by rule (`pr-sync.state.ts` — the host's `open`/`closed`/`merged` without undoing
 `verifying`/`blocked`/`armed`, walking `closed → open → merged` for a reopen it missed), and the
 next `pr_revisions` row when the head moved (`on conflict (pr_id, head_sha) do nothing`). An
-unchanged PR is not updated.
+unchanged PR's content is not written — but its sync stamp is: every sync sets
+`pull_requests.synced_at` (V066, [#370](https://github.com/NobuData/ouroboros/issues/370)), *the
+host was asked, and answered*, and V066's touch trigger does not move `updated_at` for the stamp
+alone. So `updated_at` still says when the mirror changed, and `synced_at` says when the host was
+last heard — what the PR page's sync-lag banner reads.
 
 The merge executor (AX.4, [#360](https://github.com/NobuData/ouroboros/issues/360)) reaches the
 host only through the same service — `get` for its re-check, `merge` once the re-check passed,

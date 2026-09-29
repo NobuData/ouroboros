@@ -16,6 +16,11 @@
  * the correction that led to it is read from the revision before: the classification on a case of
  * that revision's attempt, and any loop return sent from it. Nothing is inferred from timestamps.
  *
+ * **The head says when the host was last heard** (AY.8,
+ * [#370](https://github.com/NobuData/ouroboros/issues/370)). `syncedAt` is `pull_requests.synced_at`
+ * — moved by every sync, including one that found nothing new — beside `updatedAt`, which moves only
+ * when the PR changed. It is null for a PR no sync has written, and never a guess.
+ *
  * Timestamps are ISO 8601 strings; costs are decimal strings in cents, as the console sends them.
  */
 
@@ -91,7 +96,13 @@ export interface PullRequestHeadResource {
   readonly run: PrRunResource | null;
   readonly ticket: PrTicketResource | null;
   readonly createdAt: string;
+  /** When the PR's mirror last changed. */
   readonly updatedAt: string;
+  /**
+   * When the sync last asked the host about the PR and was answered — the page's sync-lag banner
+   * (#370). Null for a PR no sync has written.
+   */
+  readonly syncedAt: string | null;
 }
 
 /** `pr_gate_aggregate` — `5 of 7 green`. */
@@ -357,6 +368,7 @@ export function headResource(row: PrHeadRow): PullRequestHeadResource {
     ticket: row.ticket,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+    syncedAt: iso(row.syncedAt),
   };
 }
 

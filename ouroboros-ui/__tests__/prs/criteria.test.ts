@@ -308,6 +308,47 @@ describe("the card", () => {
   });
 });
 
+describe("a finished PR (#370)", () => {
+  it("is offered no authoring, whoever is reading — the matrix is what was claimed and shown", () => {
+    for (const state of ["merged", "closed"] as const) {
+      const base = matrixPage();
+      const page = matrixPage({
+        pullRequest: { state },
+        criteria: { ...base.criteria, planContext: true },
+      });
+      const card = criteriaCard(input({ page }));
+
+      expect(card.addClaim, state).toBe(false);
+      expect(card.importPlan, state).toBe(false);
+      expect(card.rows.length, state).toBeGreaterThan(0);
+      for (const row of card.rows) {
+        expect(row.attach, `${state} ${row.claim}`).toBe(false);
+        expect(row.verify, `${state} ${row.claim}`).toBeNull();
+        expect(row.waive, `${state} ${row.claim}`).toBeNull();
+      }
+    }
+  });
+
+  it("keeps every claim, its evidence and its pill on screen", () => {
+    const open = criteriaCard(input());
+    const merged = criteriaCard(input({ page: matrixPage({ pullRequest: { state: "merged" } }) }));
+
+    expect(merged.counts).toBe(open.counts);
+    expect(merged.rows.map((row) => [row.claim, row.status, row.evidence])).toEqual(
+      open.rows.map((row) => [row.claim, row.status, row.evidence]),
+    );
+  });
+
+  it("is offered everything again while the PR is open, in every open state", () => {
+    for (const state of ["open", "verifying", "blocked", "armed"] as const) {
+      const card = criteriaCard(input({ page: matrixPage({ pullRequest: { state } }) }));
+
+      expect(card.addClaim, state).toBe(true);
+      expect(card.rows.every((row) => row.attach && row.waive !== null), state).toBe(true);
+    }
+  });
+});
+
 describe("what this page just changed", () => {
   const polled = matrix([criterion(), criterion({ id: criterionId(2), sortOrder: 2 })]);
   const verified = criterion({ status: "verified", evidence: [evidence()] });

@@ -10,8 +10,9 @@ import {
   MERGE_PLAN_TITLE,
   NO_EPIC,
 } from "@/app/prs/merge-plan";
+import { PR_LOADING_LABEL } from "@/app/prs/pr-loading";
 import { PR_MISSING_TITLE } from "@/app/prs/pr-missing";
-import { GATES_TITLE } from "@/app/prs/gates";
+import { APPROVE_LABEL, AWAITS_APPROVER, DECLINE_LABEL, GATES_TITLE } from "@/app/prs/gates";
 import { ACTIONS_LABEL, MERGE_LABEL, RETURN_LABEL, REVIEW_LABEL } from "@/app/prs/view";
 import { navRegistry } from "@/app/shell/nav-registry";
 
@@ -27,6 +28,7 @@ import {
   matrix,
   matrixPage,
   prPage,
+  review,
   stripPage,
 } from "../helpers/pull-requests";
 
@@ -225,10 +227,25 @@ describe("the PR verification route", () => {
     );
   });
 
-  it("says it is reading while the first read is in flight", () => {
+  it("draws the skeleton while the first read is in flight (#370)", () => {
     render(<Loading />);
 
-    expect(screen.getByRole("status")).toHaveTextContent(/Reading the pull request/);
+    expect(screen.getByRole("main", { name: PR_LOADING_LABEL })).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
+  });
+
+  it("hands the read's own instant on as the sync-lag banner's first clock (#370)", async () => {
+    // Never synced, so the banner is drawn whatever the clock says — and it is drawn once.
+    readPr.mockResolvedValue({
+      state: "found",
+      value: prPage({ pullRequest: { syncedAt: null } }),
+      readAt: Date.parse("2026-09-27T14:46:00.000Z"),
+    });
+    await open();
+
+    expect(screen.getByText("PR #514 has never been synced with its host.")).toBeInTheDocument();
   });
 });
 
@@ -263,6 +280,46 @@ describe("the actions, by role", () => {
 
     expect(drawn()).toEqual([]);
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+  });
+});
+
+describe("a waiting approval, by role (#370)", () => {
+  beforeEach(() => {
+    readPr.mockResolvedValue({ state: "found", value: stripPage({ review: review() }) });
+  });
+
+  /** The gates card. */
+  function gates() {
+    return within(screen.getByRole("region", { name: GATES_TITLE }));
+  }
+
+  it("is answered by an owner and an admin", async () => {
+    for (const role of ["owner", "admin"] as const) {
+      holding([role]);
+      const page = await open();
+
+      expect(gates().getByRole("button", { name: APPROVE_LABEL })).toBeInTheDocument();
+      expect(gates().getByRole("button", { name: DECLINE_LABEL })).toBeInTheDocument();
+      expect(gates().queryByText(AWAITS_APPROVER)).toBeNull();
+      page.unmount();
+    }
+  });
+
+  it("is not a member's to answer — no Approve, no Decline, and told who it waits for", async () => {
+    holding(["member"]);
+    await open();
+
+    expect(gates().queryByRole("button", { name: APPROVE_LABEL })).toBeNull();
+    expect(gates().queryByRole("button", { name: DECLINE_LABEL })).toBeNull();
+    expect(gates().getByText(AWAITS_APPROVER)).toBeInTheDocument();
+  });
+
+  it("draws a viewer neither the buttons nor the note", async () => {
+    holding(["viewer"]);
+    await open();
+
+    expect(gates().queryAllByRole("button")).toHaveLength(0);
+    expect(gates().queryByText(AWAITS_APPROVER)).toBeNull();
   });
 });
 

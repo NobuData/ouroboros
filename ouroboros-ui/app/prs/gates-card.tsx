@@ -112,7 +112,10 @@ function Gate({ row, waiting, onRequestReview, onApprove, onDecline, onFlagged }
   }
 
   return (
-    <li className={cx("prv-gate", ROW_CLASS[row.verdict])} ref={root}>
+    <li
+      className={cx("prv-gate", ROW_CLASS[row.verdict], row.blocking && "prv-gate--blocking")}
+      ref={root}
+    >
       <div className="prv-gate__line">
         <span aria-label={row.word} className="prv-gate__mark" role="img">
           {row.mark ?? <span className="prv-gate__dot" />}
@@ -214,6 +217,10 @@ export interface GatesCardProps {
  * The rows scroll sideways inside their own wrapper, so a long evidence line never scrolls the
  * pane.
  *
+ * On a blocked PR the gates it is blocked by are drawn as the point of the page, and on a merged
+ * or closed one the card says its verdicts are final
+ * ([#370](https://github.com/NobuData/ouroboros/issues/370)).
+ *
  * @param props See {@link GatesCardProps}.
  * @returns The card.
  */
@@ -254,6 +261,8 @@ export function GatesCard({
             </Button>
           )}
         </p>
+
+        {view.final !== null && <p className="prv-gates__final">{view.final}</p>}
 
         {view.rows.length === 0 ? (
           <p className="prv-gates__note">{NO_GATES}</p>

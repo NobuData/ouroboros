@@ -31,7 +31,15 @@ import type { PlanEpic } from "./merge-plan";
 
 /** What the first read found. */
 export type PrReading =
-  | { readonly state: "found"; readonly value: PullRequestPage }
+  | {
+      readonly state: "found";
+      readonly value: PullRequestPage;
+      /**
+       * When this read was made, in epoch milliseconds — the sync-lag banner's first clock
+       * ([#370](https://github.com/NobuData/ouroboros/issues/370)).
+       */
+      readonly readAt: number;
+    }
   | { readonly state: "missing" }
   | { readonly state: "failed"; readonly reason: string };
 
@@ -40,17 +48,19 @@ export type PrReading =
  *
  * @param prId The PR's id, from the URL.
  * @param read How to read it. Replaced in tests.
+ * @param now The clock the read is timed by, in epoch milliseconds. Replaced in tests.
  * @returns The reading. An id that is not a uuid is `missing` without calling out; an error that
  *   is not the API's own is rethrown.
  */
 export async function readPr(
   prId: string,
   read: (prId: string) => Promise<PullRequestPage> = (asked) => pullRequests.page(asked),
+  now: () => number = Date.now,
 ): Promise<PrReading> {
   if (!isPullRequestId(prId)) return { state: "missing" };
 
   try {
-    return { state: "found", value: await read(prId) };
+    return { state: "found", value: await read(prId), readAt: now() };
   } catch (error) {
     if (!isApiError(error)) throw error;
     if (error.status === 404 || error.status === 400) return { state: "missing" };

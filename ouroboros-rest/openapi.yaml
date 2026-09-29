@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.21"
+  version: "0.37.22"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -23629,7 +23629,7 @@ components:
       title: PullRequestHead
       description: A PR's head — the page's `h1` and meta chips.
       additionalProperties: false
-      required: [id, number, url, title, state, headBranch, baseBranch, additions, deletions, changedFiles, mergedAt, mergedBy, run, ticket, createdAt, updatedAt]
+      required: [id, number, url, title, state, headBranch, baseBranch, additions, deletions, changedFiles, mergedAt, mergedBy, run, ticket, createdAt, updatedAt, syncedAt]
       properties:
         id:
           type: string
@@ -23677,6 +23677,14 @@ components:
         updatedAt:
           type: string
           format: date-time
+        syncedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            When the sync last asked the host about this PR and was answered. Every sync moves
+            it, including one that found nothing new, while `updatedAt` moves only when the PR
+            changed — so an open PR whose instant has stopped moving has stopped being synced,
+            which is what the page's sync-lag banner names. Null for a PR no sync has written.
 
     PrGateAggregate:
       type: object
@@ -23726,7 +23734,7 @@ components:
       title: PullRequestSummary
       description: One row of the listing — the head, the latest revision and its aggregate, and the needs-you flag.
       additionalProperties: false
-      required: [id, number, url, title, state, headBranch, baseBranch, additions, deletions, changedFiles, mergedAt, mergedBy, run, ticket, createdAt, updatedAt, latestRevision, gates, reviewRequested]
+      required: [id, number, url, title, state, headBranch, baseBranch, additions, deletions, changedFiles, mergedAt, mergedBy, run, ticket, createdAt, updatedAt, syncedAt, latestRevision, gates, reviewRequested]
       properties:
         id:
           type: string
@@ -23774,6 +23782,14 @@ components:
         updatedAt:
           type: string
           format: date-time
+        syncedAt:
+          type: [string, "null"]
+          format: date-time
+          description: |-
+            When the sync last asked the host about this PR and was answered. Every sync moves
+            it, including one that found nothing new, while `updatedAt` moves only when the PR
+            changed — so an open PR whose instant has stopped moving has stopped being synced,
+            which is what the page's sync-lag banner names. Null for a PR no sync has written.
         latestRevision:
           oneOf:
             - $ref: "#/components/schemas/PrRevisionRef"

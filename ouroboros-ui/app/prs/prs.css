@@ -12,6 +12,10 @@
  * here that scroll sideways — each inside its own wrapper, so the pane never does. The review
  * thread (#368) scrolls downwards inside its own.
  *
+ * The states after the happy one (#370) add the state banner — a merged PR's receipt, a closed
+ * PR's record, a disarmed plan's reason — the emphasis on the gates a blocked PR is blocked by,
+ * and the skeleton. None of them scrolls, sticks or moves.
+ *
  * The pill, the tags, the eyebrow, the buttons, the banner and the card are the primitives in
  * app/ui/. Held to the two rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a
  * token from app/tokens.css, which is what makes both palettes one sheet — the mockup is dark
@@ -61,17 +65,190 @@
   text-decoration: underline;
 }
 
-/* ---------- banners and the empty state ---------- */
+/* ---------- banners ---------- */
 
 .prv__banner {
   margin-bottom: var(--sp-8);
 }
 
-.prv__empty {
-  margin: 0 0 var(--sp-10);
-  color: var(--ink-mut);
+/* ---------- the state banner (#370) ---------- */
+
+/*
+ * What a reader is told first on a PR that has merged, closed or been disarmed. The hue follows
+ * the state and is never the only signal: the headline says it in words.
+ */
+.prv-state {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-6) var(--sp-7);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* The receipt, in the pass's hue — the Merge plan card's own treatment of it. */
+.prv-state--ok {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+}
+
+/* A re-check refused the merge: the error hue, as the card draws its disarm reason. */
+.prv-state--err {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+}
+
+/* Closed without merging is neither a pass nor a failure. */
+.prv-state--neutral {
+  border-color: var(--line-strong);
+}
+
+.prv-state__headline {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-snug);
+  overflow-wrap: anywhere;
+}
+
+.prv-state--ok .prv-state__headline {
+  color: var(--ok);
+}
+
+.prv-state--err .prv-state__headline {
+  color: var(--err);
+}
+
+.prv-state__moment {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-weight: 400;
+}
+
+.prv-state__line {
+  margin: 0;
+  color: var(--ink);
   font-size: var(--t-sm);
   line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-state__skipped {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* What was switched on and did not run is something to look at, not a pass. */
+.prv-state__skipped-row {
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-state__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3) var(--sp-7);
+  margin: var(--sp-2) 0 0;
+  font-size: var(--t-xs);
+}
+
+.prv-state__link {
+  color: var(--accent);
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+
+.prv-state__link:hover {
+  text-decoration: underline;
+}
+
+.prv-state__link:focus-visible {
+  outline: 0.125rem solid var(--accent);
+  outline-offset: 0.125rem;
+}
+
+/* ---------- the skeleton (#370) ---------- */
+
+/* The regions below the head, hidden from the accessibility tree as one. */
+.prv-skeleton {
+  min-width: 0;
+}
+
+/* Clipped rather than scrolled: on a narrow pane a bar is cut short, never a scrollbar. */
+.prv-skeleton__head {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  margin-top: var(--sp-2);
+  overflow: hidden;
+}
+
+/* Still, not pulsing: a bar is a placeholder's geometry, not a progress report. */
+.prv-skeleton__bar {
+  display: block;
+  flex: none;
+  height: var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The headline's `--t-2xl` line. */
+.prv-skeleton__bar--title {
+  width: 30rem;
+  height: var(--sp-11);
+}
+
+/* The meta row: the tag, the pill, the branches and the counts. */
+.prv-skeleton__bar--meta {
+  width: 36rem;
+}
+
+/* A card head's title. */
+.prv-skeleton__bar--heading {
+  width: 10rem;
+}
+
+/* One row of a card, as wide as the card. */
+.prv-skeleton__bar--row {
+  align-self: stretch;
+  height: var(--sp-5);
+}
+
+.prv-skeleton__card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  margin-bottom: var(--sp-10);
+  overflow: hidden;
+}
+
+/* The strip's row of steps, at a step's own measure. */
+.prv-skeleton__steps {
+  display: flex;
+  align-self: stretch;
+  gap: var(--sp-5);
+  overflow: hidden;
+}
+
+.prv-skeleton__step {
+  flex: none;
+  width: 12.5rem;
+  height: 4.5rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
 }
 
 /* ---------- the head ---------- */
@@ -910,6 +1087,14 @@
   line-height: var(--lh-body);
 }
 
+/* A merged or closed PR's verdicts are final, and the card says so (#370). */
+.prv-gates__final {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
 .prv-gates__outcome {
   margin: var(--sp-5) 0 0;
   color: var(--ok);
@@ -975,6 +1160,24 @@
 .prv-gate--red .prv-gate__mark,
 .prv-gate--red .prv-gate__name {
   color: var(--err);
+}
+
+/*
+ * The gates a blocked PR is blocked by are the point of the page (#370): the err tint and a
+ * rule beside the row, so the emphasis is not hue alone.
+ */
+.prv-gate--blocking {
+  border-left: 0.125rem solid var(--err);
+  background: var(--err-tint);
+}
+
+.prv-gate--blocking .prv-gate__name {
+  font-weight: 600;
+}
+
+/* What blocks is read first, so its evidence is drawn at full strength. */
+.prv-gate--blocking .prv-gate__evidence {
+  color: var(--ink);
 }
 
 /* Policy, not outcome: grey, and never the pass's green. */

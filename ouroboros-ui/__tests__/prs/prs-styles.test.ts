@@ -375,3 +375,72 @@ describe("the merge plan, its confirmation and the spend card (#369)", () => {
     }
   });
 });
+
+describe("the states after the happy one (#370)", () => {
+  /**
+   * One rule's declarations.
+   *
+   * @param selector The rule's selector, exactly.
+   * @returns What it declares, or an empty string when the sheet has no such rule.
+   */
+  function rule(selector: string): string {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    return CODE.match(new RegExp(`(?:^|\\})\\s*${escaped} \\{([^}]*)\\}`))?.[1] ?? "";
+  }
+
+  it("draws the receipt in the pass's hue, a refusal in the error's, and closed in neither", () => {
+    expect(rule(".prv-state--ok")).toMatch(/background: var\(--ok-tint\);/);
+    expect(rule(".prv-state--ok")).toMatch(/border-color: var\(--ok-line\);/);
+    expect(rule(".prv-state--err")).toMatch(/background: var\(--err-tint\);/);
+    expect(rule(".prv-state--err")).toMatch(/border-color: var\(--err-line\);/);
+    expect(rule(".prv-state--neutral")).not.toMatch(/var\(--(?:ok|err|warn)/);
+    expect(rule(".prv-state")).not.toMatch(/var\(--(?:ok|err|warn)/);
+  });
+
+  it("draws the banner the Merge plan card's way, so one state has one treatment", () => {
+    expect(rule(".prv-state--ok")).toMatch(/background: var\(--ok-tint\);/);
+    expect(rule(".prv-merge__receipt")).toMatch(/background: var\(--ok-tint\);/);
+    expect(rule(".prv-state--err")).toMatch(/background: var\(--err-tint\);/);
+    expect(rule(".prv-merge__disarmed")).toMatch(/background: var\(--err-tint\);/);
+    // What was switched on and did not run is something to look at, not a pass.
+    expect(rule(".prv-state__skipped-row")).toMatch(/color: var\(--warn\);/);
+  });
+
+  it("lets the banner's long values break rather than widen the pane", () => {
+    for (const selector of [".prv-state__headline", ".prv-state__line", ".prv-state__link"]) {
+      expect(rule(selector), selector).toMatch(/overflow-wrap: anywhere;/);
+    }
+    expect(rule(".prv-state__links")).toMatch(/flex-wrap: wrap;/);
+  });
+
+  it("emphasises a blocking gate with a tint and a rule, so it is not hue alone", () => {
+    expect(rule(".prv-gate--blocking")).toMatch(/background: var\(--err-tint\);/);
+    expect(rule(".prv-gate--blocking")).toMatch(/border-left: 0\.125rem solid var\(--err\);/);
+    expect(rule(".prv-gate--blocking .prv-gate__name")).toMatch(/font-weight: 600;/);
+  });
+
+  it("keeps the skeleton still, and clips it rather than scrolling it", () => {
+    for (const [, selector, declarations] of CODE.matchAll(
+      /(\.prv-(?:skeleton|state)[^{]*)\{([^}]*)\}/g,
+    )) {
+      expect(declarations, selector).not.toMatch(/animation|transition/);
+      expect(declarations, selector).not.toMatch(/overflow(?:-x|-y)?: (?:auto|scroll)/);
+    }
+
+    expect(rule(".prv-skeleton__card")).toMatch(/overflow: hidden;/);
+    expect(rule(".prv-skeleton__steps")).toMatch(/overflow: hidden;/);
+    expect(rule(".prv-skeleton__head")).toMatch(/overflow: hidden;/);
+  });
+
+  it("draws a skeleton step at a step's own measure, so the strip does not jump", () => {
+    expect(rule(".prv-skeleton__step")).toMatch(/width: 12\.5rem;/);
+    expect(CODE).toMatch(/\.prv-step \{[^}]*min-width: 12\.5rem;/);
+  });
+
+  it("takes focus visibly on the banner's links", () => {
+    expect(rule(".prv-state__link:focus-visible")).toMatch(
+      /outline: 0\.125rem solid var\(--accent\);/,
+    );
+  });
+});

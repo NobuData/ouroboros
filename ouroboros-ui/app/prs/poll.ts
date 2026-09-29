@@ -109,6 +109,10 @@ function isSpend(value: unknown): boolean {
  * plan and the spend are held to the fields their cards read (#369), so a body that would make a
  * card throw is refused here, and the last good page stays on screen.
  *
+ * The head's `syncedAt` is not asked for ([#370](https://github.com/NobuData/ouroboros/issues/370)):
+ * a service one release behind does not send it, and the sync-lag banner reads its absence as
+ * *unknown* — never as late.
+ *
  * @param value A parsed response body.
  * @returns `true` when it can be read as a {@link PullRequestPage}.
  */

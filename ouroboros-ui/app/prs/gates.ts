@@ -24,6 +24,12 @@
  * **A link is drawn only where it leads somewhere real.** Each is routed by what the evidence was
  * composed from (`evidenceRef.kind`), and a row with nowhere honest to lead has none.
  *
+ * **The states after the happy one** ([#370](https://github.com/NobuData/ouroboros/issues/370)).
+ * On a blocked PR the red required gates of the latest revision are {@link GateRowView.blocking}
+ * — they are the point of the page, so they are drawn as it. On a merged or closed PR the card
+ * says its verdicts are final. And an approval is answered by an owner or admin: a member is
+ * offered *Request review*, and told who a waiting one is waiting for.
+ *
  * Framework-free, so every rule is a unit test without rendering.
  */
 
@@ -39,7 +45,7 @@ import type { ChipTone } from "@/app/ui";
 
 import { DIFF_VS_PLAN_KEY, FLAGGED_LINK } from "./files";
 import type { GatesScope } from "./strip";
-import { currentReview, hostOwnedReason } from "./view";
+import { currentReview, isFinished } from "./view";
 
 /** A gate's verdict. */
 export type GateVerdict = PrGateRow["verdict"];
@@ -93,11 +99,22 @@ export const DECLINE_LABEL = "Decline";
 /** Why the row's buttons wait while an answer is in flight. */
 export const APPROVAL_SENDING = "The answer is being sent.";
 
+/** What a waiting review's row tells a reader who may not answer it. */
+export const AWAITS_APPROVER = "waiting for an owner or admin";
+
 /** What is said once a review has been approved. */
 export const APPROVED = "Approved — human approval is green on this revision.";
 
 /** What is said once a review has been declined. */
 export const DECLINED = "Declined — human approval is red on this revision.";
+
+/** What the card says of a merged PR's verdicts. */
+export const GATES_FINAL_MERGED =
+  "Final verdicts — gates are not evaluated again once a PR has merged.";
+
+/** What the card says of a closed PR's verdicts. */
+export const GATES_FINAL_CLOSED =
+  "Verdicts as they stood — gates are not evaluated while a PR is closed.";
 
 /** A gate's verdict, in words — what the mark is announced as. */
 export const VERDICT_WORDS: Readonly<Record<GateVerdict, string>> = {
@@ -145,6 +162,20 @@ export function gatesPill(aggregate: PrGateAggregate | null): GatesPill | null {
     label: `${aggregate.greenCount} / ${aggregate.requiredCount} green`,
     tone: aggregate.redCount > 0 ? "err" : aggregate.mergeReady ? "ok" : "warn",
   };
+}
+
+/**
+ * What the card says of a finished PR's verdicts — the gate engine leaves a merged or closed PR
+ * alone, so what is on screen is what stood when the host finished with it.
+ *
+ * @param head The PR's head.
+ * @returns The sentence for a merged or closed PR, else `null`.
+ */
+export function gatesFinal(head: PullRequestHead): string | null {
+  if (head.state === "merged") return GATES_FINAL_MERGED;
+  if (head.state === "closed") return GATES_FINAL_CLOSED;
+
+  return null;
 }
 
 // --- the links -----------------------------------------------------------------------------
@@ -255,6 +286,8 @@ export interface ApprovalInput {
   readonly answeredReview: PrReview | null;
   /** Whether the reader may take a head action — owner, admin or member (#361). */
   readonly mayContribute: boolean;
+  /** Whether the reader may answer an approval — owner or admin (#370). */
+  readonly mayApprove: boolean;
 }
 
 /**
@@ -285,25 +318,43 @@ export function rowReview(polled: PrReview | null, answered: PrReview | null): P
  *
  * @param row The gate's row.
  * @param input See {@link ApprovalInput}.
- * @returns `decide` while a review is waiting and `request` otherwise — but nothing for a gate
- *   that is not human approval, for a reader who may not contribute, on a merged or closed PR, on
- *   a revision that is not the latest (an answer is honoured only there), and nothing to request
- *   once the gate is green or an approval was just given on this page.
+ * @returns `decide` while a review is waiting — for a reader who may answer it — and `request`
+ *   otherwise; but nothing for a gate that is not human approval, for a reader who may not
+ *   contribute, on a merged or closed PR, on a revision that is not the latest (an answer is
+ *   honoured only there), for a member while a review is waiting, and nothing to request once
+ *   the gate is green or an approval was just given on this page.
  */
 export function approvalOffer(row: PrGateRow, input: ApprovalInput): ApprovalOffer | null {
-  const { page, scope, answeredReview, mayContribute } = input;
+  const { page, scope, answeredReview, mayContribute, mayApprove } = input;
 
   if (row.key !== HUMAN_APPROVAL_KEY || !mayContribute || !scope.latest) return null;
-  if (hostOwnedReason(page.pullRequest.state) !== null) return null;
+  if (isFinished(page.pullRequest.state)) return null;
 
   const review = rowReview(page.review, answeredReview);
-  if (review !== null && review.state === "requested") return "decide";
+  if (review !== null && review.state === "requested") return mayApprove ? "decide" : null;
   // Approved on this page, and the gate's row has not been polled green yet.
   if (review !== null && review.state === "approved" && review.id === answeredReview?.id) {
     return null;
   }
 
   return row.verdict === "green" ? null : "request";
+}
+
+/**
+ * Whether the row's review is waiting on somebody else.
+ *
+ * @param row The gate's row.
+ * @param input See {@link ApprovalInput}.
+ * @returns `true` for the human-approval row of the latest revision of an open PR, while a review
+ *   is waiting and the reader contributes but may not answer it — a member.
+ */
+export function awaitsApprover(row: PrGateRow, input: ApprovalInput): boolean {
+  const { page, scope, answeredReview, mayContribute, mayApprove } = input;
+
+  if (row.key !== HUMAN_APPROVAL_KEY || !mayContribute || mayApprove || !scope.latest) return false;
+  if (isFinished(page.pullRequest.state)) return false;
+
+  return rowReview(page.review, answeredReview)?.state === "requested";
 }
 
 /**
@@ -360,8 +411,13 @@ export interface GateRowView {
   readonly link: GateLink | null;
   /** The changed files a red diff-vs-plan flags, on this page — or `null`. */
   readonly flagged: GateLink | null;
-  /** {@link UNAVAILABLE_NOTE} on an `unavailable` row, otherwise `null`. */
+  /**
+   * {@link UNAVAILABLE_NOTE} on an `unavailable` row, {@link AWAITS_APPROVER} on a waiting
+   * review the reader may not answer, otherwise `null`.
+   */
   readonly note: string | null;
+  /** Whether it is one of the red required gates a blocked PR is blocked by (#370). */
+  readonly blocking: boolean;
   /** {@link PENDING_PILL} on a `pending` row, otherwise `null`. */
   readonly pill: string | null;
   /** {@link AUTO_MERGE_ELIGIBLE} on a human approval the policy did not require. */
@@ -386,12 +442,45 @@ export interface GatesCardView {
   readonly scoped: boolean;
   /** The rows, in the card's order. */
   readonly rows: readonly GateRowView[];
+  /** What is said of a merged or closed PR's verdicts, or `null` (#370). */
+  readonly final: string | null;
 }
 
 /** What the card is decided from. */
 export interface GatesCardInput extends ApprovalInput {
   /** The module the page was opened from. */
   readonly originId: string;
+}
+
+/**
+ * Whether a row is one of the gates a blocked PR is blocked by.
+ *
+ * @param row The gate's row.
+ * @param input See {@link GatesCardInput}.
+ * @returns `true` for a red required gate of the latest revision while the PR is `blocked`. An
+ *   earlier revision's red gates are history, and a red gate the policy does not require blocks
+ *   nothing.
+ */
+export function isBlocking(row: PrGateRow, input: GatesCardInput): boolean {
+  return (
+    input.page.pullRequest.state === "blocked" &&
+    input.scope.latest &&
+    row.required &&
+    row.verdict === "red"
+  );
+}
+
+/**
+ * What a row states beside its evidence.
+ *
+ * @param row The gate's row.
+ * @param input See {@link GatesCardInput}.
+ * @returns The note, or `null`.
+ */
+function rowNote(row: PrGateRow, input: GatesCardInput): string | null {
+  if (row.verdict === "unavailable") return UNAVAILABLE_NOTE;
+
+  return awaitsApprover(row, input) ? AWAITS_APPROVER : null;
 }
 
 /**
@@ -413,7 +502,8 @@ export function gateRowView(row: PrGateRow, input: GatesCardInput): GateRowView 
     evidence: row.evidence,
     link: gateLink(row, input.scope, input.page.pullRequest, input.originId),
     flagged: flaggedLink(row, input.scope, input.page),
-    note: verdict === "unavailable" ? UNAVAILABLE_NOTE : null,
+    note: rowNote(row, input),
+    blocking: isBlocking(row, input),
     pill: verdict === "pending" ? PENDING_PILL : null,
     tag: verdict === "not_required" && row.key === HUMAN_APPROVAL_KEY ? AUTO_MERGE_ELIGIBLE : null,
     waived: verdict === "waived",
@@ -438,5 +528,6 @@ export function gatesCard(input: GatesCardInput): GatesCardView {
     heading: scope.heading,
     scoped: scope.scoped,
     rows: scope.rows.map((row) => gateRowView(row, input)),
+    final: gatesFinal(page.pullRequest),
   };
 }

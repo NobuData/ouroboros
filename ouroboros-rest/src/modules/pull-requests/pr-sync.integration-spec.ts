@@ -24,7 +24,9 @@ import { PrSyncService } from "./pr-sync.service";
  * The criterion *"revision sync writes AW.1 rows with the file snapshot the changed-files card
  * needs"* is only true if V052 accepts the rows: `pr_revision_files_valid`, the head-sha shape, the
  * frozen history, the state graph and the merged-at rule are all CHECKs and triggers no unit suite
- * crosses. So is *"a re-sync touches no rows"*, which is a claim about `updated_at`.
+ * crosses. So is *"a re-sync changes nothing but the sync stamp"*, which is a claim about
+ * `updated_at` and V066's `synced_at` ([#370](https://github.com/NobuData/ouroboros/issues/370)) —
+ * and about V066's touch trigger, which is what lets the stamp move alone.
  *
  * Every case runs on the fake, and nothing here imports Octokit — the GitHub round trip is
  * `ticket-sources/providers/github.pr.integration-spec.ts`.
@@ -56,6 +58,9 @@ describe("the PR sync, against a migrated database", () => {
     merged_at: Date | null;
     merged_by: string | null;
     updated_at: Date;
+    synced_at: Date | null;
+    /** Whether the stamp is later than the PR's mirroring — compared in the database, to the microsecond. */
+    synced_after_created: boolean | null;
   }
 
   /** One revision row. */
@@ -105,7 +110,8 @@ describe("the PR sync, against a migrated database", () => {
    */
   async function prRow(sourceId: string): Promise<PrRow> {
     const { rows } = await api.sql.query<PrRow>(
-      `select id, state, title, additions, deletions, changed_files, merged_at, merged_by, updated_at
+      `select id, state, title, additions, deletions, changed_files, merged_at, merged_by, updated_at,
+              synced_at, synced_at > created_at as synced_after_created
          from ${SCHEMA_NAME}.pull_requests where source_id = $1`,
       [sourceId],
     );
@@ -159,7 +165,7 @@ describe("the PR sync, against a migrated database", () => {
     expect(rows[0].head_sha).not.toBe(rows[1].head_sha);
   });
 
-  it("touches no row on a re-sync with nothing new", async () => {
+  it("changes nothing but the sync stamp on a re-sync with nothing new", async () => {
     const { organizationId, sourceId, prNumber, service } = await sandbox();
 
     await service.sync(organizationId, sourceId, prNumber);
@@ -171,6 +177,36 @@ describe("the PR sync, against a migrated database", () => {
     expect(again).toMatchObject({ revisionSeq: 1, newRevision: false });
     expect(after.updated_at.getTime()).toBe(before.updated_at.getTime());
     expect(await revisions(after.id)).toHaveLength(1);
+
+    // The first sync mirrored the PR and stamped it in one transaction, so the two instants are
+    // the same; the second asked again, found nothing, and moved the stamp alone.
+    expect(before.synced_at).toBeInstanceOf(Date);
+    expect(before.synced_after_created).toBe(false);
+    expect(after.synced_after_created).toBe(true);
+    expect(after).toMatchObject({
+      title: before.title,
+      state: before.state,
+      additions: before.additions,
+      deletions: before.deletions,
+      changed_files: before.changed_files,
+    });
+  });
+
+  it("stamps a sync that changed the PR, and moves updated_at with it", async () => {
+    const { organizationId, sourceId, host, prNumber, service } = await sandbox();
+
+    await service.sync(organizationId, sourceId, prNumber);
+
+    const before = await prRow(sourceId);
+
+    host.push("loop/482-canbus-flake", SECOND_PUSH);
+    await service.sync(organizationId, sourceId, prNumber);
+
+    const after = await prRow(sourceId);
+
+    expect(after.synced_after_created).toBe(true);
+    expect(after.updated_at.getTime()).toBeGreaterThanOrEqual(before.updated_at.getTime());
+    expect(after.updated_at.getTime()).toBe(after.synced_at?.getTime());
   });
 
   it("keeps the verification plane's refinement, and lands the host's merge with who and when", async () => {

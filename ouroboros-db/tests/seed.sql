@@ -4282,6 +4282,13 @@ select pg_temp.must_hold(
      join ouroboros.runs run on run.id = pr.run_id),
   'one PR, #514, verifying, from loop/482-canbus-flake into main — opened by #482 and closing the canonical #482');
 
+-- No sync has run against #514 — the seed wrote it — so its stamp claims none (V066, #370). The
+-- PR page's sync-lag banner reads this column, and says *never synced* of the seeded PR.
+select pg_temp.must_hold(
+  (select synced_at is null from ouroboros.pull_requests
+    where id = '5eed003a-0000-4000-8000-000000000514'),
+  'PR #514 has no sync stamp: a stamp here would claim a sync that never happened');
+
 select pg_temp.must_hold(
   (select array_agg(format('%s:%s:%s', rev.revision_seq, rev.head_sha,
                            coalesce(rev.run_stage_id::text, '-')) order by rev.revision_seq)

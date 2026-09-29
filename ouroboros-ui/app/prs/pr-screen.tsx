@@ -87,6 +87,7 @@ import {
 } from "./outcomes";
 import { PrActions } from "./pr-actions";
 import { PrHead } from "./pr-head";
+import { PrStateBanner } from "./pr-state-banner";
 import { type PrPollOptions, createPagePoll } from "./poll";
 import { ResolveDialog } from "./resolve-dialog";
 import { ReturnDialog } from "./return-dialog";
@@ -94,6 +95,8 @@ import type { TextDialogOutcome } from "./text-dialog";
 import { RevisionStrip } from "./revision-strip";
 import { spendCard } from "./spend";
 import { SpendCard } from "./spend-card";
+import { stateBanner } from "./states";
+import { PrSyncLagBanner } from "./sync-lag-banner";
 import { gatesScope, scopedRevision, stripSteps, withRevision } from "./strip";
 import {
   ENTRY_GONE,
@@ -235,6 +238,13 @@ export interface PrScreenProps {
   readonly mayArm?: boolean;
   /** Whether the reader may waive a claim — owner or admin (#359). `false` when absent. */
   readonly mayWaive?: boolean;
+  /** Whether the reader may answer an approval — owner or admin (#370). `false` when absent. */
+  readonly mayApprove?: boolean;
+  /**
+   * When the server made the first read, in epoch milliseconds — the sync-lag banner's first
+   * clock, so hydration matches (#370). `null` when absent.
+   */
+  readonly readAt?: number | null;
   /** The hunk the address cites — `?hunk=` — or `null`. `null` when absent. */
   readonly initialHunk?: Hunk | null;
   /** How the criteria matrix writes. Defaults to the Server Actions. */
@@ -310,6 +320,15 @@ export interface PrScreenProps {
  * armed while another does not. The confirmation states what it read when it opened, and goes
  * inert if the PR moves under it.
  *
+ * **The states after the happy one are said first**
+ * ([#370](https://github.com/NobuData/ouroboros/issues/370)). A merged PR opens with its receipt,
+ * a closed one with its record, and a plan a re-check disarmed with **which** re-check — above
+ * the head, from the same effective page the head and the card read. A PR its host can still
+ * change says when the host was last heard once that is too long ago; a failed refresh's banner
+ * takes precedence, because it is the nearer cause. A finished PR is drawn no head action and no
+ * authoring, a blocked one leads with *Return to loop*, and an approval is answered by an owner
+ * or admin.
+ *
  * @param props See {@link PrScreenProps}.
  * @returns The screen.
  */
@@ -322,6 +341,8 @@ export function PrScreen({
   mayContribute = false,
   mayArm = false,
   mayWaive = false,
+  mayApprove = false,
+  readAt = null,
   initialHunk = null,
   criteriaSenders = CRITERIA_SENDERS,
   now = Date.now,
@@ -837,7 +858,15 @@ export function PrScreen({
   const gates =
     page === null || scope === null
       ? null
-      : gatesCard({ page, scope, answeredReview, mayContribute, originId: origin.id });
+      : gatesCard({
+          page,
+          scope,
+          answeredReview,
+          mayContribute,
+          mayApprove,
+          originId: origin.id,
+        });
+  const banner = page === null ? null : stateBanner(page, mergeAnswer);
   const plan =
     page === null
       ? null
@@ -881,6 +910,12 @@ export function PrScreen({
           reason={error}
         />
       )}
+
+      {error === null && page !== null && (
+        <PrSyncLagBanner head={page.pullRequest} onRetry={read.refresh} readAt={readAt ?? 0} />
+      )}
+
+      {banner !== null && <PrStateBanner view={banner} />}
 
       {head !== null && (
         <PrHead

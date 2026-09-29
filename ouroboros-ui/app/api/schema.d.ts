@@ -8456,6 +8456,14 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /**
+             * Format: date-time
+             * @description When the sync last asked the host about this PR and was answered. Every sync moves
+             *     it, including one that found nothing new, while `updatedAt` moves only when the PR
+             *     changed — so an open PR whose instant has stopped moving has stopped being synced,
+             *     which is what the page's sync-lag banner names. Null for a PR no sync has written.
+             */
+            syncedAt: string | null;
         };
         /**
          * PrGateAggregate
@@ -8506,6 +8514,14 @@ export interface components {
             createdAt: string;
             /** Format: date-time */
             updatedAt: string;
+            /**
+             * Format: date-time
+             * @description When the sync last asked the host about this PR and was answered. Every sync moves
+             *     it, including one that found nothing new, while `updatedAt` moves only when the PR
+             *     changed — so an open PR whose instant has stopped moving has stopped being synced,
+             *     which is what the page's sync-lag banner names. Null for a PR no sync has written.
+             */
+            syncedAt: string | null;
             latestRevision: components["schemas"]["PrRevisionRef"] | null;
             /** @description The latest revision's aggregate, or null when there is no revision. */
             gates: components["schemas"]["PrGateAggregate"] | null;

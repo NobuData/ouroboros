@@ -84,6 +84,7 @@ function draw(
   initial: PullRequestPage = stripPage(),
   options: {
     mayContribute?: boolean;
+    mayApprove?: boolean;
     initialRevision?: number | null;
     sendApproval?: ApprovalSender;
     sendReview?: ReviewSender;
@@ -94,6 +95,7 @@ function draw(
       initial={initial}
       initialError={null}
       initialRevision={options.initialRevision ?? null}
+      mayApprove={options.mayApprove ?? true}
       mayArm
       mayContribute={options.mayContribute ?? true}
       origin={DASHBOARD_ORIGIN}

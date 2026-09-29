@@ -76,6 +76,13 @@
 #                                 checkout (#991) — the Mark & Route card it also waited on is
 #                                 built (#340); registered so that the day it runs, this script
 #                                 starts checking it (#342)
+#   db        pr-verification     the PR page's states, and the plan the TOCTOU test arms, are
+#             .spec.ts            read out of the PR read model and the seed: with the database
+#                                 stopped nobody can sign in to read them (#370)
+#   tracker-  pr-verification     PARKED — the live chain's sync, which waits on a PR sync
+#   stub      .spec.ts            trigger, run linking for a synced PR (#375) and a sandbox
+#             (the live chain)    host that serves pull requests; registered so that the day
+#                                 it runs, this script starts checking it (#370)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -613,6 +620,20 @@ expect_red db run-console.spec.ts "sign-in for .* answered 5[0-9][0-9]|the simul
 # un-parks it, for the routing pair's reason.
 expect_red db test-results.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 expect_red farm-gateway test-results.spec.ts "the upload arrived" "live: failing-HIL"
+
+# The PR verification leg (#370). `db` for the reason every pair above uses it: the leg's first
+# act is to sign in and read the seeded PR, so with the database stopped it goes red there — and
+# before its TOCTOU test, which is the one test in the suite that changes the seeded PR, so this
+# pair leaves the stack as cold as it found it.
+#
+# The issue's three layer breakages are sync, the gate engine and the merge re-check. Sync belongs
+# to the live chain, which is parked: its pair is registered by name — the sandbox host is the
+# service it will stand on — and reported `--` until it runs. The gate engine and the re-check are
+# code paths inside `rest`, and they are what the TOCTOU test stands on, so they were broken by
+# hand at the ticket and the results are recorded in tests/e2e/README.md rather than automated
+# here, for the routing pair's reason.
+expect_red db pr-verification.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+expect_red tracker-stub pr-verification.spec.ts "the PR was mirrored" "live: sandbox PR"
 
 printf '\n'
 if check_summary; then

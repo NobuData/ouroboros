@@ -709,6 +709,8 @@ the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 > 6. **A reason several actions share is printed once** under the row; each inert button is
 >    described by it.
 > 7. **#49's placeholder was never built**, so there was nothing to retire.
+> 8. *(Since #370, decision 7: a PR that has merged or closed is drawn none of the three
+>    actions, rather than three inert ones.)*
 
 - **Problem Statement:** The frame: PR-scoped route reachable from runs,
   test results, and the dashboard's recently-closed rows; the meta row;
@@ -816,6 +818,7 @@ can: fix flaky telemetry frame order under ISR load
 > 7. **Approve and Decline are on the row** (`POST …/approvals`), drawn for owner, admin and
 >    member while a review is waiting, on the latest revision of an open PR. *Decline* asks for
 >    its note first. Otherwise the row offers *Request review*, the head action's own request.
+>    *(Narrowed by #370's decision 5: the answer is drawn for an owner or admin only.)*
 > 8. **Return to loop still acts on the latest revision.** The issue does not ask for returning
 >    from a scoped revision, so AY.1's decision 5 stays open.
 > 9. **"Verified in e2e" is AY.8's** (#370); the links are asserted in the UI suite here.
@@ -1095,7 +1098,62 @@ Strategy [squash · delete branch] · msg preview [fix(can): … Closes #482.]
 
 ### Issue AY.8 — ouroboros-ui: [AY.8] PR states & e2e leg
 
-> **GitHub issue:** #370 · **Status:** 🟡 Open · **Parent epic:** #350
+> **GitHub issue:** #370 · **Status:** 🟡 Open — delivered in part · **Parent epic:** #350
+> **Delivered as `ouroboros-ui/app/prs/states.ts`, `pr-state-banner.tsx`, `sync-lag-banner.tsx` and
+> a rewritten `pr-loading.tsx`**, over one additive REST field and one migration, **and as e2e leg
+> 20** (`tests/e2e/specs/pr-verification.spec.ts`, `support/pull-requests.ts`). **The issue stays
+> open**: its live chain is parked, as AU.8's (#342) is. Decided on #370, with the user where
+> marked:
+>
+> 1. **The live chain is parked, because four things it stands on do not exist** *(decided with
+>    the user)*. Nothing triggers a PR sync — `PrSyncService.sync`'s one caller is the merge
+>    executor, after a merge; a synced PR has no run (AZ.5, #375), so every gate is required,
+>    `model_review` stays `unavailable` and a waive answers `409 criterion_waiver_needs_run`; the
+>    sandbox tracker serves no pull requests; and the seeded source's credential is a placeholder.
+>    The chain is `test.fixme` with those reasons, and its failure-mode pair is registered parked.
+>    **A PR sync trigger and a PR-capable sandbox host are unfiled follow-ups.**
+> 2. **The TOCTOU leg runs for real, on the seeded PR** *(decided with the user)*. The executor's
+>    re-check reads the gates before it asks the host anything, so a gate that went red after
+>    arming is refused in the database. The leg arms `#514`, asks for a review and declines it, and
+>    requires no merge and the reason on the page. It changes the seeded PR for good, so it runs
+>    last and the leg is green from a cold volume — leg 15's position. It cannot assert the
+>    *host's* side of no merge; that is the parked chain's.
+> 3. **Sync lag reads a stamp the sync writes** *(decided with the user)*: `pull_requests.synced_at`
+>    (V066), set by every sync including one that found nothing new, exposed as
+>    `PullRequestHead.syncedAt` (REST 0.37.22, additive). `updated_at` could not be the stamp — it
+>    moves only when the mirror changed — and V066 recreates its touch trigger so that the stamp
+>    alone does not move it. **Until a sync trigger exists every open PR that was ever synced goes
+>    quiet, and the seeded `#514` says *never synced*** — which is true.
+> 4. **The threshold is ten minutes** — twice the tracker sync's default cadence of five. No PR
+>    poll loop exists to take a cadence from; the constant is `PR_SYNC_LAG_AFTER_SECONDS`.
+> 5. **A member is drawn no approve** *(decided with the user)*, as the issue says and against
+>    AY.3's decision 7. *Approve* and *Decline* are an owner's or admin's; a member is told the
+>    review is `waiting for an owner or admin`, and still requests one. **The service still admits
+>    a member's approval** (`POST …/approvals` is a contributor's) — narrowing it would be a REST
+>    follow-up. *"Classify"* in the issue's row names nothing on this page; it is test results'.
+> 6. **The state is said first, in a banner above the head**, and the Merge plan card keeps its
+>    own receipt and disarm reason (AY.7's). The card is near the foot of a long page; a reader
+>    who opens a merged PR, or who armed one and came back, is told before they scroll.
+> 7. **A finished PR is drawn no head action at all**, where AY.1 drew three inert ones with a
+>    shared reason: *no arm affordance remains*. The matrix offers it no authoring either.
+>    **Reply and resolve stays on its thread**, as AY.6's decision 7 has it.
+> 8. **"Frozen" is what the gate engine already does**: it leaves a merged or closed PR alone, so
+>    the card says *Final verdicts* rather than this page stopping anything. The page has no
+>    elapsed clock to stop.
+> 9. **Promoted is first, and the only one in a hue.** On a blocked PR *Return to loop* is drawn
+>    first in its danger treatment and the merge gives up the primary — one per view. Red
+>    **required** gates of the **latest** revision are emphasised; a red gate the policy does not
+>    require blocks nothing, and an earlier revision's are history.
+> 10. **The merged, closed, blocked and disarmed states are drawn in e2e by rewriting the
+>     browser's own poll**, as leg 19's parse warning is: the seed holds one PR, and four more
+>     would be four more rows on every surface that lists them.
+> 11. **Two of the issue's three breakages were made by hand, and the third is parked.** The gate
+>     engine and the merge re-check were each stubbed in the running stack and turned the TOCTOU
+>     test red naming the layer — the re-check's stub leaving the plan **armed on a blocked PR**.
+>     Disabling sync belongs to the live chain. `tests/e2e/README.md` has the table.
+> 12. **The mockup's side column is not taken up** (AY.6's decision 11): the page stays one
+>     column, which is what the banner above the head assumes.
+> 13. **Leg 20 adds about twenty seconds** to the suite, against the issue's three minutes.
 
 - **Problem Statement:** Merged/blocked/conflict/closed states, and the
   full sandbox chain needs end-to-end certification.
