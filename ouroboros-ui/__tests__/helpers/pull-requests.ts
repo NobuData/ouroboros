@@ -4,8 +4,11 @@ import type {
   PrEvidence,
   PrFiles,
   PrGateRow,
+  PrMergeOutcome,
+  PrMergePlan,
   PrReview,
   PrRevision,
+  PrSpend,
   PrThread,
   PrThreadEntry,
   PrThreadResolution,
@@ -174,6 +177,147 @@ export function prHeadOf(over: Partial<PullRequestHead> = {}): PullRequestHead {
   };
 }
 
+/** The seeded message — the PR's title, and the trailer that closes its ticket. */
+export const SEEDED_MESSAGE = "can: fix flaky telemetry frame order under ISR load\n\nCloses #482.";
+
+/** The roadmap's *OTA hardening* epic, and the one below it. */
+export const OTA_EPIC = { id: "5eed001f-0000-4000-8000-000000000001", name: "OTA hardening" };
+export const BLE_EPIC = { id: "5eed001f-0000-4000-8000-000000000002", name: "BLE provisioning v2" };
+
+/**
+ * The merge plan (#369).
+ *
+ * @param over What to change.
+ * @returns PR #514's plan as the seed leaves it — squash and delete the branch, close #482,
+ *   comment the evidence, leave the roadmap alone, unarmed — changed.
+ */
+export function mergePlan(over: Partial<PrMergePlan> = {}): PrMergePlan {
+  return {
+    prId: PR_514_ID,
+    strategy: "squash",
+    deleteBranch: true,
+    commitMessage: SEEDED_MESSAGE,
+    closeTicket: true,
+    commentEvidence: true,
+    backAnnotateEpic: false,
+    epicId: null,
+    armed: false,
+    armedBy: null,
+    armedByPerson: null,
+    armedAt: null,
+    armedAgainstRevisionId: null,
+    disarmReason: null,
+    mergedResult: null,
+    updatedAt: "2026-09-27T14:32:00.000Z",
+    ...over,
+  };
+}
+
+/**
+ * The plan, armed by Ken against Revision 2.
+ *
+ * @param over What else to change.
+ * @returns The armed plan.
+ */
+export function armedPlan(over: Partial<PrMergePlan> = {}): PrMergePlan {
+  return mergePlan({
+    armed: true,
+    armedBy: KEN.id,
+    armedByPerson: KEN,
+    armedAt: "2026-09-27T14:40:12.000Z",
+    armedAgainstRevisionId: REV_2_ID,
+    updatedAt: "2026-09-27T14:40:12.000Z",
+    ...over,
+  });
+}
+
+/**
+ * The plan, merged: what landed, as whom, and what ran.
+ *
+ * @param over What else to change.
+ * @returns The merged plan.
+ */
+export function mergedPlan(over: Partial<PrMergePlan> = {}): PrMergePlan {
+  return mergePlan({
+    mergedResult: {
+      sha: "9c4ab7f02d31",
+      identityUsed: "ken-s",
+      actionsExecuted: ["close_ticket", "comment_evidence", "delete_branch"],
+      mergedAt: "2026-09-27T14:45:02.000Z",
+    },
+    updatedAt: "2026-09-27T14:45:02.000Z",
+    ...over,
+  });
+}
+
+/**
+ * What *Merge now* answers.
+ *
+ * @param over What to change.
+ * @returns A merge that closed the ticket and ran everything switched on, changed.
+ */
+export function mergeOutcome(over: Partial<PrMergeOutcome> = {}): PrMergeOutcome {
+  return {
+    plan: mergedPlan(),
+    ticket: { key: "#482", closed: true, detail: null },
+    failedActions: [],
+    ...over,
+  };
+}
+
+/**
+ * The spend rollup (#369) — the seed's figures: `284k tokens · $1.52`, `41k · $0.19`, within the
+ * `implement-primary` route's `$2.50` cap, nothing unpriced.
+ *
+ * @param over What to change.
+ * @returns The rollup, changed.
+ */
+export function seededSpend(over: Partial<PrSpend> = {}): PrSpend {
+  return {
+    loop: {
+      tokens: 284_000,
+      tokensIn: 227_200,
+      tokensOut: 56_800,
+      costCents: "152.0000",
+      unpricedEvents: 0,
+    },
+    verification: {
+      tokens: 41_000,
+      tokensIn: 32_800,
+      tokensOut: 8_200,
+      costCents: "19.0000",
+      unpricedEvents: 0,
+    },
+    verificationTag: "verify",
+    cap: { cents: 250, routeTag: "implement-primary" },
+    withinCap: true,
+    ...over,
+  };
+}
+
+/**
+ * The page with every required gate green — what *Merge now* is offered on.
+ *
+ * @param over What else to change.
+ * @returns The page, ready to merge.
+ */
+export function readyPage(over: Parameters<typeof prPage>[0] = {}): PullRequestPage {
+  return prPage({
+    gates: {
+      revisionId: REV_2_ID,
+      aggregate: {
+        requiredCount: 7,
+        greenCount: 6,
+        redCount: 0,
+        satisfiedCount: 7,
+        mergeReady: true,
+      },
+      rows: gateRows({ model_review: ["green", "cursor/composer-2 · approved"] }),
+    },
+    ...over,
+  });
+}
+
 /**
  * The page.
  *
@@ -208,23 +352,7 @@ export function prPage(
     },
     files: null,
     thread: { entryCount: 0, openCount: 0, entries: [] },
-    plan: {
-      prId: PR_514_ID,
-      strategy: "squash",
-      deleteBranch: true,
-      commitMessage: "can: fix flaky telemetry frame order under ISR load\n\nCloses #482.",
-      closeTicket: true,
-      commentEvidence: true,
-      backAnnotateEpic: false,
-      epicId: null,
-      armed: false,
-      armedBy: null,
-      armedAt: null,
-      armedAgainstRevisionId: null,
-      disarmReason: null,
-      mergedResult: null,
-      updatedAt: "2026-09-27T14:32:00.000Z",
-    },
+    plan: mergePlan(),
     spend: null,
     review: null,
     loopReturn: null,

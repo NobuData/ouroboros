@@ -4,12 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PullRequestPage } from "@/app/api/pull-requests";
 import { BUILD_FARM_PATH, runPath } from "@/app/paths";
 import type { PollAnswer } from "@/app/poll";
-import {
-  MERGE_PLAN_ID,
-  MERGE_PLAN_TITLE,
-  NOTHING_CHOSEN,
-  handedOff,
-} from "@/app/prs/merge-plan-slot";
+import { MERGE_PLAN_ID, MERGE_PLAN_TITLE, handedOff } from "@/app/prs/merge-plan";
 import type { ReturnOutcome, ReviewRequestOutcome } from "@/app/prs/outcomes";
 import type { PrPollOptions } from "@/app/prs/poll";
 import { PR_CRUMB, PrScreen, type ReturnSender, type ReviewSender } from "@/app/prs/pr-screen";
@@ -43,6 +38,7 @@ import {
   REV_2_ID,
   TESTS_RED,
   TICKET_URL,
+  armedPlan,
   blockedPage,
   prPage,
   returned,
@@ -73,6 +69,12 @@ vi.mock("@/app/prs/criteria-actions", () => ({
 }));
 vi.mock("@/app/prs/thread-actions", () => ({
   resolveEntry: vi.fn(),
+}));
+vi.mock("@/app/prs/merge-actions", () => ({
+  armPlan: vi.fn(),
+  disarmPlan: vi.fn(),
+  editPlan: vi.fn(),
+  mergeNow: vi.fn(),
 }));
 
 /** A poll that never answers — the page shows the server's first read. */
@@ -534,24 +536,27 @@ describe("Request human review", () => {
 });
 
 describe("Merge when all gates green", () => {
-  it("arms nothing: it hands off to the Merge plan slot and moves focus there", () => {
+  it("arms nothing: it hands off to the Merge plan card and moves focus there", () => {
     draw();
 
-    const slot = screen.getByRole("region", { name: MERGE_PLAN_TITLE });
-    expect(slot).toHaveAttribute("id", MERGE_PLAN_ID);
-    expect(slot).toHaveTextContent(NOTHING_CHOSEN);
+    const card = screen.getByRole("region", { name: MERGE_PLAN_TITLE });
+    expect(card).toHaveAttribute("id", MERGE_PLAN_ID);
+    expect(card).not.toHaveTextContent("Nothing has happened yet");
 
     fireEvent.click(action(MERGE_LABEL));
 
-    expect(slot).toHaveTextContent(handedOff(2));
-    expect(slot).toHaveTextContent("nothing has been armed");
-    expect(slot).toHaveFocus();
+    expect(card).toHaveTextContent(handedOff(2, "arm"));
+    expect(card).toHaveTextContent("Nothing has happened yet");
+    expect(card).toHaveFocus();
+    // The head's press opens no confirmation and arms nothing: the card's own control does.
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(within(card).queryByText("Armed")).toBeNull();
   });
 
   it("is disabled with a stated reason when the PR is not armable", () => {
     const cases: [PullRequestPage, string][] = [
       [blockedPage(), "2 gates are red on revision 2 — a blocked PR cannot be armed."],
-      [prPage({ pullRequest: { state: "armed" } }), ALREADY_ARMED],
+      [prPage({ pullRequest: { state: "armed" }, plan: armedPlan() }), ALREADY_ARMED],
       [
         prPage({ pullRequest: { state: "merged" } }),
         "This PR has merged — there is nothing left to decide.",
@@ -568,9 +573,10 @@ describe("Merge when all gates green", () => {
       expect(within(actions()).getByText(reason)).toBeInTheDocument();
 
       fireEvent.click(button);
-      expect(screen.getByRole("region", { name: MERGE_PLAN_TITLE })).toHaveTextContent(
-        NOTHING_CHOSEN,
+      expect(screen.getByRole("region", { name: MERGE_PLAN_TITLE })).not.toHaveTextContent(
+        "Nothing has happened yet",
       );
+      expect(screen.getByRole("region", { name: MERGE_PLAN_TITLE })).not.toHaveFocus();
       unmount();
     }
   });
@@ -599,7 +605,7 @@ describe("the reasons under the actions", () => {
 });
 
 describe("role gating", () => {
-  it("draws a member no arm affordance — no merge button and no merge plan slot", () => {
+  it("draws a member no arm affordance — no merge button, and the plan read-only (#369)", () => {
     draw({ initial: blockedPage(), mayArm: false });
 
     expect(within(actions()).getAllByRole("button").map((button) => button.textContent)).toEqual([
@@ -607,7 +613,15 @@ describe("role gating", () => {
       RETURN_LABEL,
     ]);
     expect(screen.queryByRole("button", { name: MERGE_LABEL })).toBeNull();
-    expect(screen.queryByRole("region", { name: MERGE_PLAN_TITLE })).toBeNull();
+
+    // Reading a plan is every member's; changing or arming it is not.
+    const card = within(screen.getByRole("region", { name: MERGE_PLAN_TITLE }));
+
+    expect(card.queryAllByRole("button")).toHaveLength(0);
+    expect(card.queryByRole("textbox")).toBeNull();
+    for (const toggle of card.getAllByRole("switch")) {
+      expect(toggle).toHaveAttribute("aria-disabled", "true");
+    }
   });
 
   it("draws a viewer the head and no actions at all", () => {

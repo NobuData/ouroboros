@@ -681,7 +681,7 @@ the design source — rev-strip/gate/crit/file/thread/kv treatments — via the
 | AY.4 | #366 ✅ | 🟢 Done | ouroboros-ui: [AY.4] Acceptance criteria matrix | Claims → evidence grid, verified/waived, authoring flow | mvp, pr, ui, design | N (after AY.1, AX.3) | Y | M | ouroboros-ui |
 | AY.5 | #367 ✅ | 🟢 Done | ouroboros-ui: [AY.5] Changed files & diff excerpt | File rows with proportional meters, diff block, host link | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
 | AY.6 | #368 ✅ | 🟢 Done | ouroboros-ui: [AY.6] Review thread card | Author-kinded entries, blocking arcs, resolution states | mvp, pr, ui, design | N (after AY.1) | Y | S | ouroboros-ui |
-| AY.7 | #369 | 🟡 Open | ouroboros-ui: [AY.7] Merge plan & spend cards | Plan editing, arm flow, truthful identity, spend rollup | mvp, pr, ui | N (after AY.3, AX.4) | Y | M | ouroboros-ui |
+| AY.7 | #369 ✅ | 🟢 Done | ouroboros-ui: [AY.7] Merge plan & spend cards | Plan editing, arm flow, truthful identity, spend rollup | mvp, pr, ui | N (after AY.3, AX.4) | Y | M | ouroboros-ui |
 | AY.8 | #370 | 🟡 Open | ouroboros-ui: [AY.8] PR states & e2e leg | Merged/blocked/conflict states, themes, sandbox e2e | mvp, pr, ui, ci | N (after AY.2–AY.7) | Y | M | ouroboros-ui, .github |
 
 ### Issue AY.1 — ouroboros-ui: [AY.1] PR route, head & actions
@@ -1004,7 +1004,67 @@ cursor/composer-2 [second opinion · rev 1] (was blocking) 14:12:44
 
 ### Issue AY.7 — ouroboros-ui: [AY.7] Merge plan & spend cards
 
-> **GitHub issue:** #369 · **Status:** 🟡 Open · **Parent epic:** #350
+> **GitHub issue:** #369 · **Status:** 🟢 Done · **Parent epic:** #350
+> **Delivered as `ouroboros-ui/app/prs/merge-plan.ts`, `merge-terms.ts`, `merge-message.ts`,
+> `merge-receipt.ts`, `merge-plan-card.tsx`, `arm-dialog.tsx`, `merge-actions.ts`, `spend.ts` and
+> `spend-card.tsx`**, replacing AY.1's `merge-plan-slot.tsx` and keeping `#merge-plan`, the ref and
+> `chosen`, over one additive REST route and one additive field. Decided on #369:
+>
+> 1. **One additive REST route and one additive field** (0.37.20), because the ticket could not be
+>    met without them: `PATCH /api/v1/pull-requests/{id}/merge-plan`
+>    `{commitMessage?, closeTicket?, commentEvidence?, backAnnotateEpic?, epicId?}`
+>    (`merge.edit.ts`), and `PrMergePlan.armedByPerson {id, name}`. V058 already stored and audited
+>    edits; nothing wrote them. No migration.
+> 2. **An armed plan is not edited** (`409 merge_plan_armed`). Arming confirmed the plan's terms,
+>    so they are changed by disarming first. Whoever may arm may edit; clearing the epic switches
+>    back-annotate off; an epic of another workspace is `422`, checked before the write and
+>    answered the same way if V058 is what refuses.
+> 3. **The strategy is a read-only tag.** The issue's scope draws it as one and its acceptance
+>    criteria list it among the edits; the scope was followed. *Round-trip* is the message, the
+>    three toggles and the epic picker. `Edit policy →` leads an owner or admin to the PR's pinned
+>    workflow. **The strategy is the schema's default, not read from the pin** — materializing it
+>    from the terminal config is a REST follow-up.
+> 4. **The footer names the token, not its owner**: `Merges as the workspace's configured token —
+>    bot identity arrives with the GitHub App (#374)`. The service learns whose token it is only
+>    from the host's answer to the merge, so the login is on the receipt. Neither claims a `[bot]`,
+>    and a result that did would be drawn as `configured token`. *(The issue's diagram shows
+>    `pat:ken-token`; nothing stores that before a merge.)*
+> 5. **No co-author line.** The executor sends the message as written and appends no
+>    `Co-authored-by:` trailer, so the line would promise what no merge does. The footer says
+>    `Armed by <name>` instead. **A trailer would be a REST follow-up against #360.**
+> 6. **The confirmation names every gate it waits on, and counts the ones it cannot name.** A
+>    required gate with no result is absent from the rows, so it is counted from the aggregate
+>    (`1 more required gate that has not reported`). Each named gate says where it stands, and an
+>    `unavailable` one says it will not turn green on its own (#371). Arming on it is still allowed.
+> 7. **What the confirmation states is what it sends.** The revision is the one read when the
+>    dialog opened, and the dialog goes inert if a new head, a changed plan or a gate no longer
+>    green moves the PR under it. **`POST …/merge` takes no revision**, so a direct merge merges
+>    whatever is latest and green — an optional `revisionId` there would be a REST follow-up.
+> 8. **Nothing is armed or merged over an unsaved message.** The message is a draft until it is
+>    saved — *Save message*, not save-on-keystroke — and the saved one is what merges.
+> 9. **The `Closes` check is the service's own keyword rule**, hedged: the PR's description can
+>    carry the keyword too, and the page does not hold it. **The reverse is not warned about** — a
+>    toggle switched off while the message still says `Closes #482`, which the host closes anyway
+>    — because the issue does not ask for it.
+> 10. **One plan is read by the head, the strip and the card**, and the plan is read before the
+>     PR's state: a merge is recorded on the plan before the host's mirror moves the PR. The
+>     head's button is named `Merge now` when the card offers the direct merge.
+> 11. **The card is drawn for every reader.** AY.1 drew the slot for an owner or admin only;
+>     reading a plan is every member's. A member is drawn *Disarm*, the safe direction, and no
+>     arm — including a member whose pin auto-merges, as AY.1's decision 3 has it.
+> 12. **An armed plan whose gates are all green offers `Merge now`.** The armed merge should
+>     already have fired; the executor's queue is in memory, so this is the way out if it did not.
+> 13. **The epics are read once, on the server, beside the page.** A roadmap that cannot be read
+>     costs the picker, never the page; an epic the roadmap no longer lists stays chosen, named as
+>     unknown. **The epic's name on the plan would be a REST follow-up.**
+> 14. **The dry-run amendment is not taken up.** #382 is open and its policy endpoint does not
+>     exist; the executor says the same of itself. The relabelling arrives with #382.
+> 15. **"Verified in e2e" is AY.8's** (#370); arm → the last gate flips → merged, with its
+>     receipt, is asserted in the UI suite here, and at the service in
+>     `merge.integration-spec.ts`.
+> 16. **`guard.surface.integration-spec.ts` was red on main**: #368's `:entryId` had no test
+>     value, so the walk of the route table threw before reaching any route. Added here, since
+>     the new route could not otherwise be shown to be covered.
 
 - **Problem Statement:** The merge card's plan editing, the arm flow with
   its safety story, truthful identity, and the spend rollup.

@@ -11,9 +11,14 @@ import "server-only";
  * {@link runPullRequests} is how a surface that holds runs and not PRs links here: the run
  * console, test results and the dashboard's rows each ask which of their runs opened a PR, and
  * link only those that did.
+ *
+ * {@link readEpics} is the Merge plan card's roadmap
+ * ([#369](https://github.com/NobuData/ouroboros/issues/369)): the epics its picker offers, and the
+ * name of the one the plan back-annotates.
  */
 
 import { isApiError } from "@/app/api/errors";
+import { planning } from "@/app/api/planning";
 import {
   type PullRequestPage,
   type PullRequestRef,
@@ -21,6 +26,8 @@ import {
   isPullRequestId,
   pullRequests,
 } from "@/app/api/pull-requests";
+
+import type { PlanEpic } from "./merge-plan";
 
 /** What the first read found. */
 export type PrReading =
@@ -79,5 +86,26 @@ export async function runPullRequests(
     if (!isApiError(error)) throw error;
 
     return new Map();
+  }
+}
+
+/**
+ * Read the workspace's roadmap epics — **best-effort**, because the roadmap is never the reason
+ * the PR page was opened.
+ *
+ * @param read How to read them. Replaced in tests.
+ * @returns The epics, top first, each by id and name. `null` when the read was refused: the card
+ *   then says the roadmap could not be read, rather than offering an empty picker as though the
+ *   workspace had no epics. An error that is not the API's own is rethrown.
+ */
+export async function readEpics(
+  read: () => Promise<readonly PlanEpic[]> = () => planning.epics(),
+): Promise<readonly PlanEpic[] | null> {
+  try {
+    return (await read()).map((epic) => ({ id: epic.id, name: epic.name }));
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    return null;
   }
 }

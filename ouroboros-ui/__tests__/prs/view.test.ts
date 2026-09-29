@@ -5,6 +5,7 @@ import { runPath } from "@/app/paths";
 import {
   ALREADY_ARMED,
   MERGE_LABEL,
+  MERGE_NOW_LABEL,
   NOT_VERIFYING,
   NO_EVIDENCE,
   NO_LOOP,
@@ -54,6 +55,7 @@ import {
   gateRows,
   prHeadOf,
   prPage,
+  readyPage,
   returned,
   review,
 } from "../helpers/pull-requests";
@@ -327,6 +329,20 @@ describe("Return to loop", () => {
 describe("Merge when all gates green", () => {
   it("is on only for a verifying PR with a revision", () => {
     expect(mergeAction(prPage())).toEqual({ label: MERGE_LABEL, reason: null });
+  });
+
+  it("is named Merge now only when every required gate is already green (#369)", () => {
+    expect(mergeAction(readyPage())).toEqual({ label: MERGE_NOW_LABEL, reason: null });
+
+    // Green gates on a PR that cannot be merged from here keep the armed name, and the reason.
+    for (const state of ["open", "blocked", "armed", "merged", "closed"] as const) {
+      const action = mergeAction(readyPage({ pullRequest: { state } }));
+
+      expect(action.label, state).toBe(MERGE_LABEL);
+      expect(action.reason, state).not.toBeNull();
+    }
+    expect(mergeAction(readyPage({ revisions: [] })).label).toBe(MERGE_LABEL);
+    expect(mergeAction(prPage({ gates: null })).label).toBe(MERGE_LABEL);
   });
 
   it("states the reason in every state that cannot be armed", () => {

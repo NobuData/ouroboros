@@ -1,25 +1,26 @@
 /**
  * `/api/v1/pull-requests/:id/merge-plan…` — the merge plan, its arm, and the merge (AX.4,
- * [#360](https://github.com/NobuData/ouroboros/issues/360)). `MergeExecutorService`'s header says
+ * [#360](https://github.com/NobuData/ouroboros/issues/360)), and its edit (AY.7,
+ * [#369](https://github.com/NobuData/ouroboros/issues/369)). `MergeExecutorService`'s header says
  * what each does.
  *
  * **The workspace is the session's, never the request's** — the criteria routes' rule.
  *
- * **Roles.** Reading the plan is every member's, a `viewer` included. Arming and merging are
- * routed to contributors and then held by the service to `owner`/`admin`, or a `member` whose PR's
- * pinned workflow auto-merges — the policy is per PR, so it cannot be a route decorator. Disarming
- * is the safe direction and any contributor's.
+ * **Roles.** Reading the plan is every member's, a `viewer` included. Arming, merging and editing
+ * are routed to contributors and then held by the service to `owner`/`admin`, or a `member` whose
+ * PR's pinned workflow auto-merges — the policy is per PR, so it cannot be a route decorator.
+ * Disarming is the safe direction and any contributor's.
  *
  * **`200` throughout** — nothing here creates a resource the caller did not already have.
  */
 
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from "@nestjs/common";
 
 import type { Organization } from "../../db/schema";
 import { CONTRIBUTORS, Roles } from "../../tenancy/roles.guard";
 import { currentUser, type ActiveMembership } from "../../tenancy/tenant.context";
 import { CurrentMember, CurrentTenant } from "../../tenancy/tenant.decorators";
-import { ArmMergePlanDto, PullRequestParams } from "./merge.dto";
+import { ArmMergePlanDto, PullRequestParams, UpdateMergePlanDto } from "./merge.dto";
 import { MergeExecutorService, type MergeActor } from "./merge.executor";
 import type { MergeOutcomeResource, MergePlanResource } from "./merge.resources";
 
@@ -41,6 +42,30 @@ export class MergeController {
     @Param() params: PullRequestParams,
   ): Promise<MergePlanResource> {
     return this.executor.plan(tenant.id, params.id);
+  }
+
+  /**
+   * Edit the plan — the commit message, a toggle or the epic. Only what is sent changes.
+   *
+   * @param member - The membership.
+   * @param params - The PR.
+   * @param request - What to change.
+   * @returns The plan.
+   */
+  @Patch(":id/merge-plan")
+  @Roles(...CONTRIBUTORS)
+  edit(
+    @CurrentMember() member: ActiveMembership,
+    @Param() params: PullRequestParams,
+    @Body() request: UpdateMergePlanDto,
+  ): Promise<MergePlanResource> {
+    return this.executor.edit(member.tenant.id, params.id, actor(member, ""), {
+      commitMessage: request.commitMessage,
+      closeTicket: request.closeTicket,
+      commentEvidence: request.commentEvidence,
+      backAnnotateEpic: request.backAnnotateEpic,
+      epicId: request.epicId,
+    });
   }
 
   /**
@@ -101,7 +126,7 @@ export class MergeController {
  * Who is acting: the signed-in person, with their roles here.
  *
  * @param member - The membership.
- * @param route - The route's tail, for the error.
+ * @param route - The route's tail, for the error — empty for the plan's own route.
  * @returns The actor.
  * @throws {Error} When there is no signed-in person, which the session guard makes unreachable. An
  *   arm or a merge nobody can be named for would be an audit row that lied.
@@ -111,8 +136,9 @@ function actor(member: ActiveMembership, route: string): MergeActor {
 
   if (user === undefined) {
     throw new Error(
-      `/api/v1/pull-requests/:id/merge-plan/${route} was reached with no signed-in person. The ` +
-        "route is neither @AllowAnonymous() nor @TenantOptional(), and a merge belongs to somebody.",
+      `/api/v1/pull-requests/:id/merge-plan${route === "" ? "" : `/${route}`} was reached with ` +
+        "no signed-in person. The route is neither @AllowAnonymous() nor @TenantOptional(), and " +
+        "a merge belongs to somebody.",
     );
   }
 

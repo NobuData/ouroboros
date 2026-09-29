@@ -8,6 +8,7 @@ import { SEEDED_RUN_ID } from "../helpers/runs";
 /**
  * The PR verification page's first read and the by-run lookup (#363): found, missing or failed,
  * with an id that is not a uuid never reaching the service — and a lookup that is best-effort.
+ * The roadmap's epics are read for the Merge plan card's picker (#369), best-effort too.
  */
 
 vi.mock("server-only", () => ({}));
@@ -16,7 +17,7 @@ vi.mock("next/headers", () => ({
 }));
 vi.mock("next/navigation", () => ({ redirect: () => {} }));
 
-const { readPr, runPullRequests } = await import("@/app/prs/data");
+const { readEpics, readPr, runPullRequests } = await import("@/app/prs/data");
 
 describe("readPr", () => {
   it("finds the page of the PR the id names", async () => {
@@ -91,5 +92,32 @@ describe("runPullRequests", () => {
     await expect(
       runPullRequests([SEEDED_RUN_ID], vi.fn().mockRejectedValue(bug)),
     ).rejects.toBe(bug);
+  });
+});
+
+describe("readEpics (#369)", () => {
+  it("answers the roadmap's epics by id and name, top first", async () => {
+    const read = vi.fn().mockResolvedValue([
+      { id: "5eed001f-0000-4000-8000-000000000001", name: "OTA hardening", tint: "accent" },
+      { id: "5eed001f-0000-4000-8000-000000000002", name: "BLE provisioning v2", tint: "model" },
+    ]);
+
+    expect(await readEpics(read)).toEqual([
+      { id: "5eed001f-0000-4000-8000-000000000001", name: "OTA hardening" },
+      { id: "5eed001f-0000-4000-8000-000000000002", name: "BLE provisioning v2" },
+    ]);
+    expect(read).toHaveBeenCalledOnce();
+  });
+
+  it("answers none for a workspace with no roadmap — which is not a roadmap that could not be read", async () => {
+    expect(await readEpics(vi.fn().mockResolvedValue([]))).toEqual([]);
+  });
+
+  it("is best-effort: a refused read is null, so the page is still drawn, and a bug is rethrown", async () => {
+    const down = new ApiError(503, "unavailable", "The database is down.");
+    expect(await readEpics(vi.fn().mockRejectedValue(down))).toBeNull();
+
+    const bug = new TypeError("x is undefined");
+    await expect(readEpics(vi.fn().mockRejectedValue(bug))).rejects.toBe(bug);
   });
 });

@@ -16,10 +16,16 @@ import {
   InMemoryTracker,
 } from "../../ticket-sources/providers/in-memory.provider.fixture";
 import { EVIDENCE_COMMENT_KEY } from "./merge.evidence";
-import { MergeExecutorService, hostFailure, mayMerge, type MergeHost } from "./merge.executor";
+import {
+  MergeExecutorService,
+  hostFailure,
+  mayMerge,
+  refusedEdit,
+  type MergeHost,
+} from "./merge.executor";
 import { TOKEN_IDENTITY } from "./merge.identity";
 import { parseDisarmReason, type RecheckGates } from "./merge.recheck";
-import { ADMIN, MEMBER, MemoryMergeStore } from "./merge.store.fixture";
+import { ADMIN, MEMBER, MemoryConstraintFailure, MemoryMergeStore } from "./merge.store.fixture";
 
 /**
  * The merge executor (AX.4, [#360](https://github.com/NobuData/ouroboros/issues/360)) against the
@@ -27,7 +33,8 @@ import { ADMIN, MEMBER, MemoryMergeStore } from "./merge.store.fixture";
  * criteria, one by one: the armed merge on the last gate's flip, the TOCTOU refusals and the
  * concurrent gate mutation that cannot slip through, the host's conflict and protection, the
  * verified ticket close, the edited evidence comment, the epic note, identity honesty, and an audit
- * actor for every arm, disarm and merge.
+ * actor for every arm, disarm and merge. The plan's edit is AY.7's
+ * ([#369](https://github.com/NobuData/ouroboros/issues/369)).
  */
 
 const ORG = "org-360";
@@ -48,6 +55,11 @@ const GREEN: RecheckGates = { mergeReady: true, red: [], satisfied: 7, required:
 const RED: RecheckGates = { mergeReady: false, red: ["Physical HIL"], satisfied: 6, required: 7 };
 
 const KEN = { id: "user-ken", roles: ADMIN };
+
+/** Two planning epics of the workspace, and one of another's. */
+const OTA = "5eed001f-0000-4000-8000-000000000001";
+const BLE = "5eed001f-0000-4000-8000-000000000002";
+const FOREIGN = "5eed001f-0000-4000-8000-0000000000ff";
 
 /** One matrix row. */
 const MATRIX = {
@@ -647,6 +659,337 @@ describe("MergeExecutorService — arm, disarm and merge routes", () => {
 
     expect(error).toHaveBeenCalledWith("The armed merge of pr pr-514 failed.", "pool exhausted");
     error.mockRestore();
+  });
+});
+
+describe("MergeExecutorService — editing the plan (#369)", () => {
+  /**
+   * The fixture, with the workspace's epics on its roadmap.
+   *
+   * @returns Everything a case needs.
+   */
+  function editable() {
+    const built = build();
+
+    built.store.state.epics = [OTA, BLE];
+    built.store.people.set("user-ken", "Ken S");
+
+    return built;
+  }
+
+  it("round-trips the message and each toggle, one field at a time", async () => {
+    const { executor } = editable();
+
+    expect(
+      await executor.edit(ORG, "pr-514", KEN, { commitMessage: "fix(can): reworded" }),
+    ).toMatchObject({ commitMessage: "fix(can): reworded", closeTicket: true });
+    expect(await executor.edit(ORG, "pr-514", KEN, { closeTicket: false })).toMatchObject({
+      commitMessage: "fix(can): reworded",
+      closeTicket: false,
+      commentEvidence: true,
+    });
+    expect(await executor.edit(ORG, "pr-514", KEN, { commentEvidence: false })).toMatchObject({
+      closeTicket: false,
+      commentEvidence: false,
+    });
+    expect(await executor.plan(ORG, "pr-514")).toMatchObject({
+      commitMessage: "fix(can): reworded",
+      closeTicket: false,
+      commentEvidence: false,
+      backAnnotateEpic: false,
+      epicId: null,
+    });
+  });
+
+  it("round-trips the epic picker: choose, switch on, choose another, clear", async () => {
+    const { executor } = editable();
+
+    expect(await executor.edit(ORG, "pr-514", KEN, { epicId: OTA })).toMatchObject({
+      epicId: OTA,
+      backAnnotateEpic: false,
+    });
+    expect(await executor.edit(ORG, "pr-514", KEN, { backAnnotateEpic: true })).toMatchObject({
+      epicId: OTA,
+      backAnnotateEpic: true,
+    });
+    expect(await executor.edit(ORG, "pr-514", KEN, { epicId: BLE })).toMatchObject({
+      epicId: BLE,
+      backAnnotateEpic: true,
+    });
+    // Nothing left to annotate: the toggle goes with the epic.
+    expect(await executor.edit(ORG, "pr-514", KEN, { epicId: null })).toMatchObject({
+      epicId: null,
+      backAnnotateEpic: false,
+    });
+  });
+
+  it("audits every edit with its actor and the columns that changed — never the message", async () => {
+    const { executor, store } = editable();
+
+    await executor.edit(ORG, "pr-514", KEN, { commitMessage: "fix(can): reworded" });
+    await executor.edit(ORG, "pr-514", KEN, { epicId: OTA, backAnnotateEpic: true });
+
+    expect(store.state.audit).toEqual([
+      { action: "edited", actorId: "user-ken", fields: ["commit_message"] },
+      { action: "edited", actorId: "user-ken", fields: ["back_annotate_epic", "epic_id"] },
+    ]);
+  });
+
+  it("writes nothing for an edit that changes nothing", async () => {
+    const { executor, store } = editable();
+    const before = await executor.plan(ORG, "pr-514");
+
+    expect(await executor.edit(ORG, "pr-514", KEN, {})).toEqual(before);
+    expect(await executor.edit(ORG, "pr-514", KEN, { closeTicket: true })).toEqual(before);
+    expect(
+      await executor.edit(ORG, "pr-514", KEN, {
+        commitMessage: undefined,
+        closeTicket: undefined,
+        commentEvidence: undefined,
+        backAnnotateEpic: undefined,
+        epicId: undefined,
+      }),
+    ).toEqual(before);
+    expect(store.state.audit).toEqual([]);
+  });
+
+  it("materializes a plan nobody has read yet, then edits it", async () => {
+    const { executor, store } = editable();
+
+    expect(store.state.plan).toBeUndefined();
+    expect(await executor.edit(ORG, "pr-514", KEN, { closeTicket: false })).toMatchObject({
+      strategy: "squash",
+      deleteBranch: true,
+      closeTicket: false,
+    });
+  });
+
+  it("refuses switching back-annotate on with no epic, and an edit that contradicts itself", async () => {
+    const { executor, store } = editable();
+
+    await expect(
+      executor.edit(ORG, "pr-514", KEN, { backAnnotateEpic: true }),
+    ).rejects.toMatchObject({ status: 422, code: "merge_plan_epic_required" });
+
+    await executor.edit(ORG, "pr-514", KEN, { epicId: OTA, backAnnotateEpic: true });
+    await expect(
+      executor.edit(ORG, "pr-514", KEN, { epicId: null, backAnnotateEpic: true }),
+    ).rejects.toMatchObject({ status: 422, code: "merge_plan_epic_required" });
+    expect(store.state.plan).toMatchObject({ epicId: OTA, backAnnotateEpic: true });
+  });
+
+  it("refuses an epic that is not this workspace's, as one that does not exist", async () => {
+    const { executor, store } = editable();
+
+    await expect(executor.edit(ORG, "pr-514", KEN, { epicId: FOREIGN })).rejects.toMatchObject({
+      status: 422,
+      code: "merge_plan_epic_not_found",
+      details: { epicId: FOREIGN },
+    });
+    expect(store.state.plan?.epicId ?? null).toBeNull();
+    expect(store.state.audit).toEqual([]);
+  });
+
+  it("answers an epic that went between the read and the write as not found, not a 500", async () => {
+    const { executor, store } = editable();
+
+    store.vanishing = BLE;
+
+    await expect(executor.edit(ORG, "pr-514", KEN, { epicId: BLE })).rejects.toMatchObject({
+      status: 422,
+      code: "merge_plan_epic_not_found",
+    });
+    // The transaction rolled back: no plan was left half-written.
+    expect(store.state.plan?.epicId ?? null).toBeNull();
+  });
+
+  it("refuses editing an armed plan, and allows it again once disarmed", async () => {
+    const { executor, store } = editable();
+
+    await executor.arm(ORG, "pr-514", KEN, "rev-1");
+    await executor.settled();
+
+    await expect(executor.edit(ORG, "pr-514", KEN, { closeTicket: false })).rejects.toMatchObject({
+      status: 409,
+      code: "merge_plan_armed",
+    });
+    expect(store.state.plan).toMatchObject({ armed: true, closeTicket: true });
+
+    await executor.disarm(ORG, "pr-514", KEN);
+
+    expect(await executor.edit(ORG, "pr-514", KEN, { closeTicket: false })).toMatchObject({
+      armed: false,
+      closeTicket: false,
+    });
+  });
+
+  it("refuses editing a merged plan, and the plan of a PR its host owns", async () => {
+    const closed = editable();
+
+    closed.store.state.pr = { ...closed.store.state.pr, state: "closed" };
+    await expect(
+      closed.executor.edit(ORG, "pr-514", KEN, { closeTicket: false }),
+    ).rejects.toMatchObject({ status: 409, code: "pull_request_not_open" });
+
+    // Merged on the host, not by this plan: there is no merged_result to be final.
+    const elsewhere = editable();
+
+    elsewhere.store.state.pr = { ...elsewhere.store.state.pr, state: "merged" };
+    await expect(
+      elsewhere.executor.edit(ORG, "pr-514", KEN, { closeTicket: false }),
+    ).rejects.toMatchObject({ status: 409, code: "pull_request_not_open" });
+
+    const merged = editable();
+
+    merged.store.state.gates = GREEN;
+    await merged.executor.merge(ORG, "pr-514", KEN);
+    await expect(
+      merged.executor.edit(ORG, "pr-514", KEN, { closeTicket: false }),
+    ).rejects.toMatchObject({ status: 409, code: "merge_plan_merged" });
+    expect(merged.store.state.plan?.closeTicket).toBe(true);
+  });
+
+  it("lets a member edit only when the pinned workflow auto-merges, and writes no plan otherwise", async () => {
+    const { executor, store } = editable();
+    const member = { id: "user-sam", roles: MEMBER };
+
+    await expect(
+      executor.edit(ORG, "pr-514", member, { closeTicket: false }),
+    ).rejects.toMatchObject({ status: 403, code: "merge_not_policy_eligible" });
+    // Refused before any transaction: not even the default plan was written.
+    expect(store.state.plan).toBeUndefined();
+    expect(store.transactions).toBe(0);
+
+    store.autoMerge = true;
+
+    expect(await executor.edit(ORG, "pr-514", member, { closeTicket: false })).toMatchObject({
+      closeTicket: false,
+    });
+    expect(store.state.audit.at(-1)).toMatchObject({ action: "edited", actorId: "user-sam" });
+  });
+
+  it("refuses a viewer, whatever the pin", async () => {
+    const { executor, store } = editable();
+
+    store.autoMerge = true;
+
+    await expect(
+      executor.edit(ORG, "pr-514", { id: "user-vi", roles: ["viewer"] }, { closeTicket: false }),
+    ).rejects.toMatchObject({ code: "merge_not_policy_eligible" });
+  });
+
+  it("answers 404 for a PR of another workspace", async () => {
+    const { executor } = editable();
+
+    await expect(
+      executor.edit("org-other", "pr-514", KEN, { closeTicket: false }),
+    ).rejects.toMatchObject({ code: "pull_request_not_found" });
+  });
+
+  it("merges the edited message, and leaves a ticket its keyword no longer names open", async () => {
+    const built = editable();
+    const { executor, store, host, adapter } = built;
+
+    await executor.edit(ORG, "pr-514", KEN, { commitMessage: "fix(can): preserve frame order" });
+    store.state.gates = GREEN;
+
+    const outcome = await executor.merge(ORG, "pr-514", KEN);
+
+    expect(adapter.merge).toHaveBeenCalledWith(
+      ORG,
+      CONTEXT.sourceId,
+      built.pull.number,
+      expect.objectContaining({ message: "fix(can): preserve frame order" }),
+    );
+    // The toggle was left on, and the message no longer closes: reported, never assumed.
+    expect(outcome.plan.closeTicket).toBe(true);
+    expect(outcome.plan.mergedResult?.actionsExecuted).not.toContain("close_ticket");
+    expect(outcome.failedActions.map((failure) => failure.action)).toContain("close_ticket");
+    expect(host.ledger().closedIssues).toEqual([]);
+  });
+});
+
+describe("MergeExecutorService — who armed (#369)", () => {
+  it("names the person who armed, and nobody once disarmed", async () => {
+    const built = build();
+
+    built.store.people.set("user-ken", "Ken S");
+
+    expect(await built.executor.arm(ORG, "pr-514", KEN, "rev-1")).toMatchObject({
+      armedBy: "user-ken",
+      armedByPerson: { id: "user-ken", name: "Ken S" },
+    });
+    expect(await built.executor.plan(ORG, "pr-514")).toMatchObject({
+      armedByPerson: { id: "user-ken", name: "Ken S" },
+    });
+    expect(await built.executor.disarm(ORG, "pr-514", KEN)).toMatchObject({
+      armedBy: null,
+      armedByPerson: null,
+    });
+  });
+
+  it("names nobody for a person who has since gone — the arm is still an arm", async () => {
+    const built = build();
+
+    expect(await built.executor.arm(ORG, "pr-514", KEN, "rev-1")).toMatchObject({
+      armed: true,
+      armedBy: "user-ken",
+      armedByPerson: null,
+    });
+  });
+
+  it("names nobody on a merged plan — the receipt states the host's identity instead", async () => {
+    const built = build();
+
+    built.store.people.set("user-ken", "Ken S");
+    built.store.state.gates = GREEN;
+
+    const outcome = await built.executor.merge(ORG, "pr-514", KEN);
+
+    expect(outcome.plan).toMatchObject({ armedBy: null, armedByPerson: null });
+    expect(outcome.plan.mergedResult?.identityUsed).toBe(IN_MEMORY_MERGER);
+  });
+});
+
+describe("refusedEdit", () => {
+  it("reads V058's refusal by the constraint's name", () => {
+    expect(
+      refusedEdit(
+        "pr-514",
+        null,
+        new MemoryConstraintFailure("23514", "pr_merge_plans_back_annotate_has_epic"),
+      ),
+    ).toMatchObject({ status: 422, code: "merge_plan_epic_required" });
+    expect(
+      refusedEdit(
+        "pr-514",
+        OTA,
+        new MemoryConstraintFailure("23514", "pr_merge_plans_epic_in_organization"),
+      ),
+    ).toMatchObject({ status: 422, code: "merge_plan_epic_not_found", details: { epicId: OTA } });
+    expect(
+      refusedEdit(
+        "pr-514",
+        OTA,
+        new MemoryConstraintFailure("23503", "pr_merge_plans_epic_id_fkey"),
+      ),
+    ).toMatchObject({ status: 422, code: "merge_plan_epic_not_found" });
+    expect(
+      refusedEdit(
+        "pr-514",
+        null,
+        new MemoryConstraintFailure("23514", "pr_merge_plans_merged_final"),
+      ),
+    ).toMatchObject({ status: 409, code: "merge_plan_merged" });
+  });
+
+  it("passes on what it does not know, so nothing is mistaken for a bad epic", () => {
+    const blank = new MemoryConstraintFailure("23514", "pr_merge_plans_commit_message_present");
+    const dropped = new Error("connection terminated");
+
+    expect(refusedEdit("pr-514", OTA, blank)).toBe(blank);
+    expect(refusedEdit("pr-514", OTA, dropped)).toBe(dropped);
+    expect(refusedEdit("pr-514", OTA, { code: "23514" })).toEqual({ code: "23514" });
   });
 });
 

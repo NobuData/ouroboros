@@ -473,14 +473,18 @@ ouroboros-ui/
 │   │   ├── thread-card.tsx  #   the entries in their own scrolling wrapper: author kind, tag, watermark, the blocking → resolved arc
 │   │   ├── thread-actions.ts · resolve-dialog.tsx # resolveEntry() — Reply & resolve, with the optional host mirror
 │   │   ├── poll.ts          #   the reader and guard: the whole PR page
-│   │   ├── data.ts          #   readPr() — the first paint; runPullRequests() — which runs opened a PR
+│   │   ├── data.ts          #   readPr() — the first paint; runPullRequests() — which runs opened a PR; readEpics() — the picker's roadmap
 │   │   ├── outcomes.ts · head-actions.ts # requestHumanReview() / returnToLoop() / decideApproval() — the Server Actions
 │   │   ├── pr-head.tsx      #   the eyebrow, the headline linked to the host, the four-element meta row
 │   │   ├── pr-actions.tsx   #   Request human review / Return to loop / Merge when all gates green
 │   │   ├── return-dialog.tsx #  the danger dialog: which red gates the agent receives
-│   │   ├── merge-plan-slot.tsx # where Merge when all gates green lands until #369 draws the card
+│   │   ├── merge-plan.ts    #   the Merge plan card: where the plan stands, what each reader may change, arm or merge now · #369
+│   │   ├── merge-terms.ts · merge-message.ts · merge-receipt.ts # what an arm waits on · the Closes check · who merges, never a [bot]
+│   │   ├── merge-plan-card.tsx · arm-dialog.tsx # the card, and the confirmation that states its terms
+│   │   ├── merge-actions.ts #   editPlan() · armPlan() · disarmPlan() · mergeNow()
+│   │   ├── spend.ts · spend-card.tsx # the Spend card: unpriced is an em-dash, never $0 · #369
 │   │   ├── pr-loading.tsx · pr-missing.tsx # the first read in flight; a PR that does not exist
-│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates card, criteria matrix, changed files, review thread, slots, dialogs — one poll
+│   │   └── pr-screen.tsx    #   the contextual frame: breadcrumb, banner, head, strip, gates card, criteria matrix, changed files, review thread, merge plan, spend, dialogs — one poll
 │   ├── workflows/           # the workflow studio's frame — mockup 04 · #147
 │   │   ├── view.ts          #   the trigger in words, the subline, the segments, the rail's items
 │   │   ├── states.ts        #   the five states, the head and the seat for each, the read-only note
@@ -3900,7 +3904,7 @@ are warn until every required gate is satisfied, `open` and `closed` take no hue
 |--------|--------------|------------------------------------|-----------|
 | **Request human review** | opens the approval slot (#361) — human approval becomes required; the button then reads `review requested` | a review is waiting · sending · the PR is merged or closed · no revision | owner, admin, member |
 | **Return to loop** | opens a danger dialog listing the latest revision's red gates with their evidence; the selected gates become the steer (#361); the receipt links into the run console | no gate is red · no loop · the loop has finished · the PR is merged or closed · no revision | owner, admin, member |
-| **Merge when all gates green** | arms nothing: it moves focus to the Merge plan slot, where #369's card will state the terms | the PR is `open`, `blocked`, `armed`, `merged` or `closed` · no revision | owner, admin |
+| **Merge when all gates green** | arms nothing: it moves focus to the [Merge plan card](#the-merge-plan-card), whose own control opens the confirmation that states the terms; named **Merge now** when every required gate is already green | the PR is `open`, `blocked`, `armed`, `merged` or `closed` · no revision | owner, admin |
 
 **Roles decide what is drawn, never what is allowed.** A viewer is drawn no action and a member no
 arm affordance. The service refuses a viewer's head action (#361) on every press; it admits a
@@ -4101,6 +4105,91 @@ reply was not posted, and why.
 
 `No review entries yet` is the empty state. A long thread scrolls inside the entries' own
 wrapper, which takes focus so the keyboard can scroll it.
+
+### The merge plan card
+
+The card ([#369](https://github.com/NobuData/ouroboros/issues/369)) is mockup 12's *Merge plan*
+(`app/prs/merge-plan.ts`), in the place *Merge when all gates green* lands (`#merge-plan`). It
+arms an irreversible action, so every sentence on it is one the code keeps.
+
+| Part | What is drawn |
+|------|---------------|
+| strategy | a read-only tag, `squash · delete branch` — the pinned policy's; **Edit policy →** leads an owner or admin to the pinned workflow |
+| message | an editable field for an owner or admin; a wrapped mono block for everyone else, and once armed, merged or closed |
+| three switches | close the ticket · comment the evidence summary · back-annotate the roadmap, with the epic picker beneath |
+| footer | `Merges as the workspace's configured token — bot identity arrives with the GitHub App (#374).` and, while armed, who armed it |
+| control | **Merge when all gates green**, or **Merge now** — each opens its confirmation |
+| armed | what it waits on, the revision it was armed against, **Disarm** |
+| disarmed | why a re-check refused, under a headline of its own per code |
+| receipt | the sha, the identity the host recorded, the actions that ran, and the switched-on ones that did not |
+
+**Edits persist one at a time** (`PATCH …/merge-plan`, REST 0.37.20). A switch sends its one
+field on the press; the picker sends the epic, and *No epic* sends `null`, which switches
+back-annotate off. **The message is a draft until it is saved**: *Save message* and *Discard*
+appear only while it differs from what is stored, a read never touches it, and nothing is armed
+or merged while one is open — the saved message is what merges, not the one on screen.
+
+**The `Closes` warning.** A host closes a ticket on the merge message's closing keyword, and the
+executor has no other way to close one (#360), so the switch only records the intent. While it is
+on and the message on screen has no closing keyword for the ticket — the service's own rule, so
+`Closes #4821` and `Closes acme/other#482` do not satisfy `#482` — the card says that the toggle
+and the message disagree. It is hedged, because the PR's description can carry the keyword too. A
+key no keyword can name (`PROJ-142`) says instead that it is closed in its tracker.
+
+**The confirmation states its terms** (`arm-dialog.tsx`, an `alertdialog`): each required gate
+the merge waits on with where it stands — `Second-model review — unavailable` — how many more
+required gates have not reported at all, that gates, head commit and mergeability are re-checked
+at merge time, the revision, the strategy, what the merge does afterwards, and who it is made as.
+What it states is what it sends: the revision is the one read when it opened, and the dialog goes
+inert if a new head, a changed plan or a gate no longer green moves the PR under it.
+
+**Merge now is offered only when every required gate is already green** — the payload's
+`mergeReady` — in place of arming, and the head's button takes the same name. An armed plan whose
+gates are all green offers it too: the armed merge should already have fired.
+
+**Who merges is never a bot.** The service learns whose token it is only from the host's answer
+to the merge, so the footer names the token and the receipt names the login; an identity that
+claimed a `[bot]` is drawn as `configured token`. **Nothing is said to be co-authored** — the
+executor appends no trailer, so the footer says who armed the plan instead.
+
+**One plan is read by the head, the strip and the card** (`effectivePage`). An answer — armed,
+disarmed, merged — is drawn at once and stands until a read made after it has caught up, and a
+merge is read from the plan's own record, which is written before the host's mirror moves the PR.
+
+| Reader | Drawn |
+|--------|-------|
+| owner, admin | editing, arm or merge, disarm, **Edit policy →** |
+| member | the plan read-only; **Disarm** while armed — the safe direction (#360) |
+| viewer | the plan read-only |
+
+A control a reader may only read is drawn in its real state with the reason, never hidden; the
+two that act — arming and disarming — are not drawn at all for a reader who may not. The service
+refuses on every press whatever is drawn. A member whose PR's pinned workflow auto-merges may arm
+by the service's rule and is drawn no button here, as AY.1 decided.
+
+**Not drawn yet:** the dry-run relabelling (`Dry-run — review the draft PR`) arrives with the
+policy plane ([#382](https://github.com/NobuData/ouroboros/issues/382)), whose endpoint does not
+exist yet.
+
+### The spend card
+
+The card ([#369](https://github.com/NobuData/ouroboros/issues/369)) is mockup 12's *Spend*
+(`app/prs/spend.ts`), over #361's rollup: `Loop total  284k tokens · $1.52`, `Verification  41k ·
+$0.19`, `within $2.50 cap`, and **Routing →** to the routing matrix.
+
+| Ledger | Drawn |
+|--------|-------|
+| priced | `284k tokens · $1.52` |
+| nothing priced | `284k tokens · —` — **never `$0`**; *not priced* to a screen reader |
+| priced, some calls not | the figure, and `lower bound — 3 calls unpriced` |
+| priced at zero | `$0.00` — a real zero is free |
+| nothing spent | `none recorded` |
+
+**The cap line says only what can be said.** `within` and `over` are the service's verdict.
+Where it has none — nothing priced, a lower bound under the cap — the line states the cap and why
+it cannot be compared, and a route with no cap says so. A PR no loop opened says there is no
+spend to show. The helpers are the run console's (`app/runs/cards.ts`), so the two cards cannot
+disagree about what unpriced means.
 
 ## Workflow Studio
 

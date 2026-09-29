@@ -3,7 +3,8 @@
  * ([#363](https://github.com/NobuData/ouroboros/issues/363)) — the gates card's approval
  * ([#365](https://github.com/NobuData/ouroboros/issues/365)), and the criteria matrix's actions
  * (`criteria-actions.ts`, [#366](https://github.com/NobuData/ouroboros/issues/366)) and the
- * review thread's (`thread-actions.ts`, [#368](https://github.com/NobuData/ouroboros/issues/368)).
+ * review thread's (`thread-actions.ts`, [#368](https://github.com/NobuData/ouroboros/issues/368)),
+ * and the merge plan's (`merge-actions.ts`, [#369](https://github.com/NobuData/ouroboros/issues/369)).
  *
  * Kept apart from the actions because a `"use server"` module may export async functions only,
  * and the page and its tests need to name these too.
@@ -14,6 +15,8 @@ import type {
   CriteriaImport,
   PrCriterion,
   PrCriterionWaived,
+  PrMergeOutcome,
+  PrMergePlan,
   PrReviewOutcome,
   PrThreadResolution,
   ReturnToLoop,
@@ -121,3 +124,42 @@ export interface ThreadResolveRequest {
 
 /** What became of *Reply & resolve* — the entry, and what the host did with the mirror. */
 export type ThreadResolveOutcome = CriteriaAnswer<PrThreadResolution>;
+
+// --- the merge plan (#369) -----------------------------------------------------------------
+
+/** What an edit of the plan is sent with — only what changes; `null` clears the epic. */
+export interface PlanEdit {
+  /** The merge commit's message, neither empty nor padded. */
+  readonly commitMessage?: string;
+  /** Close the ticket on merge. */
+  readonly closeTicket?: boolean;
+  /** Comment the evidence summary on the host PR. */
+  readonly commentEvidence?: boolean;
+  /** Back-annotate the roadmap epic. */
+  readonly backAnnotateEpic?: boolean;
+  /** The epic to back-annotate, or `null` for none. */
+  readonly epicId?: string | null;
+}
+
+/** The code a merge the re-check refused is answered with. */
+export const RECHECK_FAILED_CODE = "merge_recheck_failed";
+
+/**
+ * A refusal of an arm or a merge. When the re-check is what refused, `recheck` carries its
+ * designed code — so the card draws that reason, not a generic error — and whether it disarmed an
+ * armed plan.
+ */
+export interface MergeRefusal extends ActionRefusal {
+  readonly recheck: {
+    /** `gate_red`, `head_moved`, `host_conflict`, … — as the service stated it. */
+    readonly code: string;
+    /** Whether an armed plan was disarmed by it. */
+    readonly disarmed: boolean;
+  } | null;
+}
+
+/** What became of an edit, an arm or a disarm — the plan. */
+export type PlanOutcome = { readonly ok: true; readonly answer: PrMergePlan } | MergeRefusal;
+
+/** What became of *Merge now* — the final plan, the ticket's closure, and what did not run. */
+export type MergeOutcome = { readonly ok: true; readonly answer: PrMergeOutcome } | MergeRefusal;

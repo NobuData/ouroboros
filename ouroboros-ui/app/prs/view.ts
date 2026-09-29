@@ -7,7 +7,8 @@
  * state-aware once asked. *Return to loop* costs time and tokens, so it is a decision surface: the
  * reader picks which red gates the agent receives as its steer (#361). *Merge when all gates green*
  * is a promise about the future, so it hands off to the Merge plan card (#369) rather than arming
- * on one click.
+ * on one click — and is named *Merge now* when every required gate is already green, as the card's
+ * own control is.
  *
  * **It formats; it derives nothing.** `5 of 7` is the payload's aggregate, the red gates are the
  * latest revision's snapshot, and whether a review is waiting is the payload's approval slot. The
@@ -64,6 +65,9 @@ export const RETURN_LABEL = "Return to loop";
 
 /** *Merge when all gates green*. */
 export const MERGE_LABEL = "Merge when all gates green";
+
+/** The same button once every required gate is green — the direct merge (#369). */
+export const MERGE_NOW_LABEL = "Merge now";
 
 /** Why nothing can act on a PR that has no revision. */
 export const NO_REVISION = "This PR has no recorded revision yet.";
@@ -470,13 +474,19 @@ export function returnAction(page: PullRequestPage): ActionView {
  *
  * @param page The PR page.
  * @returns The button: on only for a PR that can be armed — `verifying`, with a revision — and
- *   inert with the stated reason otherwise.
+ *   inert with the stated reason otherwise. It is named {@link MERGE_NOW_LABEL} when every
+ *   required gate is already green, which is what the card then offers (#369).
  */
 export function mergeAction(page: PullRequestPage): ActionView {
   const { state } = page.pullRequest;
   const revision = latestRevision(page);
+  const aggregate = page.gates?.aggregate ?? null;
+  const ready = state === "verifying" && revision !== null && aggregate?.mergeReady === true;
 
-  return { label: MERGE_LABEL, reason: notArmable(state, revision, page.gates?.aggregate ?? null) };
+  return {
+    label: ready ? MERGE_NOW_LABEL : MERGE_LABEL,
+    reason: notArmable(state, revision, aggregate),
+  };
 }
 
 /**

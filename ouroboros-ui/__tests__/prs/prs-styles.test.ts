@@ -296,3 +296,82 @@ describe("the changed files card (#367)", () => {
     expect(CODE).toMatch(/\.prv-diff__line--cited \{[^}]*box-shadow: inset/);
   });
 });
+
+describe("the merge plan, its confirmation and the spend card (#369)", () => {
+  /**
+   * One rule's declarations.
+   *
+   * @param selector The rule's selector, exactly.
+   * @returns What it declares, or an empty string when the sheet has no such rule.
+   */
+  function rule(selector: string): string {
+    const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+    return CODE.match(new RegExp(`(?:^|\\})\\s*${escaped} \\{([^}]*)\\}`))?.[1] ?? "";
+  }
+
+  it("draws the armed state in the strip's own treatment — accent, and a solid rule", () => {
+    const armed = rule(".prv-merge--armed .prv-merge__armed");
+
+    expect(armed).toMatch(/border-color: var\(--accent-line\);/);
+    expect(armed).toMatch(/background: var\(--accent-tint\);/);
+    expect(rule(".prv-merge__armed")).not.toMatch(/dashed/);
+    expect(CODE).toMatch(/\.prv-step--armed \{[^}]*border-color: var\(--accent-line\);/);
+  });
+
+  it("draws the Closes warning from the warn tokens, and never in the pass's green", () => {
+    const warning = rule(".prv-merge__warning");
+
+    expect(warning).toMatch(/color: var\(--warn\);/);
+    expect(warning).toMatch(/background: var\(--warn-tint\);/);
+    expect(warning).toMatch(/border: 1px solid var\(--warn-line\);/);
+    expect(warning).not.toMatch(/var\(--ok/);
+  });
+
+  it("draws a disarm reason in the error hue, and the receipt in the pass's", () => {
+    expect(rule(".prv-merge__disarmed")).toMatch(/background: var\(--err-tint\);/);
+    expect(rule(".prv-merge__disarmed-head")).toMatch(/color: var\(--err\);/);
+    expect(rule(".prv-merge__receipt")).toMatch(/background: var\(--ok-tint\);/);
+    // What was switched on and did not run is something to look at, not a pass.
+    expect(rule(".prv-merge__skipped-row")).toMatch(/color: var\(--warn\);/);
+  });
+
+  it("sets the confirmation's terms apart in the error hue, as the return dialog's are", () => {
+    expect(rule(".prv-arm__terms")).toMatch(/border: 1px solid var\(--err-line\);/);
+    expect(rule(".prv-arm__terms")).toMatch(/background: var\(--err-tint\);/);
+    expect(rule(".prv-return__consequences")).toMatch(/background: var\(--err-tint\);/);
+  });
+
+  it("wraps the message rather than scrolling — the card never scrolls inside itself", () => {
+    const preview = rule(".prv-merge__preview");
+
+    expect(preview).toMatch(/white-space: pre-wrap;/);
+    expect(preview).toMatch(/overflow-wrap: anywhere;/);
+
+    for (const [, selector, declarations] of CODE.matchAll(
+      /(\.prv-(?:merge|arm|spend)[^{]*)\{([^}]*)\}/g,
+    )) {
+      expect(declarations, selector).not.toMatch(/overflow(?:-x|-y)?: (?:auto|scroll)/);
+      expect(declarations, selector).not.toMatch(/text-overflow|overflow: hidden/);
+    }
+  });
+
+  it("takes focus visibly, where the head's button lands the reader", () => {
+    expect(rule(".prv-merge:focus-visible")).toMatch(/outline: 0\.125rem solid var\(--accent\);/);
+  });
+
+  it("colours the cap line by the verdict: over in the error hue, unknown in the warn", () => {
+    expect(rule(".prv-spend__cap--err")).toMatch(/color: var\(--err\);/);
+    expect(rule(".prv-spend__cap--neutral")).toMatch(/color: var\(--warn\);/);
+    expect(rule(".prv-spend__cap--ok")).not.toMatch(/var\(--(?:err|warn)\)/);
+    expect(rule(".prv-spend__bound")).toMatch(/color: var\(--warn\);/);
+  });
+
+  it("moves nothing — the armed state is said, not animated", () => {
+    for (const [, selector, declarations] of CODE.matchAll(
+      /(\.prv-(?:merge|arm|spend)[^{]*)\{([^}]*)\}/g,
+    )) {
+      expect(declarations, selector).not.toMatch(/animation|transition/);
+    }
+  });
+});

@@ -3,6 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ADD_CLAIM_LABEL, CRITERIA_TITLE, WAIVE_LABEL } from "@/app/prs/criteria";
 import { FILES_TITLE } from "@/app/prs/files";
+import {
+  DISARM_LABEL,
+  EPICS_UNREAD,
+  EPIC_LABEL,
+  MERGE_PLAN_TITLE,
+  NO_EPIC,
+} from "@/app/prs/merge-plan";
 import { PR_MISSING_TITLE } from "@/app/prs/pr-missing";
 import { GATES_TITLE } from "@/app/prs/gates";
 import { ACTIONS_LABEL, MERGE_LABEL, RETURN_LABEL, REVIEW_LABEL } from "@/app/prs/view";
@@ -10,8 +17,11 @@ import { navRegistry } from "@/app/shell/nav-registry";
 
 import { membership, sessionUser } from "../helpers/login";
 import {
+  BLE_EPIC,
+  OTA_EPIC,
   PR_514_ID,
   TELEMETRY_PATH,
+  armedPlan,
   blockedPage,
   criterion,
   matrix,
@@ -23,17 +33,22 @@ import {
 /**
  * The PR verification route (#363): the gate first, then one read — a PR this workspace cannot
  * see is the not-found page, a failed read is the screen under a banner, `?from=` decides which
- * module stays lit, and the reader's role decides which actions are drawn.
+ * module stays lit, and the reader's role decides which actions are drawn. The roadmap's epics
+ * are read beside the page for the Merge plan card (#369).
  */
 
 const requireWorkspace = vi.fn();
 const readPr = vi.fn();
+const readEpics = vi.fn();
 
 /** What `notFound()` throws, so the case can see it was called. */
 class NotFound extends Error {}
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
-vi.mock("@/app/prs/data", () => ({ readPr: (id: string) => readPr(id) }));
+vi.mock("@/app/prs/data", () => ({
+  readEpics: () => readEpics(),
+  readPr: (id: string) => readPr(id),
+}));
 vi.mock("@/app/prs/head-actions", () => ({
   decideApproval: vi.fn(),
   requestHumanReview: vi.fn(),
@@ -49,6 +64,12 @@ vi.mock("@/app/prs/criteria-actions", () => ({
 }));
 vi.mock("@/app/prs/thread-actions", () => ({
   resolveEntry: vi.fn(),
+}));
+vi.mock("@/app/prs/merge-actions", () => ({
+  armPlan: vi.fn(),
+  disarmPlan: vi.fn(),
+  editPlan: vi.fn(),
+  mergeNow: vi.fn(),
 }));
 vi.mock("next/navigation", () => ({
   notFound: () => {
@@ -102,6 +123,7 @@ function drawn(): (string | null)[] {
 beforeEach(() => {
   holding(["owner"]);
   readPr.mockReset().mockResolvedValue({ state: "found", value: prPage() });
+  readEpics.mockReset().mockResolvedValue([OTA_EPIC, BLE_EPIC]);
 });
 
 describe("the PR verification route", () => {
@@ -241,5 +263,75 @@ describe("the actions, by role", () => {
 
     expect(drawn()).toEqual([]);
     expect(screen.getByRole("heading", { level: 1 })).toBeInTheDocument();
+  });
+});
+
+describe("the merge plan, by role (#369)", () => {
+  /** The Merge plan card. */
+  function plan() {
+    return within(screen.getByRole("region", { name: MERGE_PLAN_TITLE }));
+  }
+
+  it("offers the roadmap's epics to an owner, read once beside the page", async () => {
+    await open();
+
+    expect(readEpics).toHaveBeenCalledOnce();
+    expect(
+      within(plan().getByRole("combobox", { name: EPIC_LABEL }))
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual([NO_EPIC, OTA_EPIC.name, BLE_EPIC.name]);
+    expect(plan().getByRole("combobox", { name: EPIC_LABEL })).toBeEnabled();
+  });
+
+  it("draws the page when the roadmap cannot be read, and says so on the picker", async () => {
+    readEpics.mockResolvedValue(null);
+    await open();
+
+    expect(screen.getByText("PR Verification · PR #514 · Revision 2")).toBeInTheDocument();
+    expect(plan().getByText(EPICS_UNREAD)).toBeInTheDocument();
+    expect(plan().getByRole("combobox", { name: EPIC_LABEL })).toBeDisabled();
+  });
+
+  it("draws arm for an owner and an admin, and hides it from a member and a viewer", async () => {
+    for (const role of ["owner", "admin"] as const) {
+      holding([role]);
+      const page = await open();
+
+      expect(plan().getByRole("button", { name: MERGE_LABEL })).toBeInTheDocument();
+      expect(plan().getByRole("textbox")).toBeInTheDocument();
+      page.unmount();
+    }
+
+    for (const role of ["member", "viewer"] as const) {
+      holding([role]);
+      const page = await open();
+
+      expect(plan().queryByRole("button", { name: MERGE_LABEL })).toBeNull();
+      expect(plan().queryAllByRole("button")).toHaveLength(0);
+      expect(plan().queryByRole("textbox")).toBeNull();
+      page.unmount();
+    }
+  });
+
+  it("draws disarm for a member — the safe direction — and hides it from a viewer", async () => {
+    readPr.mockResolvedValue({
+      state: "found",
+      value: prPage({ pullRequest: { state: "armed" }, plan: armedPlan() }),
+    });
+
+    for (const role of ["owner", "member"] as const) {
+      holding([role]);
+      const page = await open();
+
+      expect(plan().getByRole("button", { name: DISARM_LABEL })).toBeInTheDocument();
+      page.unmount();
+    }
+
+    holding(["viewer"]);
+    await open();
+
+    expect(plan().queryByRole("button", { name: DISARM_LABEL })).toBeNull();
+    expect(plan().queryAllByRole("button")).toHaveLength(0);
   });
 });

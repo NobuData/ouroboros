@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
 import { PR_HUNK_PARAM, PR_REVISION_PARAM, RUN_ORIGIN_PARAM } from "@/app/paths";
-import { readPr } from "@/app/prs/data";
+import { readEpics, readPr } from "@/app/prs/data";
 import { hunkParam } from "@/app/prs/hunk";
 import { PrScreen } from "@/app/prs/pr-screen";
 import { revisionParam } from "@/app/prs/strip";
@@ -22,6 +22,11 @@ import { runOrigin } from "@/app/runs/origin";
  * *Merge when all gates green* is drawn for an owner or admin only — `mayAdminister` — so a member
  * sees no arm affordance. The screen is handed two booleans rather than a role, and the service
  * checks again on every press.
+ *
+ * **The Merge plan card is drawn for every reader** (#369): reading a plan is every member's. An
+ * owner or admin edits, arms and merges it; a member may disarm it; a viewer reads. The roadmap's
+ * epics are read beside the page for the card's picker, and a roadmap that cannot be read costs
+ * the picker, never the page.
  *
  * **`?rev=` scopes the gates** to one revision's snapshot (#364), so a revision view is linkable.
  * A value that is not a revision's ordinal is ignored, and the page follows the latest.
@@ -45,12 +50,13 @@ export default async function Page({
   const { id } = await params;
   const query = await searchParams;
   const origin = runOrigin(query[RUN_ORIGIN_PARAM]);
-  const reading = await readPr(id);
+  const [reading, epics] = await Promise.all([readPr(id), readEpics()]);
 
   if (reading.state === "missing") notFound();
 
   return (
     <PrScreen
+      epics={epics}
       initial={reading.state === "found" ? reading.value : null}
       initialError={reading.state === "failed" ? reading.reason : null}
       initialHunk={hunkParam(query[PR_HUNK_PARAM])}

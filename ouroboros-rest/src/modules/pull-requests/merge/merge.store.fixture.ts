@@ -13,10 +13,12 @@
 
 import type { OrganizationRole, PrMergedResult, PullRequestState } from "../../db/schema";
 import type { SpendTotals } from "../../runs/run.spend";
+import type { MergePlanChanges } from "./merge.edit";
 import type { SummaryGate } from "./merge.evidence";
 import type { RecheckGates, RecheckRevision } from "./merge.recheck";
 import type {
   LockedPr,
+  MergePerson,
   MergePr,
   MergeStore,
   MergeTransaction,
@@ -25,8 +27,24 @@ import type {
 
 /** An audit row the V058/V064 trigger would write. */
 export interface MemoryAuditRow {
-  readonly action: "armed" | "disarmed" | "merged";
+  readonly action: "armed" | "disarmed" | "merged" | "edited";
   readonly actorId: string | null;
+  /** The plan columns an edit changed, sorted — the trigger's `detail.fields`. */
+  readonly fields?: readonly string[];
+}
+
+/** What V058 raises, as `pg` reports it — an SQLSTATE and the constraint that refused. */
+export class MemoryConstraintFailure extends Error {
+  /**
+   * @param code - The SQLSTATE.
+   * @param constraint - The constraint, as the migration names it.
+   */
+  constructor(
+    readonly code: string,
+    readonly constraint: string,
+  ) {
+    super(constraint);
+  }
 }
 
 /** The whole state, cloned per transaction for rollback. */
@@ -39,6 +57,8 @@ export interface MemoryState {
   epicNotes: { epicId: string; prId: string; body: string }[];
   run: { status: string; prNumber: number | null; finished: boolean } | null;
   audit: MemoryAuditRow[];
+  /** The planning epics of the PR's workspace. */
+  epics: string[];
 }
 
 /** A plan with the table's defaults. */
@@ -74,6 +94,15 @@ export class MemoryMergeStore implements MergeStore {
   /** How many transactions ran. */
   transactions = 0;
 
+  /** The people a plan's `armedBy` can name, by id. */
+  people = new Map<string, string>();
+
+  /**
+   * An epic that goes between the executor's read and its write: `hasEpic` finds it, and the edit
+   * naming it is refused by the foreign key, as PostgreSQL's would be.
+   */
+  vanishing: string | null = null;
+
   /** The lock's tail. */
   private tail: Promise<unknown> = Promise.resolve();
 
@@ -99,6 +128,7 @@ export class MemoryMergeStore implements MergeStore {
       epicNotes: [],
       run: options.run === false ? null : { status: "review", prNumber: null, finished: false },
       audit: [],
+      epics: [],
     };
   }
 
@@ -122,6 +152,13 @@ export class MemoryMergeStore implements MergeStore {
   }
 
   /** @inheritdoc */
+  person(userId: string): Promise<MergePerson | undefined> {
+    const name = this.people.get(userId);
+
+    return Promise.resolve(name === undefined ? undefined : { id: userId, name });
+  }
+
+  /** @inheritdoc */
   transaction<T>(work: (tx: MergeTransaction) => Promise<T>): Promise<T> {
     return this.locked(async () => {
       this.transactions += 1;
@@ -129,7 +166,7 @@ export class MemoryMergeStore implements MergeStore {
       const before = structuredClone(this.state);
 
       try {
-        return await work(new MemoryMergeTransaction(this.state));
+        return await work(new MemoryMergeTransaction(this.state, this.vanishing));
       } catch (error) {
         this.state = before;
         throw error;
@@ -166,8 +203,14 @@ export class MemoryMergeStore implements MergeStore {
 
 /** One transaction over the state. */
 class MemoryMergeTransaction implements MergeTransaction {
-  /** @param state - The state. */
-  constructor(private readonly state: MemoryState) {}
+  /**
+   * @param state - The state.
+   * @param vanishing - An epic that is gone by the time it is written, or null.
+   */
+  constructor(
+    private readonly state: MemoryState,
+    private readonly vanishing: string | null,
+  ) {}
 
   /** @inheritdoc */
   lock(organizationId: string, prId: string): Promise<LockedPr | undefined> {
@@ -271,6 +314,58 @@ class MemoryMergeTransaction implements MergeTransaction {
     });
   }
 
+  /**
+   * @inheritdoc
+   *
+   * With what V058 does to an edit: the foreign key and the CHECK that refuse one, and the audit
+   * row that records one — listing, as the trigger does, the columns that changed.
+   */
+  edit(planId: string, actorId: string, changes: MergePlanChanges): Promise<StoredMergePlan> {
+    if (changes.epicId != null && changes.epicId === this.vanishing) {
+      return Promise.reject(new MemoryConstraintFailure("23503", "pr_merge_plans_epic_id_fkey"));
+    }
+
+    return this.write(planId, (plan) => {
+      const next: StoredMergePlan = {
+        ...plan,
+        commitMessage: changes.commitMessage ?? plan.commitMessage,
+        closeTicket: changes.closeTicket ?? plan.closeTicket,
+        commentEvidence: changes.commentEvidence ?? plan.commentEvidence,
+        backAnnotateEpic: changes.backAnnotateEpic ?? plan.backAnnotateEpic,
+        epicId: changes.epicId === undefined ? plan.epicId : changes.epicId,
+      };
+
+      if (next.backAnnotateEpic && next.epicId === null) {
+        throw new MemoryConstraintFailure("23514", "pr_merge_plans_back_annotate_has_epic");
+      }
+
+      const fields = (
+        [
+          ["back_annotate_epic", next.backAnnotateEpic !== plan.backAnnotateEpic],
+          ["close_ticket", next.closeTicket !== plan.closeTicket],
+          ["comment_evidence", next.commentEvidence !== plan.commentEvidence],
+          ["commit_message", next.commitMessage !== plan.commitMessage],
+          ["epic_id", next.epicId !== plan.epicId],
+        ] as const
+      )
+        .filter(([, changed]) => changed)
+        .map(([column]) => column);
+
+      if (fields.length > 0) {
+        this.state.audit.push({ action: "edited", actorId, fields });
+      }
+
+      return next;
+    });
+  }
+
+  /** @inheritdoc */
+  hasEpic(organizationId: string, epicId: string): Promise<boolean> {
+    return Promise.resolve(
+      organizationId === this.state.pr.organizationId && this.state.epics.includes(epicId),
+    );
+  }
+
   /** @inheritdoc */
   setPrState(_prId: string, state: PullRequestState): Promise<void> {
     this.state.pr = { ...this.state.pr, state };
@@ -331,7 +426,11 @@ class MemoryMergeTransaction implements MergeTransaction {
       return Promise.reject(new Error("pr_merge_plans_merged_final"));
     }
 
-    this.state.plan = { ...change(plan), updatedAt: new Date() };
+    try {
+      this.state.plan = { ...change(plan), updatedAt: new Date() };
+    } catch (error) {
+      return Promise.reject(error instanceof Error ? error : new Error(String(error)));
+    }
 
     return Promise.resolve(this.state.plan);
   }

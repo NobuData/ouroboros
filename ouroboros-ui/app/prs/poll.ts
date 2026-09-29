@@ -50,10 +50,64 @@ export function pageUrl(prId: string): string {
 }
 
 /**
+ * Whether a parsed value is a merge plan the card can draw
+ * ([#369](https://github.com/NobuData/ouroboros/issues/369)).
+ *
+ * `armedByPerson` is not asked for: a service one release behind does not send it, and the card
+ * reads its absence as *nobody named*.
+ *
+ * @param value The page's `plan`.
+ * @returns `true` when it carries the message, the strategy, the switches and the arm as the
+ *   types the card reads them as, and a `mergedResult` that is `null` or lists its actions.
+ */
+function isMergePlan(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+
+  const plan = value as Partial<PullRequestPage["plan"]>;
+  const result = plan.mergedResult as Partial<NonNullable<typeof plan.mergedResult>> | null;
+
+  return (
+    typeof plan.commitMessage === "string" &&
+    typeof plan.strategy === "string" &&
+    typeof plan.armed === "boolean" &&
+    typeof plan.closeTicket === "boolean" &&
+    typeof plan.commentEvidence === "boolean" &&
+    typeof plan.backAnnotateEpic === "boolean" &&
+    (result === null ||
+      (typeof result === "object" &&
+        typeof result.sha === "string" &&
+        typeof result.identityUsed === "string" &&
+        Array.isArray(result.actionsExecuted)))
+  );
+}
+
+/**
+ * Whether a parsed value is a spend rollup the card can draw, or none.
+ *
+ * @param value The page's `spend`.
+ * @returns `true` for `null` — a PR no loop opened — and for a rollup carrying both of its lines.
+ */
+function isSpend(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value !== "object") return false;
+
+  const spend = value as Partial<NonNullable<PullRequestPage["spend"]>>;
+
+  return (
+    typeof spend.loop === "object" &&
+    spend.loop !== null &&
+    typeof spend.verification === "object" &&
+    spend.verification !== null
+  );
+}
+
+/**
  * Whether a parsed body is a PR page.
  *
  * Structural rather than exhaustive: the head reaches for `pullRequest`, `revisions`, `gates`,
- * `plan` and `review`, and a body carrying those is the page for every purpose the head has.
+ * `plan` and `review`, and a body carrying those is the page for every purpose the head has. The
+ * plan and the spend are held to the fields their cards read (#369), so a body that would make a
+ * card throw is refused here, and the last good page stays on screen.
  *
  * @param value A parsed response body.
  * @returns `true` when it can be read as a {@link PullRequestPage}.
@@ -74,8 +128,8 @@ export function isPullRequestPage(value: unknown): value is PullRequestPage {
     Array.isArray(candidate.revisions) &&
     (candidate.gates === null ||
       (typeof candidate.gates === "object" && Array.isArray(candidate.gates.rows))) &&
-    typeof candidate.plan === "object" &&
-    candidate.plan !== null &&
+    isMergePlan(candidate.plan) &&
+    isSpend(candidate.spend) &&
     (candidate.review === null || typeof candidate.review === "object")
   );
 }

@@ -40,24 +40,27 @@ function wire(value: unknown): unknown {
 
 /** The matrix and plan the page composes, as their own services answer them. */
 const MATRIX = { prId: PR, planContext: false, counts: criteriaCounts([]), criteria: [] };
-const PLAN = mergePlanResource({
-  id: "5eed0041-0000-4000-8000-000000000514",
-  prId: PR,
-  strategy: "squash",
-  deleteBranch: true,
-  commitMessage: "fix(can): preserve ISR frame order in telemetry path\n\nCloses #482.",
-  closeTicket: true,
-  commentEvidence: true,
-  backAnnotateEpic: false,
-  epicId: null,
-  armed: false,
-  armedBy: null,
-  armedAt: null,
-  armedAgainstRevisionId: null,
-  disarmReason: null,
-  mergedResult: null,
-  updatedAt: new Date("2026-09-27T14:31:00Z"),
-});
+const PLAN = mergePlanResource(
+  {
+    id: "5eed0041-0000-4000-8000-000000000514",
+    prId: PR,
+    strategy: "squash",
+    deleteBranch: true,
+    commitMessage: "fix(can): preserve ISR frame order in telemetry path\n\nCloses #482.",
+    closeTicket: true,
+    commentEvidence: true,
+    backAnnotateEpic: false,
+    epicId: null,
+    armed: false,
+    armedBy: null,
+    armedAt: null,
+    armedAgainstRevisionId: null,
+    disarmReason: null,
+    mergedResult: null,
+    updatedAt: new Date("2026-09-27T14:31:00Z"),
+  },
+  null,
+);
 
 /**
  * @param store - The store.

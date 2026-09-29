@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.19"
+  version: "0.37.20"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -18374,6 +18374,113 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+    patch:
+      tags: [pr-merge]
+      summary: Edit the merge plan — the commit message, a toggle or the epic
+      description: |-
+        The Merge plan card's edits ([#369](https://github.com/NobuData/ouroboros/issues/369)) —
+        the commit message, the three action toggles and the roadmap epic the third one annotates.
+        **Only what is sent changes**, so each edit persists on its own: an absent field is left
+        alone, and `epicId` is the one field `null` clears. An edit that changes nothing answers
+        the plan unchanged.
+
+        The strategy and delete-branch are the pinned policy's and are not edited here — a body
+        that names them is refused as `validation_failed`, like any unknown field.
+
+        `backAnnotateEpic` needs an epic: switching it on while the plan names none is refused
+        (`merge_plan_epic_required`), and clearing the epic switches it off. The epic is one of
+        this workspace's planning epics (`GET /api/v1/planning/epics`).
+
+        **An armed plan is not edited.** Arming confirmed the plan's terms, so they are changed by
+        disarming first (`merge_plan_armed`); a merged plan is final (`merge_plan_merged`).
+
+        Closing the ticket is the host's doing: it closes on the message's `Closes <key>.` keyword,
+        and `closeTicket` records that a close is intended. A message edited to drop the keyword
+        leaves the ticket open, and the merge reports `close_ticket` among the actions that did not
+        run.
+
+        Audited as `pr_merge_plan.edited`, naming the person and the fields that changed — never
+        the message itself. `owner` or `admin`, or a `member` when the PR's pinned workflow ends in
+        an auto-merge terminal.
+      operationId: updatePullRequestMergePlan
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/PullRequestId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMergePlanRequest"
+            example:
+              closeTicket: false
+      responses:
+        "200":
+          description: The plan, as edited.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PrMergePlan"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `viewer`. `merge_not_policy_eligible` — a `member`, on a PR whose pinned
+            workflow does not auto-merge.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `pull_request_not_found` — no pull request with that id, **or none this caller may know
+            about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `merge_plan_armed` — the plan is armed; disarm it first. `merge_plan_merged` — the plan
+            has merged and is final. `pull_request_not_open` — the PR is merged or closed on its
+            host.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `merge_plan_epic_required` — back-annotate would be on with no epic.
+            `merge_plan_epic_not_found` — the epic is not one of this workspace's.
+            `validation_failed` — a blank or over-long message, a toggle that is not a boolean, a
+            field this operation does not edit, or an id that is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/pull-requests/{id}/merge-plan/arm:
     post:
       tags: [pr-merge]
@@ -23177,6 +23284,35 @@ components:
             The revision whose gates the person looked at — `pr_revisions.id`. Refused when it is
             no longer the PR's latest.
 
+    UpdateMergePlanRequest:
+      type: object
+      title: UpdateMergePlanRequest
+      description: |-
+        What an edit of a merge plan sends. An absent field is left alone; `null` clears the epic,
+        the only nullable field.
+      additionalProperties: false
+      properties:
+        commitMessage:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          description: The merge commit's message — neither blank nor padded with whitespace.
+        closeTicket:
+          type: boolean
+          description: Close the canonical ticket on merge.
+        commentEvidence:
+          type: boolean
+          description: Comment the evidence summary on the host PR.
+        backAnnotateEpic:
+          type: boolean
+          description: Back-annotate the roadmap epic — refused while the plan names none.
+        epicId:
+          description: The planning epic to back-annotate, of this workspace — or `null` to clear it.
+          oneOf:
+            - type: string
+              format: uuid
+            - type: "null"
+
     PrMergeAction:
       type: string
       title: PrMergeAction
@@ -23194,7 +23330,7 @@ components:
       type: object
       title: PrMergePlan
       additionalProperties: false
-      required: [prId, strategy, deleteBranch, commitMessage, closeTicket, commentEvidence, backAnnotateEpic, epicId, armed, armedBy, armedAt, armedAgainstRevisionId, disarmReason, mergedResult, updatedAt]
+      required: [prId, strategy, deleteBranch, commitMessage, closeTicket, commentEvidence, backAnnotateEpic, epicId, armed, armedBy, armedByPerson, armedAt, armedAgainstRevisionId, disarmReason, mergedResult, updatedAt]
       properties:
         prId:
           type: string
@@ -23221,7 +23357,12 @@ components:
           description: The *merge when all gates green* intent.
         armedBy:
           type: [string, "null"]
-          description: Who armed it, while armed.
+          description: Who armed it, while armed — their id.
+        armedByPerson:
+          description: Who armed it, by name — null when disarmed, or when the person has since gone.
+          oneOf:
+            - $ref: "#/components/schemas/PrPerson"
+            - type: "null"
         armedAt:
           type: [string, "null"]
           format: date-time
