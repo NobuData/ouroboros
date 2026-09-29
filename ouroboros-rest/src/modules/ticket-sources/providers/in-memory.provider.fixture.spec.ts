@@ -2,6 +2,7 @@ import { retainedStrings } from "../conformance.fixture";
 import { TicketSourceError } from "../ticket-source.errors";
 import { supportsWebhooks, supportsWrites } from "../ticket-source.provider";
 import { NO_PR_CAPABILITIES } from "../ticket-source.pr";
+import { NO_PROBE_CAPABILITIES } from "../ticket-source.probe";
 import { READ_ONLY_WRITE_CAPABILITIES } from "../ticket-source.write";
 import {
   IN_MEMORY_PAGE_SIZE,
@@ -451,6 +452,7 @@ describe("InMemoryWebhookTicketSourceProvider", () => {
       bidirectionalWrites: false,
       write: READ_ONLY_WRITE_CAPABILITIES,
       pr: NO_PR_CAPABILITIES,
+      probe: NO_PROBE_CAPABILITIES,
     });
     expect(supportsWebhooks(provider)).toBe(true);
     expect(supportsWebhooks(new InMemoryTicketSourceProvider(new InMemoryTracker()))).toBe(false);
@@ -562,6 +564,7 @@ describe("InMemoryWriteTicketSourceProvider", () => {
         milestones: true,
       },
       pr: NO_PR_CAPABILITIES,
+      probe: NO_PROBE_CAPABILITIES,
     });
     expect(supportsWrites(provider)).toBe(true);
     expect(supportsWrites(new InMemoryTicketSourceProvider(new InMemoryTracker()))).toBe(false);

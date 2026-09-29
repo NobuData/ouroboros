@@ -11,6 +11,7 @@ import { DashboardModule } from "../dashboard/dashboard.module";
 import { QueueModule } from "../queue/queue.module";
 import { RunsModule } from "../runs/runs.module";
 import { DbModule } from "../db/db.module";
+import { DetectionModule } from "../detection/detection.module";
 import { EngineModule } from "../engine/engine.module";
 import { EstimationModule } from "../estimation/estimation.module";
 import { GithubModule } from "../github/github.module";
@@ -339,6 +340,11 @@ export class AppModule {
         // workflow and intake tables directly and writes only `onboarding_state`, so its position
         // carries no routing rule — nothing else claims the prefix.
         OnboardingModule,
+        // BB.1 ([#384](https://github.com/NobuData/ouroboros/issues/384)) — the repository
+        // detector under `/api/v1/onboarding/detection`. A distinct literal segment beneath
+        // `OnboardingModule`'s prefix, so its position carries no routing rule; it probes through
+        // `TicketSourcesModule`'s registry and writes the V067 detection tables.
+        DetectionModule,
         // L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the pipeline that
         // sizes what the sync mirrored. **After `BacklogSyncModule`, which imports it**, so
         // this entry is a statement rather than a requirement: Nest resolves the graph either

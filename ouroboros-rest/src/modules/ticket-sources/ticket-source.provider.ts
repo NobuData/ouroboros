@@ -106,6 +106,15 @@
  * [#373](https://github.com/NobuData/ouroboros/issues/373)) are an implementation against the same
  * conformance suites rather than a parallel subsystem. Every provider that shipped before it keeps
  * compiling with one added line — `pr: NO_PR_CAPABILITIES`. See `ticket-source.pr.ts`.
+ *
+ * ---------------------------------------------------------------------------
+ * **Repository probes are the fourth, on the same recipe.**
+ *
+ * BB.1 ([#384](https://github.com/NobuData/ouroboros/issues/384)): {@link ProbeCapableProvider} is
+ * a sub-interface, {@link supportsRepoProbes} its guard, and
+ * {@link TicketSourceCapabilities.probe} the declaration. The onboarding detector reads a
+ * repository's languages, tree and a handful of files through it — never a clone — and a tracker
+ * answers `probe: NO_PROBE_CAPABILITIES`. See `ticket-source.probe.ts`.
  */
 
 import type { TicketSourceKind, TicketState } from "../db/schema";
@@ -125,6 +134,12 @@ import {
   type ReviewRequestResult,
   type TicketSourcePrCapabilities,
 } from "./ticket-source.pr";
+import {
+  probeCapabilityViolations,
+  type RepoFile,
+  type RepoTree,
+  type TicketSourceProbeCapabilities,
+} from "./ticket-source.probe";
 import {
   writeCapabilityViolations,
   type DependencyLinkResult,
@@ -193,6 +208,13 @@ export interface TicketSourceCapabilities {
    * the rule that every one of them is off when `pullRequests` is.
    */
   readonly pr: TicketSourcePrCapabilities;
+  /**
+   * Whether this provider can probe the repositories it covers — BB.1's declaration
+   * ([#384](https://github.com/NobuData/ouroboros/issues/384)).
+   *
+   * A ticket tracker answers `NO_PROBE_CAPABILITIES`. See `ticket-source.probe.ts`.
+   */
+  readonly probe: TicketSourceProbeCapabilities;
 }
 
 /**
@@ -973,6 +995,129 @@ export function prMemberViolations(provider: TicketSourceProvider): string[] {
     return [
       `pr.pullRequests is false but ${present.join(", ")} is present — an unreachable PR member ` +
         "is a declaration somebody forgot to update",
+    ];
+  }
+
+  return [];
+}
+
+/**
+ * A provider that can probe the repositories its sources cover — BB.1's extension
+ * ([#384](https://github.com/NobuData/ouroboros/issues/384)), on {@link PrCapableProvider}'s
+ * recipe.
+ *
+ * **Each probe member is one host request**, spent from the same rate budget the source's sync
+ * uses, and throws `TicketSourceError` on a refusal — `rate_limit` above all, which is what the
+ * detector stops probing on. The context is the sync members' {@link TicketSyncContext}: a stored
+ * source, opened for the length of one scan, whose credential the provider must not keep.
+ *
+ * **A provider probes only what the source covers.** {@link coversRepo} is the question the
+ * detector asks before choosing a source, and every probe member must refuse (`not_found`) a
+ * repository its config does not list — a token that can see more than the workspace connected
+ * is not an invitation to read it.
+ */
+export interface ProbeCapableProvider extends TicketSourceProvider {
+  /**
+   * @returns The flags, with `probe.repoProbes` narrowed to `true`.
+   */
+  capabilities(): TicketSourceCapabilities & {
+    readonly probe: TicketSourceProbeCapabilities & { readonly repoProbes: true };
+  };
+
+  /**
+   * Whether a source's config covers a repository. Pure — no request.
+   *
+   * @param config - `ticket_sources.config`, as stored.
+   * @param repoRef - `owner/name`, lower-case.
+   * @returns True when the source lists the repository.
+   */
+  coversRepo(config: unknown, repoRef: string): boolean;
+
+  /**
+   * The repository's languages, as the host measures them.
+   *
+   * @param context - The source, opened.
+   * @param repoRef - `owner/name`, covered by the source.
+   * @returns Bytes per language — `{ C: 920000, CMake: 40000 }`. Empty for an empty repository.
+   * @throws {TicketSourceError} On a refusal, classified.
+   */
+  repoLanguages(context: TicketSyncContext, repoRef: string): Promise<Record<string, number>>;
+
+  /**
+   * Every path on the default branch, in one listing.
+   *
+   * @param context - The source, opened.
+   * @param repoRef - `owner/name`, covered by the source.
+   * @returns The tree; `{ entries: [], truncated: false }` for an empty repository.
+   * @throws {TicketSourceError} On a refusal, classified.
+   */
+  repoTree(context: TicketSyncContext, repoRef: string): Promise<RepoTree>;
+
+  /**
+   * One file on the default branch.
+   *
+   * @param context - The source, opened.
+   * @param repoRef - `owner/name`, covered by the source.
+   * @param path - Relative to the root; `isProbePath` holds.
+   * @returns The file, or `null` when there is no such file — an ordinary answer, not a failure.
+   * @throws {TicketSourceError} On a refusal, classified; `validation` for a path `isProbePath`
+   *   refuses.
+   */
+  repoFile(context: TicketSyncContext, repoRef: string, path: string): Promise<RepoFile | null>;
+}
+
+/** The members {@link ProbeCapableProvider} adds, as values — what the registry checks. */
+export const PROBE_MEMBERS = [
+  "coversRepo",
+  "repoLanguages",
+  "repoTree",
+  "repoFile",
+] as const satisfies readonly (keyof ProbeCapableProvider)[];
+
+/**
+ * Whether a provider can probe repositories — and, for the compiler, that its members are there.
+ *
+ * The check is the **flag**, for {@link supportsWebhooks}' reason.
+ *
+ * @param provider - Any provider.
+ * @returns `true` when it declares `probe.repoProbes`.
+ */
+export function supportsRepoProbes(
+  provider: TicketSourceProvider,
+): provider is ProbeCapableProvider {
+  return provider.capabilities().probe.repoProbes;
+}
+
+/**
+ * Everything wrong with how a provider's probe declaration agrees with itself and its members.
+ *
+ * What `TicketSourceRegistry` refuses at boot — the declaration's shape, then the flag against the
+ * four members in both directions.
+ *
+ * @param provider - Any provider.
+ * @returns The violations.
+ */
+export function probeMemberViolations(provider: TicketSourceProvider): string[] {
+  const capabilities = provider.capabilities() as Partial<TicketSourceCapabilities>;
+  const shape = probeCapabilityViolations(capabilities.probe);
+
+  if (shape.length > 0) {
+    return shape;
+  }
+
+  const declared = (capabilities.probe as TicketSourceProbeCapabilities).repoProbes;
+  const members = provider as unknown as Record<string, unknown>;
+  const missing = PROBE_MEMBERS.filter((member) => typeof members[member] !== "function");
+  const present = PROBE_MEMBERS.filter((member) => typeof members[member] === "function");
+
+  if (declared && missing.length > 0) {
+    return [`probe.repoProbes is true but ${missing.join(", ")} is absent`];
+  }
+
+  if (!declared && present.length > 0) {
+    return [
+      `probe.repoProbes is false but ${present.join(", ")} is present — an unreachable probe ` +
+        "member is a declaration somebody forgot to update",
     ];
   }
 

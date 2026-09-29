@@ -94,6 +94,8 @@ export function githubEntry(): TicketSourceCatalogEntry {
       bidirectionalWrites: false,
       write: READ_ONLY.write,
       pr: { ...READ_ONLY.pr, mergeStrategies: [] },
+      // The GitHub provider probes the repositories it covers (#384).
+      probe: { repoProbes: true },
     },
     push: READ_ONLY.push,
     fields: [
@@ -155,6 +157,7 @@ export function fakeEntry(): TicketSourceCatalogEntry {
       bidirectionalWrites: false,
       write: READ_ONLY.write,
       pr: { ...READ_ONLY.pr, mergeStrategies: [] },
+      probe: { repoProbes: false },
     },
     push: READ_ONLY.push,
     fields: [

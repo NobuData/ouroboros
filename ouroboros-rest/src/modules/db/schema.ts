@@ -5305,6 +5305,35 @@ export interface RepoDetectionScansTable {
   probe_budget_used: number | null;
 }
 
+/** `repo_detections.verdict` (V067) — ok (✓), warn, missing. */
+export type RepoDetectionVerdict = "ok" | "warn" | "missing";
+
+/** `repo_detections.label` (V067) — a probe saw it, or real data measured it. */
+export type RepoDetectionLabel = "detected" | "measured";
+
+/**
+ * `ouroboros.repo_detections` — one row of the *"We already figured this out"* card, for one scan
+ * (V067, [#380](https://github.com/NobuData/ouroboros/issues/380)). Written by BB.1's detection
+ * service ([#384](https://github.com/NobuData/ouroboros/issues/384)); the only update the grants
+ * allow is the `detected → measured` relabel of `verdict`, `value`, `evidence` and `label`.
+ */
+export interface RepoDetectionsTable {
+  id: Generated<string>;
+  organization_id: string;
+  repo_ref: string;
+  scan_seq: number;
+  /** `language` · `build` · `devcontainer` · `tests` · `protected_paths` · `conventions` · `custom:<name>`. */
+  row_key: string;
+  verdict: RepoDetectionVerdict;
+  /** The line the card prints — `west + twister (found west.yml)`. */
+  value: string;
+  /** Which probes hit and missed — an object; the rule packs own its shape. */
+  evidence: ColumnType<unknown, string | undefined, string>;
+  label: ColumnType<RepoDetectionLabel, RepoDetectionLabel | undefined, RepoDetectionLabel>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
 /**
  * `ouroboros.build_job_artifact_uploads` — the job-scoped upload's token ledger while open, and its
  * receipt once closed (V060, [#330](https://github.com/NobuData/ouroboros/issues/330)): the attempt
@@ -5430,6 +5459,7 @@ export interface Database {
   protected_path_policies: ProtectedPathPoliciesTable;
   onboarding_state: OnboardingStateTable;
   repo_detection_scans: RepoDetectionScansTable;
+  repo_detections: RepoDetectionsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6430,6 +6460,19 @@ export const TABLE_COLUMNS = {
     "pack_versions",
     "probe_budget_used",
   ],
+  repo_detections: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "scan_seq",
+    "row_key",
+    "verdict",
+    "value",
+    "evidence",
+    "label",
+    "created_at",
+    "updated_at",
+  ],
   planning_epic_progress: [
     "epic_id",
     "organization_id",
@@ -7009,3 +7052,6 @@ export type OnboardingState = Selectable<OnboardingStateTable>;
 
 /** A row of `ouroboros.repo_detection_scans`, as a `select` returns it. */
 export type RepoDetectionScan = Selectable<RepoDetectionScansTable>;
+
+/** A row of `ouroboros.repo_detections`, as a `select` returns it. */
+export type RepoDetection = Selectable<RepoDetectionsTable>;

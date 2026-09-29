@@ -272,6 +272,39 @@ describe("TicketSourceRegistry", () => {
     );
   });
 
+  it("stops the process at boot when a provider declares repository probes and has no probe members", async () => {
+    // BB.1 (#384): the detector narrows on `probe.repoProbes`, so a flag without the four members
+    // is a scan that fails on the onboarding card behind a guard that said it was safe.
+    const liar: TicketSourceProvider = {
+      ...scriptedProvider(),
+      capabilities: () => ({ ...NO_CAPABILITIES, probe: { repoProbes: true } }),
+    };
+
+    await expect(registryOf([liar])).rejects.toThrow(
+      'Provider "github" declares probe capabilities that disagree: probe.repoProbes is true but ' +
+        "coversRepo, repoLanguages, repoTree, repoFile is absent",
+    );
+  });
+
+  it("stops the process at boot when a provider has probe members it does not declare", async () => {
+    const quiet: TicketSourceProvider = Object.assign(scriptedProvider(), {
+      coversRepo: () => true,
+    });
+
+    await expect(registryOf([quiet])).rejects.toThrow(
+      "probe.repoProbes is false but coversRepo is present",
+    );
+  });
+
+  it("stops the process at boot when a provider's probe declaration is malformed", async () => {
+    const malformed: TicketSourceProvider = {
+      ...scriptedProvider(),
+      capabilities: () => ({ ...NO_CAPABILITIES, probe: { repoProbes: "yes" } as never }),
+    };
+
+    await expect(registryOf([malformed])).rejects.toThrow("probe.repoProbes must be a boolean");
+  });
+
   it("stops the process at boot when a tracker that is not a git host declares pull requests", async () => {
     // V052's `pull_requests_source_is_git_host` would refuse every row such a provider synced.
     const jira = new InMemoryPrTicketSourceProvider(new InMemoryTracker(), new InMemoryPrHost(), {

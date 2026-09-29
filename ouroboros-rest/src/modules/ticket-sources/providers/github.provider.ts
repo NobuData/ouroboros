@@ -62,6 +62,7 @@ import { GithubRateLimiter, REMAINING_HEADER } from "../../github/github.rate-li
 import { LEGACY_TOKEN, TOKEN_PREFIXES } from "../../github/github.token";
 import { chunked } from "../../scheduling/cadence";
 import type { TicketSourceConfigSchema } from "../ticket-source.config";
+import type { RepoFile, RepoTree } from "../ticket-source.probe";
 import {
   TicketSourceError,
   classifyHttpStatus,
@@ -83,6 +84,7 @@ import type {
 import type {
   CanonicalTicket,
   PrCapableProvider,
+  ProbeCapableProvider,
   TicketPage,
   TicketSourceCapabilities,
   TicketSourceValidation,
@@ -106,6 +108,7 @@ import {
   mapGithubIssue,
 } from "./github.mapping";
 import { GITHUB_PR_CAPABILITIES, GithubPullRequests } from "./github.pr";
+import { GITHUB_PROBE_CAPABILITIES, GithubRepoProbes, probeTargetOf } from "./github.probe";
 import { GITHUB_WRITE_CAPABILITIES, GithubWriter, pushTarget } from "./github.write";
 
 /**
@@ -174,7 +177,9 @@ export interface RepoWalk {
  * credential is not among them.
  */
 @Injectable()
-export class GithubTicketSourceProvider implements WriteCapableProvider, PrCapableProvider {
+export class GithubTicketSourceProvider
+  implements WriteCapableProvider, PrCapableProvider, ProbeCapableProvider
+{
   /** V030's `ticket_sources.kind` value this provider answers for. */
   readonly kind = "github" as const;
 
@@ -201,12 +206,14 @@ export class GithubTicketSourceProvider implements WriteCapableProvider, PrCapab
    *   ([#279](https://github.com/NobuData/ouroboros/issues/279)) {@link GITHUB_WRITE_CAPABILITIES}:
    *   native dependencies, milestones, and epics as parent issues. Pull requests yes — AX.1's
    *   ([#357](https://github.com/NobuData/ouroboros/issues/357)) {@link GITHUB_PR_CAPABILITIES}:
-   *   every merge strategy, reviews, and a poll.
+   *   every merge strategy, reviews, and a poll. Repository probes yes — BB.1's
+   *   ([#384](https://github.com/NobuData/ouroboros/issues/384)) {@link GITHUB_PROBE_CAPABILITIES}.
    */
   capabilities(): TicketSourceCapabilities & {
     readonly bidirectionalWrites: true;
     readonly write: typeof GITHUB_WRITE_CAPABILITIES;
     readonly pr: typeof GITHUB_PR_CAPABILITIES;
+    readonly probe: typeof GITHUB_PROBE_CAPABILITIES;
   } {
     return {
       webhooks: false,
@@ -214,6 +221,7 @@ export class GithubTicketSourceProvider implements WriteCapableProvider, PrCapab
       bidirectionalWrites: true,
       write: GITHUB_WRITE_CAPABILITIES,
       pr: GITHUB_PR_CAPABILITIES,
+      probe: GITHUB_PROBE_CAPABILITIES,
     };
   }
 
@@ -538,6 +546,92 @@ export class GithubTicketSourceProvider implements WriteCapableProvider, PrCapab
    */
   prEvents(context: TicketSyncContext, cursor: string | null): Promise<PrEventPage> {
     return this.pulling(context, (pulls) => pulls.prEvents(cursor));
+  }
+
+  /**
+   * Whether this source's config lists a repository — the account and the name, both compared
+   * case-insensitively because GitHub's are.
+   *
+   * @param config - `ticket_sources.config`, as stored. A config that does not parse covers
+   *   nothing rather than throwing: the detector is asking which source to use, not validating.
+   * @param repoRef - `owner/name`.
+   * @returns True when the source's `login` is the owner and its `repos` include the name.
+   */
+  coversRepo(config: unknown, repoRef: string): boolean {
+    return probeTargetOf(config, repoRef) !== undefined;
+  }
+
+  /**
+   * The repository's languages — one `GET /repos/{owner}/{repo}/languages`.
+   *
+   * @param context - The source, opened.
+   * @param repoRef - `owner/name`, covered by the source.
+   * @returns Bytes per language.
+   * @throws {TicketSourceError} On a refusal; `not_found` for a repository the source does not
+   *   cover.
+   */
+  repoLanguages(context: TicketSyncContext, repoRef: string): Promise<Record<string, number>> {
+    return this.probing(context, repoRef, (probes) => probes.languages());
+  }
+
+  /**
+   * Every path on the default branch — one recursive trees request.
+   *
+   * @param context - The source, opened.
+   * @param repoRef - `owner/name`, covered by the source.
+   * @returns The tree; empty for a repository with no commits.
+   * @throws {TicketSourceError} On a refusal; `not_found` for a repository the source does not
+   *   cover.
+   */
+  repoTree(context: TicketSyncContext, repoRef: string): Promise<RepoTree> {
+    return this.probing(context, repoRef, (probes) => probes.tree());
+  }
+
+  /**
+   * One file on the default branch — one contents request.
+   *
+   * @param context - The source, opened.
+   * @param repoRef - `owner/name`, covered by the source.
+   * @param path - Relative to the root.
+   * @returns The file, or null when there is none.
+   * @throws {TicketSourceError} On a refusal; `not_found` for a repository the source does not
+   *   cover; `validation` for a path that is not relative.
+   */
+  repoFile(context: TicketSyncContext, repoRef: string, path: string): Promise<RepoFile | null> {
+    return this.probing(context, repoRef, (probes) => probes.file(path));
+  }
+
+  /**
+   * Run one probe against a covered repository, classifying whatever it throws the read way.
+   *
+   * @param context - The source, opened.
+   * @param repoRef - `owner/name`.
+   * @param probe - The probe, given a prober for this call alone.
+   * @returns What the probe answered.
+   * @throws {TicketSourceError} Every failure, through {@link asTicketSourceError}.
+   */
+  private async probing<T>(
+    context: TicketSyncContext,
+    repoRef: string,
+    probe: (probes: GithubRepoProbes) => Promise<T>,
+  ): Promise<T> {
+    const target = probeTargetOf(context.config, repoRef);
+
+    if (target === undefined) {
+      throw new TicketSourceError("not_found", "this source does not cover that repository");
+    }
+
+    try {
+      const client = new GithubClient(
+        context.organizationId,
+        this.octokit(tokenOf(context)),
+        this.budget,
+      );
+
+      return await probe(new GithubRepoProbes(client, target));
+    } catch (error) {
+      throw asTicketSourceError(error);
+    }
   }
 
   /**
