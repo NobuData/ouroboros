@@ -465,6 +465,19 @@ function text(value: unknown, key: string): string | null {
 }
 
 /**
+ * What a rule tests, as the page states it — the failure card's hint and the Mark & Route card's
+ * `heuristic` affix ([#340](https://github.com/NobuData/ouroboros/issues/340)) say it in the same
+ * words.
+ *
+ * @param ruleId The rule's id, or `null`.
+ * @returns `new failure ∩ diff-path overlap`; a rule this client does not know is its id, and
+ *   `null` is `null`.
+ */
+export function ruleCondition(ruleId: string | null): string | null {
+  return ruleId === null ? null : (RULE_CONDITION[ruleId] ?? ruleId);
+}
+
+/**
  * A rule, stated.
  *
  * @param ruleId The rule's id, or `null`.
@@ -473,7 +486,7 @@ function text(value: unknown, key: string): string | null {
  *   not know is printed as it came.
  */
 export function ruleText(ruleId: string | null, suggestedClass: string | null): string {
-  const condition = ruleId === null ? null : (RULE_CONDITION[ruleId] ?? ruleId);
+  const condition = ruleCondition(ruleId);
   const suggested = suggestedClass === null ? null : (CLASS_LABEL[suggestedClass] ?? suggestedClass);
 
   return [condition, suggested].filter((part) => part !== null).join(` ${SUGGESTS} `);

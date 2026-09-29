@@ -189,7 +189,7 @@ describe("the test plane", () => {
     });
 
     /** A request as the stranger, in their own workspace. */
-    function asStranger(method: "get" | "post", path: string) {
+    function asStranger(method: "get" | "post" | "put", path: string) {
       return api.as(stranger)(method, path).set(TENANT_HEADER, elsewhere.slug);
     }
 
@@ -282,6 +282,12 @@ describe("the test plane", () => {
         code: "test_run_not_found",
         ownerReads: false,
       },
+      "PUT /api/v1/runs/:id/pr-intents": {
+        path: () => `/api/v1/runs/${play.run.id}/pr-intents`,
+        body: { blockUntilGreen: true },
+        code: "run_not_found",
+        ownerReads: false,
+      },
       "GET /api/v1/flakes/cases/:caseKey": {
         path: async () => `/api/v1/flakes/cases/${await overshootKey()}`,
         code: "flake_case_not_found",
@@ -297,7 +303,7 @@ describe("the test plane", () => {
       return routeTable(api.nest)
         .map((route) => route.signature)
         .filter((signature) =>
-          /^(GET|POST|PUT|PATCH|DELETE) \/api\/v1\/(test-runs|artifacts|flakes|runs\/:id\/test-runs|farm\/jobs\/:id\/artifacts)(\/|$)/.test(
+          /^(GET|POST|PUT|PATCH|DELETE) \/api\/v1\/(test-runs|artifacts|flakes|runs\/:id\/test-runs|runs\/:id\/pr-intents|farm\/jobs\/:id\/artifacts)(\/|$)/.test(
             signature,
           ),
         );
@@ -315,7 +321,11 @@ describe("the test plane", () => {
 
     it.each(Object.keys(CASES))("%s is a 404 to another workspace", async (signature) => {
       const entry = CASES[signature];
-      const method = signature.startsWith("POST") ? "post" : "get";
+      const method = signature.startsWith("POST")
+        ? "post"
+        : signature.startsWith("PUT")
+          ? "put"
+          : "get";
       const path = await entry.path();
 
       if (entry.ownerReads) await owner(path).expect(200);
@@ -326,7 +336,7 @@ describe("the test plane", () => {
       expect(answer.body).toMatchObject({ code: entry.code });
     });
 
-    it("writes nothing for a stranger's classify, re-run or waiver", async () => {
+    it("writes nothing for a stranger's classify, re-run, waiver or toggle", async () => {
       const count = async (table: string) => {
         const { rows } = await api.sql.query<{ n: string }>(
           `select count(*)::text as n from ${SCHEMA_NAME}.${table} where organization_id = $1`,
@@ -339,7 +349,8 @@ describe("the test plane", () => {
         classifications: await count("failure_classifications"),
         jobs: await count("build_jobs"),
         waivers: await count("pr_waivers"),
-      }).toEqual({ classifications: 1, jobs: 3, waivers: 0 });
+        intents: await count("run_pr_intents"),
+      }).toEqual({ classifications: 1, jobs: 3, waivers: 0, intents: 0 });
     });
 
     it("GET /api/v1/flakes/summary counts only the asker's workspace", async () => {

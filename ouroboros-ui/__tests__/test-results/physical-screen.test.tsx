@@ -38,6 +38,11 @@ import {
  */
 
 vi.mock("@/app/test-results/rerun-actions", () => ({ requestRerun: vi.fn() }));
+vi.mock("@/app/test-results/mark-route-actions", () => ({
+  classifyFailure: vi.fn(),
+  waiveFailure: vi.fn(),
+  setRunIntent: vi.fn(),
+}));
 
 /** The failing row's case. */
 const OVERSHOOT = "Motor overshoot on e-stop release";

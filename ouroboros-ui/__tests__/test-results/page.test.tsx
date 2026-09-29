@@ -1,15 +1,24 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { prPath } from "@/app/paths";
 import { navRegistry } from "@/app/shell/nav-registry";
+import { MARK_ROUTE_TITLE, VIEWER_NOTE, WAIVE_LABEL } from "@/app/test-results/mark-route";
 import { PHYSICAL_TITLE } from "@/app/test-results/physical";
 import { SUITES_TITLE } from "@/app/test-results/suites";
 import { ACTIONS_LABEL, VIEWER_REASON } from "@/app/test-results/view";
 
 import { membership, sessionUser } from "../helpers/login";
 import { SEEDED_RUN_ID } from "../helpers/runs";
-import { gate, mockupPage, page, timeline } from "../helpers/test-results";
+import {
+  COLLEAGUE_ID,
+  CORRECTION_NOTE,
+  classification,
+  gate,
+  mockupPage,
+  page,
+  timeline,
+} from "../helpers/test-results";
 
 /**
  * The test-results route (#335): the gate first, then one read — a run this workspace cannot see
@@ -19,15 +28,22 @@ import { gate, mockupPage, page, timeline } from "../helpers/test-results";
 
 const requireWorkspace = vi.fn();
 const readTests = vi.fn();
+const readPeople = vi.fn();
 
 /** What `notFound()` throws, so the case can see it was called. */
 class NotFound extends Error {}
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
+vi.mock("@/app/api/people", () => ({ readPeople: () => readPeople() }));
 vi.mock("@/app/test-results/data", () => ({
   readTests: (id: string, attempt: number | null) => readTests(id, attempt),
 }));
 vi.mock("@/app/test-results/rerun-actions", () => ({ requestRerun: vi.fn() }));
+vi.mock("@/app/test-results/mark-route-actions", () => ({
+  classifyFailure: vi.fn(),
+  waiveFailure: vi.fn(),
+  setRunIntent: vi.fn(),
+}));
 vi.mock("next/navigation", () => ({
   notFound: () => {
     throw new NotFound();
@@ -66,6 +82,7 @@ function holding(roles: ReturnType<typeof membership>["roles"]): void {
 
 beforeEach(() => {
   holding(["owner"]);
+  readPeople.mockReset().mockResolvedValue(null);
   readTests.mockReset().mockResolvedValue({
     state: "found",
     value: { timeline: timeline(), trackerUrl: null, commitSource: null, gate: gate(), pullRequest: null },
@@ -170,6 +187,132 @@ describe("the test-results route", () => {
     holding(["viewer"]);
     await open();
     expect(screen.getByText(VIEWER_REASON)).toBeInTheDocument();
+  });
+
+  describe("Mark & Route's gates (#340)", () => {
+    /** The rig's suite, whose one failure the seed decided. */
+    const RIG = "PHYSICAL · HIL rig";
+
+    /** Serve a page whose overshoot was classified by a colleague. */
+    function decided(over: Record<string, unknown> = {}): void {
+      readTests.mockResolvedValue({
+        state: "found",
+        value: {
+          timeline: timeline(),
+          trackerUrl: null,
+          commitSource: null,
+          gate: gate(),
+          page: page({ classifications: [classification({ createdBy: COLLEAGUE_ID })] }),
+          pullRequest: null,
+          nextAttempt: 4,
+          ...over,
+        },
+      });
+    }
+
+    /** The Mark & Route card. */
+    function card() {
+      return within(screen.getByRole("region", { name: MARK_ROUTE_TITLE }));
+    }
+
+    it.each([["owner"], ["admin"]] as const)("offers the waive action to an %s", async (role) => {
+      holding([role]);
+      decided();
+      await open({ suite: RIG });
+
+      expect(card().getByRole("button", { name: WAIVE_LABEL })).toBeInTheDocument();
+      expect(card().getByRole("button", { name: "Re-classify" })).toBeInTheDocument();
+    });
+
+    it("offers a member classifying and the toggles, and no waive action", async () => {
+      holding(["member"]);
+      decided();
+      await open({ suite: RIG });
+
+      expect(card().getByRole("button", { name: "Re-classify" })).toBeInTheDocument();
+      for (const toggle of card().getAllByRole("switch")) {
+        expect(toggle).not.toHaveAttribute("aria-disabled");
+      }
+      expect(card().queryByRole("button", { name: /waive/i })).toBeNull();
+    });
+
+    it("offers a viewer the decision to read, and nothing to press", async () => {
+      holding(["viewer"]);
+      decided();
+      await open({ suite: RIG });
+
+      expect(card().getByText(VIEWER_NOTE)).toBeInTheDocument();
+      expect(card().getByText(CORRECTION_NOTE)).toBeInTheDocument();
+      expect(card().queryByRole("button", { name: "Re-classify" })).toBeNull();
+      expect(card().queryByRole("button", { name: /waive/i })).toBeNull();
+      for (const toggle of card().getAllByRole("switch")) {
+        expect(toggle).toHaveAttribute("aria-disabled", "true");
+      }
+    });
+
+    it("names a decision's author from the workspace's members, and the reader as you", async () => {
+      readPeople.mockResolvedValue({ [COLLEAGUE_ID]: "Mel Member" });
+      decided();
+      const theirs = await open({ suite: RIG });
+
+      expect(card().getByText(/by Mel Member/)).toBeInTheDocument();
+      theirs.unmount();
+
+      decided({
+        page: page({ classifications: [classification({ createdBy: sessionUser().id })] }),
+      });
+      await open({ suite: RIG });
+
+      expect(card().getByText(/by you/)).toBeInTheDocument();
+    });
+
+    it("says a member decided, and claims no name, when the members could not be read", async () => {
+      readPeople.mockResolvedValue(null);
+      decided();
+      await open({ suite: RIG });
+
+      expect(card().getByText(/by a member of this workspace/)).toBeInTheDocument();
+    });
+
+    it("names the attempt a correction round would open only when the read found it", async () => {
+      readTests.mockResolvedValue({
+        state: "found",
+        value: {
+          timeline: timeline(),
+          trackerUrl: null,
+          commitSource: null,
+          gate: gate(),
+          page: page(),
+          pullRequest: null,
+          nextAttempt: 4,
+        },
+      });
+      const known = await open({ suite: RIG });
+
+      // No hint has been read here, so nothing is pre-selected: the reader chooses.
+      fireEvent.click(card().getByRole("radio", { name: /^Product bug$/ }));
+      expect(
+        card().getByRole("button", { name: "Queue correction round → attempt 4" }),
+      ).toBeInTheDocument();
+      known.unmount();
+
+      readTests.mockResolvedValue({
+        state: "found",
+        value: {
+          timeline: timeline(),
+          trackerUrl: null,
+          commitSource: null,
+          gate: gate(),
+          page: page(),
+          pullRequest: null,
+          nextAttempt: null,
+        },
+      });
+      await open({ suite: RIG });
+
+      fireEvent.click(card().getByRole("radio", { name: /^Product bug$/ }));
+      expect(card().getByRole("button", { name: "Queue correction round" })).toBeInTheDocument();
+    });
   });
 
   it("draws the suites the read found, with the one ?suite= names selected (#337)", async () => {

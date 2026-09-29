@@ -23,7 +23,7 @@ import type {
   RerunReadiness,
 } from "../farm/dispatch/jobs.resources";
 import type { TriageResponse } from "./triage.contract";
-import type { ClassificationRow, WaiverRow } from "./triage.repository";
+import type { ClassificationRow, IntentsRow, WaiverRow } from "./triage.repository";
 import type { Hint, RuleVerdict } from "./triage.rules";
 
 /** One failing case's hint. */
@@ -159,6 +159,20 @@ export interface WaiverResource {
 }
 
 /**
+ * `PUT /api/v1/runs/{id}/pr-intents` — the run's two PR toggles as stored (#340). **Intents**
+ * (decision T8): what holds a PR is its `test_suite` gate, and whether that gate is armed is the
+ * timeline's `next.activation`.
+ */
+export interface RunIntentsResource {
+  readonly runId: string;
+  readonly blockUntilGreen: boolean;
+  readonly autoRerunPhysical: boolean;
+  /** Who last set either toggle; null once that person has been deleted. */
+  readonly updatedBy: string | null;
+  readonly updatedAt: string;
+}
+
+/**
  * A classification row as the API describes it.
  *
  * @param row - The row.
@@ -213,5 +227,21 @@ export function waiverResource(row: WaiverRow, testRunId: string): WaiverResourc
     caseKeys: row.case_keys,
     annotationState: row.annotation_state,
     createdAt: row.created_at.toISOString(),
+  };
+}
+
+/**
+ * The run's stored toggles as the API describes them.
+ *
+ * @param row - The row.
+ * @returns The resource.
+ */
+export function runIntentsResource(row: IntentsRow): RunIntentsResource {
+  return {
+    runId: row.run_id,
+    blockUntilGreen: row.block_until_green,
+    autoRerunPhysical: row.auto_rerun_physical,
+    updatedBy: row.updated_by,
+    updatedAt: row.updated_at.toISOString(),
   };
 }

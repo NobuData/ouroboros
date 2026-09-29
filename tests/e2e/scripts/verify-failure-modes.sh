@@ -71,10 +71,11 @@
 #   db        test-results.spec.ts the test-results page's states are read out of the
 #                                 test-results read model and the seed: with the database
 #                                 stopped nobody can sign in to read them (#342)
-#   farm-     test-results.spec.ts PARKED — the live chain's upload path, which waits on the
-#   gateway   (the live chain)    Mark & Route card (#340), workflow build-stage integration
-#                                 (#265) and agent source checkout (#991); registered so that
-#                                 the day it runs, this script starts checking it (#342)
+#   farm-     test-results.spec.ts PARKED — the live chain's upload path, which waits on
+#   gateway   (the live chain)    workflow build-stage integration (#265) and agent source
+#                                 checkout (#991) — the Mark & Route card it also waited on is
+#                                 built (#340); registered so that the day it runs, this script
+#                                 starts checking it (#342)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #

@@ -100,6 +100,15 @@ export interface WaiverRow {
   readonly created_at: Date;
 }
 
+/** The run's PR toggles as stored — `run_pr_intents`. */
+export interface IntentsRow {
+  readonly run_id: string;
+  readonly block_until_green: boolean;
+  readonly auto_rerun_physical: boolean;
+  readonly updated_by: string | null;
+  readonly updated_at: Date;
+}
+
 /** The statuses a case can be classified in — V055's `failure_classifications_case_failing`. */
 export const FAILING_STATUSES: readonly TestCaseStatus[] = ["failed", "error", "flaky"];
 
@@ -127,6 +136,24 @@ export class TriageRepository {
   }
 
   // --- attempts and cases -----------------------------------------------------------------
+
+  /**
+   * Whether a run is this workspace's.
+   *
+   * @param organizationId - The workspace.
+   * @param runId - `runs.id`.
+   * @returns `false` when absent or another workspace's.
+   */
+  async runExists(organizationId: string, runId: string): Promise<boolean> {
+    const row = await this.db
+      .selectFrom("runs")
+      .select("id")
+      .where("id", "=", runId)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+
+    return row !== undefined;
+  }
 
   /**
    * An attempt of this workspace.
@@ -490,14 +517,15 @@ export class TriageRepository {
    * @param runId - The run.
    * @param toggles - The toggles the request set; an absent one keeps its stored value.
    * @param updatedBy - Who set them.
+   * @returns Both toggles as stored, the absent one included.
    */
-  async upsertIntents(
+  upsertIntents(
     writer: Writer,
     organizationId: string,
     runId: string,
     toggles: { blockUntilGreen?: boolean; autoRerunPhysical?: boolean },
     updatedBy: string,
-  ): Promise<void> {
+  ): Promise<IntentsRow> {
     const set = {
       ...(toggles.blockUntilGreen === undefined
         ? {}
@@ -508,11 +536,12 @@ export class TriageRepository {
       updated_by: updatedBy,
     };
 
-    await writer
+    return writer
       .insertInto("run_pr_intents")
       .values({ run_id: runId, organization_id: organizationId, ...set })
       .onConflict((conflict) => conflict.column("run_id").doUpdateSet(set))
-      .execute();
+      .returning(["run_id", "block_until_green", "auto_rerun_physical", "updated_by", "updated_at"])
+      .executeTakeFirstOrThrow();
   }
 
   /**

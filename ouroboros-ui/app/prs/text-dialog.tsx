@@ -10,6 +10,26 @@ export type TextDialogOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly reason: string };
 
+/** The classes the dialog's parts are drawn with — a page's own, from its own sheet. */
+export interface TextDialogClasses {
+  /** The form. */
+  readonly form: string;
+  /** What is said above the field. */
+  readonly lead: string;
+  /** A refusal. */
+  readonly error: string;
+  /** The buttons' row. */
+  readonly actions: string;
+}
+
+/** The PR verification page's classes (`prs.css`) — the default. */
+const PR_CLASSES: TextDialogClasses = {
+  form: "prv-dialog",
+  lead: "prv-dialog__lead",
+  error: "prv-dialog__error",
+  actions: "prv-dialog__actions",
+};
+
 /** What the dialog is told. */
 export interface TextDialogProps {
   /** Whether it is open. */
@@ -36,6 +56,12 @@ export interface TextDialogProps {
   readonly cancel: string;
   /** The button's treatment. Defaults to `primary`. */
   readonly tone?: ButtonTone;
+  /**
+   * The classes its parts are drawn with, for a page other than the PR verification page
+   * ([#340](https://github.com/NobuData/ouroboros/issues/340)) — a page loads its own sheet, not
+   * this one's. Defaults to the PR page's.
+   */
+  readonly classes?: TextDialogClasses;
   /**
    * Send the text, trimmed. A refusal comes back here as a value and the dialog stays open to
    * say so.
@@ -70,6 +96,7 @@ export function TextDialog({
   sending,
   cancel,
   tone = "primary",
+  classes = PR_CLASSES,
   onConfirm,
 }: TextDialogProps) {
   const fieldId = useId();
@@ -110,10 +137,10 @@ export function TextDialog({
 
   return (
     <ShellOverlay label={title} onClose={close} open={open} role="dialog">
-      <form className="prv-dialog" noValidate onSubmit={submit}>
+      <form className={classes.form} noValidate onSubmit={submit}>
         <h2 className="shell-overlay__title">{title}</h2>
 
-        {lead !== undefined && <div className="prv-dialog__lead">{lead}</div>}
+        {lead !== undefined && <div className={classes.lead}>{lead}</div>}
 
         <TextAreaField
           hint={hint}
@@ -127,12 +154,12 @@ export function TextDialog({
         />
 
         {refusal !== null && (
-          <p className="prv-dialog__error" role="alert">
+          <p className={classes.error} role="alert">
             {refusal}
           </p>
         )}
 
-        <div className="prv-dialog__actions">
+        <div className={classes.actions}>
           <Button reason={reason} tone={tone} type="submit">
             {busy ? sending : confirm}
           </Button>

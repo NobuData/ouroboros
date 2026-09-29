@@ -8,7 +8,7 @@ import type { PollAnswer } from "@/app/poll";
 import { BUILD_FARM_ORIGIN, DASHBOARD_ORIGIN, type RunOrigin } from "@/app/runs/origin";
 import { navRegistry } from "@/app/shell/nav-registry";
 import type { NavEntry } from "@/app/shell/nav";
-import { MARK_ROUTE_TITLE, NOTHING_STAGED, STAGED_LABEL } from "@/app/test-results/mark-route-slot";
+import { MARK_ROUTE_TITLE, STAGED_LABEL } from "@/app/test-results/mark-route";
 import type { TestsPollOptions } from "@/app/test-results/poll";
 import type { RerunOutcome } from "@/app/test-results/rerun";
 import { NO_RESULTS_NOTE } from "@/app/test-results/states";
@@ -45,6 +45,11 @@ import {
 
 // The Server Action is never reached here: the cases that press a re-run pass their own sender.
 vi.mock("@/app/test-results/rerun-actions", () => ({ requestRerun: vi.fn() }));
+vi.mock("@/app/test-results/mark-route-actions", () => ({
+  classifyFailure: vi.fn(),
+  waiveFailure: vi.fn(),
+  setRunIntent: vi.fn(),
+}));
 
 /** A poll that never answers — the page shows the server's first read. */
 function quiet<T>(): TestsPollOptions<T> {
@@ -456,7 +461,7 @@ describe("Send failures back to loop", () => {
     draw({ send });
 
     const card = screen.getByRole("region", { name: MARK_ROUTE_TITLE });
-    expect(card).toHaveTextContent(NOTHING_STAGED);
+    expect(within(card).queryByRole("list", { name: STAGED_LABEL })).toBeNull();
 
     fireEvent.click(action(/^Send failures back/));
 

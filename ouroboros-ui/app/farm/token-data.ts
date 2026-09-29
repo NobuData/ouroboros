@@ -21,11 +21,9 @@ import "server-only";
  * that answers one un-masked.
  */
 
-import { currentAccess } from "@/app/api/access";
-import { AuthError } from "@/app/api/auth-client";
 import { isApiError } from "@/app/api/errors";
 import { farm } from "@/app/api/farm";
-import { members } from "@/app/api/members";
+import { readPeople } from "@/app/api/people";
 
 import {
   FORBIDDEN_CODE,
@@ -34,12 +32,6 @@ import {
   type TokenListing,
   poolNames,
 } from "./enroll";
-
-/**
- * How many members are read for their names. The auth service answers the whole membership
- * and `members.list` windows it, so this is a ceiling on the lookup rather than a page size.
- */
-const MEMBER_WINDOW = 1000;
 
 /**
  * Pool names by id, or `null` when the pools could not be read.
@@ -52,37 +44,6 @@ async function readPoolNames(): Promise<Record<string, string> | null> {
     return poolNames(await farm.pools());
   } catch (error) {
     if (!isApiError(error)) throw error;
-
-    return null;
-  }
-}
-
-/**
- * Display names by user id, or `null` when the members could not be read.
- *
- * A member with no display name is listed under their address: a row that says *who* is the
- * point, and an address is who.
- *
- * @returns The lookup.
- */
-async function readPeople(): Promise<Record<string, string> | null> {
-  const { membership } = await currentAccess();
-  if (membership === undefined) return null;
-
-  try {
-    const page = await members.list(membership.id, { limit: MEMBER_WINDOW });
-
-    return Object.fromEntries(
-      page.items.flatMap((member) => {
-        const name = member.displayName ?? member.email;
-
-        return name === null ? [] : [[member.userId, name]];
-      }),
-    );
-  } catch (error) {
-    // The members come from the auth family, which refuses with its own error. A name is
-    // decoration — see the module note — so a refusal is `null`; the redirect signal travels.
-    if (!(error instanceof AuthError)) throw error;
 
     return null;
   }

@@ -10,6 +10,7 @@
  * GET  /api/v1/test-runs/:id/rerun                     whether a re-run could be placed now
  * POST /api/v1/test-runs/:id/rerun                     Re-run failed (N) / Re-run full suite
  * POST /api/v1/test-runs/:id/waivers                   the waiver half of Waive & annotate PR
+ * PUT  /api/v1/runs/:id/pr-intents                     the card's two PR toggles, on their own (#340)
  * ```
  *
  * ---------------------------------------------------------------------------
@@ -36,8 +37,9 @@
  * actually dispatched, and V055 lets it be written once.
  *
  * **Every classification and every dispatch is audited with the person as the actor** —
- * `triage.classified`, `triage.rerun_requested`, `triage.waived` and `runner.flagged` here; the
- * control's own rows by V048's trigger; the build's `runner.job_submitted` by AH.4.
+ * `triage.classified`, `triage.rerun_requested`, `triage.waived`, `triage.intents_set` and
+ * `runner.flagged` here; the control's own rows by V048's trigger; the build's
+ * `runner.job_submitted` by AH.4.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -46,6 +48,7 @@ import { AuditService } from "../audit/audit.service";
 import {
   RUNNER_FLAGGED_EVENT,
   TRIAGE_CLASSIFIED_EVENT,
+  TRIAGE_INTENTS_SET_EVENT,
   TRIAGE_RERUN_REQUESTED_EVENT,
   TRIAGE_WAIVED_EVENT,
 } from "../audit/audit.events";
@@ -53,11 +56,13 @@ import { ControlsService, type Requester } from "../controls/controls.service";
 import type { ClassificationReceipt, FailureClass, TestSelectionScope } from "../db/schema";
 import { DomainError } from "../errors/error.envelope";
 import { FarmJobsService } from "../farm/dispatch/jobs.service";
+import { runNotFound } from "../runs/runs.errors";
 import { heuristicTriageResponse } from "./triage.contract";
-import type { ClassifyCaseDto, WaiveDto } from "./triage.dto";
+import type { ClassifyCaseDto, RunIntentsDto, WaiveDto } from "./triage.dto";
 import {
   classificationNoteRequired,
   classificationToggleInvalid,
+  prIntentsEmpty,
   rerunNothingSelected,
   rerunSourceMissing,
   testCaseNotFailing,
@@ -74,6 +79,7 @@ import {
 } from "./triage.repository";
 import {
   classificationResource,
+  runIntentsResource,
   waiverResource,
   type ClassificationsListResource,
   type ClassifyResultResource,
@@ -81,6 +87,7 @@ import {
   type RerunResource,
   type Route,
   type RoutingResource,
+  type RunIntentsResource,
   type TestRunHintsResource,
   type WaiverResource,
 } from "./triage.resources";
@@ -403,6 +410,53 @@ export class TriageService {
     });
 
     return waiverResource(waiver, testRunId);
+  }
+
+  // --- PUT pr-intents ----------------------------------------------------------------------
+
+  /**
+   * Set the run's PR toggles on their own — *Block PR until green* and *Auto re-run physical
+   * suite after fix* — so a toggle flipped on the card is stored when it is flipped, not when a
+   * failure is next classified ([#340](https://github.com/NobuData/ouroboros/issues/340)).
+   *
+   * @param organizationId - The workspace.
+   * @param runId - The run.
+   * @param requester - Who set them.
+   * @param request - The toggles to set; an absent one keeps its stored value.
+   * @returns Both toggles as stored.
+   * @throws {InvalidRequestError} `422 pr_intents_empty` — the request names neither toggle.
+   * @throws {NotFoundError} `404 run_not_found` — absent, or another workspace's.
+   */
+  async setIntents(
+    organizationId: string,
+    runId: string,
+    requester: Requester,
+    request: RunIntentsDto,
+  ): Promise<RunIntentsResource> {
+    const { blockUntilGreen, autoRerunPhysical } = request;
+
+    if (blockUntilGreen === undefined && autoRerunPhysical === undefined) throw prIntentsEmpty();
+    if (!(await this.triage.runExists(organizationId, runId))) throw runNotFound(runId);
+
+    const stored = await this.triage.upsertIntents(
+      this.triage.db,
+      organizationId,
+      runId,
+      { blockUntilGreen, autoRerunPhysical },
+      requester.id,
+    );
+
+    await this.audit.record({
+      organizationId,
+      actorId: requester.id,
+      action: TRIAGE_INTENTS_SET_EVENT,
+      subjectType: "run",
+      subjectId: runId,
+      at: stored.updated_at,
+      detail: { block_until_green: blockUntilGreen, auto_rerun_physical: autoRerunPhysical },
+    });
+
+    return runIntentsResource(stored);
   }
 
   // --- routing -----------------------------------------------------------------------------

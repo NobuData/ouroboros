@@ -271,6 +271,14 @@ export const TRIAGE_RERUN_REQUESTED_EVENT = "triage.rerun_requested";
 export const TRIAGE_WAIVED_EVENT = "triage.waived";
 
 /**
+ * A person set the run's PR toggles on the Mark & Route card without classifying anything
+ * ([#340](https://github.com/NobuData/ouroboros/issues/340), decision **T8**). Subject `run`; the
+ * detail carries only the toggles the request named, as they were set. Toggles sent with a
+ * classification are part of that decision and are not audited a second time under this name.
+ */
+export const TRIAGE_INTENTS_SET_EVENT = "triage.intents_set";
+
+/**
  * A person marked an acceptance criterion `verified` on mockup 12's matrix (AX.3,
  * [#359](https://github.com/NobuData/ouroboros/issues/359), decision **V6**). Subject
  * `pr_criterion`; the detail carries the PR, the status it left and how many evidence rows back it.
@@ -359,6 +367,7 @@ export const AUDIT_ACTIONS = [
   TRIAGE_CLASSIFIED_EVENT,
   TRIAGE_RERUN_REQUESTED_EVENT,
   TRIAGE_WAIVED_EVENT,
+  TRIAGE_INTENTS_SET_EVENT,
   PR_CRITERION_VERIFIED_EVENT,
   PR_CRITERION_UNVERIFIED_EVENT,
   PR_CRITERION_WAIVED_EVENT,

@@ -19,6 +19,11 @@ import { BUILD_1_ID, BUILD_2_ID, attempt, gate, page, seededSuites, timeline } f
  */
 
 vi.mock("@/app/test-results/rerun-actions", () => ({ requestRerun: vi.fn() }));
+vi.mock("@/app/test-results/mark-route-actions", () => ({
+  classifyFailure: vi.fn(),
+  waiveFailure: vi.fn(),
+  setRunIntent: vi.fn(),
+}));
 
 /** A poll that never answers — the page shows the server's first read. */
 function quiet<T>(): TestsPollOptions<T> {

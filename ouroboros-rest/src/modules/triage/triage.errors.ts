@@ -33,6 +33,9 @@ export const TRIAGE_ERRORS = {
 
   /** A waiver naming a case that is not in this attempt. */
   waiverCasesInvalid: "waiver_cases_invalid",
+
+  /** A request to set the run's PR toggles that names neither of them (#340). */
+  prIntentsEmpty: "pr_intents_empty",
 } as const;
 
 /**
@@ -132,5 +135,16 @@ export function waiverCasesInvalid(caseIds: readonly string[]): InvalidRequestEr
     TRIAGE_ERRORS.waiverCasesInvalid,
     "A waiver names only cases of this test run.",
     { caseIds: [...caseIds] },
+  );
+}
+
+/**
+ * @returns `422 pr_intents_empty`.
+ */
+export function prIntentsEmpty(): InvalidRequestError {
+  return new InvalidRequestError(
+    TRIAGE_ERRORS.prIntentsEmpty,
+    "Name the toggle to set — blockUntilGreen, autoRerunPhysical, or both.",
+    { fields: ["blockUntilGreen", "autoRerunPhysical"] },
   );
 }

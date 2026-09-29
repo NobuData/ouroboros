@@ -38,6 +38,11 @@ function readers(over: Partial<TestsReaders> = {}): TestsReaders {
     context: vi.fn().mockResolvedValue({
       repository: { owner: "acme-robotics", name: "helios-firmware" },
       stageKeys: ["plan", "implement", "build", "test", "pr"],
+      stages: [
+        { status: "succeeded", attempt: 1, startedAt: "2026-09-19T13:40:00.000Z" },
+        { status: "active", attempt: 3, startedAt: "2026-09-19T14:30:00.000Z" },
+        { status: "pending", attempt: 1, startedAt: null },
+      ],
     }),
     gate: vi.fn((id: string) => Promise.resolve(gate({ testRunId: id }))),
     page: vi.fn().mockResolvedValue(page()),
@@ -60,6 +65,8 @@ describe("readTests", () => {
         page: page(),
         pullRequest: PULL_REQUEST,
         hasTestStage: true,
+        // One more than the active stage's attempt — what a correction round would open (#340).
+        nextAttempt: 4,
         readAt: READ_AT,
       },
     });
@@ -120,6 +127,7 @@ describe("readTests", () => {
         page: null,
         pullRequest: null,
         hasTestStage: null,
+        nextAttempt: null,
         readAt: READ_AT,
       },
     });

@@ -449,9 +449,15 @@ ouroboros-ui/
 │   │   ├── artifacts.ts     #   the retention tag, the notable size, the coverage delta, tombstones, the bounded read · #341
 │   │   ├── artifacts-card.tsx # the art rows, their open affordances, and which viewer is open
 │   │   ├── artifact-viewer.tsx # a text artifact read in place, as text
-│   │   ├── mark-route-slot.tsx # where Send failures back lands until #340 draws the card
+│   │   ├── mark-route.ts    #   the form and the note's rule, the toggles' activation point, the staged worklist · #340
+│   │   ├── mark-route-pick.ts #  the four classes, and what may pre-select one: the affix decided by actor
+│   │   ├── mark-route-decision.ts # the routed receipt, the recorded decision (a person's only), the waiver
+│   │   ├── mark-route-card.tsx # the radios, the note, the toggles, the recorded decision and its receipt
+│   │   ├── mark-route-panel.tsx # what was typed per failure, what was sent, and what came back
+│   │   ├── mark-route-actions.ts · mark-route-outcomes.ts # classifyFailure() / waiveFailure() / setRunIntent()
+│   │   ├── waive-dialog.tsx #   Waive & annotate PR: the required reason, and the half that is deferred
 │   │   ├── tests-loading.tsx #  the first read in flight
-│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites, physical, failure detail, artifacts — four polls and the farm's
+│   │   └── tests-screen.tsx #   the contextual frame: breadcrumb, banner, head, strip, suites, physical, failure detail, Mark & Route, artifacts — four polls and the farm's
 │   ├── prs/                 # mockup 12's PR verification: route, head, three actions, revision strip · #363 · #364
 │   │   ├── view.ts          #   the head, the pill's hue, the red gates, the three actions by role and state
 │   │   ├── strip.ts         #   the revision cycle's steps, each a join; the ?rev= scope and its gates
@@ -3843,9 +3849,63 @@ rest to the **Download** link beside it. One viewer is open at a time; it closes
 expires or the attempt changes, and closing it aborts a read in flight. A `410` reads as *expired*;
 any other failure says why and offers a retry.
 
-Mark & Route itself is #340's; until then the page holds its slot, which names the staged cases.
 Insights (mockup 15) is `soon`, so the flaky card's `quarantine watching (N)` is words with the
 sidebar's note, not a link to a page that does not exist.
+
+### Mark & Route card
+
+`MarkRouteCard` ([#340](https://github.com/NobuData/ouroboros/issues/340)) is the page's decision
+surface, between the failure detail and the artifacts: the classify radios, the correction note,
+the two PR toggles, and the actions that dispatch. It is the only card on the page that changes
+what an agent does next, so every claim on it is one the page can back.
+
+**It decides the failure the failure-detail card shows.** The pager's position is the screen's and
+is handed to both cards, so the failure being read is the failure being classified; its name is the
+tag in the card's head. The service classifies per case and each classification dispatches its own
+correction round, so the card decides **one failure at a time**. *Send failures back to loop* stages
+the build's failed set on the card as a worklist — each failure a button, marked once it is decided
+— and choosing one puts it on both cards, clearing a selection that would leave it out. What is
+typed is kept per failure while another is on the card.
+
+| Element | What it states, and from what |
+|---------|-------------------------------|
+| **Radio affix** | `heuristic · <the rule>`, from the hint's `ruleId` in the failure card's words. `AI pick · N%` renders **only** when the answer's `actor` is `model` (#343): the view is a union whose only variant able to carry a percentage is `model`, so a heuristic answer carrying a confidence is drawn without one. |
+| **Pre-selection** | The hint's class (`/api/test-runs/:id/hints`, the failure card's read), else a classification a rule or a model stored. **Only a person's classification is a decision**; a stored `heuristic` or `model` one pre-selects and is never drawn as decided. |
+| **Note** | Required for *Product bug* and *Test needs update* — the action is inert, with the reason, until there is one. Its hint is *Injected into attempt N's planning context*; for the other two classes it is optional and says what it is kept with. |
+| **Attempt N** | One more than the attempt of the stage the service would retry, read from the run console's stages when the page was served. Unread, the action and the hint name no attempt. The receipt's number is the service's. |
+| **Block PR until green** | A tooltip (and the switch's description) from the timeline's `activation`: armed, *Enforced now: PR #514's test-suite gate is required (…)*; otherwise *Stored as an intent. Enforcement activates with the PR plane…*, naming the point at which it starts to hold. |
+| **Auto re-run physical suite** | *Stored as an intent. Nothing re-runs the physical suite on its own yet.* |
+
+**Both toggles are stored when pressed**, through `PUT /api/v1/runs/:id/pr-intents`, one field at a
+time. The value the service answered is drawn until the timeline's poll agrees with it, and they
+are read back from the timeline's `next.intents` — which is what a reload reads.
+
+**A decision is answered with a receipt, not a toast.** *Queue correction round → attempt N*
+sends the class and the note for the bound case, and the card then shows the recorded decision —
+the class, who made it (*you*, or a name from the workspace's members), the note — and the
+**routed receipt**: the control's id, the target attempt as a link into the run console, and when
+it was dispatched. What routing could not do is listed in the service's sentences. A flake's
+receipt is its re-run's build; an infra decision names the runner it flagged.
+
+**After routing it is not a blank form.** A decided failure shows its decision on arrival, from
+the attempt's page, with **Re-classify**; the form then opens over the decision it would replace,
+which the service keeps as superseded, and the card shows the new one with a line naming the old.
+
+**Waive & annotate PR** opens a dialog that names the failure, requires a reason, and says plainly
+that the waiver is recorded now and **not posted on the pull request** — PR annotation arrives with
+#344. It is `prs/text-dialog.tsx`'s dialog, drawn with this page's classes. A recorded waiver is
+shown with its author and its reason.
+
+| Reader | Offered |
+|--------|---------|
+| owner · admin | classify, the toggles, waive |
+| member | classify, the toggles — **no waive action is drawn** |
+| viewer | the recorded decision and the toggles, read-only and said to be — no form |
+
+The service refuses what the page does not offer: the Server Actions
+([`mark-route-actions.ts`](app/test-results/mark-route-actions.ts)) rebuild a decision from its
+class and its note, a toggle from one of two fields and a boolean, check every id before it is put
+in a path, and hand a `403` back as a sentence.
 
 ### Test-results states
 
@@ -3860,13 +3920,15 @@ Mockup 11 draws one state: a mid-flight build whose results have parsed. AU.8
 | **No results** | A run with no attempt otherwise says *No test results yet* and links to its run console, where the build is. No strip, cards or actions are drawn. |
 | **Parse warning** | The attempt's typed warnings (#329) are a banner naming each file, where in it, what failed to parse, and **what is therefore missing** — per code, from the parser's own rule. It has no retry: the same bytes read the same. |
 | **Gone quiet** (ingest lag) | A **running** attempt whose last report (`lastReceivedAt`) is **two minutes** old gets DASH-I.7's banner: *No results received since 14:02 — Build 3's uploads have gone quiet*, and why that may be. *Check again* asks the service now. A failed refresh's banner takes precedence, and a finished build never gets it. |
-| **Member / viewer** | A member may re-run; a viewer is told why they cannot. No waive is offered to anyone — it and classify arrive with Mark & Route (#340). |
+| **Member / viewer** | A member may re-run and classify, and is offered no waive; a viewer is told why they cannot start a build, and reads Mark & Route's decisions without a form (#340). |
 | **Loading** | [`loading.tsx`](<app/(app)/runs/[id]/tests/loading.tsx>) — skeletons for the head, the timeline, the strip, the suites and the cards, still and hidden from the accessibility tree. |
 | **Error** | A run that could not be read is the retry banner with nothing invented beneath it. A run that does not exist (or is another workspace's) is [`not-found.tsx`](<app/(app)/runs/[id]/tests/not-found.tsx>), the page's own. An `?attempt=` naming a build the run never made says so and names the build shown instead. |
 
-The e2e suite's leg 19 (`tests/e2e/specs/test-results.spec.ts`) draws these against the seed. Its
-live chain — upload → parse → classify → correction → re-run → green — is **parked** on #340, #265
-and #991, so #342 stays open as the milestone's gate.
+The e2e suite's leg 19 (`tests/e2e/specs/test-results.spec.ts`) draws these against the seed, and
+Mark & Route's flow with them: the honest affix, a decision answered with its receipt and still
+there after a reload, the toggles stored when pressed, and a waiver asked its reason first. Its
+live chain — upload → parse → classify → correction → re-run → green — is **parked** on #265 and
+#991, so #342 stays open as the milestone's gate.
 
 ## PR verification
 

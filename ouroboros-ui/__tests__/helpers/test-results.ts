@@ -1,6 +1,9 @@
 import type {
   CaseHint,
+  Classification,
+  ClassifyResult,
   RerunAvailability,
+  RunPrIntents,
   TestArtifact,
   TestAttempt,
   TestCaseFailureDetail,
@@ -11,6 +14,7 @@ import type {
   TestRunTimeline,
   TestStrip,
   TestSuiteResult,
+  Waiver,
 } from "@/app/api/test-results";
 
 import type { Measurement, PhysicalCase } from "@/app/test-results/physical";
@@ -678,4 +682,122 @@ export function modelHint(over: Partial<NonNullable<CaseHint["triage"]>> = {}): 
  */
 export function hints(cases: readonly CaseHint[] = [caseHint()]): TestRunHints {
   return { testRunId: BUILD_3_ID, cases: [...cases] };
+}
+
+/** Mockup 11's correction note. */
+export const CORRECTION_NOTE =
+  "Keep k_msgq, but move PID velocity sampling off the telemetry path — see trace.";
+
+/** The seeded owner — who decides in these fixtures. */
+export const DECIDER_ID = "5eed0001-0000-4000-8000-000000000001";
+
+/** A colleague of theirs. */
+export const COLLEAGUE_ID = "5eed0001-0000-4000-8000-000000000002";
+
+/** The workspace's names, by id. */
+export const PEOPLE: Readonly<Record<string, string>> = {
+  [DECIDER_ID]: "Ken Suenobu",
+  [COLLEAGUE_ID]: "Mel Member",
+};
+
+/** The classification's id. */
+export const CLASSIFICATION_ID = "5eed0037-0000-4000-8000-000000000001";
+
+/** The correction round's control. */
+export const CONTROL_ID = "c0000000-0000-4000-8000-000000000088";
+
+/** The re-run's build. */
+export const RERUN_JOB_ID = "7f000002-0000-4000-8000-000000000480";
+
+/**
+ * A recorded decision (#340, as AT.4 answers it).
+ *
+ * @param over What to change.
+ * @returns The overshoot case classified a product bug by the decider at 14:22 UTC, with the
+ *   correction round's receipt — control and attempt 4 — changed.
+ */
+export function classification(over: Partial<Classification> = {}): Classification {
+  return {
+    id: CLASSIFICATION_ID,
+    testCaseId: OVERSHOOT_CASE.caseId,
+    class: "product_bug",
+    subtype: null,
+    note: CORRECTION_NOTE,
+    actor: "human",
+    ruleId: null,
+    confidence: null,
+    routed: {
+      controlId: CONTROL_ID,
+      rerunJobId: null,
+      targetAttempt: 4,
+      route: "correction_round",
+    },
+    createdBy: DECIDER_ID,
+    createdAt: "2026-09-19T14:22:10.000Z",
+    supersededBy: null,
+    ...over,
+  };
+}
+
+/**
+ * What classifying answers (#340).
+ *
+ * @param over What to change in the decision.
+ * @param routing What to change in what routing did.
+ * @returns The correction round, queued: its control, attempt 4 and nothing skipped.
+ */
+export function classifyResult(
+  over: Partial<Classification> = {},
+  routing: Partial<ClassifyResult["routing"]> = {},
+): ClassifyResult {
+  return {
+    classification: classification(over),
+    routing: {
+      route: "correction_round",
+      control: null,
+      targetAttempt: 4,
+      historyMarked: null,
+      rerun: null,
+      runnerFlag: null,
+      skipped: [],
+      ...routing,
+    },
+  };
+}
+
+/**
+ * A recorded waiver (#340).
+ *
+ * @param over What to change.
+ * @returns The overshoot case waived by the decider at 14:25 UTC, its annotation pending.
+ */
+export function waiver(over: Partial<Waiver> = {}): Waiver {
+  return {
+    id: "5eed0039-0000-4000-8000-000000000001",
+    runId: SEEDED_RUN_ID,
+    testRunId: BUILD_3_ID,
+    author: DECIDER_ID,
+    reason: "Known rig drift on helios-rig-02; tracked in #512.",
+    caseKeys: ["b".repeat(64)],
+    annotationState: "pending_pr_plane",
+    createdAt: "2026-09-19T14:25:00.000Z",
+    ...over,
+  };
+}
+
+/**
+ * The run's PR toggles as stored (#340).
+ *
+ * @param over What to change.
+ * @returns Both as the seeded timeline has them: blocking on, auto re-run off.
+ */
+export function intents(over: Partial<RunPrIntents> = {}): RunPrIntents {
+  return {
+    runId: SEEDED_RUN_ID,
+    blockUntilGreen: true,
+    autoRerunPhysical: false,
+    updatedBy: DECIDER_ID,
+    updatedAt: "2026-09-19T14:20:00.000Z",
+    ...over,
+  };
 }

@@ -112,9 +112,14 @@ async function refusal(promise: Promise<unknown>): Promise<string> {
   return (error as DomainError).code;
 }
 
+/** The connection a write outside a transaction is handed — a stand-in the spec can recognise. */
+const CONNECTION = { connection: true };
+
 describe("the classification & routing service", () => {
   let repo: {
+    db: typeof CONNECTION;
     transaction: jest.Mock;
+    runExists: jest.Mock;
     attempt: jest.Mock;
     cases: jest.Mock;
     dossiers: jest.Mock;
@@ -136,7 +141,9 @@ describe("the classification & routing service", () => {
 
   beforeEach(() => {
     repo = {
+      db: CONNECTION,
       transaction: jest.fn(async (work: (trx: unknown) => Promise<unknown>) => work({})),
+      runExists: jest.fn().mockResolvedValue(true),
       attempt: jest.fn().mockResolvedValue(ATTEMPT),
       cases: jest.fn().mockResolvedValue([failing()]),
       dossiers: jest.fn(),
@@ -588,6 +595,89 @@ describe("the classification & routing service", () => {
 
       expect(await refusal(service.rerunAvailability(ORG, TEST_RUN))).toBe("test_run_not_found");
       expect(jobs.rerunReadiness).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("setting the PR toggles on their own (#340)", () => {
+    const STORED_AT = new Date("2026-09-25T10:00:03.000Z");
+
+    beforeEach(() => {
+      repo.upsertIntents.mockResolvedValue({
+        run_id: RUN,
+        block_until_green: true,
+        auto_rerun_physical: false,
+        updated_by: MEMBER.id,
+        updated_at: STORED_AT,
+      });
+    });
+
+    it("stores the toggle that was flipped, outside any classification, and answers with both", async () => {
+      const answer = await service.setIntents(ORG, RUN, MEMBER, { blockUntilGreen: true });
+
+      expect(repo.upsertIntents).toHaveBeenCalledWith(
+        CONNECTION,
+        ORG,
+        RUN,
+        { blockUntilGreen: true, autoRerunPhysical: undefined },
+        MEMBER.id,
+      );
+      expect(repo.insertClassification).not.toHaveBeenCalled();
+      expect(answer).toEqual({
+        runId: RUN,
+        blockUntilGreen: true,
+        autoRerunPhysical: false,
+        updatedBy: MEMBER.id,
+        updatedAt: STORED_AT.toISOString(),
+      });
+    });
+
+    it("stores both when both are sent, off as well as on", async () => {
+      await service.setIntents(ORG, RUN, MEMBER, {
+        blockUntilGreen: false,
+        autoRerunPhysical: false,
+      });
+
+      expect(repo.upsertIntents).toHaveBeenCalledWith(
+        CONNECTION,
+        ORG,
+        RUN,
+        { blockUntilGreen: false, autoRerunPhysical: false },
+        MEMBER.id,
+      );
+    });
+
+    it("audits who set what, naming only the toggles the request named", async () => {
+      await service.setIntents(ORG, RUN, MEMBER, { autoRerunPhysical: false });
+
+      expect(trail).toEqual([
+        {
+          organizationId: ORG,
+          actorId: MEMBER.id,
+          action: "triage.intents_set",
+          subjectType: "run",
+          subjectId: RUN,
+          at: STORED_AT,
+          detail: { block_until_green: undefined, auto_rerun_physical: false },
+        },
+      ]);
+    });
+
+    it("refuses a request that names neither toggle, before anything is read", async () => {
+      expect(await refusal(service.setIntents(ORG, RUN, MEMBER, {}))).toBe("pr_intents_empty");
+      expect(repo.runExists).not.toHaveBeenCalled();
+      expect(repo.upsertIntents).not.toHaveBeenCalled();
+      expect(trail).toEqual([]);
+    });
+
+    it("answers 404 for a run this workspace does not have, and writes nothing", async () => {
+      repo.runExists.mockResolvedValue(false);
+
+      expect(await refusal(service.setIntents(ORG, RUN, MEMBER, { blockUntilGreen: true }))).toBe(
+        "run_not_found",
+      );
+      expect(repo.runExists).toHaveBeenCalledWith(ORG, RUN);
+      expect(repo.upsertIntents).not.toHaveBeenCalled();
+      expect(trail).toEqual([]);
     });
   });
 

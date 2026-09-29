@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.20"
+  version: "0.37.21"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -17469,6 +17469,99 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/runs/{id}/pr-intents:
+    put:
+      tags: [triage]
+      summary: Set the run's PR toggles
+      description: |-
+        The Mark & Route card's two toggles — **Block PR until green** and **Auto re-run physical
+        suite after fix** — set on their own ([#340](https://github.com/NobuData/ouroboros/issues/340),
+        decision **T8**), so a toggle is stored when it is flipped rather than when a failure is
+        next classified. **Only what is sent changes**: an absent toggle keeps its stored value,
+        and a run nobody has set a toggle on has both off.
+
+        They are **intents**. What holds a pull request is its `test_suite` gate, which the gate
+        engine makes required from `blockUntilGreen` when it materializes the PR's gates; whether
+        that has happened is `next.activation` of `GET /api/v1/runs/{id}/test-runs`, which is
+        where the stored values are read back too.
+
+        `owner`, `admin` or `member` — the roles that may classify. Audited as
+        `triage.intents_set`, naming the toggles the request set.
+      operationId: setRunPrIntents
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RunPrIntentsRequest"
+            examples:
+              block:
+                summary: Block PR until green, switched on
+                value:
+                  blockUntilGreen: true
+              both:
+                summary: Both toggles at once
+                value:
+                  blockUntilGreen: true
+                  autoRerunPhysical: false
+      responses:
+        "200":
+          description: Both toggles as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RunPrIntents"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `viewer` may not set the toggles.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `run_not_found` — no run with that id, **or none this caller may know about**. Or
+            `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `pr_intents_empty` — the request names neither toggle. `validation_failed` — the id is
+            not a uuid, a toggle is not a boolean (`null` included), or a field this operation
+            does not declare.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and `details`
+            is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/pull-requests/{id}/criteria:
     get:
       tags: [pr-criteria]
@@ -22937,6 +23030,44 @@ components:
           const: pending_pr_plane
           description: The PR annotation is AV.2's (#344) and is not attempted.
         createdAt:
+          type: string
+          format: date-time
+
+    RunPrIntentsRequest:
+      type: object
+      title: RunPrIntentsRequest
+      description: |-
+        The toggles to set. At least one — a request naming neither is `pr_intents_empty`. An
+        absent toggle keeps its stored value.
+      additionalProperties: false
+      properties:
+        blockUntilGreen:
+          type: boolean
+          description: Block PR until green.
+        autoRerunPhysical:
+          type: boolean
+          description: Auto re-run physical suite after fix.
+
+    RunPrIntents:
+      type: object
+      title: RunPrIntents
+      description: |-
+        The run's two PR toggles as stored (decision **T8**) — intents, which the PR's
+        `test_suite` gate enforces once it is armed.
+      additionalProperties: false
+      required: [runId, blockUntilGreen, autoRerunPhysical, updatedBy, updatedAt]
+      properties:
+        runId:
+          type: string
+          format: uuid
+        blockUntilGreen:
+          type: boolean
+        autoRerunPhysical:
+          type: boolean
+        updatedBy:
+          type: [string, "null"]
+          description: Who last set either toggle. Null once that person has been deleted.
+        updatedAt:
           type: string
           format: date-time
 

@@ -17,7 +17,9 @@ import "server-only";
  *   ([#336](https://github.com/NobuData/ouroboros/issues/336)) are plain text rather than guessed
  *   links. Its stages say whether the run's workflow has a test stage at all
  *   ([#342](https://github.com/NobuData/ouroboros/issues/342)); unreadable, that is unknown, and
- *   the page never reports unknown as absent.
+ *   the page never reports unknown as absent. Their attempts say which attempt a correction round
+ *   would open ([#340](https://github.com/NobuData/ouroboros/issues/340)); unreadable, Mark &
+ *   Route's action names no attempt rather than guessing one.
  * - **The selected attempt's re-run gate**, so the buttons can be honest on first paint. Unreadable,
  *   they say they are checking, and the gate's poll answers within one interval.
  * - **The selected attempt's page** ([#337](https://github.com/NobuData/ouroboros/issues/337)),
@@ -42,6 +44,7 @@ import { type CommitSource, commitSource } from "@/app/runs/cards";
 import { TEST_STAGE_KEY } from "@/app/runs/stepper";
 import { trackerUrl } from "@/app/runs/view";
 
+import { type StageAttempt, nextAttemptOf } from "./mark-route";
 import { selectedAttempt } from "./view";
 
 /** What the page's first read found. */
@@ -59,6 +62,8 @@ export interface TestsFirstRead {
   readonly pullRequest: PullRequestRef | null;
   /** Whether the run's stages include the test stage, or `null` when that is not known. */
   readonly hasTestStage: boolean | null;
+  /** The attempt a correction round would open, or `null` when the stages do not say. */
+  readonly nextAttempt: number | null;
   /** When this read was made, in epoch milliseconds — the ingest-lag banner's first clock. */
   readonly readAt: number;
 }
@@ -69,6 +74,8 @@ export interface RunContext {
   readonly repository: Parameters<typeof trackerUrl>[0];
   /** The DSL node id of each of the run's stages. */
   readonly stageKeys: readonly string[];
+  /** Each stage's status, current attempt and when that attempt started. Empty when absent. */
+  readonly stages?: readonly StageAttempt[];
 }
 
 /** What the first read found. */
@@ -95,6 +102,12 @@ const READERS: TestsReaders = {
     return {
       repository: snapshot.head.repository,
       stageKeys: snapshot.timeline.stages.map((stage) => stage.stageKey),
+      stages: snapshot.timeline.stages.map((stage) => ({
+        status: stage.status,
+        attempt: stage.attempt,
+        startedAt:
+          stage.attempts.find((each) => each.attempt === stage.attempt)?.startedAt ?? null,
+      })),
     };
   },
   gate: (testRunId) => testResults.rerunAvailability(testRunId),
@@ -179,6 +192,7 @@ export async function readTests(
       page,
       pullRequest,
       hasTestStage: hasTestStage(context),
+      nextAttempt: nextAttemptOf(context?.stages ?? null),
       readAt: now(),
     },
   };

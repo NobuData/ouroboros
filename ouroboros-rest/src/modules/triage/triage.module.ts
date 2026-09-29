@@ -3,6 +3,7 @@
  *
  * ```
  * controller   /api/v1/test-runs/:id/{hints,classifications,cases/:caseId/classify,rerun,waivers}
+ *              /api/v1/runs/:id/pr-intents (#340)             → triage.intents.controller.ts
  * service      the hints, the decision, and the three routes → triage.service.ts
  * rules        the heuristic hints, pure                      → triage.rules.ts
  * contract     POST /v0/triage, committed for AV.1 (#343)      → triage.contract.ts
@@ -22,12 +23,13 @@ import { ControlsModule } from "../controls/controls.module";
 import { DbModule } from "../db/db.module";
 import { FarmDispatchModule } from "../farm/dispatch/dispatch.module";
 import { TriageController } from "./triage.controller";
+import { TriageIntentsController } from "./triage.intents.controller";
 import { TriageRepository } from "./triage.repository";
 import { TriageService } from "./triage.service";
 
 @Module({
   imports: [DbModule, AuditModule, ControlsModule, FarmDispatchModule],
-  controllers: [TriageController],
+  controllers: [TriageController, TriageIntentsController],
   providers: [TriageRepository, TriageService],
 })
 export class TriageModule {}

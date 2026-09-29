@@ -249,6 +249,59 @@ describe("the artifacts card (#341)", () => {
   });
 });
 
+describe("the Mark & Route card (#340)", () => {
+  it("scrolls nothing inside itself — a long id, note or rule wraps", () => {
+    const blocks = [...CODE.matchAll(/(\.tests-(?:route|waive)[^{]*)\{([^}]*)\}/g)];
+
+    expect(blocks.length).toBeGreaterThan(0);
+    for (const [, selector, body] of blocks) {
+      expect(body, `${selector!.trim()} must not scroll`).not.toMatch(/overflow(?:-x|-y)?:\s*(auto|scroll)/);
+    }
+
+    for (const name of ["value", "affix", "quote", "decision", "pick"]) {
+      const body = CODE.match(new RegExp(`\\.tests-route__${name}[^{]*\\{([^}]*)\\}`))?.[1] ?? "";
+
+      expect(body, `tests-route__${name} must wrap`).toMatch(/overflow-wrap: anywhere;/);
+    }
+  });
+
+  it("draws the chosen radio in the accent, which no status hue is", () => {
+    const on = CODE.match(/\.tests-route__radio--on\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(on).toMatch(/border-color: var\(--accent-line\);/);
+    expect(on).toMatch(/background: var\(--accent-tint\);/);
+    expect(on).not.toMatch(/var\(--(ok|warn|err)\)/);
+    expect(CODE).toMatch(/\.tests-route__input\s*\{[^}]*accent-color: var\(--accent\);/);
+  });
+
+  it("gives the region, a radio row, a staged failure and the receipt's link a visible focus ring", () => {
+    for (const selector of [
+      "\\.tests-route:focus-visible",
+      "\\.tests-route__radio:focus-within",
+      "\\.tests-route__pick:focus-visible",
+      "\\.tests-route__link:focus-visible",
+    ]) {
+      expect(CODE).toMatch(new RegExp(`${selector}\\s*\\{[^}]*outline: [^;]*var\\(--accent\\);`));
+    }
+  });
+
+  it("marks the staged failure on the card with the accent inset the suites card uses", () => {
+    const bound = CODE.match(/\.tests-route__pick\[aria-current="true"\]\s*\{([^}]*)\}/)?.[1] ?? "";
+
+    expect(bound).toMatch(/box-shadow: inset [^;]*var\(--accent\);/);
+  });
+
+  it("colours a refusal err and what routing could not do warn, from the tokens", () => {
+    expect(CODE).toMatch(/\.tests-route__error\s*\{[^}]*color: var\(--err\);/);
+    expect(CODE).toMatch(/\.tests-route__skipped\s*\{[^}]*color: var\(--warn\);/);
+    expect(CODE).toMatch(/\.tests-waive__error\s*\{[^}]*color: var\(--err\);/);
+  });
+
+  it("keeps the note and the reason as they were written", () => {
+    expect(CODE).toMatch(/\.tests-route__quote\s*\{[^}]*white-space: pre-wrap;/);
+  });
+});
+
 describe("the states the mockup does not draw (#342)", () => {
   it("labels a running build in the live hue, never a verdict's", () => {
     const note = CODE.match(/\.tests__partial-text\s*\{([^}]*)\}/)?.[1] ?? "";
