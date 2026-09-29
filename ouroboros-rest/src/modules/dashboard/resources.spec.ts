@@ -40,6 +40,7 @@ const LIVE: Run = {
   reserved_build_job_id: null,
   event_hint: 0,
   change_set_seq: 0,
+  playbook_id: null,
 };
 
 /** Its counterpart on the completions card — the same table, the other half of decision F2. */
@@ -68,6 +69,7 @@ const QUEUED: QueueItem = {
   workflow_tag: "feature-loop",
   workflow_version: null,
   workflow_pin_reason: null,
+  playbook_id: null,
   position: 12,
   est_minutes: null,
   enqueued_at: new Date("2026-08-13T13:37:41.000Z"),

@@ -22,6 +22,7 @@ function row(over: Partial<QueueItem> = {}): QueueItem {
     workflow_tag: "standard-fix",
     workflow_version: 14,
     workflow_pin_reason: "predicate",
+    playbook_id: null,
     position: 1,
     est_minutes: 45,
     enqueued_at: new Date("2026-08-13T01:37:41.000Z"),

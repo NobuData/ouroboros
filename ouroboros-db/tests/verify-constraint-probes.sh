@@ -442,6 +442,19 @@
 #   only confirmed facts are injected            drop the context_injections_resolves trigger
 #   an injection record is never revised         drop the context_injections_no_update trigger
 #
+# V072 (#407, BE.3) adds playbooks and their launch linkage:
+#
+#   BE.3 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   the workflow is pinned, never head           alter workflow_version drop not null
+#   the pin names a published version            drop playbooks_workflow_version_fk
+#   overrides are typed                          drop playbooks_skill_overrides_typed
+#   a malformed preset is rejected at write      drop playbooks_context_preset_typed
+#   the issue filter is typed                    drop playbooks_issue_filter_typed
+#   override and preset refs resolve             drop the playbooks_refs_resolve trigger
+#   deleting the source run keeps the playbook   re-add playbooks_source_run_fk as cascade
+#   no count column exists                       add a run_count column
+#
 # Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
 # is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
 # by the latter first, so the rewrite reads the function back from the catalogue and adds the one
@@ -1765,6 +1778,41 @@ expect_red 'an unconfirmed fact may be injected' \
 expect_red 'an injection record may be revised' \
   'an injection record cannot be revised \(statement was accepted\)' \
   'drop trigger context_injections_no_update on ouroboros.context_injections;'
+
+expect_red 'a playbook may track its workflow head' \
+  'a playbook always names a workflow version' \
+  'alter table ouroboros.playbooks alter column workflow_version drop not null;'
+
+expect_red 'a playbook may pin a version that was never published' \
+  'a playbook pins a published version, not one that does not exist .*playbooks_workflow_version_fk did not fire' \
+  'alter table ouroboros.playbooks drop constraint playbooks_workflow_version_fk;'
+
+expect_red 'playbook skill overrides may be untyped' \
+  'malformed skill_overrides is refused: .*playbooks_skill_overrides_typed did not fire' \
+  'alter table ouroboros.playbooks drop constraint playbooks_skill_overrides_typed;'
+
+expect_red 'a malformed playbook preset may be written' \
+  'a malformed context_preset is rejected at write: .*playbooks_context_preset_typed did not fire' \
+  'alter table ouroboros.playbooks drop constraint playbooks_context_preset_typed;'
+
+expect_red 'a playbook issue filter may be untyped' \
+  'a malformed issue_filter is refused: .*playbooks_issue_filter_typed did not fire' \
+  'alter table ouroboros.playbooks drop constraint playbooks_issue_filter_typed;'
+
+expect_red 'a playbook may name another workspace.s skill' \
+  'an override names a skill of this workspace .*playbooks_refs_resolve did not fire' \
+  'drop trigger playbooks_refs_resolve on ouroboros.playbooks;'
+
+expect_red 'deleting a source run may take its playbook' \
+  'deleting the source run clears provenance and leaves the playbook intact' \
+  'alter table ouroboros.playbooks drop constraint playbooks_source_run_fk;
+   alter table ouroboros.playbooks add constraint playbooks_source_run_fk
+     foreign key (source_run_id, organization_id)
+     references ouroboros.runs ("id", organization_id) on delete cascade;'
+
+expect_red 'a playbook may store a run counter' \
+  'no run count column exists on playbooks' \
+  'alter table ouroboros.playbooks add column run_count integer not null default 0;'
 
 
 printf '\n'

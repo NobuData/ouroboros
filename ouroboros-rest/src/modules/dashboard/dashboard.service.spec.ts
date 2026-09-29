@@ -99,6 +99,7 @@ const RUN: Run = {
   reserved_build_job_id: null,
   event_hint: 0,
   change_set_seq: 0,
+  playbook_id: null,
 };
 
 const QUEUED: QueueItem = {
@@ -111,6 +112,7 @@ const QUEUED: QueueItem = {
   workflow_tag: "standard-fix",
   workflow_version: 14,
   workflow_pin_reason: "predicate",
+  playbook_id: null,
   position: 1,
   est_minutes: 45,
   enqueued_at: new Date("2026-08-13T01:37:41.000Z"),

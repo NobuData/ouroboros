@@ -1718,11 +1718,13 @@ set local enable_sort = on;
 -- answers it identically — both lead with `organization_id` — and which one the planner
 -- picks is its business. Naming one would be asserting a coin toss; what matters, and
 -- what is asserted, is that the aggregate is an index range scan rather than a read of
--- every workspace's queue.
+-- every workspace's queue. Matched on the index name alone: whether that range scan is a
+-- plain `Index Scan using` or a `Bitmap Index Scan on` is the planner's row estimate, which
+-- moves with the row's width on an unanalysed table (V072 widened it by `playbook_id`).
 select pg_temp.must_use_index(
   $$select count(*), sum(est_minutes) from ouroboros.queue_items
      where organization_id = 'org-queue'$$,
-  'Index Scan on queue_items_organization');
+  'queue_items_organization_');
 
 -- Not a read path: the cascade's. `github_repos` cascades into this table, and an
 -- unindexed referencing column makes every repository deletion a full scan of the queue.
@@ -24750,6 +24752,418 @@ select pg_temp.must_hold(
   and not exists (select 1 from ouroboros.context_injections
                    where organization_id in ('org-v071', 'org-v071-other')),
   'a deleted workspace takes its facts, anchors, audit and injection records');
+
+-- ===========================================================================
+-- V072 — playbooks (#407, BE.3)
+-- ===========================================================================
+--
+-- Mockup 14's playbooks card. Asserted: the three mockup recipes are representable with their
+-- derived counts (9×, 14×, 3×) and no count column exists; the workflow is pinned to a published
+-- version and never tracks head; source_run_id is nullable, workspace-scoped and survives its
+-- run's deletion; skill overrides, context preset and issue filter are typed and their refs
+-- resolve to the workspace; a required skill cannot be disabled; the issue filter constrains the
+-- picker; runs and queue items carry playbook_id from their own workspace only.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v072',       'Acme Robotics', 'acme-robotics-v072', now()),
+  ('org-v072-other', 'Other Works',   'other-works-v072',   now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a7200000-0000-0000-0000-00000000000a', 'org-v072',       'acme-robotics-v072', true),
+  ('a7200000-0000-0000-0000-00000000000b', 'org-v072-other', 'other-works-v072',   true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a720f000-0000-0000-0000-00000000000a', 'a7200000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a720f000-0000-0000-0000-00000000000b', 'a7200000-0000-0000-0000-00000000000b',
+   'other-firmware', true, 'main');
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a7210000-0000-0000-0000-000000000001', 'org-v072', 'standard-fix', 'standard-fix'),
+  ('a7210000-0000-0000-0000-000000000002', 'org-v072', 'deps-refresh', 'deps-refresh'),
+  ('a7210000-0000-0000-0000-000000000003', 'org-v072-other', 'standard-fix', 'standard-fix');
+
+-- standard-fix v1..v14 plus a draft; deps-refresh v1..v3; the other workspace's v1.
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+  select 'a7210000-0000-0000-0000-000000000001', n, '{}', now() from generate_series(1, 14) as n;
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+  select 'a7210000-0000-0000-0000-000000000002', n, '{}', now() from generate_series(1, 3) as n;
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+  values ('a7210000-0000-0000-0000-000000000003', 1, '{}', now());
+insert into ouroboros.workflow_versions (workflow_id, definition)
+  values ('a7210000-0000-0000-0000-000000000001', '{}');
+
+update ouroboros.workflows set current_version = 14
+ where id = 'a7210000-0000-0000-0000-000000000001';
+
+insert into ouroboros.skills
+    (id, organization_id, slug, name, description, scope, enabled, required)
+values
+  ('a7220000-0000-0000-0000-000000000001', 'org-v072', 'hil-safety', 'hil-safety',
+   'Hardware-in-loop interlocks before any motor spins', 'org', true, true),
+  ('a7220000-0000-0000-0000-000000000002', 'org-v072', 'zephyr-conventions',
+   'zephyr-conventions', 'Kconfig, devicetree & ISR-safety house rules', 'org', true, false),
+  ('a7220000-0000-0000-0000-000000000003', 'org-v072', 'repo-map', 'repo-map',
+   'Module & ownership map of the source tree', 'org', true, false),
+  ('a7220000-0000-0000-0000-000000000004', 'org-v072-other', 'zephyr-conventions',
+   'zephyr-conventions', 'Somebody else''s', 'org', true, false);
+
+insert into ouroboros.facts (id, organization_id, text, proposer, provenance) values
+  ('a7230000-0000-0000-0000-000000000001', 'org-v072',
+   'Flaky tests under `tests/hil/` need `rig claim` first', 'steer',
+   '{"line": "from a steer note", "refs": []}'),
+  ('a7230000-0000-0000-0000-000000000002', 'org-v072-other', 'Somebody else''s fact', 'manual',
+   '{"line": "x", "refs": []}');
+
+-- The runs that taught two of the recipes. The third is hand-authored.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at, finished_at)
+values
+  ('a7240000-0000-0000-0000-000000000001', 'org-v072', 'a720f000-0000-0000-0000-00000000000a',
+   501, 'Flaky I2C test', 'standard-fix', 'claude-fable-5', 'needs_human', 'Done', 6, 6,
+   now() - interval '2 days', now() - interval '1 day'),
+  ('a7240000-0000-0000-0000-000000000002', 'org-v072', 'a720f000-0000-0000-0000-00000000000a',
+   502, 'Bump mbedtls for CVE', 'deps-refresh', 'claude-fable-5', 'needs_human', 'Done', 6, 6,
+   now() - interval '2 days', now() - interval '1 day'),
+  ('a7240000-0000-0000-0000-0000000000ff', 'org-v072-other',
+   'a720f000-0000-0000-0000-00000000000b', 7, 'Somebody else''s loop', 'standard-fix',
+   'claude-fable-5', 'needs_human', 'Done', 6, 6, now() - interval '2 days', now() - interval '1 day');
+
+-- --- the three mockup recipes --------------------------------------------------------------------
+insert into ouroboros.playbooks
+    (id, organization_id, name, description, workflow_id, workflow_version, skill_overrides,
+     context_preset, source_run_id, issue_filter)
+values
+  ('a7250000-0000-0000-0000-000000000001', 'org-v072', 'Flaky test hunt',
+   'Re-run the suspect test 50×, bisect the flake, fix or quarantine',
+   'a7210000-0000-0000-0000-000000000001', 14,
+   '{"enable": ["a7220000-0000-0000-0000-000000000002"],
+     "disable": ["a7220000-0000-0000-0000-000000000003"]}',
+   '{"steer_notes": ["Reproduce locally before touching the test"],
+     "fact_ids": ["a7230000-0000-0000-0000-000000000001"]}',
+   'a7240000-0000-0000-0000-000000000001', '{"labels": ["flaky-test", "ci"]}'),
+  ('a7250000-0000-0000-0000-000000000002', 'org-v072', 'CVE bump',
+   'Bump the vulnerable dependency, rebuild, run the full suite',
+   'a7210000-0000-0000-0000-000000000002', 3, '{}', '{}',
+   'a7240000-0000-0000-0000-000000000002', '{"labels": ["dependencies", "security"]}'),
+  ('a7250000-0000-0000-0000-000000000003', 'org-v072', 'New driver bring-up',
+   'Scaffold a Zephyr driver with devicetree binding and HIL test',
+   'a7210000-0000-0000-0000-000000000001', 12, '{}',
+   '{"steer_notes": ["Start from the closest existing driver"]}', null, null);
+
+-- Launches: 9, 14 and 3 runs through the three recipes, and one queued issue.
+insert into ouroboros.runs
+    (organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, playbook_id)
+  select 'org-v072', 'a720f000-0000-0000-0000-00000000000a', 600 + n, 'Launch ' || n,
+         'standard-fix', 'claude-fable-5', 'coding', 'Implement', 1, 6,
+         case when n <= 9  then 'a7250000-0000-0000-0000-000000000001'
+              when n <= 23 then 'a7250000-0000-0000-0000-000000000002'
+              else              'a7250000-0000-0000-0000-000000000003' end::uuid
+    from generate_series(1, 26) as n;
+
+insert into ouroboros.queue_items
+    (id, organization_id, github_repo_id, issue_number, issue_title, effort, workflow_tag,
+     position, playbook_id)
+values
+  ('a7260000-0000-0000-0000-000000000001', 'org-v072', 'a720f000-0000-0000-0000-00000000000a',
+   700, 'Bump zlib', 's', 'deps-refresh', 1, 'a7250000-0000-0000-0000-000000000002');
+
+select pg_temp.must_hold(
+  (select array_agg(p.name || ' · run ' || (select count(*) from ouroboros.runs r
+                                             where r.playbook_id = p.id) || '×'
+                    order by p.name)
+     from ouroboros.playbooks p where p.organization_id = 'org-v072')
+  = array['CVE bump · run 14×', 'Flaky test hunt · run 9×', 'New driver bring-up · run 3×'],
+  'the three mockup playbooks are representable with their derived counts');
+
+select pg_temp.must_hold(
+  not exists (select 1 from information_schema.columns
+               where table_schema = 'ouroboros' and table_name = 'playbooks'
+                 and column_name ~ '(count|runs|uses|used|usage|launch|last_run)'),
+  'no run count column exists on playbooks — "run 9×" derives from launches');
+
+-- --- the workflow is pinned ------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select is_nullable = 'NO' from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'playbooks'
+      and column_name = 'workflow_version'),
+  'a playbook always names a workflow version');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version)
+    values ('org-v072', 'tracks head', 'd', 'a7210000-0000-0000-0000-000000000001', null)$$,
+  'a playbook cannot leave its version unpinned');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version)
+    values ('org-v072', 'future', 'd', 'a7210000-0000-0000-0000-000000000001', 15)$$,
+  'a playbook pins a published version, not one that does not exist',
+  'playbooks_workflow_version_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version)
+    values ('org-v072', 'wrong workflow', 'd', 'a7210000-0000-0000-0000-000000000002', 14)$$,
+  'a pin names a version of its own workflow', 'playbooks_workflow_version_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version)
+    values ('org-v072', 'foreign', 'd', 'a7210000-0000-0000-0000-000000000003', 1)$$,
+  'a playbook cannot pin another workspace''s workflow', 'playbooks_workflow_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version)
+    values ('org-v072', 'zero', 'd', 'a7210000-0000-0000-0000-000000000001', 0)$$,
+  'versions start at 1', 'playbooks_workflow_version_positive');
+
+-- Publishing v15 moves the workflow's head, and moves no playbook.
+update ouroboros.workflow_versions set version = 15, published_at = now()
+ where workflow_id = 'a7210000-0000-0000-0000-000000000001' and version is null;
+update ouroboros.workflows set current_version = 15
+ where id = 'a7210000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select array_agg(workflow_version order by name) from ouroboros.playbooks
+    where workflow_id = 'a7210000-0000-0000-0000-000000000001') = array[14, 12],
+  'publishing a new workflow version leaves every pin where it was');
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.workflow_versions
+     where workflow_id = 'a7210000-0000-0000-0000-000000000001' and version = 14$$,
+  'a pinned version cannot be removed from under its playbook', 'playbooks_workflow_version_fk');
+
+-- Re-pinning is a deliberate update.
+update ouroboros.playbooks set workflow_version = 15
+ where id = 'a7250000-0000-0000-0000-000000000003';
+
+select pg_temp.must_hold(
+  (select workflow_version = 15 from ouroboros.playbooks
+    where id = 'a7250000-0000-0000-0000-000000000003'),
+  'a playbook can be re-pinned deliberately');
+
+-- --- names -------------------------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version)
+    values ('org-v072', 'CVE bump', 'd', 'a7210000-0000-0000-0000-000000000002', 1)$$,
+  'playbook names are unique per workspace', 'playbooks_organization_name_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version)
+    values ('org-v072', '  ', 'd', 'a7210000-0000-0000-0000-000000000002', 1)$$,
+  'a playbook has a name', 'playbooks_name_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version)
+    values ('org-v072', 'no description', '', 'a7210000-0000-0000-0000-000000000002', 1)$$,
+  'a playbook has a description', 'playbooks_description_present');
+
+-- --- provenance ---------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select source_run_id is null from ouroboros.playbooks
+    where id = 'a7250000-0000-0000-0000-000000000003'),
+  'a hand-authored recipe carries no source run');
+
+select pg_temp.must_reject(
+  $$update ouroboros.playbooks set source_run_id = 'a7240000-0000-0000-0000-0000000000ff'
+     where id = 'a7250000-0000-0000-0000-000000000003'$$,
+  'a playbook cannot be learned from another workspace''s run', 'playbooks_source_run_fk');
+
+-- --- the documents are typed --------------------------------------------------------------------------
+select pg_temp.must_reject(
+  format($$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version, skill_overrides)
+    values ('org-v072', 'bad overrides', 'd', 'a7210000-0000-0000-0000-000000000002', 1, %L)$$,
+    doc),
+  'malformed skill_overrides is refused: ' || doc, 'playbooks_skill_overrides_typed')
+  from (values ('[]'),
+               ('"enable"'),
+               ('{"enabled": ["a7220000-0000-0000-0000-000000000002"]}'),
+               ('{"enable": "a7220000-0000-0000-0000-000000000002"}'),
+               ('{"enable": []}'),
+               ('{"enable": ["not-a-uuid"]}'),
+               ('{"enable": ["A7220000-0000-0000-0000-000000000002"]}'),
+               ('{"enable": [42]}'),
+               ('{"enable": ["a7220000-0000-0000-0000-000000000002",
+                             "a7220000-0000-0000-0000-000000000002"]}'),
+               ('{"enable": ["a7220000-0000-0000-0000-000000000002"],
+                  "disable": ["a7220000-0000-0000-0000-000000000002"]}')) as p(doc);
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version, context_preset)
+    values ('org-v072', 'bad preset', 'd', 'a7210000-0000-0000-0000-000000000002', 1, %L)$$,
+    doc),
+  'a malformed context_preset is rejected at write: ' || doc, 'playbooks_context_preset_typed')
+  from (values ('[]'),
+               ('{"steer": ["x"]}'),
+               ('{"steer_notes": "Reproduce locally"}'),
+               ('{"steer_notes": []}'),
+               ('{"steer_notes": ["  "]}'),
+               ('{"steer_notes": [7]}'),
+               ('{"steer_notes": ["dup", "dup"]}'),
+               ('{"fact_ids": ["not-a-uuid"]}'),
+               ('{"fact_ids": {}}')) as p(doc);
+
+select pg_temp.must_reject(
+  $$update ouroboros.playbooks set context_preset = '{"steer_notes": ["x"], "tone": "calm"}'
+     where id = 'a7250000-0000-0000-0000-000000000001'$$,
+  'an update cannot make a preset malformed either', 'playbooks_context_preset_typed');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version, context_preset)
+    values ('org-v072', 'long note', 'd', 'a7210000-0000-0000-0000-000000000002', 1, %L)$$,
+    jsonb_build_object('steer_notes', jsonb_build_array(repeat('x', 2001)))),
+  'a steer note is at most 2000 characters', 'playbooks_context_preset_typed');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version, issue_filter)
+    values ('org-v072', 'bad filter', 'd', 'a7210000-0000-0000-0000-000000000002', 1, %L)$$,
+    doc),
+  'a malformed issue_filter is refused: ' || doc, 'playbooks_issue_filter_typed')
+  from (values ('{}'),
+               ('[]'),
+               ('{"label": ["dependencies"]}'),
+               ('{"labels": []}'),
+               ('{"labels": "dependencies"}'),
+               ('{"repos": ["not-a-repo"]}'),
+               ('{"repos": ["acme/../etc"]}')) as p(doc);
+
+-- --- refs resolve to the workspace --------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version, skill_overrides)
+    values ('org-v072', 'foreign skill', 'd', 'a7210000-0000-0000-0000-000000000002', 1,
+            '{"enable": ["a7220000-0000-0000-0000-000000000004"]}')$$,
+  'an override names a skill of this workspace', 'playbooks_refs_resolve');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version, skill_overrides)
+    values ('org-v072', 'ghost skill', 'd', 'a7210000-0000-0000-0000-000000000002', 1,
+            '{"disable": ["a722ffff-0000-0000-0000-000000000000"]}')$$,
+  'an override names a skill that exists', 'playbooks_refs_resolve');
+
+select pg_temp.must_reject(
+  $$update ouroboros.playbooks
+       set skill_overrides = '{"disable": ["a7220000-0000-0000-0000-000000000001"]}'
+     where id = 'a7250000-0000-0000-0000-000000000002'$$,
+  'a recipe cannot disable a required skill', 'playbooks_refs_resolve');
+
+select pg_temp.must_reject(
+  $$update ouroboros.playbooks
+       set context_preset = '{"fact_ids": ["a7230000-0000-0000-0000-000000000002"]}'
+     where id = 'a7250000-0000-0000-0000-000000000002'$$,
+  'a preset names a fact of this workspace', 'playbooks_refs_resolve');
+
+-- Enabling a required skill is harmless, and allowed.
+update ouroboros.playbooks
+   set skill_overrides = '{"enable": ["a7220000-0000-0000-0000-000000000001"]}'
+ where id = 'a7250000-0000-0000-0000-000000000002';
+
+-- --- the issue filter constrains the picker -------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(p.name order by p.name)
+     from ouroboros.playbooks p
+    where p.organization_id = 'org-v072'
+      and ouroboros.playbook_issue_filter_admits(
+            p.issue_filter, 'acme-robotics/helios-firmware', '["dependencies", "zlib"]'))
+  = array['CVE bump', 'New driver bring-up'],
+  'a dependency issue is offered the CVE bump and the unfiltered recipe');
+
+select pg_temp.must_hold(
+  (select array_agg(p.name order by p.name)
+     from ouroboros.playbooks p
+    where p.organization_id = 'org-v072'
+      and ouroboros.playbook_issue_filter_admits(
+            p.issue_filter, 'acme-robotics/helios-firmware', '["hil"]'))
+  = array['New driver bring-up'],
+  'a HIL failure is not offered the CVE bump');
+
+select pg_temp.must_hold(
+  ouroboros.playbook_issue_filter_admits(null, 'a/b', null)
+  and not ouroboros.playbook_issue_filter_admits('{"labels": ["x"]}', 'a/b', null)
+  and not ouroboros.playbook_issue_filter_admits('{"labels": ["x"]}', 'a/b', '[]')
+  and ouroboros.playbook_issue_filter_admits('{"repos": ["a/b"]}', 'a/b', '[]')
+  and not ouroboros.playbook_issue_filter_admits('{"repos": ["a/b"]}', 'a/c', '[]')
+  and not ouroboros.playbook_issue_filter_admits('{"repos": ["a/b"], "labels": ["x"]}',
+                                                 'a/b', '["y"]')
+  and ouroboros.playbook_issue_filter_admits('{"repos": ["a/b"], "labels": ["x"]}',
+                                             'a/b', '["y", "x"]'),
+  'a null filter admits all; each present key must match — labels any-of, repos listed');
+
+-- --- launch linkage stays in its workspace ----------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.runs set playbook_id = 'a7250000-0000-0000-0000-000000000001'
+     where id = 'a7240000-0000-0000-0000-0000000000ff'$$,
+  'a run cannot be launched through another workspace''s playbook', 'runs_playbook_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.queue_items
+      (organization_id, github_repo_id, issue_number, issue_title, effort, workflow_tag,
+       position, playbook_id)
+    values ('org-v072-other', 'a720f000-0000-0000-0000-00000000000b', 8, 'x', 's',
+            'standard-fix', 1, 'a7250000-0000-0000-0000-000000000001')$$,
+  'a queued issue cannot carry another workspace''s playbook', 'queue_items_playbook_fk');
+
+-- --- deleting the source run leaves the playbook whole -------------------------------------------
+delete from ouroboros.runs where id = 'a7240000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select source_run_id is null and organization_id = 'org-v072' and workflow_version = 14
+          and context_preset ? 'steer_notes'
+     from ouroboros.playbooks where id = 'a7250000-0000-0000-0000-000000000001'),
+  'deleting the source run clears provenance and leaves the playbook intact');
+
+update ouroboros.playbooks set description = 'Still runnable'
+ where id = 'a7250000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select count(*) = 9 from ouroboros.runs
+    where playbook_id = 'a7250000-0000-0000-0000-000000000001'),
+  'a playbook whose source run is gone keeps its launch count');
+
+-- --- grants -----------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.playbooks', 'select')
+  and has_table_privilege('ouroboros_app', 'ouroboros.playbooks', 'insert')
+  and has_table_privilege('ouroboros_app', 'ouroboros.playbooks', 'update')
+  and has_table_privilege('ouroboros_app', 'ouroboros.playbooks', 'delete'),
+  'the app role manages playbooks');
+
+-- --- deletes --------------------------------------------------------------------------------------
+delete from ouroboros.playbooks where id = 'a7250000-0000-0000-0000-000000000003';
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.runs where issue_number between 624 and 626
+      and organization_id = 'org-v072' and playbook_id is null),
+  'deleting a playbook keeps the runs it launched');
+
+-- deps-refresh goes, and takes the CVE bump; its queued issue and runs stay, unlinked.
+delete from ouroboros.workflows where id = 'a7210000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.playbooks
+               where id = 'a7250000-0000-0000-0000-000000000002')
+  and (select playbook_id is null from ouroboros.queue_items
+        where id = 'a7260000-0000-0000-0000-000000000001'),
+  'deleting a workflow takes the playbooks pinned to it and unlinks their launches');
+
+delete from ouroboros.organization where "id" in ('org-v072', 'org-v072-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.playbooks
+               where organization_id in ('org-v072', 'org-v072-other')),
+  'a deleted workspace takes its playbooks');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

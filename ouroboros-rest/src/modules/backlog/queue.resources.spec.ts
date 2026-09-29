@@ -31,6 +31,7 @@ function item(overrides: Partial<QueueItem> = {}): QueueItem {
     workflow_tag: "standard-fix",
     workflow_version: 14,
     workflow_pin_reason: "explicit",
+    playbook_id: null,
     position: 4,
     est_minutes: 45,
     enqueued_at: new Date("2026-09-10T15:41:12.000Z"),

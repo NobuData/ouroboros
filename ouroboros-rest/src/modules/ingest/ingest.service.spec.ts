@@ -89,6 +89,7 @@ function run(over: Partial<Run> = {}): Run {
     reserved_build_job_id: null,
     event_hint: 20,
     change_set_seq: 2,
+    playbook_id: null,
     ...over,
   };
 }
