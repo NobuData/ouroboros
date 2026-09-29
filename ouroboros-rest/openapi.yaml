@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.26"
+  version: "0.37.27"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -4121,6 +4121,8 @@ paths:
                         mergeStrategies: [merge, squash, rebase]
                         reviews: true
                         events: poll
+                      probe:
+                        repoProbes: true
                     push:
                       enabled: true
                       reason: null
@@ -5278,6 +5280,243 @@ paths:
           description: |-
             `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
             entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/detection:
+    get:
+      tags: [onboarding]
+      summary: The detection card — the newest scan of a repository
+      description: |-
+        The *"We already figured this out"* card (mockup 13,
+        [#384](https://github.com/NobuData/ouroboros/issues/384)): the newest scan's six rows —
+        language, build, devcontainer, tests, protected paths, conventions — plus any `custom:*`
+        rows a rule pack added, each with its verdict, the line the card prints, the evidence that
+        produced it, a confidence, and the `detected | measured` label.
+
+        **The tests row is reconciled on read**: when the test-results plane (#324) has a
+        completed run for the repository and the stored row is still `detected`, it is replaced
+        with the real counts and relabelled `measured` — stored, so every later read agrees.
+
+        A row the scan could not determine (the probe budget, the deadline or the host's rate
+        limit stopped it) is present with `determined: false`, verdict `warn` and a value that
+        says why — never omitted. `scan.durationMs` is the card's `scanned in 38s`.
+        `progress` is the scan this process is running or last ran for the repository, which the
+        card polls after `POST …/scan`.
+
+        Never a `404`: a repository never scanned answers `scan: null` and no rows. Any member.
+      operationId: getRepoDetection
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The newest scan, its rows, the protected-path policies and the progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoDetection"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or is not `owner/name`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/detection/scans/{scanSeq}:
+    get:
+      tags: [onboarding]
+      summary: One earlier scan, as it was stored
+      description: |-
+        Re-scans version rather than overwrite: every scan keeps its `scanSeq`, and an earlier
+        one stays readable here exactly as it was stored. `progress` is always `null`. Any member.
+      operationId: getRepoDetectionScan
+      parameters:
+        - name: scanSeq
+          in: path
+          required: true
+          description: The scan's number within the repository, from 1.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 2147483647
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The scan and its rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoDetection"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `detection_scan_not_found` — the repository has no scan with that number in this
+            workspace. `details.repo` and `details.scanSeq` name it. Or `tenant_not_found` — the
+            `X-Ouro-Tenant` header names no workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is malformed, or `scanSeq` is not a positive integer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/detection/scan:
+    post:
+      tags: [onboarding]
+      summary: Scan a repository — or join the scan already running
+      description: |-
+        Starts a scan and answers **`202` at once** with its progress; the scan runs in the
+        background and the card polls `GET /api/v1/onboarding/detection` until `progress.state`
+        is `done` and the new `scanSeq` appears. A scan never clones: versioned rule packs probe
+        the repository through the connected source (its languages, one tree listing and a
+        handful of files), inside a bounded probe budget and a wall-clock ceiling.
+
+        **Debounced.** A request while a scan of the repository is running joins it
+        (`joined: true`). A request within 30 seconds of the last scan's start is refused `409
+        detection_rescan_too_soon` — a scan spends requests on the connection the backlog sync
+        depends on (#101). Each scan is stored as the next `scanSeq`; earlier scans stay readable.
+
+        Protected-path suggestions are written as `suggested` policy rows the guardrails enforce;
+        a glob a person has edited is never overwritten.
+
+        `owner`, `admin` or `member`.
+      operationId: scanRepoDetection
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "202":
+          description: The scan started, or was already running and this request joined it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoDetectionRescan"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `viewer` cannot start a scan. `details.role` is what you hold and `details.required` is what
+            would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `detection_rescan_too_soon` — the repository was scanned less than 30 seconds ago;
+            `details.retryAfterSeconds` says how long to wait. Or `detection_source_missing` — no
+            connected source covers the repository, or none that can probe it; `details.repo`
+            names it. Connecting GitHub and listing the repository on the source is the fix.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: detection_rescan_too_soon
+                message: This repository was scanned a moment ago. Try again shortly.
+                details:
+                  retryAfterSeconds: 22
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or is not `owner/name`.
           content:
             application/json:
               schema:
@@ -26359,6 +26598,162 @@ components:
           const: false
           description: Always `false` until the bundle import lands.
 
+    RepoDetection:
+      type: object
+      title: RepoDetection
+      description: |-
+        The detection card for one repository
+        ([#384](https://github.com/NobuData/ouroboros/issues/384)): a scan, its rows, the
+        repository's protected-path policies, and the in-process progress.
+      additionalProperties: false
+      required: [repo, scan, rows, protectedPaths, progress]
+      properties:
+        repo:
+          type: string
+          description: "`owner/name`, lower-case."
+          examples: [acme-robotics/helios-firmware]
+        scan:
+          oneOf:
+            - $ref: "#/components/schemas/RepoDetectionScan"
+            - type: "null"
+          description: The scan, or `null` when the repository was never scanned.
+        rows:
+          type: array
+          description: One row per row key the rule packs declare, in card order.
+          items:
+            $ref: "#/components/schemas/RepoDetectionRow"
+        protectedPaths:
+          type: array
+          description: |-
+            The repository's protected-path policies — the globs AP.3's `allowed_paths` check
+            enforces. `suggested` by a scan, or `edited` by a person (never overwritten).
+          items:
+            type: object
+            additionalProperties: false
+            required: [glob, source]
+            properties:
+              glob:
+                type: string
+                examples: ["boot/**"]
+              source:
+                type: string
+                enum: [suggested, edited]
+        progress:
+          oneOf:
+            - $ref: "#/components/schemas/RepoDetectionProgress"
+            - type: "null"
+          description: The scan this process is running or last ran, or `null`.
+
+    RepoDetectionScan:
+      type: object
+      title: RepoDetectionScan
+      description: One stored scan's metadata.
+      additionalProperties: false
+      required: [scanSeq, scannedAt, durationMs, packVersions, probeBudgetUsed]
+      properties:
+        scanSeq:
+          type: integer
+          minimum: 1
+          description: The scan's number within the repository. A re-scan takes the next.
+        scannedAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+          minimum: 0
+          description: How long the scan took — the card's `scanned in 38s`, as data.
+          examples: [38000]
+        packVersions:
+          type: object
+          description: "The rule-pack versions the scan ran, `{ pack: version }`."
+          additionalProperties: true
+          examples: [{ language: "1.0.0", build: "1.0.0" }]
+        probeBudgetUsed:
+          type: [integer, "null"]
+          minimum: 0
+          description: Host requests the scan spent.
+
+    RepoDetectionRow:
+      type: object
+      title: RepoDetectionRow
+      description: |-
+        One card row. `evidence` names the rule pack and version that concluded it, the probes it
+        read, and whatever else explains it — its shape is the pack's. A row the scan could not
+        determine has `determined: false`, verdict `warn`, and `evidence.reason`.
+      additionalProperties: false
+      required: [rowKey, verdict, value, label, confidence, determined, evidence]
+      properties:
+        rowKey:
+          type: string
+          description: "`language` · `build` · `devcontainer` · `tests` · `protected_paths` · `conventions` · `custom:<name>`."
+          examples: [build]
+        verdict:
+          type: string
+          enum: [ok, warn, missing]
+        value:
+          type: string
+          description: The line the card prints.
+          examples: ["west + twister (found west.yml)"]
+        label:
+          type: string
+          enum: [detected, measured]
+          description: "`detected` (a probe saw it) or `measured` (real data — the test plane — backs it)."
+        confidence:
+          type: [string, "null"]
+          enum: [high, medium, low, null]
+        determined:
+          type: boolean
+          description: False when the scan could not determine the row; `value` says why.
+        evidence:
+          type: object
+          additionalProperties: true
+
+    RepoDetectionProgress:
+      type: object
+      title: RepoDetectionProgress
+      description: |-
+        Where a scan started in this process stands. In memory: a restart forgets it, and the
+        stored scan is what survives.
+      additionalProperties: false
+      required: [state, startedAt, finishedAt, probesPlanned, probesSettled, scanSeq, error]
+      properties:
+        state:
+          type: string
+          enum: [running, done, failed]
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, "null"]
+          format: date-time
+        probesPlanned:
+          type: integer
+          minimum: 0
+          description: Probes asked for so far.
+        probesSettled:
+          type: integer
+          minimum: 0
+          description: Probes that finished, were skipped or failed.
+        scanSeq:
+          type: [integer, "null"]
+          description: The stored scan, once `done`.
+        error:
+          type: [string, "null"]
+          description: Why the scan failed — never a credential.
+
+    RepoDetectionRescan:
+      type: object
+      title: RepoDetectionRescan
+      description: What `POST /api/v1/onboarding/detection/scan` answers.
+      additionalProperties: false
+      required: [progress, joined]
+      properties:
+        progress:
+          $ref: "#/components/schemas/RepoDetectionProgress"
+        joined:
+          type: boolean
+          description: True when a scan was already running and this request joined it.
+
     AutoMergeSetting:
       type: object
       title: AutoMergeSetting
@@ -30414,11 +30809,12 @@ components:
         is nothing to match); `bidirectionalWrites` whether it can create tickets, always equal
         to `write.createTicket`; `write` which writes
         ([#278](https://github.com/NobuData/ouroboros/issues/278)); `pr` what it can do with
-        pull requests ([#357](https://github.com/NobuData/ouroboros/issues/357)).
+        pull requests ([#357](https://github.com/NobuData/ouroboros/issues/357)); `probe` whether it
+        can probe the repositories it covers ([#384](https://github.com/NobuData/ouroboros/issues/384)).
 
-        **`pr` added in 0.37.3.**
+        **`pr` added in 0.37.3; `probe` in 0.37.27.**
       additionalProperties: false
-      required: [webhooks, labels, bidirectionalWrites, write, pr]
+      required: [webhooks, labels, bidirectionalWrites, write, pr, probe]
       properties:
         webhooks:
           type: boolean
@@ -30433,6 +30829,23 @@ components:
           $ref: "#/components/schemas/TicketSourceWriteCapabilities"
         pr:
           $ref: "#/components/schemas/TicketSourcePrCapabilities"
+        probe:
+          $ref: "#/components/schemas/TicketSourceProbeCapabilities"
+
+    TicketSourceProbeCapabilities:
+      type: object
+      title: TicketSourceProbeCapabilities
+      description: |-
+        Whether a provider can probe the repositories its sources cover — the SPI's fourth
+        capability family ([#384](https://github.com/NobuData/ouroboros/issues/384)): languages,
+        one tree listing and single files, never a clone. The onboarding detector rides it. A
+        ticket tracker answers `false`.
+      additionalProperties: false
+      required: [repoProbes]
+      properties:
+        repoProbes:
+          type: boolean
+          examples: [true]
 
     TicketSourcePrCapabilities:
       type: object

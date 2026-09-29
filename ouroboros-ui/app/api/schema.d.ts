@@ -1676,6 +1676,97 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/detection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The detection card — the newest scan of a repository
+         * @description The *"We already figured this out"* card (mockup 13,
+         *     [#384](https://github.com/NobuData/ouroboros/issues/384)): the newest scan's six rows —
+         *     language, build, devcontainer, tests, protected paths, conventions — plus any `custom:*`
+         *     rows a rule pack added, each with its verdict, the line the card prints, the evidence that
+         *     produced it, a confidence, and the `detected | measured` label.
+         *
+         *     **The tests row is reconciled on read**: when the test-results plane (#324) has a
+         *     completed run for the repository and the stored row is still `detected`, it is replaced
+         *     with the real counts and relabelled `measured` — stored, so every later read agrees.
+         *
+         *     A row the scan could not determine (the probe budget, the deadline or the host's rate
+         *     limit stopped it) is present with `determined: false`, verdict `warn` and a value that
+         *     says why — never omitted. `scan.durationMs` is the card's `scanned in 38s`.
+         *     `progress` is the scan this process is running or last ran for the repository, which the
+         *     card polls after `POST …/scan`.
+         *
+         *     Never a `404`: a repository never scanned answers `scan: null` and no rows. Any member.
+         */
+        get: operations["getRepoDetection"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/detection/scans/{scanSeq}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One earlier scan, as it was stored
+         * @description Re-scans version rather than overwrite: every scan keeps its `scanSeq`, and an earlier
+         *     one stays readable here exactly as it was stored. `progress` is always `null`. Any member.
+         */
+        get: operations["getRepoDetectionScan"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/detection/scan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scan a repository — or join the scan already running
+         * @description Starts a scan and answers **`202` at once** with its progress; the scan runs in the
+         *     background and the card polls `GET /api/v1/onboarding/detection` until `progress.state`
+         *     is `done` and the new `scanSeq` appears. A scan never clones: versioned rule packs probe
+         *     the repository through the connected source (its languages, one tree listing and a
+         *     handful of files), inside a bounded probe budget and a wall-clock ceiling.
+         *
+         *     **Debounced.** A request while a scan of the repository is running joins it
+         *     (`joined: true`). A request within 30 seconds of the last scan's start is refused `409
+         *     detection_rescan_too_soon` — a scan spends requests on the connection the backlog sync
+         *     depends on (#101). Each scan is stored as the next `scanSeq`; earlier scans stay readable.
+         *
+         *     Protected-path suggestions are written as `suggested` policy rows the guardrails enforce;
+         *     a glob a person has edited is never overwritten.
+         *
+         *     `owner`, `admin` or `member`.
+         */
+        post: operations["scanRepoDetection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/auto-merge": {
         parameters: {
             query?: never;
@@ -10051,6 +10142,124 @@ export interface components {
             configurationImported: false;
         };
         /**
+         * RepoDetection
+         * @description The detection card for one repository
+         *     ([#384](https://github.com/NobuData/ouroboros/issues/384)): a scan, its rows, the
+         *     repository's protected-path policies, and the in-process progress.
+         */
+        RepoDetection: {
+            /**
+             * @description `owner/name`, lower-case.
+             * @example acme-robotics/helios-firmware
+             */
+            repo: string;
+            /** @description The scan, or `null` when the repository was never scanned. */
+            scan: components["schemas"]["RepoDetectionScan"] | null;
+            /** @description One row per row key the rule packs declare, in card order. */
+            rows: components["schemas"]["RepoDetectionRow"][];
+            /**
+             * @description The repository's protected-path policies — the globs AP.3's `allowed_paths` check
+             *     enforces. `suggested` by a scan, or `edited` by a person (never overwritten).
+             */
+            protectedPaths: {
+                /** @example boot/** */
+                glob: string;
+                /** @enum {string} */
+                source: "suggested" | "edited";
+            }[];
+            /** @description The scan this process is running or last ran, or `null`. */
+            progress: components["schemas"]["RepoDetectionProgress"] | null;
+        };
+        /**
+         * RepoDetectionScan
+         * @description One stored scan's metadata.
+         */
+        RepoDetectionScan: {
+            /** @description The scan's number within the repository. A re-scan takes the next. */
+            scanSeq: number;
+            /** Format: date-time */
+            scannedAt: string;
+            /**
+             * @description How long the scan took — the card's `scanned in 38s`, as data.
+             * @example 38000
+             */
+            durationMs: number;
+            /**
+             * @description The rule-pack versions the scan ran, `{ pack: version }`.
+             * @example {
+             *       "language": "1.0.0",
+             *       "build": "1.0.0"
+             *     }
+             */
+            packVersions: {
+                [key: string]: unknown;
+            };
+            /** @description Host requests the scan spent. */
+            probeBudgetUsed: number | null;
+        };
+        /**
+         * RepoDetectionRow
+         * @description One card row. `evidence` names the rule pack and version that concluded it, the probes it
+         *     read, and whatever else explains it — its shape is the pack's. A row the scan could not
+         *     determine has `determined: false`, verdict `warn`, and `evidence.reason`.
+         */
+        RepoDetectionRow: {
+            /**
+             * @description `language` · `build` · `devcontainer` · `tests` · `protected_paths` · `conventions` · `custom:<name>`.
+             * @example build
+             */
+            rowKey: string;
+            /** @enum {string} */
+            verdict: "ok" | "warn" | "missing";
+            /**
+             * @description The line the card prints.
+             * @example west + twister (found west.yml)
+             */
+            value: string;
+            /**
+             * @description `detected` (a probe saw it) or `measured` (real data — the test plane — backs it).
+             * @enum {string}
+             */
+            label: "detected" | "measured";
+            /** @enum {string|null} */
+            confidence: "high" | "medium" | "low" | null;
+            /** @description False when the scan could not determine the row; `value` says why. */
+            determined: boolean;
+            evidence: {
+                [key: string]: unknown;
+            };
+        };
+        /**
+         * RepoDetectionProgress
+         * @description Where a scan started in this process stands. In memory: a restart forgets it, and the
+         *     stored scan is what survives.
+         */
+        RepoDetectionProgress: {
+            /** @enum {string} */
+            state: "running" | "done" | "failed";
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: string | null;
+            /** @description Probes asked for so far. */
+            probesPlanned: number;
+            /** @description Probes that finished, were skipped or failed. */
+            probesSettled: number;
+            /** @description The stored scan, once `done`. */
+            scanSeq: number | null;
+            /** @description Why the scan failed — never a credential. */
+            error: string | null;
+        };
+        /**
+         * RepoDetectionRescan
+         * @description What `POST /api/v1/onboarding/detection/scan` answers.
+         */
+        RepoDetectionRescan: {
+            progress: components["schemas"]["RepoDetectionProgress"];
+            /** @description True when a scan was already running and this request joined it. */
+            joined: boolean;
+        };
+        /**
          * AutoMergeSetting
          * @description The position of the **Auto-merge when checks pass** switch, with its attribution —
          *     what both operations on `/api/v1/settings/auto-merge` answer.
@@ -13380,9 +13589,10 @@ export interface components {
          *     is nothing to match); `bidirectionalWrites` whether it can create tickets, always equal
          *     to `write.createTicket`; `write` which writes
          *     ([#278](https://github.com/NobuData/ouroboros/issues/278)); `pr` what it can do with
-         *     pull requests ([#357](https://github.com/NobuData/ouroboros/issues/357)).
+         *     pull requests ([#357](https://github.com/NobuData/ouroboros/issues/357)); `probe` whether it
+         *     can probe the repositories it covers ([#384](https://github.com/NobuData/ouroboros/issues/384)).
          *
-         *     **`pr` added in 0.37.3.**
+         *     **`pr` added in 0.37.3; `probe` in 0.37.27.**
          */
         TicketSourceCapabilities: {
             /** @example false */
@@ -13393,6 +13603,18 @@ export interface components {
             bidirectionalWrites: boolean;
             write: components["schemas"]["TicketSourceWriteCapabilities"];
             pr: components["schemas"]["TicketSourcePrCapabilities"];
+            probe: components["schemas"]["TicketSourceProbeCapabilities"];
+        };
+        /**
+         * TicketSourceProbeCapabilities
+         * @description Whether a provider can probe the repositories its sources cover — the SPI's fourth
+         *     capability family ([#384](https://github.com/NobuData/ouroboros/issues/384)): languages,
+         *     one tree listing and single files, never a clone. The onboarding detector rides it. A
+         *     ticket tracker answers `false`.
+         */
+        TicketSourceProbeCapabilities: {
+            /** @example true */
+            repoProbes: boolean;
         };
         /**
          * TicketSourcePrCapabilities
@@ -21476,6 +21698,9 @@ export interface operations {
                      *               ],
                      *               "reviews": true,
                      *               "events": "poll"
+                     *             },
+                     *             "probe": {
+                     *               "repoProbes": true
                      *             }
                      *           },
                      *           "push": {
@@ -23210,6 +23435,411 @@ export interface operations {
              * @description `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
              *     entry keyed by the field.
              */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRepoDetection: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The newest scan, its rows, the protected-path policies and the progress. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoDetection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or is not `owner/name`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getRepoDetectionScan: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The scan's number within the repository, from 1. */
+                scanSeq: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scan and its rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoDetection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `detection_scan_not_found` — the repository has no scan with that number in this
+             *     workspace. `details.repo` and `details.scanSeq` name it. Or `tenant_not_found` — the
+             *     `X-Ouro-Tenant` header names no workspace, or none you are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is malformed, or `scanSeq` is not a positive integer. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    scanRepoDetection: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The scan started, or was already running and this request joined it. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RepoDetectionRescan"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `viewer` cannot start a scan. `details.role` is what you hold and `details.required` is what
+             *     would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `detection_rescan_too_soon` — the repository was scanned less than 30 seconds ago;
+             *     `details.retryAfterSeconds` says how long to wait. Or `detection_source_missing` — no
+             *     connected source covers the repository, or none that can probe it; `details.repo`
+             *     names it. Connecting GitHub and listing the repository on the source is the fix.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "detection_rescan_too_soon",
+                     *       "message": "This repository was scanned a moment ago. Try again shortly.",
+                     *       "details": {
+                     *         "retryAfterSeconds": 22
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or is not `owner/name`. */
             422: {
                 headers: {
                     [name: string]: unknown;

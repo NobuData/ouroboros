@@ -37,6 +37,7 @@ import { TicketSourceError } from "./ticket-source.errors";
 import { githubTicket, jiraTicket, page } from "./ticket-source.fixture";
 import type { TicketSourceProvider, TicketSyncContext } from "./ticket-source.provider";
 import { NO_PR_CAPABILITIES } from "./ticket-source.pr";
+import { NO_PROBE_CAPABILITIES } from "./ticket-source.probe";
 import { READ_ONLY_WRITE_CAPABILITIES } from "./ticket-source.write";
 
 /**
@@ -253,6 +254,7 @@ describe("capabilityViolations", () => {
           bidirectionalWrites: false,
           write: READ_ONLY_WRITE_CAPABILITIES,
           pr: NO_PR_CAPABILITIES,
+          probe: NO_PROBE_CAPABILITIES,
         };
       },
     });
@@ -280,6 +282,7 @@ describe("capabilityViolations", () => {
         bidirectionalWrites: false,
         write: READ_ONLY_WRITE_CAPABILITIES,
         pr: NO_PR_CAPABILITIES,
+        probe: NO_PROBE_CAPABILITIES,
       }),
     });
 
@@ -298,6 +301,7 @@ describe("capabilityViolations", () => {
         bidirectionalWrites: true,
         write: { ...READ_ONLY_WRITE_CAPABILITIES, createTicket: true },
         pr: NO_PR_CAPABILITIES,
+        probe: NO_PROBE_CAPABILITIES,
       }),
     });
 
@@ -313,6 +317,7 @@ describe("capabilityViolations", () => {
         labels: true,
         bidirectionalWrites: false,
         pr: NO_PR_CAPABILITIES,
+        probe: NO_PROBE_CAPABILITIES,
       }),
     });
 
@@ -529,6 +534,7 @@ describe("pageViolations", () => {
     bidirectionalWrites: false,
     write: READ_ONLY_WRITE_CAPABILITIES,
     pr: NO_PR_CAPABILITIES,
+    probe: NO_PROBE_CAPABILITIES,
   };
   const CURSOR =
     "page: nextCursor must be null or non-blank text of at most 255 characters — '' would re-import the backlog every pass";

@@ -128,6 +128,8 @@ describe("the GitHub ticket source provider", () => {
         reviews: true,
         events: "poll",
       },
+      // BB.1 (#384): languages, the tree and files of every covered repository.
+      probe: { repoProbes: true },
     });
     expect(provider.capabilities()).toStrictEqual(provider.capabilities());
     expect(supportsWrites(provider)).toBe(true);

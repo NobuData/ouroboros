@@ -68,4 +68,11 @@ describe("how long to wait", () => {
     // refuse re-syncs for an hour.
     expect(retryAfterSeconds(STARTED, after(-3_600_000))).toBe(MINIMUM_SYNC_INTERVAL_SECONDS);
   });
+
+  it("measures against another interval when one is given", () => {
+    // The repository detector's re-scan guard (#384) shares this arithmetic with its own gap.
+    expect(retryAfterSeconds(STARTED, after(10_000), 60)).toBe(50);
+    expect(retryAfterSeconds(STARTED, after(60_000), 60)).toBeUndefined();
+    expect(retryAfterSeconds(STARTED, after(-3_600_000), 60)).toBe(60);
+  });
 });

@@ -66,6 +66,7 @@ import { InvalidRequestError, NotImplementedError } from "../errors/error.envelo
 import { sourceSchemaViolations } from "./ticket-source.config";
 import {
   prMemberViolations,
+  probeMemberViolations,
   supportsWebhooks,
   writeMemberViolations,
   type TicketSourceProvider,
@@ -210,6 +211,18 @@ export class TicketSourceRegistry {
         throw new Error(
           `Provider "${provider.kind}" declares PR capabilities that disagree: ` +
             prViolations.join("; "),
+        );
+      }
+
+      // BB.1's assertion (#384): the detector narrows on the probe flag, so it must agree with
+      // the declaration and the four members — a scan that reached a missing member would fail
+      // on the onboarding card rather than at boot.
+      const probeViolations = probeMemberViolations(provider);
+
+      if (probeViolations.length > 0) {
+        throw new Error(
+          `Provider "${provider.kind}" declares probe capabilities that disagree: ` +
+            probeViolations.join("; "),
         );
       }
 

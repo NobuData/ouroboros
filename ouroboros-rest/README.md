@@ -111,6 +111,9 @@ $ curl http://localhost:4000/api/v1
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
 | `POST /api/v1/onboarding/skip`                      | *I've done this before* — marks the wizard bypassed, answers `/settings`; imports nothing (BD.3, #398) |
+| `GET /api/v1/onboarding/detection`                  | [The detection card](#repository-detection) (#384) — the newest scan's rows, evidence, `detected \| measured` label and progress |
+| `GET /api/v1/onboarding/detection/scans/{scanSeq}`  | One earlier scan, as stored — re-scans version by `scan_seq` |
+| `POST /api/v1/onboarding/detection/scan`            | `202` — scan (or join the running scan); debounced 30 s, `409 detection_rescan_too_soon` |
 | `GET POST /api/v1/workflows`                        | [The workflow lifecycle](#the-workflow-lifecycle-api) (#134) — the rail with P.4's captions; **+ New workflow** |
 | `GET PATCH /api/v1/workflows/{id}`                  | One workflow, its draft and one version (`?version=` for history); rename, pause or archive |
 | `PUT /api/v1/workflows/{id}/draft`                  | The canvas's autosave, guarded by an `If-Match` draft etag — a stale one is a `409`, never an overwrite |
@@ -2682,6 +2685,39 @@ and `configurationImported: false`; the bundle import is BD.3
 **Surfacing** (`onboarding.surfacing.ts`): `/get-started` is offered while the workspace has
 never had a run and no repository's wizard in it is completed, dismissed or bypassed. Dismissal
 sticks because it is server state; any repository stays re-enterable by naming it.
+
+## Repository detection
+
+`/api/v1/onboarding/detection` ([#384](https://github.com/NobuData/ouroboros/issues/384), BB.1)
+fills the *"We already figured this out"* card, since REST 0.37.27. **It never clones**: versioned
+rule packs probe the repository through the ticket-source SPI's fourth capability family
+(`ProbeCapableProvider` — languages, one recursive tree listing, single files), on the same
+connection and rate guard (#101) as the backlog sync.
+
+```
+GET  /api/v1/onboarding/detection?repo=owner/name                  any member — newest scan + progress
+GET  /api/v1/onboarding/detection/scans/{scanSeq}?repo=owner/name  any member — an earlier scan
+POST /api/v1/onboarding/detection/scan?repo=owner/name             owner, admin, member — 202, debounced
+```
+
+| Pack | Reads | Row |
+|---|---|---|
+| `language` | languages API; `west.yml` / `package.json` / `pyproject.toml` hints | `C 92% · Zephyr RTOS 4.1` |
+| `build` | manifest table over the tree | `west + twister (found west.yml)` |
+| `devcontainer` | `.devcontainer.json` or `.devcontainer/devcontainer.json`, parsed | `found .devcontainer.json → image …` |
+| `tests` | per-ecosystem suites, ≤ 12 files counted | `5 suites, 63 tests (detected)` |
+| `protected_paths` | boot / keys / secrets / infra directories | `boot/, keys/ suggested` — written as `suggested` policy |
+| `conventions` | `CONTRIBUTING`, `CODEOWNERS`, commit-convention files | ok, or the mockup's warn |
+
+**Bounded and honest.** A scan spends at most 24 probes in 20 s, 4 at a time, and stops at the
+host's first rate-limit refusal. A row it could not determine is stored with verdict `warn`,
+`evidence.undetermined: true` and a value that says why — never omitted. `duration_ms` is the
+card's `scanned in 38s`. Re-scans take the next `scan_seq`; an `edited` protected path is never
+overwritten. When the test plane (#324) has a completed run, the tests row is relabelled
+`measured` with the real counts — at scan time, and on read.
+
+**A new pack is a file in `detection/packs/` and an entry in `CORE_PACKS`** — it may emit
+`custom:<name>` rows, and the orchestrator (`detection.scan.ts`) never names a pack.
 
 ## The workflow lifecycle API
 
@@ -5386,6 +5422,7 @@ ouroboros-rest/
 │       ├── engine/         # typed internal client + /engine/status       · #35
 │       ├── preferences/    # the caller's own font scale                  · #649
 │       ├── onboarding/     # the Get Started wizard — derived rail, guards · #385
+│       ├── detection/      # repo detection — rule packs over the probe SPI · #384
 │       ├── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
 │       ├── pricing/        # what a model costs, with provenance          · #586
 │       ├── registry/       # alias → model on a provider connection       · #189

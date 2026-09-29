@@ -45,17 +45,23 @@ export const MINIMUM_SYNC_INTERVAL_SECONDS = 30;
  *   completed none — in which case there is nothing to be too soon after, and the answer is to
  *   go ahead.
  * @param now - The clock.
+ * @param intervalSeconds - The minimum gap, when it is not the sync's — the repository
+ *   detector's re-scan guard (#384) shares this arithmetic with its own interval.
  * @returns Whole seconds to wait, rounded up and never below one, or `undefined` when a cycle
  *   may be triggered. Rounded **up** because a hint that rounds down tells a client to retry a
  *   moment early and collect a second refusal.
  */
-export function retryAfterSeconds(startedAt: Date | undefined, now: Date): number | undefined {
+export function retryAfterSeconds(
+  startedAt: Date | undefined,
+  now: Date,
+  intervalSeconds: number = MINIMUM_SYNC_INTERVAL_SECONDS,
+): number | undefined {
   if (startedAt === undefined) {
     return undefined;
   }
 
   const elapsed = now.getTime() - startedAt.getTime();
-  const remaining = MINIMUM_SYNC_INTERVAL_SECONDS * MILLISECONDS - elapsed;
+  const remaining = intervalSeconds * MILLISECONDS - elapsed;
 
   if (remaining <= 0) {
     return undefined;
@@ -63,5 +69,5 @@ export function retryAfterSeconds(startedAt: Date | undefined, now: Date): numbe
 
   // A cycle whose `startedAt` is in the future is a clock that moved backwards rather than a
   // reason to refuse for hours: the wait is still bounded by the interval itself.
-  return Math.min(MINIMUM_SYNC_INTERVAL_SECONDS, Math.max(1, Math.ceil(remaining / MILLISECONDS)));
+  return Math.min(intervalSeconds, Math.max(1, Math.ceil(remaining / MILLISECONDS)));
 }

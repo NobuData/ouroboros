@@ -64,16 +64,18 @@ describe("the TicketSourceProvider SPI", () => {
     expect((provider as unknown as Record<string, unknown>).webhookHandler).toBeUndefined();
   });
 
-  it("answers all three capability flags, the write declaration and the PR declaration, so none can be merely unmentioned", () => {
+  it("answers all three capability flags, the write, PR and probe declarations, so none can be merely unmentioned", () => {
     const capabilities = scriptedProvider().capabilities();
 
     expect(Object.keys(capabilities).sort()).toStrictEqual([
       "bidirectionalWrites",
       "labels",
       "pr",
+      "probe",
       "webhooks",
       "write",
     ]);
+    expect(capabilities.probe).toStrictEqual({ repoProbes: false });
     expect(Object.keys(capabilities.pr).sort()).toStrictEqual([
       "create",
       "events",

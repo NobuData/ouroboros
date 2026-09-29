@@ -411,7 +411,10 @@ describe("TABLE_COLUMNS", () => {
     // The ninety-first and ninety-second are V067's `onboarding_state` (with V070's `bypassed_at`)
     // and `repo_detection_scans`, mirrored by BB.2 (#385) — the wizard's choices, and the newest
     // scan the detection card is referenced by. No step status is among the columns (O1).
-    expect(TABLE_NAMES).toHaveLength(92);
+    //
+    // The ninety-third is V067's `repo_detections`, mirrored by BB.1 (#384) — the detection
+    // service's card rows, and the one relabel `detected → measured` the grants allow.
+    expect(TABLE_NAMES).toHaveLength(93);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
