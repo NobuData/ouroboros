@@ -289,6 +289,7 @@ service never starts half-configured.
 | `OURO_REESTIMATION_BATCH` | The most unsized tickets one night's run queues, across every workspace — the job's bound |     no — 100      | a whole number, 1–1000 |
 | `OURO_FLAKE_RESCORE_HOUR_UTC` | The UTC hour the [nightly flake re-scorer](#flake-scorer) is scheduled at; each pass lands at a random minute in the hour after it ([#331](https://github.com/NobuData/ouroboros/issues/331)) |      no — 3       | a whole number, 0–23 |
 | `OURO_FLAKE_RESCORE_CAP` | The most cases one workspace's nightly flake re-score covers, least recently scored first — the job's bound |     no — 2000     | a whole number, 1–100000 |
+| `OURO_ONBOARDING_UNLOCK_THRESHOLD` | The merged-loop count that unlocks an advanced [onboarding template tile](#template-tiles-and-instantiation) ([#386](https://github.com/NobuData/ouroboros/issues/386)), replacing each template's own rule |     no — unset     | a whole number, 0–10000; `0` unlocks every tier |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -2718,6 +2719,45 @@ overwritten. When the test plane (#324) has a completed run, the tests row is re
 
 **A new pack is a file in `detection/packs/` and an entry in `CORE_PACKS`** — it may emit
 `custom:<name>` rows, and the orchestrator (`detection.scan.ts`) never names a pack.
+
+## Template tiles and instantiation
+
+Step 3 of the wizard ([#386](https://github.com/NobuData/ouroboros/issues/386), BB.3 — the service
+layer of WF-T.5, #159), since REST 0.37.28. The tiles are V068's `workflow_templates`, and
+**selecting one creates a real workflow** (decision **O4**):
+
+```
+GET  /api/v1/onboarding/templates?repo=owner/name        any member — the tiles, gates evaluated
+POST /api/v1/onboarding/select-template?repo=owner/name  owner, admin — instantiate { slug }
+```
+
+```
+select quick-fixes ─▶ locked? ─▶ 409 onboarding_template_locked { progress: "3 of 10 merged loops" }
+                   ─▶ live workflow from it? ─▶ reuse it (created: false)
+                   ─▶ WorkflowsService.createFromTemplate:
+                        publish gate (zod · registry · engine) ─┬─ findings ─▶ 422 onboarding_template_invalid
+                                                                └─ green ───▶ one transaction:
+                                                                   workflow {template: quick-fixes@v1} + draft
+                                                                   publish v1
+                   ─▶ onboarding_state.selected_template = quick-fixes
+                   ─▶ { created, workflow { studioPath: /workflows/quick-fixes }, kept[], onboarding }
+```
+
+- **No wizard bypass.** Instantiation goes through the lifecycle's own publish gate, exactly as
+  the studio's Publish does, and the gate runs before the transaction opens — a refused
+  definition leaves no workflow, draft or choice behind. The onboarding module writes no
+  `workflows` row of its own (`templates.service.spec.ts` scans for one).
+- **Provenance** — `workflows.template_slug` + `template_version`. A later template version is a
+  new immutable row (V068), so it never changes a workflow already made.
+- **Slug collision → suffix flow**: `quick-fixes-2`, titled `Quick fixes (2)`, and so on.
+- **Re-selection deletes nothing**: the active choice switches, and every other live instantiated
+  workflow is reported in `kept`.
+- **The lock is computed** by V068's `workflow_template_unlocked` against `merged_loop_count(org)`
+  (merged runs), with `OURO_ONBOARDING_UNLOCK_THRESHOLD` as the operator's override. A gated tile
+  carries `unlock { locked, mergedLoops, threshold, rule, progress }`.
+- **Captions are qualitative** (**O8**): a caption with a digit or `%` is dropped on the way out,
+  on top of V068's CHECK — no tile prints an invented statistic.
+- Selecting publishes, so it takes the studio's publish roles (owner, admin), not a pick's.
 
 ## The workflow lifecycle API
 

@@ -53,6 +53,7 @@ describe("the workflows repository", () => {
       ["findBySlug", (repository) => repository.findBySlug(WORKSPACE, "standard-fix")],
       ["lock", (repository) => repository.lock(WORKSPACE, WORKFLOW, asTransaction(database))],
       ["rename", (repository) => repository.rename(WORKSPACE, WORKFLOW, { name: "New" })],
+      ["slugFamily", (repository) => repository.slugFamily(WORKSPACE, "quick-fixes")],
     ];
 
     it.each(scoped)("%s is scoped to the workspace", async (_name, statement) => {
@@ -167,6 +168,63 @@ describe("the workflows repository", () => {
       });
 
       expect(database.statements[2].parameters).toContain('{"dsl_version":"1.0"}');
+    });
+    it("stores no provenance for a workflow made from scratch", async () => {
+      database.answers({ rows: [{ id: WORKFLOW }] }, { rows: [{ id: DRAFT }] });
+
+      await workflows.create(WORKSPACE, {
+        slug: "standard-fix",
+        name: "Standard Fix",
+        definition: {},
+      });
+
+      expect(database.statements[1].sql).toContain('"template_slug"');
+      expect(database.statements[1].parameters.filter((value) => value === null)).toHaveLength(3);
+    });
+
+    it("stores both halves of a template's provenance (BB.3, #386)", async () => {
+      database.answers({ rows: [{ id: WORKFLOW }] }, { rows: [{ id: DRAFT }] });
+
+      await workflows.create(WORKSPACE, {
+        slug: "quick-fixes",
+        name: "Quick fixes",
+        definition: {},
+        template: { slug: "quick-fixes", version: 3 },
+      });
+
+      const { sql, parameters } = database.statements[1];
+      expect(sql).toContain('"template_slug", "template_version"');
+      expect(parameters.slice(-2)).toEqual(["quick-fixes", 3]);
+    });
+
+    it("writes inside the caller's transaction when given one, opening none of its own", async () => {
+      database.answers({ rows: [{ id: WORKFLOW }] }, { rows: [{ id: DRAFT }] });
+
+      await workflows.create(
+        WORKSPACE,
+        { slug: "quick-fixes", name: "Quick fixes", definition: {} },
+        asTransaction(database),
+      );
+
+      expect(database.sql()).not.toContain("begin");
+      expect(database.sql()).toHaveLength(2);
+    });
+  });
+
+  describe("slugFamily", () => {
+    it("reads the base and every suffixed sibling, archived ones included", async () => {
+      database.answers({ rows: [{ slug: "quick-fixes" }, { slug: "quick-fixes-2" }] });
+
+      await expect(workflows.slugFamily(WORKSPACE, "quick-fixes")).resolves.toEqual([
+        "quick-fixes",
+        "quick-fixes-2",
+      ]);
+
+      const { sql, parameters } = database.statements[0];
+      expect(sql).toContain('"slug" = $');
+      expect(sql).toContain('"slug" like $');
+      expect(sql).not.toContain('"status"');
+      expect(parameters).toEqual([WORKSPACE, "quick-fixes", "quick-fixes-%"]);
     });
   });
 

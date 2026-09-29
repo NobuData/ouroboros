@@ -651,3 +651,140 @@ describe("the history", () => {
     expect(await refusal(service.versions(WORKSPACE, WORKFLOW, {}))).toBe("workflow_not_found");
   });
 });
+
+describe("instantiating a template (BB.3, #386)", () => {
+  const TEMPLATE = {
+    slug: "quick-fixes",
+    version: 3,
+    name: "Quick fixes",
+    definition: { dsl_version: "1.0", nodes: [] },
+  };
+
+  /** A harness whose create and publish answer like the database would. */
+  function instantiating(taken: string[] = []) {
+    const run = harness({
+      slugFamily: jest.fn().mockResolvedValue(taken),
+      create: jest.fn().mockImplementation((_org, input: { slug: string; name: string }) =>
+        Promise.resolve({
+          workflow: workflow({
+            slug: input.slug,
+            name: input.name,
+            current_version: null,
+            template_slug: "quick-fixes",
+            template_version: 3,
+          }),
+          draft: draft(),
+        }),
+      ),
+      publish: jest.fn().mockResolvedValue(published({ version: 1 })),
+    });
+
+    return run;
+  }
+
+  it("runs the publish gate over the template's definition — the same gate, no bypass", async () => {
+    const { service, gate } = instantiating();
+
+    await service.createFromTemplate(WORKSPACE, TEMPLATE, PERSON, AT);
+
+    expect(gate.check).toHaveBeenCalledWith(WORKSPACE, TEMPLATE.definition);
+  });
+
+  it("creates the workflow with provenance and publishes v1 in one transaction", async () => {
+    const run = instantiating();
+    const trx = expect.anything() as unknown;
+
+    const result = await run.service.createFromTemplate(WORKSPACE, TEMPLATE, PERSON, AT);
+
+    expect(run.transactions).toBe(1);
+    expect(run.repository.create).toHaveBeenCalledWith(
+      WORKSPACE,
+      {
+        slug: "quick-fixes",
+        name: "Quick fixes",
+        definition: TEMPLATE.definition,
+        template: { slug: "quick-fixes", version: 3 },
+      },
+      trx,
+    );
+    expect(run.repository.publish).toHaveBeenCalledWith(
+      WORKFLOW,
+      {
+        definition: TEMPLATE.definition,
+        changeNote: "Instantiated from quick-fixes@v3.",
+        publishedBy: PERSON,
+        publishedAt: AT,
+      },
+      trx,
+    );
+    expect(result.workflow).toMatchObject({ slug: "quick-fixes", currentVersion: 1 });
+    expect(result.version.version).toBe(1);
+  });
+
+  it("refuses a definition the gate finds fault with, and opens no transaction", async () => {
+    const run = instantiating();
+    run.gate.check.mockResolvedValue({
+      findings: [{ source: "dsl", code: "structure.no_terminal", message: "No terminal." }],
+      engineConsulted: false,
+    });
+
+    expect(await refusal(run.service.createFromTemplate(WORKSPACE, TEMPLATE, PERSON))).toBe(
+      "workflow_definition_invalid",
+    );
+    expect(run.transactions).toBe(0);
+    expect(run.repository.create).not.toHaveBeenCalled();
+    expect(run.repository.slugFamily).not.toHaveBeenCalled();
+  });
+
+  it("takes the suffix flow when the template's slug is taken", async () => {
+    const run = instantiating(["quick-fixes"]);
+
+    const result = await run.service.createFromTemplate(WORKSPACE, TEMPLATE, PERSON, AT);
+
+    expect(run.repository.create).toHaveBeenCalledWith(
+      WORKSPACE,
+      expect.objectContaining({ slug: "quick-fixes-2", name: "Quick fixes (2)" }),
+      expect.anything(),
+    );
+    expect(result.workflow.slug).toBe("quick-fixes-2");
+  });
+
+  it("re-picks the next suffix when a concurrent create wins the slug", async () => {
+    const run = instantiating();
+    const lost = Object.assign(new Error("duplicate key"), {
+      code: UNIQUE_VIOLATION,
+      constraint: WORKFLOW_CONSTRAINTS.slugUnique,
+    });
+    const created = run.repository.create.getMockImplementation();
+    run.repository.create.mockRejectedValueOnce(lost).mockImplementation(created);
+
+    const result = await run.service.createFromTemplate(WORKSPACE, TEMPLATE, PERSON, AT);
+
+    expect(run.transactions).toBe(2);
+    expect(result.workflow.slug).toBe("quick-fixes-2");
+  });
+
+  it("answers workflow_slug_taken after losing every attempt", async () => {
+    const run = instantiating();
+    run.repository.create.mockRejectedValue(
+      Object.assign(new Error("duplicate key"), {
+        code: UNIQUE_VIOLATION,
+        constraint: WORKFLOW_CONSTRAINTS.slugUnique,
+      }),
+    );
+
+    expect(await refusal(run.service.createFromTemplate(WORKSPACE, TEMPLATE, PERSON))).toBe(
+      "workflow_slug_taken",
+    );
+    expect(run.transactions).toBe(3);
+  });
+
+  it("rethrows any other failure as it came", async () => {
+    const run = instantiating();
+    run.repository.publish.mockRejectedValue(new Error("connection reset"));
+
+    await expect(run.service.createFromTemplate(WORKSPACE, TEMPLATE, PERSON)).rejects.toThrow(
+      "connection reset",
+    );
+  });
+});

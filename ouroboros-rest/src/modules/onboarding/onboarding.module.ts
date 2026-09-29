@@ -8,23 +8,34 @@
  * derivation   subsystem facts → the rail (pure)      → onboarding.derivation.ts
  * surfacing    when /get-started is offered (pure)    → onboarding.surfacing.ts
  * repository   the statements                         → onboarding.repository.ts
+ * templates    step 3's tiles and instantiation       → templates.service.ts (#386)
  * ```
  *
  * It reads four subsystems' tables directly rather than importing their modules: tenancy exports
  * nothing, and each question is one scoped query whose answer the owner's own rules already
- * guarantee. It writes `onboarding_state` only.
+ * guarantee. It writes `onboarding_state` only — a workflow instantiated from a template is
+ * written by `WorkflowsService`, imported from `WorkflowsModule`, so it passes the same publish
+ * gate as the studio's (BB.3, #386).
  */
 
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { WorkflowsModule } from "../workflows/workflows.module";
 import { OnboardingController } from "./onboarding.controller";
 import { OnboardingRepository } from "./onboarding.repository";
 import { OnboardingService } from "./onboarding.service";
+import { TemplateTilesRepository } from "./templates.repository";
+import { TemplateInstantiationService } from "./templates.service";
 
 @Module({
-  imports: [DbModule],
+  imports: [DbModule, WorkflowsModule],
   controllers: [OnboardingController],
-  providers: [OnboardingService, OnboardingRepository],
+  providers: [
+    OnboardingService,
+    OnboardingRepository,
+    TemplateInstantiationService,
+    TemplateTilesRepository,
+  ],
 })
 export class OnboardingModule {}

@@ -113,6 +113,11 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // configures no releases directory — rather than a refusal of the shape.
   version: "0.5.0",
   file: "SHA256SUMS",
+  // `GET /api/v1/onboarding/detection/scans/:scanSeq` (#384). **This was missing**: the route
+  // landed without an entry here, so every walk of the table threw. Added with #386, whose two
+  // onboarding routes this suite could not otherwise be shown to cover. A positive whole number,
+  // so the pipe lets it through and what this suite sees is the guard's answer.
+  scanSeq: "1",
 };
 
 /**

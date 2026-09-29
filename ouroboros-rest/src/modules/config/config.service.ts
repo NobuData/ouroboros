@@ -394,6 +394,14 @@ export class AppConfigService {
   }
 
   /**
+   * The merged-loop threshold that unlocks an advanced onboarding template —
+   * `OURO_ONBOARDING_UNLOCK_THRESHOLD`. `undefined` when unset: each template's own rule stands.
+   */
+  get onboardingUnlockThreshold(): number | undefined {
+    return this.config.get<number>("onboardingUnlockThreshold");
+  }
+
+  /**
    * Is this a production deployment?
    *
    * The one derived flag worth naming, because it is asked in several places and asking
@@ -470,6 +478,7 @@ export class AppConfigService {
       flakeRescoreCap: this.flakeRescoreCap,
       localProviderUrls: this.localProviderUrls,
       workflowSkillSuggestions: this.workflowSkillSuggestions,
+      onboardingUnlockThreshold: this.onboardingUnlockThreshold,
     };
   }
 

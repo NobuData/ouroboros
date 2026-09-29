@@ -35,7 +35,7 @@ import { pageOf, windowOf, type Page, type PageQuery } from "../tenancy/paginati
 import { DatabaseService } from "../db/db.service";
 import { draftEtag, ifMatchAdmits } from "./draft.etag";
 import { WorkflowPublishGate } from "./publish.gate";
-import { slugify } from "./slug";
+import { nextFreeSlug, slugify } from "./slug";
 import { WorkflowStatsService } from "./stats.service";
 import type { WorkflowStats } from "./stats.resources";
 import type {
@@ -88,6 +88,32 @@ export interface WorkflowRail {
 
 /** The document a workflow's canvas opens on when the request named none. */
 const BLANK_CANVAS: Record<string, unknown> = {};
+
+/**
+ * How many times {@link WorkflowsService.createFromTemplate} re-picks a slug after losing one to
+ * a concurrent create. One loss is a race; three in a row is a workspace being hammered.
+ */
+const SLUG_RACE_ATTEMPTS = 3;
+
+/** The template version {@link WorkflowsService.createFromTemplate} instantiates. */
+export interface TemplateSource {
+  /** The template's slug — `quick-fixes`. Also the slug the workflow is offered first. */
+  readonly slug: string;
+  /** The version copied — the `3` of `quick-fixes@v3`. */
+  readonly version: number;
+  /** The template's name, which becomes the workflow's title. */
+  readonly name: string;
+  /** The version's DSL document, which becomes the workflow's v1. */
+  readonly definition: unknown;
+}
+
+/** A workflow instantiated from a template, and the version it was published at. */
+export interface InstantiatedWorkflow {
+  /** The workflow, with `currentVersion` pointing at {@link version}. */
+  readonly workflow: WorkflowSummary;
+  /** Its v1. */
+  readonly version: WorkflowVersionResource;
+}
 
 @Injectable()
 export class WorkflowsService {
@@ -152,6 +178,94 @@ export class WorkflowsService {
 
       throw error;
     }
+  }
+
+  /**
+   * Instantiate a template: create a workflow from its definition and publish it as v1, with the
+   * template's slug and version recorded as provenance (BB.3,
+   * [#386](https://github.com/NobuData/ouroboros/issues/386), decision **O4**).
+   *
+   * ```
+   * gate: zod, registry, engine ─┬─ findings ─▶ 422, and nothing is opened
+   *                              └─ green ───▶ transaction:
+   *                                            insert workflow {template: slug@vN} + draft
+   *                                            publish v1 · point current_version at it
+   * ```
+   *
+   * **The same gate as every publish, and no other door.** The definition goes through
+   * {@link WorkflowPublishGate.check} exactly as {@link publish} sends a draft, so a template
+   * that would fail validation fails here, loudly; and because the gate runs before the
+   * transaction opens, a refusal leaves no workflow behind — not even an unpublished one.
+   *
+   * **A slug collision takes the suffix flow.** The template's slug is offered first, then
+   * `slug-2`, `slug-3`, … (`nextFreeSlug`), and a suffixed workflow's title carries the same
+   * ordinal — `Quick fixes (2)` — so the rail can tell them apart. A create that loses the slug
+   * to a concurrent one re-picks rather than failing.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param template - The template version to copy.
+   * @param publishedBy - Who asked — `"user"."id"`, for `workflow_versions.published_by`.
+   * @param now - The publish instant.
+   * @returns The workflow and its v1.
+   * @throws {InvalidRequestError} `workflow_definition_invalid` with the gate's findings — and
+   *   nothing written.
+   * @throws {UpstreamError} `engine_unavailable` when the engine could not answer.
+   * @throws {ConflictError} `workflow_slug_taken` when every suffix is taken, or the slug was
+   *   lost to concurrent creates on every attempt.
+   */
+  async createFromTemplate(
+    organizationId: string,
+    template: TemplateSource,
+    publishedBy: string,
+    now: Date = new Date(),
+  ): Promise<InstantiatedWorkflow> {
+    const verdict = await this.gate.check(organizationId, template.definition);
+
+    if (verdict.findings.length > 0) throw definitionInvalid(verdict.findings);
+
+    const taken = new Set(await this.workflows.slugFamily(organizationId, template.slug));
+
+    for (let attempt = 0; attempt < SLUG_RACE_ATTEMPTS; attempt += 1) {
+      const free = nextFreeSlug(template.slug, taken);
+
+      if (free === undefined) break;
+
+      try {
+        return await this.database.transaction(async (trx) => {
+          const { workflow } = await this.workflows.create(
+            organizationId,
+            {
+              slug: free.slug,
+              name: free.ordinal === 1 ? template.name : `${template.name} (${free.ordinal})`,
+              definition: template.definition,
+              template: { slug: template.slug, version: template.version },
+            },
+            trx,
+          );
+          const version = await this.workflows.publish(
+            workflow.id,
+            {
+              definition: template.definition,
+              changeNote: `Instantiated from ${template.slug}@v${template.version}.`,
+              publishedBy,
+              publishedAt: now,
+            },
+            trx,
+          );
+
+          return {
+            workflow: workflowSummary({ ...workflow, current_version: version.version }),
+            version: workflowVersion(version),
+          };
+        });
+      } catch (error) {
+        if (!violates(error, WORKFLOW_CONSTRAINTS.slugUnique)) throw error;
+
+        taken.add(free.slug);
+      }
+    }
+
+    throw slugTaken(template.slug);
   }
 
   /**
