@@ -415,6 +415,18 @@
 #   the next version is exactly max + 1          drop the workflow_templates_next_version trigger
 #   provenance is slug and version, or neither   drop workflows_template_provenance_pair
 #
+# V069 (#405, BE.1) adds the skills registry and its immutable versions:
+#
+#   BE.1 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a required skill cannot be switched off      drop skills_required_enabled
+#   a required skill cannot be a draft           drop skills_required_not_draft
+#   scope and its referent agree                 drop skills_scope_referent
+#   slugs are unique per workspace               drop skills_organization_slug_key
+#   frontmatter is typed, not a blob             drop skill_versions_frontmatter_typed
+#   a published version is never revised         drop the skill_versions_no_update trigger
+#   publishing creates exactly the next version  drop the skill_versions_next_version trigger
+#
 # Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
 # is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
 # by the latter first, so the rewrite reads the function back from the catalogue and adds the one
@@ -1670,6 +1682,34 @@ expect_red 'a template version may skip or repeat' \
 expect_red 'a workflow may record half its template provenance' \
   'a template slug without its version is refused .*workflows_template_provenance_pair did not fire' \
   'alter table ouroboros.workflows drop constraint workflows_template_provenance_pair;'
+
+expect_red 'a required skill may be switched off' \
+  'a required skill cannot be switched off .*skills_required_enabled did not fire' \
+  'alter table ouroboros.skills drop constraint skills_required_enabled;'
+
+expect_red 'a required skill may be a draft' \
+  'a required skill cannot be a draft .*skills_required_not_draft did not fire' \
+  'alter table ouroboros.skills drop constraint skills_required_not_draft;'
+
+expect_red 'a skill scope may disagree with its referent' \
+  'scope and referent must agree: .*skills_scope_referent did not fire' \
+  'alter table ouroboros.skills drop constraint skills_scope_referent;'
+
+expect_red 'a skill slug may repeat within a workspace' \
+  'a slug is unique per workspace .*skills_organization_slug_key did not fire' \
+  'alter table ouroboros.skills drop constraint skills_organization_slug_key;'
+
+expect_red 'skill frontmatter may be an untyped blob' \
+  'frontmatter is typed: .*skill_versions_frontmatter_typed did not fire' \
+  'alter table ouroboros.skill_versions drop constraint skill_versions_frontmatter_typed;'
+
+expect_red 'a published skill version may be revised' \
+  'a published skill version cannot be revised \(statement was accepted\)' \
+  'drop trigger skill_versions_no_update on ouroboros.skill_versions;'
+
+expect_red 'a skill version may skip a number' \
+  'publishing creates exactly the next version .*skill_versions_next_version did not fire' \
+  'drop trigger skill_versions_next_version on ouroboros.skill_versions;'
 
 
 printf '\n'
