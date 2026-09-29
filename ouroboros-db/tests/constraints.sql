@@ -14467,14 +14467,16 @@ select pg_temp.must_hold(
    -- `failure_classifications_routed_valid()` the same way: a receipt check that must read the
    -- farm's jobs on the writer's behalf, asserted in V055's section. #353 added
    -- `pr_gate_evidence_ref_resolves()` for the same reason — a Build gate's evidence names a
-   -- farm job — asserted in V056's section.
-   and (select array_agg(proname::text order by proname) = array['failure_classifications_routed_valid',
+   -- farm job — asserted in V056's section. #406 added `fact_transitions_record()`, so a fact's
+   -- audit can be written by a transition and by nothing else — asserted in V071's section.
+   and (select array_agg(proname::text order by proname) = array['fact_transitions_record',
+                                                                 'failure_classifications_routed_valid',
                                                                  'pr_gate_evidence_ref_resolves',
                                                                  'run_controls_audit',
                                                                  'run_events_append']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check and #353''s evidence resolver are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver and #406''s fact audit are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -23990,6 +23992,764 @@ select pg_temp.must_reject(
   'a bypass cannot predate the wizard state', 'onboarding_state_bypassed_after_created');
 
 delete from ouroboros.organization where "id" = 'org-v070';
+
+-- ===========================================================================
+-- V071 — facts, anchors, transitions and injection records (#406, BE.2)
+-- ===========================================================================
+--
+-- Mockup 14's "Learned by the loop" card. Asserted: all five mockup rows are representable with
+-- their states, provenance lines and counts; a fact is born proposed and moves only along K3's
+-- edges (proposed → expired and rejected → confirmed fail at the database); the human gates name
+-- their human; expiry requires a reason and a previous_use_count snapshot, and an expired row is
+-- frozen, so "was used 31×" never changes; anchors are shaped and queryable by kind and value
+-- across a changed path set, and a fact with no anchors is never flagged; re-learn lineage links
+-- a new proposal to an expired fact; provenance is typed and resolves to this workspace's runs,
+-- PRs and tickets; "used 48×", "used 12×" and "61% of runs" reproduce from context_injections,
+-- which accepts only confirmed facts and published non-draft skill versions and is append-only;
+-- and every transition writes an audit row with its actor, which the app role cannot forge.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v071',       'Acme Robotics', 'acme-robotics-v071', now()),
+  ('org-v071-other', 'Other Works',   'other-works-v071',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a7100000-0000-0000-0000-00000000000a', 'Ken S',   'ken@facts-v071.dev',   true),
+  ('a7100000-0000-0000-0000-00000000000b', 'Priya N', 'priya@facts-v071.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a7110000-0000-0000-0000-00000000000a', 'org-v071',       'acme-robotics-v071', true),
+  ('a7110000-0000-0000-0000-00000000000b', 'org-v071-other', 'other-works-v071',   true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a711f000-0000-0000-0000-00000000000a', 'a7110000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a711f000-0000-0000-0000-00000000000b', 'a7110000-0000-0000-0000-00000000000b',
+   'other-firmware', true, 'main');
+
+-- A hundred runs — loop #1801 to #1900 — each with one stage, so "% of runs" has a denominator.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  select ('a7120000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid, 'org-v071',
+         'a711f000-0000-0000-0000-00000000000a', 1800 + n, 'Loop ' || (1800 + n),
+         'standard-fix', 'claude-fable-5', 'coding', 'Implement', 4, 8,
+         now() - interval '1 hour'
+    from generate_series(1, 100) as n;
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values ('a7120000-0000-0000-0000-00000000ffff', 'org-v071-other',
+          'a711f000-0000-0000-0000-00000000000b', 7, 'Somebody else''s loop', 'standard-fix',
+          'claude-fable-5', 'coding', 'Implement', 4, 8, now() - interval '1 hour');
+
+insert into ouroboros.run_stages
+    (id, run_id, stage_key, stage_label, "position", attempt, status, started_at)
+  select ('a7130000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid,
+         ('a7120000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid,
+         'implement', 'Implement', 4, 1, 'active', now() - interval '30 minutes'
+    from generate_series(1, 100) as n;
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config) values
+  ('a7140000-0000-0000-0000-0000000000a1', 'org-v071', 'github', 'GitHub · acme-robotics',
+   '{"login": "acme-robotics-v071", "repos": ["helios-firmware"]}'),
+  ('a7140000-0000-0000-0000-0000000000b1', 'org-v071-other', 'github', 'GitHub · other', '{}');
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, run_id)
+  values
+    ('a7150000-0000-0000-0000-000000000498', 'org-v071', 'a7140000-0000-0000-0000-0000000000a1',
+     498, 'https://github.com/acme-robotics/helios-firmware/pull/498',
+     'hil: reserve the rig before tests/hil/', 'loop/1830-hil', 'main', null),
+    ('a7150000-0000-0000-0000-000000000514', 'org-v071', 'a7140000-0000-0000-0000-0000000000a1',
+     514, 'https://github.com/acme-robotics/helios-firmware/pull/514',
+     'can: k_msgq in the ISR path', 'loop/1846-isr', 'main', null),
+    ('a7150000-0000-0000-0000-000000000077', 'org-v071-other',
+     'a7140000-0000-0000-0000-0000000000b1', 77, 'https://github.com/other/repo/pull/77',
+     'somebody else''s change', 'x', 'main', null);
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a7160000-0000-0000-0000-000000000482', 'org-v071', 'a7140000-0000-0000-0000-0000000000a1',
+     '482', '#482', 'https://github.com/acme-robotics/helios-firmware/issues/482',
+     'Fix flaky CAN-bus telemetry test', 'open', now(), now()),
+    ('a7160000-0000-0000-0000-000000000999', 'org-v071-other',
+     'a7140000-0000-0000-0000-0000000000b1', '999', '#999', 'https://github.com/other/repo/issues/999',
+     'someone else''s issue', 'open', now(), now());
+
+insert into ouroboros.issue_estimates
+    (id, ticket_id, version, effort, confidence, suggested_workflow, routed_model, breakdown,
+     risk, risk_note, trace)
+  values
+    ('a7170000-0000-0000-0000-000000000001', 'a7160000-0000-0000-0000-000000000482', 1, 's', 81,
+     'standard-fix', 'claude-fable-5',
+     '{"files": [], "est_tokens": 90000, "cycle_min": 8, "cycle_max": 14, "est_minutes": 20}',
+     'low', 'Isolated.',
+     '{"estimator": "heuristic-v0", "sized_at": "2026-09-17T02:14:00Z", "tokens_used": 0,
+       "signals": []}'),
+    ('a7170000-0000-0000-0000-000000000999', 'a7160000-0000-0000-0000-000000000999', 1, 's', 50,
+     'standard-fix', 'claude-fable-5',
+     '{"files": [], "est_tokens": 0, "cycle_min": 0, "cycle_max": 0, "est_minutes": 0}',
+     'low', 'n',
+     '{"estimator": "heuristic-v0", "sized_at": "2026-09-17T02:14:00Z", "tokens_used": 0,
+       "signals": []}');
+
+-- Skills: zephyr-conventions published, power-budget-checks a draft skill with a published
+-- version, and commit-style with nothing but a draft version.
+insert into ouroboros.skills (id, organization_id, slug, name, description, scope, draft) values
+  ('a7180000-0000-0000-0000-000000000001', 'org-v071', 'zephyr-conventions',
+   'zephyr-conventions', 'Kconfig, devicetree & ISR-safety house rules', 'org', false),
+  ('a7180000-0000-0000-0000-000000000002', 'org-v071', 'power-budget-checks',
+   'power-budget-checks', 'Idle current', 'org', true),
+  ('a7180000-0000-0000-0000-000000000003', 'org-v071', 'commit-style', 'commit-style',
+   'Conventional commits', 'org', false),
+  ('a7180000-0000-0000-0000-000000000009', 'org-v071-other', 'zephyr-conventions',
+   'zephyr-conventions', 'another workspace''s', 'org', false);
+
+insert into ouroboros.skill_versions (id, skill_id, version, body, published_at) values
+  ('a7190000-0000-0000-0000-000000000001', 'a7180000-0000-0000-0000-000000000001', 1,
+   '# Zephyr conventions', now()),
+  ('a7190000-0000-0000-0000-000000000002', 'a7180000-0000-0000-0000-000000000002', 1,
+   '# Power budget', now()),
+  ('a7190000-0000-0000-0000-000000000009', 'a7180000-0000-0000-0000-000000000009', 1,
+   '# Theirs', now());
+
+insert into ouroboros.skill_versions (id, skill_id, body) values
+  ('a7190000-0000-0000-0000-000000000003', 'a7180000-0000-0000-0000-000000000003', '# draft');
+
+-- --- vocabularies -------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.facts', 'facts_status_valid')
+    = array['confirmed', 'expired', 'proposed', 'rejected', 'stale'],
+  'a fact is proposed, confirmed, rejected, stale or expired');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.facts', 'facts_proposer_valid')
+    = array['correction_note', 'import', 'llm', 'manual', 'steer', 'waiver'],
+  'the proposer vocabulary reserves llm for #423');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.fact_anchors', 'fact_anchors_kind_valid')
+    = array['dependency', 'path_glob', 'platform_version'],
+  'an anchor is a path glob, a dependency or a platform version');
+
+select pg_temp.must_hold(
+  pg_temp.vocabulary('ouroboros.context_injections', 'context_injections_consumer_valid')
+    = array['estimator', 'playbook', 'run_stage'],
+  'an injection is recorded by the estimator, a run stage or a playbook');
+
+-- --- the five mockup rows, born proposed ---------------------------------------------------------
+insert into ouroboros.facts (id, organization_id, repo_ref, text, proposer, provenance) values
+  ('a71a0000-0000-0000-0000-000000000001', 'org-v071', 'acme-robotics/helios-firmware',
+   'CI needs `west update` before first build of the day', 'correction_note',
+   '{"line": "from build-farm failure pattern",
+     "refs": [{"kind": "run", "id": "a7120000-0000-0000-0000-000000000012"}]}'),
+  ('a71a0000-0000-0000-0000-000000000002', 'org-v071', 'acme-robotics/helios-firmware',
+   'Tests under `tests/hil/` require rig reservation via `rig claim`', 'manual',
+   '{"line": "from PR #498 review cycle",
+     "refs": [{"kind": "pull_request", "id": "a7150000-0000-0000-0000-000000000498"}]}'),
+  ('a71a0000-0000-0000-0000-000000000003', 'org-v071', 'acme-robotics/helios-firmware',
+   'Team prefers `k_msgq` over `k_fifo` in ISR paths', 'correction_note',
+   '{"line": "from PR #514 review cycle",
+     "refs": [{"kind": "pull_request", "id": "a7150000-0000-0000-0000-000000000514"},
+              {"kind": "run", "id": "a7120000-0000-0000-0000-000000000046"}]}'),
+  ('a71a0000-0000-0000-0000-000000000004', 'org-v071', 'acme-robotics/helios-firmware',
+   'PID gains live in `config/control.yaml`, not in headers', 'correction_note',
+   '{"line": "observed in loop #1847",
+     "refs": [{"kind": "run", "id": "a7120000-0000-0000-0000-000000000047"},
+              {"kind": "ticket", "id": "a7160000-0000-0000-0000-000000000482"}]}'),
+  ('a71a0000-0000-0000-0000-000000000005', 'org-v071', 'acme-robotics/helios-firmware',
+   'Zephyr 4.0 needs `CONFIG_LEGACY_TIMER`', 'import',
+   '{"line": "imported from CLAUDE.md",
+     "refs": [{"kind": "import", "file": "CLAUDE.md", "section": "Timers"}]}');
+
+select pg_temp.must_hold(
+  (select count(*) = 5 and bool_and(status = 'proposed')
+     from ouroboros.facts where organization_id = 'org-v071'),
+  'every fact is born proposed');
+
+select pg_temp.must_hold(
+  (select text from ouroboros.facts where id = 'a71a0000-0000-0000-0000-000000000001')
+    = 'CI needs `west update` before first build of the day',
+  'inline-code spans are preserved as written');
+
+-- --- the lifecycle: legal moves ----------------------------------------------------------------
+update ouroboros.facts
+   set status = 'confirmed', confirmed_by = 'a7100000-0000-0000-0000-00000000000a',
+       confirmed_at = now() - interval '6 weeks',
+       status_changed_by = 'a7100000-0000-0000-0000-00000000000a'
+ where id in ('a71a0000-0000-0000-0000-000000000001', 'a71a0000-0000-0000-0000-000000000005');
+
+update ouroboros.facts
+   set status = 'confirmed', confirmed_by = 'a7100000-0000-0000-0000-00000000000b',
+       confirmed_at = now() - interval '3 weeks',
+       status_changed_by = 'a7100000-0000-0000-0000-00000000000b'
+ where id = 'a71a0000-0000-0000-0000-000000000002';
+
+-- --- the lifecycle: what the database refuses ---------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.facts (organization_id, text, status, proposer, provenance,
+                                 confirmed_at)
+    values ('org-v071', 'born confirmed', 'confirmed', 'manual', '{"line": "x", "refs": []}',
+            now())$$,
+  'a fact cannot be created in any state but proposed', 'facts_legal_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts
+       set status = 'expired', expired_reason = 'never true', previous_use_count = 0,
+           confirmed_at = now(), status_changed_by = 'a7100000-0000-0000-0000-00000000000a'
+     where id = 'a71a0000-0000-0000-0000-000000000003'$$,
+  'proposed → expired fails at the database', 'facts_legal_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts set status = 'stale', confirmed_at = now()
+     where id = 'a71a0000-0000-0000-0000-000000000003'$$,
+  'proposed → stale fails at the database', 'facts_legal_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts
+       set status = 'expired', expired_reason = 'skipped staleness', previous_use_count = 0,
+           status_changed_by = 'a7100000-0000-0000-0000-00000000000a'
+     where id = 'a71a0000-0000-0000-0000-000000000001'$$,
+  'confirmed → expired skips stale and fails', 'facts_legal_transition');
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts set status = 'confirmed', confirmed_at = now()
+     where id = 'a71a0000-0000-0000-0000-000000000003'$$,
+  'confirming a fact needs the person who confirmed it', 'facts_transition_actor');
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts
+       set status = 'confirmed', status_changed_by = 'a7100000-0000-0000-0000-00000000000a'
+     where id = 'a71a0000-0000-0000-0000-000000000003'$$,
+  'a confirmed fact carries its confirmed_at', 'facts_confirmed_stamp');
+
+-- A proposal from an unlisted row, rejected, and then never confirmed.
+insert into ouroboros.facts (id, organization_id, text, proposer, provenance) values
+  ('a71a0000-0000-0000-0000-000000000006', 'org-v071', 'Use printk everywhere', 'steer',
+   '{"line": "from a steer note", "refs": []}');
+
+update ouroboros.facts
+   set status = 'rejected', status_changed_by = 'a7100000-0000-0000-0000-00000000000b',
+       status_reason = 'LOG_* macros are the house rule'
+ where id = 'a71a0000-0000-0000-0000-000000000006';
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts
+       set status = 'confirmed', confirmed_at = now(),
+           status_changed_by = 'a7100000-0000-0000-0000-00000000000a'
+     where id = 'a71a0000-0000-0000-0000-000000000006'$$,
+  'rejected → confirmed fails at the database', 'facts_legal_transition');
+
+-- --- typed provenance ----------------------------------------------------------------------------
+select pg_temp.must_reject(
+  format($$insert into ouroboros.facts (organization_id, text, proposer, provenance)
+    values ('org-v071', 'probe', 'manual', %L)$$, prov),
+  'provenance is typed: ' || prov, 'facts_provenance_typed')
+  from unnest(array[
+    '"from PR #498"', '[]', '{"line": "x"}', '{"refs": []}', '{"line": " ", "refs": []}',
+    '{"line": "x", "refs": [], "note": "y"}', '{"line": "x", "refs": {}}',
+    '{"line": "x", "refs": ["run"]}', '{"line": "x", "refs": [{"kind": "commit", "id": "a"}]}',
+    '{"line": "x", "refs": [{"kind": "run"}]}',
+    '{"line": "x", "refs": [{"kind": "run", "id": "1847"}]}',
+    '{"line": "x", "refs": [{"kind": "run", "id": "a7120000-0000-0000-0000-000000000047", "n": 1}]}',
+    '{"line": "x", "refs": [{"kind": "import"}]}',
+    '{"line": "x", "refs": [{"kind": "import", "file": "CLAUDE.md", "section": ""}]}',
+    '{"line": "x", "refs": [{"kind": "import", "file": "CLAUDE.md", "line": 4}]}']) as prov;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.facts (organization_id, text, proposer, provenance)
+    values ('org-v071', 'probe', 'manual',
+            '{"line": "x", "refs": [{"kind": "pull_request",
+                                     "id": "a7150000-0000-0000-0000-000000000077"}]}')$$,
+  'a provenance PR resolves to this workspace', 'facts_provenance_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.facts (organization_id, text, proposer, provenance)
+    values ('org-v071', 'probe', 'manual',
+            '{"line": "x", "refs": [{"kind": "ticket",
+                                     "id": "a7160000-0000-0000-0000-000000000999"}]}')$$,
+  'a provenance ticket resolves to this workspace', 'facts_provenance_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.facts (organization_id, text, proposer, provenance)
+    values ('org-v071', 'probe', 'manual',
+            '{"line": "x", "refs": [{"kind": "run",
+                                     "id": "a7120000-0000-0000-0000-00000000dead"}]}')$$,
+  'a provenance run resolves to a row that exists', 'facts_provenance_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.facts (organization_id, text, proposer, provenance)
+    values ('org-v071', 'probe', 'oracle', '{"line": "x", "refs": []}')$$,
+  'the proposer is a closed vocabulary', 'facts_proposer_valid');
+
+select pg_temp.must_hold(
+  (select count(*) = 4
+     from ouroboros.facts f
+     cross join lateral jsonb_array_elements(f.provenance -> 'refs') as r
+     left join ouroboros.runs run on r ->> 'kind' = 'run' and run.id = (r ->> 'id')::uuid
+     left join ouroboros.pull_requests pr
+            on r ->> 'kind' = 'pull_request' and pr.id = (r ->> 'id')::uuid
+     left join ouroboros.tickets t on r ->> 'kind' = 'ticket' and t.id = (r ->> 'id')::uuid
+    where f.id in ('a71a0000-0000-0000-0000-000000000003', 'a71a0000-0000-0000-0000-000000000004')
+      and coalesce(run.organization_id, pr.organization_id, t.organization_id) = f.organization_id),
+  'provenance refs resolve to runs, PRs and tickets of the fact''s workspace');
+
+-- --- anchors ------------------------------------------------------------------------------------
+insert into ouroboros.fact_anchors (fact_id, kind, value) values
+  ('a71a0000-0000-0000-0000-000000000005', 'platform_version', 'zephyr-4.0'),
+  ('a71a0000-0000-0000-0000-000000000002', 'path_glob', 'tests/hil/**'),
+  ('a71a0000-0000-0000-0000-000000000001', 'path_glob', 'west.yml'),
+  ('a71a0000-0000-0000-0000-000000000001', 'dependency', 'zephyr'),
+  ('a71a0000-0000-0000-0000-000000000004', 'path_glob', 'config/*.yaml');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.fact_anchors (fact_id, kind, value)
+    values ('a71a0000-0000-0000-0000-000000000001', 'path_glob', %L)$$, v),
+  'a path-glob anchor stays inside the repository: ' || v, 'fact_anchors_path_glob_shape')
+  from unnest(array['/etc/**', 'src\main.c', '../outside/*', 'a/../../b']) as v;
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.fact_anchors (fact_id, kind, value)
+    values ('a71a0000-0000-0000-0000-000000000001', 'dependency', %L)$$, v),
+  'an anchor value is trimmed and present: [' || v || ']', 'fact_anchors_value_present')
+  from unnest(array['', ' zephyr', 'zephyr ']) as v;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.fact_anchors (fact_id, kind, value)
+    values ('a71a0000-0000-0000-0000-000000000005', 'platform_version', 'zephyr-4.0')$$,
+  'an anchor is recorded once per fact', 'fact_anchors_fact_kind_value_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.fact_anchors (fact_id, kind, value)
+    values ('a71a0000-0000-0000-0000-000000000005', 'commit', 'abc123')$$,
+  'an anchor kind is a closed vocabulary', 'fact_anchors_kind_valid');
+
+select pg_temp.must_hold(
+  ouroboros.path_glob_matches('tests/hil/**', 'tests/hil/rig/claim_test.py')
+  and ouroboros.path_glob_matches('tests/hil/**', 'tests/hil/a.c')
+  and not ouroboros.path_glob_matches('tests/hil/**', 'tests/unit/a.c')
+  and ouroboros.path_glob_matches('config/*.yaml', 'config/control.yaml')
+  and not ouroboros.path_glob_matches('config/*.yaml', 'config/sub/control.yaml')
+  and ouroboros.path_glob_matches('**/Kconfig', 'Kconfig')
+  and ouroboros.path_glob_matches('**/Kconfig', 'boards/arm/Kconfig')
+  and not ouroboros.path_glob_matches('**/Kconfig', 'boards/arm/Kconfig.defconfig')
+  and ouroboros.path_glob_matches('src/?.c', 'src/a.c')
+  and not ouroboros.path_glob_matches('src/?.c', 'src/ab.c')
+  and ouroboros.path_glob_matches('west.yml', 'west.yml')
+  and not ouroboros.path_glob_matches('west.yml', 'westxyml')
+  and ouroboros.path_glob_matches('a+b(c)/[x].h', 'a+b(c)/[x].h')
+  and ouroboros.path_glob_matches(null, 'x') is null,
+  'path_glob_matches: ** spans directories, * and ? stay in a segment, the rest is literal');
+
+-- The sweep's question: which confirmed facts does this commit touch? A changed path set and a
+-- changed dependency set, answered by kind and value. PID gains' anchor matches too, but it is
+-- still a proposal and is not a sweep candidate; tests/hil/ was not touched.
+select pg_temp.must_hold(
+  (select array_agg(distinct f.id order by f.id)
+     from ouroboros.fact_anchors a
+     join ouroboros.facts f on f.id = a.fact_id
+    where f.organization_id = 'org-v071' and f.status = 'confirmed'
+      and ((a.kind = 'path_glob'
+            and exists (select 1
+                          from unnest(array['west.yml', 'config/control.yaml', 'src/main.c']) p
+                         where ouroboros.path_glob_matches(a.value, p)))
+           or (a.kind = 'dependency' and a.value = any (array['mcuboot']))))
+  = array['a71a0000-0000-0000-0000-000000000001'::uuid],
+  'anchors answer the sweep by kind and value across a changed path set');
+
+select pg_temp.must_hold(
+  (select array_agg(fact_id) from ouroboros.fact_anchors
+    where kind = 'platform_version' and value = 'zephyr-4.0')
+  = array['a71a0000-0000-0000-0000-000000000005'::uuid],
+  'a platform-version anchor is found by kind and value');
+
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select fact_id from ouroboros.fact_anchors
+     where kind = 'platform_version' and value = 'zephyr-4.0'$$,
+  'fact_anchors_kind_value_idx');
+reset enable_seqscan;
+
+-- A fact with no anchors is valid, and nothing the sweep can ask ever names it.
+insert into ouroboros.facts (id, organization_id, text, proposer, provenance) values
+  ('a71a0000-0000-0000-0000-000000000007', 'org-v071', 'Ask Ken before touching the bootloader',
+   'manual', '{"line": "added by hand", "refs": []}');
+
+update ouroboros.facts
+   set status = 'confirmed', confirmed_at = now(), confirmed_by = 'a7100000-0000-0000-0000-00000000000a',
+       status_changed_by = 'a7100000-0000-0000-0000-00000000000a'
+ where id = 'a71a0000-0000-0000-0000-000000000007';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.fact_anchors
+               where fact_id = 'a71a0000-0000-0000-0000-000000000007'),
+  'a confirmed fact with no anchors is valid, and no anchor lookup can flag it stale');
+
+-- --- injections: what the record accepts --------------------------------------------------------
+-- "used 48×": 46 run stages, one estimate and one playbook launch carry the west-update fact.
+-- "used 12×": runs 1–12 carry the tests/hil/ fact. zephyr-4.0 rides on runs 1–31 before it
+-- expires. zephyr-conventions is in runs 1–61 of 100: "61% of runs".
+insert into ouroboros.context_injections
+    (organization_id, consumer, run_stage_id, run_id, skill_version_ids, fact_ids, manifest_hash)
+  select 'org-v071', 'run_stage',
+         ('a7130000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid,
+         ('a7120000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid,
+         case when n <= 61 then array['a7190000-0000-0000-0000-000000000001'::uuid]
+              else '{}'::uuid[] end,
+         array_remove(array[
+           case when n <= 46 then 'a71a0000-0000-0000-0000-000000000001'::uuid end,
+           case when n <= 12 then 'a71a0000-0000-0000-0000-000000000002'::uuid end,
+           case when n <= 31 then 'a71a0000-0000-0000-0000-000000000005'::uuid end], null),
+         encode(sha256(convert_to('manifest-' || n, 'UTF8')), 'hex')
+    from generate_series(1, 100) as n;
+
+insert into ouroboros.context_injections
+    (organization_id, consumer, estimate_id, run_id, fact_ids, manifest_hash)
+  values
+    ('org-v071', 'estimator', 'a7170000-0000-0000-0000-000000000001', null,
+     array['a71a0000-0000-0000-0000-000000000001'::uuid], repeat('a', 64)),
+    ('org-v071', 'playbook', null, 'a7120000-0000-0000-0000-000000000090',
+     array['a71a0000-0000-0000-0000-000000000001'::uuid], repeat('b', 64));
+
+select pg_temp.must_hold(
+  (select count(*) from ouroboros.context_injections
+    where fact_ids @> array['a71a0000-0000-0000-0000-000000000001'::uuid]) = 48,
+  '"used 48×" reproduces from context_injections');
+
+select pg_temp.must_hold(
+  (select count(*) from ouroboros.context_injections
+    where fact_ids @> array['a71a0000-0000-0000-0000-000000000002'::uuid]) = 12,
+  '"used 12×" reproduces from context_injections');
+
+select pg_temp.must_hold(
+  (select round(100.0 * count(distinct ci.run_id)
+                  filter (where ci.skill_version_ids && array(
+                    select v.id from ouroboros.skill_versions v
+                     where v.skill_id = 'a7180000-0000-0000-0000-000000000001'))
+                / count(distinct r.id))
+     from ouroboros.runs r
+     left join ouroboros.context_injections ci on ci.run_id = r.id
+    where r.organization_id = 'org-v071') = 61,
+  '"61% of runs" reproduces from context_injections');
+
+set local enable_seqscan = off;
+select pg_temp.must_use_index(
+  $$select count(*) from ouroboros.context_injections
+     where fact_ids @> array['a71a0000-0000-0000-0000-000000000001'::uuid]$$,
+  'context_injections_fact_ids_idx');
+select pg_temp.must_use_index(
+  $$select count(*) from ouroboros.context_injections
+     where skill_version_ids && array['a7190000-0000-0000-0000-000000000001'::uuid]$$,
+  'context_injections_skill_version_ids_idx');
+reset enable_seqscan;
+
+-- --- injections: what the record refuses ---------------------------------------------------------
+select pg_temp.must_reject(
+  format($$insert into ouroboros.context_injections
+      (organization_id, consumer, estimate_id, run_stage_id, run_id, manifest_hash)
+    values ('org-v071', %L, %L, %L, %L, repeat('c', 64))$$, c, e, s, r),
+  'the consumer names its own reference: ' || c, 'context_injections_consumer_ref')
+  from (values
+    ('estimator', null, null, null),
+    ('estimator', 'a7170000-0000-0000-0000-000000000001', null,
+     'a7120000-0000-0000-0000-000000000001'),
+    ('run_stage', null, 'a7130000-0000-0000-0000-000000000001', null),
+    ('run_stage', null, null, 'a7120000-0000-0000-0000-000000000001'),
+    ('playbook', null, null, null),
+    ('playbook', null, 'a7130000-0000-0000-0000-000000000001',
+     'a7120000-0000-0000-0000-000000000001')) as p(c, e, s, r);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections (organization_id, consumer, run_id, manifest_hash)
+    values ('org-v071', 'playbook', 'a7120000-0000-0000-0000-000000000001', 'not-a-hash')$$,
+  'the manifest hash is a sha256', 'context_injections_manifest_hash_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections
+      (organization_id, consumer, run_id, fact_ids, manifest_hash)
+    values ('org-v071', 'playbook', 'a7120000-0000-0000-0000-000000000001',
+            array['a71a0000-0000-0000-0000-000000000001'::uuid,
+                  'a71a0000-0000-0000-0000-000000000001'::uuid], repeat('c', 64))$$,
+  'a manifest lists a fact once', 'context_injections_facts_set');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections
+      (organization_id, consumer, run_id, skill_version_ids, manifest_hash)
+    values ('org-v071', 'playbook', 'a7120000-0000-0000-0000-000000000001',
+            array[null]::uuid[], repeat('c', 64))$$,
+  'a manifest holds no null skill version', 'context_injections_skill_versions_set');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.context_injections
+      (organization_id, consumer, run_id, fact_ids, manifest_hash)
+    values ('org-v071', 'playbook', 'a7120000-0000-0000-0000-000000000001',
+            array[%L::uuid], repeat('c', 64))$$, f),
+  'only a confirmed fact of the workspace is injected: ' || f, 'context_injections_resolves')
+  from unnest(array['a71a0000-0000-0000-0000-000000000003',   -- proposed
+                    'a71a0000-0000-0000-0000-000000000006',   -- rejected
+                    'a71a0000-0000-0000-0000-00000000dead']) as f;
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.context_injections
+      (organization_id, consumer, run_id, skill_version_ids, manifest_hash)
+    values ('org-v071', 'playbook', 'a7120000-0000-0000-0000-000000000001',
+            array[%L::uuid], repeat('c', 64))$$, v),
+  'only a published version of a non-draft skill of the workspace is injected: ' || v,
+  'context_injections_resolves')
+  from unnest(array['a7190000-0000-0000-0000-000000000002',   -- a draft skill
+                    'a7190000-0000-0000-0000-000000000003',   -- a draft version
+                    'a7190000-0000-0000-0000-000000000009']) as v; -- another workspace's
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections (organization_id, consumer, run_id, manifest_hash)
+    values ('org-v071', 'playbook', 'a7120000-0000-0000-0000-00000000ffff', repeat('c', 64))$$,
+  'the launched run is this workspace''s', 'context_injections_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections
+      (organization_id, consumer, run_stage_id, run_id, manifest_hash)
+    values ('org-v071', 'run_stage', 'a7130000-0000-0000-0000-000000000001',
+            'a7120000-0000-0000-0000-000000000002', repeat('c', 64))$$,
+  'the run stage is a stage of the named run', 'context_injections_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections (organization_id, consumer, estimate_id, manifest_hash)
+    values ('org-v071', 'estimator', 'a7170000-0000-0000-0000-000000000999', repeat('c', 64))$$,
+  'the estimate is this workspace''s', 'context_injections_resolves');
+
+select pg_temp.must_raise(
+  $$update ouroboros.context_injections set fact_ids = '{}'
+     where estimate_id = 'a7170000-0000-0000-0000-000000000001'$$,
+  '23001', 'an injection record cannot be revised');
+
+-- --- staleness, expiry and the snapshot ----------------------------------------------------------
+-- The sweep flags zephyr-4.0 stale: nobody did it, so nobody is named.
+update ouroboros.facts
+   set status = 'stale', status_changed_by = null, status_reason = 'repo moved to zephyr-4.1'
+ where id = 'a71a0000-0000-0000-0000-000000000005';
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts
+       set status = 'expired', status_changed_by = 'a7100000-0000-0000-0000-00000000000a',
+           previous_use_count = 31
+     where id = 'a71a0000-0000-0000-0000-000000000005'$$,
+  'moving to expired requires a reason', 'facts_expired_reason');
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts
+       set status = 'expired', status_changed_by = 'a7100000-0000-0000-0000-00000000000a',
+           expired_reason = 'Zephyr 4.1 migration'
+     where id = 'a71a0000-0000-0000-0000-000000000005'$$,
+  'moving to expired requires a previous_use_count snapshot', 'facts_expired_use_count');
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts
+       set status = 'expired', expired_reason = 'Zephyr 4.1 migration', previous_use_count = 31
+     where id = 'a71a0000-0000-0000-0000-000000000005'$$,
+  'expiring a fact needs the person who agreed', 'facts_transition_actor');
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts set previous_use_count = 3
+     where id = 'a71a0000-0000-0000-0000-000000000001'$$,
+  'only an expired fact carries a use-count snapshot', 'facts_expired_use_count');
+
+-- BF.2's expiry: the snapshot is the count from the injection record, taken in the same write.
+update ouroboros.facts
+   set status = 'expired', status_changed_by = 'a7100000-0000-0000-0000-00000000000a',
+       expired_reason = 'Zephyr 4.1 migration',
+       previous_use_count = (select count(*) from ouroboros.context_injections
+                              where fact_ids @> array[facts.id])
+ where id = 'a71a0000-0000-0000-0000-000000000005';
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections
+      (organization_id, consumer, run_id, fact_ids, manifest_hash)
+    values ('org-v071', 'playbook', 'a7120000-0000-0000-0000-000000000099',
+            array['a71a0000-0000-0000-0000-000000000005'::uuid], repeat('d', 64))$$,
+  'an expired fact is no longer injected', 'context_injections_resolves');
+
+select pg_temp.must_raise(
+  $$update ouroboros.facts set previous_use_count = 32
+     where id = 'a71a0000-0000-0000-0000-000000000005'$$,
+  '23001', 'an expired fact''s use-count snapshot cannot change');
+
+select pg_temp.must_raise(
+  $$update ouroboros.facts set text = 'Zephyr 4.1 needs it too'
+     where id = 'a71a0000-0000-0000-0000-000000000005'$$,
+  '23001', 'an expired fact''s text cannot change');
+
+select pg_temp.must_raise(
+  $$update ouroboros.facts
+       set status = 'confirmed', status_changed_by = 'a7100000-0000-0000-0000-00000000000a',
+           expired_reason = null, previous_use_count = null
+     where id = 'a71a0000-0000-0000-0000-000000000005'$$,
+  '23001', 'an expired fact cannot be revived — re-learn is a new proposal');
+
+-- A stale fact may be re-confirmed instead: the other exit from stale.
+update ouroboros.facts
+   set status = 'stale', status_changed_by = null, status_reason = 'mcuboot bumped'
+ where id = 'a71a0000-0000-0000-0000-000000000007';
+update ouroboros.facts
+   set status = 'confirmed', confirmed_at = now(),
+       status_changed_by = 'a7100000-0000-0000-0000-00000000000b', status_reason = 'still true'
+ where id = 'a71a0000-0000-0000-0000-000000000007';
+
+-- --- re-learn lineage ---------------------------------------------------------------------------
+insert into ouroboros.facts
+    (id, organization_id, repo_ref, text, proposer, provenance, relearned_from_fact_id)
+  values ('a71a0000-0000-0000-0000-000000000008', 'org-v071', 'acme-robotics/helios-firmware',
+          'Zephyr 4.1 needs `CONFIG_LEGACY_TIMER` too', 'manual',
+          '{"line": "re-learned", "refs": []}', 'a71a0000-0000-0000-0000-000000000005');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.facts
+      (organization_id, text, proposer, provenance, relearned_from_fact_id)
+    values ('org-v071', 'probe', 'manual', '{"line": "x", "refs": []}',
+            'a71a0000-0000-0000-0000-000000000001')$$,
+  'only an expired fact can be re-learned', 'facts_relearn_from_expired');
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts set relearned_from_fact_id = 'a71a0000-0000-0000-0000-000000000001'
+     where id = 'a71a0000-0000-0000-0000-000000000003'$$,
+  'lineage is fixed when the proposal is made', 'facts_relearn_from_expired');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.facts
+      (organization_id, text, proposer, provenance, relearned_from_fact_id)
+    values ('org-v071-other', 'probe', 'manual', '{"line": "x", "refs": []}',
+            'a71a0000-0000-0000-0000-000000000005')$$,
+  'lineage stays inside the workspace', 'facts_relearned_from_fk');
+
+-- --- the card, as rows --------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(f.status || ' | ' || (f.provenance ->> 'line')
+                    || case when f.status = 'expired' then ' · expired on ' || f.expired_reason
+                            else coalesce(' · confirmed by ' || split_part(u.name, ' ', 1), '')
+                       end
+                    || ' | ' || coalesce('was used ' || f.previous_use_count || '×',
+                                         'used ' || (select count(*)
+                                                       from ouroboros.context_injections ci
+                                                      where ci.fact_ids @> array[f.id]) || '×')
+                    order by f.id)
+     from ouroboros.facts f
+     left join ouroboros."user" u on u.id = f.confirmed_by
+    where f.id between 'a71a0000-0000-0000-0000-000000000001'
+                   and 'a71a0000-0000-0000-0000-000000000005')
+  = array['confirmed | from build-farm failure pattern · confirmed by Ken | used 48×',
+          'confirmed | from PR #498 review cycle · confirmed by Priya | used 12×',
+          'proposed | from PR #514 review cycle | used 0×',
+          'proposed | observed in loop #1847 | used 0×',
+          'expired | imported from CLAUDE.md · expired on Zephyr 4.1 migration | was used 31×'],
+  'all five mockup rows are representable with their states, provenance lines and counts');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.facts
+    where organization_id = 'org-v071' and status = 'proposed'
+      and relearned_from_fact_id is null),
+  '"2 awaiting review": the two mockup proposals, beside the re-learn proposal');
+
+-- --- the audit ----------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(coalesce(from_status, '∅') || '→' || to_status || ':'
+                    || coalesce(split_part(u.name, ' ', 1), 'nobody') order by t.at, t.to_status)
+     from ouroboros.fact_transitions t
+     left join ouroboros."user" u on u.id = t.actor_id
+    where t.fact_id = 'a71a0000-0000-0000-0000-000000000005')
+  = array['∅→proposed:nobody', 'proposed→confirmed:Ken', 'confirmed→stale:nobody',
+          'stale→expired:Ken'],
+  'every transition of the expired fact wrote an audit row with its actor');
+
+select pg_temp.must_hold(
+  (select reason from ouroboros.fact_transitions
+    where fact_id = 'a71a0000-0000-0000-0000-000000000006' and to_status = 'rejected')
+  = 'LOG_* macros are the house rule',
+  'the audit carries the reason');
+
+select pg_temp.must_hold(
+  (select count(*) from ouroboros.fact_transitions t
+     join ouroboros.facts f on f.id = t.fact_id
+    where f.organization_id = 'org-v071')
+  = (select count(*) from ouroboros.facts where organization_id = 'org-v071')
+    + 9,
+  'one audit row per creation and per move: four confirmations, a rejection, two stale flags, an expiry and a re-confirmation');
+
+select pg_temp.must_raise(
+  $$update ouroboros.fact_transitions set to_status = 'rejected'
+     where fact_id = 'a71a0000-0000-0000-0000-000000000001' and to_status = 'confirmed'$$,
+  '23001', 'an audit row cannot be revised');
+
+-- The app role moves a fact and the audit follows, though it cannot write the audit itself.
+set local role ouroboros_app;
+update ouroboros.facts
+   set status = 'confirmed', confirmed_at = now(), confirmed_by = 'a7100000-0000-0000-0000-00000000000b',
+       status_changed_by = 'a7100000-0000-0000-0000-00000000000b'
+ where id = 'a71a0000-0000-0000-0000-000000000004';
+select pg_temp.must_raise(
+  $$insert into ouroboros.fact_transitions (fact_id, to_status, actor_id)
+    values ('a71a0000-0000-0000-0000-000000000003', 'confirmed',
+            'a7100000-0000-0000-0000-00000000000a')$$,
+  '42501', 'the app role cannot forge an audit row');
+reset role;
+
+select pg_temp.must_hold(
+  exists (select 1 from ouroboros.fact_transitions
+           where fact_id = 'a71a0000-0000-0000-0000-000000000004' and to_status = 'confirmed'
+             and actor_id = 'a7100000-0000-0000-0000-00000000000b'),
+  'a transition made as the app role is audited with its actor');
+
+select pg_temp.must_hold(
+  (select prosecdef
+      and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+      and not has_function_privilege('public', oid, 'execute')
+     from pg_proc
+    where proname = 'fact_transitions_record' and pronamespace = 'ouroboros'::regnamespace),
+  'the audit recorder runs as its owner, search_path pinned with pg_temp last, execute revoked');
+
+-- --- usage is counted, never stored -------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(column_name::text order by column_name)
+     from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'facts'
+      and column_name ~ '(usage|use_count|used|uses|percent|pct|ratio|count)')
+  = array['previous_use_count'],
+  'the only stored use count on facts is the expiry snapshot');
+
+-- --- grants -------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.facts', 'insert')
+  and has_table_privilege('ouroboros_app', 'ouroboros.facts', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.facts', 'delete')
+  and has_table_privilege('ouroboros_app', 'ouroboros.fact_anchors', 'delete')
+  and has_table_privilege('ouroboros_app', 'ouroboros.fact_transitions', 'select')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.fact_transitions', 'insert')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.fact_transitions', 'update')
+  and has_table_privilege('ouroboros_app', 'ouroboros.context_injections', 'insert')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.context_injections', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.context_injections', 'delete'),
+  'the app role moves facts and appends injections; it deletes neither and cannot write the audit');
+
+-- --- set-null and cascades ------------------------------------------------------------------------
+delete from ouroboros."user" where "id" = 'a7100000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select confirmed_by is null and status_changed_by is null and previous_use_count = 31
+     from ouroboros.facts where id = 'a71a0000-0000-0000-0000-000000000005')
+  and not exists (select 1 from ouroboros.fact_transitions
+                   where actor_id = 'a7100000-0000-0000-0000-00000000000a'),
+  'removing a person clears their attribution, even on a frozen expired fact');
+
+delete from ouroboros.organization where "id" in ('org-v071', 'org-v071-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.facts where id::text like 'a71a%')
+  and not exists (select 1 from ouroboros.fact_transitions where fact_id::text like 'a71a%')
+  and not exists (select 1 from ouroboros.fact_anchors where fact_id::text like 'a71a%')
+  and not exists (select 1 from ouroboros.context_injections
+                   where organization_id in ('org-v071', 'org-v071-other')),
+  'a deleted workspace takes its facts, anchors, audit and injection records');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

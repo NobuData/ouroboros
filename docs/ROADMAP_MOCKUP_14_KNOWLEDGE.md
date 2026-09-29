@@ -236,7 +236,7 @@ v2`** created at filing; every issue assigned. Complexity chips: **XS · S · M 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BE.1 | #405 ✅ | 🟢 Done | ouroboros-db: [BE.1] Skills & versions schema | Markdown+frontmatter skills, scopes, required/draft flags (K1) | mvp, knowledge, db | N (after WF-P.1, BA-B.3) | Y | M | ouroboros-db |
-| BE.2 | #406 | 🟡 Open | ouroboros-db: [BE.2] Facts, anchors & injection records | Lifecycle states, typed provenance, expiry anchors, usage (K3/K4) | mvp, knowledge, db | N (after BE.1) | Y | M | ouroboros-db |
+| BE.2 | #406 ✅ | 🟢 Done | ouroboros-db: [BE.2] Facts, anchors & injection records | Lifecycle states, typed provenance, expiry anchors, usage (K3/K4) | mvp, knowledge, db | N (after BE.1) | Y | M | ouroboros-db |
 | BE.3 | #407 | 🟡 Open | ouroboros-db: [BE.3] Playbooks schema | Recipes: pins, skill overrides, context presets, run counts (K6) | mvp, knowledge, db | N (after BE.1, WF-P.1) | Y | S | ouroboros-db |
 | BE.4 | #408 | 🟡 Open | ouroboros-db: [BE.4] Environment recipes | Ordered setup commands per repo, versioned, consumer-ready (K7) | mvp, knowledge, db | N (after BA.1) | Y | S | ouroboros-db |
 | BE.5 | #409 | 🟡 Open | ouroboros-db: [BE.5] Knowledge seeds — mockup-14 parity + probes | Six skills, five facts, three playbooks, profile; ci checks | mvp, knowledge, db, ci | N (after BE.2–BE.4, #24) | Y | M | ouroboros-db, .github |
@@ -286,7 +286,7 @@ erDiagram
 
 ### Issue BE.2 — ouroboros-db: [BE.2] Facts, anchors & injection records
 
-> **GitHub issue:** #406 · **Status:** 🟡 Open · **Parent epic:** #401
+> **GitHub issue:** #406 ✅ · **Status:** 🟢 Done · **Parent epic:** #401
 
 - **Problem Statement:** Facts need the K3 lifecycle, typed provenance,
   K4 expiry anchors, and counted usage — the card's every state as data.

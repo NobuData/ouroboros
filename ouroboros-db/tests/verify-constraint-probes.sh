@@ -427,6 +427,21 @@
 #   a published version is never revised         drop the skill_versions_no_update trigger
 #   publishing creates exactly the next version  drop the skill_versions_next_version trigger
 #
+# V071 (#406, BE.2) adds facts, their anchors and audit, and the injection record:
+#
+#   BE.2 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   illegal transitions fail at the database     drop the facts_legal_transition trigger
+#   expiry requires a reason                     drop facts_expired_reason
+#   expiry requires a use-count snapshot         drop facts_expired_use_count
+#   the snapshot never changes afterwards        drop the facts_expired_frozen trigger
+#   every transition writes an audit row         drop the facts_record_transition trigger
+#   re-learn names an expired fact               drop the facts_relearn_from_expired trigger
+#   provenance is typed                          drop facts_provenance_typed
+#   provenance refs resolve to the workspace     drop the facts_provenance_resolves trigger
+#   only confirmed facts are injected            drop the context_injections_resolves trigger
+#   an injection record is never revised         drop the context_injections_no_update trigger
+#
 # Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
 # is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
 # by the latter first, so the rewrite reads the function back from the catalogue and adds the one
@@ -1710,6 +1725,46 @@ expect_red 'a published skill version may be revised' \
 expect_red 'a skill version may skip a number' \
   'publishing creates exactly the next version .*skill_versions_next_version did not fire' \
   'drop trigger skill_versions_next_version on ouroboros.skill_versions;'
+
+expect_red 'a fact may skip its lifecycle' \
+  'a fact cannot be created in any state but proposed .*facts_legal_transition did not fire' \
+  'drop trigger facts_legal_transition on ouroboros.facts;'
+
+expect_red 'a fact may expire without a reason' \
+  'moving to expired requires a reason .*facts_expired_reason did not fire' \
+  'alter table ouroboros.facts drop constraint facts_expired_reason;'
+
+expect_red 'a fact may expire without its use-count snapshot' \
+  'moving to expired requires a previous_use_count snapshot .*facts_expired_use_count did not fire' \
+  'alter table ouroboros.facts drop constraint facts_expired_use_count;'
+
+expect_red 'an expired fact may be revised' \
+  'an expired fact.s use-count snapshot cannot change \(statement was accepted\)' \
+  'drop trigger facts_expired_frozen on ouroboros.facts;'
+
+expect_red 'a fact transition may go unaudited' \
+  'every transition of the expired fact wrote an audit row with its actor' \
+  'drop trigger facts_record_transition on ouroboros.facts;'
+
+expect_red 'a live fact may be re-learned' \
+  'only an expired fact can be re-learned .*facts_relearn_from_expired did not fire' \
+  'drop trigger facts_relearn_from_expired on ouroboros.facts;'
+
+expect_red 'fact provenance may be untyped prose' \
+  'provenance is typed: .*facts_provenance_typed did not fire' \
+  'alter table ouroboros.facts drop constraint facts_provenance_typed;'
+
+expect_red 'fact provenance may name another workspace' \
+  'a provenance PR resolves to this workspace .*facts_provenance_resolves did not fire' \
+  'drop trigger facts_provenance_resolves on ouroboros.facts;'
+
+expect_red 'an unconfirmed fact may be injected' \
+  'only a confirmed fact of the workspace is injected: .*context_injections_resolves did not fire' \
+  'drop trigger context_injections_resolves on ouroboros.context_injections;'
+
+expect_red 'an injection record may be revised' \
+  'an injection record cannot be revised \(statement was accepted\)' \
+  'drop trigger context_injections_no_update on ouroboros.context_injections;'
 
 
 printf '\n'
