@@ -4,12 +4,15 @@
  * AX.4 ([#360](https://github.com/NobuData/ouroboros/issues/360)). Camel-cased over V058's
  * `pr_merge_plans`; instants as ISO 8601 strings. `disarmReason` is read apart into its designed
  * code and its sentence, so the card branches on the code and shows the sentence.
+ *
+ * `armedByPerson` (AY.7, [#369](https://github.com/NobuData/ouroboros/issues/369)) names who armed
+ * the plan, for the card's footer. `armedBy` stays the id it always was.
  */
 
 import type { PrMergeAction, PrMergeStrategy } from "../../db/schema";
 import type { TicketClosure } from "./merge.actions";
 import { parseDisarmReason, type MergeRefusalCode } from "./merge.recheck";
-import type { StoredMergePlan } from "./merge.repository";
+import type { MergePerson, StoredMergePlan } from "./merge.repository";
 
 /** Why a re-check disarmed the plan. */
 export interface DisarmReasonResource {
@@ -17,6 +20,14 @@ export interface DisarmReasonResource {
   readonly code: MergeRefusalCode;
   /** The card's sentence. */
   readonly message: string;
+}
+
+/** A person — who armed the plan. */
+export interface MergePersonResource {
+  /** `user.id`. */
+  readonly id: string;
+  /** Their display name. */
+  readonly name: string;
 }
 
 /** What a merge did. */
@@ -43,8 +54,10 @@ export interface MergePlanResource {
   readonly epicId: string | null;
   /** The "merge when all gates green" intent. */
   readonly armed: boolean;
-  /** Who armed it, while armed. */
+  /** Who armed it, while armed — their id. */
   readonly armedBy: string | null;
+  /** Who armed it, by name — null when disarmed, or when the person has since gone. */
+  readonly armedByPerson: MergePersonResource | null;
   /** When, while armed. */
   readonly armedAt: string | null;
   /** The revision it was armed against, while armed. */
@@ -76,9 +89,14 @@ export interface MergeOutcomeResource {
  * A stored plan as the routes answer it.
  *
  * @param plan - The plan.
+ * @param armedBy - Who armed it, as read for `plan.armedBy` — null when nobody did, or when the
+ *   person is gone. A person who is not the plan's `armedBy` is never named.
  * @returns The resource.
  */
-export function mergePlanResource(plan: StoredMergePlan): MergePlanResource {
+export function mergePlanResource(
+  plan: StoredMergePlan,
+  armedBy: MergePerson | null,
+): MergePlanResource {
   return {
     prId: plan.prId,
     strategy: plan.strategy,
@@ -90,6 +108,10 @@ export function mergePlanResource(plan: StoredMergePlan): MergePlanResource {
     epicId: plan.epicId,
     armed: plan.armed,
     armedBy: plan.armedBy,
+    armedByPerson:
+      armedBy === null || armedBy.id !== plan.armedBy
+        ? null
+        : { id: armedBy.id, name: armedBy.name },
     armedAt: plan.armedAt?.toISOString() ?? null,
     armedAgainstRevisionId: plan.armedAgainstRevisionId,
     disarmReason: parseDisarmReason(plan.disarmReason),

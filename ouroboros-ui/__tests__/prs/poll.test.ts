@@ -2,7 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { UNREADABLE_PAGE, createPagePoll, isPullRequestPage, pageUrl } from "@/app/prs/poll";
 
-import { PR_514_ID, prPage } from "../helpers/pull-requests";
+import {
+  PR_514_ID,
+  armedPlan,
+  mergePlan,
+  mergedPlan,
+  prPage,
+  seededSpend,
+} from "../helpers/pull-requests";
 
 /**
  * The PR verification page's poll reader (#363): the address, the guard, and a read through
@@ -57,6 +64,42 @@ describe("the guard", () => {
     expect(isPullRequestPage({ pullRequest: null })).toBe(false);
     expect(isPullRequestPage(null)).toBe(false);
     expect(isPullRequestPage("page")).toBe(false);
+  });
+
+  it("accepts every plan and spend the cards draw (#369)", () => {
+    for (const plan of [mergePlan(), armedPlan(), mergedPlan()]) {
+      expect(isPullRequestPage(prPage({ plan }))).toBe(true);
+    }
+    expect(isPullRequestPage(prPage({ spend: seededSpend() }))).toBe(true);
+    expect(isPullRequestPage(prPage({ spend: null }))).toBe(true);
+  });
+
+  it("accepts a plan from a service that does not name who armed it yet", () => {
+    const older: Partial<ReturnType<typeof armedPlan>> = armedPlan();
+    delete older.armedByPerson;
+
+    expect(isPullRequestPage({ ...prPage(), plan: older })).toBe(true);
+  });
+
+  it("refuses a plan or a spend a card could not draw, so the last good page stays", () => {
+    const page = prPage({ spend: seededSpend() });
+
+    for (const plan of [
+      {},
+      { ...mergePlan(), commitMessage: null },
+      { ...mergePlan(), armed: "yes" },
+      { ...mergePlan(), closeTicket: undefined },
+      { ...mergePlan(), strategy: 1 },
+      { ...mergePlan(), mergedResult: {} },
+      { ...mergePlan(), mergedResult: { sha: "9c4ab7f", identityUsed: "ken-s" } },
+      { ...mergePlan(), mergedResult: "merged" },
+    ]) {
+      expect(isPullRequestPage({ ...page, plan })).toBe(false);
+    }
+
+    for (const spend of [undefined, "none", {}, { loop: null, verification: {} }, { loop: {} }]) {
+      expect(isPullRequestPage({ ...page, spend })).toBe(false);
+    }
   });
 });
 

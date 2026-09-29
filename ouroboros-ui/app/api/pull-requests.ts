@@ -15,6 +15,10 @@
  * POST /api/v1/pull-requests/{id}/criteria/{criterionId}/verify   Verify
  * POST /api/v1/pull-requests/{id}/criteria/{criterionId}/waive    Waive, and annotate the host PR
  * POST /api/v1/pull-requests/{id}/thread/{entryId}/resolve        Reply and resolve (#368)
+ * PATCH /api/v1/pull-requests/{id}/merge-plan                     Edit the merge plan (#369)
+ * POST /api/v1/pull-requests/{id}/merge-plan/arm                  Merge when all gates green
+ * POST /api/v1/pull-requests/{id}/merge-plan/disarm               Disarm
+ * POST /api/v1/pull-requests/{id}/merge-plan/merge                Merge now
  * ```
  *
  * The shape every other module under `app/api/` keeps: the generated client does the transport,
@@ -103,6 +107,27 @@ export type ResolveThreadEntryRequest = components["schemas"]["ResolveThreadEntr
 
 /** What resolving an entry answers: the entry, resolved, and how the host mirror landed. */
 export type PrThreadResolution = components["schemas"]["PrThreadResolution"];
+
+/** How a PR will be merged, the armed intent, and what the merge did. */
+export type PrMergePlan = components["schemas"]["PrMergePlan"];
+
+/** What an edit of the plan sends — only what changes; `null` clears the epic. */
+export type UpdateMergePlanRequest = components["schemas"]["UpdateMergePlanRequest"];
+
+/** What a direct merge answers: the final plan, the ticket's closure, and what did not run. */
+export type PrMergeOutcome = components["schemas"]["PrMergeOutcome"];
+
+/** `close_ticket`, `comment_evidence`, `back_annotate_epic` or `delete_branch`. */
+export type PrMergeAction = components["schemas"]["PrMergeAction"];
+
+/** Why a re-check refused a merge — `gate_red`, `head_moved`, `host_conflict`, … */
+export type PrMergeRefusalCode = components["schemas"]["PrMergeRefusalCode"];
+
+/** The spend rollup: the loop's total, its verification share, and the route's cap. */
+export type PrSpend = components["schemas"]["PrSpend"];
+
+/** One line of the spend rollup. */
+export type PrSpendLine = components["schemas"]["PrSpendLine"];
 
 /** A run's pull request, as a surface that links to its verification page holds it. */
 export interface PullRequestRef {
@@ -369,6 +394,91 @@ export const pullRequests = {
       await client.POST("/api/v1/pull-requests/{id}/thread/{entryId}/resolve", {
         params: { path: { id, entryId } },
         body: request,
+      }),
+    );
+  },
+
+  /**
+   * Edit a PR's merge plan — the commit message, a toggle or the epic. Only what is sent changes.
+   *
+   * @param id The PR's id.
+   * @param request What to change. `epicId: null` clears the epic, and back-annotate with it.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The plan, as edited.
+   * @throws ApiError `403` for a viewer, or a member whose PR does not auto-merge
+   *   (`merge_not_policy_eligible`); `409 merge_plan_armed`, `merge_plan_merged` or
+   *   `pull_request_not_open`; `422 merge_plan_epic_required` or `merge_plan_epic_not_found`;
+   *   `404 pull_request_not_found`.
+   */
+  async editMergePlan(
+    id: string,
+    request: UpdateMergePlanRequest,
+    client: ApiClient = api(),
+  ): Promise<PrMergePlan> {
+    return unwrap(
+      await client.PATCH("/api/v1/pull-requests/{id}/merge-plan", {
+        params: { path: { id } },
+        body: request,
+      }),
+    );
+  },
+
+  /**
+   * Arm a PR's merge plan — *merge when all gates green* — against the revision looked at.
+   *
+   * @param id The PR's id.
+   * @param revisionId The revision whose gates the person looked at.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The armed plan. A PR whose gates are already green merges at once, so the next read
+   *   may already be the merged plan.
+   * @throws ApiError `403` for a viewer, or `merge_not_policy_eligible`; `409
+   *   merge_revision_stale`, `merge_plan_not_armable` or `merge_plan_merged`;
+   *   `404 pull_request_not_found`.
+   */
+  async armMergePlan(
+    id: string,
+    revisionId: string,
+    client: ApiClient = api(),
+  ): Promise<PrMergePlan> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/merge-plan/arm", {
+        params: { path: { id } },
+        body: { revisionId },
+      }),
+    );
+  },
+
+  /**
+   * Disarm a PR's merge plan — the safe direction.
+   *
+   * @param id The PR's id.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The plan, disarmed. Disarming a plan that is not armed answers it unchanged.
+   * @throws ApiError `403` for a viewer, `409 merge_plan_merged`, `404 pull_request_not_found`.
+   */
+  async disarmMergePlan(id: string, client: ApiClient = api()): Promise<PrMergePlan> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/merge-plan/disarm", {
+        params: { path: { id } },
+      }),
+    );
+  },
+
+  /**
+   * Merge a PR now, through the same re-check an armed merge passes.
+   *
+   * @param id The PR's id.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The final plan, the ticket's closure as the host reports it, and the switched-on
+   *   actions that did not run.
+   * @throws ApiError `403` for a viewer, or `merge_not_policy_eligible`; `409 merge_plan_merged`,
+   *   or `merge_recheck_failed` with `details.reason` — why — and `details.disarmed`;
+   *   `404 pull_request_not_found`.
+   */
+  async merge(id: string, client: ApiClient = api()): Promise<PrMergeOutcome> {
+    return unwrap(
+      await client.POST("/api/v1/pull-requests/{id}/merge-plan/merge", {
+        params: { path: { id } },
       }),
     );
   },

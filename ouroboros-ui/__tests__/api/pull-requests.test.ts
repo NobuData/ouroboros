@@ -5,10 +5,14 @@ import { ApiError } from "@/app/api/errors";
 import { clientAnswering, stubClient } from "../helpers/api";
 import {
   ATTEMPT_4_ID,
+  OTA_EPIC,
   PR_514_ID,
   REV_2_ID,
+  armedPlan,
   criterion,
   criterionId,
+  mergeOutcome,
+  mergePlan,
   prPage,
   resolution,
   returned,
@@ -387,5 +391,102 @@ describe("the review thread (#368)", () => {
     await expect(
       pullRequests.resolveThreadEntry(PR_514_ID, ENTRY, { mirror: false }, client),
     ).rejects.toMatchObject({ status: 409, code: "pr_thread_entry_resolved" });
+  });
+});
+
+describe("the merge plan (#369, over #360)", () => {
+  const PLAN = `http://rest.test:4000/api/v1/pull-requests/${PR_514_ID}/merge-plan`;
+
+  it("patches only what is sent, and answers the plan", async () => {
+    const answer = mergePlan({ closeTicket: false });
+    const { client, requests } = clientAnswering(answer);
+
+    expect(await pullRequests.editMergePlan(PR_514_ID, { closeTicket: false }, client)).toEqual(
+      answer,
+    );
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe("PATCH");
+    expect(requests[0]?.url).toBe(PLAN);
+    expect(await requests[0]?.json()).toEqual({ closeTicket: false });
+  });
+
+  it("sends a cleared epic as null, and a chosen one as its id", async () => {
+    const cleared = clientAnswering(mergePlan());
+    await pullRequests.editMergePlan(PR_514_ID, { epicId: null }, cleared.client);
+    expect(await cleared.requests[0]?.json()).toEqual({ epicId: null });
+
+    const chosen = clientAnswering(mergePlan({ epicId: OTA_EPIC.id }));
+    await pullRequests.editMergePlan(PR_514_ID, { epicId: OTA_EPIC.id }, chosen.client);
+    expect(await chosen.requests[0]?.json()).toEqual({ epicId: OTA_EPIC.id });
+  });
+
+  it("rejects with the service's refusal of an edit to an armed plan", async () => {
+    const { client } = clientAnswering(
+      { code: "merge_plan_armed", message: "This plan is armed.", details: {} },
+      409,
+    );
+
+    await expect(
+      pullRequests.editMergePlan(PR_514_ID, { closeTicket: false }, client),
+    ).rejects.toMatchObject({ status: 409, code: "merge_plan_armed" });
+  });
+
+  it("arms against the revision named, and answers the armed plan with who armed it", async () => {
+    const { client, requests } = clientAnswering(armedPlan());
+
+    const plan = await pullRequests.armMergePlan(PR_514_ID, REV_2_ID, client);
+
+    expect(plan).toEqual(armedPlan());
+    expect(plan.armedByPerson).toEqual({ id: plan.armedBy, name: "Ken S" });
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(`${PLAN}/arm`);
+    expect(await requests[0]?.json()).toEqual({ revisionId: REV_2_ID });
+  });
+
+  it("rejects with the service's refusal of a member whose PR does not auto-merge", async () => {
+    const { client } = clientAnswering(
+      { code: "merge_not_policy_eligible", message: "Only an owner or admin.", details: {} },
+      403,
+    );
+
+    await expect(pullRequests.armMergePlan(PR_514_ID, REV_2_ID, client)).rejects.toMatchObject({
+      status: 403,
+      code: "merge_not_policy_eligible",
+    });
+  });
+
+  it("disarms, with no body", async () => {
+    const { client, requests } = clientAnswering(mergePlan());
+
+    expect(await pullRequests.disarmMergePlan(PR_514_ID, client)).toEqual(mergePlan());
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(`${PLAN}/disarm`);
+  });
+
+  it("merges now, and answers what the merge did", async () => {
+    const { client, requests } = clientAnswering(mergeOutcome());
+
+    expect(await pullRequests.merge(PR_514_ID, client)).toEqual(mergeOutcome());
+    expect(requests[0]?.method).toBe("POST");
+    expect(requests[0]?.url).toBe(`${PLAN}/merge`);
+  });
+
+  it("rejects with the re-check's refusal, carrying why and whether it disarmed", async () => {
+    const { client } = clientAnswering(
+      {
+        code: "merge_recheck_failed",
+        message: "Physical HIL is red on revision 2.",
+        details: { prId: PR_514_ID, reason: "gate_red", disarmed: true },
+      },
+      409,
+    );
+
+    await expect(pullRequests.merge(PR_514_ID, client)).rejects.toMatchObject({
+      status: 409,
+      code: "merge_recheck_failed",
+      message: "Physical HIL is red on revision 2.",
+      details: { reason: "gate_red", disarmed: true },
+    });
+    await expect(pullRequests.merge(PR_514_ID, client)).rejects.toBeInstanceOf(ApiError);
   });
 });

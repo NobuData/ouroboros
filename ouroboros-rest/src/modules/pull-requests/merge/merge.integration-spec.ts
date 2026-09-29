@@ -27,7 +27,7 @@ import { CriteriaService } from "../criteria/criteria.service";
 import { GateListeners } from "../gates/gate.listeners";
 import { PrMirrorRepository } from "../pr-sync.repository";
 import { PrSyncService } from "../pr-sync.service";
-import { MergeExecutorService, type MergeHost } from "./merge.executor";
+import { MergeExecutorService, refusedEdit, type MergeHost } from "./merge.executor";
 import { MergeRepository } from "./merge.repository";
 
 /**
@@ -40,6 +40,10 @@ import { MergeRepository } from "./merge.repository";
  * dashboard's `merged`, and — the one the issue insists on — **the re-check's transaction really
  * holds the PR row**: a gate write taking the gate engine's own `for update` lock waits for the
  * merge to commit.
+ *
+ * And for the plan's edit (AY.7, [#369](https://github.com/NobuData/ouroboros/issues/369)): V058
+ * accepts each field, its trigger audits the edit with its actor and the columns that changed, and
+ * the two constraints that refuse an epic are named the way `refusedEdit` reads them.
  *
  * The host is the in-memory git host, reached through the real `PrSyncService` and vault.
  *
@@ -398,5 +402,188 @@ describe("the merge executor, against a migrated database", () => {
     expect(landed).toBe(true);
     expect(at.host.ledger().merged).toEqual([at.prNumber]);
     expect((await plan(at.prId)).merged_result).not.toBeNull();
+  });
+
+  describe("editing the plan (#369)", () => {
+    /** The plan's editable columns. */
+    function edited(prId: string) {
+      return one<{
+        commit_message: string;
+        close_ticket: boolean;
+        comment_evidence: boolean;
+        back_annotate_epic: boolean;
+        epic_id: string | null;
+        updated_by: string | null;
+      }>(
+        `select commit_message, close_ticket, comment_evidence, back_annotate_epic, epic_id,
+                updated_by
+           from ${SCHEMA_NAME}.pr_merge_plans where pr_id = $1`,
+        [prId],
+      );
+    }
+
+    /** What each edit's audit row recorded, oldest first. */
+    async function editTrail(prId: string) {
+      const { rows } = await api.sql.query<{ actor_id: string | null; detail: object }>(
+        `select e.actor_id, e.detail from ${SCHEMA_NAME}.audit_events e
+           join ${SCHEMA_NAME}.pr_merge_plans p on p.id::text = e.subject_id
+          where p.pr_id = $1 and e.action = 'pr_merge_plan.edited'
+          order by e.occurred_at`,
+        [prId],
+      );
+
+      return rows;
+    }
+
+    it("round-trips the message, the toggles and the epic, and audits each with its actor", async () => {
+      const at = await scene();
+      const owner = { id: at.ownerId, roles: ["owner" as const] };
+
+      await at.executor.edit(at.org, at.prId, owner, { commitMessage: "fix(can): reworded" });
+      await at.executor.edit(at.org, at.prId, owner, { closeTicket: false });
+      await at.executor.edit(at.org, at.prId, owner, { commentEvidence: false });
+      await at.executor.edit(at.org, at.prId, owner, { epicId: at.epicId });
+
+      const annotated = await at.executor.edit(at.org, at.prId, owner, { backAnnotateEpic: true });
+
+      expect(annotated).toMatchObject({
+        commitMessage: "fix(can): reworded",
+        closeTicket: false,
+        commentEvidence: false,
+        backAnnotateEpic: true,
+        epicId: at.epicId,
+        armed: false,
+      });
+      expect(await edited(at.prId)).toEqual({
+        commit_message: "fix(can): reworded",
+        close_ticket: false,
+        comment_evidence: false,
+        back_annotate_epic: true,
+        epic_id: at.epicId,
+        updated_by: at.ownerId,
+      });
+      expect(await at.executor.plan(at.org, at.prId)).toEqual(annotated);
+
+      const cleared = await at.executor.edit(at.org, at.prId, owner, { epicId: null });
+
+      expect(cleared).toMatchObject({ epicId: null, backAnnotateEpic: false });
+
+      const trail = await editTrail(at.prId);
+
+      expect(trail.map((row) => row.actor_id)).toEqual(Array(6).fill(at.ownerId));
+      expect(trail.map((row) => (row.detail as { fields: string[] }).fields)).toEqual([
+        ["commit_message"],
+        ["close_ticket"],
+        ["comment_evidence"],
+        ["epic_id"],
+        ["back_annotate_epic"],
+        ["back_annotate_epic", "epic_id"],
+      ]);
+      // A closed field set: the message itself never reaches the trail.
+      expect(JSON.stringify(trail)).not.toContain("reworded");
+    });
+
+    it("writes no audit row for an edit that changes nothing", async () => {
+      const at = await scene();
+      const owner = { id: at.ownerId, roles: ["owner" as const] };
+      const before = await at.executor.plan(at.org, at.prId);
+
+      expect(await at.executor.edit(at.org, at.prId, owner, {})).toEqual(before);
+      expect(await at.executor.edit(at.org, at.prId, owner, { closeTicket: true })).toEqual(before);
+      expect(await editTrail(at.prId)).toEqual([]);
+    });
+
+    it("refuses another workspace's epic, a missing one, and back-annotate with none", async () => {
+      const at = await scene();
+      const owner = { id: at.ownerId, roles: ["owner" as const] };
+      const elsewhere = await api.workspace(await api.signUp());
+      const foreign = await one<{ id: string }>(
+        `insert into ${SCHEMA_NAME}.planning_epics (organization_id, name, sort_order)
+         values ($1, 'Somebody else''s roadmap', 1) returning id`,
+        [elsewhere.id],
+      );
+
+      await expect(
+        at.executor.edit(at.org, at.prId, owner, { epicId: foreign.id }),
+      ).rejects.toMatchObject({ status: 422, code: "merge_plan_epic_not_found" });
+      await expect(
+        at.executor.edit(at.org, at.prId, owner, {
+          epicId: "00000000-0000-4000-8000-000000000000",
+        }),
+      ).rejects.toMatchObject({ status: 422, code: "merge_plan_epic_not_found" });
+      await expect(
+        at.executor.edit(at.org, at.prId, owner, { backAnnotateEpic: true }),
+      ).rejects.toMatchObject({ status: 422, code: "merge_plan_epic_required" });
+
+      // Each refusal rolled its transaction back — not even the default plan was left behind.
+      expect(await edited(at.prId)).toBeUndefined();
+      expect(await editTrail(at.prId)).toEqual([]);
+
+      // And a plan that exists is left exactly as it was.
+      await at.executor.plan(at.org, at.prId);
+      await expect(
+        at.executor.edit(at.org, at.prId, owner, { epicId: foreign.id, closeTicket: false }),
+      ).rejects.toMatchObject({ code: "merge_plan_epic_not_found" });
+      expect(await edited(at.prId)).toMatchObject({
+        epic_id: null,
+        back_annotate_epic: false,
+        close_ticket: true,
+      });
+    });
+
+    it("is refused by V058 under the names refusedEdit reads, when the check is raced past", async () => {
+      const at = await scene();
+      const store = api.nest.get(MergeRepository);
+      const elsewhere = await api.workspace(await api.signUp());
+      const foreign = await one<{ id: string }>(
+        `insert into ${SCHEMA_NAME}.planning_epics (organization_id, name, sort_order)
+         values ($1, 'Somebody else''s roadmap', 1) returning id`,
+        [elsewhere.id],
+      );
+
+      await at.executor.plan(at.org, at.prId);
+
+      /** Write straight past the executor's own checks, as a race would. */
+      const write = (changes: Parameters<typeof refusedEdit>[1] | object) =>
+        store
+          .transaction(async (tx) => {
+            const locked = await tx.lock(at.org, at.prId);
+
+            return tx.edit(locked?.plan?.id ?? "", at.ownerId, changes as never);
+          })
+          .catch((error: unknown) => refusedEdit(at.prId, null, error));
+
+      expect(await write({ epicId: foreign.id })).toMatchObject({
+        code: "merge_plan_epic_not_found",
+      });
+      expect(await write({ epicId: "00000000-0000-4000-8000-000000000000" })).toMatchObject({
+        code: "merge_plan_epic_not_found",
+      });
+      expect(await write({ backAnnotateEpic: true })).toMatchObject({
+        code: "merge_plan_epic_required",
+      });
+    });
+
+    it("refuses editing an armed plan and a merged one, and names who armed", async () => {
+      const at = await scene();
+      const owner = { id: at.ownerId, roles: ["owner" as const] };
+      const armed = await at.executor.arm(at.org, at.prId, owner, at.revisionId);
+
+      await at.executor.settled();
+
+      expect(armed.armedByPerson).toMatchObject({ id: at.ownerId });
+      expect(armed.armedByPerson?.name).toEqual(expect.any(String));
+      await expect(
+        at.executor.edit(at.org, at.prId, owner, { closeTicket: false }),
+      ).rejects.toMatchObject({ status: 409, code: "merge_plan_armed" });
+
+      await verdict(at.testId, at.revisionId, "green");
+
+      expect((await at.executor.run(at.org, at.prId, { kind: "armed" })).kind).toBe("merged");
+      await expect(
+        at.executor.edit(at.org, at.prId, owner, { closeTicket: false }),
+      ).rejects.toMatchObject({ status: 409, code: "merge_plan_merged" });
+      expect(await edited(at.prId)).toMatchObject({ close_ticket: true });
+    });
   });
 });

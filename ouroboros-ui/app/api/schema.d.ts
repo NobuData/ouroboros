@@ -5712,7 +5712,34 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Edit the merge plan — the commit message, a toggle or the epic
+         * @description The Merge plan card's edits ([#369](https://github.com/NobuData/ouroboros/issues/369)) —
+         *     the commit message, the three action toggles and the roadmap epic the third one annotates.
+         *     **Only what is sent changes**, so each edit persists on its own: an absent field is left
+         *     alone, and `epicId` is the one field `null` clears. An edit that changes nothing answers
+         *     the plan unchanged.
+         *
+         *     The strategy and delete-branch are the pinned policy's and are not edited here — a body
+         *     that names them is refused as `validation_failed`, like any unknown field.
+         *
+         *     `backAnnotateEpic` needs an epic: switching it on while the plan names none is refused
+         *     (`merge_plan_epic_required`), and clearing the epic switches it off. The epic is one of
+         *     this workspace's planning epics (`GET /api/v1/planning/epics`).
+         *
+         *     **An armed plan is not edited.** Arming confirmed the plan's terms, so they are changed by
+         *     disarming first (`merge_plan_armed`); a merged plan is final (`merge_plan_merged`).
+         *
+         *     Closing the ticket is the host's doing: it closes on the message's `Closes <key>.` keyword,
+         *     and `closeTicket` records that a close is intended. A message edited to drop the keyword
+         *     leaves the ticket open, and the merge reports `close_ticket` among the actions that did not
+         *     run.
+         *
+         *     Audited as `pr_merge_plan.edited`, naming the person and the fields that changed — never
+         *     the message itself. `owner` or `admin`, or a `member` when the PR's pinned workflow ends in
+         *     an auto-merge terminal.
+         */
+        patch: operations["updatePullRequestMergePlan"];
         trace?: never;
     };
     "/api/v1/pull-requests/{id}/merge-plan/arm": {
@@ -8220,6 +8247,23 @@ export interface components {
             revisionId: string;
         };
         /**
+         * UpdateMergePlanRequest
+         * @description What an edit of a merge plan sends. An absent field is left alone; `null` clears the epic,
+         *     the only nullable field.
+         */
+        UpdateMergePlanRequest: {
+            /** @description The merge commit's message — neither blank nor padded with whitespace. */
+            commitMessage?: string;
+            /** @description Close the canonical ticket on merge. */
+            closeTicket?: boolean;
+            /** @description Comment the evidence summary on the host PR. */
+            commentEvidence?: boolean;
+            /** @description Back-annotate the roadmap epic — refused while the plan names none. */
+            backAnnotateEpic?: boolean;
+            /** @description The planning epic to back-annotate, of this workspace — or `null` to clear it. */
+            epicId?: string | null;
+        };
+        /**
          * PrMergeAction
          * @enum {string}
          */
@@ -8247,8 +8291,10 @@ export interface components {
             epicId: string | null;
             /** @description The *merge when all gates green* intent. */
             armed: boolean;
-            /** @description Who armed it, while armed. */
+            /** @description Who armed it, while armed — their id. */
             armedBy: string | null;
+            /** @description Who armed it, by name — null when disarmed, or when the person has since gone. */
+            armedByPerson: components["schemas"]["PrPerson"] | null;
             /** Format: date-time */
             armedAt: string | null;
             /**
@@ -42609,6 +42655,166 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — an id that is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updatePullRequestMergePlan: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The pull request — `pull_requests.id`, a PR mirrored from its git host (V052). Anything
+                 *     that is not a uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed003a-0000-4000-8000-000000000514
+                 */
+                id: components["parameters"]["PullRequestId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "closeTicket": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateMergePlanRequest"];
+            };
+        };
+        responses: {
+            /** @description The plan, as edited. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PrMergePlan"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `viewer`. `merge_not_policy_eligible` — a `member`, on a PR whose pinned
+             *     workflow does not auto-merge.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pull_request_not_found` — no pull request with that id, **or none this caller may know
+             *     about**. Or `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `merge_plan_armed` — the plan is armed; disarm it first. `merge_plan_merged` — the plan
+             *     has merged and is final. `pull_request_not_open` — the PR is merged or closed on its
+             *     host.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `merge_plan_epic_required` — back-annotate would be on with no epic.
+             *     `merge_plan_epic_not_found` — the epic is not one of this workspace's.
+             *     `validation_failed` — a blank or over-long message, a toggle that is not a boolean, a
+             *     field this operation does not edit, or an id that is not a uuid.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;

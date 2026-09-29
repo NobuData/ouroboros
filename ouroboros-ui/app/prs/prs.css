@@ -284,11 +284,12 @@
   gap: var(--sp-4);
 }
 
-/* ---------- the Merge plan slot ---------- */
+/* ---------- the Merge plan card (#369) ---------- */
 
 /*
- * Where *Merge when all gates green* lands until AY.7 (#369) draws the card itself: a region that
- * takes focus and says nothing has been armed.
+ * Where *Merge when all gates green* lands: the region takes focus, so a keyboard or screen-reader
+ * user arrives where a sighted one is looking. The mockup's `.kv` rows, the message, the switches,
+ * who the merge is made as, and the control that opens the confirmation.
  */
 .prv-merge {
   margin-bottom: var(--sp-10);
@@ -299,11 +300,374 @@
   outline-offset: 0.125rem;
 }
 
-.prv-merge__note {
+/* The mockup's `.kv`: a name on the left, what it is set to on the right, a rule beneath. */
+.prv-merge__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.prv-merge__key {
+  min-width: 0;
   margin: 0;
   color: var(--ink-mut);
   font-size: var(--t-sm);
   line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-merge__message,
+.prv-merge__epic {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+/*
+ * The message, read-only: the mockup's `.code` block. It wraps rather than scrolls — the card
+ * never scrolls inside itself, and a message is prose with line breaks that matter.
+ */
+.prv-merge__preview {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* The toggle and the message disagree, a stale arm, a moved draft: something to look at. */
+.prv-merge__warning {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-merge__note,
+.prv-merge__footer,
+.prv-merge__handoff {
+  margin: var(--sp-5) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-merge__handoff {
+  color: var(--ink);
+}
+
+.prv-merge__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-top: var(--sp-5);
+}
+
+/*
+ * Armed: a promise that is still open, in the accent hue and a solid rule — the strip's armed
+ * step's treatment, so the two read as one state. Said in words in the card's head as well.
+ */
+.prv-merge__armed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.prv-merge--armed .prv-merge__armed {
+  border-color: var(--accent-line);
+  background: var(--accent-tint);
+}
+
+.prv-merge__terms {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-merge__meta {
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+/* A re-check disarmed the plan: why, in the error hue, never a generic failure. */
+.prv-merge__disarmed {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--err-line);
+  border-radius: var(--r-md);
+  background: var(--err-tint);
+}
+
+.prv-merge__disarmed-head {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.prv-merge__disarmed-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The receipt: what landed, as whom, and what the merge did afterwards. */
+.prv-merge__receipt {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--ok-line);
+  border-radius: var(--r-md);
+  background: var(--ok-tint);
+}
+
+.prv-merge__receipt-line,
+.prv-merge__ran {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-merge__sha,
+.prv-merge__identity {
+  font-family: var(--f-mono);
+}
+
+.prv-merge__skipped {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.prv-merge__skipped-row {
+  color: var(--warn);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-merge__outcome {
+  margin: var(--sp-5) 0 0;
+  color: var(--ok);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-merge__outcome--failed {
+  color: var(--err);
+}
+
+/* ---------- the merge confirmation (#369) ---------- */
+
+.prv-arm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+/* The terms, set apart in the error hue so they are read before anything is pressed. */
+.prv-arm__terms {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--err-line);
+  border-radius: var(--r-md);
+  background: var(--err-tint);
+}
+
+.prv-arm__text {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-arm__gates {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One gate the merge waits on: its name and where it stands, and what that means. */
+.prv-arm__gate {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.prv-arm__name {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+.prv-arm__note {
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.prv-arm__facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+}
+
+/* A name and its value, side by side at any width: the value wraps within its own column. */
+.prv-arm__fact {
+  display: grid;
+  grid-template-columns: 5rem minmax(0, 1fr);
+  column-gap: var(--sp-4);
+  align-items: baseline;
+}
+
+.prv-arm__key {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.prv-arm__value {
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.prv-arm__identity {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.prv-arm__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+.prv-arm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* ---------- the Spend card (#369) ---------- */
+
+.prv-spend {
+  margin-bottom: var(--sp-10);
+}
+
+.prv-spend__rows {
+  margin: 0;
+}
+
+/* The mockup's `.kv`. */
+.prv-spend__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.prv-spend__key {
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+.prv-spend__figure {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--sp-1);
+  min-width: 0;
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+/* A cost some of whose calls were not priced is a lower bound, and says so. */
+.prv-spend__bound {
+  color: var(--warn);
+}
+
+.prv-spend__note,
+.prv-spend__cap {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-spend__cap--ok {
+  color: var(--ink-mut);
+}
+
+.prv-spend__cap--err {
+  color: var(--err);
+}
+
+.prv-spend__cap--neutral {
+  color: var(--warn);
 }
 
 /* ---------- the revision cycle strip (#364) ---------- */

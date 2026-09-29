@@ -56,6 +56,12 @@ vi.mock("@/app/prs/criteria-actions", () => ({
 vi.mock("@/app/prs/thread-actions", () => ({
   resolveEntry: vi.fn(),
 }));
+vi.mock("@/app/prs/merge-actions", () => ({
+  armPlan: vi.fn(),
+  disarmPlan: vi.fn(),
+  editPlan: vi.fn(),
+  mergeNow: vi.fn(),
+}));
 
 /** A poll that never answers — the page shows the server's first read. */
 const QUIET: PrPollOptions = { read: () => new Promise(() => {}), visible: () => true };

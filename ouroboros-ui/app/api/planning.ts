@@ -104,6 +104,18 @@ export const planning = {
   },
 
   /**
+   * Every roadmap lane, top first — what the Merge plan card's epic picker offers
+   * ([#369](https://github.com/NobuData/ouroboros/issues/369)).
+   *
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The lanes. A workspace with no roadmap answers none.
+   * @throws {ApiError} What the service answered. A `401` redirects to login before this rejects.
+   */
+  async epics(client: ApiClient = api()): Promise<PlanningEpic[]> {
+    return unwrap(await client.GET("/api/v1/planning/epics", {}));
+  },
+
+  /**
    * The Backlog Health card's figures — AL.5
    * ([#281](https://github.com/NobuData/ouroboros/issues/281)), drawn by AM.3
    * ([#285](https://github.com/NobuData/ouroboros/issues/285)).

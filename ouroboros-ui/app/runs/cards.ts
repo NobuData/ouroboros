@@ -334,12 +334,13 @@ export function lowerBoundNote(events: number): string {
 }
 
 /**
- * The ledger's cents, read.
+ * The ledger's cents, read. Shared with the PR page's Spend card
+ * ([#369](https://github.com/NobuData/ouroboros/issues/369)), which holds to the same rule.
  *
  * @param cents The decimal string (`"114.0000"`), or `null`.
  * @returns The number, or `null` for none or for a string that is not one — never `0`.
  */
-function centsOf(cents: string | null): number | null {
+export function centsOf(cents: string | null): number | null {
   if (cents === null) return null;
 
   const value = Number.parseFloat(cents);

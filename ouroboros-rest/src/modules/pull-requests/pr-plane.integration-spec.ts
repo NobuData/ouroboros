@@ -148,7 +148,7 @@ describe("the PR plane, on the application's own services", () => {
   }
 
   /** A call to the public API as somebody, in the scene's workspace. */
-  function as(person: Person, at: PrPlaneScene, method: "get" | "post", path: string) {
+  function as(person: Person, at: PrPlaneScene, method: "get" | "post" | "patch", path: string) {
     return api.as(person)(method, path).set(TENANT_HEADER, at.bench.workspace.slug);
   }
 
@@ -645,7 +645,7 @@ describe("the PR plane, on the application's own services", () => {
   describe("role gates, held server-side", () => {
     afterEach(clean);
 
-    it("refuses a viewer every write — arm, merge, approve, waive, return, review, resolve — even with a well-formed request", async () => {
+    it("refuses a viewer every write — arm, merge, edit, approve, waive, return, review, resolve — even with a well-formed request", async () => {
       const at = await prPlaneScene(api, host, "engine");
       const entryId = await objection(at);
       const viewer = await api.signUp();
@@ -661,22 +661,24 @@ describe("the PR plane, on the application's own services", () => {
       await api.join(at.org, viewer, "viewer");
 
       const base = `/api/v1/pull-requests/${at.prId}`;
-      const writes: [string, object][] = [
-        [`${base}/merge-plan/arm`, { revisionId: at.revisionId }],
-        [`${base}/merge-plan/merge`, {}],
-        [`${base}/approvals`, { decision: "approve" }],
-        [`${base}/criteria/${criterion.id}/waive`, { reason: MOCKUP_WAIVER_REASON }],
-        [`${base}/return-to-loop`, { gates: ["physical_hil"] }],
-        [`${base}/request-review`, {}],
-        [`${base}/thread/${entryId}/resolve`, { reply: "Looks fine to me." }],
+      const writes: ["post" | "patch", string, object][] = [
+        ["post", `${base}/merge-plan/arm`, { revisionId: at.revisionId }],
+        ["post", `${base}/merge-plan/merge`, {}],
+        ["patch", `${base}/merge-plan`, { closeTicket: false }],
+        ["post", `${base}/approvals`, { decision: "approve" }],
+        ["post", `${base}/criteria/${criterion.id}/waive`, { reason: MOCKUP_WAIVER_REASON }],
+        ["post", `${base}/return-to-loop`, { gates: ["physical_hil"] }],
+        ["post", `${base}/request-review`, {}],
+        ["post", `${base}/thread/${entryId}/resolve`, { reply: "Looks fine to me." }],
       ];
 
-      for (const [path, body] of writes) {
-        await as(viewer, at, "post", path).send(body).expect(403);
+      for (const [method, path, body] of writes) {
+        await as(viewer, at, method, path).send(body).expect(403);
       }
 
       const written = await one<{
         armed: number;
+        edited: number;
         approvals: number;
         waivers: number;
         controls: number;
@@ -684,6 +686,7 @@ describe("the PR plane, on the application's own services", () => {
       }>(
         api,
         `select (select count(*) from ${SCHEMA_NAME}.pr_merge_plans where pr_id = $1 and armed)::int as armed,
+                (select count(*) from ${SCHEMA_NAME}.pr_merge_plans where pr_id = $1 and not close_ticket)::int as edited,
                 (select count(*) from ${SCHEMA_NAME}.pr_approvals where pr_id = $1)::int as approvals,
                 (select count(*) from ${SCHEMA_NAME}.pr_waivers where organization_id = $2)::int as waivers,
                 (select count(*) from ${SCHEMA_NAME}.run_controls where run_id = $3)::int as controls,
@@ -691,11 +694,18 @@ describe("the PR plane, on the application's own services", () => {
         [at.prId, at.org, at.runId],
       );
 
-      expect(written).toEqual({ armed: 0, approvals: 0, waivers: 0, controls: 0, resolved: 0 });
+      expect(written).toEqual({
+        armed: 0,
+        edited: 0,
+        approvals: 0,
+        waivers: 0,
+        controls: 0,
+        resolved: 0,
+      });
       expect(host.ledger().merged).toEqual([]);
     });
 
-    it("refuses a member the waive, and the arm and merge of a PR whose policy does not auto-merge", async () => {
+    it("refuses a member the waive, and the arm, merge and edit of a PR whose policy does not auto-merge", async () => {
       const at = await prPlaneScene(api, host);
       const member = await api.signUp();
       const criterion = await api.nest.get(CriteriaService).create(
@@ -727,6 +737,14 @@ describe("the PR plane, on the application's own services", () => {
             expect((response.body as { code: string }).code).toBe("merge_not_policy_eligible");
           });
       }
+
+      // The plan's edit is whoever may arm's (#369).
+      await as(member, at, "patch", `${base}/merge-plan`)
+        .send({ closeTicket: false })
+        .expect(403)
+        .expect((response) => {
+          expect((response.body as { code: string }).code).toBe("merge_not_policy_eligible");
+        });
 
       expect(await plan(at.prId)).toBeUndefined();
       expect(host.ledger().merged).toEqual([]);
@@ -785,6 +803,10 @@ describe("the PR plane, on the application's own services", () => {
         body: () => ({ reply: "a stranger's reply" }),
       },
       "GET /api/v1/pull-requests/:id/merge-plan": { path: () => pr("/merge-plan") },
+      "PATCH /api/v1/pull-requests/:id/merge-plan": {
+        path: () => pr("/merge-plan"),
+        body: () => ({ closeTicket: false, commitMessage: "A stranger's message" }),
+      },
       "POST /api/v1/pull-requests/:id/merge-plan/arm": {
         path: () => pr("/merge-plan/arm"),
         body: () => ({ revisionId: at.revisionId }),
@@ -920,10 +942,13 @@ describe("the PR plane, on the application's own services", () => {
         claim: string;
         approvals: number;
         armed: number;
+        edited: number;
         resolved: number;
       }>(
         api,
         `select (select count(*) from ${SCHEMA_NAME}.pr_thread_entries where pr_id = $1 and resolved)::int as resolved,
+                (select count(*) from ${SCHEMA_NAME}.pr_merge_plans
+                  where pr_id = $1 and (not close_ticket or commit_message = 'A stranger''s message'))::int as edited,
                 (select count(*) from ${SCHEMA_NAME}.pr_criteria where pr_id = $1)::int as criteria,
                 (select count(*) from ${SCHEMA_NAME}.pr_criteria_evidence where criterion_id = $2)::int as evidence,
                 (select claim from ${SCHEMA_NAME}.pr_criteria where id = $2) as claim,
@@ -938,6 +963,7 @@ describe("the PR plane, on the application's own services", () => {
         claim: "Telemetry frames must arrive in ISR order under load",
         approvals: 0,
         armed: 0,
+        edited: 0,
         resolved: 0,
       });
       expect(sceneHost.ledger().merged).toEqual([]);

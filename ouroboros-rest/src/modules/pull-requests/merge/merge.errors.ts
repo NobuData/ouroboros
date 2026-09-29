@@ -6,7 +6,7 @@
  * answer one code for one situation.
  */
 
-import { ConflictError, ForbiddenError } from "../../errors/error.envelope";
+import { ConflictError, ForbiddenError, InvalidRequestError } from "../../errors/error.envelope";
 import type { PullRequestState } from "../../db/schema";
 import type { MergeRefusalCode } from "./merge.recheck";
 
@@ -22,6 +22,18 @@ export const MERGE_ERRORS = Object.freeze({
   forbidden: "merge_not_policy_eligible",
   /** The re-check refused the merge — `details.reason` says why. `409`. */
   recheckFailed: "merge_recheck_failed",
+  /** An edit of an armed plan — its terms were confirmed, so it is disarmed first. `409`. */
+  armed: "merge_plan_armed",
+  /**
+   * An edit of a merged or closed PR's plan. `409`. The page plane's own code (`page.errors.ts`),
+   * so a client branches on one code for a PR the host owns; restated rather than imported, since
+   * the page plane already imports this one.
+   */
+  pullRequestNotOpen: "pull_request_not_open",
+  /** Back-annotate would be on with no epic to annotate. `422`. */
+  epicRequired: "merge_plan_epic_required",
+  /** The epic is not one of this workspace's. `422`. */
+  epicNotFound: "merge_plan_epic_not_found",
 });
 
 /**
@@ -98,4 +110,56 @@ export function mergeRecheckFailed(
     reason: refused.code,
     disarmed: refused.disarmed,
   });
+}
+
+/**
+ * @param prId - The PR.
+ * @returns The `409` for editing an armed plan — arming confirmed its terms, and a promise is not
+ *   reworded after it was made.
+ */
+export function mergePlanArmed(prId: string): ConflictError {
+  return new ConflictError(
+    MERGE_ERRORS.armed,
+    "This plan is armed — disarm it before changing what it will do.",
+    { prId },
+  );
+}
+
+/**
+ * @param prId - The PR.
+ * @param state - Where it stands — `merged` or `closed`.
+ * @returns The `409` for editing the plan of a PR the host owns.
+ */
+export function mergePlanPullRequestNotOpen(prId: string, state: PullRequestState): ConflictError {
+  return new ConflictError(
+    MERGE_ERRORS.pullRequestNotOpen,
+    `The pull request is ${state}; its merge plan can no longer be changed.`,
+    { prId, state },
+  );
+}
+
+/**
+ * @param prId - The PR.
+ * @returns The `422` for switching back-annotate on while the plan names no epic.
+ */
+export function mergePlanEpicRequired(prId: string): InvalidRequestError {
+  return new InvalidRequestError(
+    MERGE_ERRORS.epicRequired,
+    "Choose the roadmap epic to back-annotate before switching it on.",
+    { prId },
+  );
+}
+
+/**
+ * @param prId - The PR.
+ * @param epicId - The epic named.
+ * @returns The `422` for an epic that is not this workspace's — another workspace's reads the
+ *   same as one that does not exist.
+ */
+export function mergePlanEpicNotFound(prId: string, epicId: string | null): InvalidRequestError {
+  return new InvalidRequestError(
+    MERGE_ERRORS.epicNotFound,
+    "No such roadmap epic in this workspace.",
+    { prId, epicId },
+  );
 }

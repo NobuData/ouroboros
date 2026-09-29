@@ -47,19 +47,43 @@ import { approvalOutcome, gatesCard } from "./gates";
 import { GatesCard } from "./gates-card";
 import { decideApproval, requestHumanReview, returnToLoop } from "./head-actions";
 import { type Hunk, sameHunk, withHunk } from "./hunk";
-import { MergePlanSlot } from "./merge-plan-slot";
-import type {
-  ApprovalAnswer,
-  ApprovalOutcome,
-  CriterionOutcome,
-  ImportOutcome,
-  OptionsOutcome,
-  ReturnOutcome,
-  ReturnSelection,
-  ReviewRequestOutcome,
-  ThreadResolveOutcome,
-  ThreadResolveRequest,
-  WaiveOutcome,
+import { ArmDialog } from "./arm-dialog";
+import { armPlan, disarmPlan, editPlan, mergeNow } from "./merge-actions";
+import { type MessageDraft, draftOf, unsendable } from "./merge-message";
+import {
+  type ConfirmationView,
+  DISARMED,
+  type LocalPlan,
+  MAY_HAVE_LANDED,
+  PLAN_SAVED,
+  type PlanEpic,
+  type PlanNotice,
+  type ToggleView,
+  armedNotice,
+  confirmation,
+  effectivePage,
+  mergePlanCard,
+  mergedNotice,
+  termsMoved,
+} from "./merge-plan";
+import { MergePlanCard } from "./merge-plan-card";
+import type { MergeAnswer } from "./merge-receipt";
+import {
+  ACTION_UNREACHABLE_CODE,
+  type ApprovalAnswer,
+  type ApprovalOutcome,
+  type CriterionOutcome,
+  type ImportOutcome,
+  type MergeOutcome,
+  type OptionsOutcome,
+  type PlanEdit,
+  type PlanOutcome,
+  type ReturnOutcome,
+  type ReturnSelection,
+  type ReviewRequestOutcome,
+  type ThreadResolveOutcome,
+  type ThreadResolveRequest,
+  type WaiveOutcome,
 } from "./outcomes";
 import { PrActions } from "./pr-actions";
 import { PrHead } from "./pr-head";
@@ -68,6 +92,8 @@ import { ResolveDialog } from "./resolve-dialog";
 import { ReturnDialog } from "./return-dialog";
 import type { TextDialogOutcome } from "./text-dialog";
 import { RevisionStrip } from "./revision-strip";
+import { spendCard } from "./spend";
+import { SpendCard } from "./spend-card";
 import { gatesScope, scopedRevision, stripSteps, withRevision } from "./strip";
 import {
   ENTRY_GONE,
@@ -149,6 +175,29 @@ export type EntryResolver = (
   request: ThreadResolveRequest,
 ) => Promise<ThreadResolveOutcome>;
 
+/**
+ * How the Merge plan card writes ([#369](https://github.com/NobuData/ouroboros/issues/369)). The
+ * Server Actions in production; tests pass their own.
+ */
+export interface PlanSenders {
+  /** An edit — the message, a switch or the epic. */
+  readonly edit: (prId: string, edit: PlanEdit) => Promise<PlanOutcome>;
+  /** *Merge when all gates green*, confirmed. */
+  readonly arm: (prId: string, revisionId: string) => Promise<PlanOutcome>;
+  /** *Disarm*. */
+  readonly disarm: (prId: string) => Promise<PlanOutcome>;
+  /** *Merge now*, confirmed. */
+  readonly merge: (prId: string) => Promise<MergeOutcome>;
+}
+
+/** The card's Server Actions. */
+const PLAN_SENDERS: PlanSenders = {
+  edit: editPlan,
+  arm: armPlan,
+  disarm: disarmPlan,
+  merge: mergeNow,
+};
+
 /** What is said when the claim a dialog was opened for is no longer on the page. */
 export const CLAIM_GONE = "That claim is no longer on this PR.";
 
@@ -204,6 +253,10 @@ export interface PrScreenProps {
   readonly replayKey?: () => string | undefined;
   /** How a thread entry is resolved. Defaults to the Server Action. */
   readonly sendResolve?: EntryResolver;
+  /** The workspace's roadmap epics, or `null` when they could not be read. `null` when absent. */
+  readonly epics?: readonly PlanEpic[] | null;
+  /** How the Merge plan card writes. Defaults to the Server Actions. */
+  readonly planSenders?: PlanSenders;
 }
 
 /**
@@ -222,7 +275,7 @@ export interface PrScreenProps {
  * **The three actions** are `view.ts`'s decisions. *Request human review* is sent once and the
  * button becomes `review requested` from the answer, before the next poll. *Return to loop* opens
  * the dialog; its receipt links into the run console, where the steer appears. *Merge when all
- * gates green* arms nothing: it brings the reader to the Merge plan slot and moves focus there.
+ * gates green* arms nothing: it brings the reader to the Merge plan card and moves focus there.
  *
  * **The revision cycle strip scopes the gates** ([#364](https://github.com/NobuData/ouroboros/issues/364)):
  * pressing a revision shows that revision's own snapshot, and the address follows (`?rev=1`) so
@@ -249,6 +302,14 @@ export interface PrScreenProps {
  * entry is drawn from the answer and stands until a read made after it has caught up, and the
  * header's open count follows because it is counted from the rows.
  *
+ * **The merge plan is drawn for every reader, and armed only through its confirmation**
+ * ([#369](https://github.com/NobuData/ouroboros/issues/369)). Each edit persists on its own; the
+ * message is a draft until it is saved, and nothing is armed or merged while one is open. An
+ * answer — armed, disarmed, merged — is drawn at once and stands until a read made after it has
+ * caught up, and the head, the strip and the card all read that same plan, so none of them says
+ * armed while another does not. The confirmation states what it read when it opened, and goes
+ * inert if the PR moves under it.
+ *
  * @param props See {@link PrScreenProps}.
  * @returns The screen.
  */
@@ -270,12 +331,18 @@ export function PrScreen({
   sendApproval = decideApproval,
   replayKey = newReplayKey,
   sendResolve = resolveEntry,
+  epics = null,
+  planSenders = PLAN_SENDERS,
 }: PrScreenProps) {
   const read = useKeyedPoll(prId, (id) => createPagePoll(id, poll));
 
   useEffect(() => setNavOrigin(origin.id), [origin.id]);
 
-  const page = read.snapshot.data ?? initial;
+  const [plans, setPlans] = useState<readonly LocalPlan[]>([]);
+  const polled = read.snapshot.data ?? initial;
+  // The plan every surface reads: the newest answer no read has caught up with, and the state
+  // that plan states.
+  const page = polled === null ? null : effectivePage(polled, plans, read.snapshot.updatedAt);
   // A poll's own verdict supersedes the server's once it has one — either way.
   const error =
     read.snapshot.updatedAt === null
@@ -310,6 +377,13 @@ export function PrScreen({
   const [arrival, setArrival] = useState<FilesArrival | null>(
     initialHunk === null ? null : { kind: "hunk", seq: 0 },
   );
+  const [draft, setDraft] = useState<MessageDraft | null>(null);
+  const [planSending, setPlanSending] = useState(false);
+  const [planNotice, setPlanNotice] = useState<PlanNotice | null>(null);
+  const [confirming, setConfirming] = useState<ConfirmationView | null>(null);
+  const [mergeAnswer, setMergeAnswer] = useState<MergeAnswer | null>(null);
+  // A latch as well as the state: two presses inside one frame both read the state as idle.
+  const planBusy = useRef(false);
 
   // The address names a revision this PR does not have. Dropped during render, so the gates of
   // the latest revision are never drawn under another revision's name.
@@ -589,12 +663,150 @@ export function PrScreen({
     setArrival((current) => ({ kind, seq: (current?.seq ?? 0) + 1 }));
   }
 
-  /** Hand off to the Merge plan slot, and take the reader there. */
+  /** Hand off to the Merge plan card, and take the reader there. */
   function handOff(): void {
     if (revision === null) return;
 
     setChosen(revision.seq);
     setFocusRequests((count) => count + 1);
+  }
+
+  /**
+   * Draw a plan from an answer, until a read made after it has caught up.
+   *
+   * @param plan The plan as the answer stated it.
+   */
+  function keepPlan(plan: LocalPlan["plan"]): void {
+    const at = now();
+
+    setPlans((current) => [...standing(current, read.snapshot.updatedAt), { plan, at }]);
+  }
+
+  /**
+   * What a refusal is said as. A service that did not answer an arm or a merge may still have
+   * acted on it, so that one says so rather than saying nothing happened.
+   *
+   * @param refusal The refusal.
+   * @param acts Whether the press was one that acts — an arm or a merge.
+   * @returns The sentence.
+   */
+  function refusalText(refusal: { code: string; reason: string }, acts: boolean): string {
+    return acts && refusal.code === ACTION_UNREACHABLE_CODE ? MAY_HAVE_LANDED : refusal.reason;
+  }
+
+  /**
+   * Send one change of the plan — one at a time — and refresh the page after it.
+   *
+   * @param send The change.
+   * @returns What it answered, or `null` when another change was already in flight.
+   */
+  async function changePlan<T>(send: () => Promise<T>): Promise<T | null> {
+    if (planBusy.current) return null;
+
+    planBusy.current = true;
+    setPlanSending(true);
+
+    try {
+      return await send();
+    } finally {
+      planBusy.current = false;
+      setPlanSending(false);
+      read.refresh();
+    }
+  }
+
+  /**
+   * Send an edit of the plan, and say on the card what became of it.
+   *
+   * @param edit What to change.
+   * @returns Whether it was saved.
+   */
+  async function edit(edit: PlanEdit): Promise<boolean> {
+    const outcome = await changePlan(() => planSenders.edit(prId, edit));
+    if (outcome === null) return false;
+
+    if (outcome.ok) {
+      keepPlan(outcome.answer);
+      setPlanNotice({ text: PLAN_SAVED, failed: false });
+    } else {
+      setPlanNotice({ text: refusalText(outcome, false), failed: true });
+    }
+
+    return outcome.ok;
+  }
+
+  /** Save the message's draft — trimmed, as the service keeps it. */
+  async function saveMessage(): Promise<void> {
+    if (draft === null || unsendable(draft) !== null) return;
+
+    if (await edit({ commitMessage: draft.text.trim() })) setDraft(null);
+  }
+
+  /**
+   * Flip one switch of the plan.
+   *
+   * @param field The switch.
+   */
+  function flip(field: ToggleView["field"]): void {
+    if (page === null) return;
+
+    void edit({ [field]: !page.plan[field] });
+  }
+
+  /** Disarm the plan, and say on the card what became of it. */
+  async function disarm(): Promise<void> {
+    const outcome = await changePlan(() => planSenders.disarm(prId));
+    if (outcome === null) return;
+
+    if (outcome.ok) {
+      keepPlan(outcome.answer);
+      setPlanNotice({ text: DISARMED, failed: false });
+    } else {
+      setPlanNotice({ text: refusalText(outcome, false), failed: true });
+    }
+  }
+
+  /**
+   * Arm, or merge, as the confirmation stated.
+   *
+   * @param terms What the confirmation stated when it opened.
+   * @returns The outcome, for the dialog: it closes on an arm or a merge and draws a refusal.
+   */
+  async function confirmPlan(terms: ConfirmationView): Promise<TextDialogOutcome> {
+    if (page === null) return { ok: false, reason: NO_REVISION };
+
+    const outcome = await changePlan<PlanOutcome | MergeOutcome>(() =>
+      terms.kind === "merge"
+        ? planSenders.merge(prId)
+        : planSenders.arm(prId, terms.revisionId),
+    );
+
+    if (outcome === null) return { ok: false, reason: MAY_HAVE_LANDED };
+    if (!outcome.ok) return { ok: false, reason: refusalText(outcome, true) };
+
+    if ("plan" in outcome.answer) {
+      const merged = outcome.answer;
+
+      keepPlan(merged.plan);
+      setPlanNotice(mergedNotice(merged));
+
+      if (merged.plan.mergedResult !== null) {
+        setMergeAnswer({
+          sha: merged.plan.mergedResult.sha,
+          failedActions: merged.failedActions,
+        });
+      }
+    } else {
+      keepPlan(outcome.answer);
+      setPlanNotice(armedNotice(outcome.answer, page));
+    }
+
+    setChosen(null);
+    // The button that opened the dialog is gone once the plan is armed or merged, so focus has
+    // nowhere to return to: the card takes it.
+    setFocusRequests((count) => count + 1);
+
+    return { ok: true };
   }
 
   const criteria =
@@ -626,6 +838,18 @@ export function PrScreen({
     page === null || scope === null
       ? null
       : gatesCard({ page, scope, answeredReview, mayContribute, originId: origin.id });
+  const plan =
+    page === null
+      ? null
+      : mergePlanCard({
+          page,
+          epics,
+          draft,
+          answer: mergeAnswer,
+          mayArm,
+          mayContribute,
+          chosen: chosen !== null && chosen === revision?.seq ? chosen : null,
+        });
 
   return (
     <main className="prv">
@@ -717,10 +941,33 @@ export function PrScreen({
         />
       )}
 
-      {page !== null && actions !== null && actions.merge !== null && (
-        <MergePlanSlot
-          chosen={chosen !== null && chosen === revision?.seq ? chosen : null}
+      {plan !== null && page !== null && (
+        <MergePlanCard
+          draft={draft}
+          notice={planNotice}
+          onDiscard={() => setDraft(null)}
+          onDisarm={() => void disarm()}
+          onDraft={(text) => setDraft((current) => draftOf(text, page.plan.commitMessage, current))}
+          onEpic={(epicId) => void edit({ epicId })}
+          onPrimary={() => {
+            if (plan.primary !== null) setConfirming(confirmation(page, plan.primary.kind));
+          }}
+          onSave={() => void saveMessage()}
+          onToggle={flip}
           ref={slot}
+          sending={planSending}
+          view={plan}
+        />
+      )}
+
+      {page !== null && <SpendCard view={spendCard(page.spend)} />}
+
+      {page !== null && (
+        <ArmDialog
+          moved={confirming !== null && termsMoved(confirming, page)}
+          onClose={() => setConfirming(null)}
+          onConfirm={confirmPlan}
+          terms={confirming}
         />
       )}
 

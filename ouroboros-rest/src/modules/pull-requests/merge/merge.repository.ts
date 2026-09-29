@@ -19,9 +19,10 @@
  *
  * ## Writes name the person acted for
  *
- * V058's audit trigger names `armed_by` for an arm, `updated_by` for a manual disarm, and — since
- * V064 — `updated_by` for a merge. So every write acting for a person sets `updated_by` in the
- * same statement; a re-check's disarm leaves it, and the trigger writes no actor.
+ * V058's audit trigger names `armed_by` for an arm, `updated_by` for a manual disarm and for an
+ * edit (AY.7, #369), and — since V064 — `updated_by` for a merge. So every write acting for a
+ * person sets `updated_by` in the same statement; a re-check's disarm leaves it, and the trigger
+ * writes no actor.
  *
  * ## Tenancy
  *
@@ -43,6 +44,7 @@ import type {
 import { GuardrailsRepository } from "../../guardrails/guardrails.repository";
 import { readPinnedPolicy } from "../../guardrails/guardrails.policy";
 import { readSpendTotals, type SpendTotals } from "../../runs/run.spend";
+import type { MergePlanChanges } from "./merge.edit";
 import type { SummaryGate } from "./merge.evidence";
 import type { RecheckGates, RecheckRevision } from "./merge.recheck";
 
@@ -84,6 +86,14 @@ export interface StoredMergePlan {
   readonly disarmReason: string | null;
   readonly mergedResult: PrMergedResult | null;
   readonly updatedAt: Date;
+}
+
+/** A person, by id and display name — who armed a plan. */
+export interface MergePerson {
+  /** `user.id`. */
+  readonly id: string;
+  /** `user.name`. */
+  readonly name: string;
 }
 
 /** A PR locked for a re-check, with its plan and latest revision. */
@@ -160,6 +170,25 @@ export interface MergeTransaction {
     actorId: string | null,
   ): Promise<StoredMergePlan>;
   /**
+   * Edit a plan, for a person — the message, a toggle or the epic (AY.7, #369).
+   *
+   * @param planId - The plan.
+   * @param actorId - Who edited it — the audit row's actor.
+   * @param changes - Only the fields that change; at least one.
+   * @returns The plan.
+   * @throws A database failure when V058 refuses the write — an epic that went, or is another
+   *   workspace's.
+   */
+  edit(planId: string, actorId: string, changes: MergePlanChanges): Promise<StoredMergePlan>;
+  /**
+   * Whether a planning epic is one of a workspace's.
+   *
+   * @param organizationId - The workspace.
+   * @param epicId - The epic.
+   * @returns `false` for another workspace's epic, as for one that does not exist.
+   */
+  hasEpic(organizationId: string, epicId: string): Promise<boolean>;
+  /**
    * Move the PR one edge of V052's graph.
    *
    * @param prId - The PR.
@@ -214,6 +243,11 @@ export interface MergeStore {
    * @returns `false` for a PR without a run, or whose pin cannot be read.
    */
   autoMerges(pr: MergePr): Promise<boolean>;
+  /**
+   * @param userId - `user.id` — who armed a plan.
+   * @returns The person, or undefined when they are gone.
+   */
+  person(userId: string): Promise<MergePerson | undefined>;
   /**
    * Run one re-check in a transaction.
    *
@@ -321,6 +355,15 @@ export class MergeRepository implements MergeStore {
     return pinned === undefined
       ? false
       : (readPinnedPolicy(pinned.definition)?.autoMerges ?? false);
+  }
+
+  /** @inheritdoc */
+  person(userId: string): Promise<MergePerson | undefined> {
+    return this.database.db
+      .selectFrom("user")
+      .select(["id", "name"])
+      .where("id", "=", userId)
+      .executeTakeFirst();
   }
 
   /** @inheritdoc */
@@ -558,6 +601,42 @@ class PgMergeTransaction implements MergeTransaction {
       .executeTakeFirstOrThrow();
 
     return planOf(row);
+  }
+
+  /** @inheritdoc */
+  async edit(planId: string, actorId: string, changes: MergePlanChanges): Promise<StoredMergePlan> {
+    const row = await this.trx
+      .updateTable("pr_merge_plans")
+      .set({
+        // `!== undefined`, never a spread of the changes: a cleared epic is a null that is written.
+        ...(changes.commitMessage === undefined ? {} : { commit_message: changes.commitMessage }),
+        ...(changes.closeTicket === undefined ? {} : { close_ticket: changes.closeTicket }),
+        ...(changes.commentEvidence === undefined
+          ? {}
+          : { comment_evidence: changes.commentEvidence }),
+        ...(changes.backAnnotateEpic === undefined
+          ? {}
+          : { back_annotate_epic: changes.backAnnotateEpic }),
+        ...(changes.epicId === undefined ? {} : { epic_id: changes.epicId }),
+        updated_by: actorId,
+      })
+      .where("id", "=", planId)
+      .returning(PLAN_COLUMNS)
+      .executeTakeFirstOrThrow();
+
+    return planOf(row);
+  }
+
+  /** @inheritdoc */
+  async hasEpic(organizationId: string, epicId: string): Promise<boolean> {
+    const epic = await this.trx
+      .selectFrom("planning_epics")
+      .select("id")
+      .where("id", "=", epicId)
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+
+    return epic !== undefined;
   }
 
   /** @inheritdoc */

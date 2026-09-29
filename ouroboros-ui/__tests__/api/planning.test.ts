@@ -31,6 +31,34 @@ const { planning } = await import("@/app/api/planning");
  * operations.
  */
 
+describe("planning.epics (#369)", () => {
+  it("reads every lane, top first, as served", async () => {
+    const lanes = seededRoadmap().lanes;
+    const { client, requests } = clientAnswering(lanes);
+
+    expect(await planning.epics(client)).toEqual(lanes);
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.url).toBe("http://rest.test:4000/api/v1/planning/epics");
+    expect(requests[0]?.headers.get("X-Ouro-Tenant")).toBeNull();
+  });
+
+  it("answers none for a workspace with no roadmap", async () => {
+    const { client } = clientAnswering([]);
+
+    await expect(planning.epics(client)).resolves.toEqual([]);
+  });
+
+  it("rejects with the service's envelope when it refuses", async () => {
+    const { client } = clientAnswering(
+      { code: "unavailable", message: "The database is down.", details: {} },
+      503,
+    );
+
+    await expect(planning.epics(client)).rejects.toBeInstanceOf(ApiError);
+  });
+});
+
 describe("planning.roadmap", () => {
   it("reads the roadmap endpoint and hands back the payload as served", async () => {
     const { client, requests } = clientAnswering(seededRoadmap());

@@ -34,6 +34,10 @@
  * merge is audited by V058's trigger with its actor — the merge's, since V064, the person it was
  * made for.
  *
+ * **Editing the plan** ({@link MergeExecutorService.edit}, AY.7, #369) is whoever may arm's, and
+ * only while the plan is neither armed nor merged: arming confirmed the plan's terms, so they are
+ * changed by disarming first. `merge.edit.ts` says what an edit changes.
+ *
  * **Not wired yet, deliberately:** the dry-run policy (#382) and the org policy document's
  * `auto_merge` rule (#481) — both amend this executor, and neither's storage exists yet.
  */
@@ -48,6 +52,11 @@ import {
 
 import type { OrganizationRole, PrMergeAction, PrMergedResult } from "../../db/schema";
 import { DomainError } from "../../errors/error.envelope";
+import {
+  CHECK_VIOLATION,
+  FOREIGN_KEY_VIOLATION,
+  isDatabaseFailure,
+} from "../../tenancy/constraints";
 import { TicketSourceError, statusReasonFor } from "../../ticket-sources/ticket-source.errors";
 import type { MergePrResult, PullRequestSnapshot } from "../../ticket-sources/ticket-source.pr";
 import { pullRequestNotFound } from "../criteria/criteria.errors";
@@ -67,9 +76,21 @@ import {
   type TicketClosure,
 } from "./merge.actions";
 import {
+  changedFields,
+  changesNothing,
+  editedFields,
+  fieldsOf,
+  needsEpic,
+  type MergePlanEdit,
+} from "./merge.edit";
+import {
   mergeNotPolicyEligible,
+  mergePlanArmed,
+  mergePlanEpicNotFound,
+  mergePlanEpicRequired,
   mergePlanMerged,
   mergePlanNotArmable,
+  mergePlanPullRequestNotOpen,
   mergeRecheckFailed,
   mergeRevisionStale,
 } from "./merge.errors";
@@ -144,6 +165,21 @@ export type MergeRun =
       readonly ticket: TicketClosure | null;
       readonly failedActions: readonly FailedActionResource[];
     };
+
+/** V058's CHECK that back-annotate names an epic. */
+const BACK_ANNOTATE_HAS_EPIC = "pr_merge_plans_back_annotate_has_epic";
+
+/** V058's trigger that keeps a merged plan final. */
+const MERGED_FINAL = "pr_merge_plans_merged_final";
+
+/**
+ * What refuses a plan's epic in V058: the column's foreign key, for an epic that went between the
+ * read and the write, and the before-write trigger that holds it to the PR's workspace.
+ */
+const EPIC_CONSTRAINTS: ReadonlySet<string> = new Set([
+  "pr_merge_plans_epic_id_fkey",
+  "pr_merge_plans_epic_in_organization",
+]);
 
 /** The roles that may always arm and merge. */
 const ADMINISTRATIVE: ReadonlySet<OrganizationRole> = new Set(["owner", "admin"]);
@@ -253,7 +289,75 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
       return locked.plan ?? tx.materialize(prId);
     });
 
-    return mergePlanResource(plan);
+    return this.resource(plan);
+  }
+
+  /**
+   * Edit the plan — the commit message, a toggle or the epic — for a person. Each field sent
+   * persists; a field left out is left alone.
+   *
+   * @param organizationId - The workspace.
+   * @param prId - The PR.
+   * @param actor - Who is editing.
+   * @param edit - What to change — see `merge.edit.ts`.
+   * @returns The plan. An edit that changes nothing answers it unchanged, and writes nothing.
+   * @throws {NotFoundError} `pull_request_not_found`.
+   * @throws {ForbiddenError} `merge_not_policy_eligible` for a member whose PR does not auto-merge.
+   * @throws {ConflictError} `merge_plan_merged`, `pull_request_not_open` or `merge_plan_armed`.
+   * @throws {InvalidRequestError} `merge_plan_epic_required` or `merge_plan_epic_not_found`.
+   */
+  async edit(
+    organizationId: string,
+    prId: string,
+    actor: MergeActor,
+    edit: MergePlanEdit,
+  ): Promise<MergePlanResource> {
+    await this.assertMayMerge(organizationId, prId, actor);
+
+    const plan = await this.store.transaction(async (tx) => {
+      const { pr, plan: stored } = await this.lockOrThrow(tx, organizationId, prId);
+
+      if (stored?.mergedResult != null) {
+        throw mergePlanMerged(prId);
+      }
+
+      if (pr.state === "merged" || pr.state === "closed") {
+        throw mergePlanPullRequestNotOpen(prId, pr.state);
+      }
+
+      if (stored?.armed === true) {
+        throw mergePlanArmed(prId);
+      }
+
+      const current = stored ?? (await tx.materialize(prId));
+      const next = editedFields(fieldsOf(current), edit);
+      const changes = changedFields(fieldsOf(current), next);
+
+      if (changesNothing(changes)) {
+        return current;
+      }
+
+      if (needsEpic(next)) {
+        throw mergePlanEpicRequired(prId);
+      }
+
+      if (
+        changes.epicId !== undefined &&
+        changes.epicId !== null &&
+        !(await tx.hasEpic(organizationId, changes.epicId))
+      ) {
+        throw mergePlanEpicNotFound(prId, changes.epicId);
+      }
+
+      try {
+        return await tx.edit(current.id, actor.id, changes);
+      } catch (error) {
+        // The epic went, or changed hands, between the read and the write — V058 said no.
+        throw refusedEdit(prId, next.epicId, error);
+      }
+    });
+
+    return this.resource(plan);
   }
 
   /**
@@ -306,7 +410,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
     // Already green: "merge when all gates green" is now.
     this.schedule(organizationId, prId);
 
-    return mergePlanResource(plan);
+    return this.resource(plan);
   }
 
   /**
@@ -344,7 +448,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
       return disarmed;
     });
 
-    return mergePlanResource(plan);
+    return this.resource(plan);
   }
 
   /**
@@ -382,7 +486,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
         });
       case "merged":
         return {
-          plan: mergePlanResource(outcome.plan),
+          plan: await this.resource(outcome.plan),
           ticket: outcome.ticket,
           failedActions: outcome.failedActions,
         };
@@ -710,7 +814,19 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
   }
 
   /**
-   * Refuse a person who may not arm or merge this PR.
+   * A plan as the routes answer it, naming who armed it.
+   *
+   * @param plan - The plan.
+   * @returns The resource — `armedByPerson` null for a plan nobody armed, or whose person is gone.
+   */
+  private async resource(plan: StoredMergePlan): Promise<MergePlanResource> {
+    const armedBy = plan.armedBy === null ? undefined : await this.store.person(plan.armedBy);
+
+    return mergePlanResource(plan, armedBy ?? null);
+  }
+
+  /**
+   * Refuse a person who may not arm, merge or edit the plan of this PR.
    *
    * @param organizationId - The workspace.
    * @param prId - The PR.
@@ -738,6 +854,42 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
       throw mergeNotPolicyEligible(prId);
     }
   }
+}
+
+/**
+ * What a refused edit's write is answered with.
+ *
+ * @param prId - The PR.
+ * @param epicId - The epic the edited plan names, or null.
+ * @param error - What the write threw.
+ * @returns `422 merge_plan_epic_required` when V058 found back-annotate on with no epic, `409
+ *   merge_plan_merged` when it found the plan final, `422 merge_plan_epic_not_found` when it
+ *   refused the plan's epic — its foreign key, or the trigger that holds it to the PR's workspace
+ *   — and the error itself for anything else. Read by the constraint's name, never the SQLSTATE
+ *   alone: four constraints of this table raise the same one.
+ */
+export function refusedEdit(prId: string, epicId: string | null, error: unknown): unknown {
+  if (!isDatabaseFailure(error)) {
+    return error;
+  }
+
+  if (error.code === CHECK_VIOLATION && error.constraint === BACK_ANNOTATE_HAS_EPIC) {
+    return mergePlanEpicRequired(prId);
+  }
+
+  if (error.code === CHECK_VIOLATION && error.constraint === MERGED_FINAL) {
+    return mergePlanMerged(prId);
+  }
+
+  if (
+    (error.code === FOREIGN_KEY_VIOLATION || error.code === CHECK_VIOLATION) &&
+    error.constraint !== undefined &&
+    EPIC_CONSTRAINTS.has(error.constraint)
+  ) {
+    return mergePlanEpicNotFound(prId, epicId);
+  }
+
+  return error;
 }
 
 /**

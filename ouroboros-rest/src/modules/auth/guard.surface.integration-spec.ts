@@ -104,6 +104,10 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // pipe's 422 — is what this suite observes.
   criterionId: "5eed003e-0000-4000-8000-000000005141",
   evidenceId: "5eed003f-0000-4000-8000-000000051411",
+  // `POST /api/v1/pull-requests/:id/thread/:entryId/resolve` (#368). **This was missing**: the
+  // route landed without an entry here, so every walk of the table threw. Added with #369, whose
+  // `PATCH …/merge-plan` this suite could not otherwise be shown to cover.
+  entryId: "5eed0040-0000-4000-8000-000000005144",
   // `GET /runner/:version/:file` (#248). A release version and one of the five file names a
   // release holds, so what a stranger gets is the route's own answer — `404` from a suite that
   // configures no releases directory — rather than a refusal of the shape.

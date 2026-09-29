@@ -5071,7 +5071,8 @@ gates green** over V058's `pr_merge_plans` and V064's `planning_epic_notes`.
 
 | route | what | who |
 | ----- | ---- | --- |
-| `GET /api/v1/pull-requests/:id/merge-plan` | the plan, `disarmReason {code, message}`, `mergedResult` (written with the defaults if absent) | every member |
+| `GET /api/v1/pull-requests/:id/merge-plan` | the plan, `disarmReason {code, message}`, `mergedResult`, `armedByPerson` (written with the defaults if absent) | every member |
+| `PATCH …/merge-plan` `{commitMessage?, closeTicket?, commentEvidence?, backAnnotateEpic?, epicId?}` | edit the plan — only what is sent changes (#369) | owner, admin; a member when the pin auto-merges |
 | `POST …/merge-plan/arm` `{revisionId}` | arm against the revision looked at; fires at once when already green | owner, admin; a member when the pin auto-merges |
 | `POST …/merge-plan/disarm` | withdraw the intent | member+ |
 | `POST …/merge-plan/merge` | merge now, through the same re-check | owner, admin; a member when the pin auto-merges |
@@ -5099,8 +5100,31 @@ when toggled; the run becomes `merged` with its `pr_number` (the dashboard's out
 synced after commit. Audited by V058's trigger: arm (who armed), disarm (who, or nobody for a
 re-check), merge (the person it was made for, V064).
 
+**Editing the plan** (AY.7, [#369](https://github.com/NobuData/ouroboros/issues/369), REST 0.37.20)
+is the Merge plan card's: the commit message, the three toggles and the epic the third annotates.
+An absent field is left alone and `null` clears the epic — the only field it clears — which also
+switches back-annotate off (`merge.edit.ts`). The strategy and delete-branch are the pinned
+policy's, and a body naming them is a `422`.
+
+| refusal | when |
+| ------- | ---- |
+| `409 merge_plan_armed` | the plan is armed — arming confirmed its terms, so disarm first |
+| `409 merge_plan_merged` | the plan has merged and is final |
+| `409 pull_request_not_open` | the PR is merged or closed on its host |
+| `422 merge_plan_epic_required` | back-annotate would be on with no epic |
+| `422 merge_plan_epic_not_found` | the epic is not this workspace's — checked before the write, and V058's own refusal is answered the same way if the check is raced past |
+
+An edit that changes nothing writes nothing. Audited by V058's trigger as `pr_merge_plan.edited`,
+with the person and the columns that changed — never the message. `armedByPerson` names who armed
+the plan, `{id, name}`, for the card's footer; `armedBy` stays the id.
+
+**Closing the ticket is the host's.** `closeTicket` records the intent; the close happens on the
+message's `Closes <key>.` keyword. A message edited to drop it leaves the ticket open, and the
+merge reports `close_ticket` among the actions that did not run.
+
 **Not wired yet:** the dry-run policy (#382) and the policy document's `auto_merge` rule (#481);
-explicit ticket closing — the SPI has no member for it, so a failed keyword close is reported.
+explicit ticket closing — the SPI has no member for it, so a failed keyword close is reported; a
+`Co-authored-by:` trailer for the arming person — the message is sent as written.
 
 ### PR page reads & head actions
 
