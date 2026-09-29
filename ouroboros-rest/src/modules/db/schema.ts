@@ -933,6 +933,12 @@ export interface RunsTable {
    * schema half of *"a run with no file changes triggers no evaluation"*.
    */
   change_set_seq: Generated<number>;
+  /**
+   * The playbook this run was launched through, or `null` (V072,
+   * [#407](https://github.com/NobuData/ouroboros/issues/407)). A playbook's *run 9×* is the count
+   * of runs carrying its id — there is no counter column. Set null when the playbook is deleted.
+   */
+  playbook_id: string | null;
 }
 
 /**
@@ -1139,6 +1145,7 @@ export interface RunsWithStageView {
   reserved_build_job_id: string | null;
   event_hint: number;
   change_set_seq: number;
+  playbook_id: string | null;
 }
 
 /**
@@ -2220,6 +2227,12 @@ export interface QueueItemsTable {
    * `queue_items_workflow_version_reasoned`.
    */
   workflow_pin_reason: QueueWorkflowPinReason | null;
+  /**
+   * The playbook this issue was launched through, or `null` (V072,
+   * [#407](https://github.com/NobuData/ouroboros/issues/407)) — a playbook of the same workspace,
+   * set null when the playbook is deleted. The run that claims the item inherits it.
+   */
+  playbook_id: string | null;
   /**
    * Place in the queue; `1` is next.
    *
@@ -5534,6 +5547,7 @@ export const TABLE_COLUMNS = {
     "reserved_build_job_id",
     "event_hint",
     "change_set_seq",
+    "playbook_id",
   ],
   run_stages: [
     "id",
@@ -5779,6 +5793,7 @@ export const TABLE_COLUMNS = {
     "updated_at",
     "workflow_version",
     "workflow_pin_reason",
+    "playbook_id",
   ],
   token_usage: [
     "id",
@@ -6518,6 +6533,7 @@ export const TABLE_COLUMNS = {
     "reserved_build_job_id",
     "event_hint",
     "change_set_seq",
+    "playbook_id",
   ],
   run_events_jsonl: ["run_id", "seq", "line"],
   v_run_guardrails_latest: [

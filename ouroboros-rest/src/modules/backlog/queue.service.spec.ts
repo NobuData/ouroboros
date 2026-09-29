@@ -88,6 +88,7 @@ function written(position: number, overrides: Partial<QueueItem> = {}): QueueIte
     workflow_tag: "standard-fix",
     workflow_version: null,
     workflow_pin_reason: "suggested",
+    playbook_id: null,
     position,
     est_minutes: 45,
     enqueued_at: new Date("2026-09-10T15:41:12.000Z"),
