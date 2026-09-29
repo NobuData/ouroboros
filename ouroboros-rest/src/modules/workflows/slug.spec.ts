@@ -1,4 +1,11 @@
-import { NAME_MAX_LENGTH, SLUG_MAX_LENGTH, SLUG_PATTERN, slugify } from "./slug";
+import {
+  MAX_SLUG_ORDINAL,
+  NAME_MAX_LENGTH,
+  SLUG_MAX_LENGTH,
+  SLUG_PATTERN,
+  nextFreeSlug,
+  slugify,
+} from "./slug";
 
 /**
  * The identifier a `workflow_tag` resolves through, and the one property that matters about
@@ -64,5 +71,58 @@ describe("slugify", () => {
       expect(slug).toMatch(SLUG_PATTERN);
       expect(slug.length).toBeLessThanOrEqual(SLUG_MAX_LENGTH);
     }
+  });
+});
+
+describe("nextFreeSlug — the suffix flow (BB.3, #386)", () => {
+  it("answers the base itself when it is free", () => {
+    expect(nextFreeSlug("quick-fixes", new Set(["standard-fix"]))).toEqual({
+      slug: "quick-fixes",
+      ordinal: 1,
+    });
+  });
+
+  it("suffixes -2 when the base is taken", () => {
+    expect(nextFreeSlug("quick-fixes", new Set(["quick-fixes"]))).toEqual({
+      slug: "quick-fixes-2",
+      ordinal: 2,
+    });
+  });
+
+  it("skips every taken suffix", () => {
+    const taken = new Set(["quick-fixes", "quick-fixes-2", "quick-fixes-3"]);
+
+    expect(nextFreeSlug("quick-fixes", taken)).toEqual({ slug: "quick-fixes-4", ordinal: 4 });
+  });
+
+  it("fills a gap left by a deleted suffix", () => {
+    const taken = new Set(["quick-fixes", "quick-fixes-3"]);
+
+    expect(nextFreeSlug("quick-fixes", taken)?.slug).toBe("quick-fixes-2");
+  });
+
+  it("keeps a suffixed slug of a 64-character base inside the bound and the pattern", () => {
+    const base = `${"a".repeat(62)}-b`;
+    const free = nextFreeSlug(base, new Set([base]));
+
+    expect(free?.slug).toHaveLength(SLUG_MAX_LENGTH);
+    expect(free?.slug).toMatch(SLUG_PATTERN);
+    expect(free?.slug.endsWith("-2")).toBe(true);
+  });
+
+  it("trims a hyphen the cut leaves before the suffix", () => {
+    const base = `${"a".repeat(61)}-bc`;
+    const free = nextFreeSlug(base, new Set([base]));
+
+    expect(free?.slug).toBe(`${"a".repeat(61)}-2`);
+    expect(free?.slug).toMatch(SLUG_PATTERN);
+  });
+
+  it("gives up after the last ordinal", () => {
+    const taken = new Set(["x"]);
+
+    for (let ordinal = 2; ordinal <= MAX_SLUG_ORDINAL; ordinal += 1) taken.add(`x-${ordinal}`);
+
+    expect(nextFreeSlug("x", taken)).toBeUndefined();
   });
 });

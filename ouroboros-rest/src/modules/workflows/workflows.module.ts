@@ -127,9 +127,10 @@ import { WorkflowsService } from "./workflows.service";
     TriggerRepository,
     { provide: PUBLISHED_DSL_SCHEMA, useFactory: () => readPublishedDslSchema() },
   ],
-  // The three services are exported and the repositories are not, for the reason this file's
-  // header gives: a consumer that reached past them would be a consumer that had skipped the
-  // honesty rules those services are the whole of.
-  exports: [WorkflowStatsService, WorkflowRegistryService, TriggerService],
+  // The services are exported and the repositories are not, for the reason this file's header
+  // gives: a consumer that reached past them would be a consumer that had skipped the honesty
+  // rules those services are the whole of. `WorkflowsService` is exported for onboarding's
+  // template instantiation (BB.3, #386), which must publish through the same gate as the studio.
+  exports: [WorkflowStatsService, WorkflowRegistryService, TriggerService, WorkflowsService],
 })
 export class WorkflowsModule {}

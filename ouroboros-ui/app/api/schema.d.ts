@@ -1676,6 +1676,80 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Step 3's template tiles, with each unlock gate evaluated
+         * @description The tile grid of mockup 13's step 3 ([#386](https://github.com/NobuData/ouroboros/issues/386),
+         *     BB.3): the templates this workspace is offered (V068's `workflow_templates_for` — an
+         *     organization's own row shadows the global one), in tile order, each with its display
+         *     data, whether it is this repository's active choice, and the live workflow instantiated
+         *     from it, if any.
+         *
+         *     **The lock is a computation.** An `advanced` tile carries `unlock` — evaluated against
+         *     `mergedLoops`, the workspace's merged runs off the runs read-model, and the threshold in
+         *     force (the operator's `OURO_ONBOARDING_UNLOCK_THRESHOLD`, else the template's own
+         *     `merged_loops_gte`) — with the progress pair the tile prints, `3 of 10 merged loops`.
+         *     A workspace that has done the work sees it open on its own.
+         *
+         *     **Captions are qualitative** (decision O8): no caption carries a digit or a percent
+         *     sign, so no tile can print an invented statistic.
+         *
+         *     Any member.
+         */
+        get: operations["listOnboardingTemplates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/select-template": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Select a template — instantiate it as a published workflow
+         * @description Clicking a tile ([#386](https://github.com/NobuData/ouroboros/issues/386), BB.3, decision
+         *     O4). **Selection instantiates**: the template version's definition goes through the same
+         *     publish gate as `POST /api/v1/workflows/{id}/publish` — the DSL validator, the registry,
+         *     then the engine — and, green, a workflow is created and published as v1 in one
+         *     transaction, recording `template_slug` and `template_version` as provenance. The answer
+         *     names it and its studio path; it is on the studio's rail at once, editable like any other.
+         *
+         *     **There is no wizard bypass.** A definition the gate refuses is `422
+         *     onboarding_template_invalid` carrying the gate's findings, and nothing is left behind —
+         *     no workflow, no draft, no choice stored.
+         *
+         *     **A slug collision takes the suffix flow**: a workspace that already has a `quick-fixes`
+         *     workflow gets `quick-fixes-2`, titled `Quick fixes (2)`.
+         *
+         *     **Re-selection deletes nothing.** Selecting another template switches this repository's
+         *     active choice (`choices.selectedTemplate`) and reports every other live instantiated
+         *     workflow in `kept`. Selecting a template that already has a live workflow reuses it
+         *     (`created: false`) rather than copying it again.
+         *
+         *     `owner` or `admin` — the rule for publishing a workflow, because this publishes one.
+         */
+        post: operations["selectOnboardingTemplate"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/detection": {
         parameters: {
             query?: never;
@@ -10140,6 +10214,146 @@ export interface components {
              * @constant
              */
             configurationImported: false;
+        };
+        /**
+         * OnboardingSelectTemplate
+         * @description The body of `POST /api/v1/onboarding/select-template`.
+         */
+        OnboardingSelectTemplate: {
+            /**
+             * @description The template picked — `quick-fixes`.
+             * @example quick-fixes
+             */
+            slug: string;
+        };
+        /**
+         * OnboardingTemplateUnlock
+         * @description A gated tier's evaluated unlock rule
+         *     ([#386](https://github.com/NobuData/ouroboros/issues/386)) — computed, never a tag.
+         */
+        OnboardingTemplateUnlock: {
+            /** @description True while the workspace has fewer merged loops than `threshold`. */
+            locked: boolean;
+            /** @description The workspace's merged runs, off the runs read-model. */
+            mergedLoops: number;
+            /**
+             * @description The threshold in force — the operator's `OURO_ONBOARDING_UNLOCK_THRESHOLD` when set,
+             *     else the template's own `merged_loops_gte`.
+             */
+            threshold: number;
+            /**
+             * @description The tag the tile prints.
+             * @example unlock after 10 merged loops
+             */
+            rule: string;
+            /**
+             * @description The progress the tile prints, capped at `threshold`.
+             * @example 3 of 10 merged loops
+             */
+            progress: string;
+        };
+        /**
+         * OnboardingInstantiatedWorkflow
+         * @description A workflow instantiated from a template (V068 provenance) and where the studio opens it.
+         */
+        OnboardingInstantiatedWorkflow: {
+            /** Format: uuid */
+            id: string;
+            /** @example quick-fixes */
+            slug: string;
+            /** @example Quick fixes */
+            name: string;
+            /** @description The version in force — `1` straight after instantiation. */
+            currentVersion: number | null;
+            /**
+             * @description The template it was instantiated from.
+             * @example quick-fixes
+             */
+            templateSlug: string;
+            /** @description The template version copied — the `3` of `quick-fixes@v3`. */
+            templateVersion: number;
+            /**
+             * @description The studio's path for it.
+             * @example /workflows/quick-fixes
+             */
+            studioPath: string;
+        };
+        /**
+         * OnboardingTemplateTile
+         * @description One template tile of step 3.
+         */
+        OnboardingTemplateTile: {
+            /** @example quick-fixes */
+            slug: string;
+            /** @description The version offered — the latest of the resolved row. */
+            version: number;
+            /**
+             * @description A product-shipped template, or this organization's override.
+             * @enum {string}
+             */
+            scope: "global" | "organization";
+            /** @example Quick fixes */
+            name: string;
+            /** @example Small bugs and cleanups, fully hands-off. */
+            description: string;
+            /** @description The tile's displayed stage sequence — display data, not the graph. */
+            stageDots: string[];
+            /** @description The tile's effort chips. */
+            effortRange: ("xs" | "s" | "m" | "l" | "xl")[];
+            /**
+             * @description The qualitative footnote. Never carries a digit or a percent sign (O8).
+             * @example recommended first workflow
+             */
+            caption: string | null;
+            /** @enum {string} */
+            tier: "starter" | "advanced";
+            /** @description Whether this is the repository's active choice. */
+            selected: boolean;
+            /** @description Null for a starter tile; the evaluated gate for an advanced one. */
+            unlock: components["schemas"]["OnboardingTemplateUnlock"] | null;
+            /** @description The newest live workflow instantiated from this template, or null. */
+            workflow: components["schemas"]["OnboardingInstantiatedWorkflow"] | null;
+        };
+        /**
+         * OnboardingTemplateTiles
+         * @description Step 3's tile grid ([#386](https://github.com/NobuData/ouroboros/issues/386)).
+         */
+        OnboardingTemplateTiles: {
+            /**
+             * @description `owner/name`, lower-case.
+             * @example acme-robotics/helios-firmware
+             */
+            repo: string;
+            /** @description The repository's active choice, or null. */
+            selectedTemplate: string | null;
+            /** @description The merged-loop count every gate was evaluated against. */
+            mergedLoops: number;
+            /**
+             * @description The studio's root, for `Open Workflow Studio →`.
+             * @example /workflows
+             */
+            studioPath: string;
+            /** @description The tiles, in tile order. */
+            tiles: components["schemas"]["OnboardingTemplateTile"][];
+        };
+        /**
+         * OnboardingTemplateSelection
+         * @description What selecting a template answers
+         *     ([#386](https://github.com/NobuData/ouroboros/issues/386)).
+         */
+        OnboardingTemplateSelection: {
+            /**
+             * @description False when the template already had a live workflow, which was reused rather than
+             *     copied again.
+             */
+            created: boolean;
+            workflow: components["schemas"]["OnboardingInstantiatedWorkflow"];
+            /**
+             * @description Every other live workflow instantiated from a template — left intact by a
+             *     re-selection, because each is a real workflow of the workspace.
+             */
+            kept: components["schemas"]["OnboardingInstantiatedWorkflow"][];
+            onboarding: components["schemas"]["Onboarding"];
         };
         /**
          * RepoDetection
@@ -23448,6 +23662,323 @@ export interface operations {
              *     `details` is empty, deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listOnboardingTemplates: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The tiles. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingTemplateTiles"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
+             *     entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    selectOnboardingTemplate: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "slug": "quick-fixes"
+                 *     }
+                 */
+                "application/json": components["schemas"]["OnboardingSelectTemplate"];
+            };
+        };
+        responses: {
+            /** @description The workflow behind the choice, the workflows kept, and the wizard. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingTemplateSelection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `member` or `viewer` cannot publish a workflow, and selecting a
+             *     template publishes one. `details.role` is what you hold and `details.required` is
+             *     what would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `onboarding_template_locked` — the template's tier is still gated for this
+             *     workspace. `details` carries `slug`, `mergedLoops`, `threshold` and `progress`, the
+             *     same pair the tile prints. Nothing was created.
+             *
+             *     Or `workflow_slug_taken` — every suffix of the template's slug is taken.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "onboarding_template_locked",
+                     *       "message": "The deep-refactor template is locked: unlock after 10 merged loops (3 of 10 merged loops so far).",
+                     *       "details": {
+                     *         "slug": "deep-refactor",
+                     *         "mergedLoops": 3,
+                     *         "threshold": 10,
+                     *         "progress": "3 of 10 merged loops"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `onboarding_template_invalid` — the template's definition did not pass the publish
+             *     gate. `details.slug` and `details.version` name the template version and
+             *     `details.findings` are the gate's findings, exactly as a studio publish returns them
+             *     (`WorkflowFinding`), for the tile to render as its error state. Nothing was created.
+             *
+             *     Or `onboarding_template_unknown` — `slug` is not a template this workspace is
+             *     offered; `details.offered` lists the ones that are. Or `validation_failed` — `repo`
+             *     or `slug` is malformed.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `engine_unavailable` — `ouroboros-engine` could not answer the gate's validation.
+             *     The selection is refused rather than waved through, as a studio publish is.
+             */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -7,7 +7,13 @@
  * PATCH /api/v1/onboarding?repo=owner/name                 picks: contributors; dismiss: any member
  * POST  /api/v1/onboarding/complete-step?repo=owner/name   contributors — guarded
  * POST  /api/v1/onboarding/skip?repo=owner/name            contributors — the import-skip
+ * GET   /api/v1/onboarding/templates?repo=owner/name       any member — step 3's tiles (#386)
+ * POST  /api/v1/onboarding/select-template?repo=owner/name administrators — instantiate (#386)
  * ```
+ *
+ * `select-template` publishes a workflow, so it carries the studio's publish rule —
+ * `@Roles(...ADMINISTRATORS)` — rather than the contributor rule a pick carries: the wizard is
+ * not a way round who may publish.
  *
  * The repository is a query parameter on every route, so each repository's wizard is its own and
  * re-entering for a second repository is naming it. The `PATCH` role rule is the service's rather
@@ -15,17 +21,29 @@
  */
 
 import { Body, Controller, Get, HttpCode, HttpStatus, Patch, Post, Query } from "@nestjs/common";
+import { Session } from "@thallesp/nestjs-better-auth";
 
+import type { Principal } from "../auth/principal";
 import type { Organization } from "../db/schema";
-import { CONTRIBUTORS, Roles } from "../tenancy/roles.guard";
+import { ADMINISTRATORS, CONTRIBUTORS, Roles } from "../tenancy/roles.guard";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
-import { CompleteStepDto, OnboardingRepoQuery, PatchOnboardingDto } from "./onboarding.dto";
+import {
+  CompleteStepDto,
+  OnboardingRepoQuery,
+  PatchOnboardingDto,
+  SelectTemplateDto,
+} from "./onboarding.dto";
 import { OnboardingService } from "./onboarding.service";
 import type { OnboardingResource, OnboardingSkipResource } from "./resources";
+import type { TemplateSelectionResource, TemplateTilesResource } from "./templates.resources";
+import { TemplateInstantiationService } from "./templates.service";
 
 @Controller("onboarding")
 export class OnboardingController {
-  constructor(private readonly onboarding: OnboardingService) {}
+  constructor(
+    private readonly onboarding: OnboardingService,
+    private readonly templates: TemplateInstantiationService,
+  ) {}
 
   /**
    * The wizard for one repository.
@@ -93,5 +111,42 @@ export class OnboardingController {
     @Query() query: OnboardingRepoQuery,
   ): Promise<OnboardingSkipResource> {
     return this.onboarding.skip(tenant.id, query.repo);
+  }
+
+  /**
+   * Step 3's template tiles, each with its evaluated unlock gate (BB.3, #386).
+   *
+   * @param tenant - The workspace.
+   * @param query - `?repo=owner/name` — which repository's active choice to mark.
+   * @returns The tiles.
+   */
+  @Get("templates")
+  listTemplates(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: OnboardingRepoQuery,
+  ): Promise<TemplateTilesResource> {
+    return this.templates.list(tenant.id, query.repo);
+  }
+
+  /**
+   * Select a template: instantiate it as a published workflow (or reuse its live one) and make
+   * it the repository's active choice (BB.3, #386).
+   *
+   * @param tenant - The workspace.
+   * @param query - `?repo=owner/name`.
+   * @param principal - The session — v1's publisher.
+   * @param body - The template's slug.
+   * @returns The workflow, the workflows kept, and the wizard.
+   */
+  @Post("select-template")
+  @HttpCode(HttpStatus.OK)
+  @Roles(...ADMINISTRATORS)
+  selectTemplate(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: OnboardingRepoQuery,
+    @Session() principal: Principal,
+    @Body() body: SelectTemplateDto,
+  ): Promise<TemplateSelectionResource> {
+    return this.templates.select(tenant.id, query.repo, body.slug, principal.user.id);
   }
 }

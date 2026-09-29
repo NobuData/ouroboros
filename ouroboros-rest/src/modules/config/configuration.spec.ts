@@ -1145,3 +1145,22 @@ describe("the nightly flake re-scorer variables (AT.3, #331)", () => {
     expect(failureFor(testEnvironment({ [variable]: value }))).toContain(`${variable}: ${message}`);
   });
 });
+
+describe("OURO_ONBOARDING_UNLOCK_THRESHOLD (BB.3, #386)", () => {
+  it("is undefined when unset, so each template's own rule stands", () => {
+    expect(loadConfiguration(testEnvironment()).onboardingUnlockThreshold).toBeUndefined();
+  });
+
+  it.each(["0", "3", "10000"])("reads %s inside its range", (value) => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_ONBOARDING_UNLOCK_THRESHOLD: value }))
+        .onboardingUnlockThreshold,
+    ).toBe(Number(value));
+  });
+
+  it.each(["-1", "10001", "ten", "2.5"])("rejects %s", (value) => {
+    expect(failureFor(testEnvironment({ OURO_ONBOARDING_UNLOCK_THRESHOLD: value }))).toContain(
+      "OURO_ONBOARDING_UNLOCK_THRESHOLD: expected between 0 and 10000",
+    );
+  });
+});

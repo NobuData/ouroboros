@@ -3,7 +3,12 @@
 import { plainToInstance } from "class-transformer";
 import { validate } from "class-validator";
 
-import { CompleteStepDto, OnboardingRepoQuery, PatchOnboardingDto } from "./onboarding.dto";
+import {
+  CompleteStepDto,
+  OnboardingRepoQuery,
+  PatchOnboardingDto,
+  SelectTemplateDto,
+} from "./onboarding.dto";
 
 /** The properties a body fails on. */
 async function failing<T extends object>(type: new () => T, body: object): Promise<string[]> {
@@ -74,5 +79,15 @@ describe("the complete-step body", () => {
 
   it.each([0, 5, 2.5, "three", null])("refuses %j", async (step) => {
     await expect(failing(CompleteStepDto, { step })).resolves.toEqual(["step"]);
+  });
+});
+
+describe("the select-template body (#386)", () => {
+  it.each(["quick-fixes", "deep-refactor", "a"])("accepts %s", async (slug) => {
+    await expect(failing(SelectTemplateDto, { slug })).resolves.toEqual([]);
+  });
+
+  it.each([undefined, null, "", "Quick Fixes", "-quick", 7])("refuses %j", async (slug) => {
+    await expect(failing(SelectTemplateDto, { slug })).resolves.toEqual(["slug"]);
   });
 });

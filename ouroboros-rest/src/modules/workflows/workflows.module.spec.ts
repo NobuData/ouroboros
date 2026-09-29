@@ -70,13 +70,18 @@ describe("the workflows module", () => {
     await moduleRef.close();
   });
 
-  it("exports the three services, and not the repositories", () => {
+  it("exports the four services, and not the repositories", () => {
     // A consumer that reached past them would be a consumer that had skipped the honesty
     // rules — the captions, the null share, the bootstrap vocabulary, which workflows may claim
     // a ticket — which are the whole of what those files are.
     const exports = Reflect.getMetadata("exports", WorkflowsModule) as unknown[] | undefined;
 
-    expect(exports).toEqual([WorkflowStatsService, WorkflowRegistryService, TriggerService]);
+    expect(exports).toEqual([
+      WorkflowStatsService,
+      WorkflowRegistryService,
+      TriggerService,
+      WorkflowsService,
+    ]);
   });
 
   it("declares the lifecycle controller, and only that one", () => {

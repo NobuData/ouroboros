@@ -4,6 +4,8 @@ import { deriveRail } from "./onboarding.derivation";
 import {
   ONBOARDING_ERRORS,
   stepIncomplete,
+  templateInvalid,
+  templateLocked,
   templateUnknown,
   ticketNotFound,
 } from "./onboarding.errors";
@@ -14,6 +16,8 @@ describe("the onboarding errors", () => {
       ticketNotFound: "onboarding_ticket_not_found",
       templateUnknown: "onboarding_template_unknown",
       stepIncomplete: "onboarding_step_incomplete",
+      templateLocked: "onboarding_template_locked",
+      templateInvalid: "onboarding_template_invalid",
     });
   });
 
@@ -56,5 +60,47 @@ describe("the onboarding errors", () => {
       message: rail.steps[0].reason,
       details: { step: 3, blockingStep: 1, reason: rail.steps[0].reason },
     });
+  });
+
+  it("answers a locked tier with a 409 carrying the tile's own progress (#386)", () => {
+    const error = templateLocked("deep-refactor", {
+      locked: true,
+      mergedLoops: 3,
+      threshold: 10,
+      rule: "unlock after 10 merged loops",
+      progress: "3 of 10 merged loops",
+    });
+
+    expect(error.getStatus()).toBe(409);
+    expect(error.getResponse()).toEqual({
+      code: "onboarding_template_locked",
+      message:
+        "The deep-refactor template is locked: unlock after 10 merged loops (3 of 10 merged loops so far).",
+      details: {
+        slug: "deep-refactor",
+        mergedLoops: 3,
+        threshold: 10,
+        progress: "3 of 10 merged loops",
+      },
+    });
+  });
+
+  it("answers a refused definition with a 422 carrying the gate's findings unchanged (#386)", () => {
+    const findings = [
+      { source: "dsl" as const, code: "structure.no_terminal", message: "No terminal.", node: "x" },
+    ];
+    const error = templateInvalid("quick-fixes", 3, findings);
+
+    expect(error.getStatus()).toBe(422);
+    expect(error.getResponse()).toMatchObject({
+      code: "onboarding_template_invalid",
+      details: { slug: "quick-fixes", version: 3, findings },
+    });
+    // The envelope and nothing else — no stack, no driver text.
+    expect(Object.keys(error.getResponse() as object).sort()).toEqual([
+      "code",
+      "details",
+      "message",
+    ]);
   });
 });

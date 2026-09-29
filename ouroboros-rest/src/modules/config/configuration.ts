@@ -524,6 +524,12 @@ export const MIN_FLAKE_RESCORE_CAP = 1;
 export const MAX_FLAKE_RESCORE_CAP = 100000;
 
 /**
+ * The largest merged-loop threshold an operator may configure for the onboarding tiles' unlock
+ * rule (BB.3, #386) — ten thousand merged loops, far past any tier worth gating.
+ */
+export const MAX_ONBOARDING_UNLOCK_THRESHOLD = 10000;
+
+/**
  * The service's validated configuration.
  *
  * Every field is derived from exactly one environment variable — {@link VARIABLES} is the
@@ -954,6 +960,13 @@ export interface Configuration {
    * the validator would then refuse.
    */
   readonly workflowSkillSuggestions: readonly string[];
+  /**
+   * The merged-loop count that unlocks an advanced onboarding template, replacing each
+   * template's own `merged_loops_gte` (BB.3, #386). From `OURO_ONBOARDING_UNLOCK_THRESHOLD`;
+   * `undefined` when unset, which leaves every template's shipped rule in force. `0` unlocks
+   * every tier. Between 0 and {@link MAX_ONBOARDING_UNLOCK_THRESHOLD}.
+   */
+  readonly onboardingUnlockThreshold?: number;
 }
 
 /**
@@ -1015,6 +1028,7 @@ export const VARIABLES = {
   flakeRescoreCap: "OURO_FLAKE_RESCORE_CAP",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
   workflowSkillSuggestions: "OURO_WORKFLOW_SKILL_SUGGESTIONS",
+  onboardingUnlockThreshold: "OURO_ONBOARDING_UNLOCK_THRESHOLD",
 } as const satisfies Record<keyof Configuration, string>;
 
 /**
@@ -1611,6 +1625,18 @@ const environmentShape = z.object({
     MAX_FLAKE_RESCORE_CAP,
   ),
 
+  // The onboarding tiles' unlock threshold override (BB.3, #386). Optional, and unset is the
+  // normal posture: each advanced template's own `merged_loops_gte` is then the rule.
+  OURO_ONBOARDING_UNLOCK_THRESHOLD: z
+    .string()
+    .regex(/^\d+$/, `expected between 0 and ${MAX_ONBOARDING_UNLOCK_THRESHOLD}`)
+    .transform(Number)
+    .refine(
+      (value) => value <= MAX_ONBOARDING_UNLOCK_THRESHOLD,
+      `expected between 0 and ${MAX_ONBOARDING_UNLOCK_THRESHOLD}`,
+    )
+    .optional(),
+
   // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
   // pairs, comma-separated. Optional, and its default is *no local providers*: an
   // installation that runs none is the normal one, and a default address would be this
@@ -1822,6 +1848,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     flakeRescoreCap: values.OURO_FLAKE_RESCORE_CAP,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
     workflowSkillSuggestions: Object.freeze(values.OURO_WORKFLOW_SKILL_SUGGESTIONS),
+    onboardingUnlockThreshold: values.OURO_ONBOARDING_UNLOCK_THRESHOLD,
   });
 }
 

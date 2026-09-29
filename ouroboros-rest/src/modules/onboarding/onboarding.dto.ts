@@ -72,3 +72,11 @@ export class CompleteStepDto {
   @IsIn(ONBOARDING_STEPS)
   step!: OnboardingStepNumber;
 }
+
+/** The body of `POST /api/v1/onboarding/select-template` (BB.3, #386). */
+export class SelectTemplateDto {
+  /** The template picked, by slug — `quick-fixes`. */
+  @IsString()
+  @Matches(TEMPLATE_SLUG_PATTERN, { message: "slug must be a template slug" })
+  slug!: string;
+}

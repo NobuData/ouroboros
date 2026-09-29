@@ -57,3 +57,53 @@ export function slugify(name: string): string | undefined {
 
   return collapsed === "" ? undefined : collapsed;
 }
+
+/** A slug the suffix flow chose, and the ordinal it carries (`1` for the unsuffixed base). */
+export interface FreeSlug {
+  /** The slug — the base itself, or `base-2`, `base-3`, … */
+  readonly slug: string;
+  /** `1` for the base, otherwise the number the suffix carries. */
+  readonly ordinal: number;
+}
+
+/**
+ * How far the suffix flow counts before it gives up — `base-2` through `base-100`. A workspace
+ * holding a hundred workflows from one base is one that should be asked, not numbered further.
+ */
+export const MAX_SLUG_ORDINAL = 100;
+
+/**
+ * The suffix flow (BB.3, [#386](https://github.com/NobuData/ouroboros/issues/386)): the first
+ * slug of `base`, `base-2`, `base-3`, … that `taken` does not hold.
+ *
+ * A suffixed slug stays inside {@link SLUG_MAX_LENGTH}: the base is cut to make room for the
+ * suffix and any hyphen the cut leaves at its end is trimmed, so every answer satisfies
+ * {@link SLUG_PATTERN}.
+ *
+ * @param base - A slug already satisfying {@link SLUG_PATTERN} — a template's, for instance.
+ * @param taken - The slugs the workspace already uses.
+ * @returns The first free slug and its ordinal, or `undefined` when every candidate up to
+ *   {@link MAX_SLUG_ORDINAL} is taken.
+ */
+export function nextFreeSlug(base: string, taken: ReadonlySet<string>): FreeSlug | undefined {
+  for (let ordinal = 1; ordinal <= MAX_SLUG_ORDINAL; ordinal += 1) {
+    const slug = ordinal === 1 ? base : suffixed(base, ordinal);
+
+    if (!taken.has(slug)) return { slug, ordinal };
+  }
+
+  return undefined;
+}
+
+/**
+ * `base-<ordinal>`, cut to {@link SLUG_MAX_LENGTH}.
+ *
+ * @param base - The slug being suffixed.
+ * @param ordinal - The number to append, 2 or more.
+ * @returns The suffixed slug.
+ */
+function suffixed(base: string, ordinal: number): string {
+  const suffix = `-${ordinal}`;
+
+  return base.slice(0, SLUG_MAX_LENGTH - suffix.length).replace(/-+$/, "") + suffix;
+}

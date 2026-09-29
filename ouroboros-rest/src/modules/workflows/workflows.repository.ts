@@ -5,6 +5,7 @@
  * ```
  * find / findBySlug             the entity: one workspace's row, by id or by the code view's slug
  * create / rename               a workflow and its first draft; its title and status
+ * slugFamily                    a slug and its suffixed siblings, for the suffix flow (BB.3)
  * draftOf / writeDraft          the one mutable row a workflow has, and which editor wrote it
  * versions / countVersions      the history, newest first
  * versionAt                     one published version, for `?version=` and for the chip
@@ -61,6 +62,12 @@ export interface NewWorkflowInput {
   readonly name: string;
   /** The document the draft starts life holding — `{}` for a blank canvas. */
   readonly definition: unknown;
+  /**
+   * The template this workflow is instantiated from (V068 provenance, BB.3
+   * [#386](https://github.com/NobuData/ouroboros/issues/386)) — `quick-fixes` at `3` is
+   * `quick-fixes@v3`. Omitted for a workflow made from scratch, which stores neither column.
+   */
+  readonly template?: { readonly slug: string; readonly version: number };
 }
 
 /** What {@link WorkflowsRepository.rename} may change. */
@@ -202,30 +209,65 @@ export class WorkflowsRepository {
    * both rows exist or neither does.
    *
    * @param organizationId - The workspace, from the tenant context.
-   * @param input - The slug, the title, and the document the canvas opens on.
+   * @param input - The slug, the title, the document the canvas opens on and, when instantiated
+   *   from a template, its provenance.
+   * @param trx - The transaction to write in, when the caller is inside one.
    * @returns Both rows as they were stored.
    */
-  async create(organizationId: string, input: NewWorkflowInput): Promise<CreatedWorkflow> {
-    return this.database.transaction(async (trx) => {
-      const workflow = await trx
-        .insertInto("workflows")
-        .values({
-          organization_id: organizationId,
-          slug: input.slug,
-          name: input.name,
-          // `active` is the column's own default; stating it here is what makes the created
-          // status readable beside the create rather than in a migration.
-          status: "active",
-          current_version: null,
-        })
-        .returningAll()
-        .executeTakeFirstOrThrow();
+  async create(
+    organizationId: string,
+    input: NewWorkflowInput,
+    trx?: Transaction<Database>,
+  ): Promise<CreatedWorkflow> {
+    // Inside a caller's transaction when given one — instantiation publishes in the same unit
+    // of work (BB.3) — and inside its own otherwise, so the pair is atomic either way.
+    if (trx === undefined) {
+      return this.database.transaction((own) => this.create(organizationId, input, own));
+    }
 
-      // Edited in neither editor yet: `edited_in` names an editor's save, and this is a create.
-      const draft = await this.insertDraft(workflow.id, input.definition, null, trx);
+    const workflow = await trx
+      .insertInto("workflows")
+      .values({
+        organization_id: organizationId,
+        slug: input.slug,
+        name: input.name,
+        // `active` is the column's own default; stating it here is what makes the created
+        // status readable beside the create rather than in a migration.
+        status: "active",
+        current_version: null,
+        // Both or neither — `workflows_template_provenance_pair` (V068).
+        template_slug: input.template?.slug ?? null,
+        template_version: input.template?.version ?? null,
+      })
+      .returningAll()
+      .executeTakeFirstOrThrow();
 
-      return { workflow, draft };
-    });
+    // Edited in neither editor yet: `edited_in` names an editor's save, and this is a create.
+    const draft = await this.insertDraft(workflow.id, input.definition, null, trx);
+
+    return { workflow, draft };
+  }
+
+  /**
+   * The workspace's slugs in one family — `base` itself and every `base-…` — which is what the
+   * suffix flow (BB.3, [#386](https://github.com/NobuData/ouroboros/issues/386)) must avoid.
+   *
+   * A slug holds no `%` or `_` (`workflows_slug_format`), so `base` needs no escaping in the
+   * pattern. Archived workflows are included: an archived slug is still taken.
+   *
+   * @param organizationId - The workspace, from the tenant context.
+   * @param base - A slug satisfying `workflows_slug_format`.
+   * @returns The slugs, in no particular order.
+   */
+  async slugFamily(organizationId: string, base: string): Promise<string[]> {
+    const rows = await this.database.db
+      .selectFrom("workflows")
+      .select("slug")
+      .where("organization_id", "=", organizationId)
+      .where((where) => where.or([where("slug", "=", base), where("slug", "like", `${base}-%`)]))
+      .execute();
+
+    return rows.map((row) => row.slug);
   }
 
   /**

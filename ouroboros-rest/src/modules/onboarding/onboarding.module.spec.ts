@@ -8,6 +8,8 @@ import { OnboardingController } from "./onboarding.controller";
 import { OnboardingModule } from "./onboarding.module";
 import { OnboardingRepository } from "./onboarding.repository";
 import { OnboardingService } from "./onboarding.service";
+import { TemplateTilesRepository } from "./templates.repository";
+import { TemplateInstantiationService } from "./templates.service";
 
 describe("the onboarding module", () => {
   it("compiles, and resolves every layer", async () => {
@@ -18,6 +20,10 @@ describe("the onboarding module", () => {
     expect(moduleRef.get(OnboardingController)).toBeInstanceOf(OnboardingController);
     expect(moduleRef.get(OnboardingService)).toBeInstanceOf(OnboardingService);
     expect(moduleRef.get(OnboardingRepository)).toBeInstanceOf(OnboardingRepository);
+    expect(moduleRef.get(TemplateInstantiationService)).toBeInstanceOf(
+      TemplateInstantiationService,
+    );
+    expect(moduleRef.get(TemplateTilesRepository)).toBeInstanceOf(TemplateTilesRepository);
 
     await moduleRef.close();
   });
