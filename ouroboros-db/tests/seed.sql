@@ -50,7 +50,9 @@
 -- pools, six runners of which one is removed, forty-nine builds and the live log's chunks —
 -- by #249 and #302, with mockup 10's run console — one run in detail, transcript and all
 -- four cards — by #302, with mockup 11's test results by #328, and with mockup 12's PR
--- verification — PR #514's two revisions, gates, criteria, thread, plan and spend — by #356.
+-- verification — PR #514's two revisions, gates, criteria, thread, plan and spend — by #356,
+-- and with mockup 14's Knowledge page — six skills, five facts, three playbooks, the env
+-- recipe and the injection records every usage figure is counted from — by #409.
 
 \set ON_ERROR_STOP on
 
@@ -463,17 +465,19 @@ select pg_temp.must_hold(
       and run.finished_at >= now() - interval '7 days'),
   'the twenty-nine runs closed this week average exactly 14m 20s — Avg. cycle time');
 
--- *Autonomous merge rate* — 46 merged of 50 closed across the whole seeded history, which
+-- *Autonomous merge rate* — 46 merged of 50 closed across the fourteen days #68 seeded, which
 -- is 92% with no rounding. See R__dev_seed_dashboard.sql's header for why the population
 -- is the seeded history and not the trailing week: 27 merged of *any* integer number of
--- closed runs cannot be 92%.
+-- closed runs cannot be 92%. Scoped to fourteen days — the dashboard's own window — since
+-- #409 added five older `CVE bump` launches (R__dev_seed_workspace_knowledge.sql) that no
+-- dashboard window reaches.
 select pg_temp.must_hold(
   (select count(*) filter (where run.status = 'merged') = 46 and count(*) = 50
      from ouroboros.runs run
      join ouroboros.organization org on org."id" = run.organization_id
     where org."slug" = 'acme-robotics'
       and run.id::text like '5eed0009%'
-      and run.finished_at is not null),
+      and run.finished_at >= now() - interval '14 days'),
   'forty-six of the fifty closed runs merged — 92% exactly, the Autonomous merge rate');
 
 -- Every status the CHECK admits is exercised, `failed` included — the one outcome no card
@@ -494,10 +498,13 @@ select pg_temp.must_hold(
       and run.checks_passed is null and run.checks_total is null),
   'the one failed run carries no pull request and no checks');
 
+-- Fifty-three are #68's; the five below `#300` are the knowledge seed's older `CVE bump`
+-- launches (#409), built from the same recipe and prefix.
 select pg_temp.must_hold(
-  (select count(*) = 53 from ouroboros.runs run
+  (select count(*) = 58 and count(*) filter (where run.issue_number >= 300) = 53
+     from ouroboros.runs run
     where run.id::text like '5eed0009%'),
-  'the dashboard seed created fifty-three runs and no fifty-fourth');
+  'the dashboard seed created fifty-three runs, the knowledge seed five older ones, and no fifty-ninth');
 
 -- ---------------------------------------------------------------------------
 -- The loop numbers, and the stage history behind the meter (#298).
@@ -510,7 +517,7 @@ select pg_temp.must_hold(
 -- seeds rather than promised.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 53 and count(distinct loop_seq) = 53
+  (select count(*) = 58 and count(distinct loop_seq) = 58
       and bool_and(loop_seq = 1365 + issue_number)
      from ouroboros.runs run
     where run.id::text like '5eed0009%')
@@ -540,8 +547,8 @@ select pg_temp.must_hold(
 
 -- The acceptance criterion the amendment is answerable to: the dashboard's stage display
 -- is the same after it. `runs_with_stage` is what a DASH read moves onto, and for every one
--- of the fifty-three it answers exactly what `runs` answers today — derived for the three
--- that have history, fallen back for the fifty that do not.
+-- of the fifty-eight it answers exactly what `runs` answers today — derived for the three
+-- that have history, fallen back for the fifty-five that do not.
 select pg_temp.must_hold(
   (select count(*) = 0
      from ouroboros.runs_with_stage staged
@@ -549,7 +556,7 @@ select pg_temp.must_hold(
     where plain.id::text like '5eed0009%'
       and (staged.stage_label, staged.stage_index, staged.stage_total)
           is distinct from (plain.stage_label, plain.stage_index, plain.stage_total)),
-  'the derived stage meter agrees with V008''s columns for all fifty-three seeded runs — the dashboard renders identically after the amendment');
+  'the derived stage meter agrees with V008''s columns for all fifty-eight seeded runs — the dashboard renders identically after the amendment');
 
 -- #482's stepper, as mockup 10 draws it: three stages done, `implement` on its second of
 -- three attempts, and the warn note composed from the transition rather than written by
@@ -756,7 +763,9 @@ select pg_temp.must_hold(
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
   (select count(*) = 77 from (
+     -- #68's own fifty-three; the knowledge seed's five older launches share the prefix.
      select id from ouroboros.runs        where id::text like '5eed0009-0000-4000-8000-%'
+                                            and issue_number >= 300
      union all
      select id from ouroboros.queue_items where id::text like '5eed000a-0000-4000-8000-%'
      union all
@@ -4548,6 +4557,355 @@ select pg_temp.must_hold(
     where run.id = '5eed0009-0000-4000-8000-000000000482'
     group by run.organization_id),
   'the Spend card sums #482 to 284k · $1.52, 41k · $0.19 of it verification, within the $2.50 cap');
+
+-- ===========================================================================
+-- R__dev_seed_workspace_knowledge.sql — mockup 14's Knowledge page (#409, BE.5)
+-- ===========================================================================
+--
+-- Every figure the page prints is recomputed here from the rows it is counted from, and the
+-- rule that derives the Used-by cell is applied here in full — so a seed that stored a number,
+-- or injection records that stopped adding up to it, fails in this block. tests/seed.test.sh
+-- refuses the same figures as literals in the seed's text.
+
+-- --- the skills card: six rows, the lock, the tint and the tag -----------------------------------
+select pg_temp.must_hold(
+  (select array_agg(skill.slug || ':' || skill.scope order by skill.id)
+          = array['zephyr-conventions:repo', 'repo-map:repo', 'pr-etiquette:org',
+                  'hil-safety:repo', 'commit-style:org', 'power-budget-checks:repo']
+     from ouroboros.skills skill
+     join ouroboros.organization org on org."id" = skill.organization_id
+    where org."slug" = 'acme-robotics'),
+  'six skills in the mockup''s order — four repo-scoped, two org-wide');
+
+select pg_temp.must_hold(
+  (select bool_and(case skill.slug
+                     when 'hil-safety'          then skill.required and skill.enabled and not skill.draft
+                     when 'power-budget-checks' then skill.draft and not skill.enabled and not skill.required
+                     else skill.enabled and not skill.required and not skill.draft
+                   end
+                   and (skill.origin = 'generated') = (skill.slug = 'repo-map')
+                   and (skill.repo_ref is not distinct from
+                        case skill.scope when 'repo' then 'acme-robotics/helios-firmware' end))
+     from ouroboros.skills skill
+     join ouroboros.organization org on org."id" = skill.organization_id
+    where org."slug" = 'acme-robotics'),
+  'hil-safety is locked by required, power-budget-checks is tinted by draft (and off), repo-map is tagged by origin — and no other row carries any of the three');
+
+-- `v12 · 2d ago`, `v4 · 3w ago`, `v2 · 2mo ago`, `v1 · 20m ago`: the pointer and the age of the
+-- version it names. Each age is a range, because this file may run a while after the seed.
+select pg_temp.must_hold(
+  (select bool_and(case skill.slug
+                     when 'zephyr-conventions'  then skill.current_version = 12
+                                                     and now() - v.published_at >= interval '2 days'
+                                                     and now() - v.published_at <  interval '3 days'
+                     when 'pr-etiquette'        then skill.current_version = 4
+                                                     and now() - v.published_at >= interval '21 days'
+                                                     and now() - v.published_at <  interval '28 days'
+                     when 'commit-style'        then skill.current_version = 2
+                                                     and now() - v.published_at >= interval '60 days'
+                                                     and now() - v.published_at <  interval '90 days'
+                     when 'power-budget-checks' then skill.current_version = 1
+                                                     and now() - v.published_at >= interval '20 minutes'
+                                                     and now() - v.published_at <  interval '1 hour'
+                     when 'hil-safety'          then skill.current_version = 3
+                     when 'repo-map'            then skill.current_version = 60
+                   end)
+          and count(*) = 6
+     from ouroboros.skills skill
+     join ouroboros.organization org on org."id" = skill.organization_id
+     join ouroboros.skill_versions v on v.skill_id = skill.id and v.version = skill.current_version
+    where org."slug" = 'acme-robotics'),
+  'the Updated column reads v12 · 2d, v4 · 3w, v2 · 2mo and v1 · 20m from the pointer and its version');
+
+-- `auto-generated nightly`: repo-map's history is sixty versions a day apart, published by
+-- nobody, the newest from last night — what the #415 generator will write.
+select pg_temp.must_hold(
+  (select count(*) = 60
+          and bool_and(v.published_by is null and v.change_note = 'Nightly rebuild')
+          and max(now() - v.published_at) >= interval '59 days'
+          and min(now() - v.published_at) <  interval '1 day'
+          and count(*) filter (where gap is not null and gap <> interval '1 day') = 0
+     from (select v.*, v.published_at - lag(v.published_at) over (order by v.version) as gap
+             from ouroboros.skill_versions v
+            where v.skill_id = '5eed0042-0000-4000-8000-000000000002') as v),
+  'repo-map''s history is a nightly job''s: sixty unattributed rebuilds, one a day, the last within a day');
+
+select pg_temp.must_hold(
+  (select bool_and(n.versions = n.highest and n.highest = skill.current_version)
+     from ouroboros.skills skill
+     join ouroboros.organization org on org."id" = skill.organization_id
+     cross join lateral (select count(*) as versions, max(v.version) as highest
+                           from ouroboros.skill_versions v
+                          where v.skill_id = skill.id and v.version is not null) as n
+    where org."slug" = 'acme-robotics'),
+  'every skill''s versions are dense from 1, and the version in force is the newest');
+
+-- --- the Used-by column: the rule, applied ------------------------------------------------------
+--
+-- Over the runs context was assembled for, in the skill's scope: nobody carried it → `—`; every
+-- one did → `every run`; exactly the ones that opened a PR → `every PR`; exactly the ones that
+-- took HIL measurements → `physical tests`; otherwise the rounded share.
+select pg_temp.must_hold(
+  (with injected as (
+          select distinct injection.run_id, repo.name as repo_name,
+                 run.pr_number is not null as opened_pr,
+                 exists (select 1
+                           from ouroboros.test_runs tr
+                           join ouroboros.test_suites suite on suite.test_run_id = tr.id
+                           join ouroboros.test_cases tc on tc.test_suite_id = suite.id
+                           join ouroboros.hil_measurements m on m.test_case_id = tc.id
+                          where tr.run_id = injection.run_id) as physical
+            from ouroboros.context_injections injection
+            join ouroboros.runs run on run.id = injection.run_id
+            join ouroboros.github_repos repo on repo.id = run.github_repo_id
+            join ouroboros.organization org on org."id" = injection.organization_id
+           where org."slug" = 'acme-robotics'),
+        cells as (
+          select skill.id,
+                 array(select j.run_id from injected j
+                        where skill.scope = 'org'
+                           or j.repo_name = split_part(skill.repo_ref::text, '/', 2)
+                        order by 1) as in_scope,
+                 array(select j.run_id from injected j
+                        where (skill.scope = 'org'
+                               or j.repo_name = split_part(skill.repo_ref::text, '/', 2))
+                          and j.opened_pr
+                        order by 1) as with_pr,
+                 array(select j.run_id from injected j
+                        where (skill.scope = 'org'
+                               or j.repo_name = split_part(skill.repo_ref::text, '/', 2))
+                          and j.physical
+                        order by 1) as physical,
+                 array(select distinct injection.run_id
+                         from ouroboros.context_injections injection
+                         join ouroboros.skill_versions v on v.id = any (injection.skill_version_ids)
+                        where v.skill_id = skill.id and injection.run_id is not null
+                        order by 1) as carried
+            from ouroboros.skills skill
+            join ouroboros.organization org on org."id" = skill.organization_id
+           where org."slug" = 'acme-robotics')
+   select array_agg(case when cardinality(cells.carried) = 0 then '—'
+                         when cells.carried = cells.in_scope then 'every run'
+                         when cells.carried = cells.with_pr  then 'every PR'
+                         when cells.carried = cells.physical then 'physical tests'
+                         else round(100.0 * cardinality(cells.carried)
+                                    / cardinality(cells.in_scope))::text || '% of runs'
+                    end order by cells.id)
+          = array['61% of runs', 'every run', 'every PR', 'physical tests', 'every run', '—']
+     from cells),
+  'the Used-by column derives from the injection records alone: 61% of runs, every run, every PR, physical tests, every run, —');
+
+-- The 61% is 11 of 18, which is what it has to be: no smaller population rounds to it.
+select pg_temp.must_hold(
+  (select count(distinct injection.run_id) = 11
+     from ouroboros.context_injections injection
+     join ouroboros.skill_versions v on v.id = any (injection.skill_version_ids)
+    where v.skill_id = '5eed0042-0000-4000-8000-000000000001'
+      and injection.run_id is not null),
+  'zephyr-conventions rode in eleven of the eighteen helios-firmware runs that had a manifest');
+
+-- --- the injection records keep time -----------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 51
+          and count(*) filter (where injection.consumer = 'run_stage') = 10
+          and count(*) filter (where injection.consumer = 'playbook')  = 26
+          and count(*) filter (where injection.consumer = 'estimator') = 15
+     from ouroboros.context_injections injection
+    where injection.id::text like '5eed0048-%'),
+  'fifty-one manifests: ten from the live loops'' model stages, one per playbook launch, one per estimate');
+
+-- Nothing is injected before it existed: every version a manifest carries is the one in force at
+-- that instant, and every fact had been confirmed by then.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.context_injections injection
+     join ouroboros.skill_versions v on v.id = any (injection.skill_version_ids)
+    where injection.id::text like '5eed0048-%'
+      and (v.published_at > injection.injected_at
+           or exists (select 1 from ouroboros.skill_versions later
+                       where later.skill_id = v.skill_id
+                         and later.version > v.version
+                         and later.published_at <= injection.injected_at)))
+   and (select count(*) = 0
+          from ouroboros.context_injections injection
+          join ouroboros.facts fact on fact.id = any (injection.fact_ids)
+         where injection.id::text like '5eed0048-%'
+           and fact.confirmed_at > injection.injected_at),
+  'every manifest carries the skill versions in force at its instant and only facts already confirmed');
+
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from ouroboros.context_injections injection
+     join ouroboros.skill_versions v on v.id = any (injection.skill_version_ids)
+     join ouroboros.skills skill on skill.id = v.skill_id
+    where skill.draft),
+  'the draft skill was never injected — the — its row renders');
+
+-- --- the facts card: 48×, 12×, two awaiting review, and the expired story -----------------------
+select pg_temp.must_hold(
+  (select array_agg(fact.status || ':' || coalesce(used.n::text, '-')
+                    || ':' || coalesce(fact.previous_use_count::text, '-') order by fact.id)
+          = array['confirmed:48:-', 'confirmed:12:-', 'proposed:0:-', 'proposed:0:-',
+                  'expired:31:31']
+     from ouroboros.facts fact
+     join ouroboros.organization org on org."id" = fact.organization_id
+     cross join lateral (select count(*) as n from ouroboros.context_injections injection
+                          where injection.fact_ids @> array[fact.id]) as used
+    where org."slug" = 'acme-robotics'),
+  'used 48× and 12× are counts of injection records, and was used 31× is a snapshot equal to its own count');
+
+select pg_temp.must_hold(
+  (select count(*) = 2
+     from ouroboros.facts fact
+     join ouroboros.organization org on org."id" = fact.organization_id
+    where org."slug" = 'acme-robotics' and fact.status = 'proposed'),
+  '2 awaiting review');
+
+select pg_temp.must_hold(
+  (select array_agg(fact.provenance ->> 'line' order by fact.id)
+          = array['from build-farm failure pattern', 'from PR #498 review cycle',
+                  'from PR #514 review cycle', 'observed in loop #1847', 'imported from CLAUDE.md']
+     from ouroboros.facts fact
+    where fact.id::text like '5eed0044-%'),
+  'each fact renders the mockup''s provenance line');
+
+-- `confirmed by Ken, 6w ago` and `confirmed by Maya, 3w ago`.
+select pg_temp.must_hold(
+  (select bool_and(case fact.id
+                     when '5eed0044-0000-4000-8000-000000000001'
+                       then confirmer."email" = 'ken@acme-robotics.dev'
+                            and now() - fact.confirmed_at >= interval '42 days'
+                            and now() - fact.confirmed_at <  interval '49 days'
+                     when '5eed0044-0000-4000-8000-000000000002'
+                       then confirmer."email" = 'maya@acme-robotics.dev'
+                            and now() - fact.confirmed_at >= interval '21 days'
+                            and now() - fact.confirmed_at <  interval '28 days'
+                   end)
+     from ouroboros.facts fact
+     join ouroboros."user" confirmer on confirmer."id" = fact.confirmed_by
+    where fact.status = 'confirmed' and fact.id::text like '5eed0044-%'),
+  'confirmed by Ken, 6w ago and confirmed by Maya, 3w ago');
+
+-- Every ref resolves — a run and the PR of the #482 universe, tickets that predate the fact
+-- they are cited by, and the import. A provenance line that links nowhere fails here.
+select pg_temp.must_hold(
+  (select array_agg(fact.id::text || ':' || (ref ->> 'kind') || ':'
+                    || coalesce(run.issue_number::text, pr.external_number::text,
+                                ticket.external_key, ref ->> 'file')
+                    order by fact.id, ref ->> 'kind')
+          = array['5eed0044-0000-4000-8000-000000000001:ticket:#552',
+                  '5eed0044-0000-4000-8000-000000000002:ticket:#560',
+                  '5eed0044-0000-4000-8000-000000000003:pull_request:514',
+                  '5eed0044-0000-4000-8000-000000000003:run:482',
+                  '5eed0044-0000-4000-8000-000000000004:run:482',
+                  '5eed0044-0000-4000-8000-000000000005:import:CLAUDE.md']
+          and bool_and(ticket.id is null
+                       or ticket.source_created_at < coalesce(fact.confirmed_at, fact.created_at))
+     from ouroboros.facts fact
+     cross join lateral jsonb_array_elements(fact.provenance -> 'refs') as ref
+     left join ouroboros.runs run
+            on ref ->> 'kind' = 'run' and run.id = (ref ->> 'id')::uuid
+           and run.organization_id = fact.organization_id
+     left join ouroboros.pull_requests pr
+            on ref ->> 'kind' = 'pull_request' and pr.id = (ref ->> 'id')::uuid
+           and pr.organization_id = fact.organization_id
+     left join ouroboros.tickets ticket
+            on ref ->> 'kind' = 'ticket' and ticket.id = (ref ->> 'id')::uuid
+           and ticket.organization_id = fact.organization_id
+    where fact.id::text like '5eed0044-%'),
+  'every provenance ref resolves: run #482 and PR #514 on the proposals, tickets older than each confirmation, and the import');
+
+-- The struck-through row, whole: the anchor that fired, the reason, the snapshot, and an audit
+-- that walks proposed → confirmed (Ken) → stale (the sweep, nobody) → expired (Ken). Its status
+-- is what makes Re-learn a legal insert (V071's facts_relearn_from_expired).
+select pg_temp.must_hold(
+  (select fact.status = 'expired' and fact.expired_reason = 'Zephyr 4.1 migration'
+          and fact.relearned_from_fact_id is null
+          and not exists (select 1 from ouroboros.facts relearned
+                           where relearned.relearned_from_fact_id = fact.id)
+     from ouroboros.facts fact
+    where fact.id = '5eed0044-0000-4000-8000-000000000005')
+   and (select count(*) = 1 from ouroboros.fact_anchors anchor
+         where anchor.fact_id = '5eed0044-0000-4000-8000-000000000005'
+           and anchor.kind = 'platform_version' and anchor.value = 'zephyr-4.0'
+           and anchor.last_checked_at is not null)
+   and (select array_agg(coalesce(t.from_status, '∅') || '→' || t.to_status || ':'
+                         || coalesce(actor."email", 'sweep') order by t.at)
+               = array['∅→proposed:sweep', 'proposed→confirmed:ken@acme-robotics.dev',
+                       'confirmed→stale:sweep', 'stale→expired:ken@acme-robotics.dev']
+          from ouroboros.fact_transitions t
+          left join ouroboros."user" actor on actor."id" = t.actor_id
+         where t.fact_id = '5eed0044-0000-4000-8000-000000000005'),
+  'the expired fact tells its whole story: zephyr-4.0 anchor, the sweep''s stale, Ken''s expiry for the Zephyr 4.1 migration, and no re-learn yet');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.fact_transitions t
+     join ouroboros."user" actor on actor."id" = t.actor_id
+    where t.to_status = 'confirmed' and t.fact_id::text like '5eed0044-%'),
+  'each confirmation is an audit row naming the person — the record the card''s confirmed-by line stands on');
+
+-- --- the playbooks card: run 9×, 14×, 3× --------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(playbook.name || ':' || launches.n order by playbook.id)
+          = array['Flaky test hunt:9', 'CVE bump:14', 'New driver bring-up:3']
+     from ouroboros.playbooks playbook
+     join ouroboros.organization org on org."id" = playbook.organization_id
+     cross join lateral (select count(*) as n from ouroboros.runs run
+                          where run.playbook_id = playbook.id) as launches
+    where org."slug" = 'acme-robotics'),
+  '3 recipes, run 9×, 14× and 3× — counted from the runs they launched');
+
+-- Every launch ran the workflow its playbook pins, and the pin is a published version.
+select pg_temp.must_hold(
+  (select count(*) = 26
+          and bool_and(run.workflow_tag = wf.slug)
+          and bool_and(exists (select 1 from ouroboros.workflow_versions v
+                                where v.workflow_id = playbook.workflow_id
+                                  and v.version = playbook.workflow_version))
+     from ouroboros.runs run
+     join ouroboros.playbooks playbook on playbook.id = run.playbook_id
+     join ouroboros.workflows wf on wf.id = playbook.workflow_id)
+   and (select playbook.workflow_version = run.workflow_version_pin
+          from ouroboros.runs run
+          join ouroboros.playbooks playbook on playbook.id = run.playbook_id
+         where run.id = '5eed0009-0000-4000-8000-000000000482'),
+  'each launch runs its playbook''s pinned workflow, and #482 runs under Flaky test hunt''s v14 pin');
+
+-- The five older CVE-bump launches sit outside every window another page counts over.
+select pg_temp.must_hold(
+  (select count(*) = 5
+          and bool_and(run.status = 'merged' and run.started_at < now() - interval '30 days')
+     from ouroboros.runs run
+     join ouroboros.playbooks playbook on playbook.id = run.playbook_id
+    where run.issue_number between 290 and 294
+      and playbook.name = 'CVE bump'),
+  'the knowledge seed''s five older launches are merged CVE bumps, all older than thirty days');
+
+-- --- the Repo Profile card's Environment block --------------------------------------------------
+select pg_temp.must_hold(
+  (select recipe.version = 3 and recipe.source = 'edited'
+          and array(select entry ->> 'command'
+                      from jsonb_array_elements(recipe.commands) with ordinality as e (entry, n)
+                     order by n)
+              = array['west init -m git@github.com:acme-robotics/helios-firmware',
+                      'west update --narrow -o=--depth=1',
+                      'zephyr-sdk-install 0.17.2 --toolchains arm-zephyr-eabi',
+                      'ccache --set-config=max_size=8G']
+     from ouroboros.env_recipes_current recipe
+    where recipe.repo_ref = 'acme-robotics/helios-firmware'),
+  'the Environment block is v3''s four commands, in order');
+
+-- --- nothing is stored twice ---------------------------------------------------------------------
+-- No knowledge table has a column a count could be written into; the one stored number is the
+-- expiry snapshot, asserted equal to its count above.
+select pg_temp.must_hold(
+  (select count(*) = 0
+     from information_schema.columns c
+    where c.table_schema = 'ouroboros'
+      and c.table_name in ('skills', 'skill_versions', 'facts', 'playbooks', 'env_recipes')
+      and c.column_name ~ '(count|uses|used|percent|share|launches)'
+      and c.column_name <> 'previous_use_count'),
+  'no knowledge table stores a usage figure — only the expiry snapshot');
 
 \o
 \echo 'seed.sql: all assertions passed'

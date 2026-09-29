@@ -465,6 +465,30 @@
 #   commands are typed                           drop env_recipes_commands_typed
 #   no snapshot field exists                     add a boot_seconds column
 #
+# #409 (BE.5) seeds mockup 14 and adds a probe per `ci/db` scope bullet the BE.1–BE.3 rows above
+# leave unwatched — each one a *subtler* loss than dropping the rule outright:
+#
+#   BE.5 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   the fact transition machine                  rewrite facts_guard_transition() to admit
+#                                                  rejected → confirmed
+#   required ⇒ enabled                           replace skills_required_enabled with an
+#                                                  insert-only trigger (a lock that never re-checks)
+#   skill-version immutability                   rewrite skill_versions_refuse_update() so any
+#                                                  publisher change passes (re-attribution)
+#   injection record shape: the consumer's ref   drop context_injections_consumer_ref
+#   injection record shape: the hash             drop context_injections_manifest_hash_format
+#   injection record shape: the manifest         drop context_injections_facts_set
+#   expiry needs its snapshot, never negative    re-add facts_expired_use_count without >= 0
+#   playbook pin integrity: its own workspace    re-add playbooks_workflow_fk on workflow_id alone
+#   launches stay home (run 9× counts them)      re-add runs_playbook_fk on playbook_id alone
+#
+# Several are caught before constraints.sql reaches BE.5's own section, by the V069, V071 and
+# V072 sections that #405–#407 wrote rule by rule — so each marker is whichever assertion names
+# the rule first. BE.5's section stands behind them, and is what covers each rule exhaustively:
+# all twenty ordered pairs of the machine, every column of a published version, every consumer
+# against every combination of references.
+#
 # Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
 # is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
 # by the latter first, so the rewrite reads the function back from the catalogue and adds the one
@@ -628,7 +652,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console, #328 test results, #356 PR domain, #361 PR head actions\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console, #328 test results, #356 PR domain, #361 PR head actions, #409 knowledge seeds\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -1843,6 +1867,105 @@ expect_red 'environment recipe commands may be untyped' \
 expect_red 'an environment recipe may store a boot time' \
   'no snapshot, boot-time or prebuild-schedule column exists on env_recipes' \
   'alter table ouroboros.env_recipes add column boot_seconds integer;'
+
+
+# ---------------------------------------------------------------------------
+# The knowledge domain's rules as the seeded page stands on them (#409: the fact machine,
+# required ⇒ enabled, version immutability, injection shape, expiry's snapshot, pin integrity).
+#
+# Each fails quietly if lost. A revived rejection is a fact nobody approved injected into every
+# run; a lock checked only at insert is one PATCH from hil-safety being off; a re-attributed
+# version rewrites who published a rule; a record naming the wrong reference, a free-text hash or
+# a fact listed twice makes "used 48×" count the wrong thing; a negative snapshot is a "was used
+# −1×"; and a cross-workspace pin or launch is another tenant's workflow on this card and another
+# tenant's runs in "run 9×".
+# ---------------------------------------------------------------------------
+
+fact_machine_revives_rejection="set local search_path = ouroboros, public;
+do \$mutate\$
+declare
+  def text;
+begin
+  def := pg_get_functiondef('ouroboros.facts_guard_transition()'::regprocedure);
+  if position('(''stale'', ''confirmed'')' in def) = 0 then
+    raise exception 'facts_guard_transition() no longer lists stale → confirmed';
+  end if;
+  execute replace(def, '(''stale'', ''confirmed'')',
+                  '(''stale'', ''confirmed''), (''rejected'', ''confirmed'')');
+end
+\$mutate\$;
+set local search_path = \"\$user\", public;"
+
+required_lock_insert_only="alter table ouroboros.skills drop constraint skills_required_enabled;
+create function ouroboros.probe_required_enabled_on_insert() returns trigger
+language plpgsql as \$probe\$
+begin
+  if new.required and not new.enabled then
+    raise exception 'a required skill is enabled'
+      using errcode = 'check_violation', constraint = 'skills_required_enabled';
+  end if;
+  return new;
+end
+\$probe\$;
+create trigger probe_required_enabled_on_insert before insert on ouroboros.skills
+  for each row execute function ouroboros.probe_required_enabled_on_insert();"
+
+skill_version_reattributable="set local search_path = ouroboros, public;
+do \$mutate\$
+declare
+  def text;
+begin
+  def := pg_get_functiondef('ouroboros.skill_versions_refuse_update()'::regprocedure);
+  if position('new.published_by is null and old.published_by is not null' in def) = 0 then
+    raise exception 'skill_versions_refuse_update() no longer carries the set-null exception';
+  end if;
+  execute replace(def, 'new.published_by is null and old.published_by is not null',
+                  'new.published_by is distinct from old.published_by');
+end
+\$mutate\$;
+set local search_path = \"\$user\", public;"
+
+expect_red 'a rejected fact may be revived' \
+  'rejected → confirmed fails at the database' \
+  "$fact_machine_revives_rejection"
+
+expect_red 'the required lock may be checked only when a skill is written' \
+  'cannot be switched off .*skills_required_enabled did not fire|cannot be turned off .*skills_required_enabled did not fire' \
+  "$required_lock_insert_only"
+
+expect_red 'a published skill version may be re-attributed' \
+  'published_by cannot be revised|cannot be re-attributed' \
+  "$skill_version_reattributable"
+
+expect_red 'an injection record may name the wrong reference for its consumer' \
+  'the consumer names its own reference.*context_injections_consumer_ref did not fire' \
+  'alter table ouroboros.context_injections drop constraint context_injections_consumer_ref;'
+
+expect_red 'an injection manifest hash may be free text' \
+  'the manifest hash is a sha256 .*context_injections_manifest_hash_format did not fire' \
+  'alter table ouroboros.context_injections drop constraint context_injections_manifest_hash_format;'
+
+expect_red 'an injection manifest may list a fact twice' \
+  'a manifest lists a fact once .*context_injections_facts_set did not fire' \
+  'alter table ouroboros.context_injections drop constraint context_injections_facts_set;'
+
+expect_red 'an expired fact may snapshot a negative count' \
+  'non-negative snapshot|never negative' \
+  "alter table ouroboros.facts drop constraint facts_expired_use_count,
+   add constraint facts_expired_use_count
+     check ((status = 'expired') = (previous_use_count is not null));"
+
+expect_red "a playbook may pin another workspace's workflow" \
+  'own workspace.*playbooks_workflow_fk did not fire|another workspace.s workflow' \
+  'alter table ouroboros.playbooks drop constraint playbooks_workflow_fk;
+   alter table ouroboros.playbooks add constraint playbooks_workflow_fk
+     foreign key (workflow_id) references ouroboros.workflows (id) on delete cascade;'
+
+expect_red "a run may be launched through another workspace's playbook" \
+  'another workspace.s playbook.*runs_playbook_fk did not fire' \
+  'alter table ouroboros.runs drop constraint runs_playbook_fk;
+   alter table ouroboros.runs add constraint runs_playbook_fk
+     foreign key (playbook_id) references ouroboros.playbooks (id) on delete set null;'
 
 
 printf '\n'

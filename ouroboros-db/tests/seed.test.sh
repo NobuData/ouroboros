@@ -5,8 +5,8 @@
 # migrations/R__dev_seed_farm.sql, migrations/R__dev_seed_intake.sql,
 # migrations/R__dev_seed_providers.sql, migrations/R__dev_seed_routing.sql,
 # migrations/R__dev_seed_sources.sql, migrations/R__dev_seed_ticket_planning.sql,
-# migrations/R__dev_seed_workflows.sql, and the configuration that decides whether they do
-# anything.
+# migrations/R__dev_seed_workflows.sql, migrations/R__dev_seed_workspace_knowledge.sql, and the
+# configuration that decides whether they do anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
 # so the properties worth testing are the ones that keep those two apart: that a
@@ -23,7 +23,8 @@
 # *where the work comes from*, R__dev_seed_test_results.sql (#328) is *what the builds proved*,
 # R__dev_seed_ticket_planning.sql (#275) is *the work and the
 # plan over it*, R__dev_seed_verification.sql (#356) is *what the PR has to show before it
-# merges*, and R__dev_seed_workflows.sql (#136) is *what it does with it* — and the
+# merges*, R__dev_seed_workflows.sql (#136) is *what it does with it*, and
+# R__dev_seed_workspace_knowledge.sql (#409) is *what it has learned* — and the
 # structural rules below are asserted over all of them, in a loop, so that a tenth seed
 # inherits them by being added to the one list at the top.
 #
@@ -75,6 +76,7 @@ TEST_RESULTS_SEED="$MODULE_DIR/migrations/R__dev_seed_test_results.sql"
 VERIFICATION_SEED="$MODULE_DIR/migrations/R__dev_seed_verification.sql"
 PLANNING_SEED="$MODULE_DIR/migrations/R__dev_seed_ticket_planning.sql"
 WORKFLOWS_SEED="$MODULE_DIR/migrations/R__dev_seed_workflows.sql"
+KNOWLEDGE_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_knowledge.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -114,6 +116,7 @@ TEST_RESULTS_BODY="$work/seed-body-test-results.sql"
 VERIFICATION_BODY="$work/seed-body-verification.sql"
 PLANNING_BODY="$work/seed-body-ticket-planning.sql"
 WORKFLOWS_BODY="$work/seed-body-workflows.sql"
+KNOWLEDGE_BODY="$work/seed-body-workspace-knowledge.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$INTAKE_SEED" "$INTAKE_BODY"
@@ -127,6 +130,7 @@ seed_body "$TEST_RESULTS_SEED" "$TEST_RESULTS_BODY"
 seed_body "$VERIFICATION_SEED" "$VERIFICATION_BODY"
 seed_body "$PLANNING_SEED" "$PLANNING_BODY"
 seed_body "$WORKFLOWS_SEED" "$WORKFLOWS_BODY"
+seed_body "$KNOWLEDGE_SEED" "$KNOWLEDGE_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -156,12 +160,14 @@ check_exists "$TEST_RESULTS_SEED" 'migrations/R__dev_seed_test_results.sql exist
 check_exists "$VERIFICATION_SEED" 'migrations/R__dev_seed_verification.sql exists'
 check_exists "$PLANNING_SEED" 'migrations/R__dev_seed_ticket_planning.sql exists'
 check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
+check_exists "$KNOWLEDGE_SEED" 'migrations/R__dev_seed_workspace_knowledge.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
-                 "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED"; do
+                 "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
+                 "$KNOWLEDGE_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -203,6 +209,8 @@ planning_description=$(basename -- "$PLANNING_SEED" .sql)
 planning_description=${planning_description#R__}
 workflows_description=$(basename -- "$WORKFLOWS_SEED" .sql)
 workflows_description=${workflows_description#R__}
+knowledge_description=$(basename -- "$KNOWLEDGE_SEED" .sql)
+knowledge_description=${knowledge_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
@@ -250,15 +258,21 @@ workflows_description=${workflows_description#R__}
 # sort before `providers`, and every join in it would find nothing on a database migrated from
 # empty.
 #
+# The knowledge seed (#409) **must** sort last: its playbooks pin the workflows seed's versions,
+# its facts cite the planning seed's tickets and the verification seed's PR, and its injection
+# records hang off the dashboard, run-console and intake seeds' runs, stages and estimates. It is
+# named `workspace_knowledge` for exactly that — `dev_seed_knowledge` would sort before
+# `dev_seed_providers`, and every join in it would find nothing on a database migrated from empty.
+#
 # The farm seed (#249) sorts fourth and only needs to sort after the first: every row it writes
 # finds the workspace by slug, a person by email and a repository by name, and V040's tables are
 # the first of their domain. `dev_seed_farm` does that; `farm_dev_seed`, which reads better,
 # would sort before `dev_seed` and every join in it would find nothing on a database migrated
 # from empty.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$knowledge_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$knowledge_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the thirteen seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the fourteen seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -278,7 +292,8 @@ check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_descripti
 # seed's own section below.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
-                 "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED"; do
+                 "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
+                 "$KNOWLEDGE_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -293,6 +308,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$VERIFICATION_SEED" ] && body=$VERIFICATION_BODY
   [ "$seed_file" = "$PLANNING_SEED" ] && body=$PLANNING_BODY
   [ "$seed_file" = "$WORKFLOWS_SEED" ] && body=$WORKFLOWS_BODY
+  [ "$seed_file" = "$KNOWLEDGE_SEED" ] && body=$KNOWLEDGE_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   updates=$(count_lines '^update ouroboros\.' "$body")
@@ -1188,6 +1204,59 @@ check_contains "$VERIFICATION_BODY" 'not exists \(select 1 from ouroboros\.build
   'which carry the farm seed'"'"'s guard, because their trigger moves the byte count before a conflict'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_workspace_knowledge.sql — mockup 14's Knowledge page (#409)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_workspace_knowledge.sql — the Knowledge page\n'
+
+# Seven prefixes of its own, one per knowledge table, and #68's run prefix for the five older
+# launches, which are more of #68's kind of row.
+for prefix in '5eed0042' '5eed0043' '5eed0044' '5eed0045' '5eed0046' '5eed0047' '5eed0048' \
+              '5eed0009'; do
+  check_contains "$KNOWLEDGE_BODY" "'$prefix" \
+    "the knowledge seed builds its ids from the $prefix… prefix"
+done
+
+# The knowledge tables, and `runs` — five inserted launches and twenty-one tagged ones. Nothing
+# else: the audit rows are V071's trigger's to write, never this file's.
+knowledge_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$KNOWLEDGE_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'context_injections env_recipes fact_anchors facts playbooks runs skill_versions skills ' \
+  "$knowledge_tables" \
+  'the knowledge seed writes the knowledge tables and the launches, and nothing else'
+check_absent "$KNOWLEDGE_BODY" 'fact_transitions \(' \
+  'and never writes the fact audit itself'
+
+# The one update of another seed's rows sets `playbook_id` and nothing else.
+check_equals '1' "$(grep -Ec '^   set playbook_id = playbook\.id$' "$KNOWLEDGE_BODY" || true)" \
+  'the only change to #68''s runs is the launch linkage'
+
+# Every instant is relative to the clock, for #68's reason.
+check_absent "$KNOWLEDGE_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the knowledge seed carries no literal date'
+
+# **Usage is counted, never written.** The expiry snapshot is a `count(*)` over the injection
+# records in the statement that expires the fact, and none of the page's figures appears as a
+# literal: `48×`, `12×` and `31×` are counts, `61%` is 11 of 18, `run 9×`/`14×`/`3×` are launches.
+check_contains "$KNOWLEDGE_BODY" '^       previous_use_count = \(select count\(\*\)$' \
+  'the expiry snapshot is counted from the injection records'
+for computed in '\b48\b' '\b31\b' '61%' '\b0\.61\b' 'used [0-9]' 'run [0-9]+×' '[0-9]+×'; do
+  check_absent "$KNOWLEDGE_BODY" "$computed" \
+    "the knowledge seed stores no $computed — it is counted from the rows"
+done
+
+# The locked, tinted and tagged rows are columns, and the facts are born proposed: V071 refuses
+# anything else, and an insert that tried would fail the seed rather than this check — so this
+# asserts the file never tries.
+check_absent "$KNOWLEDGE_BODY" "'confirmed', *'" \
+  'no fact is inserted confirmed — each is confirmed by an update, which the audit records'
+
+# The version inserts carry the workflows seed's guard, because both next-version triggers raise
+# before a conflict is looked for.
+check_equals '2' "$(grep -Ec '^                      and prior\.version >= seed\.version\)$|^                    and prior\.version >= seed\.version\)$' "$KNOWLEDGE_BODY" || true)" \
+  'both version inserts are guarded by "a version at or above this one exists"'
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -1207,6 +1276,7 @@ check_contains "$README" 'R__dev_seed_farm\.sql' 'README.md documents the farm s
 check_contains "$README" 'R__dev_seed_run_console\.sql' 'README.md documents the run-console seed'
 check_contains "$README" 'R__dev_seed_test_results\.sql' 'README.md documents the test-results seed'
 check_contains "$README" 'R__dev_seed_verification\.sql' 'README.md documents the verification seed'
+check_contains "$README" 'R__dev_seed_workspace_knowledge\.sql' 'README.md documents the knowledge seed'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'
