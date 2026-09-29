@@ -5251,6 +5251,48 @@ export interface ProtectedPathPoliciesTable {
 }
 
 /**
+ * `ouroboros.onboarding_state` — the onboarding wizard's memory, one row per repository (V067,
+ * [#380](https://github.com/NobuData/ouroboros/issues/380); `bypassed_at` V070,
+ * [#385](https://github.com/NobuData/ouroboros/issues/385)). Holds only what nothing else owns —
+ * the choices. **There is no step-status column** (decision O1): BB.2's wizard API derives every
+ * step on read, in `onboarding/onboarding.derivation.ts`.
+ */
+export interface OnboardingStateTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** The repository as `owner/name` — the `ouroboros.repo_ref` domain. */
+  repo_ref: string;
+  /** The template slug picked in step 3 — `quick-fixes`. Null until picked. */
+  selected_template: string | null;
+  /** The canonical ticket picked for the first run; set null when the ticket is deleted. */
+  picked_ticket_id: string | null;
+  /** The person asked not to be shown the wizard. `default false`. */
+  dismissed: Generated<boolean>;
+  /** When the wizard was completed (step 4), or null. */
+  completed_at: Date | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+  /** When the import-skip was taken (V070) — distinct from a dismissal; imports nothing. */
+  bypassed_at: Date | null;
+}
+
+/**
+ * `ouroboros.repo_detection_scans` — one scan of a repository by the detection service (V067,
+ * [#380](https://github.com/NobuData/ouroboros/issues/380)). Re-scans are new rows with the next
+ * `scan_seq`. BB.2 reads only the newest scan's identity, as the detection card's reference.
+ */
+export interface RepoDetectionScansTable {
+  id: Generated<string>;
+  organization_id: string;
+  repo_ref: string;
+  scan_seq: number;
+  scanned_at: ColumnType<Date, Date | undefined, Date>;
+  duration_ms: number;
+  pack_versions: ColumnType<unknown, string | undefined, string>;
+  probe_budget_used: number | null;
+}
+
+/**
  * `ouroboros.build_job_artifact_uploads` — the job-scoped upload's token ledger while open, and its
  * receipt once closed (V060, [#330](https://github.com/NobuData/ouroboros/issues/330)): the attempt
  * it filled, the manifest of every collected file and the job warnings. `build_jobs`' result
@@ -5373,6 +5415,8 @@ export interface Database {
   flake_scores: FlakeScoresTable;
   flake_scorer_runs: FlakeScorerRunsTable;
   protected_path_policies: ProtectedPathPoliciesTable;
+  onboarding_state: OnboardingStateTable;
+  repo_detection_scans: RepoDetectionScansTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6349,6 +6393,28 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  onboarding_state: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "selected_template",
+    "picked_ticket_id",
+    "dismissed",
+    "completed_at",
+    "created_at",
+    "updated_at",
+    "bypassed_at",
+  ],
+  repo_detection_scans: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "scan_seq",
+    "scanned_at",
+    "duration_ms",
+    "pack_versions",
+    "probe_budget_used",
+  ],
   planning_epic_progress: [
     "epic_id",
     "organization_id",
@@ -6921,3 +6987,9 @@ export type BuildLogChunk = Selectable<BuildLogChunksTable>;
 export type RunnerTerminalFrame = Selectable<RunnerTerminalFramesTable>;
 /** The columns an `insert` into `ouroboros.runner_terminal_frames` may carry. */
 export type NewRunnerTerminalFrame = Insertable<RunnerTerminalFramesTable>;
+
+/** A row of `ouroboros.onboarding_state`, as a `select` returns it. */
+export type OnboardingState = Selectable<OnboardingStateTable>;
+
+/** A row of `ouroboros.repo_detection_scans`, as a `select` returns it. */
+export type RepoDetectionScan = Selectable<RepoDetectionScansTable>;

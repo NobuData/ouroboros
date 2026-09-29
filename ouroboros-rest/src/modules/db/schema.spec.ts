@@ -407,7 +407,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The ninetieth is V067's `protected_path_policies`, mirrored by BA.1 (#380) — the globs AP.3's
     // `allowed_paths` check reads, so a change touching a protected path fails.
-    expect(TABLE_NAMES).toHaveLength(90);
+    //
+    // The ninety-first and ninety-second are V067's `onboarding_state` (with V070's `bypassed_at`)
+    // and `repo_detection_scans`, mirrored by BB.2 (#385) — the wizard's choices, and the newest
+    // scan the detection card is referenced by. No step status is among the columns (O1).
+    expect(TABLE_NAMES).toHaveLength(92);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

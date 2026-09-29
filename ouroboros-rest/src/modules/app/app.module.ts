@@ -25,6 +25,7 @@ import { FarmInstallerModule } from "../farm/installer/installer.module";
 import { IngestModule } from "../ingest/ingest.module";
 import { ControlsModule } from "../controls/controls.module";
 import { InternalModule } from "../internal/internal.module";
+import { OnboardingModule } from "../onboarding/onboarding.module";
 import { PreferencesModule } from "../preferences/preferences.module";
 import { PricingModule } from "../pricing/pricing.module";
 import { ProviderHealthModule } from "../provider-health/provider-health.module";
@@ -332,6 +333,12 @@ export class AppModule {
         // down — a process's capabilities should be answerable from this list rather than from
         // a transitive import three files away.
         WorkflowsModule,
+        // BB.2 ([#385](https://github.com/NobuData/ouroboros/issues/385)) — the Get Started
+        // wizard's orchestration API under `/api/v1/onboarding`. After `TenancyModule`, whose
+        // guards resolve the workspace and enforce `@Roles`; it reads the sources, tenancy,
+        // workflow and intake tables directly and writes only `onboarding_state`, so its position
+        // carries no routing rule — nothing else claims the prefix.
+        OnboardingModule,
         // L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the pipeline that
         // sizes what the sync mirrored. **After `BacklogSyncModule`, which imports it**, so
         // this entry is a statement rather than a requirement: Nest resolves the graph either

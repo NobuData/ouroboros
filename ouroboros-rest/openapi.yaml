@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.24"
+  version: "0.37.25"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -592,6 +592,12 @@ tags:
       for navigation and needs-you surfaces, the whole page payload with per-revision gate snapshots
       and an honest spend rollup, *Return to loop* as an AP.4 correction round carrying the red
       gates' evidence, and *Request human review* and its approval as a gate mutation.
+  - name: onboarding
+    description: |-
+      **The Get Started wizard** (mockup 13, [#385](https://github.com/NobuData/ouroboros/issues/385),
+      decision **O1**) — one surface that derives the four-step rail from subsystem truth,
+      stores the wizard's choices per repository, guards completion, and offers an honest
+      import-skip.
   - name: farm
     description: |-
       **The build farm's identity layer** (mockup 08, epic
@@ -4884,6 +4890,407 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding:
+    get:
+      tags: [onboarding]
+      summary: The Get Started wizard for one repository
+      description: |-
+        Mockup 13's step rail, choices and card references in one round trip
+        ([#385](https://github.com/NobuData/ouroboros/issues/385), BB.2).
+
+        **Every step is derived, never stored** (decision **O1**). Each step state is a
+        question put to the subsystem that owns the answer: step 1 to the sources plane (an
+        `active` GitHub source whose config covers the repository), step 2 to tenancy (the
+        repository and its account enabled), step 3 to the workflow plane (a workflow
+        instantiated from the picked template, V068 provenance), step 4 to intake (the picked
+        issue queued or run). A done step carries the `evidence` line the rail prints; a step
+        that is not done carries the `reason` the action bar prints.
+
+        **Regression is visible on the next read.** A step that is not done but was — a later
+        step is done, the wizard was completed, or the subsystem holds its thing broken, such
+        as a paused or failing source — is `todo` with `regressed: true` and a reason, with no
+        wizard write in between.
+
+        **Per repository.** `?repo=owner/name` names the wizard; a second repository re-enters
+        with independent state. Compared case-insensitively. A repository nobody has onboarded
+        reads as no choices and a derived rail — never a `404`.
+
+        **`surfacing` is the fresh-org rule**: `offer` is true when the workspace has never had
+        a run and no repository's wizard in it has been completed, dismissed or bypassed. It
+        governs routing into `/get-started` only; this operation answers for any repository.
+
+        **Any member may read it**, viewers included.
+      operationId: readOnboarding
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The wizard for the repository.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+              example:
+                repo: acme-robotics/helios-firmware
+                steps:
+                  - step: 1
+                    key: connect_github
+                    title: Connect GitHub
+                    status: done
+                    evidence: acme-robotics · token
+                    reason: null
+                    regressed: false
+                    derivedFrom: sources
+                  - step: 2
+                    key: pick_repo
+                    title: Pick a repo
+                    status: done
+                    evidence: helios-firmware · auto-detected below
+                    reason: null
+                    regressed: false
+                    derivedFrom: tenancy
+                  - step: 3
+                    key: choose_workflow
+                    title: Choose a starting workflow
+                    status: active
+                    evidence: null
+                    reason: No workflow has been created from the quick-fixes template yet.
+                    regressed: false
+                    derivedFrom: workflows
+                  - step: 4
+                    key: first_loop
+                    title: Run your first loop
+                    status: todo
+                    evidence: null
+                    reason: No first issue has been picked yet.
+                    regressed: false
+                    derivedFrom: intake
+                currentStep: 3
+                choices:
+                  selectedTemplate: quick-fixes
+                  pickedTicketId: null
+                  dismissed: false
+                  completedAt: null
+                  bypassedAt: null
+                refs:
+                  detectionScan:
+                    scanSeq: 1
+                    scannedAt: "2026-09-29T09:00:00.000Z"
+                    durationMs: 38000
+                  templates:
+                    - { slug: quick-fixes, version: 1, tier: starter, scope: global }
+                    - { slug: feature-builder, version: 1, tier: starter, scope: global }
+                    - { slug: docs-chores, version: 1, tier: starter, scope: global }
+                    - { slug: deep-refactor, version: 1, tier: advanced, scope: global }
+                  pickedTicket: null
+                surfacing:
+                  offer: true
+                  reason: fresh_organization
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
+            entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [onboarding]
+      summary: Change the wizard's choices
+      description: |-
+        The template pick, the issue pick and dismissal — the only things the wizard stores,
+        per repository, so they survive sessions, devices and tabs. Send what changed; `null`
+        clears a pick. The answer is the whole surface, re-derived.
+
+        **Anyone can dismiss.** A body carrying only `dismissed` is open to every member,
+        viewers included, and dismissal sticks: it counts as a finished wizard for the
+        surfacing rule. Picking a template or a ticket needs `owner`, `admin` or `member`.
+
+        Picking a template does not complete step 3 — only a real workflow instantiated from
+        it does.
+      operationId: patchOnboarding
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingPatch"
+            example:
+              selectedTemplate: quick-fixes
+      responses:
+        "200":
+          description: The wizard after the write.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `viewer` picked a template or a ticket. Picks are `owner`, `admin` or `member`;
+            dismissing is open to every member. `details.role` is what you hold and `details.required` is what
+            would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `onboarding_ticket_not_found` — `pickedTicketId` names no ticket of this workspace;
+            another workspace's ticket is the same answer.
+
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo`, `selectedTemplate`, `pickedTicketId` or `dismissed` is
+            malformed; `details` is keyed by the field. `onboarding_template_unknown` —
+            `selectedTemplate` is not a template this workspace is offered; `details.offered` lists
+            the ones that are.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/complete-step:
+    post:
+      tags: [onboarding]
+      summary: Complete a wizard step, guarded
+      description: |-
+        The action bar's primary button. **Refused unless the step — and every step before it —
+        is done in reality**, re-derived at the moment of asking, so "Continue" on step 3 is
+        impossible without a real instantiated workflow and step 4 without a queued run.
+
+        Steps 1–3 write nothing: their state is derived, and completing one is the guard
+        answering yes. Step 4 stamps `choices.completedAt` once; a repeat keeps the first time.
+
+        `owner`, `admin` or `member`.
+      operationId: completeOnboardingStep
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OnboardingCompleteStep"
+            example:
+              step: 3
+      responses:
+        "200":
+          description: The guard passed; the wizard as it now stands.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `viewer` cannot complete a step. `details.role` is what you hold and `details.required` is what
+            would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `onboarding_step_incomplete` — the guard refused. `message` is the blocking step's
+            stated reason, the sentence the action bar renders; `details.step` is the step asked
+            for, `details.blockingStep` the first step not done, `details.reason` the reason.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: onboarding_step_incomplete
+                message: No workflow has been created from the quick-fixes template yet.
+                details:
+                  step: 3
+                  blockingStep: 3
+                  reason: No workflow has been created from the quick-fixes template yet.
+        "422":
+          description: |-
+            `validation_failed` — `repo` is malformed, or `step` is not 1 to 4.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/skip:
+    post:
+      tags: [onboarding]
+      summary: I've done this before — skip the wizard
+      description: |-
+        The corner link *"I've done this before — import config ↗"*. Marks this repository's
+        wizard **bypassed** (`choices.bypassedAt`, the first bypass stands) and answers the
+        settings surface to route to.
+
+        **It imports nothing, and says so**: `configurationImported` is `false`. The bundle
+        import behind this link is BD.3 ([#398](https://github.com/NobuData/ouroboros/issues/398)).
+        A bypass is distinct from a dismissal, and both count as a finished wizard for the
+        surfacing rule.
+
+        `owner`, `admin` or `member`.
+      operationId: skipOnboarding
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The wizard marked bypassed, and where to go.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingSkip"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `viewer` cannot bypass the wizard. `details.role` is what you hold and `details.required` is what
+            would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
+            entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
 
   /api/v1/settings/auto-merge:
     get:
@@ -20227,6 +20634,20 @@ components:
         type: string
       example: github
 
+    OnboardingRepo:
+      name: repo
+      in: query
+      required: true
+      description: |-
+        The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+        ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+        compared case-insensitively. Each repository has its own, independent wizard.
+      schema:
+        type: string
+        minLength: 3
+        maxLength: 255
+        pattern: "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$"
+      example: acme-robotics/helios-firmware
     TenantHeader:
       name: X-Ouro-Tenant
       in: header
@@ -25703,6 +26124,240 @@ components:
             $ref: "#/components/schemas/QueueItemSummary"
         activity:
           $ref: "#/components/schemas/DashboardActivity"
+
+    Onboarding:
+      type: object
+      title: Onboarding
+      description: |-
+        The Get Started wizard for one repository
+        ([#385](https://github.com/NobuData/ouroboros/issues/385)): `steps` derived from the
+        subsystems that own them (decision **O1**), `choices` — all the wizard stores — and
+        `refs` to the cards' payloads.
+      additionalProperties: false
+      required: [repo, steps, currentStep, choices, refs, surfacing]
+      properties:
+        repo:
+          type: string
+          description: The repository, `owner/name`, lower-case.
+        steps:
+          type: array
+          minItems: 4
+          maxItems: 4
+          description: Steps 1–4, in rail order.
+          items:
+            $ref: "#/components/schemas/OnboardingStep"
+        currentStep:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 4
+          description: |-
+            The first step that is not done — the action bar's `Step 3 of 4` — or null when
+            every step is done.
+        choices:
+          $ref: "#/components/schemas/OnboardingChoices"
+        refs:
+          $ref: "#/components/schemas/OnboardingRefs"
+        surfacing:
+          $ref: "#/components/schemas/OnboardingSurfacing"
+
+    OnboardingStep:
+      type: object
+      title: OnboardingStep
+      description: One step of the rail, derived on read.
+      additionalProperties: false
+      required: [step, key, title, status, evidence, reason, regressed, derivedFrom]
+      properties:
+        step:
+          type: integer
+          minimum: 1
+          maximum: 4
+        key:
+          type: string
+          enum: [connect_github, pick_repo, choose_workflow, first_loop]
+        title:
+          type: string
+          description: The name the rail prints — `Connect GitHub`.
+        status:
+          type: string
+          enum: [done, active, todo]
+          description: |-
+            `done` — the owning subsystem says so. `active` — the first step not done, when it
+            has not regressed. `todo` — any other step not done, regressed ones included.
+        evidence:
+          type: [string, "null"]
+          description: |-
+            The result line of a done step — `acme-robotics · token`. Step 1 says "GitHub App
+            installed" only when the account records an installation (INTAKE-O.1), else
+            "token". Null when not done.
+        reason:
+          type: [string, "null"]
+          description: Why the step is not done — the action bar's stated reason. Null when done.
+        regressed:
+          type: boolean
+          description: |-
+            True when the step is not done but was — a later step is done, the wizard was
+            completed, or its subsystem holds the thing broken (a paused or failing source).
+        derivedFrom:
+          type: string
+          enum: [sources, tenancy, workflows, intake]
+          description: The subsystem the state was read from.
+
+    OnboardingChoices:
+      type: object
+      title: OnboardingChoices
+      description: What the wizard stores — and all it stores. No step status is among these.
+      additionalProperties: false
+      required: [selectedTemplate, pickedTicketId, dismissed, completedAt, bypassedAt]
+      properties:
+        selectedTemplate:
+          type: [string, "null"]
+          description: The template slug picked in step 3.
+        pickedTicketId:
+          type: [string, "null"]
+          format: uuid
+          description: The canonical ticket picked for the first run.
+        dismissed:
+          type: boolean
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When step 4 was completed through the guard.
+        bypassedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the import-skip was taken.
+
+    OnboardingRefs:
+      type: object
+      title: OnboardingRefs
+      description: References to the cards' payloads, so the page composes in one round trip.
+      additionalProperties: false
+      required: [detectionScan, templates, pickedTicket]
+      properties:
+        detectionScan:
+          description: The newest detection scan of the repository, or null when never scanned.
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [scanSeq, scannedAt, durationMs]
+              properties:
+                scanSeq:
+                  type: integer
+                  minimum: 1
+                scannedAt:
+                  type: string
+                  format: date-time
+                durationMs:
+                  type: integer
+                  minimum: 0
+        templates:
+          type: array
+          description: The template tiles this workspace is offered, in tile order.
+          items:
+            type: object
+            additionalProperties: false
+            required: [slug, version, tier, scope]
+            properties:
+              slug:
+                type: string
+              version:
+                type: integer
+                minimum: 1
+              tier:
+                type: string
+                enum: [starter, advanced]
+              scope:
+                type: string
+                enum: [global, organization]
+                description: A shipped template, or this workspace's override of one.
+        pickedTicket:
+          description: The picked ticket, or null.
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [id, externalKey, title, source]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                externalKey:
+                  type: string
+                  description: "`#488`, `HEL-142`."
+                title:
+                  type: string
+                source:
+                  type: string
+                  description: The ticket source's kind — `github`, `jira`, …
+
+    OnboardingSurfacing:
+      type: object
+      title: OnboardingSurfacing
+      description: |-
+        Whether the app should route this workspace to `/get-started` — the fresh-org rule,
+        decided once on the server.
+      additionalProperties: false
+      required: [offer, reason]
+      properties:
+        offer:
+          type: boolean
+        reason:
+          type: string
+          enum: [fresh_organization, organization_has_runs, wizard_finished]
+          description: |-
+            `wizard_finished` — some repository's wizard was completed, dismissed or bypassed;
+            `organization_has_runs` — the workspace has had a run; `fresh_organization` —
+            neither, so the wizard is offered.
+
+    OnboardingPatch:
+      type: object
+      title: OnboardingPatch
+      description: The body of `PATCH /api/v1/onboarding`. Send what changed; `null` clears a pick.
+      additionalProperties: false
+      properties:
+        selectedTemplate:
+          type: [string, "null"]
+          pattern: "^[a-z0-9][a-z0-9-]{0,63}$"
+          description: A template slug this workspace is offered.
+        pickedTicketId:
+          type: [string, "null"]
+          format: uuid
+          description: A canonical ticket of this workspace.
+        dismissed:
+          type: boolean
+          description: Stop (or resume) showing the wizard. Open to every member.
+
+    OnboardingCompleteStep:
+      type: object
+      title: OnboardingCompleteStep
+      description: The body of `POST /api/v1/onboarding/complete-step`.
+      additionalProperties: false
+      required: [step]
+      properties:
+        step:
+          type: integer
+          minimum: 1
+          maximum: 4
+
+    OnboardingSkip:
+      type: object
+      title: OnboardingSkip
+      description: |-
+        What the import-skip answers: the wizard marked bypassed, where to go, and the honest
+        flag that nothing was imported (BD.3, [#398](https://github.com/NobuData/ouroboros/issues/398)).
+      additionalProperties: false
+      required: [onboarding, settingsPath, configurationImported]
+      properties:
+        onboarding:
+          $ref: "#/components/schemas/Onboarding"
+        settingsPath:
+          type: string
+          description: The settings surface to route to — `/settings`.
+        configurationImported:
+          type: boolean
+          const: false
+          description: Always `false` until the bundle import lands.
 
     AutoMergeSetting:
       type: object

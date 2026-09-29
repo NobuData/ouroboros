@@ -108,6 +108,9 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/runs/{id}/transcript.jsonl`            | *Raw JSONL ↗* (#304): the `run_events_jsonl` projection, streamed, opening with `# simulated run` on a simulated run |
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
+| `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
+| `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
+| `POST /api/v1/onboarding/skip`                      | *I've done this before* — marks the wizard bypassed, answers `/settings`; imports nothing (BD.3, #398) |
 | `GET POST /api/v1/workflows`                        | [The workflow lifecycle](#the-workflow-lifecycle-api) (#134) — the rail with P.4's captions; **+ New workflow** |
 | `GET PATCH /api/v1/workflows/{id}`                  | One workflow, its draft and one version (`?version=` for history); rename, pause or archive |
 | `PUT /api/v1/workflows/{id}/draft`                  | The canvas's autosave, guarded by an `If-Match` draft etag — a stale one is a `409`, never an overwrite |
@@ -2640,6 +2643,45 @@ estimation contract *refuses* a request offering more than 64 workflow tags, so
 so adding a workflow does not change which 64 are offered — and logs it. The alternative is a
 `422` from the engine and no estimate at all for that workspace. The queue write is unaffected:
 it validates one slug against the whole vocabulary.
+
+## The onboarding wizard API
+
+`/api/v1/onboarding` ([#385](https://github.com/NobuData/ouroboros/issues/385), BB.2) is mockup
+13's Get Started wizard, per repository (`?repo=owner/name`), since REST 0.37.25:
+
+```
+GET   /api/v1/onboarding                  any member — the rail, choices, card refs, surfacing
+PATCH /api/v1/onboarding                  template/ticket picks: owner, admin, member · dismiss: any member
+POST  /api/v1/onboarding/complete-step    owner, admin, member — guarded by the derived rail
+POST  /api/v1/onboarding/skip             owner, admin, member — the import-skip
+```
+
+**Every step is derived on read, never stored** (decision **O1**). `onboarding.derivation.ts`
+is the contract V070's header restates:
+
+| Step | Done when | Derived from |
+|---|---|---|
+| 1 Connect GitHub | an `active` GitHub ticket source's config names the owner and lists the repository | sources |
+| 2 Pick a repo | the `github_repos` row and its `github_orgs` account are both enabled | tenancy |
+| 3 Choose a starting workflow | a workflow's `template_slug` is the picked template (V068 provenance) | workflows |
+| 4 Run your first loop | the picked ticket's issue has a `queue_items` or `runs` row in the repository | intake |
+
+A step that is not done but shows evidence of having been — a later step is done, the wizard was
+completed, or its source is paused or failing — is `todo` with `regressed: true` and a `reason`,
+so a revoked connection flips step 1 on the very next read. `onboarding_state` holds only the
+choices (template, ticket, dismissed, `completed_at`, V070's `bypassed_at`).
+
+**Completion is guarded.** `complete-step` re-derives the rail and answers
+`409 onboarding_step_incomplete` — `message` is the blocking step's reason — unless every step
+up to the one asked for is done. Steps 1–3 write nothing; step 4 stamps `completed_at` once.
+
+**The import-skip imports nothing.** It stamps `bypassed_at`, answers `settingsPath: "/settings"`
+and `configurationImported: false`; the bundle import is BD.3
+([#398](https://github.com/NobuData/ouroboros/issues/398)).
+
+**Surfacing** (`onboarding.surfacing.ts`): `/get-started` is offered while the workspace has
+never had a run and no repository's wizard in it is completed, dismissed or bypassed. Dismissal
+sticks because it is server state; any repository stays re-enterable by naming it.
 
 ## The workflow lifecycle API
 
@@ -5343,6 +5385,7 @@ ouroboros-rest/
 │       ├── auth/           # sign-out, the legacy cookie · #33 #703 · discovery #712
 │       ├── engine/         # typed internal client + /engine/status       · #35
 │       ├── preferences/    # the caller's own font scale                  · #649
+│       ├── onboarding/     # the Get Started wizard — derived rail, guards · #385
 │       ├── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
 │       ├── pricing/        # what a model costs, with provenance          · #586
 │       ├── registry/       # alias → model on a provider connection       · #189
