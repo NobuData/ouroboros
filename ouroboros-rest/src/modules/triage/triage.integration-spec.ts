@@ -6,11 +6,13 @@ import { INTERNAL_KEY_HEADER } from "../engine/engine.contract";
 import { seedIngestBench, type IngestBench } from "../ingest/ingest.fixture";
 import type { RunOpenedResource } from "../ingest/ingest.resources";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
+import type { TestRunTimelineResource } from "../test-results-read/results.resources";
 import type {
   ClassificationsListResource,
   ClassifyResultResource,
   RerunAvailabilityResource,
   RerunResource,
+  RunIntentsResource,
   TestRunHintsResource,
   WaiverResource,
 } from "./triage.resources";
@@ -27,7 +29,8 @@ import type {
  *   * with no eligible runner the re-run answers an honest queue state;
  *   * the infra path flags the runner with a farm health note;
  *   * a waiver requires a reason and records its author, and no annotation is attempted;
- *   * every classification and dispatch is audited with the person as the actor.
+ *   * every classification and dispatch is audited with the person as the actor;
+ *   * a PR toggle is stored when it is flipped, on its own, and read back on the timeline (#340).
  *
  * The executor here is the simulated driver's half of the contract, called over the internal
  * channel exactly as `ouroboros_simulator` calls it; the driver's own reaction to the steer
@@ -227,7 +230,7 @@ describe("classification & routing", () => {
   }
 
   /** Call the public API as somebody, in the scene's workspace. */
-  function as(person: Person, at: Scene, method: "get" | "post", path: string) {
+  function as(person: Person, at: Scene, method: "get" | "post" | "put", path: string) {
     return api.as(person)(method, path).set(TENANT_HEADER, at.bench.workspace.slug);
   }
 
@@ -625,6 +628,57 @@ describe("classification & routing", () => {
     expect(JSON.stringify(rows)).not.toContain("PID velocity");
   });
 
+  it("stores a PR toggle when it is flipped, keeps the other, and reads both back (#340)", async () => {
+    const at = await scene();
+    const member = await colleague(at, "member");
+    const viewer = await colleague(at, "viewer");
+    const path = `/api/v1/runs/${at.run.id}/pr-intents`;
+
+    await as(viewer, at, "put", path).send({ blockUntilGreen: true }).expect(403);
+    await as(member, at, "put", path).send({}).expect(422);
+    await as(member, at, "put", path).send({ blockUntilGreen: null }).expect(422);
+    await as(member, at, "put", path).send({ blockUntilGreen: true, requeue: true }).expect(422);
+
+    const count = await one<{ n: string }>(
+      `select count(*)::text as n from ${SCHEMA_NAME}.run_pr_intents`,
+      [],
+    );
+    expect(count.n).toBe("0");
+
+    const flipped = bodyOf<RunIntentsResource>(
+      await as(member, at, "put", path).send({ blockUntilGreen: true }).expect(200),
+    );
+    expect(flipped).toMatchObject({
+      runId: at.run.id,
+      blockUntilGreen: true,
+      autoRerunPhysical: false,
+      updatedBy: member.id,
+    });
+
+    // The second toggle, on its own: the first keeps what it was set to.
+    const both = bodyOf<RunIntentsResource>(
+      await as(at.owner, at, "put", path).send({ autoRerunPhysical: true }).expect(200),
+    );
+    expect(both).toMatchObject({
+      blockUntilGreen: true,
+      autoRerunPhysical: true,
+      updatedBy: at.owner.id,
+    });
+
+    // Read back where the page reads them — by a viewer, who may read and not set.
+    const timeline = bodyOf<TestRunTimelineResource>(
+      await as(viewer, at, "get", `/api/v1/runs/${at.run.id}/test-runs`).expect(200),
+    );
+    expect(timeline.next.intents).toEqual({ blockUntilGreen: true, autoRerunPhysical: true });
+    expect(timeline.next.activation).toBe("intent_stored");
+
+    const rows = (await trail(at)).filter((row) => row.action === "triage.intents_set");
+    expect(rows.map((row) => [row.actor_id, row.subject_type, row.detail])).toEqual([
+      [member.id, "run", { block_until_green: true }],
+      [at.owner.id, "run", { auto_rerun_physical: true }],
+    ]);
+  });
+
   it("refuses what the card must not do, before anything is written", async () => {
     const at = await scene();
     const viewer = await colleague(at, "viewer");
@@ -654,6 +708,11 @@ describe("classification & routing", () => {
       .as(stranger)("post", `/api/v1/test-runs/${at.testRunId}/rerun`)
       .set(TENANT_HEADER, elsewhere.workspace.slug)
       .send({ scope: "full" })
+      .expect(404);
+    await api
+      .as(stranger)("put", `/api/v1/runs/${at.run.id}/pr-intents`)
+      .set(TENANT_HEADER, elsewhere.workspace.slug)
+      .send({ blockUntilGreen: true })
       .expect(404);
   });
 });

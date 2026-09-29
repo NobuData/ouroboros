@@ -4833,6 +4833,7 @@ POST /api/v1/test-runs/:id/cases/:caseId/classify   record, then route          
 GET  /api/v1/test-runs/:id/rerun                    could a re-run be placed now + counts (any member)
 POST /api/v1/test-runs/:id/rerun   {scope}          failed set | full suite, as a new build (member+)
 POST /api/v1/test-runs/:id/waivers {reason}         the waiver; no PR annotation (AV.2)   (admin+)
+PUT  /api/v1/runs/:id/pr-intents                    the card's two PR toggles, on their own (member+)
 ```
 
 | class | route | dispatches | receipt |
@@ -4855,6 +4856,13 @@ build snapshot onto a new job with `build_jobs.test_selection` (V061) and answer
 explains a missing runner, a missing farm build or a disabled pool beside a classification that
 was still made. Audited as `triage.classified`, `triage.rerun_requested`, `triage.waived` and
 `runner.flagged`, with the person as the actor; the note never enters the trail.
+
+**A toggle is stored when it is flipped** (AU.6, [#340](https://github.com/NobuData/ouroboros/issues/340),
+REST 0.37.21). Until the card was built the run's PR intents were written only as part of a
+classification; `PUT /api/v1/runs/:id/pr-intents` sets *Block PR until green*, *Auto re-run
+physical suite after fix* or both on their own, changing only what it is sent
+(`422 pr_intents_empty` for neither). It answers with both as stored, and they are read back on
+the timeline's `next.intents`. Audited as `triage.intents_set`, naming the toggles it set.
 
 ### Flake scorer
 

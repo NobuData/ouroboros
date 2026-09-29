@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 
 import { requireWorkspace } from "@/app/api/access";
-import { mayContribute } from "@/app/api/membership";
+import { mayAdminister, mayContribute } from "@/app/api/membership";
+import { readPeople } from "@/app/api/people";
 import {
   RUN_ORIGIN_PARAM,
   TESTS_ATTEMPT_PARAM,
@@ -30,6 +31,11 @@ import { attemptParam } from "@/app/test-results/view";
  * — `mayContribute`, the rule the service applies to a re-run — and the screen is handed a boolean
  * rather than a role. The service checks again on every press.
  *
+ * Mark & Route ([#340](https://github.com/NobuData/ouroboros/issues/340)) is gated the same way:
+ * classifying and the PR toggles are `mayContribute`'s, and a waiver is `mayAdminister`'s — the
+ * service's two rules. The reader's id and the workspace's names are what turn a decision's
+ * author into *by you* or a name; the names are best-effort, and unread they are said to be.
+ *
  * @param props.params The run's id.
  * @param props.searchParams The query — `?from=`, `?attempt=`, `?suite=` and `?case=`.
  * @returns The screen, or the not-found page (`not-found.tsx`,
@@ -42,12 +48,12 @@ export default async function Page({
   params: Promise<{ id: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }>) {
-  const { membership } = await requireWorkspace();
+  const { membership, session } = await requireWorkspace();
   const { id } = await params;
   const query = await searchParams;
   const origin = runOrigin(query[RUN_ORIGIN_PARAM]);
   const attempt = attemptParam(query[TESTS_ATTEMPT_PARAM]);
-  const reading = await readTests(id, attempt);
+  const [reading, people] = await Promise.all([readTests(id, attempt), readPeople()]);
 
   if (reading.state === "missing") notFound();
 
@@ -65,9 +71,13 @@ export default async function Page({
       initialPage={found?.page ?? null}
       initialSuite={suiteParam(query[TESTS_SUITE_PARAM])}
       mayContribute={mayContribute(membership.roles)}
+      mayWaive={mayAdminister(membership.roles)}
+      nextAttempt={found?.nextAttempt ?? null}
       origin={origin}
+      people={people}
       pullRequest={found?.pullRequest ?? null}
       readAt={found?.readAt ?? null}
+      readerId={session.user.id}
       runId={id}
       trackerUrl={found?.trackerUrl ?? null}
     />

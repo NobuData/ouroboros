@@ -19,7 +19,7 @@ import {
   didNotFail,
   noFailuresIn,
 } from "@/app/test-results/failure";
-import { MARK_ROUTE_TITLE } from "@/app/test-results/mark-route-slot";
+import { MARK_ROUTE_TITLE } from "@/app/test-results/mark-route";
 import { PHYSICAL_TITLE } from "@/app/test-results/physical";
 import { type TestsPollOptions, failureUrl, hintsUrl } from "@/app/test-results/poll";
 import { SUITES_TITLE } from "@/app/test-results/suites";
@@ -51,6 +51,11 @@ import {
  */
 
 vi.mock("@/app/test-results/rerun-actions", () => ({ requestRerun: vi.fn() }));
+vi.mock("@/app/test-results/mark-route-actions", () => ({
+  classifyFailure: vi.fn(),
+  waiveFailure: vi.fn(),
+  setRunIntent: vi.fn(),
+}));
 
 /** The failing rig case, as the physical-tests card names it. */
 const OVERSHOOT = "Motor overshoot on e-stop release";

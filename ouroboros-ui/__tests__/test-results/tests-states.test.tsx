@@ -7,7 +7,7 @@ import { DASHBOARD_PATH, runPath, workflowPath } from "@/app/paths";
 import type { PollAnswer } from "@/app/poll";
 import { DASHBOARD_ORIGIN } from "@/app/runs/origin";
 import { INGEST_LAG_AFTER_SECONDS } from "@/app/runs/states";
-import { MARK_ROUTE_TITLE } from "@/app/test-results/mark-route-slot";
+import { MARK_ROUTE_TITLE } from "@/app/test-results/mark-route";
 import type { TestsPollOptions } from "@/app/test-results/poll";
 import {
   NO_RESULTS_NOTE,
@@ -58,6 +58,11 @@ import { attempt, gate, page, seededAttempts, strip, timeline } from "../helpers
 
 // The Server Action is never reached here: no case presses a re-run.
 vi.mock("@/app/test-results/rerun-actions", () => ({ requestRerun: vi.fn() }));
+vi.mock("@/app/test-results/mark-route-actions", () => ({
+  classifyFailure: vi.fn(),
+  waiveFailure: vi.fn(),
+  setRunIntent: vi.fn(),
+}));
 
 /** A poll that never answers — the page shows the server's first read. */
 function quiet<T>(): TestsPollOptions<T> {

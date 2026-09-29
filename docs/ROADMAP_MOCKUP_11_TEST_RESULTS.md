@@ -774,7 +774,7 @@ tokens (both themes; the mockup is dark-only).
 | AU.3 | #337 ✅ | 🟢 Done | ouroboros-ui: [AU.3] Suites card | Platform-tagged suite rows, meters, selection → filtering | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.4 | #338 ✅ | 🟢 Done | ouroboros-ui: [AU.4] Physical tests card | HIL rows: procedure, measured-vs-limit, selection sync | mvp, tests, ui, design | N (after AU.1) | Y | M | ouroboros-ui |
 | AU.5 | #339 ✅ | 🟢 Done | ouroboros-ui: [AU.5] Failure detail card | Test path, rig log block, honest triage slot | mvp, tests, ui, design | N (after AU.3/AU.4) | Y | M | ouroboros-ui |
-| AU.6 | #340 | 🟡 Open | ouroboros-ui: [AU.6] Mark & Route card | Classify radios with hints, note, toggles, routing actions | mvp, tests, ui | N (after AU.5, AT.4) | Y | L | ouroboros-ui |
+| AU.6 | #340 ✅ | 🟢 Done | ouroboros-ui: [AU.6] Mark & Route card | Classify radios with hints, note, toggles, routing actions | mvp, tests, ui | N (after AU.5, AT.4) | Y | L | ouroboros-ui |
 | AU.7 | #341 ✅ | 🟢 Done | ouroboros-ui: [AU.7] Artifacts card & downloads | Artifact rows, sizes, coverage delta, tombstones | mvp, tests, ui | N (after AU.1, AT.5) | Y | S | ouroboros-ui |
 | AU.8 | #342 | 🟡 Open | ouroboros-ui: [AU.8] Test-results states & e2e leg | Running/empty/error states, themes, full-chain e2e | mvp, tests, ui, ci | N (after AU.2–AU.7) | Y | M | ouroboros-ui, .github |
 
@@ -1034,7 +1034,7 @@ TRIAGE  [heuristic · new-failure ∩ diff-paths → product bug]  · "AI narrat
 
 ### Issue AU.6 — ouroboros-ui: [AU.6] Mark & Route card
 
-> **GitHub issue:** #340 · **Status:** 🟡 Open · **Parent epic:** #322
+> **GitHub issue:** #340 · **Status:** 🟢 Done · **Parent epic:** #322
 
 - **Problem Statement:** The decision surface: classify with honest
   hints, write the correction, set intents, and dispatch the routing
@@ -1063,6 +1063,61 @@ TRIAGE  [heuristic · new-failure ∩ diff-paths → product bug]  · "AI narrat
 [Keep k_msgq, but move PID velocity sampling…]  "→ attempt 4's planning context"
 [block PR ✓·activates with PR plane][auto re-run ✓]  [Queue correction → attempt 4][Waive…]
 ```
+
+> **Delivered as `ouroboros-ui/app/test-results/mark-route.ts`, `mark-route-pick.ts`,
+> `mark-route-decision.ts`, `mark-route-card.tsx`, `mark-route-panel.tsx`, `mark-route-actions.ts`
+> and `waive-dialog.tsx`, and one REST route, `PUT /api/v1/runs/:id/pr-intents`
+> (`ouroboros-rest` 0.37.21, additive).** Four things the issue
+> said no longer matched what had shipped, and were decided on #340 rather than guessed:
+>
+> 1. **A toggle is stored when it is pressed, by a route of its own.** The intents were written
+>    only inside a classification, so *persist immediately* had nothing to call. The new route sets
+>    either toggle or both, changes only what it is sent (`422 pr_intents_empty` for neither), is a
+>    member's, and is audited as `triage.intents_set`. They are read back where the timeline already
+>    served them, `next.intents`.
+> 2. **The Block-PR tooltip is decided by `next.activation`, not by copy.** #358 and #360 shipped
+>    before this card, so *activates with the PR plane* was no longer true of a run whose PR
+>    carries the gate. Armed, the tooltip names the gate that holds the PR and its source;
+>    otherwise it says the toggle is a stored intent and the point at which it starts to hold.
+>    It always states the activation point — #344 still tracks dropping it. The auto re-run toggle
+>    says nothing acts on it yet, which is #332's own note.
+> 3. **The card decides one failure at a time** — the one on the failure-detail card, whose pager
+>    position the screen now holds for both. The service classifies per case and each
+>    classification dispatches its own correction round, so a staged failed set is a **worklist**:
+>    each failure a button, marked once decided, never one decision applied to many.
+> 4. **The e2e drives the card on the seed; the transcript half stays parked.** The `failing-hil`
+>    driver writes no test result, so a run a driver moves has nothing to classify and a run the
+>    seed gave results has no driver to acknowledge the steer. Leg 19 proves the affix, the
+>    decision and its receipt, the receipt's link, the reload, the toggles and the waiver; *note in
+>    the transcript, attempt increments* is `triage.integration-spec.ts`'s, and the live chain
+>    waits on #265 and #991. The leg's tests decide on `#479`, which no parity screenshot reads.
+>
+> And decided in the building:
+>
+> 5. **Only a person's classification is a decision.** The seed's Build 3 overshoot carries a
+>    classification whose `actor` is `heuristic` — a rule's suggestion. It pre-selects a radio with
+>    its affix and is never drawn as *decided*, with a receipt it could not have.
+> 6. **The affix rule is structural**, as #339's is: the pick is a union whose only variant able to
+>    carry a percentage is `model`, built only from an answer — a hint or a stored classification —
+>    whose actor is `model`. A model's pick wins over a rule's; between two rules, the hint the
+>    failure card states.
+> 7. **`attempt N` is advice, and the receipt's is the service's.** N is one more than the attempt
+>    of the stage the service would retry, read from the run console's stages when the page was
+>    served; unread, the action and the note's hint name no attempt. The seeded `#482` reads
+>    `attempt 3`, not the mockup's 4: its `implement` stage is on its second attempt.
+> 8. **The other two classes say what they do.** *Flake — retry* is *Mark as flake & re-run the
+>    case* and *Infra — rig issue* is *Flag the rig's runner*; neither promises a correction round,
+>    and for both the note is optional and says what it is kept with. The card sends no `requeue`
+>    and no `subtype`.
+> 9. **A waiver covers the failure on the card**, and is shown with its author and reason by the
+>    press that recorded it — the page has no read of waivers, so a reload does not show it.
+> 10. **Role gates are the membership's two rules**: `mayContribute` classifies and sets the
+>     toggles, `mayAdminister` waives. A member is drawn no waive action; a viewer is drawn the
+>     decision and the toggles read-only, and no form. The Server Actions hand the service's `403`
+>     back as a sentence.
+> 11. **`TextDialog` takes a page's own classes**, so the waiver's dialog is the PR page's
+>     component drawn from this page's sheet; and the workspace's names by id are
+>     `app/api/people.ts`, shared with the farm's token list.
 
 ### Issue AU.7 — ouroboros-ui: [AU.7] Artifacts card & downloads
 
@@ -1134,10 +1189,10 @@ e2e: parity ✓ · upload→parse ✓ · classify→correction→transcript ✓ 
 > of the leg are `ouroboros-ui/app/test-results/states.ts` and its components, and
 > `tests/e2e/specs/test-results.spec.ts` (leg 19). Decided on #342:
 >
-> 1. **The live chain is parked, not faked.** It needs the Mark & Route card (#340, open),
->    AJ.3 (#265, open, v2) and agent source checkout (#991). It is written as `test.fixme` with
->    its reason and its failure-mode pair is registered as parked. The member view's *classify
->    allowed* half waits on #340 too; *waive absent* holds today.
+> 1. **The live chain is parked, not faked.** It needs AJ.3 (#265, open, v2) and agent source
+>    checkout (#991) — and needed the Mark & Route card, which #340 has since built. It is written
+>    as `test.fixme` with its reason and its failure-mode pair is registered as parked. The member
+>    view's *classify allowed* half arrived with #340, beside *waive absent*.
 > 2. **`lastReceivedAt` is `test_runs.updated_at`**, served on every attempt
 >    (`ouroboros-rest` 0.37.19, additive). The ingest-lag banner names it for a **running**
 >    attempt two minutes quiet — the run console's threshold.

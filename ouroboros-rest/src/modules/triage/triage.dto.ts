@@ -19,6 +19,7 @@ import {
   IsUUID,
   Matches,
   MaxLength,
+  ValidateIf,
   ValidateNested,
 } from "class-validator";
 
@@ -97,6 +98,35 @@ export class ClassifyCaseDto {
   @ValidateNested()
   @Type(() => ClassifyTogglesDto)
   toggles?: ClassifyTogglesDto;
+}
+
+/**
+ * Whether a field was sent at all. `@IsOptional` would also wave `null` through, and a toggle is
+ * on or off — so each is validated whenever the request named it.
+ *
+ * @param _body - The request.
+ * @param value - The field.
+ * @returns `true` when the request named the field, with `null` or anything else.
+ */
+function sent(_body: object, value: unknown): boolean {
+  return value !== undefined;
+}
+
+/**
+ * `PUT /api/v1/runs/{id}/pr-intents` — the Mark & Route card's two PR toggles, set on their own
+ * ([#340](https://github.com/NobuData/ouroboros/issues/340)). Only what is sent changes; that the
+ * request names at least one is the service's rule, because a decorator sees one field.
+ */
+export class RunIntentsDto {
+  /** *Block PR until green* — stored as an intent (T8); enforced by #358/#360. */
+  @ValidateIf(sent)
+  @IsBoolean()
+  blockUntilGreen?: boolean;
+
+  /** *Auto re-run physical suite after fix* — stored as an intent (T8). */
+  @ValidateIf(sent)
+  @IsBoolean()
+  autoRerunPhysical?: boolean;
 }
 
 /** `POST /api/v1/test-runs/{id}/rerun` — *Re-run failed (2)* or *Re-run full suite*. */

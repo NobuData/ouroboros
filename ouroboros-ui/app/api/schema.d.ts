@@ -5447,6 +5447,38 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/runs/{id}/pr-intents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Set the run's PR toggles
+         * @description The Mark & Route card's two toggles — **Block PR until green** and **Auto re-run physical
+         *     suite after fix** — set on their own ([#340](https://github.com/NobuData/ouroboros/issues/340),
+         *     decision **T8**), so a toggle is stored when it is flipped rather than when a failure is
+         *     next classified. **Only what is sent changes**: an absent toggle keeps its stored value,
+         *     and a run nobody has set a toggle on has both off.
+         *
+         *     They are **intents**. What holds a pull request is its `test_suite` gate, which the gate
+         *     engine makes required from `blockUntilGreen` when it materializes the PR's gates; whether
+         *     that has happened is `next.activation` of `GET /api/v1/runs/{id}/test-runs`, which is
+         *     where the stored values are read back too.
+         *
+         *     `owner`, `admin` or `member` — the roles that may classify. Audited as
+         *     `triage.intents_set`, naming the toggles the request set.
+         */
+        put: operations["setRunPrIntents"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/pull-requests/{id}/criteria": {
         parameters: {
             query?: never;
@@ -8050,6 +8082,32 @@ export interface components {
             annotationState: "pending_pr_plane";
             /** Format: date-time */
             createdAt: string;
+        };
+        /**
+         * RunPrIntentsRequest
+         * @description The toggles to set. At least one — a request naming neither is `pr_intents_empty`. An
+         *     absent toggle keeps its stored value.
+         */
+        RunPrIntentsRequest: {
+            /** @description Block PR until green. */
+            blockUntilGreen?: boolean;
+            /** @description Auto re-run physical suite after fix. */
+            autoRerunPhysical?: boolean;
+        };
+        /**
+         * RunPrIntents
+         * @description The run's two PR toggles as stored (decision **T8**) — intents, which the PR's
+         *     `test_suite` gate enforces once it is armed.
+         */
+        RunPrIntents: {
+            /** Format: uuid */
+            runId: string;
+            blockUntilGreen: boolean;
+            autoRerunPhysical: boolean;
+            /** @description Who last set either toggle. Null once that person has been deleted. */
+            updatedBy: string | null;
+            /** Format: date-time */
+            updatedAt: string;
         };
         /** CreateCriterionRequest */
         CreateCriterionRequest: {
@@ -40955,6 +41013,143 @@ export interface operations {
             /**
              * @description `waiver_cases_invalid` — a case id that is not in this test run. `validation_failed` —
              *     no reason, a blank one, or an id that is not a uuid.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and `details`
+             *     is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    setRunPrIntents: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The run — `runs.id`, a uuid minted by the database (V008). Anything that is not a
+                 *     uuid is a `422` naming the field, before anything is read.
+                 * @example 5eed0009-0000-4000-8000-000000000482
+                 */
+                id: components["parameters"]["RunId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RunPrIntentsRequest"];
+            };
+        };
+        responses: {
+            /** @description Both toggles as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunPrIntents"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — a `viewer` may not set the toggles. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `run_not_found` — no run with that id, **or none this caller may know about**. Or
+             *     `tenant_not_found`, when `X-Ouro-Tenant` names a workspace you are not a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `pr_intents_empty` — the request names neither toggle. `validation_failed` — the id is
+             *     not a uuid, a toggle is not a boolean (`null` included), or a field this operation
+             *     does not declare.
              */
             422: {
                 headers: {

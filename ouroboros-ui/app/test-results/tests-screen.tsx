@@ -27,10 +27,16 @@ import { artifactsView } from "./artifacts";
 import type { ArtifactReader } from "./artifact-viewer";
 import { ArtifactsCard } from "./artifacts-card";
 import { AttemptsTimeline } from "./attempts-timeline";
-import { failureScope } from "./failure";
+import { boundIndex, failureScope } from "./failure";
 import { FailureDetail } from "./failure-detail";
 import { TestsIngestLagBanner } from "./ingest-lag-banner";
-import { MarkRouteSlot, type StagedFailures } from "./mark-route-slot";
+import type { StagedFailures } from "./mark-route";
+import {
+  type ClassifySender,
+  type IntentSender,
+  MarkRoutePanel,
+  type WaiveSender,
+} from "./mark-route-panel";
 import {
   type CaseSelection,
   caseCleared,
@@ -166,8 +172,22 @@ export interface TestsScreenProps {
   readonly pullRequest?: PullRequestRef | null;
   /** The module the page was opened from. */
   readonly origin: RunOrigin;
-  /** Whether the reader may start a build — owner, admin or member. `false` when absent. */
+  /**
+   * Whether the reader may start a build, classify a failure and set the PR toggles — owner,
+   * admin or member. `false` when absent.
+   */
   readonly mayContribute?: boolean;
+  /** Whether the reader may waive a failure — owner or admin. `false` when absent. */
+  readonly mayWaive?: boolean;
+  /** The reader's id — a decision of theirs reads *by you*. `null` when absent. */
+  readonly readerId?: string | null;
+  /** Display names by id, or `null` when the workspace's members could not be read. */
+  readonly people?: Readonly<Record<string, string>> | null;
+  /**
+   * The attempt a correction round would open, as the run's stages stood when the page was
+   * served — or `null` when they could not be read. `null` when absent.
+   */
+  readonly nextAttempt?: number | null;
   /**
    * Whether the run's stages include the test stage, or `null` when they could not be read.
    * `null` when absent.
@@ -195,6 +215,12 @@ export interface TestsScreenProps {
   readonly send?: RerunSender;
   /** How the artifacts card's viewer reads a file; production passes none. */
   readonly artifactRead?: ArtifactReader;
+  /** How Mark & Route sends a decision; production passes none. */
+  readonly classify?: ClassifySender;
+  /** How Mark & Route sends a waiver; production passes none. */
+  readonly waive?: WaiveSender;
+  /** How Mark & Route stores a toggle; production passes none. */
+  readonly setIntent?: IntentSender;
 }
 
 /**
@@ -203,7 +229,8 @@ export interface TestsScreenProps {
  * ([#336](https://github.com/NobuData/ouroboros/issues/336)), summary strip, suites card
  * ([#337](https://github.com/NobuData/ouroboros/issues/337)), physical-tests card
  * ([#338](https://github.com/NobuData/ouroboros/issues/338)), failure-detail card
- * ([#339](https://github.com/NobuData/ouroboros/issues/339)) and artifacts card
+ * ([#339](https://github.com/NobuData/ouroboros/issues/339)), Mark & Route card
+ * ([#340](https://github.com/NobuData/ouroboros/issues/340)) and artifacts card
  * ([#341](https://github.com/NobuData/ouroboros/issues/341)), for one attempt of one run.
  *
  * **A contextual surface.** It renders in the shell's content pane and adds no chrome of its own,
@@ -246,11 +273,19 @@ export interface TestsScreenProps {
  * attempt's triage hints are a poll of their own, asked only while a failure is in scope; the
  * bound case's failure is the card's.
  *
+ * **Mark & Route decides the failure that card shows**
+ * ([#340](https://github.com/NobuData/ouroboros/issues/340)). Which failure is bound — the
+ * pager's position — is held here, per attempt and pair of selections, and handed to both cards,
+ * so the one being read is the one being classified. The card reads the hints the failure card
+ * reads, the decisions the attempt's page serves and the toggles the timeline serves; a decision
+ * re-reads the page and the timeline, and a toggle the timeline.
+ *
  * **The artifacts card reads the attempt's page too** — its files, its tombstones and its
  * coverage — and is keyed by the attempt, so an open viewer closes when the attempt changes.
  *
  * **The actions are honestly gated** (`actionsView`), and *Send failures back to loop* stages the
- * failed set on the Mark & Route slot and moves focus there.
+ * failed set on the Mark & Route card as a worklist and moves focus there. Choosing a staged
+ * failure puts it on both cards, clearing a selection that would leave it out.
  *
  * **The states the mockup does not draw** ([#342](https://github.com/NobuData/ouroboros/issues/342),
  * `states.ts`): a running build's figures are labelled *partial*; a run with no attempt says
@@ -276,6 +311,10 @@ export function TestsScreen({
   pullRequest = null,
   origin,
   mayContribute = false,
+  mayWaive = false,
+  readerId = null,
+  people = null,
+  nextAttempt = null,
   hasTestStage = null,
   readAt = null,
   timelinePoll,
@@ -286,6 +325,9 @@ export function TestsScreen({
   failurePoll,
   send = requestRerun,
   artifactRead,
+  classify,
+  waive,
+  setIntent,
 }: TestsScreenProps) {
   const timelineRead = useKeyedPoll(runId, (id) => createTimelinePoll(id, timelinePoll));
 
@@ -398,6 +440,22 @@ export function TestsScreen({
       ? null
       : failureScope(onScreen.suites, suiteScope, caseScope, attempt.attemptSeq);
   const hasFailures = failures !== null && failures.entries.length > 0;
+
+  // What the two cards are bound by: the attempt and both selections. A position held under
+  // another binding is not this one's.
+  const binding = `${attempt?.id ?? ""}:${suiteScope?.id ?? ""}:${caseScope?.caseId ?? ""}`;
+  const [position, setPosition] = useState<{ binding: string; caseId: string } | null>(null);
+  const moved = position !== null && position.binding === binding ? position.caseId : null;
+  const bound = failures === null ? null : (failures.entries[boundIndex(failures.entries, moved)] ?? null);
+  const openable =
+    onScreen === null || attempt === null
+      ? null
+      : new Set(
+          failureScope(onScreen.suites, null, null, attempt.attemptSeq).entries.map(
+            (each) => each.caseId,
+          ),
+        );
+
   const hintsRead = useKeyedPoll(hasFailures ? (attempt?.id ?? null) : null, (id) =>
     createHintsPoll(id, hintsPoll),
   );
@@ -488,6 +546,25 @@ export function TestsScreen({
 
     setStaged({ testRunId: attempt.id, cases: attempt.strip.failedCases });
     setFocusRequests((count) => count + 1);
+  }
+
+  /**
+   * Put a staged failure on both cards. A selection that would leave it out is cleared, so the
+   * failure chosen is the failure shown.
+   *
+   * @param caseId The staged case.
+   */
+  function pickStaged(caseId: string): void {
+    if (attempt === null) return;
+
+    if (failures !== null && failures.entries.some((each) => each.caseId === caseId)) {
+      setPosition({ binding, caseId });
+      return;
+    }
+
+    selectSuite(null);
+    selectCase(null);
+    setPosition({ binding: `${attempt.id}::`, caseId });
   }
 
   const head =
@@ -600,13 +677,39 @@ export function TestsScreen({
             failurePoll={failurePoll}
             hints={hintsRead.snapshot.data}
             hintsError={hintsRead.snapshot.error}
-            key={`${attempt.id}:${suiteScope?.id ?? ""}:${caseScope?.caseId ?? ""}`}
+            key={binding}
+            onPage={(caseId) => setPosition({ binding, caseId })}
+            position={moved}
             scope={failures}
             testRunId={attempt.id}
           />
-          <MarkRouteSlot
+          <MarkRoutePanel
+            classifications={onScreen?.classifications ?? []}
+            classify={classify}
+            from={origin.id}
+            hints={hintsRead.snapshot.data}
+            // Not the attempt's id alone: the artifacts card beside it is keyed by that.
+            key={`route:${attempt.id}`}
+            mayClassify={mayContribute}
+            mayWaive={mayWaive}
+            next={timeline.next}
+            nextAttempt={nextAttempt}
+            onDecided={() => {
+              pageRead.refresh();
+              timelineRead.refresh();
+            }}
+            onPick={pickStaged}
+            onStored={timelineRead.refresh}
+            openable={openable}
+            people={people}
+            readerId={readerId}
             ref={slot}
+            runId={runId}
+            setIntent={setIntent}
             staged={staged !== null && staged.testRunId === attempt.id ? staged : null}
+            target={bound}
+            testRunId={attempt.id}
+            waive={waive}
           />
           <ArtifactsCard
             key={attempt.id}

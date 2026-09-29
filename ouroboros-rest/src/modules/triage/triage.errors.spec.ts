@@ -5,6 +5,7 @@ import {
   TRIAGE_ERRORS,
   classificationNoteRequired,
   classificationToggleInvalid,
+  prIntentsEmpty,
   rerunNothingSelected,
   rerunSourceMissing,
   testCaseNotFailing,
@@ -45,6 +46,7 @@ describe("the statuses", () => {
     [rerunNothingSelected("t", "failed"), 409, "rerun_nothing_selected"],
     [rerunSourceMissing("t"), 409, "rerun_source_missing"],
     [waiverCasesInvalid(["c"]), 422, "waiver_cases_invalid"],
+    [prIntentsEmpty(), 422, "pr_intents_empty"],
   ])("%# answers %i %s", (error, status, code) => {
     expect(error.getStatus()).toBe(status);
     expect(error.code).toBe(code);
