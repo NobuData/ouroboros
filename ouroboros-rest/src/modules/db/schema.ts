@@ -3646,6 +3646,14 @@ export interface WorkflowsTable {
   current_version: number | null;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * The workflow template this workflow was instantiated from — `quick-fixes` (V068,
+   * [#381](https://github.com/NobuData/ouroboros/issues/381)). Null for a workflow made from
+   * scratch. A label rather than a foreign key, set together with `template_version` or not at all.
+   */
+  template_slug: string | null;
+  /** The template version copied at instantiation — the `3` of `quick-fixes@v3`. Null with `template_slug`. */
+  template_version: number | null;
 }
 
 /**
@@ -5902,6 +5910,8 @@ export const TABLE_COLUMNS = {
     "current_version",
     "created_at",
     "updated_at",
+    "template_slug",
+    "template_version",
   ],
   workflow_versions: [
     "id",

@@ -402,6 +402,10 @@ jobs:
       # ajv's over the committed schema, compiled the way ouroboros-rest's conformance suite
       # compiles it — which is why this step, like the BetterAuth check, leans on the workspace
       # installed at the top of the job. It adds about a second.
+      #
+      # BA.2 (#381): the same query also emits every shipped workflow template (V068's global
+      # rows, as `template/<slug>`), so a DSL change that would break an onboarding tile fails
+      # here rather than on the onboarding screen.
       - name: Assert every seeded workflow definition still validates against the DSL schema
         run: |
           docker run --rm --network=host \

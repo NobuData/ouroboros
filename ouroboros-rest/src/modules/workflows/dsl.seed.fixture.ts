@@ -19,6 +19,10 @@
  * `route.task` names against them, so the suites that pin what a development workspace shows need
  * the matrix `R__dev_seed_routing.sql` writes, not a copy of it.
  *
+ * **And the shipped workflow templates** (BA.2, [#381](https://github.com/NobuData/ouroboros/issues/381)):
+ * `V068__workflow_templates.sql` writes the four onboarding tiles' definitions the same way, and
+ * `dsl.templates.spec.ts` holds them to the same validator.
+ *
  * `*.fixture.ts` is left out of the build, so none of this ships.
  */
 
@@ -53,6 +57,27 @@ export const SEED_DOCUMENT_TAGS = [
   ["hotfix_p0_v1", "hotfix-p0, the paused loop behind the rail's err-dot", "hotfix-p0"],
 ] as const;
 
+/** The migration that ships the onboarding workflow templates (#381). */
+export const TEMPLATES_PATH = resolve(
+  __dirname,
+  "../../../../ouroboros-db/migrations/V068__workflow_templates.sql",
+);
+
+/**
+ * The dollar-quoted tag each shipped template definition is written under, what the tile
+ * promises, and the template slug it belongs to. Named for `SEED_DOCUMENT_TAGS`' reason.
+ */
+export const TEMPLATE_DOCUMENT_TAGS = [
+  ["quick_fixes_v1", "Quick fixes — small bugs and cleanups, fully hands-off", "quick-fixes"],
+  [
+    "feature_builder_v1",
+    "Feature builder — plans bigger changes, asks before merging",
+    "feature-builder",
+  ],
+  ["docs_chores_v1", "Docs & chores — on your cheapest model", "docs-chores"],
+  ["deep_refactor_v1", "Deep refactor — the locked, advanced tile", "deep-refactor"],
+] as const;
+
 /** The seed's text, once read. */
 let seed: string | undefined;
 
@@ -79,7 +104,32 @@ export function seedText(): string {
  *   catch and is more useful raised at the file than reported as an invalid document.
  */
 export function seededDocuments(tag: string): unknown[] {
-  const pieces = seedText().split(`$${tag}$`);
+  return dollarQuotedDocuments(seedText(), tag);
+}
+
+/**
+ * Every shipped template definition written under one dollar-quoted tag in
+ * `V068__workflow_templates.sql`, parsed.
+ *
+ * @param tag - The tag, without its dollar signs.
+ * @returns One parsed document per block, in file order.
+ * @throws {SyntaxError} When a block is not JSON.
+ */
+export function templateDocuments(tag: string): unknown[] {
+  return dollarQuotedDocuments(readFileSync(TEMPLATES_PATH, "utf8"), tag);
+}
+
+/**
+ * Every document written under one dollar-quoted tag in some SQL text, parsed. A tag opens and
+ * closes each block, so the odd-indexed pieces of a split on it are the bodies.
+ *
+ * @param sql - The migration's text.
+ * @param tag - The tag, without its dollar signs.
+ * @returns One parsed document per block, in file order; empty when the tag is absent.
+ * @throws {SyntaxError} When a block is not JSON.
+ */
+function dollarQuotedDocuments(sql: string, tag: string): unknown[] {
+  const pieces = sql.split(`$${tag}$`);
   const bodies: string[] = [];
   for (let index = 1; index < pieces.length; index += 2) bodies.push(pieces[index]);
 
