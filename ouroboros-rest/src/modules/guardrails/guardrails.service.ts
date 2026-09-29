@@ -8,6 +8,7 @@
  *
  * ```
  * change-set report (AP.1) ──▶ read: run → pin → stage permissions · plan files · vote rules
+ *                                     · protected paths (#380)
  *                           ──▶ judge: allowed_paths · ci_config · secrets · review_required
  *                           ──▶ append four rows to guardrail_evaluations (never update)
  *                           ──▶ answer: {checks: 4, failures: [...]}  → needsHuman on the report
@@ -103,6 +104,7 @@ export class GuardrailService implements GuardrailScheduler {
     const stages = await this.repository.reportedStages(writer, request.runId);
     const ticket = await this.repository.ticketFacts(writer, run);
     const rules = await this.repository.enabledRules(writer, run.organizationId);
+    const protectedPaths = await this.repository.protectedPaths(writer, run);
 
     const started = performance.now();
     const effort = asQueueEffort(ticket.effort);
@@ -116,6 +118,7 @@ export class GuardrailService implements GuardrailScheduler {
       files: request.changeSet,
       ...(ticket.planFiles === undefined ? {} : { planFiles: ticket.planFiles }),
       ...(permissions === undefined ? {} : { permissions }),
+      protectedPaths,
       ...(review === undefined ? {} : { review }),
     });
     const elapsed = performance.now() - started;

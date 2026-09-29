@@ -5221,6 +5221,27 @@ export interface FlakeScorerRunsTable {
   error: string | null;
 }
 
+/** `protected_path_policies.source` (V067) — who wrote the glob. */
+export type ProtectedPathSource = "suggested" | "edited";
+
+/**
+ * `ouroboros.protected_path_policies` — the globs a change may not touch, per repository (V067,
+ * [#380](https://github.com/NobuData/ouroboros/issues/380)). Suggested by repo detection, owned by
+ * a person once `edited` (an edited row never returns to `suggested`). AP.3's `allowed_paths`
+ * check reads them: a change-set path matching one fails the check.
+ */
+export interface ProtectedPathPoliciesTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** The repository as `owner/name` — for GitHub, `github_orgs.login/github_repos.name`. */
+  repo_ref: string;
+  /** The glob, in AP.3's grammar (`boot/**`), relative to the repository root. */
+  path_glob: string;
+  source: ColumnType<ProtectedPathSource, ProtectedPathSource | undefined, ProtectedPathSource>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
 /**
  * `ouroboros.build_job_artifact_uploads` — the job-scoped upload's token ledger while open, and its
  * receipt once closed (V060, [#330](https://github.com/NobuData/ouroboros/issues/330)): the attempt
@@ -5343,6 +5364,7 @@ export interface Database {
   flake_score_formulas: FlakeScoreFormulasTable;
   flake_scores: FlakeScoresTable;
   flake_scorer_runs: FlakeScorerRunsTable;
+  protected_path_policies: ProtectedPathPoliciesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6307,6 +6329,15 @@ export const TABLE_COLUMNS = {
     "cases_scored",
     "state_changes",
     "error",
+  ],
+  protected_path_policies: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "path_glob",
+    "source",
+    "created_at",
+    "updated_at",
   ],
   planning_epic_progress: [
     "epic_id",

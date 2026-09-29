@@ -163,6 +163,45 @@ export class GuardrailsRepository {
   }
 
   /**
+   * The run's repository's protected paths (V067,
+   * [#380](https://github.com/NobuData/ouroboros/issues/380) — the #305 amendment: protected
+   * paths join allowed-path evaluation).
+   *
+   * `protected_path_policies` names a repository as `owner/name`, so the run's `github_repo_id`
+   * is first resolved to `github_orgs.login/github_repos.name` — inside the run's workspace, so a
+   * mirror of the same repository elsewhere is never read — and the globs are then read for that
+   * ref, again inside the run's workspace.
+   *
+   * @param writer - The transaction.
+   * @param run - The run's policy row.
+   * @returns The globs, sorted, or an empty list when the repository is not enabled in this
+   *   workspace or protects nothing.
+   */
+  async protectedPaths(writer: Writer, run: RunPolicyRow): Promise<string[]> {
+    const repo = await writer
+      .selectFrom("github_repos")
+      .innerJoin("github_orgs", "github_orgs.id", "github_repos.org_id")
+      .select(["github_orgs.login", "github_repos.name"])
+      .where("github_repos.id", "=", run.githubRepoId)
+      .where("github_orgs.organization_id", "=", run.organizationId)
+      .executeTakeFirst();
+
+    if (repo === undefined) {
+      return [];
+    }
+
+    const rows = await writer
+      .selectFrom("protected_path_policies")
+      .select("path_glob")
+      .where("organization_id", "=", run.organizationId)
+      .where("repo_ref", "=", `${repo.login}/${repo.name}`)
+      .orderBy("path_glob")
+      .execute();
+
+    return rows.map((row) => row.path_glob);
+  }
+
+  /**
    * The workspace's enabled escalation rules.
    *
    * @param writer - The transaction.

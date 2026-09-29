@@ -93,6 +93,28 @@ describe("the guardrails repository", () => {
     expect(await repository.ticketFacts(database.service.db, POLICY)).toEqual({ labels: [] });
   });
 
+  it("reads the run's repository's protected paths as owner/name, inside its workspace", async () => {
+    database.answers(
+      { rows: [{ login: "acme-robotics", name: "helios-firmware" }] },
+      { rows: [{ path_glob: "boot/**" }, { path_glob: "keys/**" }] },
+    );
+
+    expect(await repository.protectedPaths(database.service.db, POLICY)).toEqual([
+      "boot/**",
+      "keys/**",
+    ]);
+    expect(database.statements[0].sql).toContain('"github_orgs"."organization_id" = $2');
+    expect(database.statements[0].parameters).toEqual([POLICY.githubRepoId, ORG]);
+    expect(database.statements[1].sql).toContain('from "ouroboros"."protected_path_policies"');
+    expect(database.statements[1].sql).toContain('order by "path_glob"');
+    expect(database.statements[1].parameters).toEqual([ORG, "acme-robotics/helios-firmware"]);
+  });
+
+  it("protects nothing for a repository not enabled in the run's workspace", async () => {
+    expect(await repository.protectedPaths(database.service.db, POLICY)).toEqual([]);
+    expect(database.statements).toHaveLength(1);
+  });
+
   it("reads only the workspace's enabled rules, in order", async () => {
     await repository.enabledRules(database.service.db, ORG);
 

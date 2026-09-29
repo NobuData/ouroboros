@@ -31,6 +31,7 @@ function stubRepository(
     stages?: string[];
     ticket?: TicketFacts;
     rules?: Awaited<ReturnType<GuardrailsRepository["enabledRules"]>>;
+    protectedPaths?: string[];
   } = {},
 ) {
   const appended: { policyRef: number | null; verdicts: readonly GuardrailVerdictRow[] }[] = [];
@@ -50,6 +51,9 @@ function stubRepository(
       ),
     ),
     enabledRules: jest.fn(() => Promise.resolve(overrides.rules ?? [])),
+    protectedPaths: jest.fn((_writer: unknown, _run: RunPolicyRow) =>
+      Promise.resolve(overrides.protectedPaths ?? []),
+    ),
     appendVerdicts: jest.fn(
       (
         _writer: unknown,
@@ -112,6 +116,7 @@ describe("GuardrailService", () => {
       spy.runPolicy,
       spy.pinnedDefinition,
       spy.reportedStages,
+      spy.protectedPaths,
       spy.appendVerdicts,
     ]) {
       expect(method.mock.calls[0][0]).toBe(writer);
@@ -169,6 +174,26 @@ describe("GuardrailService", () => {
     const outcome = await new GuardrailService(repository).evaluate(writer, CLEAN);
 
     expect(outcome.failures).toEqual(["review_required"]);
+  });
+
+  it("fails allowed_paths when the change touches the repository's protected path (#380)", async () => {
+    const { repository, appended, spy } = stubRepository({
+      ticket: { labels: [], planFiles: ["keys/signing.pem"], effort: "s" },
+      protectedPaths: ["boot/**", "keys/**"],
+    });
+
+    const outcome = await new GuardrailService(repository).evaluate(
+      writer,
+      request([{ path: "keys/signing.pem" }]),
+    );
+
+    expect(spy.protectedPaths.mock.calls[0][1]).toBe(POLICY);
+    expect(outcome.failures).toEqual(["allowed_paths"]);
+    expect(appended[0].verdicts[0].evidence).toEqual({
+      path: "keys/signing.pem",
+      glob: "keys/**",
+      detail: "1 path inside a protected path.",
+    });
   });
 
   it("answers honestly when the pin cannot be found", async () => {

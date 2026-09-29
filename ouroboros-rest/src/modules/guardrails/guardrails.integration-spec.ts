@@ -139,6 +139,28 @@ describe("guardrail evaluation", () => {
     return bench;
   }
 
+  /**
+   * Protect paths of the bench's repository, as the onboarding wizard would (V067, #380).
+   *
+   * The repository is named the way `protected_path_policies` names it — `owner/name`, read from
+   * the bench's own `github_orgs` and `github_repos` rows rather than spelled here.
+   *
+   * @param bench - The bench whose repository to protect.
+   * @param globs - The protected globs.
+   */
+  async function protect(bench: IngestBench, globs: readonly string[]): Promise<void> {
+    for (const glob of globs) {
+      await api.sql.query(
+        `insert into ${SCHEMA_NAME}.protected_path_policies (organization_id, repo_ref, path_glob)
+         select $1, o.login || '/' || r.name, $3
+           from ${SCHEMA_NAME}.github_repos r
+           join ${SCHEMA_NAME}.github_orgs o on o.id = r.org_id
+          where r.id = $2`,
+        [bench.workspace.id, bench.workspace.repoId, glob],
+      );
+    }
+  }
+
   /** Open a run and move it into `implement`, whose `touch_ci` is false. */
   async function implementingRun(bench: IngestBench): Promise<string> {
     const run = bodyOf<RunOpenedResource>(
@@ -372,7 +394,9 @@ describe("guardrail evaluation", () => {
     it.each(cells.map((cell) => [cell.check, cell.verdict, cell.because, cell] as const))(
       "%s → %s when %s",
       async (check, verdict, _because, cell) => {
-        const run = await implementingRun(await plannedBench(cell.input.planFiles ?? []));
+        const bench = await plannedBench(cell.input.planFiles ?? []);
+        await protect(bench, cell.input.protectedPaths ?? []);
+        const run = await implementingRun(bench);
 
         const answer = await report(run, "files-1", asReport(cell.input));
         const card = await latest(run);
@@ -386,6 +410,27 @@ describe("guardrail evaluation", () => {
         }
       },
     );
+  });
+
+  it("fails allowed_paths on a protected path the wizard stored, even inside the plan (#380)", async () => {
+    const bench = await plannedBench(["boot/mcuboot.conf"]);
+    await protect(bench, ["boot/**", "keys/**"]);
+    const run = await implementingRun(bench);
+
+    const answer = await report(run, "files-1", [
+      { path: "boot/mcuboot.conf", status: "modified", additions: 1 },
+    ]);
+    const card = await latest(run);
+
+    expect(answer.guardrailFailures).toContain("allowed_paths");
+    expect(card.allowed_paths).toEqual({
+      verdict: "fail",
+      evidence: {
+        path: "boot/mcuboot.conf",
+        glob: "boot/**",
+        detail: "1 path inside a protected path.",
+      },
+    });
   });
 
   it("stores no credential of any format, however many times one is reported (AP.6)", async () => {
