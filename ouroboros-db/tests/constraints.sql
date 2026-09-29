@@ -22999,7 +22999,8 @@ select pg_temp.must_hold(
   (select array_agg(column_name::text order by column_name::text)
      from information_schema.columns
     where table_schema = 'ouroboros' and table_name = 'onboarding_state')
-  = array['completed_at', 'created_at', 'dismissed', 'id', 'organization_id',
+  -- bypassed_at is V070's (#385): the import-skip, a choice rather than a step status.
+  = array['bypassed_at', 'completed_at', 'created_at', 'dismissed', 'id', 'organization_id',
           'picked_ticket_id', 'repo_ref', 'selected_template', 'updated_at'],
   'onboarding_state has exactly its wizard-owned columns and no step-status column (O1)');
 
@@ -23962,6 +23963,33 @@ delete from ouroboros.organization where "id" in ('org-v069', 'org-v069-other');
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.skills where organization_id like 'org-v069%'),
   'a deleted workspace takes its skills');
+
+-- ===========================================================================
+-- V070 — the onboarding import-skip (#385, BB.2)
+-- ===========================================================================
+--
+-- The skip hook records a bypass as its own fact, distinct from a dismissal, and a bypass
+-- cannot predate the wizard state it marks.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v070', 'Acme Robotics', 'acme-robotics-v070', now());
+
+insert into ouroboros.onboarding_state (id, organization_id, repo_ref) values
+  ('a7000000-0000-0000-0000-000000000001', 'org-v070', 'acme-robotics/helios-firmware');
+
+update ouroboros.onboarding_state set bypassed_at = now()
+ where id = 'a7000000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select bypassed_at is not null and not dismissed and completed_at is null
+     from ouroboros.onboarding_state where id = 'a7000000-0000-0000-0000-000000000001'),
+  'a bypass is recorded without dismissing or completing the wizard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.onboarding_state set bypassed_at = created_at - interval '1 second'
+     where id = 'a7000000-0000-0000-0000-000000000001'$$,
+  'a bypass cannot predate the wizard state', 'onboarding_state_bypassed_after_created');
+
+delete from ouroboros.organization where "id" = 'org-v070';
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

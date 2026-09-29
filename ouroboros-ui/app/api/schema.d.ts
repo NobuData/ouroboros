@@ -1563,6 +1563,119 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Get Started wizard for one repository
+         * @description Mockup 13's step rail, choices and card references in one round trip
+         *     ([#385](https://github.com/NobuData/ouroboros/issues/385), BB.2).
+         *
+         *     **Every step is derived, never stored** (decision **O1**). Each step state is a
+         *     question put to the subsystem that owns the answer: step 1 to the sources plane (an
+         *     `active` GitHub source whose config covers the repository), step 2 to tenancy (the
+         *     repository and its account enabled), step 3 to the workflow plane (a workflow
+         *     instantiated from the picked template, V068 provenance), step 4 to intake (the picked
+         *     issue queued or run). A done step carries the `evidence` line the rail prints; a step
+         *     that is not done carries the `reason` the action bar prints.
+         *
+         *     **Regression is visible on the next read.** A step that is not done but was — a later
+         *     step is done, the wizard was completed, or the subsystem holds its thing broken, such
+         *     as a paused or failing source — is `todo` with `regressed: true` and a reason, with no
+         *     wizard write in between.
+         *
+         *     **Per repository.** `?repo=owner/name` names the wizard; a second repository re-enters
+         *     with independent state. Compared case-insensitively. A repository nobody has onboarded
+         *     reads as no choices and a derived rail — never a `404`.
+         *
+         *     **`surfacing` is the fresh-org rule**: `offer` is true when the workspace has never had
+         *     a run and no repository's wizard in it has been completed, dismissed or bypassed. It
+         *     governs routing into `/get-started` only; this operation answers for any repository.
+         *
+         *     **Any member may read it**, viewers included.
+         */
+        get: operations["readOnboarding"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the wizard's choices
+         * @description The template pick, the issue pick and dismissal — the only things the wizard stores,
+         *     per repository, so they survive sessions, devices and tabs. Send what changed; `null`
+         *     clears a pick. The answer is the whole surface, re-derived.
+         *
+         *     **Anyone can dismiss.** A body carrying only `dismissed` is open to every member,
+         *     viewers included, and dismissal sticks: it counts as a finished wizard for the
+         *     surfacing rule. Picking a template or a ticket needs `owner`, `admin` or `member`.
+         *
+         *     Picking a template does not complete step 3 — only a real workflow instantiated from
+         *     it does.
+         */
+        patch: operations["patchOnboarding"];
+        trace?: never;
+    };
+    "/api/v1/onboarding/complete-step": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Complete a wizard step, guarded
+         * @description The action bar's primary button. **Refused unless the step — and every step before it —
+         *     is done in reality**, re-derived at the moment of asking, so "Continue" on step 3 is
+         *     impossible without a real instantiated workflow and step 4 without a queued run.
+         *
+         *     Steps 1–3 write nothing: their state is derived, and completing one is the guard
+         *     answering yes. Step 4 stamps `choices.completedAt` once; a repeat keeps the first time.
+         *
+         *     `owner`, `admin` or `member`.
+         */
+        post: operations["completeOnboardingStep"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/skip": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * I've done this before — skip the wizard
+         * @description The corner link *"I've done this before — import config ↗"*. Marks this repository's
+         *     wizard **bypassed** (`choices.bypassedAt`, the first bypass stands) and answers the
+         *     settings surface to route to.
+         *
+         *     **It imports nothing, and says so**: `configurationImported` is `false`. The bundle
+         *     import behind this link is BD.3 ([#398](https://github.com/NobuData/ouroboros/issues/398)).
+         *     A bypass is distinct from a dismissal, and both count as a finished wizard for the
+         *     surfacing rule.
+         *
+         *     `owner`, `admin` or `member`.
+         */
+        post: operations["skipOnboarding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/auto-merge": {
         parameters: {
             query?: never;
@@ -9771,6 +9884,173 @@ export interface components {
             activity: components["schemas"]["DashboardActivity"];
         };
         /**
+         * Onboarding
+         * @description The Get Started wizard for one repository
+         *     ([#385](https://github.com/NobuData/ouroboros/issues/385)): `steps` derived from the
+         *     subsystems that own them (decision **O1**), `choices` — all the wizard stores — and
+         *     `refs` to the cards' payloads.
+         */
+        Onboarding: {
+            /** @description The repository, `owner/name`, lower-case. */
+            repo: string;
+            /** @description Steps 1–4, in rail order. */
+            steps: components["schemas"]["OnboardingStep"][];
+            /**
+             * @description The first step that is not done — the action bar's `Step 3 of 4` — or null when
+             *     every step is done.
+             */
+            currentStep: number | null;
+            choices: components["schemas"]["OnboardingChoices"];
+            refs: components["schemas"]["OnboardingRefs"];
+            surfacing: components["schemas"]["OnboardingSurfacing"];
+        };
+        /**
+         * OnboardingStep
+         * @description One step of the rail, derived on read.
+         */
+        OnboardingStep: {
+            step: number;
+            /** @enum {string} */
+            key: "connect_github" | "pick_repo" | "choose_workflow" | "first_loop";
+            /** @description The name the rail prints — `Connect GitHub`. */
+            title: string;
+            /**
+             * @description `done` — the owning subsystem says so. `active` — the first step not done, when it
+             *     has not regressed. `todo` — any other step not done, regressed ones included.
+             * @enum {string}
+             */
+            status: "done" | "active" | "todo";
+            /**
+             * @description The result line of a done step — `acme-robotics · token`. Step 1 says "GitHub App
+             *     installed" only when the account records an installation (INTAKE-O.1), else
+             *     "token". Null when not done.
+             */
+            evidence: string | null;
+            /** @description Why the step is not done — the action bar's stated reason. Null when done. */
+            reason: string | null;
+            /**
+             * @description True when the step is not done but was — a later step is done, the wizard was
+             *     completed, or its subsystem holds the thing broken (a paused or failing source).
+             */
+            regressed: boolean;
+            /**
+             * @description The subsystem the state was read from.
+             * @enum {string}
+             */
+            derivedFrom: "sources" | "tenancy" | "workflows" | "intake";
+        };
+        /**
+         * OnboardingChoices
+         * @description What the wizard stores — and all it stores. No step status is among these.
+         */
+        OnboardingChoices: {
+            /** @description The template slug picked in step 3. */
+            selectedTemplate: string | null;
+            /**
+             * Format: uuid
+             * @description The canonical ticket picked for the first run.
+             */
+            pickedTicketId: string | null;
+            dismissed: boolean;
+            /**
+             * Format: date-time
+             * @description When step 4 was completed through the guard.
+             */
+            completedAt: string | null;
+            /**
+             * Format: date-time
+             * @description When the import-skip was taken.
+             */
+            bypassedAt: string | null;
+        };
+        /**
+         * OnboardingRefs
+         * @description References to the cards' payloads, so the page composes in one round trip.
+         */
+        OnboardingRefs: {
+            /** @description The newest detection scan of the repository, or null when never scanned. */
+            detectionScan: null | {
+                scanSeq: number;
+                /** Format: date-time */
+                scannedAt: string;
+                durationMs: number;
+            };
+            /** @description The template tiles this workspace is offered, in tile order. */
+            templates: {
+                slug: string;
+                version: number;
+                /** @enum {string} */
+                tier: "starter" | "advanced";
+                /**
+                 * @description A shipped template, or this workspace's override of one.
+                 * @enum {string}
+                 */
+                scope: "global" | "organization";
+            }[];
+            /** @description The picked ticket, or null. */
+            pickedTicket: null | {
+                /** Format: uuid */
+                id: string;
+                /** @description `#488`, `HEL-142`. */
+                externalKey: string;
+                title: string;
+                /** @description The ticket source's kind — `github`, `jira`, … */
+                source: string;
+            };
+        };
+        /**
+         * OnboardingSurfacing
+         * @description Whether the app should route this workspace to `/get-started` — the fresh-org rule,
+         *     decided once on the server.
+         */
+        OnboardingSurfacing: {
+            offer: boolean;
+            /**
+             * @description `wizard_finished` — some repository's wizard was completed, dismissed or bypassed;
+             *     `organization_has_runs` — the workspace has had a run; `fresh_organization` —
+             *     neither, so the wizard is offered.
+             * @enum {string}
+             */
+            reason: "fresh_organization" | "organization_has_runs" | "wizard_finished";
+        };
+        /**
+         * OnboardingPatch
+         * @description The body of `PATCH /api/v1/onboarding`. Send what changed; `null` clears a pick.
+         */
+        OnboardingPatch: {
+            /** @description A template slug this workspace is offered. */
+            selectedTemplate?: string | null;
+            /**
+             * Format: uuid
+             * @description A canonical ticket of this workspace.
+             */
+            pickedTicketId?: string | null;
+            /** @description Stop (or resume) showing the wizard. Open to every member. */
+            dismissed?: boolean;
+        };
+        /**
+         * OnboardingCompleteStep
+         * @description The body of `POST /api/v1/onboarding/complete-step`.
+         */
+        OnboardingCompleteStep: {
+            step: number;
+        };
+        /**
+         * OnboardingSkip
+         * @description What the import-skip answers: the wizard marked bypassed, where to go, and the honest
+         *     flag that nothing was imported (BD.3, [#398](https://github.com/NobuData/ouroboros/issues/398)).
+         */
+        OnboardingSkip: {
+            onboarding: components["schemas"]["Onboarding"];
+            /** @description The settings surface to route to — `/settings`. */
+            settingsPath: string;
+            /**
+             * @description Always `false` until the bundle import lands.
+             * @constant
+             */
+            configurationImported: false;
+        };
+        /**
          * AutoMergeSetting
          * @description The position of the **Auto-merge when checks pass** switch, with its attribution —
          *     what both operations on `/api/v1/settings/auto-merge` answer.
@@ -16932,6 +17212,13 @@ export interface components {
          */
         AuthProviderId: string;
         /**
+         * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+         *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+         *     compared case-insensitively. Each repository has its own, independent wizard.
+         * @example acme-robotics/helios-firmware
+         */
+        OnboardingRepo: string;
+        /**
          * @description The workspace this request is operating in — its slug or its uuid.
          *
          *     **An override, not the answer.** Since
@@ -22249,6 +22536,680 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readOnboarding: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The wizard for the repository. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "steps": [
+                     *         {
+                     *           "step": 1,
+                     *           "key": "connect_github",
+                     *           "title": "Connect GitHub",
+                     *           "status": "done",
+                     *           "evidence": "acme-robotics · token",
+                     *           "reason": null,
+                     *           "regressed": false,
+                     *           "derivedFrom": "sources"
+                     *         },
+                     *         {
+                     *           "step": 2,
+                     *           "key": "pick_repo",
+                     *           "title": "Pick a repo",
+                     *           "status": "done",
+                     *           "evidence": "helios-firmware · auto-detected below",
+                     *           "reason": null,
+                     *           "regressed": false,
+                     *           "derivedFrom": "tenancy"
+                     *         },
+                     *         {
+                     *           "step": 3,
+                     *           "key": "choose_workflow",
+                     *           "title": "Choose a starting workflow",
+                     *           "status": "active",
+                     *           "evidence": null,
+                     *           "reason": "No workflow has been created from the quick-fixes template yet.",
+                     *           "regressed": false,
+                     *           "derivedFrom": "workflows"
+                     *         },
+                     *         {
+                     *           "step": 4,
+                     *           "key": "first_loop",
+                     *           "title": "Run your first loop",
+                     *           "status": "todo",
+                     *           "evidence": null,
+                     *           "reason": "No first issue has been picked yet.",
+                     *           "regressed": false,
+                     *           "derivedFrom": "intake"
+                     *         }
+                     *       ],
+                     *       "currentStep": 3,
+                     *       "choices": {
+                     *         "selectedTemplate": "quick-fixes",
+                     *         "pickedTicketId": null,
+                     *         "dismissed": false,
+                     *         "completedAt": null,
+                     *         "bypassedAt": null
+                     *       },
+                     *       "refs": {
+                     *         "detectionScan": {
+                     *           "scanSeq": 1,
+                     *           "scannedAt": "2026-09-29T09:00:00.000Z",
+                     *           "durationMs": 38000
+                     *         },
+                     *         "templates": [
+                     *           {
+                     *             "slug": "quick-fixes",
+                     *             "version": 1,
+                     *             "tier": "starter",
+                     *             "scope": "global"
+                     *           },
+                     *           {
+                     *             "slug": "feature-builder",
+                     *             "version": 1,
+                     *             "tier": "starter",
+                     *             "scope": "global"
+                     *           },
+                     *           {
+                     *             "slug": "docs-chores",
+                     *             "version": 1,
+                     *             "tier": "starter",
+                     *             "scope": "global"
+                     *           },
+                     *           {
+                     *             "slug": "deep-refactor",
+                     *             "version": 1,
+                     *             "tier": "advanced",
+                     *             "scope": "global"
+                     *           }
+                     *         ],
+                     *         "pickedTicket": null
+                     *       },
+                     *       "surfacing": {
+                     *         "offer": true,
+                     *         "reason": "fresh_organization"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Onboarding"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
+             *     entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchOnboarding: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "selectedTemplate": "quick-fixes"
+                 *     }
+                 */
+                "application/json": components["schemas"]["OnboardingPatch"];
+            };
+        };
+        responses: {
+            /** @description The wizard after the write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Onboarding"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `viewer` picked a template or a ticket. Picks are `owner`, `admin` or `member`;
+             *     dismissing is open to every member. `details.role` is what you hold and `details.required` is what
+             *     would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `onboarding_ticket_not_found` — `pickedTicketId` names no ticket of this workspace;
+             *     another workspace's ticket is the same answer.
+             *
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo`, `selectedTemplate`, `pickedTicketId` or `dismissed` is
+             *     malformed; `details` is keyed by the field. `onboarding_template_unknown` —
+             *     `selectedTemplate` is not a template this workspace is offered; `details.offered` lists
+             *     the ones that are.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    completeOnboardingStep: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "step": 3
+                 *     }
+                 */
+                "application/json": components["schemas"]["OnboardingCompleteStep"];
+            };
+        };
+        responses: {
+            /** @description The guard passed; the wizard as it now stands. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Onboarding"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `viewer` cannot complete a step. `details.role` is what you hold and `details.required` is what
+             *     would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `onboarding_step_incomplete` — the guard refused. `message` is the blocking step's
+             *     stated reason, the sentence the action bar renders; `details.step` is the step asked
+             *     for, `details.blockingStep` the first step not done, `details.reason` the reason.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "onboarding_step_incomplete",
+                     *       "message": "No workflow has been created from the quick-fixes template yet.",
+                     *       "details": {
+                     *         "step": 3,
+                     *         "blockingStep": 3,
+                     *         "reason": "No workflow has been created from the quick-fixes template yet."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is malformed, or `step` is not 1 to 4. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    skipOnboarding: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The wizard marked bypassed, and where to go. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingSkip"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `viewer` cannot bypass the wizard. `details.role` is what you hold and `details.required` is what
+             *     would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
+             *     entry keyed by the field.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;

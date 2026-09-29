@@ -384,7 +384,7 @@ seeds: steps 1–2 ✓ (derived) · scan(6 rows, 38s, detected) · quick-fixes s
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BB.1 | #384 | 🟡 Open | ouroboros-rest: [BB.1] Repo detection service (rule packs) | Probe-based detectors over the provider SPI; six MVP rows | mvp, onboarding, rest | N (after BA.1, WF-Q.3) | Y | L | ouroboros-rest |
-| BB.2 | #385 | 🟡 Open | ouroboros-rest: [BB.2] Wizard orchestration API | Derived steps, resume, choices, completion; import-skip hook | mvp, onboarding, rest | N (after BA.1) | Y | M | ouroboros-rest |
+| BB.2 | #385 ✅ | 🟢 Done | ouroboros-rest: [BB.2] Wizard orchestration API | Derived steps, resume, choices, completion; import-skip hook | mvp, onboarding, rest | N (after BA.1) | Y | M | ouroboros-rest |
 | BB.3 | #386 | 🟡 Open | ouroboros-rest: [BB.3] Template instantiation service | Tiles payload, unlock evaluation, create-from-template (WF-T.5) | mvp, onboarding, workflow, rest | N (after BA.2, WF-P.3) | Y | M | ouroboros-rest |
 | BB.4 | #387 | 🟡 Open | ouroboros-rest: [BB.4] Safe-first-issue picker | Deterministic scoring with rendered reasoning (O5) | mvp, onboarding, intake, rest | N (after INTAKE-L.3) | Y | M | ouroboros-rest |
 | BB.5 | #388 | 🟡 Open | ouroboros-rest: [BB.5] First-run launcher & smart defaults | Queue+pin+dry-run launch; deployment-aware defaults payload | mvp, onboarding, rest | N (after BB.2–BB.4, BA.3) | Y | M | ouroboros-rest |
@@ -429,7 +429,7 @@ scan(helios-firmware): languages ─▶ C 92% · probes {west.yml ✓, .devconta
 
 ### Issue BB.2 — ouroboros-rest: [BB.2] Wizard orchestration API
 
-> **GitHub issue:** #385 · **Status:** 🟡 Open · **Parent epic:** #377
+> **GitHub issue:** #385 ✅ · **Status:** 🟢 Done · **Parent epic:** #377
 
 
 - **Problem Statement:** The rail's truth-derived steps, resumable
