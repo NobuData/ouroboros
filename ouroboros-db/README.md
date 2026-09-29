@@ -984,6 +984,15 @@
 > `source_run_id` that is set null when the run is deleted. `runs.playbook_id` and
 > `queue_items.playbook_id` record launches; *run 9×* is `count(*)` of runs carrying the id —
 > there is no count column. `runs_with_stage` carries `playbook_id` too.
+>
+> `V073` ([#408](https://github.com/NobuData/ouroboros/issues/408)) adds `env_recipes` — the
+> Repo Profile card's **Environment** block (decision **K7**): a repository's ordered setup
+> commands (`[{command, comment?}, …]`, typed by `env_recipe_commands_typed`), one immutable row
+> per version, dense from 1 per `(organization_id, repo_ref)`. `source` is `detected` (seeded by
+> BB.1's packs, unattributed) or `edited` (a person's, with `updated_by`), and a detected version
+> cannot follow an edited one. `env_recipes_current` is the read path for the card and the three
+> consumers the migration header names — farm container-pool setup, BD.4 prebuilds (#399) and
+> AR.1 workspace prep (#315). Snapshot state and boot times are BD.4's, not stored here.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -2223,6 +2232,7 @@ ouroboros-db/
 │   ├── V070__onboarding_bypass.sql          # onboarding_state.bypassed_at (the import-skip, distinct from dismissed) — #385
 │   ├── V071__facts_injections.sql           # facts (K3 lifecycle by trigger, typed provenance, expiry snapshot, re-learn lineage), fact_anchors, fact_transitions (audit), context_injections (append-only usage record) — #406
 │   ├── V072__playbooks.sql                  # playbooks (pinned workflow version, typed skill overrides / context preset / issue filter, source run provenance), runs.playbook_id + queue_items.playbook_id; no count column — #407
+│   ├── V073__env_recipes.sql                # env_recipes (ordered {command, comment?} setup commands per repo, immutable dense versions, detected|edited), env_recipes_current; no snapshot fields — #408
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2377,6 +2387,7 @@ outside this module alters it.
 | `fact_anchors` | `V071` | Why a fact can expire ([#406](https://github.com/NobuData/ouroboros/issues/406), **K4**) — `kind`, `value`, `last_checked_at` | `kind` is `path_glob\|dependency\|platform_version`; `(fact_id, kind, value)` unique; a `path_glob` is relative with no `..`; indexed `(kind, value)` for the staleness sweep, with `path_glob_matches(glob, path)` for a changed path set; a fact with none is never flagged |
 | `context_injections` | `V071` | What context assembly actually injected ([#406](https://github.com/NobuData/ouroboros/issues/406)) — `consumer`, `estimate_id`, `run_stage_id`, `run_id`, `skill_version_ids`, `fact_ids`, `manifest_hash`, `injected_at` | `consumer` is `estimator` (estimate) \| `run_stage` (stage + its run) \| `playbook` (the launched run); arrays are sets; every fact is a confirmed fact and every skill version a published version of a non-draft skill of the workspace (`context_injections_resolves`); GIN-indexed arrays; append-only by trigger and grant — the sole source of every usage number |
 | `playbooks` | `V072` | Mockup 14's playbooks card ([#407](https://github.com/NobuData/ouroboros/issues/407), BE.3, decision **K6**) — `name`, `description`, `workflow_id`, `workflow_version`, `skill_overrides`, `context_preset`, `source_run_id`, `issue_filter` | `name` unique per organization; `(workflow_id, workflow_version)` is a published version of a workflow of the same workspace (`playbooks_workflow_version_fk`, `playbooks_workflow_fk` cascading) — `not null`, so never head; `skill_overrides` `{enable?, disable?}` (disjoint uuid sets ≤ 64), `context_preset` `{steer_notes?, fact_ids?}` and `issue_filter` `{labels?, repos?}` are typed by `playbook_*_typed`; `playbooks_refs_resolve` holds skill and fact ids to the workspace and refuses disabling a required skill; `source_run_id` is a run of the workspace, `on delete set null (source_run_id)`; launches are `runs.playbook_id` / `queue_items.playbook_id` (same-workspace, set null) — **no count column**; `ouroboros_app` has full DML |
+| `env_recipes` | `V073` | Mockup 14's Repo Profile **Environment** block ([#408](https://github.com/NobuData/ouroboros/issues/408), BE.4, decision **K7**) — `repo_ref`, `version`, `commands`, `source`, `updated_by`, `updated_at` | `commands` is an ordered array of 1–64 `{command, comment?}` single lines (`env_recipes_commands_typed`); `(organization_id, repo_ref, version)` unique and dense from 1 (`env_recipes_next_version`); every version immutable (`env_recipes_no_update`, the `updated_by` set-null excepted); `source` is `detected\|edited`, a detected version names no person and cannot follow an edited one (`env_recipes_provenance`); `env_recipes_current` is the newest version per repository — no row is a valid "no recipe" state; consumers (farm pool setup, BD.4 prebuild input, AR.1 workspace prep) are documented in the migration header; **no snapshot, boot-time or schedule column**; `ouroboros_app` may select and insert only |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
 
 Two **functions**, both `V012`'s and both documented in
