@@ -81,6 +81,14 @@ describe("the guard", () => {
     expect(isPullRequestPage({ ...prPage(), plan: older })).toBe(true);
   });
 
+  it("reads a page with no sync stamp at all — a service one release behind (#370)", () => {
+    const older: Partial<ReturnType<typeof prPage>["pullRequest"]> = { ...prPage().pullRequest };
+    delete older.syncedAt;
+
+    expect(isPullRequestPage({ ...prPage(), pullRequest: older })).toBe(true);
+    expect(isPullRequestPage(prPage({ pullRequest: { syncedAt: null } }))).toBe(true);
+  });
+
   it("refuses a plan or a spend a card could not draw, so the last good page stays", () => {
     const page = prPage({ spend: seededSpend() });
 

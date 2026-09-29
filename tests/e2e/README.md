@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and fourteen amended in since:
+deployment. Five legs from the issue, and fifteen amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -37,6 +37,7 @@ deployment. Five legs from the issue, and fourteen amended in since:
 | 17 | [`specs/runs.spec.ts`](specs/runs.spec.ts) | Mockup 10's run controls against **a run that really answers them**: the simulated-run driver (#307), started on the host, opens a run through the ingestion contract, and the leg presses **Pause loop** until the chip reads *acknowledged* and the button becomes **Resume**, resumes it the same way, double-clicks Pause into exactly one queued control, takes the run over (the branch's commands, the JSONL export, the #316 limitation), shows a member none of it and has the service refuse their direct call, has a forged abort confirmation refused with `422`, and aborts the run for real — the page going `canceled` without a reload, the timeline drawing the stage it died on as failed, and the driver reporting `aborted`; and (#311) a stage timeline that moves on the poll, filters by stage in the address across a reload, and at phone width in both palettes scrolls in its own box while the pane does not; and (#312) the seeded transcript's nine entries screenshot in both palettes, and a steer typed into a live simulated run that comes back as the service's own `user` entry, *acknowledged*, with the box closed and saying why once the run has ended; and (#313) the seeded right column — three files, two commits, both meters, `forge-02 reserved`, four guardrail marks under a computed `clean` pill — screenshot in both palettes, and at phone width a pane that never scrolls sideways |
 | 18 | [`specs/run-console.spec.ts`](specs/run-console.spec.ts) | **The Run Console MVP gate (#314)** — the whole stack moving together against a run that is genuinely moving: a finished seeded run (`#474`, merged) screenshot in both palettes with its outcome pill, frozen elapsed, pull-request link and closed steering; the driver's `482-gate-return` watched as its stepper advances, its transcript appends, a steer typed mid-attempt comes back *acknowledged*, guardrail verdicts render and a pause and resume both reach *acknowledged*; a second run aborted through the typed confirmation into the terminal state, and its JSONL export carrying the simulated watermark on every line; and the shell's promises on the console — fixed chrome under a pane scroll, the origin's sidebar entry lit, the 125% step |
 | 19 | [`specs/test-results.spec.ts`](specs/test-results.spec.ts) | **The test-results page's states (#342)** against the AS.5 seed: mockup 11's Build 3 screenshot in both palettes with its figures labelled *partial* and the ingest-lag banner naming when a report last arrived; a finished build with neither; a run without results leading to its console; a run that does not exist as the page's own not-found; an `?attempt=` naming a build the run never made; a report that parsed in part naming what failed and what is missing; a member served the re-runs and the classify form and offered no waive; **Mark & Route (#340)** — a rule's pick labelled `heuristic` and never a percentage, a decision answered with its routed receipt whose link leads into the run console and which is still on the card after a reload, both toggles stored when pressed, and a waiver asked its reason first in a dialog that keeps focus and closes on Escape; and the shell at 125%. The live chain — upload → parse → classify → correction → re-run → green — is written and **parked** on [#265](https://github.com/NobuData/ouroboros/issues/265) and [#991](https://github.com/NobuData/ouroboros/issues/991) |
+| 20 | [`specs/pr-verification.spec.ts`](specs/pr-verification.spec.ts) | **The PR verification page's states (#370)** against the AW.5 seed: mockup 12's `#514` screenshot in both palettes, saying that no sync has ever asked the host about it; a merged PR opening with its receipt and offering nothing to arm; a closed one; a disarmed plan naming **which** re-check refused; a blocked PR leading with *Return to loop*; a member offered no arm, no waive and no approve; the shell at 125% — and **the TOCTOU assertion, for real**: the seeded PR armed, a gate turned red before the last one is green, and **no merge**, with the executor's reason on the page. The live chain — sandbox PR → sync → gates → waive → arm → merged — is written and **parked** on a PR sync trigger, run linking ([#375](https://github.com/NobuData/ouroboros/issues/375)) and a sandbox host that serves pull requests |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -307,6 +308,61 @@ warning to the service's real answer: no seeded attempt carries one, and writing
 would put a truncated report on mockup 11's page. It certifies the page's half; the parser's is
 `ouroboros-rest`'s suite (#329).
 
+Leg 20 is [#370](https://github.com/NobuData/ouroboros/issues/370)'s — AY.8, the states mockup 12
+does not draw — in about twenty seconds of the suite's ten minutes. **It is not yet the PR
+Verification milestone's gate, and #370 stays open**: the issue's live chain stands on four things
+that do not exist, so that test is `test.fixme` with its reasons, as leg 19's is.
+
+| The chain needs | What there is |
+|---|---|
+| a PR opened on a host to **appear** | nothing triggers a PR sync: `PrSyncService.sync` has one caller, the merge executor, after a merge — no poll loop, no webhook, no route |
+| gates that can turn **green** | a synced PR has no run ([#375](https://github.com/NobuData/ouroboros/issues/375) links one), so every gate is required, `model_review` stays `unavailable`, and a waive answers `409 criterion_waiver_needs_run` |
+| a **sandbox host** | `fixtures/tracker-stub` is a GitHub that holds issues: no pulls, merges, comments or refs |
+| a **credential** that opens | the seeded source's is a placeholder on purpose (`R__dev_seed_sources.sql`) |
+
+What the chain would prove beneath the browser is proved by `ouroboros-rest`'s suites on the
+in-memory host — the squash, the branch, the ticket, the evidence comment and the epic note
+(`merge.integration-spec.ts`), the annotation (`criteria.integration-spec.ts`) and revision 1
+(`pr-sync.integration-spec.ts`).
+
+**The TOCTOU test runs for real, against the seeded PR.** It is the assertion the roadmap calls its
+most important, and it does not need a host: the executor's re-check reads the gates *before* it
+asks the host anything (`merge.recheck.ts`), so a gate that went red after arming is refused in
+the database and the seeded source's credential is never reached. The test arms `#514` through the
+card's confirmation, reloads to prove the arm was stored, asks for a human review and declines it
+— which is how a person turns a gate red — and then requires **no merge**: the banner *Disarmed —
+A gate went red* with the service's own sentence (*Human approval is red on revision 2.*), the PR
+`blocked`, the plan neither armed nor merged, and the same after a reload. What it cannot assert is
+the *host's* side of no merge, because there is no host; that is the parked chain's.
+
+**It changes the seeded PR for good, so it runs last and the leg is green from a cold volume.** An
+approval slot is answered once and a declined one leaves the gate red, so nothing puts `#514`
+back — the planning leg's position (leg 15), for its reason. The file's `beforeAll` reads the
+seeded PR once and says so in words when the stack has already run the leg, rather than leaving
+twelve assertions to time out on a pill; `docker compose down -v` is the fix. The parked chain is
+in a block of its own, outside that guard, so `verify-failure-modes.sh` finds it parked rather
+than red. **Nothing after this leg reads `#514`'s state**: legs 17, 18 and 19 and both shell legs
+were run before and after it on one stack, with the same results.
+
+The merged, closed, blocked and disarmed states **rewrite the browser's own poll** of the page
+(`support/pull-requests.ts`), as leg 19's parse warning does: the seed holds one PR and it is
+`verifying`, and four more PRs in the seed would be four more rows on every surface that lists
+them. The first paint is the service's answer; the poll carries the service's answer with a state
+changed.
+
+The `db` pair was run and went red at sign-in (`sign-in for … answered 500`), before the TOCTOU
+test, so it leaves the stack cold. The issue's three breakages are sync, the gate engine and the
+merge re-check. Sync is the parked chain's, registered by name. **The other two were broken by
+hand**, by the recipe the farm leg used — stub, `up -d --build rest`, recreate `ui`, restore the
+source at once, `grep` the stub in the container's `dist`, run the test, rebuild clean and `grep`
+for none — each against a cold database:
+
+| Broken | Went red | With | And left |
+|---|---|---|---|
+| the gate engine — `GateEngineService.notify` evaluates nothing | the TOCTOU test, at the gate | *human approval must turn red — the gate engine re-evaluates the gate when an approval is answered* | the plan **armed**, the row still `not required` |
+| the re-check — `recheckVerification` no longer looks at a red gate | the TOCTOU test, at the banner | *the plan must disarm naming the red gate — the merge executor re-checks the gates before it asks the host anything* | the plan **armed on a blocked PR** — the state the re-check exists to prevent |
+| the re-check — `recheckVerification` answers `ok` to everything | the TOCTOU test, at the arm | *the plan must arm — arming records the intent against the revision looked at, in the merge executor* | the plan disarmed `host_refused`: an unready PR went straight to the host, which could not be read |
+
 Leg 16 is [#262](https://github.com/NobuData/ouroboros/issues/262)'s — AI.7, mockup 08's MVP gate —
 and it is different in kind from the fifteen before it. They certify a UI against services in the
 same compose stack, written in the same language. This one certifies a chain that crosses a
@@ -500,7 +556,7 @@ tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17 and 18's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19 and 20's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
@@ -515,6 +571,7 @@ tests/e2e/
 │   ├── farm.ts                 # what mockup 08 renders, the fresh workspace the real chain runs in, and what leg 16 leaves
 │   ├── farm-runner.ts          # the build machine's three verbs: a fresh one, a pasted line, a pulled plug (leg 16)
 │   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (legs 17, 18)
+│   ├── pull-requests.ts        # what mockup 12 renders for the seeded PR, and the page's poll rewritten into the states the seed does not hold (leg 20)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
 │   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
@@ -625,6 +682,16 @@ wrote relative to the moment it migrated. The browser's clock is moved three min
 the banner is always there and the layout under it never depends on how old the stack is.
 `test-results-empty`, `test-results-missing` and `test-results-parse-warning` need none.
 
+Leg 20's pairs are nine. `pr-verification-{light,dark}` is the whole page of the seeded `#514`
+through a 1920 × 3200 window, with **two masks** — the strip's step labels and every `<time>` —
+because each prints an instant the seed wrote relative to the moment it migrated. Its sync-lag
+banner needs none: the seeded PR has never been synced, so the banner claims no time. The other
+eight are of one region each, so a change to a card they are not about moves none of them:
+`-merged`, `-closed`, `-disarmed` and `-toctou` are the state banner (`-merged` masks its merge
+time), `-blocked-head` and `-blocked-gates` the head and the gates card of a blocked PR,
+`-member-gates` the gates card as a member reads a waiting review, and `-sync-lag` the lag banner
+with its headline masked, since it names the day the leg ran.
+
 Leg 12's pair is of the **canvas region alone** rather than the page —
 `studio-canvas-{light,dark}` in [`specs/studio.spec.ts`](specs/studio.spec.ts), through a
 1920 × 1400 window the leg asserts the canvas fits whole. The studio's head says *Last edited 2h
@@ -671,12 +738,16 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9, 10, 11, 12, 13, 14, 15, 16, 17 and 18's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+Legs 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 and 20's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
 --update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts`,
 `specs/issues.spec.ts`, `specs/studio.spec.ts`, `specs/code-editor.spec.ts`,
-`specs/registry.spec.ts`, `specs/planning.spec.ts`, `specs/farm.spec.ts`, `specs/runs.spec.ts` or
-`specs/run-console.spec.ts` — at step 2. The precondition is the same,
-and it is the same seed.
+`specs/registry.spec.ts`, `specs/planning.spec.ts`, `specs/farm.spec.ts`, `specs/runs.spec.ts`,
+`specs/run-console.spec.ts`, `specs/test-results.spec.ts` or `specs/pr-verification.spec.ts` — at
+step 2. The precondition is the same, and it is the same seed.
+
+**Leg 20's pairs need a cold volume, as leg 15's do**, for the reason its section gives: its last
+test changes the seeded PR for good, and every pair before it photographs that PR as the seed left
+it.
 
 **Leg 15's pair has one more precondition, and it is the same volume rule its whole file lives
 under.** The parity group asserts the seeded OTA batch *before* it has been pushed, so the pair
@@ -808,5 +879,9 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#342](https://github.com/NobuData/ouroboros/issues/342) — leg 19, the test-results page's states; its live chain is parked
 - [#340](https://github.com/NobuData/ouroboros/issues/340) — the Mark & Route card, and leg 19's tests of it
 - [#265](https://github.com/NobuData/ouroboros/issues/265) — the build-stage integration that un-parks leg 19's live chain
+- [#370](https://github.com/NobuData/ouroboros/issues/370) — leg 20, the PR verification page's states and the TOCTOU assertion; its live chain is parked
+- [#360](https://github.com/NobuData/ouroboros/issues/360) — the merge executor and its re-check, which leg 20's TOCTOU test holds to its word
+- [#358](https://github.com/NobuData/ouroboros/issues/358) — the gate engine leg 20 turns a gate red through
+- [#375](https://github.com/NobuData/ouroboros/issues/375) — loop-created PRs, whose run linking is one of the things that un-parks leg 20's live chain
 - [#306](https://github.com/NobuData/ouroboros/issues/306) — the control queue leg 17's presses travel through
 - [#307](https://github.com/NobuData/ouroboros/issues/307) — the simulated-run driver that acknowledges them

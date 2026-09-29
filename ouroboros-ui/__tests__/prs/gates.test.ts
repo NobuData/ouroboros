@@ -5,7 +5,10 @@ import { BUILD_FARM_PATH, runPath, testsPath } from "@/app/paths";
 import {
   APPROVED,
   AUTO_MERGE_ELIGIBLE,
+  AWAITS_APPROVER,
   DECLINED,
+  GATES_FINAL_CLOSED,
+  GATES_FINAL_MERGED,
   type GatesCardInput,
   PENDING_PILL,
   UNAVAILABLE_NOTE,
@@ -13,12 +16,15 @@ import {
   VERDICT_WORDS,
   approvalOffer,
   approvalOutcome,
+  awaitsApprover,
   declineTitle,
   flaggedLink,
   gateLink,
   gateRowView,
   gatesCard,
+  gatesFinal,
   gatesPill,
+  isBlocking,
   rowReview,
 } from "@/app/prs/gates";
 import { FILES_ID } from "@/app/prs/criteria";
@@ -31,9 +37,11 @@ import {
   HIL_RED,
   REV_2_ID,
   TESTS_RED,
+  blockedPage,
   gateRow,
   gateRows,
   outOfScopePage,
+  prHeadOf,
   review,
   revisionOne,
   revisionTwo,
@@ -65,6 +73,7 @@ function input(
     scope: gatesScope(page, scoped)!,
     answeredReview: null,
     mayContribute: true,
+    mayApprove: true,
     originId: "dashboard",
     ...over,
   };
@@ -426,5 +435,125 @@ describe("what the human-approval row offers", () => {
     expect(approvalOutcome("approve")).toBe(APPROVED);
     expect(approvalOutcome("decline")).toBe(DECLINED);
     expect(declineTitle(514)).toBe("Decline the review of PR #514");
+  });
+});
+
+describe("who answers an approval (#370)", () => {
+  const human = gateRow("human_approval", "pending");
+  const waiting = () => stripPage({ review: review() });
+  const member = { mayApprove: false };
+
+  it("is an owner's or admin's: a member is offered no decision on a waiting review", () => {
+    expect(approvalOffer(human, input(waiting()))).toBe("decide");
+    expect(approvalOffer(human, input(waiting(), null, member))).toBeNull();
+  });
+
+  it("still lets a member request a review nobody has asked for", () => {
+    expect(
+      approvalOffer(gateRow("human_approval", "not_required"), input(stripPage(), null, member)),
+    ).toBe("request");
+  });
+
+  it("tells a member who a waiting review waits for, on that row and no other", () => {
+    expect(awaitsApprover(human, input(waiting(), null, member))).toBe(true);
+    expect(gateRowView(human, input(waiting(), null, member)).note).toBe(AWAITS_APPROVER);
+    expect(gateRowView(gateRow("build", "green"), input(waiting(), null, member)).note).toBeNull();
+  });
+
+  it("tells nobody who can answer it, and nobody who only reads", () => {
+    expect(awaitsApprover(human, input(waiting()))).toBe(false);
+    expect(
+      awaitsApprover(human, input(waiting(), null, { mayContribute: false, mayApprove: false })),
+    ).toBe(false);
+  });
+
+  it("says nothing of a review that is not waiting, an earlier revision, or a finished PR", () => {
+    expect(awaitsApprover(human, input(stripPage(), null, member))).toBe(false);
+    expect(
+      awaitsApprover(human, input(stripPage({ review: review({ state: "approved" }) }), null, member)),
+    ).toBe(false);
+    expect(awaitsApprover(human, input(waiting(), 1, member))).toBe(false);
+
+    for (const state of ["merged", "closed"] as const) {
+      const page = stripPage({ review: review(), pullRequest: { state } });
+
+      expect(awaitsApprover(human, input(page, null, member)), state).toBe(false);
+    }
+  });
+
+  it("keeps the unavailable note on a row that has both reasons to carry one", () => {
+    const unavailable = gateRow("human_approval", "unavailable");
+
+    expect(gateRowView(unavailable, input(waiting(), null, member)).note).toBe(UNAVAILABLE_NOTE);
+  });
+});
+
+describe("the gates a blocked PR is blocked by (#370)", () => {
+  /** The blocked page, its latest revision carrying the red rows. */
+  function blocked(over: Parameters<typeof blockedPage>[0] = {}): PullRequestPage {
+    const page = blockedPage();
+    const two = revisionTwo();
+
+    return blockedPage({
+      revisions: [
+        revisionOne(),
+        { ...two, gates: { ...two.gates, aggregate: page.gates!.aggregate, rows: page.gates!.rows } },
+      ],
+      ...over,
+    });
+  }
+
+  it("are the red required gates of the latest revision", () => {
+    const rows = gatesCard(input(blocked())).rows;
+
+    expect(rows.filter((row) => row.blocking).map((row) => row.key)).toEqual([
+      "test_suite",
+      "physical_hil",
+    ]);
+  });
+
+  it("are not a red gate the policy does not require — it blocks nothing", () => {
+    const optional = { ...gateRow("test_suite", "red"), required: false };
+
+    expect(isBlocking(optional, input(blocked()))).toBe(false);
+    expect(isBlocking(gateRow("test_suite", "red"), input(blocked()))).toBe(true);
+  });
+
+  it("are not a gate that is anything but red", () => {
+    for (const verdict of ["green", "pending", "waived", "not_required", "unavailable"] as const) {
+      expect(isBlocking(gateRow("build", verdict), input(blocked())), verdict).toBe(false);
+    }
+  });
+
+  it("are not an earlier revision's red gates — those are history", () => {
+    const earlier = gatesCard(input(blocked(), 1)).rows;
+
+    expect(earlier.some((row) => row.verdict === "red")).toBe(true);
+    expect(earlier.some((row) => row.blocking)).toBe(false);
+  });
+
+  it("are emphasised only while the PR is blocked", () => {
+    for (const state of ["open", "verifying", "armed", "merged", "closed"] as const) {
+      const page = blocked({ pullRequest: { state } });
+
+      expect(gatesCard(input(page)).rows.some((row) => row.blocking), state).toBe(false);
+    }
+  });
+});
+
+describe("a finished PR's verdicts (#370)", () => {
+  it("are said to be final on a merged PR, and as they stood on a closed one", () => {
+    expect(gatesFinal(prHeadOf({ state: "merged" }))).toBe(GATES_FINAL_MERGED);
+    expect(gatesFinal(prHeadOf({ state: "closed" }))).toBe(GATES_FINAL_CLOSED);
+    expect(gatesCard(input(stripPage({ pullRequest: { state: "merged" } }))).final).toBe(
+      GATES_FINAL_MERGED,
+    );
+  });
+
+  it("are said to be neither while the PR is open", () => {
+    for (const state of ["open", "verifying", "blocked", "armed"] as const) {
+      expect(gatesFinal(prHeadOf({ state })), state).toBeNull();
+    }
+    expect(gatesCard(input()).final).toBeNull();
   });
 });

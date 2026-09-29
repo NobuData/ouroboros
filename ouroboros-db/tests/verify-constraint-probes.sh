@@ -380,6 +380,18 @@
 # The evidence-link probe above rewrites V065's version of pr_gate_evidence_ref_resolves(),
 # which resolves `approval` too — workspace-blind like every other kind in the mutation.
 #
+# V066 (#370, AY.8) adds the PR's sync stamp. Its section is the one that catches each:
+#
+#   AY.8 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a PR is not synced before it is mirrored     drop pull_requests_synced_after_created
+#   the stamp alone does not move updated_at     recreate the touch trigger as V052 wrote it
+#
+# The second is a recreation rather than a drop, because dropping the trigger would leave
+# `updated_at` never moving at all — which the stamp's own assertion would pass. Recreated
+# without its `when`, the trigger fires for the stamp as it did before V066, and that is the
+# regression the rule exists to refuse: a listing ordered by *most recently synced*.
+#
 # Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
 # is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
 # by the latter first, so the rewrite reads the function back from the catalogue and adds the one
@@ -1567,6 +1579,17 @@ expect_red 'an approval slot may open already answered and be rewritten once ans
 expect_red "a loop return may record another run's control" \
   'the control is a control of the PR.s own run .*pr_loop_returns_control_of_pr_run did not fire' \
   'drop trigger pr_loop_returns_control_of_pr_run on ouroboros.pr_loop_returns;'
+
+expect_red 'a PR may be synced before it was mirrored' \
+  'a sync stamp is not earlier than the PR.s mirroring .*pull_requests_synced_after_created did not fire' \
+  'alter table ouroboros.pull_requests drop constraint pull_requests_synced_after_created;'
+
+expect_red "a sync that found nothing new may move a PR's updated_at" \
+  'a stamp alone moves synced_at and leaves updated_at where it was' \
+  'drop trigger pull_requests_touch_updated_at on ouroboros.pull_requests;
+   create trigger pull_requests_touch_updated_at
+     before update on ouroboros.pull_requests
+     for each row execute function ouroboros.touch_updated_at();'
 
 expect_red 'a criterion may cite a hunk of a file the revision never touched' \
   'a hunk.s path is a file the revision changed .*pr_criteria_evidence_resolves did not fire' \

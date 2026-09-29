@@ -95,6 +95,8 @@ export const HEAD: PrHeadRow = {
   mergedBy: null,
   createdAt: at(10),
   updatedAt: at(32),
+  // Asked after it last changed: the sync found nothing new, and stamped only this.
+  syncedAt: at(44),
   run: RUN_ROW,
   ticket: {
     id: "5eed0030-0000-4000-8000-000000000482",

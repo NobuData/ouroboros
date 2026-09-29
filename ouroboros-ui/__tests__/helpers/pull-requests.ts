@@ -29,6 +29,13 @@ import { SEEDED_RUN_ID } from "./runs";
 /** PR #514's id. */
 export const PR_514_ID = "5eed003a-0000-4000-8000-000000000514";
 
+/**
+ * When the helper's PR was last synced: as the suite loaded, so a case that is not about the
+ * sync-lag banner (#370) never draws it, and one instant for the whole file, so two pages made
+ * apart are still equal. The seed's own #514 has never been synced — `syncedAt: null`.
+ */
+export const JUST_SYNCED = new Date().toISOString();
+
 /** Revision 1's id. */
 export const REV_1_ID = "5eed003b-0000-4000-8000-000000005141";
 
@@ -173,6 +180,7 @@ export function prHeadOf(over: Partial<PullRequestHead> = {}): PullRequestHead {
     },
     createdAt: "2026-09-27T14:10:00.000Z",
     updatedAt: "2026-09-27T14:32:00.000Z",
+    syncedAt: JUST_SYNCED,
     ...over,
   };
 }
@@ -383,6 +391,59 @@ export function blockedPage(over: Parameters<typeof prPage>[0] = {}): PullReques
     },
     ...over,
     pullRequest: { state: "blocked", ...over.pullRequest },
+  });
+}
+
+/** The sentence the service records when a gate went red under an armed plan. */
+export const GATE_RED_MESSAGE = "Physical HIL is red on revision 2.";
+
+/** The sentence the service records when the host reports a conflict. */
+export const HOST_CONFLICT_MESSAGE = "The host reports a merge conflict with the base branch.";
+
+/**
+ * The page once the plan merged the PR (#370): the host's mirror has caught up, every required
+ * gate stands green, and the plan holds the receipt.
+ *
+ * @param over What else to change.
+ * @returns The merged page.
+ */
+export function mergedPage(over: Parameters<typeof prPage>[0] = {}): PullRequestPage {
+  return readyPage({
+    plan: mergedPlan(),
+    ...over,
+    pullRequest: {
+      state: "merged",
+      mergedAt: "2026-09-27T14:45:02.000Z",
+      mergedBy: "ken-s",
+      ...over.pullRequest,
+    },
+  });
+}
+
+/**
+ * The page of a PR its host closed without merging (#370).
+ *
+ * @param over What else to change.
+ * @returns The closed page.
+ */
+export function closedPage(over: Parameters<typeof prPage>[0] = {}): PullRequestPage {
+  return prPage({ ...over, pullRequest: { state: "closed", ...over.pullRequest } });
+}
+
+/**
+ * The page after a re-check disarmed the plan (#370) — the host reported a conflict, so the PR
+ * is back to `verifying` and the plan says why.
+ *
+ * @param over What else to change.
+ * @returns The disarmed page.
+ */
+export function disarmedPage(over: Parameters<typeof prPage>[0] = {}): PullRequestPage {
+  return prPage({
+    plan: mergePlan({
+      disarmReason: { code: "host_conflict", message: HOST_CONFLICT_MESSAGE },
+      updatedAt: "2026-09-27T14:41:30.000Z",
+    }),
+    ...over,
   });
 }
 

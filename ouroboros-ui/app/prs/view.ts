@@ -17,6 +17,12 @@
  * **Roles decide what is drawn, never what is allowed.** The service refuses a viewer's head action
  * and a member's arm whatever this page draws (#361, #360).
  *
+ * **A finished PR offers nothing to decide, and a blocked one leads with the way back**
+ * ([#370](https://github.com/NobuData/ouroboros/issues/370)). Once a PR has merged or closed the
+ * actions are not drawn at all — a record that still offered an arm button would have lost track
+ * of reality. While a required gate is red, *Return to loop* is drawn first and the merge steps
+ * back, inert with its reason: the page's job is then to send the failure back.
+ *
  * Framework-free, so every rule is a unit test without rendering.
  */
 
@@ -38,9 +44,6 @@ export const PR_EYEBROW = "PR Verification";
 
 /** The actions' accessible name. */
 export const ACTIONS_LABEL = "PR actions";
-
-/** What the page says while its first read is in flight. */
-export const READING_PR = "Reading the pull request…";
 
 /** The banner's headline when the first read failed and nothing is on screen. */
 export const UNREAD_HEADLINE = "This pull request could not be read.";
@@ -384,11 +387,23 @@ export interface ActionView {
   readonly reason: string | null;
 }
 
-/** The head's three actions. An action the reader's role may not take is `null` — not drawn. */
+/** Which action the head leads with. */
+export type PromotedAction =
+  /** The mockup's order: the merge is the thing to do next. */
+  | "merge"
+  /** A blocked PR: sending the failure back is. */
+  | "returnToLoop";
+
+/**
+ * The head's three actions. An action the reader's role may not take is `null` — not drawn — and
+ * so is every action of a PR that has merged or closed.
+ */
 export interface ActionsView {
   readonly review: ActionView | null;
   readonly returnToLoop: ActionView | null;
   readonly merge: ActionView | null;
+  /** Which is drawn first and as the primary — see {@link promotedAction}. */
+  readonly promoted: PromotedAction;
 }
 
 /** What the actions are decided from. */
@@ -415,6 +430,16 @@ export function hostOwnedReason(state: PullRequestState): string | null {
   if (state === "closed") return "This PR is closed on its host.";
 
   return null;
+}
+
+/**
+ * Whether a PR's host has finished with it.
+ *
+ * @param state The PR's state.
+ * @returns `true` for a merged or closed PR — the page is then a record.
+ */
+export function isFinished(state: PullRequestState): boolean {
+  return hostOwnedReason(state) !== null;
 }
 
 /**
@@ -523,21 +548,37 @@ export function notArmable(
 }
 
 /**
+ * Which action the head leads with.
+ *
+ * @param state The PR's state.
+ * @returns `returnToLoop` for a blocked PR — red gates are the point, so the way to send them
+ *   back is promoted over a merge that cannot happen — otherwise `merge`.
+ */
+export function promotedAction(state: PullRequestState): PromotedAction {
+  return state === "blocked" ? "returnToLoop" : "merge";
+}
+
+/**
  * The head's actions, gated by role and by state.
  *
  * A viewer is drawn none of them; a member is drawn *Request human review* and *Return to loop*;
- * only an owner or admin is drawn *Merge when all gates green*.
+ * only an owner or admin is drawn *Merge when all gates green*. Nobody is drawn any of them on a
+ * PR that has merged or closed.
  *
  * @param input See {@link ActionsInput}.
- * @returns The three actions, each `null` when the reader's role may not take it.
+ * @returns The three actions, each `null` when the reader's role may not take it or the PR is
+ *   finished, and which of them leads.
  */
 export function actionsView(input: ActionsInput): ActionsView {
   const { page, mayContribute, mayArm } = input;
+  const { state } = page.pullRequest;
+  const open = !isFinished(state);
 
   return {
-    review: mayContribute ? reviewAction(input) : null,
-    returnToLoop: mayContribute ? returnAction(page) : null,
-    merge: mayArm ? mergeAction(page) : null,
+    review: open && mayContribute ? reviewAction(input) : null,
+    returnToLoop: open && mayContribute ? returnAction(page) : null,
+    merge: open && mayArm ? mergeAction(page) : null,
+    promoted: promotedAction(state),
   };
 }
 

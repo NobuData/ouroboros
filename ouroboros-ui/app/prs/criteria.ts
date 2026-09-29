@@ -44,6 +44,7 @@ import { artifactUrl } from "@/app/test-results/artifacts";
 import type { ChipDot, ChipTone } from "@/app/ui";
 
 import { type Hunk, hunkRange, isHunk, withHunk } from "./hunk";
+import { isFinished } from "./view";
 
 /** The card's title — the mockup's `DOES THE PR DO WHAT THE TICKET SAYS?`. */
 export const CRITERIA_TITLE = "Does the PR do what the ticket says?";
@@ -377,10 +378,13 @@ export interface CriteriaCardInput extends EvidenceInput {
  * @param input See {@link CriteriaCardInput}.
  * @returns The row. *Verify* is offered on an unverified claim to a reader who may contribute,
  *   inert with {@link VERIFY_NEEDS_EVIDENCE} while nothing is cited. *Waive* is offered to a
- *   reader who may waive — again on a waived claim, which is the retry.
+ *   reader who may waive — again on a waived claim, which is the retry. Nothing is offered on a
+ *   PR that has merged or closed (#370): the matrix is then what was claimed and shown.
  */
 export function criterionRow(criterion: PrCriterion, input: CriteriaCardInput): CriterionRowView {
-  const { mayContribute, mayWaive } = input;
+  const open = !isFinished(input.page.pullRequest.state);
+  const mayContribute = open && input.mayContribute;
+  const mayWaive = open && input.mayWaive;
 
   return {
     id: criterion.id,
@@ -435,10 +439,12 @@ export function countsLine(criteria: readonly PrCriterion[]): string | null {
  *
  * @param input See {@link CriteriaCardInput}.
  * @returns The card. *Import from plan* is offered only when the payload says there is a plan to
- *   read (`planContext`), and only to a reader who may contribute.
+ *   read (`planContext`), and only to a reader who may contribute. A PR that has merged or closed
+ *   is offered neither that nor *Add claim* (#370).
  */
 export function criteriaCard(input: CriteriaCardInput): CriteriaCardView {
-  const { page, criteria, mayContribute } = input;
+  const { page, criteria } = input;
+  const mayContribute = input.mayContribute && !isFinished(page.pullRequest.state);
   const ticket = page.pullRequest.ticket;
 
   return {

@@ -28,6 +28,7 @@ import {
   hasActions,
   hostOwnedReason,
   httpUrl,
+  isFinished,
   issueLink,
   latestRevision,
   loopLink,
@@ -35,6 +36,7 @@ import {
   notArmable,
   prEyebrow,
   prHead,
+  promotedAction,
   redGates,
   returnAction,
   returnConfirmLabel,
@@ -400,8 +402,58 @@ describe("role gating", () => {
   it("draws a viewer nothing", () => {
     const view = actionsView(input({ mayContribute: false, mayArm: false }));
 
-    expect(view).toEqual({ review: null, returnToLoop: null, merge: null });
+    expect(view).toEqual({ review: null, returnToLoop: null, merge: null, promoted: "merge" });
     expect(hasActions(view)).toBe(false);
+  });
+});
+
+describe("a finished PR (#370)", () => {
+  it("is merged or closed, and nothing else", () => {
+    expect(STATES.filter((state) => isFinished(state))).toEqual(["merged", "closed"]);
+  });
+
+  it("is drawn no action at all, whoever is reading — a record offers nothing to decide", () => {
+    for (const state of ["merged", "closed"] as const) {
+      const view = actionsView(input({ page: blockedPage({ pullRequest: { state } }) }));
+
+      expect(view.review, state).toBeNull();
+      expect(view.returnToLoop, state).toBeNull();
+      expect(view.merge, state).toBeNull();
+      expect(hasActions(view), state).toBe(false);
+    }
+  });
+});
+
+describe("a blocked PR (#370)", () => {
+  it("leads with Return to loop, and every other state with the merge", () => {
+    expect(promotedAction("blocked")).toBe("returnToLoop");
+
+    for (const state of ["open", "verifying", "armed", "merged", "closed"] as const) {
+      expect(promotedAction(state), state).toBe("merge");
+    }
+  });
+
+  it("keeps Return to loop on, and the merge drawn but off with its reason", () => {
+    const view = actionsView(input({ page: blockedPage() }));
+
+    expect(view.promoted).toBe("returnToLoop");
+    expect(view.returnToLoop).toEqual({ label: RETURN_LABEL, reason: null });
+    expect(view.merge).toEqual({
+      label: MERGE_LABEL,
+      reason: "2 gates are red on revision 2 — a blocked PR cannot be armed.",
+    });
+  });
+
+  it("promotes the way back even when it cannot be taken, and says why it cannot", () => {
+    const finished = blockedPage({
+      pullRequest: { run: { ...prHeadOf().run!, finishedAt: "2026-09-27T15:00:00.000Z" } },
+    });
+    const view = actionsView(input({ page: finished }));
+
+    expect(view.promoted).toBe("returnToLoop");
+    expect(view.returnToLoop?.reason).toBe(
+      "Loop #1847 has finished, so it cannot take a correction round.",
+    );
   });
 });
 

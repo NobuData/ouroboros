@@ -73,6 +73,20 @@ describe("PageService.page", () => {
     });
   });
 
+  it("says when the host was last asked, apart from when the PR last changed", async () => {
+    const { pullRequest } = await service().page(ORG, PR);
+
+    expect(pullRequest.updatedAt).toBe("2026-09-27T14:32:00.000Z");
+    expect(pullRequest.syncedAt).toBe("2026-09-27T14:44:00.000Z");
+  });
+
+  it("claims no sync for a PR no sync has written", async () => {
+    const store = new FakePageStore();
+    store.head514 = { ...store.head514, syncedAt: null };
+
+    expect((await service(store).page(ORG, PR)).pullRequest.syncedAt).toBeNull();
+  });
+
   it("has no spend card for a PR no loop opened", async () => {
     const store = new FakePageStore();
     store.head514 = { ...store.head514, run: null };
@@ -103,6 +117,7 @@ describe("PageService.list", () => {
       latestRevision: { seq: 2 },
       gates: { greenCount: 5, requiredCount: 7 },
       reviewRequested: false,
+      syncedAt: "2026-09-27T14:44:00.000Z",
     });
   });
 

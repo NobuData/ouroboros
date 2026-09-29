@@ -166,6 +166,13 @@ describe("summaryResource", () => {
       summaryResource({ ...HEAD, latestRevision: null, reviewRequested: false }, undefined).gates,
     ).toBeNull();
   });
+
+  it("carries the head's sync stamp, and none for a PR never synced", () => {
+    const row = { ...HEAD, latestRevision: null, reviewRequested: false };
+
+    expect(summaryResource(row, undefined).syncedAt).toBe(HEAD.syncedAt?.toISOString());
+    expect(summaryResource({ ...row, syncedAt: null }, undefined).syncedAt).toBeNull();
+  });
 });
 
 describe("reviewResource", () => {

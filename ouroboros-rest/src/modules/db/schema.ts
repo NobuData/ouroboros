@@ -1482,6 +1482,12 @@ export interface PullRequestsTable {
   ticket_id: string | null;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * Sync-owned. When the sync last asked the host about this PR and was answered (V066,
+   * [#370](https://github.com/NobuData/ouroboros/issues/370)). Null until the first sync; moved by
+   * a sync that found nothing changed, which leaves `updated_at` where it was.
+   */
+  synced_at: Date | null;
 }
 
 /**
@@ -5523,6 +5529,7 @@ export const TABLE_COLUMNS = {
     "ticket_id",
     "created_at",
     "updated_at",
+    "synced_at",
   ],
   pr_revisions: [
     "id",

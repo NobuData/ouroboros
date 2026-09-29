@@ -20,10 +20,15 @@ vi.mock("next/navigation", () => ({ redirect: () => {} }));
 const { readEpics, readPr, runPullRequests } = await import("@/app/prs/data");
 
 describe("readPr", () => {
-  it("finds the page of the PR the id names", async () => {
+  it("finds the page of the PR the id names, and says when it was read (#370)", async () => {
     const read = vi.fn().mockResolvedValue(prPage());
+    const readAt = Date.parse("2026-09-27T14:46:00.000Z");
 
-    expect(await readPr(PR_514_ID, read)).toEqual({ state: "found", value: prPage() });
+    expect(await readPr(PR_514_ID, read, () => readAt)).toEqual({
+      state: "found",
+      value: prPage(),
+      readAt,
+    });
     expect(read).toHaveBeenCalledExactlyOnceWith(PR_514_ID);
   });
 

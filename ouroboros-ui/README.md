@@ -3964,9 +3964,13 @@ are warn until every required gate is satisfied, `open` and `closed` take no hue
 
 | Action | What it does | Off, with the reason printed, when | Drawn for |
 |--------|--------------|------------------------------------|-----------|
-| **Request human review** | opens the approval slot (#361) — human approval becomes required; the button then reads `review requested` | a review is waiting · sending · the PR is merged or closed · no revision | owner, admin, member |
-| **Return to loop** | opens a danger dialog listing the latest revision's red gates with their evidence; the selected gates become the steer (#361); the receipt links into the run console | no gate is red · no loop · the loop has finished · the PR is merged or closed · no revision | owner, admin, member |
-| **Merge when all gates green** | arms nothing: it moves focus to the [Merge plan card](#the-merge-plan-card), whose own control opens the confirmation that states the terms; named **Merge now** when every required gate is already green | the PR is `open`, `blocked`, `armed`, `merged` or `closed` · no revision | owner, admin |
+| **Request human review** | opens the approval slot (#361) — human approval becomes required; the button then reads `review requested` | a review is waiting · sending · no revision | owner, admin, member |
+| **Return to loop** | opens a danger dialog listing the latest revision's red gates with their evidence; the selected gates become the steer (#361); the receipt links into the run console | no gate is red · no loop · the loop has finished · no revision | owner, admin, member |
+| **Merge when all gates green** | arms nothing: it moves focus to the [Merge plan card](#the-merge-plan-card), whose own control opens the confirmation that states the terms; named **Merge now** when every required gate is already green | the PR is `open`, `blocked` or `armed` · no revision | owner, admin |
+
+**A PR that has merged or closed is drawn none of the three**
+([#370](https://github.com/NobuData/ouroboros/issues/370)) — see
+[PR verification states](#pr-verification-states).
 
 **Roles decide what is drawn, never what is allowed.** A viewer is drawn no action and a member no
 arm affordance. The service refuses a viewer's head action (#361) on every press; it admits a
@@ -4026,10 +4030,11 @@ Every mark is announced as its verdict in words.
 A link is drawn only where it leads somewhere real: none for a PR no loop opened, and none for a
 test or rig line whose attempt is not known.
 
-**The human-approval row** offers *Request review* while nobody is waiting, and *Approve* and
-*Decline* while a review is — for an owner, admin or member, on the latest revision of an open PR.
-*Decline* asks for its note first, because a red gate says why. The service decides again on every
-press.
+**The human-approval row** offers *Request review* while nobody is waiting — to an owner, admin
+or member — and *Approve* and *Decline* while a review is, to an **owner or admin**
+([#370](https://github.com/NobuData/ouroboros/issues/370)); a member is told the review is
+`waiting for an owner or admin`. Both on the latest revision of an open PR. *Decline* asks for its
+note first, because a red gate says why. The service decides again on every press.
 
 **The waiver popover names no author.** The payload carries no waiver on a gate's row, so the
 popover shows the recorded line, which holds the reason, and says that no author is recorded.
@@ -4252,6 +4257,35 @@ Where it has none — nothing priced, a lower bound under the cap — the line s
 it cannot be compared, and a route with no cap says so. A PR no loop opened says there is no
 spend to show. The helpers are the run console's (`app/runs/cards.ts`), so the two cards cannot
 disagree about what unpriced means.
+
+### PR verification states
+
+Mockup 12 draws one state: a PR being verified at `5 of 7`. AY.8
+([#370](https://github.com/NobuData/ouroboros/issues/370)) draws the rest — the ones a reader
+meets after something has finished or gone wrong — all in both palettes. The banner's sentences
+are [`states.ts`](app/prs/states.ts)'s; the rest is decided where its region is.
+
+| State | What the page does |
+|---|---|
+| **Merged** | Opens with **the receipt**, above the head ([`pr-state-banner.tsx`](app/prs/pr-state-banner.tsx)): `Merged — 9c4ab7f, as ken-s · 14:45:02`, what ran, what was switched on and did not run, and links to the PR and the ticket on their host. The identity is `merge-receipt.ts`'s — never a `[bot]`. **No arm affordance remains**: the head draws no action, the card no control. The gates card says its verdicts are final, the strip has no future step, and the matrix offers no authoring. A PR merged on its host and not by this plan says who the host says merged it, and that the plan recorded nothing. |
+| **Closed without merging** | The same record, in no outcome's hue: *Closed without merging*, the host link, and nothing to arm, waive, approve, return or claim. |
+| **Disarmed** | The banner names **which** re-check refused — a headline per code (`gate_red` *A gate went red*, `head_moved`, `host_head_moved`, `host_conflict`, `host_not_open`, `host_refused`), the service's own sentence, *Nothing was merged*, what to do next, and a link to the Merge plan card. Gone once the plan is armed again, and after a disarm by hand. |
+| **Blocked** | The head **leads with *Return to loop*** and the merge steps back — drawn last, not as the primary, inert with its reason (`2 gates are red on revision 2 — a blocked PR cannot be armed.`). The red **required** gates of the latest revision are emphasised with a tint and a rule; an earlier revision's red gates are history, and are not. |
+| **Sync lag** | DASH-I.7's banner ([`sync-lag-banner.tsx`](app/prs/sync-lag-banner.tsx)) for a PR its host can still change: *Last synced with its host at 14:02 — PR #514's sync has gone quiet* once the head's `syncedAt` is **ten minutes** old, with the day as well when it is not today's, and *never been synced* for a PR no sync has written — the seed's. *Check again* reads the page again. A failed refresh's banner takes precedence, a merged or closed PR never gets it, and a payload with no stamp at all is *unknown*, never late. |
+| **Member** | Offered **no arm, no waive and no approve**: a waiting approval is an owner's or admin's to answer, and the row says `waiting for an owner or admin`. A member still requests a review, returns to the loop, authors claims and evidence, replies and resolves, and disarms. A viewer reads. |
+| **Loading** | [`loading.tsx`](<app/(app)/prs/[id]/loading.tsx>) — skeletons for the head, the strip, the gates' seven rows and the cards, still and hidden from the accessibility tree. |
+
+**Reply and resolve stays on a finished PR's thread**, as #368 decided: the thread is this plane's
+record, not the host's.
+
+**Roles still decide what is drawn, never what is allowed.** The service admits a member's approval
+(`POST …/approvals` is a contributor's); this page no longer draws it.
+
+The e2e suite's leg 20 (`tests/e2e/specs/pr-verification.spec.ts`) draws these against the seed,
+and runs the **TOCTOU** case for real: the seeded PR armed, a gate turned red, and no merge — the
+plan disarmed by the executor's re-check, with its reason on the page. Its live chain — sandbox PR
+→ sync → gates → waive → arm → merged — is **parked** on a PR sync trigger, run linking (#375) and
+a sandbox host that serves pull requests, so #370 stays open as the milestone's gate.
 
 ## Workflow Studio
 

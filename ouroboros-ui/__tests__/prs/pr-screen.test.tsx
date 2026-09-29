@@ -12,6 +12,7 @@ import {
   ACTIONS_LABEL,
   ALREADY_ARMED,
   MERGE_LABEL,
+  NO_REVISION,
   RECEIPT_LINK,
   RETURN_CANCEL,
   RETURN_GATES_LABEL,
@@ -557,10 +558,6 @@ describe("Merge when all gates green", () => {
     const cases: [PullRequestPage, string][] = [
       [blockedPage(), "2 gates are red on revision 2 — a blocked PR cannot be armed."],
       [prPage({ pullRequest: { state: "armed" }, plan: armedPlan() }), ALREADY_ARMED],
-      [
-        prPage({ pullRequest: { state: "merged" } }),
-        "This PR has merged — there is nothing left to decide.",
-      ],
     ];
 
     for (const [page, reason] of cases) {
@@ -584,9 +581,10 @@ describe("Merge when all gates green", () => {
 
 describe("the reasons under the actions", () => {
   it("says a reason three actions share once, and describes each of them by it", () => {
-    draw({ initial: blockedPage({ pullRequest: { state: "merged" } }) });
+    // Before the first push is recorded there is nothing to review, return or arm.
+    draw({ initial: prPage({ revisions: [], gates: null }) });
 
-    const reason = "This PR has merged — there is nothing left to decide.";
+    const reason = NO_REVISION;
 
     expect(within(actions()).getAllByRole("listitem").map((note) => note.textContent)).toEqual([
       reason,
@@ -608,9 +606,10 @@ describe("role gating", () => {
   it("draws a member no arm affordance — no merge button, and the plan read-only (#369)", () => {
     draw({ initial: blockedPage(), mayArm: false });
 
+    // A blocked PR leads with the way back (#370).
     expect(within(actions()).getAllByRole("button").map((button) => button.textContent)).toEqual([
-      REVIEW_LABEL,
       RETURN_LABEL,
+      REVIEW_LABEL,
     ]);
     expect(screen.queryByRole("button", { name: MERGE_LABEL })).toBeNull();
 

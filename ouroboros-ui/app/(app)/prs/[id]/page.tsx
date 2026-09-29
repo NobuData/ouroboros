@@ -35,6 +35,12 @@ import { runOrigin } from "@/app/runs/origin";
  * matrix is linkable. A value that is not a path and a line range is ignored. Waiving a claim is
  * drawn for an owner or admin only, as arming is.
  *
+ * **A member reads, contributes and answers nothing**
+ * ([#370](https://github.com/NobuData/ouroboros/issues/370)): arming, waiving and answering an
+ * approval are an owner's or admin's, so a member is drawn none of the three. The read's own
+ * instant is handed on as the sync-lag banner's first clock, so the first paint and its
+ * hydration agree.
+ *
  * @param props.params The PR's id.
  * @param props.searchParams The query — `?from=`, `?rev=` and `?hunk=`.
  * @returns The screen, or the not-found page for a PR this workspace cannot see.
@@ -61,11 +67,13 @@ export default async function Page({
       initialError={reading.state === "failed" ? reading.reason : null}
       initialHunk={hunkParam(query[PR_HUNK_PARAM])}
       initialRevision={revisionParam(query[PR_REVISION_PARAM])}
+      mayApprove={mayAdminister(membership.roles)}
       mayArm={mayAdminister(membership.roles)}
       mayWaive={mayAdminister(membership.roles)}
       mayContribute={mayContribute(membership.roles)}
       origin={origin}
       prId={id}
+      readAt={reading.state === "found" ? reading.readAt : null}
     />
   );
 }

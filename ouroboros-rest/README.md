@@ -5184,6 +5184,15 @@ never fails the request. The row does not record who resolved it — the trail d
 `test_suite` verdict cites; its `correction` is the classification on a case of the previous
 revision's attempt and any loop return sent from it.
 
+**When the host was last heard.** A PR's head — on the page and in the listing — carries
+`syncedAt`: `pull_requests.synced_at` (V066), which **every** sync moves, including one that found
+nothing new. `updatedAt` moves only when the PR changed, so it cannot tell a quiet PR from a stalled
+sync; the stamp can, and it is what the PR page's sync-lag banner reads. The sync writes the stamp
+alone when nothing changed, and V066's touch trigger leaves `updated_at` where it was, so the
+listing's *newest update first* is unmoved by polling. `null` for a PR no sync has written — the
+development seed's #514. Additive (AY.8, [#370](https://github.com/NobuData/ouroboros/issues/370),
+REST 0.37.22).
+
 **Spend is a grouping, not a counter** (V8): the run's whole ledger and its `task_kind = 'verify'`
 share, both through `readSpendTotals`, against the budget stage's route cap (the console's rule).
 **Unpriced is never `$0`** — a ledger with no prices is token counts and a `null` cost, and
@@ -5199,7 +5208,7 @@ deduplicating, and a gate engine that stopped re-judging. The suites run under
 | Suite | Holds |
 | ----- | ----- |
 | `pull-requests/pr-plane.integration-spec.ts` | **TOCTOU**: gate flips red, a new revision recorded, the host's head moved, host conflict, branch protection — each disarms with its reason and nothing merges (plus a control case that merges). **Publish**: evidence summaries and waiver annotations edited under their keys across repeated publishes and the merge. **Gates**: 7 gates × 6 verdicts through V056's aggregate and the engine's; a synced push is a new snapshot, and the prior one is left intact; a headerless new file is license-red with the file named. **Head actions**: the steer and transcript equal the selected gates' evidence; review requests flip human approval, ask the host and list the PR as needs-you. **Roles**: refusals held server-side. **Isolation**: every PR route, enumerated from the route table, `404`s another workspace |
-| `pull-requests/pr-sync.integration-spec.ts` | also: a local edit of host-owned content is written back on the next sync; concurrent syncs mirror once, and V052 refuses a second mirror |
+| `pull-requests/pr-sync.integration-spec.ts` | also: a local edit of host-owned content is written back on the next sync; concurrent syncs mirror once, and V052 refuses a second mirror; a re-sync with nothing new moves `synced_at` and leaves `updated_at` where it was (#370) |
 | `ticket-sources/providers/github.pr.integration-spec.ts` | also: on recorded GitHub, three publishes under two keys are two POSTs and four PATCHes |
 
 The scene (`pull-requests/pr-plane.integration.fixture.ts`) is mockup 12's PR on the in-memory git

@@ -18,13 +18,18 @@
  * whose head is already recorded is a no-op (`on conflict (pr_id, head_sha) do nothing`), which is
  * what makes a re-sync idempotent — a revision is identified by its sha, never by when it was seen.
  *
- * ## An unchanged PR is not updated
+ * ## An unchanged PR is stamped, and nothing else
  *
- * `pull_requests_touch_updated_at` is unconditional, so — as in `ticket-sources.repository.ts` —
- * the only way to keep `updated_at` meaning *something changed* is to not issue the update.
+ * Every sync writes `synced_at` — *the host was asked, and answered* — including one that found
+ * nothing new, because that is what the PR page's sync-lag banner reads
+ * ([#370](https://github.com/NobuData/ouroboros/issues/370)). The content is written only when it
+ * changed, and V066's `pull_requests_touch_updated_at` does not fire for the stamp alone, so
+ * `updated_at` keeps meaning *something changed*. The stamp is the database's `now()`, the clock
+ * `created_at` and `updated_at` are read from, so the three are comparable.
  */
 
 import { Injectable } from "@nestjs/common";
+import { sql } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import type { PullRequestState } from "../db/schema";
@@ -170,6 +175,9 @@ export class PrMirrorRepository implements PrMirrorStore {
       merged_by: snapshot.mergedBy,
     };
 
+    // Kept out of `content`: the stamp differs on every sync, and is not what *changed* asks.
+    const syncedAt = sql<Date>`now()`;
+
     return this.database.db.transaction().execute(async (trx) => {
       const existing = await trx
         .selectFrom("pull_requests")
@@ -193,6 +201,7 @@ export class PrMirrorRepository implements PrMirrorStore {
             external_number: snapshot.number,
             state,
             ...content,
+            synced_at: syncedAt,
           })
           .returning("id")
           .executeTakeFirstOrThrow();
@@ -219,13 +228,11 @@ export class PrMirrorRepository implements PrMirrorStore {
             .execute();
         }
 
-        if (changed) {
-          await trx
-            .updateTable("pull_requests")
-            .set({ ...content, state })
-            .where("id", "=", prId)
-            .execute();
-        }
+        await trx
+          .updateTable("pull_requests")
+          .set(changed ? { ...content, state, synced_at: syncedAt } : { synced_at: syncedAt })
+          .where("id", "=", prId)
+          .execute();
       }
 
       const latest = await trx
