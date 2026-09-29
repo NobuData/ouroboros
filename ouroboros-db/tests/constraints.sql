@@ -23666,6 +23666,304 @@ select pg_temp.must_hold(
   'a deleted workspace takes its template overrides, and the global rows stay');
 
 -- ===========================================================================
+-- V069 — skills and skill versions (#405, BE.1)
+-- ===========================================================================
+--
+-- Mockup 14's skills card. Asserted: all six rows are representable — hil-safety required and
+-- locked, repo-map generated, power-budget-checks a draft; required AND NOT enabled is refused
+-- by the database; scope and its referent agree; slugs are unique per workspace; origin is a
+-- closed vocabulary; frontmatter is typed; published versions are immutable, dense and pointed
+-- at by current_version; and neither table carries a usage column.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v069', 'Acme Robotics', 'acme-robotics-v069', now()),
+  ('org-v069-other', 'Other Works', 'other-works-v069', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a6900000-0000-0000-0000-00000000000a', 'Ken S', 'ken@skills-v069.dev', true);
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a6910000-0000-0000-0000-000000000001', 'org-v069', 'standard-fix', 'standard-fix'),
+  ('a6910000-0000-0000-0000-000000000002', 'org-v069-other', 'standard-fix', 'standard-fix');
+
+-- --- the six mockup rows ---------------------------------------------------------------------------
+insert into ouroboros.skills
+    (id, organization_id, slug, name, description, scope, repo_ref, enabled, required, draft,
+     origin)
+values
+  ('a6920000-0000-0000-0000-000000000001', 'org-v069', 'zephyr-conventions',
+   'zephyr-conventions', 'Kconfig, devicetree & ISR-safety house rules', 'repo',
+   'acme-robotics/helios-firmware', true, false, false, 'authored'),
+  ('a6920000-0000-0000-0000-000000000002', 'org-v069', 'repo-map', 'repo-map',
+   'Module & ownership map of the source tree', 'repo', 'acme-robotics/helios-firmware',
+   true, false, false, 'generated'),
+  ('a6920000-0000-0000-0000-000000000003', 'org-v069', 'pr-etiquette', 'pr-etiquette',
+   'PR title format, changelog entry, reviewer ping rules', 'org', null,
+   true, false, false, 'authored'),
+  ('a6920000-0000-0000-0000-000000000004', 'org-v069', 'hil-safety', 'hil-safety',
+   'Hardware-in-loop interlocks before any motor spins', 'repo',
+   'acme-robotics/helios-firmware', true, true, false, 'authored'),
+  ('a6920000-0000-0000-0000-000000000005', 'org-v069', 'commit-style', 'commit-style',
+   'Conventional commits, 72-char body wrap, sign-off', 'org', null,
+   true, false, false, 'imported'),
+  ('a6920000-0000-0000-0000-000000000006', 'org-v069', 'power-budget-checks',
+   'power-budget-checks', 'Flag changes that raise idle current above 120 µA', 'repo',
+   'acme-robotics/helios-firmware', false, false, true, 'authored');
+
+-- zephyr-conventions has twelve published versions — the v12 of "v12 · 2d ago" — in one
+-- statement, which the density trigger sees row by row.
+insert into ouroboros.skill_versions
+    (skill_id, version, body, frontmatter, published_at, published_by, change_note)
+  select 'a6920000-0000-0000-0000-000000000001', n, '# Zephyr conventions (v' || n || ')',
+         '{"triggers": ["Kconfig", "devicetree"], "load": "on_trigger", "scope": "repo"}',
+         now() - interval '2 days', 'a6900000-0000-0000-0000-00000000000a', null
+    from generate_series(1, 12) as n;
+
+insert into ouroboros.skill_versions
+    (skill_id, version, body, frontmatter, published_at, change_note)
+values
+  ('a6920000-0000-0000-0000-000000000002', 1, '# Repo map', '{"load": "always"}', now(),
+   'nightly rebuild'),
+  ('a6920000-0000-0000-0000-000000000004', 1, '# HIL safety',
+   '{"triggers": ["physical tests"], "load": "on_trigger", "scope": "repo"}', now(), null),
+  ('a6920000-0000-0000-0000-000000000005', 1, '# Commit style',
+   '{"load": "always", "provenance": {"source": "CLAUDE.md", "section": "Commits"}}', now(),
+   'imported from CLAUDE.md'),
+  ('a6920000-0000-0000-0000-000000000006', 1, '# Power budget checks', '{}', now(), null);
+
+insert into ouroboros.skill_versions (skill_id, version, body, published_at)
+  select 'a6920000-0000-0000-0000-000000000003', n, '# PR etiquette v' || n, now()
+    from generate_series(1, 4) as n;
+
+update ouroboros.skills set current_version = 12
+ where id = 'a6920000-0000-0000-0000-000000000001';
+update ouroboros.skills set current_version = 4
+ where id = 'a6920000-0000-0000-0000-000000000003';
+update ouroboros.skills set current_version = 1
+ where id in ('a6920000-0000-0000-0000-000000000002', 'a6920000-0000-0000-0000-000000000004',
+              'a6920000-0000-0000-0000-000000000005', 'a6920000-0000-0000-0000-000000000006');
+
+select pg_temp.must_hold(
+  (select array_agg(slug || '|' || scope || '|' || enabled || '|' || required || '|' || draft
+                    || '|' || origin || '|v' || current_version order by slug)
+     from ouroboros.skills where organization_id = 'org-v069')
+  = array['commit-style|org|true|false|false|imported|v1',
+          'hil-safety|repo|true|true|false|authored|v1',
+          'power-budget-checks|repo|false|false|true|authored|v1',
+          'pr-etiquette|org|true|false|false|authored|v4',
+          'repo-map|repo|true|false|false|generated|v1',
+          'zephyr-conventions|repo|true|false|false|authored|v12'],
+  'all six mockup rows are representable — hil-safety locked, repo-map generated, a draft row');
+
+-- --- the lock is a database invariant --------------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.skills set enabled = false
+     where id = 'a6920000-0000-0000-0000-000000000004'$$,
+  'a required skill cannot be switched off', 'skills_required_enabled');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skills
+      (organization_id, slug, name, description, scope, enabled, required)
+    values ('org-v069', 'off-and-locked', 'x', 'd', 'org', false, true)$$,
+  'a required skill cannot be created disabled', 'skills_required_enabled');
+
+select pg_temp.must_reject(
+  $$update ouroboros.skills set draft = true
+     where id = 'a6920000-0000-0000-0000-000000000004'$$,
+  'a required skill cannot be a draft', 'skills_required_not_draft');
+
+-- --- scope and its referent agree --------------------------------------------------------------------
+select pg_temp.must_reject(
+  format($$insert into ouroboros.skills
+      (organization_id, slug, name, description, scope, repo_ref, workflow_id)
+    values ('org-v069', 'scope-probe', 'x', 'd', %L, %L, %L)$$, s, r, w),
+  'scope and referent must agree: ' || s || ' / ' || coalesce(r, '-') || ' / '
+    || coalesce(w, '-'),
+  'skills_scope_referent')
+  from (values ('repo', null, null),
+               ('repo', 'acme-robotics/helios-firmware', 'a6910000-0000-0000-0000-000000000001'),
+               ('org', 'acme-robotics/helios-firmware', null),
+               ('org', null, 'a6910000-0000-0000-0000-000000000001'),
+               ('workflow', null, null),
+               ('workflow', 'acme-robotics/helios-firmware',
+                'a6910000-0000-0000-0000-000000000001')) as p(s, r, w);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skills (organization_id, slug, name, description, scope)
+    values ('org-v069', 'bad-scope', 'x', 'd', 'team')$$,
+  'scope is org, repo or workflow', 'skills_scope_valid');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skills (organization_id, slug, name, description, scope, repo_ref)
+    values ('org-v069', 'bad-repo', 'x', 'd', 'repo', 'not-a-repo')$$,
+  'a repo_ref is owner/name', 'repo_ref_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skills (organization_id, slug, name, description, scope, workflow_id)
+    values ('org-v069', 'cross-tenant', 'x', 'd', 'workflow',
+            'a6910000-0000-0000-0000-000000000002')$$,
+  'a workflow-scoped skill cannot name another workspace''s workflow', 'skills_workflow_fk');
+
+insert into ouroboros.skills (id, organization_id, slug, name, description, scope, workflow_id)
+  values ('a6920000-0000-0000-0000-000000000007', 'org-v069', 'fix-overrides', 'overrides',
+          'standard-fix overrides', 'workflow', 'a6910000-0000-0000-0000-000000000001');
+
+-- --- slugs, names, origin ------------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.skills (organization_id, slug, name, description, scope)
+    values ('org-v069', 'hil-safety', 'x', 'd', 'org')$$,
+  'a slug is unique per workspace', 'skills_organization_slug_key');
+
+insert into ouroboros.skills (organization_id, slug, name, description, scope)
+  values ('org-v069-other', 'hil-safety', 'hil-safety', 'another workspace''s', 'org');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skills (organization_id, slug, name, description, scope)
+    values ('org-v069', 'Hil_Safety', 'x', 'd', 'org')$$,
+  'a slug is lower-case kebab', 'skills_slug_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skills (organization_id, slug, name, description, scope)
+    values ('org-v069', 'blank-name', ' ', 'd', 'org')$$,
+  'a skill has a name', 'skills_name_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skills (organization_id, slug, name, description, scope, origin)
+    values ('org-v069', 'bad-origin', 'x', 'd', 'org', 'scraped')$$,
+  'origin is authored, imported or generated', 'skills_origin_valid');
+
+select pg_temp.must_hold(
+  (select array_agg(distinct origin order by origin)
+     from ouroboros.skills where organization_id = 'org-v069')
+  = array['authored', 'generated', 'imported'],
+  'origin distinguishes authored, imported and generated rows');
+
+-- --- frontmatter is typed --------------------------------------------------------------------------
+select pg_temp.must_reject(
+  format($$insert into ouroboros.skill_versions (skill_id, body, frontmatter)
+    values ('a6920000-0000-0000-0000-000000000007', 'draft', %L)$$, fm),
+  'frontmatter is typed: ' || fm, 'skill_versions_frontmatter_typed')
+  from unnest(array['[]', '"text"', '{"unknown": 1}', '{"name": ""}', '{"name": 3}',
+                    '{"scope": "team"}', '{"triggers": []}', '{"triggers": "Kconfig"}',
+                    '{"triggers": ["ok", 2]}', '{"triggers": ["ok", " "]}',
+                    '{"load": "sometimes"}', '{"load": "on_trigger"}',
+                    '{"provenance": "CLAUDE.md"}', '{"provenance": {}}',
+                    '{"provenance": {"source": "CLAUDE.md", "line": 4}}',
+                    '{"provenance": {"source": "CLAUDE.md", "section": ""}}']) as fm;
+
+select pg_temp.must_hold(
+  ouroboros.skill_frontmatter_typed(
+    '{"name": "hil-safety", "description": "Interlocks", "scope": "repo",
+      "triggers": ["physical tests"], "load": "on_trigger",
+      "provenance": {"source": "CLAUDE.md", "section": "HIL"}}')
+  and ouroboros.skill_frontmatter_typed('{}')
+  and not ouroboros.skill_frontmatter_typed(null),
+  'a fully-populated frontmatter and an empty one are both typed documents');
+
+-- --- versions: the draft, the publish, and immutability ---------------------------------------------
+insert into ouroboros.skill_versions (skill_id, body)
+  values ('a6920000-0000-0000-0000-000000000001', '');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skill_versions (skill_id, body)
+    values ('a6920000-0000-0000-0000-000000000001', 'second draft')$$,
+  'at most one draft version per skill', 'skill_versions_one_draft_idx');
+
+update ouroboros.skill_versions set body = '# Zephyr conventions (draft)'
+ where skill_id = 'a6920000-0000-0000-0000-000000000001' and version is null;
+
+select pg_temp.must_reject(
+  $$update ouroboros.skill_versions set version = 14, published_at = now()
+     where skill_id = 'a6920000-0000-0000-0000-000000000001' and version is null$$,
+  'publishing creates exactly the next version', 'skill_versions_next_version');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skill_versions (skill_id, version, body, published_at)
+    values ('a6920000-0000-0000-0000-000000000007', 1, '  ', now())$$,
+  'a published version has a body', 'skill_versions_published_body_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skill_versions (skill_id, version, body)
+    values ('a6920000-0000-0000-0000-000000000007', 1, 'x')$$,
+  'a version number arrives with its publish stamp', 'skill_versions_version_publish_stamp');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skill_versions (skill_id, body, change_note)
+    values ('a6920000-0000-0000-0000-000000000007', 'x', 'why')$$,
+  'a draft carries no change note', 'skill_versions_draft_unattributed');
+
+update ouroboros.skill_versions
+   set version = 13, published_at = now(), published_by = 'a6900000-0000-0000-0000-00000000000a',
+       change_note = 'ISR rules'
+ where skill_id = 'a6920000-0000-0000-0000-000000000001' and version is null;
+
+select pg_temp.must_raise(
+  $$update ouroboros.skill_versions set body = 'rewritten'
+     where skill_id = 'a6920000-0000-0000-0000-000000000001' and version = 12$$,
+  '23001', 'a published skill version cannot be revised');
+
+select pg_temp.must_raise(
+  $$update ouroboros.skill_versions set frontmatter = '{}'
+     where skill_id = 'a6920000-0000-0000-0000-000000000001' and version = 13$$,
+  '23001', 'a published version''s frontmatter cannot be revised either');
+
+select pg_temp.must_reject(
+  $$update ouroboros.skills set current_version = 14
+     where id = 'a6920000-0000-0000-0000-000000000001'$$,
+  'current_version names a published version of this skill', 'skills_current_version_fk');
+
+select pg_temp.must_reject(
+  $$update ouroboros.skills set current_version = 12
+     where id = 'a6920000-0000-0000-0000-000000000003'$$,
+  'current_version cannot name another skill''s version', 'skills_current_version_fk');
+
+-- Removing a person clears their attribution without revising the history.
+delete from ouroboros."user" where "id" = 'a6900000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select count(*) = 13 and bool_and(published_by is null)
+     from ouroboros.skill_versions
+    where skill_id = 'a6920000-0000-0000-0000-000000000001'),
+  'removing a publisher clears the attribution and keeps all thirteen versions');
+
+-- --- usage is derived, never stored ------------------------------------------------------------------
+select pg_temp.must_hold(
+  not exists (select 1 from information_schema.columns
+               where table_schema = 'ouroboros'
+                 and table_name in ('skills', 'skill_versions')
+                 and column_name ~ '(usage|use_count|used|uses|percent|pct|ratio|count|runs)'),
+  'no usage count or percentage column exists on skills or skill_versions (#406 derives it)');
+
+-- --- grants -----------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.skills', 'insert')
+  and has_table_privilege('ouroboros_app', 'ouroboros.skills', 'update')
+  and has_table_privilege('ouroboros_app', 'ouroboros.skills', 'delete')
+  and has_table_privilege('ouroboros_app', 'ouroboros.skill_versions', 'insert')
+  and has_table_privilege('ouroboros_app', 'ouroboros.skill_versions', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.skill_versions', 'delete'),
+  'the app role manages skills and writes versions, and cannot delete a version');
+
+-- --- cascades ---------------------------------------------------------------------------------------
+delete from ouroboros.workflows where id = 'a6910000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.skills where id = 'a6920000-0000-0000-0000-000000000007'),
+  'a workflow-scoped skill goes with its workflow');
+
+delete from ouroboros.skills where id = 'a6920000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.skill_versions
+               where skill_id = 'a6920000-0000-0000-0000-000000000001'),
+  'deleting a skill takes its version history and its pointer in one statement');
+
+delete from ouroboros.organization where "id" in ('org-v069', 'org-v069-other');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.skills where organization_id like 'org-v069%'),
+  'a deleted workspace takes its skills');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

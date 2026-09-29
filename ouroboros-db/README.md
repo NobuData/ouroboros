@@ -943,6 +943,17 @@
 > `workflow_template_unlocked(rule, merged_loop_count(org), override)`, where the override is the
 > operator's configured threshold. `workflows` gains `template_slug` + `template_version`, the
 > provenance a workflow instantiated from a template records. Captions refuse digits and `%` (**O8**).
+>
+> `V069` ([#405](https://github.com/NobuData/ouroboros/issues/405)) opens the **knowledge**
+> domain (decision **K1**): `skills` is mockup 14's skills card — slug unique per workspace, a
+> typed `org|repo|workflow` scope whose referent (`repo_ref` or a same-workspace `workflow_id`) is
+> CHECKed to agree, and the `enabled`, `required` and `draft` flags. `NOT (required AND NOT
+> enabled)` is a database CHECK, so `hil-safety`'s lock is not one API call from being off; draft
+> skills are never injected (enforced in context assembly). `origin` is
+> `authored|imported|generated`, and generated skills (`repo-map`) are rebuilt by the #415 job.
+> `skill_versions` follows `V029`'s model exactly — immutable once published, dense from 1, one
+> draft row — with a markdown `body` and `frontmatter` typed by `skill_frontmatter_typed`.
+> Usage (*61% of runs*) is derived from #406's injection records; no usage column exists.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -2178,6 +2189,7 @@ ouroboros-db/
 │   ├── V066__pull_request_sync_stamp.sql # pull_requests.synced_at (when the host was last asked, moved by a sync that found nothing new); updated_at no longer moves for the stamp alone — #370
 │   ├── V067__onboarding_wizard_detections.sql # onboarding_state (no step columns, O1), repo_detection_scans + repo_detections (evidence, detected|measured, O2), repo_detections_latest, protected_path_policies; repo_ref domain — #380
 │   ├── V068__workflow_templates.sql         # workflow_templates (four shipped tiles, versioned, immutable, org rows shadow global), unlock-rule evaluator, workflows.template_slug/template_version — #381
+│   ├── V069__skills_versions.sql            # skills (scope + referent, enabled/required/draft, origin), skill_versions (immutable, dense, typed frontmatter); no usage columns — #405
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2325,6 +2337,8 @@ outside this module alters it.
 | `repo_detections_latest` | `V067` | The card's read path — every row of each repository's newest scan, with `scanned_at`, `duration_ms` and `pack_versions` | a view |
 | `protected_path_policies` | `V067` | Globs a change may not touch, per repository ([#380](https://github.com/NobuData/ouroboros/issues/380)) — `path_glob`, `source` | `(organization_id, repo_ref, path_glob)` unique; relative, forward slashes, no `..`; `source` is `suggested\|edited` and an edited row never returns to `suggested` (`protected_path_policies_provenance`); read by AP.3's `allowed_paths` check; absorbed into the org policy document by BQ.1 (#480) |
 | `workflow_templates` | `V068` | The onboarding tiles as product data ([#381](https://github.com/NobuData/ouroboros/issues/381), BA.2, decision **O4**) — `slug`, `version`, `name`, `description`, `stage_dots`, `effort_range`, `caption`, `definition` (a WF-P.2 document), `tier`, `unlock_rule`, `sort_order` | `organization_id` null is a global, shipped row; an organization's row of the same slug shadows it (`workflow_templates_for(org)`); `(organization_id, slug, version)` unique with nulls not distinct; versions dense from 1 per `(organization, slug)` (`workflow_templates_next_version`); **immutable** (`workflow_templates_immutable`); `tier` is `starter\|advanced` and an advanced row carries `unlock_rule` `{"merged_loops_gte": N ≥ 1}` while a starter row carries none; `effort_range` ⊆ `xs\|s\|m\|l\|xl`; `caption` has no digit or `%` (**O8**); every global `definition` is validated against the DSL schema in ci/db; `ouroboros_app` may select and insert only |
+| `skills` | `V069` | Mockup 14's skills card ([#405](https://github.com/NobuData/ouroboros/issues/405), BE.1, decision **K1**) — `slug`, `name`, `description`, `scope`, `repo_ref`, `workflow_id`, `enabled`, `required`, `draft`, `origin`, `current_version` | `slug` unique per organization (`skills_organization_slug_key`); `scope` is `org\|repo\|workflow` and `skills_scope_referent` holds a repo scope to a `repo_ref` and a workflow scope to a `workflow_id` (composite key to a workflow of the same workspace, cascading); `skills_required_enabled` refuses `required AND NOT enabled` and `skills_required_not_draft` a required draft; `draft` rows are never injected (context assembly); `origin` is `authored\|imported\|generated` — generated rows are rebuilt by #415; `current_version` points at a published version of this skill (`skills_current_version_fk`); **no usage column** — usage is #406's injection records; `ouroboros_app` has full DML |
+| `skill_versions` | `V069` | A skill's version history plus its one draft ([#405](https://github.com/NobuData/ouroboros/issues/405)) — `version`, `body` (markdown), `frontmatter`, `published_at`, `published_by`, `change_note` | `V029`'s model: `version` null is the draft (one per skill, `skill_versions_one_draft_idx`), dense from 1 (`skill_versions_next_version`), **immutable once published** (`skill_versions_no_update`, the publisher set-null excepted); a published body is non-blank; `frontmatter` is typed by `skill_frontmatter_typed` — keys `name`, `description`, `scope`, `triggers`, `load` (`always\|on_trigger`, which needs triggers) and `provenance` (`{source, section?}`); `ouroboros_app` may not delete |
 | `model_prices` | `V012` | What a model costs — the pricing catalog behind mockup 21's `$ per 1M in·out` column, and the shared price table [#92](https://github.com/NobuData/ouroboros/issues/92), [#198](https://github.com/NobuData/ouroboros/issues/198) and [#210](https://github.com/NobuData/ouroboros/issues/210) read rather than re-invent | `billing_mode` is one of `token\|seat\|usage\|free`, and the amounts follow it structurally — `token` requires both, `free` requires zero or none, `seat` and `usage` may carry none, and a `token` row that costs nothing in both directions is refused as a mislabelled `free`; `organization_id` null means a bundled catalog row and set means a workspace's override, with `source` required to agree and `catalog_version` required on bundled rows; the match key is unique **`nulls not distinct`**, without which every re-import would duplicate the whole catalog; the only wildcard is a whole `*` |
 
 Two **functions**, both `V012`'s and both documented in
