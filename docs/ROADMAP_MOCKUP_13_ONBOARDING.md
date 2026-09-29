@@ -234,7 +234,7 @@ v2`** created at filing; every issue assigned. Complexity chips: **XS · S · M 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BA.1 | #380 ✅ | 🟢 Done | ouroboros-db: [BA.1] Wizard state & detection storage | `onboarding_state`, detection results with evidence, protected paths | mvp, onboarding, db | N (after WF-Q.1) | Y | M | ouroboros-db |
-| BA.2 | #381 | 🟡 Open | ouroboros-db: [BA.2] Workflow template registry schema | Templates with definitions, tiers, unlock rules (delivers WF-T.5 data) | mvp, onboarding, workflow, db | N (after WF-P.1) | Y | S | ouroboros-db |
+| BA.2 | #381 ✅ | 🟢 Done | ouroboros-db: [BA.2] Workflow template registry schema | Templates with definitions, tiers, unlock rules (delivers WF-T.5 data) | mvp, onboarding, workflow, db | N (after WF-P.1) | Y | S | ouroboros-db |
 | BA.3 | #382 | 🟡 Open | ouroboros-rest: [BA.3] Dry-run policy plane | `policy.dry_run` storage + PR-plane enforcement + audited flip | mvp, onboarding, pr, rest | N (after AX.4, AW.4) | Y | M | ouroboros-rest, ouroboros-db |
 | BA.4 | #383 | 🟡 Open | ouroboros-db: [BA.4] Onboarding seeds — mockup-13 parity + probes | Mid-wizard state, detection rows, four templates, safe pick | mvp, onboarding, db, ci | N (after BA.1–BA.3, #24) | Y | S | ouroboros-db, .github |
 
@@ -289,7 +289,7 @@ erDiagram
 
 ### Issue BA.2 — ouroboros-db: [BA.2] Workflow template registry schema
 
-> **GitHub issue:** #381 · **Status:** 🟡 Open · **Parent epic:** #376
+> **GitHub issue:** #381 ✅ · **Status:** 🟢 Done · **Parent epic:** #376
 
 
 - **Problem Statement:** The tiles are product data (decision O4) — template

@@ -23341,6 +23341,331 @@ select pg_temp.must_hold(
   'a deleted workspace takes its wizard, scans, detections and protected paths');
 
 -- ===========================================================================
+-- V068 — workflow template registry and instantiation provenance (#381, BA.2)
+-- ===========================================================================
+--
+-- Mockup 13's step 3 tile grid. Asserted: the four shipped templates carry the mockup's names,
+-- sublines, stage dots and chips; feature-builder ends at a needs_review human gate and
+-- docs-chores routes every model stage through the docs lane; no caption carries a number (O8);
+-- the vocabularies and shapes are CHECKs; a version is immutable and the next one is dense; an
+-- organization's row shadows the global of the same slug; a workflow records the slug and
+-- version it came from, and publishing a new template version leaves it unchanged; and the
+-- unlock rule evaluates against merged runs with a configurable threshold.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v068', 'Acme Robotics', 'acme-robotics-v068', now()),
+  ('org-v068-other', 'Other Works', 'other-works-v068', now());
+
+-- --- the four shipped tiles, exactly as the mockup draws them --------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(slug || '|' || name || '|' || description || '|' || tier
+                    order by sort_order)
+     from ouroboros.workflow_templates where organization_id is null and version = 1)
+  = array['quick-fixes|Quick fixes|Small bugs and cleanups, fully hands-off.|starter',
+          'feature-builder|Feature builder|Plans bigger changes, asks before merging.|starter',
+          'docs-chores|Docs & chores|Docs, typos, dep bumps on your cheapest model.|starter',
+          'deep-refactor|Deep refactor|Multi-PR restructures with staged rollout and extra review.|advanced'],
+  'the four shipped templates carry the mockup''s names, sublines and tiers, in tile order');
+
+select pg_temp.must_hold(
+  (select array_agg(stage_dots::text order by sort_order)
+     from ouroboros.workflow_templates where organization_id is null and version = 1)
+  = array['["analyze", "plan", "code", "build", "test", "PR"]',
+          '["analyze", "plan", "ask you", "code", "build", "test", "PR"]',
+          '["analyze", "code", "check", "PR"]',
+          '["map", "plan", "split", "code ×n", "verify", "PR ×n"]'],
+  'each tile''s stage dots read as the mockup draws them');
+
+select pg_temp.must_hold(
+  (select array_agg(array_to_string(effort_range, ' ') order by sort_order)
+     from ouroboros.workflow_templates where organization_id is null and version = 1)
+  = array['xs s m', 'm l', 'xs s', 'l xl'],
+  'each tile''s effort chips are the mockup''s');
+
+select pg_temp.must_hold(
+  (select unlock_rule = '{"merged_loops_gte": 10}'::jsonb
+     from ouroboros.workflow_templates where organization_id is null and slug = 'deep-refactor')
+  and (select bool_and(unlock_rule is null)
+         from ouroboros.workflow_templates where organization_id is null and tier = 'starter'),
+  'deep-refactor unlocks after ten merged loops, and the starter tiles carry no rule');
+
+select pg_temp.must_hold(
+  (select bool_and(caption is not null and caption !~ '[0-9%]')
+     from ouroboros.workflow_templates where organization_id is null),
+  'no shipped caption carries a statistic (O8)');
+
+-- --- the captions describe real behaviour --------------------------------------------------------
+select pg_temp.must_hold(
+  (select jsonb_path_exists(definition,
+            '$.nodes[*] ? (@.type == "term" && @.config.action == "needs_review")')
+          and not jsonb_path_exists(definition,
+            '$.nodes[*] ? (@.config.action == "open_pr_automerge")')
+     from ouroboros.workflow_templates where organization_id is null and slug = 'feature-builder'),
+  'feature-builder ends at the needs_review human gate and never auto-merges');
+
+select pg_temp.must_hold(
+  (select jsonb_path_exists(definition, '$.nodes[*] ? (@.type == "llm")')
+          and not jsonb_path_exists(definition,
+            '$.nodes[*] ? (@.type == "llm" && @.config.routing.inherit_task != "docs")')
+     from ouroboros.workflow_templates where organization_id is null and slug = 'docs-chores'),
+  'docs-chores routes every model stage through the docs task kind — the cheap lane');
+
+-- --- the table refuses what it must ---------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, sort_order)
+    values ('org-v068', 't-tier', 1, 'T', 'd', '["a"]', array['s'], '{}', 'expert', 1)$$,
+  'a tier is starter or advanced', 'workflow_templates_tier');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, sort_order)
+    values ('org-v068', 't-adv', 1, 'T', 'd', '["a"]', array['s'], '{}', 'advanced', 1)$$,
+  'an advanced template must carry an unlock rule', 'workflow_templates_tier_unlock_rule');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, unlock_rule, sort_order)
+    values ('org-v068', 't-start', 1, 'T', 'd', '["a"]', array['s'], '{}', 'starter',
+            '{"merged_loops_gte": 3}', 1)$$,
+  'a starter template carries no unlock rule', 'workflow_templates_tier_unlock_rule');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, unlock_rule, sort_order)
+    values ('org-v068', 't-rule', 1, 'T', 'd', '["a"]', array['s'], '{}', 'advanced', %L, 1)$$,
+    rule),
+  'an unlock rule is exactly {merged_loops_gte: whole number >= 1}: ' || rule,
+  'workflow_templates_unlock_rule_shape')
+  from unnest(array['{"merged_loops_gte": 0}', '{"merged_loops_gte": 2.5}',
+                    '{"merged_loops_gte": "10"}', '{"merged_loops_gte": 10, "extra": 1}',
+                    '{}', '[10]', '10']) as rule;
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, caption, sort_order)
+    values ('org-v068', 't-cap', 1, 'T', 'd', '["a"]', array['s'], '{}', 'starter', %L, 1)$$,
+    caption),
+  'a caption is qualitative, never a statistic (O8): ' || caption,
+  'workflow_templates_caption_qualitative')
+  from unnest(array['recommended first workflow — 92% of teams start here',
+                    'average first-loop time 4m', 'percent%']) as caption;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, sort_order)
+    values ('org-v068', 't-effort', 1, 'T', 'd', '["a"]', array['s', 'xxl'], '{}', 'starter', 1)$$,
+  'effort chips come from the xs..xl vocabulary', 'workflow_templates_effort_range_vocabulary');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, sort_order)
+    values ('org-v068', 't-effort', 1, 'T', 'd', '["a"]', array[]::text[], '{}', 'starter', 1)$$,
+  'at least one effort chip', 'workflow_templates_effort_range_vocabulary');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, sort_order)
+    values ('org-v068', 't-dots', 1, 'T', 'd', %L, array['s'], '{}', 'starter', 1)$$, dots),
+  'stage dots are a non-empty array of non-empty strings: ' || dots,
+  'workflow_templates_stage_dots_shape')
+  from unnest(array['[]', '["a", 1]', '["a", ""]', '{"a": 1}']) as dots;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, sort_order)
+    values ('org-v068', 't-def', 1, 'T', 'd', '["a"]', array['s'], '[]', 'starter', 1)$$,
+  'a definition is a jsonb object', 'workflow_templates_definition_object');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, sort_order)
+    values ('org-v068', 'Quick_Fixes', 1, 'T', 'd', '["a"]', array['s'], '{}', 'starter', 1)$$,
+  'a slug is lower-case kebab', 'workflow_templates_slug_format');
+
+-- --- versions are dense and immutable -------------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (slug, version, name, description, stage_dots, effort_range, definition, tier, sort_order)
+    values ('quick-fixes', 1, 'Quick fixes', 'd', '["a"]', array['s'], '{}', 'starter', 1)$$,
+  'a global version cannot be published twice', 'workflow_templates_next_version');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (slug, version, name, description, stage_dots, effort_range, definition, tier, sort_order)
+    values ('quick-fixes', 3, 'Quick fixes', 'd', '["a"]', array['s'], '{}', 'starter', 1)$$,
+  'the next version is exactly one above the highest', 'workflow_templates_next_version');
+
+select pg_temp.must_raise(
+  $$update ouroboros.workflow_templates set caption = 'changed'
+     where organization_id is null and slug = 'quick-fixes' and version = 1$$,
+  '23001', 'a shipped template version cannot be revised');
+
+select pg_temp.must_hold(
+  not has_table_privilege('ouroboros_app', 'ouroboros.workflow_templates', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.workflow_templates', 'delete')
+  and has_table_privilege('ouroboros_app', 'ouroboros.workflow_templates', 'select')
+  and has_table_privilege('ouroboros_app', 'ouroboros.workflow_templates', 'insert'),
+  'the app role reads and publishes templates, and can neither revise nor delete one');
+
+-- --- instantiation provenance, and a new version leaves it alone -----------------------------------
+insert into ouroboros.workflows (id, organization_id, slug, name, template_slug, template_version)
+  values ('a6800000-0000-0000-0000-000000000001', 'org-v068', 'quick-fixes', 'Quick fixes',
+          'quick-fixes', 1);
+
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+  select 'a6800000-0000-0000-0000-000000000001', 1, definition, now()
+    from ouroboros.workflow_templates
+   where organization_id is null and slug = 'quick-fixes' and version = 1;
+
+update ouroboros.workflows set current_version = 1
+ where id = 'a6800000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select template_slug = 'quick-fixes' and template_version = 1
+     from ouroboros.workflows where id = 'a6800000-0000-0000-0000-000000000001'),
+  'a workflow records the template slug and version it was instantiated from');
+
+insert into ouroboros.workflow_templates
+    (slug, version, name, description, stage_dots, effort_range, caption, definition, tier,
+     sort_order)
+  select slug, 2, name, description, stage_dots, effort_range, caption,
+         jsonb_set(definition, '{trigger,conditions,effort_lte}', '"s"'), tier, sort_order
+    from ouroboros.workflow_templates
+   where organization_id is null and slug = 'quick-fixes' and version = 1;
+
+select pg_temp.must_hold(
+  (select wf.template_version = 1
+          and v.definition = (select definition from ouroboros.workflow_templates
+                               where organization_id is null and slug = 'quick-fixes'
+                                 and version = 1)
+          and v.definition #>> '{trigger,conditions,effort_lte}' = 'm'
+     from ouroboros.workflows wf
+     join ouroboros.workflow_versions v on v.workflow_id = wf.id and v.version = 1
+    where wf.id = 'a6800000-0000-0000-0000-000000000001'),
+  'publishing quick-fixes@v2 leaves the workflow instantiated from v1 unchanged');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflows (organization_id, slug, name, template_slug)
+    values ('org-v068', 'half-a', 'Half', 'quick-fixes')$$,
+  'a template slug without its version is refused', 'workflows_template_provenance_pair');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflows (organization_id, slug, name, template_version)
+    values ('org-v068', 'half-b', 'Half', 3)$$,
+  'a template version without its slug is refused', 'workflows_template_provenance_pair');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflows (organization_id, slug, name, template_slug, template_version)
+    values ('org-v068', 'bad-slug', 'Bad', 'Quick Fixes', 1)$$,
+  'a provenance slug has the template slug''s shape', 'workflows_template_slug_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflows (organization_id, slug, name, template_slug, template_version)
+    values ('org-v068', 'bad-version', 'Bad', 'quick-fixes', 0)$$,
+  'a provenance version is at least 1', 'workflows_template_version_positive');
+
+-- --- an org row shadows the global of the same slug ------------------------------------------------
+insert into ouroboros.workflow_templates
+    (organization_id, slug, version, name, description, stage_dots, effort_range, caption,
+     definition, tier, sort_order)
+  select 'org-v068', slug, 1, 'Our quick fixes', 'The platform team''s first workflow.',
+         stage_dots, effort_range, caption, definition, tier, sort_order
+    from ouroboros.workflow_templates
+   where organization_id is null and slug = 'quick-fixes' and version = 1;
+
+select pg_temp.must_hold(
+  (select array_agg(slug || '@' || version || ':' || coalesce(organization_id, 'global'))
+     from ouroboros.workflow_templates_for('org-v068'))
+  = array['quick-fixes@1:org-v068', 'feature-builder@1:global', 'docs-chores@1:global',
+          'deep-refactor@1:global'],
+  'an organization''s row shadows the global of the same slug, in tile order');
+
+select pg_temp.must_hold(
+  (select array_agg(slug || '@' || version || ':' || coalesce(organization_id, 'global'))
+     from ouroboros.workflow_templates_for('org-v068-other'))
+  = array['quick-fixes@2:global', 'feature-builder@1:global', 'docs-chores@1:global',
+          'deep-refactor@1:global'],
+  'another organization sees the latest global versions, not the override');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.workflow_templates
+      (organization_id, slug, version, name, description, stage_dots, effort_range, definition,
+       tier, sort_order)
+    values ('org-v068', 'quick-fixes', 3, 'T', 'd', '["a"]', array['s'], '{}', 'starter', 1)$$,
+  'an organization''s override numbers its own versions', 'workflow_templates_next_version');
+
+-- --- the lock computes ------------------------------------------------------------------------------
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a6810000-0000-0000-0000-00000000000a', 'org-v068', 'acme-robotics-v068', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a6820000-0000-0000-0000-00000000000a', 'a6810000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model,
+     status, stage_label, stage_index, stage_total, started_at, finished_at, pr_number)
+  select ('a6830000-0000-0000-0000-' || lpad(n::text, 12, '0'))::uuid, 'org-v068',
+         'a6820000-0000-0000-0000-00000000000a', n, 'fixture', 'quick-fixes', 'claude-fable-5',
+         case when n <= 3 then 'merged' else 'failed' end, 'Done', 6, 6,
+         now() - interval '1 hour', now(), case when n <= 3 then n end
+    from generate_series(1, 5) as n;
+
+select pg_temp.must_hold(
+  ouroboros.merged_loop_count('org-v068') = 3
+  and ouroboros.merged_loop_count('org-v068-other') = 0,
+  'merged loops are counted off the runs read-model, per organization, merged only');
+
+select pg_temp.must_hold(
+  (select not ouroboros.workflow_template_unlocked(t.unlock_rule,
+                                                   ouroboros.merged_loop_count('org-v068'))
+          and ouroboros.workflow_template_unlock_threshold(t.unlock_rule) = 10
+     from ouroboros.workflow_templates_for('org-v068') t where t.slug = 'deep-refactor'),
+  'deep-refactor is locked at 3 of 10 merged loops');
+
+select pg_temp.must_hold(
+  ouroboros.workflow_template_unlocked('{"merged_loops_gte": 10}', 10)
+  and not ouroboros.workflow_template_unlocked('{"merged_loops_gte": 10}', 9)
+  and ouroboros.workflow_template_unlocked(null, 0)
+  and not ouroboros.workflow_template_unlocked('{"merged_loops_gte": 10}', null),
+  'the rule unlocks at its threshold, a null rule is always unlocked, and no count is zero');
+
+select pg_temp.must_hold(
+  ouroboros.workflow_template_unlocked('{"merged_loops_gte": 10}', 3, 3)
+  and not ouroboros.workflow_template_unlocked('{"merged_loops_gte": 10}', 3, 4)
+  and ouroboros.workflow_template_unlocked('{"merged_loops_gte": 10}', 0, 0)
+  and ouroboros.workflow_template_unlock_threshold('{"merged_loops_gte": 10}', 3) = 3
+  and ouroboros.workflow_template_unlock_threshold(null, 3) is null,
+  'a configured threshold overrides the shipped one');
+
+select pg_temp.must_raise(
+  $$select ouroboros.workflow_template_unlocked('{"merged_loops_gte": 10}', 3, -1)$$,
+  '22023', 'a negative threshold override is refused');
+
+select pg_temp.must_raise(
+  $$select ouroboros.workflow_template_unlocked('{"other": 10}', 3)$$,
+  '22023', 'a malformed unlock rule is refused rather than answered with null');
+
+-- --- a workspace takes its overrides with it --------------------------------------------------------
+delete from ouroboros.runs where organization_id = 'org-v068';
+delete from ouroboros.organization where "id" in ('org-v068', 'org-v068-other');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_templates where organization_id like 'org-v068%')
+  and (select count(*) = 5 from ouroboros.workflow_templates where organization_id is null),
+  'a deleted workspace takes its template overrides, and the global rows stay');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

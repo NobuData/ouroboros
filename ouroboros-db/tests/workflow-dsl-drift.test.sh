@@ -259,6 +259,12 @@ check_contains "$QUERY" "like '5eed001c-%'" 'it reads only the rows the workflow
 check_contains "$SEED" "'5eed001c-0000-4000-8000-'" \
   'and that is the prefix the seed builds its version ids from'
 
+# #381 (BA.2): the shipped workflow templates are validated too — the global rows only, so an
+# organization's own override (its data, not the product's) cannot fail a check about the product.
+check_contains "$QUERY" 'from ouroboros\.workflow_templates' 'it reads the shipped workflow templates'
+check_contains "$QUERY" 'organization_id is null' 'only the global, product-shipped ones'
+check_contains "$QUERY" "'template/' \|\| t\.slug" 'labelled template/<slug>'
+
 # Nothing but the JSON may reach stdout, or the verb reads prose and refuses the file.
 check_contains "$QUERY" '^\\set QUIET on$' 'it silences psql before formatting the output'
 check_contains "$QUERY" '^\\pset format unaligned$' 'prints unaligned'

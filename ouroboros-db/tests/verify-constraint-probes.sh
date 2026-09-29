@@ -405,6 +405,16 @@
 #   the picked ticket is the workspace's own     drop the onboarding_state_ticket_in_organization
 #                                                  trigger
 #
+# V068 (#381, BA.2) adds the workflow template registry and a workflow's template provenance:
+#
+#   BA.2 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   no caption carries a statistic (O8)          drop workflow_templates_caption_qualitative
+#   an advanced tile carries an unlock rule      drop workflow_templates_tier_unlock_rule
+#   a template version is never revised          drop the workflow_templates_immutable trigger
+#   the next version is exactly max + 1          drop the workflow_templates_next_version trigger
+#   provenance is slug and version, or neither   drop workflows_template_provenance_pair
+#
 # Two are rewrites rather than drops, for `route_chain_intact()`'s reason. **The state machine**
 # is one trigger holding the whole graph and the no-arrival-armed rule; dropping it would be caught
 # by the latter first, so the rewrite reads the function back from the catalogue and adds the one
@@ -1639,6 +1649,27 @@ expect_red 'a token merge may claim a [bot] identity' \
 expect_red 'a criterion may be verified with no evidence' \
   'a criterion cannot be marked verified before any evidence is cited .*pr_criteria_verified_has_evidence did not fire' \
   'drop trigger pr_criteria_verified_has_evidence on ouroboros.pr_criteria;'
+
+
+expect_red 'a template caption may carry a statistic' \
+  'a caption is qualitative, never a statistic .*workflow_templates_caption_qualitative did not fire' \
+  'alter table ouroboros.workflow_templates drop constraint workflow_templates_caption_qualitative;'
+
+expect_red 'an advanced template may carry no unlock rule' \
+  'an advanced template must carry an unlock rule .*workflow_templates_tier_unlock_rule did not fire' \
+  'alter table ouroboros.workflow_templates drop constraint workflow_templates_tier_unlock_rule;'
+
+expect_red 'a shipped template version may be revised' \
+  'a shipped template version cannot be revised \(statement was accepted\)' \
+  'drop trigger workflow_templates_immutable on ouroboros.workflow_templates;'
+
+expect_red 'a template version may skip or repeat' \
+  'a global version cannot be published twice \(rejected by workflow_templates_org_slug_version_key' \
+  'drop trigger workflow_templates_next_version on ouroboros.workflow_templates;'
+
+expect_red 'a workflow may record half its template provenance' \
+  'a template slug without its version is refused .*workflows_template_provenance_pair did not fire' \
+  'alter table ouroboros.workflows drop constraint workflows_template_provenance_pair;'
 
 
 printf '\n'

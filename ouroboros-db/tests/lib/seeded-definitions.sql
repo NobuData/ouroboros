@@ -2,7 +2,8 @@
 -- scripts/workflow-dsl-drift.mjs validates (#137, P.6).
 --
 -- The read half of ci/db's schema drift check. It prints one JSON array — an entry per stored
--- version R__dev_seed_workflows.sql wrote, `{"workflow", "version", "definition"}` — and
+-- version R__dev_seed_workflows.sql wrote, and one per shipped template version (V068),
+-- `{"workflow", "version", "definition"}` — and
 -- nothing else, so its output can be redirected straight into the verb:
 --
 --   psql ... -d <seeded database> -f ouroboros-db/tests/lib/seeded-definitions.sql > seeded.json
@@ -30,13 +31,23 @@
 \pset format unaligned
 \pset tuples_only on
 
+--
+-- **And every shipped workflow template** (#381, BA.2), labelled `template/<slug>`. Those are
+-- V068's global rows (`organization_id` null), so they are in every migrated database, seeded
+-- or not, and none of them is a draft. An organization's own override is its data, not the
+-- product's, and is left out for the same reason a studio-written row is.
 select coalesce(
-         json_agg(json_build_object('workflow',   org."slug" || '/' || wf.slug,
-                                    'version',    v.version,
-                                    'definition', v.definition)
-                  order by org."slug", wf.slug, v.version nulls last),
+         json_agg(json_build_object('workflow',   d.workflow,
+                                    'version',    d.version,
+                                    'definition', d.definition)
+                  order by d.workflow, d.version nulls last),
          '[]'::json)
-  from ouroboros.workflow_versions v
-  join ouroboros.workflows wf on wf.id = v.workflow_id
-  join ouroboros.organization org on org."id" = wf.organization_id
- where v.id::text like '5eed001c-%';
+  from (select org."slug" || '/' || wf.slug as workflow, v.version, v.definition
+          from ouroboros.workflow_versions v
+          join ouroboros.workflows wf on wf.id = v.workflow_id
+          join ouroboros.organization org on org."id" = wf.organization_id
+         where v.id::text like '5eed001c-%'
+        union all
+        select 'template/' || t.slug, t.version, t.definition
+          from ouroboros.workflow_templates t
+         where t.organization_id is null) as d;

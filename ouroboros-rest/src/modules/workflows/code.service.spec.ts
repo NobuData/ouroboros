@@ -48,6 +48,8 @@ function workflow(overrides: Partial<Workflow> = {}): Workflow {
     name: "Minimal",
     status: "active",
     current_version: 3,
+    template_slug: null,
+    template_version: null,
     created_at: AT,
     updated_at: AT,
     ...overrides,
