@@ -425,7 +425,10 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundredth is V074's `fact_suppressions`, mirrored by BF.3 (#412) — the record a
     // proposer's deduped candidate leaves, so dedupe is observable rather than silent.
-    expect(TABLE_NAMES).toHaveLength(100);
+    //
+    // The hundred-and-first is V072's `playbooks`, mirrored by BF.6 (#415) — the recipes
+    // create-from-run writes and run-on-issue launches through.
+    expect(TABLE_NAMES).toHaveLength(101);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

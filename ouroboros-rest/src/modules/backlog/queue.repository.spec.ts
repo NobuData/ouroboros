@@ -242,6 +242,20 @@ describe("the backlog queue repository", () => {
       expect(insert?.parameters).toContain(null);
     });
 
+    it("writes the launching playbook, or null, onto every row (#415)", async () => {
+      database.answers({ rows: [{ last: 0 }] });
+
+      await queue.append(WORKSPACE, [
+        appendRow({ playbookId: "5eed0046-0000-4000-8000-000000000001" }),
+        appendRow({ issueNumber: 484 }),
+      ]);
+
+      const insert = database.statements.find((statement) => statement.sql.startsWith("insert"));
+
+      expect(insert?.sql).toContain('"playbook_id"');
+      expect(insert?.parameters).toContain("5eed0046-0000-4000-8000-000000000001");
+    });
+
     it("returns the rows it wrote, so nothing has to be read back", async () => {
       database.answers({ rows: [{ last: 0 }] }, { rows: [{ id: "written" }] });
 

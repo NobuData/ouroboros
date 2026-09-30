@@ -299,6 +299,7 @@ service never starts half-configured.
 | `OURO_FLAKE_RESCORE_HOUR_UTC` | The UTC hour the [nightly flake re-scorer](#flake-scorer) is scheduled at; each pass lands at a random minute in the hour after it ([#331](https://github.com/NobuData/ouroboros/issues/331)) |      no — 3       | a whole number, 0–23 |
 | `OURO_FLAKE_RESCORE_CAP` | The most cases one workspace's nightly flake re-score covers, least recently scored first — the job's bound |     no — 2000     | a whole number, 1–100000 |
 | `OURO_FACT_SWEEP_HOUR_UTC` | The UTC hour the [nightly fact staleness sweep](#fact-lifecycle-and-the-staleness-sweep) is scheduled at; each pass lands at a random minute in the hour after it ([#411](https://github.com/NobuData/ouroboros/issues/411)) |      no — 4       | a whole number, 0–23 |
+| `OURO_REPO_MAP_HOUR_UTC` | The UTC hour the [nightly repo-map generator](#playbooks-and-the-repo-map-generator) is scheduled at; each pass lands at a random minute in the hour after it ([#415](https://github.com/NobuData/ouroboros/issues/415)) |      no — 5       | a whole number, 0–23 |
 | `OURO_ONBOARDING_UNLOCK_THRESHOLD` | The merged-loop count that unlocks an advanced [onboarding template tile](#template-tiles-and-instantiation) ([#386](https://github.com/NobuData/ouroboros/issues/386)), replacing each template's own rule |     no — unset     | a whole number, 0–10000; `0` unlocks every tier |
 
 Every one of them is documented with a development default in the repo-root
@@ -3337,6 +3338,55 @@ sha256 over the consumer, scope, budget, kept version ids, kept facts and trims.
 | `422 context_overrides_overlap` | one skill id is both enabled and disabled |
 | `422 context_injection_consumer_reference` | the references do not fit the consumer (V071's `context_injections_consumer_ref`) |
 | `422 context_injection_unresolved` | V071's trigger refused an id: another workspace's, an unconfirmed fact, a draft skill's version |
+
+## Playbooks and the repo-map generator
+
+Two things that are **generated rather than maintained** (BF.6,
+[#415](https://github.com/NobuData/ouroboros/issues/415), decisions **K6** and **K2**).
+
+**Playbooks** (`src/modules/playbooks/`) — recipes learned from runs that went well, composed onto
+the machinery that already exists. A playbook is V072's row: a workflow **pinned** at a published
+version, `{enable, disable}` skill overrides relative to context assembly, a context preset (steer
+notes, extra facts) and an optional issue filter.
+
+```
+GET    /api/v1/knowledge/playbooks                  the card; each with runCount (counted)
+GET    /api/v1/knowledge/playbooks/counts           run 9× for every recipe, zero included
+GET    /api/v1/knowledge/playbooks/from-run/{runId} what a recipe learned from the run would hold
+POST   /api/v1/knowledge/playbooks/from-run         …named and stored, sourceRunId recorded (admin+)
+POST · PATCH · DELETE /api/v1/knowledge/playbooks[/{id}]                               (admin+)
+GET    /api/v1/knowledge/playbooks/{id}/issues      Run on issue… ▾ — open issues the filter admits
+GET    /api/v1/knowledge/playbooks/{id}/context     the manifest + preset a launch attaches
+POST   /api/v1/knowledge/playbooks/{id}/launch      queue the issue under the pin → receipt (member+)
+```
+
+| Rule | |
+| --- | --- |
+| Create-from-run | a **terminal** run only; copies its workflow pin, derives overrides by comparing the skills its injection records name with what assembly resolves for its scope today (`enable` what it carried that assembly would not, `disable` what it went without — never a required skill; no record derives none), and keeps its steers verbatim, oldest first, de-duplicated, ≤ 16 × 2 000 chars |
+| Run-on-issue | the issue must pass the filter (V072's `playbook_issue_filter_admits` — the picker and the launch share it), then **M.3's queue write** (#112) runs with the playbook's workflow at its **pinned** version (reason `explicit`, no trigger consulted) and `playbook_id` on the row; every queue refusal applies unchanged |
+| The launch | the run that opens (`POST /internal/runs`) for a queued issue **under that row's pin** inherits its `playbook_id` — that run is the launch |
+| `run 9×` | `count(*)` of `runs.playbook_id` — **no counter column is written**; a queued item is not a launch until a run opens for it |
+| Receipt | the queued item in `GET /api/v1/queue`'s shape, its position, the attached context (the `playbook` manifest with the overrides applied, the steer notes, the fact ids) and links |
+
+**The repo-map generator** (`src/modules/repo-map/`) keeps `repo-map` honest nightly at
+`OURO_REPO_MAP_HOUR_UTC` (05:00) plus a random minute in the hour after, for every enabled
+repository, and on request:
+
+```
+POST /api/v1/knowledge/repo-map/regenerate {repo}   (admin+, debounced 60 s per repository)
+  ─▶ one tree listing + the CODEOWNERS it holds (DetectionService.readTree, ≤ 2 host requests)
+  ─▶ + the newest detection scan (#384) ─▶ deterministic markdown (repo-map.render.ts)
+  ─▶ identical to the version in force? unchanged : publish v(n+1) of the generated skill
+```
+
+| Rule | |
+| --- | --- |
+| Bounded | one tree request (≤ 20 000 entries read), at most one file; modules two levels deep, ≤ 20 children each, ≤ 200 rows; ≤ 500 CODEOWNERS rules; a cut is said in the document |
+| Ownership | GitHub's CODEOWNERS locations and rules — anchoring, `dir/`, `*`, `**`, `dir/*` direct files only; the last matching rule wins |
+| Diff-aware | the body has no timestamp and sorts everything, so identical input renders identical bytes; identical → `unchanged`, nothing written — each version marks a real change |
+| The skill | the repository's `generated`, repo-scoped skill — `repo-map`, or `repo-map-<name>` when that slug is taken — created enabled on first generation; `published_at` is the generation time, `published_by` the person (null nightly); a newer map overwrites an unpublished hand edit |
+| Rate limits | a refusal skips the repository (`skipped`, nothing written); the nightly pass stops asking a workspace's host after its first `rate_limit` (#101) |
+| Recorded | every run — published, unchanged or skipped — is audited as `knowledge.repo_map_generated` |
 
 ## Pluggable ticket sources
 

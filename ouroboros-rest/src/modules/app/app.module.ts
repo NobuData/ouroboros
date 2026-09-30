@@ -37,6 +37,8 @@ import { RegistryModule } from "../registry/registry.module";
 import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { SkillsModule } from "../skills/skills.module";
+import { PlaybooksModule } from "../playbooks/playbooks.module";
+import { RepoMapModule } from "../repo-map/repo-map.module";
 import { FactsModule } from "../facts/facts.module";
 import { FactProposersModule } from "../fact-proposers/proposers.module";
 import { RuleImportModule } from "../knowledge-import/rule-import.module";
@@ -375,6 +377,13 @@ export class AppModule {
         // distinct literal segment beside `RuleImportModule`'s `import`; `EstimationModule`
         // imports it too, so the estimator resolves through the same service.
         ContextAssemblyModule,
+        // BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — playbooks under
+        // `/api/v1/knowledge/playbooks` and the repo-map generator under
+        // `/api/v1/knowledge/repo-map`: two more literal segments beside `import` and `context`.
+        // Playbooks compose `BacklogModule`'s queue write and `ContextAssemblyModule`; the
+        // generator reads through `DetectionModule` and books its own nightly slot.
+        PlaybooksModule,
+        RepoMapModule,
         // L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the pipeline that
         // sizes what the sync mirrored. **After `BacklogSyncModule`, which imports it**, so
         // this entry is a statement rather than a requirement: Nest resolves the graph either

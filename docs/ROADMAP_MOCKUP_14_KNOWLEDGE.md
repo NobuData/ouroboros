@@ -416,7 +416,7 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
 | BF.3 | #412 ✅ | 🟢 Done | ouroboros-rest: [BF.3] Deterministic fact proposers | Correction/waiver/steer promotion with provenance (K5) | mvp, knowledge, runs, rest | N (after BF.2, AT.4) | Y | M | ouroboros-rest |
 | BF.4 | #413 ✅ | 🟢 Done | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
 | BF.5 | #414 ✅ | 🟢 Done | ouroboros-rest: [BF.5] Context assembly & manifests | Closest-wins resolution, previews, injection recording (K8/K9) | mvp, knowledge, rest, intake | N (after BF.1, BF.2) | Y | L | ouroboros-rest |
-| BF.6 | #415 | 🟡 Open | ouroboros-rest: [BF.6] Playbooks & repo-map generator | Create-from-run, run-on-issue; nightly repo-map (K2/K6) | mvp, knowledge, rest | N (after BE.3, BF.5) | Y | M | ouroboros-rest |
+| BF.6 | #415 ✅ | 🟢 Done | ouroboros-rest: [BF.6] Playbooks & repo-map generator | Create-from-run, run-on-issue; nightly repo-map (K2/K6) | mvp, knowledge, rest | N (after BE.3, BF.5) | Y | M | ouroboros-rest |
 | BF.7 | #416 | 🟡 Open | ouroboros-rest: [BF.7] Knowledge integration tests | Lifecycle, proposers, import, assembly matrix, playbooks | mvp, knowledge, rest, ci | N (after BF.1–BF.6) | Y | M | ouroboros-rest |
 
 ### Issue BF.1 — ouroboros-rest: [BF.1] Skills service & registry integration
@@ -656,7 +656,7 @@ assemble({org, repo: helios, workflow: standard-fix}, run_stage)
 
 ### Issue BF.6 — ouroboros-rest: [BF.6] Playbooks & repo-map generator
 
-> **GitHub issue:** #415 · **Status:** 🟡 Open · **Parent epic:** #402
+> **GitHub issue:** #415 ✅ · **Status:** 🟢 Done · **Parent epic:** #402
 
 - **Problem Statement:** Playbooks must compose real launches (K6), and
   `repo-map` must regenerate nightly from real repo data (K2).
@@ -677,6 +677,22 @@ assemble({org, repo: helios, workflow: standard-fix}, run_stage)
   amendment: `playbook_id`).
 - **Technical Stack:** NestJS scheduler, provider tree API.
 - **Epic:** BF
+- **Delivered** (`ouroboros-rest/src/modules/playbooks/`, `…/repo-map/`, REST 0.37.35):
+  `/api/v1/knowledge/playbooks` — CRUD over V072, `GET …/from-run/{runId}` (the draft) and
+  `POST …/from-run` (named, `source_run_id` kept), `GET …/{id}/issues` (the picker, narrowed by
+  V072's `playbook_issue_filter_admits`), `GET …/{id}/context`, `POST …/{id}/launch` and
+  `GET …/counts`. Decided on the issue: create-from-run takes a **terminal** run; its overrides
+  are the run's injected skills (its `context_injections`) diffed against what assembly resolves
+  for its scope today — no record derives none, and a required skill is never disabled; its
+  steers are copied verbatim (≤ 16). A launch is **M.3's queue write** with a `QueueLaunch` —
+  the playbook's pinned version, reason `explicit`, no trigger consulted, `playbook_id` on the
+  row — and ingest's `POST /internal/runs` gives the run the queued row's `playbook_id` when it
+  opens under that row's pin; `runCount` is `count(runs.playbook_id)`. `repo-map`: nightly at
+  `OURO_REPO_MAP_HOUR_UTC` (5) and `POST /api/v1/knowledge/repo-map/regenerate` (admin, 60 s
+  debounce) — one tree listing + CODEOWNERS via `DetectionService.readTree`, the newest scan,
+  deterministic markdown, a new `generated` version only when the body differs; the skill is
+  `repo-map` (or `repo-map-<name>` when taken); a rate limit skips (and stops that workspace's
+  night); every run audited `knowledge.repo_map_generated`.
 
 ```
 create-from-run(#1791) ─▶ playbook{pin, overrides, steers} · run-on-issue(#485) ─▶ queue+pin+preset

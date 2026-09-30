@@ -28,7 +28,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { retryAfterSeconds } from "../backlog/debounce";
 import { describeForLog } from "../errors/failure";
 import { TicketSourceError } from "../ticket-sources/ticket-source.errors";
-import type { RepoFile } from "../ticket-sources/ticket-source.probe";
+import type { RepoFile, RepoTree } from "../ticket-sources/ticket-source.probe";
 import {
   supportsRepoProbes,
   type ProbeCapableProvider,
@@ -260,6 +260,40 @@ export class DetectionService {
       }
 
       return files;
+    });
+  }
+
+  /**
+   * List a repository's tree, then read the few files a caller picks from it — one credential
+   * opening, one tree request, one request per picked path (BF.6's repo-map generator,
+   * [#415](https://github.com/NobuData/ouroboros/issues/415)). No debounce, because it writes
+   * nothing; the caller bounds how often it asks.
+   *
+   * @param organizationId - The workspace.
+   * @param repo - `owner/name`; compared lower-case.
+   * @param pick - Which paths to read, given the tree — each one `isProbePath` admits.
+   * @returns The tree, and each picked path's file (`null` where the host has none).
+   * @throws {ConflictError} `detection_source_missing` when nothing connected can probe it.
+   * @throws {TicketSourceError} When the host refuses a request — `rate_limit` above all. Nothing
+   *   after the refusal is sent.
+   */
+  async readTree(
+    organizationId: string,
+    repo: string,
+    pick: (tree: RepoTree) => readonly string[],
+  ): Promise<{ tree: RepoTree; files: Map<string, RepoFile | null> }> {
+    const ref = repo.toLowerCase();
+    const { source, provider } = await this.prober(organizationId, ref);
+
+    return this.sources.withCredentials(source, async (context) => {
+      const tree = await provider.repoTree(context, ref);
+      const files = new Map<string, RepoFile | null>();
+
+      for (const path of pick(tree)) {
+        files.set(path, await provider.repoFile(context, ref, path));
+      }
+
+      return { tree, files };
     });
   }
 
