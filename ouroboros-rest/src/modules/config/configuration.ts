@@ -37,7 +37,6 @@ import {
   isCloudProvider,
   type LocalProviderKind,
 } from "../internal/providers";
-import { ReferenceSchema } from "../workflows/dsl.schema";
 
 /**
  * A required environment variable is missing or malformed.
@@ -947,20 +946,6 @@ export interface Configuration {
    */
   readonly localProviderUrls: Readonly<Partial<Record<LocalProviderKind, string>>>;
   /**
-   * The skill names the stage catalog suggests — `OURO_WORKFLOW_SKILL_SUGGESTIONS`
-   * ([#145](https://github.com/NobuData/ouroboros/issues/145)).
-   *
-   * A comma-separated list, empty when unset. It is configuration only until the skills
-   * registry ([#410](https://github.com/NobuData/ouroboros/issues/410)) exists, which is what
-   * the ticket prescribes: *"sourced from configuration until … skills (mockup 14) exist"*.
-   *
-   * **Suggestions, never an enumeration** (decision **P7**): a workflow naming a skill that is
-   * not listed still saves and publishes, and the inspector flags it as a warning. Each entry
-   * must be a name the DSL could hold — at most 128 characters — so nothing is suggested that
-   * the validator would then refuse.
-   */
-  readonly workflowSkillSuggestions: readonly string[];
-  /**
    * The merged-loop count that unlocks an advanced onboarding template, replacing each
    * template's own `merged_loops_gte` (BB.3, #386). From `OURO_ONBOARDING_UNLOCK_THRESHOLD`;
    * `undefined` when unset, which leaves every template's shipped rule in force. `0` unlocks
@@ -1027,7 +1012,6 @@ export const VARIABLES = {
   flakeRescoreHourUtc: "OURO_FLAKE_RESCORE_HOUR_UTC",
   flakeRescoreCap: "OURO_FLAKE_RESCORE_CAP",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
-  workflowSkillSuggestions: "OURO_WORKFLOW_SKILL_SUGGESTIONS",
   onboardingUnlockThreshold: "OURO_ONBOARDING_UNLOCK_THRESHOLD",
 } as const satisfies Record<keyof Configuration, string>;
 
@@ -1185,43 +1169,6 @@ function providerProblem(entries: readonly ProviderEntry[]): string | undefined 
     if (!isAbsoluteUrl(url, ["http:", "https:"])) {
       return `${kind} needs an absolute http:// or https:// URL, such as ${kind}=http://localhost:11434`;
     }
-  }
-
-  return undefined;
-}
-
-/**
- * Split `OURO_WORKFLOW_SKILL_SUGGESTIONS` into skill names.
- *
- * Comma-separated, like every other list in this file, with the same tolerance: entries are
- * trimmed and blank ones dropped, so a trailing comma is formatting rather than a boot failure.
- *
- * @param value - The raw variable.
- * @returns The names, in the order written.
- */
-function skillEntries(value: string): string[] {
-  return value
-    .split(",")
-    .map((entry) => entry.trim())
-    .filter((entry) => entry !== "");
-}
-
-/**
- * Why this list of skill names cannot be accepted, or `undefined` when it can.
- *
- * Neither message echoes an entry, by this file's rule for text an operator typed: the useful
- * part is the constraint.
- *
- * @param entries - The parsed names.
- * @returns The complaint, or `undefined`.
- */
-function skillProblem(entries: readonly string[]): string | undefined {
-  if (entries.some((entry) => !ReferenceSchema.safeParse(entry).success)) {
-    return "a skill name is longer than a workflow may reference — at most 128 characters";
-  }
-
-  if (new Set(entries).size !== entries.length) {
-    return "a skill name is listed twice — each skill is suggested once";
   }
 
   return undefined;
@@ -1659,17 +1606,6 @@ const environmentShape = z.object({
           Record<LocalProviderKind, string>
         >,
     ),
-
-  // The stage catalog's skill suggestions (#145, decision P7) — until the skills registry
-  // (#410) exists. Optional, and empty when unset: nothing to suggest is an honest answer, and
-  // the inspector then flags no skill as unknown.
-  OURO_WORKFLOW_SKILL_SUGGESTIONS: z
-    .string()
-    .default("")
-    .refine((value) => skillProblem(skillEntries(value)) === undefined, {
-      error: (issue) => skillProblem(skillEntries(String(issue.input))),
-    })
-    .transform(skillEntries),
 });
 
 /**
@@ -1847,7 +1783,6 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     flakeRescoreHourUtc: values.OURO_FLAKE_RESCORE_HOUR_UTC,
     flakeRescoreCap: values.OURO_FLAKE_RESCORE_CAP,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
-    workflowSkillSuggestions: Object.freeze(values.OURO_WORKFLOW_SKILL_SUGGESTIONS),
     onboardingUnlockThreshold: values.OURO_ONBOARDING_UNLOCK_THRESHOLD,
   });
 }

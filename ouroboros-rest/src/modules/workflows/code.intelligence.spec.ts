@@ -35,6 +35,7 @@ import {
   type WorkspaceState,
 } from "./code.intelligence.fixture";
 import { buildCodeSymbols, codeSymbolTable, SUGGESTION_SCOPES } from "./code.symbols";
+import { DslWarningCode } from "./dsl.errors";
 
 /**
  * The code view's intelligence, held to committed fixtures — W.3
@@ -255,12 +256,26 @@ describe("Loop Checks summary derivation", () => {
     },
   );
 
-  it("reports the unrouted split as a warning row in the seeded workspace, and no row when unchecked", () => {
+  it("reports the unrouted split as a warning row in the seeded workspace, and the unknown skills in an empty one", () => {
     expect(diagnosed(CANVAS, "seeded").rows.map((row) => [row.id, row.status])).toEqual([
       ["graph", "ok"],
       ["references", "warn"],
     ]);
-    expect(diagnosed(CANVAS, "unconfigured").rows.map((row) => row.id)).toEqual(["graph"]);
+    // An empty registry names no skill, so the canvas's two skill references genuinely do not
+    // resolve (#410) — while its task routes, which nothing checked, stay unreported.
+    const unconfigured = diagnosed(CANVAS, "unconfigured");
+
+    expect(unconfigured.rows.map((row) => [row.id, row.status])).toEqual([
+      ["graph", "ok"],
+      ["references", "warn"],
+    ]);
+    expect(
+      new Set(
+        unconfigured.diagnostics
+          .filter((diagnostic) => diagnostic.severity === "warning")
+          .map((diagnostic) => diagnostic.code),
+      ),
+    ).toEqual(new Set([DslWarningCode.REFERENCE_UNKNOWN_SKILL]));
   });
 });
 

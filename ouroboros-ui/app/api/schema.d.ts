@@ -3941,10 +3941,11 @@ export interface paths {
          *     stand.
          *
          *     **`suggestions` are advice, never an enumeration** (decision **P7**). `taskRoutes` is this
-         *     workspace's task kinds in the routing matrix's order; `skills` is the deployment's
-         *     `OURO_WORKFLOW_SKILL_SUGGESTIONS` until the skills registry exists. A workflow naming a
-         *     name that is not suggested still saves and publishes — the inspector flags it as a
-         *     warning.
+         *     workspace's task kinds in the routing matrix's order; `skills` is this workspace's skills
+         *     registry ([#410](https://github.com/NobuData/ouroboros/issues/410)) — every skill that is
+         *     not a draft and has a published version, by slug. A workflow naming a name that is not
+         *     suggested still saves and publishes — the inspector flags it as a warning, and for skills
+         *     that warning is registry truth: the skill genuinely does not exist here.
          *
          *     **Every member may read it**, `viewer` included.
          *
@@ -3986,9 +3987,9 @@ export interface paths {
          *     card.
          *
          *     **Suggestions are advice** (decision **P7**). `route.task` offers this workspace's task
-         *     kinds in the routing matrix's order and `stage.llm.skill` the deployment's
-         *     `OURO_WORKFLOW_SKILL_SUGGESTIONS`, each marked `suggestion: true`. They are the names the
-         *     stage catalog suggests, from the same read.
+         *     kinds in the routing matrix's order and `stage.llm.skill` this workspace's published,
+         *     non-draft skills from the registry (#410), each marked `suggestion: true`. They are the
+         *     names the stage catalog suggests, from the same read.
          *
          *     **Every member may read it**, `viewer` included.
          *
@@ -4020,12 +4021,15 @@ export interface paths {
          *
          *     **A `workflows/<slug>.loop.ts` per workflow on the rail**, in the rail's order and with its
          *     status, so a paused workflow draws its err-dot here as it does on the rail. Archived
-         *     workflows are absent, as they are from the rail. **Then `ouroboros.config.ts`**, read-only.
+         *     workflows are absent, as they are from the rail. **Then a `skills/<slug>.skill.md` per
+         *     skill in the registry**, by slug, drafts included (X.2,
+         *     [#181](https://github.com/NobuData/ouroboros/issues/181), delivered by
+         *     [#410](https://github.com/NobuData/ouroboros/issues/410)) — opened and saved through
+         *     `GET|PUT /api/v1/skills/{slug}/code`. **Then `ouroboros.config.ts`**, read-only.
          *
          *     **Directories are not entries.** A client groups files by the directory in their `path`,
-         *     so an empty directory cannot be served: mockup 05's `skills/` and `lib/` appear when a file
-         *     under them exists (X.2, [#181](https://github.com/NobuData/ouroboros/issues/181)), not as
-         *     placeholder rows before then.
+         *     so an empty directory cannot be served: `skills/` appears when the workspace has a skill,
+         *     and mockup 05's `lib/` when a file under it exists, not as placeholder rows before then.
          *
          *     **Every member may read it**, `viewer` included.
          *
@@ -4533,6 +4537,329 @@ export interface paths {
          *     **Every member may validate**, `viewer` included — it writes nothing.
          */
         post: operations["validateWorkflowCode"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Mockup 14's skills card — every skill, and the active count
+         * @description The knowledge page's skills table — BF.1 ([#410](https://github.com/NobuData/ouroboros/issues/410)).
+         *     Every skill of the workspace by slug, with its scope and referent, its switch, the lock
+         *     (`required` — the locked switch's `required — cannot disable`), the draft tint, its origin,
+         *     and the version in force with when it was published (`v12 · 2d ago`).
+         *
+         *     **`active` counts what context assembly could inject** — enabled, not a draft, published —
+         *     so a draft skill is shown and never counted.
+         *
+         *     **Every member may read it**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["listSkills"];
+        put?: never;
+        /**
+         * + New skill — a skill and its first draft
+         * @description **+ New skill**. The document is markdown with YAML frontmatter; its `name` names the skill
+         *     and, unless `slug` is sent, is what the slug is built from. `scope` defaults to what the
+         *     frontmatter declares, then to `org`; `repo` scope needs `repoRef`, `workflow` scope a
+         *     `workflowId` of this workspace. Nothing is published: the editor opens on the draft, and the
+         *     first publish makes v1.
+         *
+         *     **`owner` or `admin`.**
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["createSkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Used-by column, counted over a stated window
+         * @description Mockup 14's **Used by** — `61% of runs`, `every run`, `every PR`, `physical tests`, `—` —
+         *     counted from the injection records context assembly wrote (V071), never stored. Over the runs
+         *     context was assembled for in the window and in the skill's scope: none carried it is `—`,
+         *     all did is `every run`, exactly those that opened a PR is `every PR`, exactly those with HIL
+         *     measurements is `physical tests`, otherwise the rounded share. `injections` counts manifests
+         *     of every consumer. **The window is stated** in `window`, 30 days unless `days` says otherwise.
+         *
+         *     **A draft is never active**: its label is `—` and `active` is `false`, whatever was recorded.
+         *
+         *     **Every member may read it**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["readSkillStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One skill, a version of it, and its draft slot
+         * @description One skill: its table row, the version in force (or the one `?version=` names), and its draft
+         *     slot. `draftEtag` is always present — `none` for an empty slot — and is the `If-Match` of the
+         *     next `PUT …/draft` or `PUT …/code`.
+         *
+         *     **Every member may read it**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["readSkill"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a skill — guarded
+         * @description **Refused while a published workflow references it.** A skill reference is a validated string
+         *     (decision **P7**), so a delete that went through would leave every workflow naming the skill
+         *     with a stage that injects nothing. The refusal names each workflow whose version in force
+         *     references it, so the person knows what to fix. A required skill cannot be deleted either.
+         *     Its versions go with it.
+         *
+         *     **`owner` or `admin`.**
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        delete: operations["deleteSkill"];
+        options?: never;
+        head?: never;
+        /**
+         * The switch, the lock and the draft flag
+         * @description **The required lock is enforced here.** Switching off a required skill is a `403` with the
+         *     designed reason — `skill_required_locked`, *"required by policy — cannot disable"*,
+         *     `details.reason: required_by_policy` — for every role, owner included, and V069's
+         *     `skills_required_enabled` holds it once more beneath. **Changing `required` is an owner's**:
+         *     anybody else sending a different value is `403 skill_required_owner_only`. Making a skill
+         *     required switches it on. `draft: false` promotes a draft skill, which needs a published
+         *     version; `draft: true` returns one to draft, and a draft is never injected. An explicit `null`
+         *     is refused: it is no switch position.
+         *
+         *     **`owner` or `admin`.**
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        patch: operations["updateSkill"];
+        trace?: never;
+    };
+    "/api/v1/skills/{slug}/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Draft-save — guarded by If-Match
+         * @description WF-P.3's draft-save, for a skill: the whole document, markdown with frontmatter, written into
+         *     the one mutable draft if `If-Match` still admits it. A save that does not read is refused whole
+         *     and the stored draft is untouched. Publishing is what makes a version.
+         *
+         *     **`owner` or `admin`.**
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        put: operations["saveSkillDraft"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{slug}/publish": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish the draft as the next immutable version
+         * @description The draft becomes the next version, dense from 1, and the version in force; published versions
+         *     are immutable for every role (V069's trigger). The frontmatter's `name` and `description`
+         *     become the table row's. A draft that declares a `scope` must declare the skill's own. `200`:
+         *     the version is read back through `GET …/{slug}?version=`.
+         *
+         *     **`owner` or `admin`.**
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["publishSkill"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{slug}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A skill's history, newest first
+         * @description The published versions, newest first, without their documents — one is read by number through
+         *     `GET …/{slug}?version=`. `isCurrent` marks the version in force.
+         *
+         *     **Every member may read it**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["listSkillVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{slug}/scope/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What a scope move would do — before it is committed
+         * @description Moving a skill between `org`, `repo` and `workflow` changes what it applies to. The preview
+         *     says how: the repositories and workflows the move **gains and loses**, every published workflow
+         *     referencing the skill and whether the move leaves it **out of reach**, and every skill already
+         *     at the destination with the **same name** (case-insensitive) — a clash the commit must resolve
+         *     explicitly. Its `previewToken` is what `POST …/scope` sends back. Writes nothing, so every
+         *     member may ask; `200`.
+         *
+         *     **Every member may read it**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["previewSkillScopeMove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{slug}/scope": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Commit a previewed scope move
+         * @description The move the preview described, and only that: the preview is recomputed under a lock and its
+         *     token compared with `previewToken`, so a move that would now do something else is refused
+         *     rather than committed unseen. A preview showing clashes needs `resolve: keep_both`. A draft
+         *     declaring the old scope is brought along, so it can still publish. `200`.
+         *
+         *     **`owner` or `admin`.**
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["moveSkillScope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/skills/{slug}/code": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A skill as a file of the code view
+         * @description `skills/<slug>.skill.md` in mockup 05's editor (X.2, [#181](https://github.com/NobuData/ouroboros/issues/181)):
+         *     the same file shape and `If-Match` guard as `GET /api/v1/workflows/{slug}/code`, so skills
+         *     edit in the same frame as workflows. Without `?version=` the file is the draft, or the version
+         *     in force when there is no draft — editable either way, and the first save creates the draft.
+         *     With `?version=` it is that published version, `readOnly`.
+         *
+         *     **Every member may read it**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["readSkillCode"];
+        /**
+         * Save the file into the draft — guarded by If-Match
+         * @description The code view's save: `PUT …/draft`, answered as a file. A save here moves the draft etag the
+         *     detail and the draft-save carry, so a stale save in either is a `409`.
+         *
+         *     **`owner` or `admin`.**
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        put: operations["saveSkillCode"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -15266,7 +15593,11 @@ export interface components {
          *     means nothing to suggest.
          */
         WorkflowStageSuggestions: {
-            /** @description The deployment's `OURO_WORKFLOW_SKILL_SUGGESTIONS`, until the skills registry exists. */
+            /**
+             * @description This workspace's skills registry (#410) — every skill that is not a draft and has a
+             *     published version, by slug. Empty when the workspace has none, and then every skill a
+             *     workflow names is flagged as unknown.
+             */
             skills: string[];
             /** @description This workspace's task kinds (`task_kinds`), in the routing matrix's order. */
             taskRoutes: string[];
@@ -15921,27 +16252,379 @@ export interface components {
         WorkflowCodeTreeFile: {
             /**
              * @example workflows/hotfix-p0.loop.ts
+             * @example skills/hil-safety.skill.md
              * @example ouroboros.config.ts
              */
             path: string;
             /**
-             * @description A workflow's file, or the read-only configuration projection.
+             * @description A workflow's file, the read-only configuration projection, or a skill's
+             *     `skills/<slug>.skill.md` (X.2, [#410](https://github.com/NobuData/ouroboros/issues/410))
+             *     — read and saved through `GET|PUT /api/v1/skills/{slug}/code`.
              * @enum {string}
              */
-            kind: "workflow" | "config";
+            kind: "workflow" | "config" | "skill";
             /** @description Whether a save is refused — `true` for `ouroboros.config.ts` and nothing else. */
             readOnly: boolean;
             /**
-             * @description The workflow's slug, which `GET /api/v1/workflows/{slug}/code` reads; `null` for the
-             *     configuration.
+             * @description The workflow's slug, which `GET /api/v1/workflows/{slug}/code` reads, or the skill's,
+             *     which `GET /api/v1/skills/{slug}/code` reads; `null` for the configuration.
              * @example hotfix-p0
              */
             slug: string | null;
             /**
              * @description The workflow's status, so `paused` draws the rail's err-dot; `null` for the
-             *     configuration.
+             *     configuration and for a skill.
              */
             status: components["schemas"]["WorkflowStatus"] | null;
+        };
+        /**
+         * SkillScope
+         * @description Where a skill applies (V069). Closest scope wins on conflict (decision **K8**); the
+         *     referent a scope needs is `repoRef` for `repo` and `workflow` for `workflow`.
+         * @enum {string}
+         */
+        SkillScope: "org" | "repo" | "workflow";
+        /**
+         * SkillWorkflowRef
+         * @description A workflow, as a skill names it.
+         */
+        SkillWorkflowRef: {
+            /** Format: uuid */
+            id: string;
+            /** @example standard-fix */
+            slug: string;
+        };
+        /**
+         * SkillTarget
+         * @description Where a skill applies — its scope and that scope's referent.
+         */
+        SkillTarget: {
+            scope: components["schemas"]["SkillScope"];
+            /**
+             * @description `owner/name`, exactly when `scope` is `repo`.
+             * @example acme-robotics/helios-firmware
+             */
+            repoRef: string | null;
+            /** @description The workflow, exactly when `scope` is `workflow`. */
+            workflow: components["schemas"]["SkillWorkflowRef"] | null;
+        };
+        /**
+         * SkillSummary
+         * @description One row of mockup 14's skills table (BF.1,
+         *     [#410](https://github.com/NobuData/ouroboros/issues/410)).
+         */
+        SkillSummary: {
+            /** Format: uuid */
+            id: string;
+            /**
+             * @description What a workflow's `skill:` names. Lower-case kebab, unique per workspace.
+             * @example hil-safety
+             */
+            slug: string;
+            /** @example hil-safety */
+            name: string;
+            /** @example Hardware-in-loop interlocks before any motor spins */
+            description: string;
+            scope: components["schemas"]["SkillScope"];
+            /** @example acme-robotics/helios-firmware */
+            repoRef: string | null;
+            workflow: components["schemas"]["SkillWorkflowRef"] | null;
+            /** @description The switch. */
+            enabled: boolean;
+            /**
+             * @description The locked switch — `required — cannot disable`. Switching it off is
+             *     `403 skill_required_locked`; changing it is an owner's.
+             */
+            required: boolean;
+            /** @description The tinted row. A draft is never injected and never counted as active. */
+            draft: boolean;
+            /**
+             * @description `generated` is `repo-map`, rebuilt nightly — the `auto-generated nightly` tag.
+             * @enum {string}
+             */
+            origin: "authored" | "imported" | "generated";
+            /**
+             * @description The version in force — the `v12` of `v12 · 2d ago` — or `null` before a publish.
+             * @example 12
+             */
+            currentVersion: number | null;
+            /**
+             * Format: date-time
+             * @description When the version in force was published — the `2d ago`.
+             */
+            publishedAt: string | null;
+            /** @description Whether context assembly could inject it — enabled, not a draft, published. */
+            active: boolean;
+            /**
+             * @description Where the code view opens it.
+             * @example skills/hil-safety.skill.md
+             */
+            path: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * SkillList
+         * @description Mockup 14's skills card.
+         */
+        SkillList: {
+            /** @description Every skill of the workspace, by slug. */
+            skills: components["schemas"]["SkillSummary"][];
+            /**
+             * @description The card's `6 active` — drafts never counted.
+             * @example 5
+             */
+            active: number;
+        };
+        /**
+         * SkillFrontmatter
+         * @description A version's frontmatter, parsed and typed — V069's `skill_frontmatter_typed`. A version
+         *     stored by an import or a seed may lack `name` and `description`, which this service
+         *     requires of every document it writes.
+         */
+        SkillFrontmatter: {
+            name?: string;
+            description?: string;
+            scope?: components["schemas"]["SkillScope"];
+            /** @enum {string} */
+            load?: "always" | "on_trigger";
+            triggers?: string[];
+            provenance?: {
+                /** @example CLAUDE.md */
+                source: string;
+                section?: string;
+            };
+        };
+        /**
+         * SkillVersion
+         * @description One published version, whole. Immutable.
+         */
+        SkillVersion: {
+            /** @example 13 */
+            version: number;
+            frontmatter: components["schemas"]["SkillFrontmatter"];
+            /** @description The markdown after the frontmatter. */
+            body: string;
+            /** Format: date-time */
+            publishedAt: string;
+            /** @description Who published it; `null` for a seed, an import or the generator. */
+            publishedBy: string | null;
+            changeNote: string | null;
+        };
+        /**
+         * SkillVersionSummary
+         * @description One row of a skill's history — everything but the document.
+         */
+        SkillVersionSummary: {
+            version: number;
+            /** Format: date-time */
+            publishedAt: string;
+            publishedBy: string | null;
+            changeNote: string | null;
+            /** @description Whether this is the version in force. */
+            isCurrent: boolean;
+        };
+        /**
+         * SkillVersionPage
+         * @description One page of a skill's history, newest first — the
+         */
+        SkillVersionPage: {
+            items: components["schemas"]["SkillVersionSummary"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        /**
+         * SkillDraft
+         * @description The mutable draft — WF-P.3's draft slot, for a skill.
+         */
+        SkillDraft: {
+            /** @description The `If-Match` of the next save. Opaque. */
+            etag: string;
+            frontmatter: components["schemas"]["SkillFrontmatter"];
+            body: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * SkillDetail
+         * @description One skill, the version asked for (or the one in force), and its draft slot.
+         */
+        SkillDetail: {
+            skill: components["schemas"]["SkillSummary"];
+            /** @description `null` before a first publish. */
+            version: components["schemas"]["SkillVersion"] | null;
+            /** @description `null` when there is no draft — after a publish, until the next edit. */
+            draft: components["schemas"]["SkillDraft"] | null;
+            /**
+             * @description The draft slot's etag, always — `none` for an empty slot.
+             * @example none
+             */
+            draftEtag: string;
+        };
+        /**
+         * SkillCode
+         * @description `skills/<slug>.skill.md` as the code view opens it — `WorkflowCode`'s shape for a skill
+         *     (X.2, [#181](https://github.com/NobuData/ouroboros/issues/181)).
+         */
+        SkillCode: {
+            /** @example skills/zephyr-conventions.skill.md */
+            path: string;
+            slug: string;
+            /** @description The markdown with its `---`-fenced YAML frontmatter. */
+            text: string;
+            /** @description The draft slot's etag — the `If-Match` of the next save. */
+            etag: string;
+            /** @description `true` for a published version read with `?version=`. */
+            readOnly: boolean;
+            /** @description The published version the text is, or `null` for the draft. */
+            version: number | null;
+            currentVersion: number | null;
+        };
+        /** CreateSkillBody */
+        CreateSkillBody: {
+            /** @description The whole document, markdown with YAML frontmatter. */
+            text: string;
+            slug?: string;
+            scope?: components["schemas"]["SkillScope"];
+            /** @description `owner/name` — exactly for `repo` scope. */
+            repoRef?: string;
+            /**
+             * Format: uuid
+             * @description A workflow of this workspace — exactly for `workflow` scope.
+             */
+            workflowId?: string;
+        };
+        /** SaveSkillDocumentBody */
+        SaveSkillDocumentBody: {
+            /** @description The whole document, markdown with YAML frontmatter. */
+            text: string;
+        };
+        /** PublishSkillBody */
+        PublishSkillBody: {
+            changeNote?: string;
+        };
+        /**
+         * UpdateSkillBody
+         * @description Any subset of the three. An explicit `null` is refused.
+         */
+        UpdateSkillBody: {
+            enabled?: boolean;
+            /** @description Owner-only, whichever way it is set. */
+            required?: boolean;
+            draft?: boolean;
+        };
+        /**
+         * SkillScopeTarget
+         * @description Where a skill would move.
+         */
+        SkillScopeTarget: {
+            scope: components["schemas"]["SkillScope"];
+            repoRef?: string;
+            /** Format: uuid */
+            workflowId?: string;
+        };
+        /**
+         * MoveSkillScopeBody
+         * @description The move, as previewed.
+         */
+        MoveSkillScopeBody: {
+            scope: components["schemas"]["SkillScope"];
+            repoRef?: string;
+            /** Format: uuid */
+            workflowId?: string;
+            /** @description The preview's `previewToken`. */
+            previewToken: string;
+            /**
+             * @description Required when the preview showed clashes — move anyway, keeping both skills.
+             * @enum {string}
+             */
+            resolve?: "keep_both";
+        };
+        /**
+         * SkillReach
+         * @description Repositories and workflows a skill applies to.
+         */
+        SkillReach: {
+            /**
+             * @example [
+             *       "acme-robotics/helios-app"
+             *     ]
+             */
+            repos: string[];
+            workflows: components["schemas"]["SkillWorkflowRef"][];
+        };
+        /**
+         * SkillReference
+         * @description A published workflow whose version in force names the skill.
+         */
+        SkillReference: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            version: number;
+        };
+        /**
+         * SkillScopePreview
+         * @description What a scope move would do, before it is committed.
+         */
+        SkillScopePreview: {
+            slug: string;
+            from: components["schemas"]["SkillTarget"];
+            to: components["schemas"]["SkillTarget"];
+            reach: {
+                gains: components["schemas"]["SkillReach"];
+                loses: components["schemas"]["SkillReach"];
+            };
+            references: {
+                workflow: components["schemas"]["SkillReference"];
+                /** @description Whether the move leaves the skill no longer applying to this workflow. */
+                outOfReach: boolean;
+            }[];
+            /** @description Skills at the destination with the same name — non-empty needs `resolve`. */
+            clashes: {
+                /** Format: uuid */
+                id: string;
+                slug: string;
+                name: string;
+            }[];
+            previewToken: string;
+        };
+        /**
+         * SkillStats
+         * @description The Used-by column, counted from injection records over a stated window.
+         */
+        SkillStats: {
+            window: {
+                /** @example 30 */
+                days: number;
+                /** Format: date-time */
+                from: string;
+                /** Format: date-time */
+                to: string;
+            };
+            skills: {
+                slug: string;
+                /** @description A draft is never active. */
+                active: boolean;
+                usedBy: {
+                    /**
+                     * @example 61% of runs
+                     * @example every run
+                     * @example every PR
+                     * @example physical tests
+                     * @example —
+                     */
+                    label: string;
+                    /** @description Runs in the window whose manifests carried a version of the skill. */
+                    carried: number;
+                    /** @description Runs in the window, in the skill's scope, context was assembled for. */
+                    inScope: number;
+                };
+                /** @description Manifests in the window carrying a version of it, every consumer. */
+                injections: number;
+            }[];
         };
         /**
          * WorkflowCodeConfig
@@ -17789,6 +18472,14 @@ export interface components {
          * @example standard-fix
          */
         WorkflowSlug: string;
+        /**
+         * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+         *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+         *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+         *     is a `404`.
+         * @example hil-safety
+         */
+        SkillSlug: string;
         /**
          * @description A provider connection's id. A connection of another workspace answers `404`, never
          *     `403`: confirming that an identifier names something real is the whole of what
@@ -34737,6 +35428,13 @@ export interface operations {
                      *           "status": "paused"
                      *         },
                      *         {
+                     *           "path": "skills/hil-safety.skill.md",
+                     *           "kind": "skill",
+                     *           "readOnly": false,
+                     *           "slug": "hil-safety",
+                     *           "status": null
+                     *         },
+                     *         {
                      *           "path": "ouroboros.config.ts",
                      *           "kind": "config",
                      *           "readOnly": true,
@@ -37106,6 +37804,2032 @@ export interface operations {
              *     stands in for its opinion, so the validation is refused rather than answered green.
              */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listSkills: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The skills. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createSkill: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "text": "---\nname: power-budget-checks\ndescription: Flag changes that raise idle current above 120 µA\n---\n\nMeasure idle current on the bench DK before and after.",
+                 *       "scope": "repo",
+                 *       "repoRef": "acme-robotics/helios-firmware"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateSkillBody"];
+            };
+        };
+        responses: {
+            /** @description The skill and its draft; no version yet. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to
+             *     read and an administrator's to change.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `skill_slug_taken` — a skill with that slug already exists in this workspace. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_document_invalid` — the document does not read (see `PUT …/draft`). `skill_slug_required`
+             *     when the name yields no slug and none was sent. `skill_scope_invalid` for a referent missing,
+             *     superfluous or not this workspace's. `skill_scope_mismatch` when the frontmatter declares
+             *     another scope than the one asked for. `validation_failed` for a malformed body.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readSkillStats: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The window, in whole days back from now. 1–365; 30 when absent.
+                 * @example 30
+                 */
+                days?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The window and every skill's figures. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillStats"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a field is missing, has the wrong type, or is out of range;
+             *     `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readSkill: {
+        parameters: {
+            query?: {
+                /**
+                 * @description A published version to read instead of the one in force. A number that names no
+                 *     version of this skill is a `404 skill_version_not_found`.
+                 * @example 12
+                 */
+                version?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The skill. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a field is missing, has the wrong type, or is out of range;
+             *     `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteSkill: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted, with its version history. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_required_locked` — the skill is required (`details.reason: required_by_policy`).
+             *     `forbidden` — the caller is not `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_referenced` — published workflows reference the skill; `details.workflows` names each
+             *     (`id`, `slug`, `name`, and the `version` in force that holds the reference).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_referenced",
+                     *       "message": "This skill is referenced by published workflows (feature-loop, standard-fix). Remove the references first.",
+                     *       "details": {
+                     *         "slug": "repo-map",
+                     *         "workflows": [
+                     *           {
+                     *             "id": "5eed0029-0000-4000-8000-000000000002",
+                     *             "slug": "feature-loop",
+                     *             "name": "Feature loop",
+                     *             "version": 1
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a field is missing, has the wrong type, or is out of range;
+             *     `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateSkill: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "enabled": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateSkillBody"];
+            };
+        };
+        responses: {
+            /** @description The skill after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillSummary"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_required_locked` — the skill is required and this would switch it off; `details.reason`
+             *     is `required_by_policy`. `skill_required_owner_only` — only an owner may change `required`.
+             *     `forbidden` — the caller is not `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_required_locked",
+                     *       "message": "required by policy — cannot disable",
+                     *       "details": {
+                     *         "slug": "hil-safety",
+                     *         "reason": "required_by_policy"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `skill_unpublished` — promoting a skill out of draft needs a published version. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_required_draft` — a draft cannot be required. `validation_failed` for a field that is
+             *     not a boolean.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveSkillDraft: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description The draft slot's etag this document was edited from — `draftEtag` from
+                 *     `GET …/{slug}`, `etag` from a draft or a file, or `none` for an empty slot. `*`
+                 *     opts out of the guard. Missing is `400 skill_draft_etag_required`; stale is
+                 *     `409 skill_draft_conflict`.
+                 * @example none
+                 */
+                "If-Match": string;
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "text": "---\nname: zephyr-conventions\ndescription: Kconfig, devicetree & ISR-safety house rules\nload: on_trigger\ntriggers:\n  - Kconfig\n  - ISR\n---\n\n# Zephyr conventions\n\nPrefer `k_msgq` over `k_fifo` in ISR paths."
+                 *     }
+                 */
+                "application/json": components["schemas"]["SaveSkillDocumentBody"];
+            };
+        };
+        responses: {
+            /** @description The draft after the write, with the etag for the next save. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillDraft"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. `skill_draft_etag_required` — no `If-Match`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to
+             *     read and an administrator's to change.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_draft_conflict` — the draft moved since the document was read (`details.expected`,
+             *     `details.current`). Reload, then save again.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_document_invalid` — the document does not read as a skill: no opening `---`, an
+             *     unclosed frontmatter, YAML that does not parse, or a frontmatter outside V069's typed shape
+             *     (`name` and `description` required; `scope`, `load`, `triggers`, `provenance` checked).
+             *     `details.issues` anchors each on its line. Nothing was written. `validation_failed` for a
+             *     body that is not `{text}`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_document_invalid",
+                     *       "message": "This file does not read as a skill, so it was not saved. The draft is unchanged.",
+                     *       "details": {
+                     *         "issues": [
+                     *           {
+                     *             "path": "load",
+                     *             "line": 4,
+                     *             "message": "load: load: on_trigger needs at least one trigger"
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    publishSkill: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "changeNote": "Drop the legacy-timer rule for Zephyr 4.1."
+                 *     }
+                 */
+                "application/json": components["schemas"]["PublishSkillBody"];
+            };
+        };
+        responses: {
+            /** @description The version now in force. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillVersion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to
+             *     read and an administrator's to change.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_draft_absent` — nothing to publish. `skill_draft_conflict` — the draft changed while
+             *     it was being checked. `skill_publish_conflict` — somebody published first.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_document_invalid` — the draft's frontmatter is incomplete or its body empty.
+             *     `skill_scope_mismatch` — the draft declares another scope than the skill's
+             *     (`details.declared`, `details.actual`). `validation_failed` for a malformed body.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listSkillVersions: {
+        parameters: {
+            query?: {
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillVersionPage"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a field is missing, has the wrong type, or is out of range;
+             *     `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewSkillScopeMove: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "scope": "org"
+                 *     }
+                 */
+                "application/json": components["schemas"]["SkillScopeTarget"];
+            };
+        };
+        responses: {
+            /** @description The preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillScopePreview"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_scope_invalid` — the referent is missing, superfluous or not this workspace's, or the
+             *     skill already applies there. `validation_failed` for a malformed body.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    moveSkillScope: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "scope": "org",
+                 *       "previewToken": "9c1f4e2a7b3d6c5e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6",
+                 *       "resolve": "keep_both"
+                 *     }
+                 */
+                "application/json": components["schemas"]["MoveSkillScopeBody"];
+            };
+        };
+        responses: {
+            /** @description The skill in its new scope. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillSummary"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to
+             *     read and an administrator's to change.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_scope_preview_stale` — what the move would do changed since the preview; preview
+             *     again. `skill_scope_conflict` — the preview showed clashes (`details.clashes`) and `resolve`
+             *     was not `keep_both`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `skill_scope_invalid` — as the preview. `validation_failed` for a malformed body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readSkillCode: {
+        parameters: {
+            query?: {
+                /**
+                 * @description A published version to read instead of the one in force. A number that names no
+                 *     version of this skill is a `404 skill_version_not_found`.
+                 * @example 12
+                 */
+                version?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The file. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillCode"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `skill_draft_absent` — the skill has neither a draft nor a published version. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a field is missing, has the wrong type, or is out of range;
+             *     `details.fields` names each.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveSkillCode: {
+        parameters: {
+            query?: never;
+            header: {
+                /**
+                 * @description The draft slot's etag this document was edited from — `draftEtag` from
+                 *     `GET …/{slug}`, `etag` from a draft or a file, or `none` for an empty slot. `*`
+                 *     opts out of the guard. Missing is `400 skill_draft_etag_required`; stale is
+                 *     `409 skill_draft_conflict`.
+                 * @example none
+                 */
+                "If-Match": string;
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at
+                 *     most 64 characters (V069), the name a workflow's `skill:` references. Anything that could
+                 *     not be a slug is a `422` naming the field; a slug that names nothing *this caller may see*
+                 *     is a `404`.
+                 * @example hil-safety
+                 */
+                slug: components["parameters"]["SkillSlug"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "text": "---\nname: zephyr-conventions\ndescription: Kconfig, devicetree & ISR-safety house rules\nload: on_trigger\ntriggers:\n  - Kconfig\n  - ISR\n---\n\n# Zephyr conventions\n\nPrefer `k_msgq` over `k_fifo` in ISR paths."
+                 *     }
+                 */
+                "application/json": components["schemas"]["SaveSkillDocumentBody"];
+            };
+        };
+        responses: {
+            /** @description The file as stored, with the draft's new etag. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SkillCode"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. `skill_draft_etag_required` — no `If-Match`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to
+             *     read and an administrator's to change.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_not_found` — no skill with that slug, **or none this caller may know about**;
+             *     `details.slug` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_not_found",
+                     *       "message": "No such skill.",
+                     *       "details": {
+                     *         "slug": "hil-safety"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_draft_conflict` — the draft moved since the document was read (`details.expected`,
+             *     `details.current`). Reload, then save again.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `skill_document_invalid` — the document does not read as a skill: no opening `---`, an
+             *     unclosed frontmatter, YAML that does not parse, or a frontmatter outside V069's typed shape
+             *     (`name` and `description` required; `scope`, `load`, `triggers`, `provenance` checked).
+             *     `details.issues` anchors each on its line. Nothing was written. `validation_failed` for a
+             *     body that is not `{text}`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "skill_document_invalid",
+                     *       "message": "This file does not read as a skill, so it was not saved. The draft is unchanged.",
+                     *       "details": {
+                     *         "issues": [
+                     *           {
+                     *             "path": "load",
+                     *             "line": 4,
+                     *             "message": "load: load: on_trigger needs at least one trigger"
+                     *           }
+                     *         ]
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

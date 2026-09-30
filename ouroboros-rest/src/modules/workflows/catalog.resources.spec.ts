@@ -102,11 +102,18 @@ describe("the suggestions, as a P7 catalogue", () => {
     });
   });
 
-  it("leaves out a list with nothing in it, which means nothing to suggest", () => {
+  it("leaves out an empty task-route list, which means nothing to suggest", () => {
+    expect(toDslCatalogue({ skills: ["repo-map"], taskRoutes: [] })).toEqual({
+      skills: ["repo-map"],
+    });
+  });
+
+  it("keeps an empty skill list: the registry is the truth, and it names no skill (#410)", () => {
     expect(toDslCatalogue({ skills: [], taskRoutes: ["implement"] })).toEqual({
+      skills: [],
       tasks: ["implement"],
     });
-    expect(toDslCatalogue({ skills: [], taskRoutes: [] })).toEqual({});
+    expect(toDslCatalogue({ skills: [], taskRoutes: [] })).toEqual({ skills: [] });
   });
 
   it("finds nothing unknown in mockup 04's canvas", () => {
@@ -163,15 +170,30 @@ describe("the suggestions, as a P7 catalogue", () => {
     ]);
   });
 
-  it("flags nothing for a deployment with nothing to suggest", () => {
+  it("flags no task route for a workspace with no routing matrix", () => {
     const document = standardFix();
     document.nodes.find((node) => node.id === "implement")!.config.skill = "no-such-skill";
 
     const verdict = validateWorkflowDocument(document, {
-      catalogue: toDslCatalogue({ skills: [], taskRoutes: [] }),
+      catalogue: toDslCatalogue({
+        skills: ["no-such-skill", ...SUGGESTIONS.skills],
+        taskRoutes: [],
+      }),
     });
 
     expect(verdict.warnings).toEqual([]);
+  });
+
+  it("flags every skill for a workspace whose registry is empty — genuinely unknown (#410)", () => {
+    const verdict = validateWorkflowDocument(standardFix(), {
+      catalogue: toDslCatalogue({ skills: [], taskRoutes: [] }),
+    });
+
+    expect(verdict.valid).toBe(true);
+    expect(new Set(verdict.warnings.map((warning) => warning.code))).toEqual(
+      new Set([DslWarningCode.REFERENCE_UNKNOWN_SKILL]),
+    );
+    expect(verdict.warnings.length).toBeGreaterThan(0);
   });
 });
 

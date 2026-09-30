@@ -36,6 +36,7 @@ import { RegistryReadModule } from "../registry-read/registry-read.module";
 import { RegistryModule } from "../registry/registry.module";
 import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
+import { SkillsModule } from "../skills/skills.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
 import { PlanningModule } from "../planning/planning.module";
@@ -334,6 +335,11 @@ export class AppModule {
         // down — a process's capabilities should be answerable from this list rather than from
         // a transitive import three files away.
         WorkflowsModule,
+        // BF.1 ([#410](https://github.com/NobuData/ouroboros/issues/410)) — the skills registry
+        // under `/api/v1/skills`. `WorkflowsModule` above imports it for the catalog's skill
+        // names, P7's reference check and the code view's `skills/` files; it imports nothing of
+        // the workflow module's back, and nothing else claims the prefix.
+        SkillsModule,
         // BB.2 ([#385](https://github.com/NobuData/ouroboros/issues/385)) — the Get Started
         // wizard's orchestration API under `/api/v1/onboarding`. After `TenancyModule`, whose
         // guards resolve the workspace and enforce `@Roles`; it reads the sources, tenancy,

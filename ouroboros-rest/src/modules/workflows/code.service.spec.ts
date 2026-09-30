@@ -1,4 +1,5 @@
 import type { Organization, Workflow, WorkflowVersion } from "../db/schema";
+import type { SkillsRegistryService } from "../skills/skills.registry.service";
 import type { WorkflowCatalogService } from "./catalog.service";
 import { edit, golden } from "./code.parser.fixture";
 import * as projection from "./code.projection";
@@ -117,6 +118,7 @@ interface Harness {
   lifecycle: jest.Mocked<WorkflowsService>;
   catalog: jest.Mocked<Pick<WorkflowCatalogService, "dslCatalogue">>;
   gate: jest.Mocked<Pick<WorkflowPublishGate, "check">>;
+  skills: jest.Mocked<Pick<SkillsRegistryService, "codeFiles">>;
 }
 
 /** The gate's green verdict: nothing found, the engine asked. */
@@ -161,6 +163,7 @@ function harness(): Harness {
 
   const catalog = { dslCatalogue: jest.fn().mockResolvedValue({ tasks: ["implement"] }) };
   const gate = { check: jest.fn().mockResolvedValue(GREEN) };
+  const skills = { codeFiles: jest.fn().mockResolvedValue([]) };
 
   return {
     service: new WorkflowCodeService(
@@ -169,12 +172,14 @@ function harness(): Harness {
       lifecycle,
       catalog as unknown as WorkflowCatalogService,
       gate as unknown as WorkflowPublishGate,
+      skills as unknown as SkillsRegistryService,
     ),
     workflows,
     registry,
     lifecycle,
     catalog,
     gate,
+    skills,
   };
 }
 
@@ -686,6 +691,27 @@ describe("the explorer and the configuration", () => {
       },
       { path: "ouroboros.config.ts", kind: "config", readOnly: true, slug: null, status: null },
     ]);
+  });
+
+  it("lists the registry's skills under skills/, between the workflows and the configuration (X.2, #410)", async () => {
+    const { service, skills } = harness();
+    skills.codeFiles.mockResolvedValue([
+      { path: "skills/hil-safety.skill.md", slug: "hil-safety" },
+      { path: "skills/repo-map.skill.md", slug: "repo-map" },
+    ]);
+
+    const tree = await service.tree(WORKSPACE);
+
+    expect(skills.codeFiles).toHaveBeenCalledWith(WORKSPACE);
+    expect(tree.files.map((file) => [file.path, file.kind, file.slug])).toEqual([
+      ["workflows/minimal.loop.ts", "workflow", "minimal"],
+      ["skills/hil-safety.skill.md", "skill", "hil-safety"],
+      ["skills/repo-map.skill.md", "skill", "repo-map"],
+      ["ouroboros.config.ts", "config", null],
+    ]);
+    expect(tree.files.filter((file) => file.kind === "skill")).toEqual(
+      expect.arrayContaining([expect.objectContaining({ readOnly: false, status: null })]),
+    );
   });
 
   it("prints the configuration for the tenant's workspace, read-only", async () => {

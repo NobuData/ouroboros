@@ -36,7 +36,7 @@
  */
 
 import { readFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 
 import ts from "typescript";
 
@@ -58,7 +58,12 @@ import { parseSource } from "./code.recover.fixture";
 import { SUGGESTION_SCOPES, type CodeSymbolTable } from "./code.symbols";
 import { DslWarningCode } from "./dsl.errors";
 import { FIXTURES_DIR } from "./dsl.golden.fixture";
-import { SEED_DOCUMENT_TAGS, seededDocuments, seededTaskKinds } from "./dsl.seed.fixture";
+import {
+  SEED_DOCUMENT_TAGS,
+  seededDocuments,
+  seededSkillSlugs,
+  seededTaskKinds,
+} from "./dsl.seed.fixture";
 
 /* ---------------------------------------------------------------------------
  * The goldens
@@ -80,7 +85,8 @@ const GOLDEN_ABOUT = {
   diagnostics:
     "W.3 (#179): the code view's diagnostics, in the order the editor lists them and without their " +
     "messages — for every seeded document in each workspace state (seeded: R__dev_seed_routing.sql's " +
-    "task kinds and .env.example's skill suggestions; unconfigured: neither), for sabotaged " +
+    "task kinds and R__dev_seed_workspace_knowledge.sql's non-draft skills; unconfigured: neither — " +
+    "every skill reference unknown), for sabotaged " +
     "standard-fix files, for a file the parser refuses, and for those three sources merged. " +
     `Regenerate with: ${REGENERATE}`,
   checks:
@@ -121,33 +127,15 @@ export function openGoldens(updating?: boolean): Record<GoldenName, GoldenFile> 
 /**
  * The two workspaces a seeded file is diagnosed in.
  *
- * `seeded` is a development workspace: the routing seed's task kinds, and the skill suggestions
- * `.env.example` documents. `unconfigured` has neither, so no reference is checked (decision P7).
+ * `seeded` is a development workspace: the routing seed's task kinds, and the knowledge seed's
+ * published, non-draft skills (#410). `unconfigured` has neither: no task route is checked, and
+ * every skill reference is unknown, because an empty registry names no skill (decision P7,
+ * upgraded to registry truth).
  */
 export const WORKSPACE_STATES = ["seeded", "unconfigured"] as const;
 
 /** One of {@link WORKSPACE_STATES}. */
 export type WorkspaceState = (typeof WORKSPACE_STATES)[number];
-
-/** `.env.example`, whose documented skill suggestions a development workspace is given. */
-export const ENV_EXAMPLE_PATH = resolve(__dirname, "../../../../.env.example");
-
-/**
- * The skill suggestions `.env.example` documents.
- *
- * @returns The names on its `#   OURO_WORKFLOW_SKILL_SUGGESTIONS=…` line, in order.
- * @throws {Error} When the line is gone.
- */
-export function documentedSkillSuggestions(): string[] {
-  const line = /^#\s+OURO_WORKFLOW_SKILL_SUGGESTIONS=(\S+)$/m.exec(
-    readFileSync(ENV_EXAMPLE_PATH, "utf8"),
-  );
-  if (line === null) {
-    throw new Error(`${ENV_EXAMPLE_PATH} no longer documents OURO_WORKFLOW_SKILL_SUGGESTIONS.`);
-  }
-
-  return line[1].split(",");
-}
 
 /**
  * What a workspace suggests.
@@ -157,7 +145,7 @@ export function documentedSkillSuggestions(): string[] {
  */
 export function suggestionsFor(state: WorkspaceState): StageSuggestions {
   return state === "seeded"
-    ? { skills: documentedSkillSuggestions(), taskRoutes: seededTaskKinds() }
+    ? { skills: seededSkillSlugs(), taskRoutes: seededTaskKinds() }
     : { skills: [], taskRoutes: [] };
 }
 
@@ -912,6 +900,12 @@ export function disagreements(
   suggestions: StageSuggestions,
 ): string[] {
   const missing = unoffered(table, contextsIn(table, text));
+  // Which lists were checked is the catalogue's to say: skills always, task routes when any (#410).
+  const catalogue = toDslCatalogue(suggestions);
+  const checkedLists: Readonly<Record<keyof StageSuggestions, boolean>> = {
+    skills: catalogue.skills !== undefined,
+    taskRoutes: catalogue.tasks !== undefined,
+  };
   const covers = (diagnostic: CodeDiagnostic, context: CompletionContext) =>
     diagnostic.range.line <= context.line && context.line <= diagnostic.range.endLine;
   const problems: string[] = [];
@@ -928,7 +922,7 @@ export function disagreements(
     const warned = diagnostics.some(
       (diagnostic) => diagnostic.code === check.code && covers(diagnostic, context),
     );
-    const checked = suggestions[check.list].length > 0;
+    const checked = checkedLists[check.list];
     if (warned !== checked) {
       problems.push(
         checked

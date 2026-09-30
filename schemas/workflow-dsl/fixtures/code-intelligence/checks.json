@@ -19,6 +19,12 @@
         "id": "graph",
         "status": "ok",
         "title": "Graph acyclic except declared gate loop"
+      },
+      {
+        "id": "references",
+        "status": "warn",
+        "title": "2 references do not resolve",
+        "note": "unresolved in analyze · implement"
       }
     ],
     "standard_fix_v1 · seeded": [
@@ -39,6 +45,12 @@
         "id": "graph",
         "status": "ok",
         "title": "Graph acyclic"
+      },
+      {
+        "id": "references",
+        "status": "warn",
+        "title": "2 references do not resolve",
+        "note": "unresolved in analyze · implement"
       }
     ],
     "feature_loop_v1 · seeded": [
@@ -59,6 +71,12 @@
         "id": "graph",
         "status": "ok",
         "title": "Graph acyclic except declared gate loop"
+      },
+      {
+        "id": "references",
+        "status": "warn",
+        "title": "2 references do not resolve",
+        "note": "unresolved in design · implement"
       }
     ],
     "deps_refresh_v1 · seeded": [
@@ -119,6 +137,12 @@
         "id": "graph",
         "status": "ok",
         "title": "Graph acyclic except declared gate loop"
+      },
+      {
+        "id": "references",
+        "status": "warn",
+        "title": "1 reference does not resolve",
+        "note": "unresolved in patch"
       }
     ],
     "sabotage · references and an undeclared cycle": [

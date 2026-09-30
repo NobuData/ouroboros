@@ -1,4 +1,4 @@
-import type { AppConfigService } from "../config/config.service";
+import type { SkillsRegistryService } from "../skills/skills.registry.service";
 import { SYNTHETIC_NODE_TYPE, withSyntheticNodeType } from "./catalog.fixture";
 import type { WorkflowCatalogRepository } from "./catalog.repository";
 import { DslSchemaError, readPublishedDslSchema } from "./catalog.schema";
@@ -17,29 +17,30 @@ const WORKSPACE = "acme-robotics-id";
 
 describe("the stage catalog service", () => {
   let repository: jest.Mocked<Pick<WorkflowCatalogRepository, "taskKindNames">>;
-  let config: Pick<AppConfigService, "workflowSkillSuggestions">;
+  let skills: jest.Mocked<Pick<SkillsRegistryService, "catalogSlugs">>;
 
   /** A service over the given schema, or the committed one. */
   function service(schema = readPublishedDslSchema()): WorkflowCatalogService {
     return new WorkflowCatalogService(
       repository as unknown as WorkflowCatalogRepository,
-      config as AppConfigService,
+      skills as unknown as SkillsRegistryService,
       schema,
     );
   }
 
   beforeEach(() => {
     repository = { taskKindNames: jest.fn().mockResolvedValue(["analyze", "implement"]) };
-    config = { workflowSkillSuggestions: Object.freeze(["repo-map", "zephyr-conventions"]) };
+    skills = { catalogSlugs: jest.fn().mockResolvedValue(["repo-map", "zephyr-conventions"]) };
   });
 
-  it("reads the task kinds of the workspace it was asked about", async () => {
+  it("reads the task kinds and the registry's skills of the workspace it was asked about", async () => {
     await service().catalog(WORKSPACE);
 
     expect(repository.taskKindNames).toHaveBeenCalledWith(WORKSPACE);
+    expect(skills.catalogSlugs).toHaveBeenCalledWith(WORKSPACE);
   });
 
-  it("answers the published node types, the configured skills and the workspace's task kinds", async () => {
+  it("answers the published node types, the registry's skills and the workspace's task kinds", async () => {
     const catalog = await service().catalog(WORKSPACE);
 
     expect(catalog.schemaId).toBe("https://ouroboros.build/schemas/workflow-dsl/v1.json");
@@ -63,6 +64,19 @@ describe("the stage catalog service", () => {
     const second = await subject.catalog("another-workspace");
 
     expect(second.nodeTypes).toBe(first.nodeTypes);
+  });
+
+  it("reads the registry per request, so a newly published skill is in the next answer (#410)", async () => {
+    const subject = service();
+    await subject.catalog(WORKSPACE);
+
+    skills.catalogSlugs.mockResolvedValueOnce(["hil-safety", "repo-map", "zephyr-conventions"]);
+
+    expect((await subject.catalog(WORKSPACE)).suggestions.skills).toEqual([
+      "hil-safety",
+      "repo-map",
+      "zephyr-conventions",
+    ]);
   });
 
   it("reads the suggestions per request, so a new task kind is in the next answer", async () => {
@@ -118,7 +132,7 @@ describe("the stage catalog service", () => {
       return table.scopes.find((entry) => entry.scope === scope)?.completions.map((c) => c.label);
     }
 
-    it("offers the workspace's task kinds and the configured skills, from one read", async () => {
+    it("offers the workspace's task kinds and the registry's skills, from one read", async () => {
       const table = await service().codeSymbols(WORKSPACE);
 
       expect(repository.taskKindNames).toHaveBeenCalledTimes(1);
@@ -177,11 +191,19 @@ describe("the stage catalog service", () => {
       expect(repository.taskKindNames).toHaveBeenCalledWith(WORKSPACE);
     });
 
-    it("leaves out an empty list, so it means not checked rather than nothing exists", async () => {
+    it("leaves out an empty task-route list, so it means not checked rather than nothing exists", async () => {
       repository.taskKindNames.mockResolvedValue([]);
-      config = { workflowSkillSuggestions: Object.freeze([]) };
 
-      expect(await service().dslCatalogue(WORKSPACE)).toEqual({});
+      expect(await service().dslCatalogue(WORKSPACE)).toEqual({
+        skills: ["repo-map", "zephyr-conventions"],
+      });
+    });
+
+    it("keeps an empty registry, so every skill reference is genuinely unknown (#410)", async () => {
+      repository.taskKindNames.mockResolvedValue([]);
+      skills.catalogSlugs.mockResolvedValue([]);
+
+      expect(await service().dslCatalogue(WORKSPACE)).toEqual({ skills: [] });
     });
   });
 

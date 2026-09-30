@@ -9,6 +9,7 @@ import {
 } from "../../testing/engine.stub.fixture";
 import { ApiHarness, type Person } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
+import { seedPublishedSkills } from "../../testing/skills.seed.fixture";
 import { SCHEMA_NAME } from "../db/schema";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
@@ -119,6 +120,8 @@ describe("the code view, against a migrated database", () => {
 
     // Publishing mockup 04's canvas resolves its pins against this registry (CH.6, #589).
     await seedPinnedAliases(api, workspace.id);
+    // And its stages name these two skills, which P7's check reads from the registry (#410).
+    await seedPublishedSkills(api, workspace.id, ["repo-map", "zephyr-conventions"]);
 
     return { owner, slug: workspace.slug, id: workspace.id };
   }
@@ -1019,13 +1022,31 @@ describe("the code view, against a migrated database", () => {
           slug: "hotfix-p0",
           status: "paused",
         },
+        // The bench's two registry skills — `skills/` exists because files under it do (X.2, #410).
+        {
+          path: "skills/repo-map.skill.md",
+          kind: "skill",
+          readOnly: false,
+          slug: "repo-map",
+          status: null,
+        },
+        {
+          path: "skills/zephyr-conventions.skill.md",
+          kind: "skill",
+          readOnly: false,
+          slug: "zephyr-conventions",
+          status: null,
+        },
         { path: "ouroboros.config.ts", kind: "config", readOnly: true, slug: null, status: null },
       ]);
-      expect(tree.files.filter((file) => /^(skills|lib)\//.test(file.path))).toEqual([]);
+      expect(tree.files.filter((file) => /^lib\//.test(file.path))).toEqual([]);
     });
 
-    it("is only the config file for a workspace with no workflows", async () => {
+    it("is only the config file for a workspace with no workflows and no skills", async () => {
       const place = await bench();
+      await api.sql.query(`delete from ${SCHEMA_NAME}.skills where organization_id = $1`, [
+        place.id,
+      ]);
 
       const tree = bodyOf<WorkflowCodeTree>(
         await as(place.owner, place)("get", `${WORKFLOWS}/code-tree`).expect(200),

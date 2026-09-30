@@ -411,7 +411,7 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BF.1 | #410 | 🟡 Open | ouroboros-rest: [BF.1] Skills service & registry integration | CRUD/versions/locks; WF catalog + inspector + code-view wiring | mvp, knowledge, workflow, rest | N (after BE.1, WF-R.3) | Y | M | ouroboros-rest |
+| BF.1 | #410 ✅ | 🟢 Done | ouroboros-rest: [BF.1] Skills service & registry integration | CRUD/versions/locks; WF catalog + inspector + code-view wiring | mvp, knowledge, workflow, rest | N (after BE.1, WF-R.3) | Y | M | ouroboros-rest |
 | BF.2 | #411 | 🟡 Open | ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep | Transitions, anchors, sweep, audit; inbox feed contract | mvp, knowledge, rest | N (after BE.2) | Y | M | ouroboros-rest |
 | BF.3 | #412 | 🟡 Open | ouroboros-rest: [BF.3] Deterministic fact proposers | Correction/waiver/steer promotion with provenance (K5) | mvp, knowledge, runs, rest | N (after BF.2, AT.4) | Y | M | ouroboros-rest |
 | BF.4 | #413 | 🟡 Open | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
@@ -421,7 +421,7 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
 
 ### Issue BF.1 — ouroboros-rest: [BF.1] Skills service & registry integration
 
-> **GitHub issue:** #410 · **Status:** 🟡 Open · **Parent epic:** #402
+> **GitHub issue:** #410 ✅ · **Status:** 🟢 Done · **Parent epic:** #402
 
 - **Problem Statement:** Skills need CRUD/versioning with the K1 flags —
   and the three surfaces already pointing at skills (WF catalog,
@@ -446,6 +446,21 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
   amends WF-R.3/S.4, X.2.
 - **Technical Stack:** NestJS, Kysely, frontmatter parsing.
 - **Epic:** BF
+- **Delivered** (`ouroboros-rest/src/modules/skills/`, REST 0.37.29): `/api/v1/skills` — list
+  (`active` never counts a draft), create, `PUT …/draft` + `POST …/publish` (the draft row becomes
+  v+1; V069's trigger keeps prior versions immutable), `PATCH` (disabling a required skill is
+  `403 skill_required_locked` with `details.reason: required_by_policy`; changing `required` is
+  owner-only), guarded `DELETE` (`409 skill_referenced` naming every published workflow whose
+  version in force references it), `POST …/scope/preview` + `POST …/scope`, `GET …/stats`, and
+  the code-view document API `GET|PUT …/{slug}/code`. The stage catalog and P7's check read
+  published, non-draft registry slugs (`OURO_WORKFLOW_SKILL_SUGGESTIONS` retired); the code-view
+  tree lists `skills/<slug>.skill.md`. Decided on the issue: V069 keeps slugs unique per
+  workspace, so a scope move's **clash** is another skill at the destination scope and referent
+  with the same name (case-insensitive), refused unless `resolve: keep_both`; the preview also
+  reports reach gained/lost and referencing workflows left out of reach. Stats count a stated
+  window, **30 days** by default (`?days=1..365`) — over the BE.5 seed, `?days=365` reproduces the
+  mockup's Used-by column exactly, while 30 days reads `85% of runs` for `zephyr-conventions`
+  because the seed's oldest injections are older than a month.
 
 ```
 publish(zephyr-conventions v13) ─▶ immutable · catalog/inspector read registry

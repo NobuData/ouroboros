@@ -6,6 +6,7 @@ import Ajv2020 from "ajv/dist/2020";
 import { startEngineStub, type EngineStub } from "../../testing/engine.stub.fixture";
 import { ApiHarness, type Person } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
+import { seedPublishedSkills } from "../../testing/skills.seed.fixture";
 import { SCHEMA_NAME } from "../db/schema";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
@@ -63,7 +64,7 @@ function standardFix(): { nodes: { id: string; type: string; config: Record<stri
   };
 }
 
-/** The skills this suite's deployment suggests. */
+/** The skills this suite's workspaces publish — the registry the catalog reads (#410). */
 const SKILLS = ["repo-map", "zephyr-conventions"];
 
 const CATALOG = "/api/v1/workflows/catalog";
@@ -76,10 +77,7 @@ describe("the stage catalog, against a migrated database", () => {
 
   beforeAll(async () => {
     engine = await startEngineStub();
-    api = await ApiHarness.start({
-      OURO_ENGINE_URL: engine.url,
-      OURO_WORKFLOW_SKILL_SUGGESTIONS: SKILLS.join(","),
-    });
+    api = await ApiHarness.start({ OURO_ENGINE_URL: engine.url });
   });
 
   afterAll(async () => {
@@ -119,6 +117,8 @@ describe("the stage catalog, against a migrated database", () => {
 
     // Publishing mockup 04's canvas resolves its pins against this registry (CH.6, #589).
     await seedPinnedAliases(api, workspace.id);
+    // And its stages name these skills, which the catalog now reads from the registry (#410).
+    await seedPublishedSkills(api, workspace.id, SKILLS);
 
     return { owner, id: workspace.id, slug: workspace.slug };
   }
@@ -258,7 +258,7 @@ describe("the stage catalog, against a migrated database", () => {
   });
 
   describe("the suggestions", () => {
-    it("are the configured skills and this workspace's task kinds, in the matrix's order", async () => {
+    it("are the registry's skills and this workspace's task kinds, in the matrix's order", async () => {
       const place = await bench();
       await seedTaskKinds(place.id, ["implement", "analyze", "review"]);
 
@@ -285,6 +285,18 @@ describe("the stage catalog, against a migrated database", () => {
         "docs",
         "commit-msg",
       ]);
+    });
+
+    it("never carry a draft skill, nor one with nothing published (#410)", async () => {
+      const place = await bench();
+      await api.sql.query(
+        `insert into ${SCHEMA_NAME}.skills (organization_id, slug, name, description, scope, draft)
+         values ($1, 'power-budget-checks', 'power-budget-checks', 'Idle current.', 'org', true),
+                ($1, 'unpublished', 'unpublished', 'Nothing published yet.', 'org', false)`,
+        [place.id],
+      );
+
+      expect((await catalog(place.owner, place)).suggestions.skills).toEqual(SKILLS);
     });
 
     it("reach the next request once the matrix gains a kind", async () => {
@@ -475,17 +487,24 @@ describe("the stage catalog, against a migrated database", () => {
       });
     });
 
-    it("offers this workspace's task kinds and the configured skills, and no other workspace's", async () => {
+    it("offers this workspace's task kinds and registry skills, and no other workspace's", async () => {
       const first = await bench("first@ouroboros.invalid");
       const second = await bench("second@ouroboros.invalid");
       await seedTaskKinds(first.id, ["implement", "analyze"]);
       await seedTaskKinds(second.id, ["docs"]);
+      await seedPublishedSkills(api, second.id, ["second-only"]);
 
       const table = await codeSymbols(first.owner, first);
 
       expect(offered(table, "route.task")).toEqual(["implement", "analyze"]);
       expect(offered(table, "stage.llm.skill")).toEqual(SKILLS);
       expect(offered(await codeSymbols(second.owner, second), "route.task")).toEqual(["docs"]);
+      // By slug, as the registry lists them.
+      expect(offered(await codeSymbols(second.owner, second), "stage.llm.skill")).toEqual([
+        "repo-map",
+        "second-only",
+        "zephyr-conventions",
+      ]);
     });
 
     it("offers the same task routes as the catalog's suggestions", async () => {

@@ -1,5 +1,5 @@
 {
-  "about": "W.3 (#179): the code view's diagnostics, in the order the editor lists them and without their messages — for every seeded document in each workspace state (seeded: R__dev_seed_routing.sql's task kinds and .env.example's skill suggestions; unconfigured: neither), for sabotaged standard-fix files, for a file the parser refuses, and for those three sources merged. Regenerate with: OURO_UPDATE_GOLDENS=1 yarn jest src/modules/workflows/code.intelligence.spec.ts",
+  "about": "W.3 (#179): the code view's diagnostics, in the order the editor lists them and without their messages — for every seeded document in each workspace state (seeded: R__dev_seed_routing.sql's task kinds and R__dev_seed_workspace_knowledge.sql's non-draft skills; unconfigured: neither — every skill reference unknown), for sabotaged standard-fix files, for a file the parser refuses, and for those three sources merged. Regenerate with: OURO_UPDATE_GOLDENS=1 yarn jest src/modules/workflows/code.intelligence.spec.ts",
   "cases": {
     "standard_fix_v14 · seeded": [
       {
@@ -14,17 +14,98 @@
         "node": "split"
       }
     ],
-    "standard_fix_v14 · unconfigured": [],
+    "standard_fix_v14 · unconfigured": [
+      {
+        "severity": "warning",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "analyze"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 71,
+          "column": 5,
+          "endLine": 85,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "implement"
+      }
+    ],
     "standard_fix_v1 · seeded": [],
-    "standard_fix_v1 · unconfigured": [],
+    "standard_fix_v1 · unconfigured": [
+      {
+        "severity": "warning",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "analyze"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 45,
+          "column": 5,
+          "endLine": 59,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "implement"
+      }
+    ],
     "feature_loop_v1 · seeded": [],
-    "feature_loop_v1 · unconfigured": [],
+    "feature_loop_v1 · unconfigured": [
+      {
+        "severity": "warning",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "design"
+      },
+      {
+        "severity": "warning",
+        "range": {
+          "line": 45,
+          "column": 5,
+          "endLine": 58,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "implement"
+      }
+    ],
     "deps_refresh_v1 · seeded": [],
     "deps_refresh_v1 · unconfigured": [],
     "docs_loop_v1 · seeded": [],
     "docs_loop_v1 · unconfigured": [],
     "hotfix_p0_v1 · seeded": [],
-    "hotfix_p0_v1 · unconfigured": [],
+    "hotfix_p0_v1 · unconfigured": [
+      {
+        "severity": "warning",
+        "range": {
+          "line": 15,
+          "column": 5,
+          "endLine": 30,
+          "endColumn": 8
+        },
+        "code": "reference.unknown_skill",
+        "node": "patch"
+      }
+    ],
     "sabotage · references and an undeclared cycle": [
       {
         "severity": "warning",
