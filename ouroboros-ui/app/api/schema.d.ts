@@ -5253,6 +5253,78 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/import/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * What importing a repository's rules files would create — before anything is written
+         * @description Mockup 14's **Import CLAUDE.md / .cursorrules** (BF.4,
+         *     [#413](https://github.com/NobuData/ouroboros/issues/413)). Reads `CLAUDE.md`, `AGENTS.md`,
+         *     `.cursorrules` and `.github/copilot-instructions.md` from the repository through the source
+         *     that covers it (the repository detector's probes, one host request each) and parses them
+         *     deterministically: each heading-delimited section becomes a **skill draft**, each short
+         *     imperative bullet a **fact candidate**, and a file with no headings one skill draft for the
+         *     whole file. Candidates already in the workspace — an earlier import's unchanged section, or
+         *     a fact of this repository or the whole workspace with the same normalized text, whatever its
+         *     status — are counted as deduped, not planned.
+         *
+         *     Answers the counts per file and kind, up to five samples of each, and the `fingerprint` that
+         *     `POST …/apply` must send back. **A repository with none of the four files is an empty
+         *     preview**, `filesFound: 0`, not an error. Writes nothing; `200`.
+         *
+         *     **`owner` or `admin`** — the same gate as creating a skill.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["previewRuleImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/import/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create exactly what a preview showed, audited
+         * @description Re-reads the files and re-plans under a per-repository lock, and writes only when the plan's
+         *     fingerprint is still the preview's — so what is created is **exactly what the preview
+         *     showed**, or nothing. Created skills are `origin: imported`, `draft: true` and scoped to the
+         *     repository, with `provenance: {source, section}` in their frontmatter; a previously imported
+         *     skill whose section changed gets the new text as its **draft version** (replacing any
+         *     unpublished draft of it), leaving any published version in force. Facts are created `proposed`, `proposer: import`, with a
+         *     `{kind: import, file, section}` provenance reference. **Nothing is enabled or confirmed**:
+         *     drafts are never injected and proposed facts await review. Re-importing unchanged files
+         *     creates nothing. Audited as `knowledge.imported`, with the actor and what was created. `200`.
+         *
+         *     **`owner` or `admin`** — the same gate as creating a skill.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["applyRuleImport"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/planning/batches": {
         parameters: {
             query?: never;
@@ -17375,6 +17447,148 @@ export interface components {
         RelearnFactBody: {
             /** @description The new proposal's text; the expired fact's when absent. */
             text?: string;
+        };
+        /**
+         * PreviewRuleImportBody
+         * @description Which repository's rules files to read.
+         */
+        PreviewRuleImportBody: {
+            /**
+             * @description `owner/name`. Compared case-insensitively.
+             * @example acme-robotics/helios-firmware
+             */
+            repo: string;
+        };
+        /**
+         * ApplyRuleImportBody
+         * @description The repository, and the preview's fingerprint the apply must still match.
+         */
+        ApplyRuleImportBody: {
+            /**
+             * @description `owner/name`. Compared case-insensitively.
+             * @example acme-robotics/helios-firmware
+             */
+            repo: string;
+            /** @description The preview's `fingerprint`, lower-case hex sha256. */
+            fingerprint: string;
+        };
+        /**
+         * RuleImportSkillSample
+         * @description A skill draft the import writes.
+         */
+        RuleImportSkillSample: {
+            /**
+             * @description `create` a new draft skill; `update` writes the section's new text as the draft version of
+             *     the skill an earlier import created from it.
+             * @enum {string}
+             */
+            action: "create" | "update";
+            /** @example kconfig */
+            slug: string;
+            /** @example Kconfig */
+            name: string;
+            /** @description The section's lead paragraph, or a sentence naming its source. */
+            description: string;
+            /** @description The heading it was split at; `null` for a file with no headings. */
+            section: string | null;
+        };
+        /**
+         * RuleImportFactSample
+         * @description A fact candidate the import writes, with the provenance it will carry.
+         */
+        RuleImportFactSample: {
+            /** @example Prefer `k_msgq` over `k_fifo` in ISR paths. */
+            text: string;
+            section: string | null;
+            provenance: components["schemas"]["FactProvenance"];
+        };
+        /**
+         * RuleImportSkills
+         * @description One file's skill drafts.
+         */
+        RuleImportSkills: {
+            /** @description How many the apply writes. */
+            planned: number;
+            /**
+             * @description How many dedupe away — unchanged since an earlier import — or, rarely, are left out
+             *     because every slug their name could take (up to `-100`) is in use.
+             */
+            deduped: number;
+            samples: components["schemas"]["RuleImportSkillSample"][];
+        };
+        /**
+         * RuleImportFacts
+         * @description One file's fact candidates.
+         */
+        RuleImportFacts: {
+            /** @description How many the apply writes. */
+            planned: number;
+            /** @description How many dedupe away — already a fact, or already planned from another line. */
+            deduped: number;
+            samples: components["schemas"]["RuleImportFactSample"][];
+        };
+        /**
+         * RuleImportFile
+         * @description One of the four rules files, as probed.
+         */
+        RuleImportFile: {
+            /** @enum {string} */
+            path: "CLAUDE.md" | "AGENTS.md" | ".cursorrules" | ".github/copilot-instructions.md";
+            found: boolean;
+            /** @description Its size on the host; `0` when absent. */
+            sizeBytes: number;
+            /** @description Whether only its first 256 KiB were read. */
+            truncated: boolean;
+            skills: components["schemas"]["RuleImportSkills"];
+            facts: components["schemas"]["RuleImportFacts"];
+        };
+        /**
+         * RuleImportTotals
+         * @description The whole import, summed.
+         */
+        RuleImportTotals: {
+            /** @description Rules files the repository has; `0` is the honest empty result. */
+            filesFound: number;
+            skillDrafts: number;
+            skillUpdates: number;
+            factCandidates: number;
+            dedupedSkills: number;
+            dedupedFacts: number;
+        };
+        /** RuleImportPreviewFields */
+        RuleImportPreviewFields: {
+            /**
+             * @description `owner/name`, lower-case.
+             * @example acme-robotics/helios-firmware
+             */
+            repo: string;
+            /** @description sha256 of the repository and every planned write — what the apply sends back. */
+            fingerprint: string;
+            files: components["schemas"]["RuleImportFile"][];
+            totals: components["schemas"]["RuleImportTotals"];
+        };
+        /**
+         * RuleImportPreview
+         * @description What an apply with this fingerprint would write.
+         */
+        RuleImportPreview: components["schemas"]["RuleImportPreviewFields"];
+        /**
+         * RuleImportResult
+         * @description The preview the apply matched, and every row it wrote.
+         */
+        RuleImportResult: components["schemas"]["RuleImportPreviewFields"] & {
+            created: {
+                skills: {
+                    slug: string;
+                    /** @enum {string} */
+                    action: "create" | "update";
+                }[];
+                facts: {
+                    /** Format: uuid */
+                    id: string;
+                    text: string;
+                }[];
+            };
         };
         /**
          * WorkflowCodeConfig
@@ -42582,6 +42796,327 @@ export interface operations {
              *     `details` is empty, deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewRuleImport: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "repo": "acme-robotics/helios-firmware"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PreviewRuleImportBody"];
+            };
+        };
+        responses: {
+            /** @description The preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleImportPreview"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller's role is not `owner` or `admin`, who alone may create skills. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `detection_source_missing` — no connected source covers the repository, or none that can
+             *     read it.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `knowledge_import_too_large` — the files would create more than 100 skill drafts or 500
+             *     fact candidates; `details` carries both counts and both caps. `validation_failed` for a
+             *     malformed body.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `knowledge_import_rate_limited` — the source's rate guard is holding its budget back
+             *     for the backlog sync. Try again later.
+             */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `knowledge_import_source_failed` — the host refused to read the repository;
+             *     `details.errorClass` names the refusal's class, never the host's own words.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    applyRuleImport: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "repo": "acme-robotics/helios-firmware",
+                 *       "fingerprint": "9c1f4e2a7b3d6c5e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ApplyRuleImportBody"];
+            };
+        };
+        responses: {
+            /** @description The preview it matched, and every skill and fact written. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RuleImportResult"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller's role is not `owner` or `admin`, who alone may create skills. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `knowledge_import_preview_stale` — a file, a fact or a slug changed since the preview, so
+             *     the plan is no longer the one shown; nothing was written, preview again.
+             *     `detection_source_missing` — as the preview.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "knowledge_import_preview_stale",
+                     *       "message": "The rules files of acme-robotics/helios-firmware or this workspace changed since the preview. Preview again.",
+                     *       "details": {
+                     *         "repo": "acme-robotics/helios-firmware",
+                     *         "expected": "9c1f4e2a7b3d6c5e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6",
+                     *         "actual": "1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a69c1f4e2a7b3d6c5e8f0a"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `knowledge_import_too_large` — as the preview. `validation_failed` for a malformed body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `knowledge_import_rate_limited` — as the preview. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `knowledge_import_source_failed` — as the preview. */
+            502: {
                 headers: {
                     [name: string]: unknown;
                 };

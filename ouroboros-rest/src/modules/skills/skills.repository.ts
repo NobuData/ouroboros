@@ -147,10 +147,16 @@ export class SkillsRepository {
    *
    * @param organizationId - The workspace.
    * @param input - The row and the draft.
+   * @param outer - A transaction to write in (BF.4's import writes many skills in one); without
+   *   one, the two inserts get their own.
    * @returns The skill's id.
    */
-  async create(organizationId: string, input: NewSkillInput): Promise<string> {
-    return this.database.transaction(async (trx) => {
+  async create(
+    organizationId: string,
+    input: NewSkillInput,
+    outer?: Transaction<Database>,
+  ): Promise<string> {
+    const write = async (trx: Transaction<Database>): Promise<string> => {
       const skill = await trx
         .insertInto("skills")
         .values({
@@ -171,7 +177,9 @@ export class SkillsRepository {
       await this.insertDraft(skill.id, input.frontmatter, input.body, trx);
 
       return skill.id;
-    });
+    };
+
+    return outer === undefined ? this.database.transaction(write) : write(outer);
   }
 
   /**

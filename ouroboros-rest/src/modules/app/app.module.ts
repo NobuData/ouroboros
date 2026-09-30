@@ -38,6 +38,7 @@ import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { SkillsModule } from "../skills/skills.module";
 import { FactsModule } from "../facts/facts.module";
+import { RuleImportModule } from "../knowledge-import/rule-import.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
 import { PlanningModule } from "../planning/planning.module";
@@ -356,6 +357,11 @@ export class AppModule {
         // `OnboardingModule`'s prefix, so its position carries no routing rule; it probes through
         // `TicketSourcesModule`'s registry and writes the V067 detection tables.
         DetectionModule,
+        // BF.4 ([#413](https://github.com/NobuData/ouroboros/issues/413)) — the rule-file import
+        // under `/api/v1/knowledge/import`. It reads repositories through `DetectionModule`'s
+        // probe machinery and writes skills and facts with their registries' own statements;
+        // nothing else claims the prefix.
+        RuleImportModule,
         // L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the pipeline that
         // sizes what the sync mirrored. **After `BacklogSyncModule`, which imports it**, so
         // this entry is a statement rather than a requirement: Nest resolves the graph either

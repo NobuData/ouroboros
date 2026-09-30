@@ -2,10 +2,11 @@
  * The fact lifecycle (BF.2, [#411](https://github.com/NobuData/ouroboros/issues/411); decisions
  * **K3** and **K4**) — mockup 14's *"Learned by the loop"* card's actions.
  *
- * **Propose** is the one way a fact is born, for a person (`POST /facts`) and for the automatic
- * proposers alike: {@link FactsService.propose} is the entry point BF.3's deterministic proposers
- * (#412) and BF.4's import (#413) call with their own `proposer` and typed provenance, and no
- * actor. **Confirm** and **Reject** decide a proposal; **Re-confirm** returns a stale fact to
+ * **Propose** is how a fact is born, for a person (`POST /facts`) and for the automatic proposers
+ * alike: {@link FactsService.propose} is the entry point BF.3's deterministic proposers (#412) call
+ * with their own `proposer` and typed provenance, and no actor. BF.4's import (#413) writes the same
+ * `FactsRepository.insert` inside its own apply transaction, so a whole import is atomic; its rows
+ * are `proposed` all the same. **Confirm** and **Reject** decide a proposal; **Re-confirm** returns a stale fact to
  * `confirmed`; **Expire** ends a confirmed or stale fact with a reason and freezes its use count;
  * **Re-learn** proposes a **new** fact linked to an expired one, which is never resurrected.
  *
@@ -165,8 +166,8 @@ export class FactsService {
   }
 
   /**
-   * Propose a fact — the entry point for people and for the automatic proposers (BF.3 #412,
-   * BF.4 #413). Never confirms: *"and you approve"* is the only way to `confirmed` (K3).
+   * Propose a fact — the entry point for people and for the automatic proposers (BF.3 #412).
+   * Never confirms: *"and you approve"* is the only way to `confirmed` (K3).
    *
    * @param organizationId - The workspace.
    * @param input - The fact, its provenance and anchors.

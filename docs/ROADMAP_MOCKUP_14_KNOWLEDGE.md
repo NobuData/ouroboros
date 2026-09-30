@@ -414,7 +414,7 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
 | BF.1 | #410 ✅ | 🟢 Done | ouroboros-rest: [BF.1] Skills service & registry integration | CRUD/versions/locks; WF catalog + inspector + code-view wiring | mvp, knowledge, workflow, rest | N (after BE.1, WF-R.3) | Y | M | ouroboros-rest |
 | BF.2 | #411 ✅ | 🟢 Done | ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep | Transitions, anchors, sweep, audit; inbox feed contract | mvp, knowledge, rest | N (after BE.2) | Y | M | ouroboros-rest |
 | BF.3 | #412 | 🟡 Open | ouroboros-rest: [BF.3] Deterministic fact proposers | Correction/waiver/steer promotion with provenance (K5) | mvp, knowledge, runs, rest | N (after BF.2, AT.4) | Y | M | ouroboros-rest |
-| BF.4 | #413 | 🟡 Open | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
+| BF.4 | #413 ✅ | 🟢 Done | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
 | BF.5 | #414 | 🟡 Open | ouroboros-rest: [BF.5] Context assembly & manifests | Closest-wins resolution, previews, injection recording (K8/K9) | mvp, knowledge, rest, intake | N (after BF.1, BF.2) | Y | L | ouroboros-rest |
 | BF.6 | #415 | 🟡 Open | ouroboros-rest: [BF.6] Playbooks & repo-map generator | Create-from-run, run-on-issue; nightly repo-map (K2/K6) | mvp, knowledge, rest | N (after BE.3, BF.5) | Y | M | ouroboros-rest |
 | BF.7 | #416 | 🟡 Open | ouroboros-rest: [BF.7] Knowledge integration tests | Lifecycle, proposers, import, assembly matrix, playbooks | mvp, knowledge, rest, ci | N (after BF.1–BF.6) | Y | M | ouroboros-rest |
@@ -543,7 +543,7 @@ AT.4 note "Keep k_msgq, but move PID sampling…" ─▶ proposer ─▶
 
 ### Issue BF.4 — ouroboros-rest: [BF.4] Rule-file import service
 
-> **GitHub issue:** #413 · **Status:** 🟡 Open · **Parent epic:** #402
+> **GitHub issue:** #413 ✅ · **Status:** 🟢 Done · **Parent epic:** #402
 
 - **Problem Statement:** The head's import button: existing agent rule
   files become reviewable knowledge in minutes (option 4).
@@ -561,6 +561,22 @@ AT.4 note "Keep k_msgq, but move PID sampling…" ─▶ proposer ─▶
 - **Parallelism/Dependencies:** Needs BF.1, BB.1.
 - **Technical Stack:** NestJS, markdown parsing.
 - **Epic:** BF
+- **Delivered** (`ouroboros-rest/src/modules/knowledge-import/`, REST 0.37.32):
+  `POST /api/v1/knowledge/import/preview` and `…/apply`, both `owner`/`admin` (skill creation's
+  gate). Files are read by `DetectionService.readFiles` — BB.1's source choice and credential
+  opening, one request per file. The parse is deterministic: sections split at the shallowest
+  heading level used more than once, a heading-less file is one skill draft, and a fact candidate
+  is a bullet of at most 200 characters starting with a word from a closed imperative list and not
+  ending in `:`. Decided here: **the apply re-plans under a per-repository advisory lock and
+  compares the preview's sha256 fingerprint** (`409 knowledge_import_preview_stale`), so it writes
+  exactly the preview or nothing, in one transaction; re-import dedupes by `(file, section)` +
+  normalized text against every imported skill version, and facts by normalized text against the
+  repository's and workspace's facts **in any status** (a rejected rule is not re-proposed) — #412's
+  proposer dedupe is not merged yet, so this is the import's own; a changed section becomes the
+  imported skill's **draft version**; caps of 100 skill drafts / 500 facts per import (`422`).
+  Audited as `knowledge.imported`; each fact's creation also carries the actor in
+  `fact_transitions`. No migration: V069/V071 already reserved `imported`, `import` and the typed
+  provenance.
 
 ```
 import(helios-firmware): CLAUDE.md(3 sections) + .cursorrules(12 bullets)

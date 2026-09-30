@@ -5,7 +5,8 @@
  *   * `facts.controller.ts` — `/api/v1/facts`: the card, the needs-you feed, the transitions,
  *     anchors, and an on-demand sweep.
  *   * `facts.service.ts` — the lifecycle; `FactsService.propose` is the entry point BF.3 (#412)
- *     and BF.4 (#413) call, which is why it is exported.
+ *     calls, which is why it is exported. BF.4's import (#413) provides `FactsRepository` itself,
+ *     to insert its proposals inside its own transaction.
  *   * `facts.sweep.ts` — the staleness sweep; bound to `FACT_COMMIT_OBSERVER`, the port PR sync
  *     reports a merge to.
  *   * `facts.scheduler.ts` — the nightly pass.
