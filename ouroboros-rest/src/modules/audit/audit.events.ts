@@ -64,7 +64,8 @@ export type AuditSubjectType =
   | "pr_criterion"
   | "pr_approval"
   | "pr_thread_entry"
-  | "repository";
+  | "repository"
+  | "org_policy";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -353,6 +354,17 @@ export const KNOWLEDGE_IMPORTED_EVENT = "knowledge.imported";
 export const KNOWLEDGE_REPO_MAP_GENERATED_EVENT = "knowledge.repo_map_generated";
 
 /**
+ * A person flipped the workspace's dry-run policy (BA.3,
+ * [#382](https://github.com/NobuData/ouroboros/issues/382)) — the switch between *"draft PRs,
+ * never merges"* and letting the loop merge without a person. Subject `org_policy`, whose id is
+ * the workspace id (one policy row per workspace); the detail carries `dry_run` (the new value),
+ * `previous` (the value in force before) and `previous_explicit` (whether that was a stored
+ * answer or the default). Written on every persisted flip, re-affirmations included — so *"when
+ * did we start auto-merging, and who decided"* is one query.
+ */
+export const POLICY_DRY_RUN_CHANGED_EVENT = "policy.dry_run_changed";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -400,6 +412,7 @@ export const AUDIT_ACTIONS = [
   PR_THREAD_RESOLVED_EVENT,
   KNOWLEDGE_IMPORTED_EVENT,
   KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
+  POLICY_DRY_RUN_CHANGED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

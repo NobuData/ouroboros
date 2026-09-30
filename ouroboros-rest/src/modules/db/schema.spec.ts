@@ -428,7 +428,10 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundred-and-first is V072's `playbooks`, mirrored by BF.6 (#415) — the recipes
     // create-from-run writes and run-on-issue launches through.
-    expect(TABLE_NAMES).toHaveLength(101);
+    //
+    // The hundred-and-second and third are V075's `org_policies` and the `org_policies_effective`
+    // view, mirrored by BA.3 (#382) — the dry-run policy the PR plane enforces.
+    expect(TABLE_NAMES).toHaveLength(103);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -610,7 +613,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(10);
+    expect(READ_ONLY_VIEWS).toHaveLength(11);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {

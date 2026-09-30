@@ -17,7 +17,7 @@
  *   reviews          boolean                         — else requestReview answers null
  *   events           'poll' | 'webhook' | 'none'     — poll for the MVP; webhook reserved for #122
  * }
- * createPR(ctx, {branch, base, title, body})    → { number, url } | null     idempotent by branch → base
+ * createPR(ctx, {branch, base, title, body, draft?}) → { number, url, draft } | null  idempotent by branch → base
  * getPR(ctx, n)                                 → PullRequestSnapshot
  * syncPR(ctx, n, knownHeadSha)                  → { pr, revision | null }     revision when the head sha moved
  * mergePR(ctx, n, {strategy, message, deleteBranch}) → { sha, branchDeleted, closures[] }
@@ -209,6 +209,12 @@ export interface CreatePrInput {
   readonly title: string;
   /** The description, or null. */
   readonly body: string | null;
+  /**
+   * Open it as a draft — a PR that cannot merge until someone marks it ready. Absent means not.
+   * While the workspace's dry-run policy is active (BA.3, #382) the PR plane's opener forces it on,
+   * whatever the caller asked.
+   */
+  readonly draft?: boolean;
 }
 
 /** A PR that exists on a host. */
@@ -217,6 +223,11 @@ export interface PrRef {
   readonly number: number;
   /** Its page. */
   readonly url: string;
+  /**
+   * Whether the host holds it as a draft. An existing open PR answered for the same branch and base
+   * keeps whatever it already was — `createPR` never converts one.
+   */
+  readonly draft: boolean;
 }
 
 /** How to merge. */

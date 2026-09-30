@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.35"
+  version: "0.37.36"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -650,6 +650,14 @@ tags:
       decision **O1**) — one surface that derives the four-step rail from subsystem truth,
       stores the wizard's choices per repository, guards completion, and offers an honest
       import-skip.
+  - name: policies
+    description: |-
+      **Org-level policies the PR plane enforces** (mockup 13, issue
+      [#382](https://github.com/NobuData/ouroboros/issues/382), decision **O3**) — today the
+      dry-run policy: while active, PRs open as drafts, arming and merging are refused with the
+      designed reason `dry-run policy active`, and a workflow's auto-merge terminal is overridden
+      at evaluation without its stored document being touched. One read every surface uses; an
+      owner/admin flip, audited as `policy.dry_run_changed`.
   - name: farm
     description: |-
       **The build farm's identity layer** (mockup 08, epic
@@ -6119,6 +6127,158 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/policies/dry-run:
+    get:
+      tags: [policies]
+      summary: The dry-run policy
+      description: |-
+        The workspace's dry-run policy (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382),
+        decision **O3**) — *"Ouroboros starts in dry-run: it opens draft PRs and never merges until
+        you say so."* **The one source every consuming surface reads**, so the wizard's safety
+        rows, the PR page and the merge plan cannot disagree about it.
+
+        While `dryRun` is true: a PR the plane opens is a **draft**, whatever the caller asked;
+        arming and merging answer `409 dry_run_policy_active`; the executor re-checks the policy at
+        execution, so a plan armed before it turned on is disarmed rather than merged; and a
+        pinned workflow's `open_pr_automerge` terminal is overridden at evaluation — never
+        rewritten, so turning dry-run off restores it exactly.
+
+        **Any member may read it**, viewers included. `explicit: false` is a workspace that never
+        answered — it reads **off**, and completing the Get Started wizard turns it on (an explicit
+        `false` is never overwritten).
+      operationId: readDryRunPolicy
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The policy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunPolicy"
+              example:
+                dryRun: true
+                explicit: true
+                reason: dry-run policy active
+                updatedAt: "2026-09-30T12:00:00.000Z"
+                updatedBy: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [policies]
+      summary: Flip the dry-run policy
+      description: |-
+        Turn dry-run on or off. **Turning it off means the system may merge code without a human
+        in the loop** — every surface that could merge lifts its refusal at once, because every
+        one reads this policy.
+
+        **`owner` or `admin`, and nobody else** — a `member` or a `viewer` gets the API's one `403`
+        on a direct call exactly as in the UI, and writes nothing. Every persisted flip is audited
+        as `policy.dry_run_changed` (subject `org_policy`, the workspace id) with its actor, its
+        instant and `detail.previous` — the value it replaced — so *"when did we start
+        auto-merging, and who decided"* is one query of the audit trail.
+      operationId: patchDryRunPolicy
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DryRunPolicyPatch"
+            example:
+              dryRun: false
+      responses:
+        "200":
+          description: The policy after the flip.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DryRunPolicy"
+              example:
+                dryRun: false
+                explicit: true
+                reason: null
+                updatedAt: "2026-09-30T12:00:00.000Z"
+                updatedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — flipping the dry-run policy is `owner` or `admin` only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `dryRun` is missing or not a boolean.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/settings/github-token:
     get:
       tags: [github]
@@ -23460,6 +23620,8 @@ paths:
                 $ref: "#/components/schemas/Error"
         "409":
           description: |-
+            `dry_run_policy_active` — the workspace's dry-run policy is active (#382); `details`
+            carries `reason: dry_run_policy_active` and `policy: dry_run`, and nothing is armed.
             `merge_revision_stale` — a newer revision exists. `merge_plan_not_armable` — the PR is
             not `verifying` (a red gate, gates never evaluated, or merged or closed).
             `merge_plan_merged` — the plan has merged and is final.
@@ -23622,9 +23784,11 @@ paths:
                 $ref: "#/components/schemas/Error"
         "409":
           description: |-
-            `merge_recheck_failed` — the re-check refused the merge; `details.reason` is one of
-            `head_moved`, `gate_red`, `gates_pending`, `host_not_open`, `host_head_moved`,
-            `host_conflict` or `host_refused`. `merge_plan_merged` — the plan has merged and is final.
+            `dry_run_policy_active` — the workspace's dry-run policy is active (#382), checked before
+            the merge and again at execution; nothing merges. `merge_recheck_failed` — the re-check
+            refused the merge; `details.reason` is one of `head_moved`, `gate_red`, `gates_pending`,
+            `host_not_open`, `host_head_moved`, `host_conflict` or `host_refused`.
+            `merge_plan_merged` — the plan has merged and is final.
           content:
             application/json:
               schema:
@@ -28322,14 +28486,15 @@ components:
       title: PrMergeRefusalCode
       description: |-
         Why the executor's re-check refused a merge. `gates_pending` never disarms; every other
-        code disarms an armed plan.
-      enum: [head_moved, gate_red, gates_pending, host_not_open, host_head_moved, host_conflict, host_refused]
+        code disarms an armed plan. `dry_run_policy_active` (#382) is the workspace's dry-run
+        policy, re-checked at execution — a plan armed before it turned on is disarmed, never merged.
+      enum: [dry_run_policy_active, head_moved, gate_red, gates_pending, host_not_open, host_head_moved, host_conflict, host_refused]
 
     PrMergePlan:
       type: object
       title: PrMergePlan
       additionalProperties: false
-      required: [prId, strategy, deleteBranch, commitMessage, closeTicket, commentEvidence, backAnnotateEpic, epicId, armed, armedBy, armedByPerson, armedAt, armedAgainstRevisionId, disarmReason, mergedResult, updatedAt]
+      required: [prId, strategy, deleteBranch, commitMessage, closeTicket, commentEvidence, backAnnotateEpic, epicId, armed, armedBy, armedByPerson, armedAt, armedAgainstRevisionId, disarmReason, mergedResult, dryRun, updatedAt]
       properties:
         prId:
           type: string
@@ -28402,9 +28567,44 @@ components:
                   type: string
                   format: date-time
             - type: "null"
+        dryRun:
+          $ref: "#/components/schemas/PrMergeDryRunState"
         updatedAt:
           type: string
           format: date-time
+
+    PrMergeDryRunState:
+      type: object
+      title: PrMergeDryRunState
+      additionalProperties: false
+      description: |-
+        The workspace's dry-run policy as it bears on one plan (#382) — the same policy
+        `GET /api/v1/policies/dry-run` answers. While `active`, the merge affordance reads
+        **Dry-run — review the draft PR** and arming or merging answers `409 dry_run_policy_active`.
+      required: [active, reason, autoMerge]
+      properties:
+        active:
+          type: boolean
+        reason:
+          type: [string, "null"]
+          description: "`dry-run policy active` while active, otherwise null — the designed reason a surface renders."
+        autoMerge:
+          type: object
+          additionalProperties: false
+          description: |-
+            The PR's pinned workflow's `open_pr_automerge` terminal under the policy — overridden at
+            evaluation, never mutated, so turning dry-run off restores it exactly.
+          required: [requested, effective, overridden]
+          properties:
+            requested:
+              type: boolean
+              description: Whether the pinned workflow's terminal asks for auto-merge — its stored config.
+            effective:
+              type: boolean
+              description: What happens — `requested` unless dry-run overrides it.
+            overridden:
+              type: boolean
+              description: Whether dry-run is what turned a requested auto-merge off.
 
     PrMergeOutcome:
       type: object
@@ -31391,6 +31591,40 @@ components:
         joined:
           type: boolean
           description: True when a scan was already running and this request joined it.
+
+    DryRunPolicy:
+      type: object
+      title: DryRunPolicy
+      additionalProperties: false
+      description: |-
+        The workspace's dry-run policy (#382). `explicit: false` with null stamps is a workspace
+        that never answered — it reads off; completing the Get Started wizard turns it on.
+      required: [dryRun, explicit, reason, updatedAt, updatedBy]
+      properties:
+        dryRun:
+          type: boolean
+        explicit:
+          type: boolean
+          description: Whether the value is a stored answer — the onboarding default or a person's flip.
+        reason:
+          type: [string, "null"]
+          description: "`dry-run policy active` while active, otherwise null."
+        updatedAt:
+          type: [string, "null"]
+          format: date-time
+        updatedBy:
+          type: [string, "null"]
+          description: Who last flipped it — null for the onboarding default, or a person since deleted.
+
+    DryRunPolicyPatch:
+      type: object
+      title: DryRunPolicyPatch
+      additionalProperties: false
+      required: [dryRun]
+      properties:
+        dryRun:
+          type: boolean
+          description: The new value — `false` lets the system merge without a human in the loop.
 
     AutoMergeSetting:
       type: object

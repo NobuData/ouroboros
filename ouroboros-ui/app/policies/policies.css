@@ -1,0 +1,102 @@
+/*
+ * Settings → Policies (BA.3, #382) — the dry-run row and its confirmation. Tokens only.
+ */
+
+.policies__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-5);
+}
+
+.policies__text {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+  max-width: 72ch;
+}
+
+.policies__name {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.policies__summary,
+.policies__attribution,
+.policies__readonly {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.policies__status {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.policies__status--on {
+  color: var(--ok);
+}
+
+.policies__status--off {
+  color: var(--warn);
+}
+
+.policies__outcome {
+  margin: var(--sp-5) 0 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.policies__outcome--failed {
+  color: var(--err);
+}
+
+/* The confirmation: its consequences, stated before anything is sent. */
+.policies-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.policies-confirm__consequences {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--inset);
+  list-style: disc inside;
+}
+
+.policies-confirm__consequences--loosens {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+}
+
+.policies-confirm__consequence {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.policies-confirm__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+.policies-confirm__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}

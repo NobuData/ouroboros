@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.37.35",
+    "version": "0.37.36",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -133,6 +133,10 @@
     {
       "name": "onboarding",
       "description": "**The Get Started wizard** (mockup 13, [#385](https://github.com/NobuData/ouroboros/issues/385),\ndecision **O1**) — one surface that derives the four-step rail from subsystem truth,\nstores the wizard's choices per repository, guards completion, and offers an honest\nimport-skip."
+    },
+    {
+      "name": "policies",
+      "description": "**Org-level policies the PR plane enforces** (mockup 13, issue\n[#382](https://github.com/NobuData/ouroboros/issues/382), decision **O3**) — today the\ndry-run policy: while active, PRs open as drafts, arming and merging are refused with the\ndesigned reason `dry-run policy active`, and a workflow's auto-merge terminal is overridden\nat evaluation without its stored document being touched. One read every surface uses; an\nowner/admin flip, audited as `policy.dry_run_changed`."
     },
     {
       "name": "farm",
@@ -5968,6 +5972,185 @@
           },
           "422": {
             "description": "`validation_failed` — `enabled` was not a boolean. `details` carries the entry\nkeyed by the field. A `\"true\"`, a `1` or a `null` is refused, not coerced,\nbecause a workspace's merge posture is nothing to flip by accident of type.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/policies/dry-run": {
+      "get": {
+        "tags": [
+          "policies"
+        ],
+        "summary": "The dry-run policy",
+        "description": "The workspace's dry-run policy (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382),\ndecision **O3**) — *\"Ouroboros starts in dry-run: it opens draft PRs and never merges until\nyou say so.\"* **The one source every consuming surface reads**, so the wizard's safety\nrows, the PR page and the merge plan cannot disagree about it.\n\nWhile `dryRun` is true: a PR the plane opens is a **draft**, whatever the caller asked;\narming and merging answer `409 dry_run_policy_active`; the executor re-checks the policy at\nexecution, so a plan armed before it turned on is disarmed rather than merged; and a\npinned workflow's `open_pr_automerge` terminal is overridden at evaluation — never\nrewritten, so turning dry-run off restores it exactly.\n\n**Any member may read it**, viewers included. `explicit: false` is a workspace that never\nanswered — it reads **off**, and completing the Get Started wizard turns it on (an explicit\n`false` is never overwritten).",
+        "operationId": "readDryRunPolicy",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The policy.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunPolicy"
+                },
+                "example": {
+                  "dryRun": true,
+                  "explicit": true,
+                  "reason": "dry-run policy active",
+                  "updatedAt": "2026-09-30T12:00:00.000Z",
+                  "updatedBy": null
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "policies"
+        ],
+        "summary": "Flip the dry-run policy",
+        "description": "Turn dry-run on or off. **Turning it off means the system may merge code without a human\nin the loop** — every surface that could merge lifts its refusal at once, because every\none reads this policy.\n\n**`owner` or `admin`, and nobody else** — a `member` or a `viewer` gets the API's one `403`\non a direct call exactly as in the UI, and writes nothing. Every persisted flip is audited\nas `policy.dry_run_changed` (subject `org_policy`, the workspace id) with its actor, its\ninstant and `detail.previous` — the value it replaced — so *\"when did we start\nauto-merging, and who decided\"* is one query of the audit trail.",
+        "operationId": "patchDryRunPolicy",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DryRunPolicyPatch"
+              },
+              "example": {
+                "dryRun": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The policy after the flip.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DryRunPolicy"
+                },
+                "example": {
+                  "dryRun": false,
+                  "explicit": true,
+                  "reason": null,
+                  "updatedAt": "2026-09-30T12:00:00.000Z",
+                  "updatedBy": "aBcD1234eFgH5678iJkL9012mNoP3456"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. Choose one through `/api/auth/organization/set-active`, or\nname one per request with `X-Ouro-Tenant`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour. Sign in through `/api/auth/sign-in/social`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — flipping the dry-run policy is `owner` or `admin` only.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you\nare a member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `dryRun` is missing or not a boolean.",
             "content": {
               "application/json": {
                 "schema": {
@@ -25733,7 +25916,7 @@
             }
           },
           "409": {
-            "description": "`merge_revision_stale` — a newer revision exists. `merge_plan_not_armable` — the PR is\nnot `verifying` (a red gate, gates never evaluated, or merged or closed).\n`merge_plan_merged` — the plan has merged and is final.",
+            "description": "`dry_run_policy_active` — the workspace's dry-run policy is active (#382); `details`\ncarries `reason: dry_run_policy_active` and `policy: dry_run`, and nothing is armed.\n`merge_revision_stale` — a newer revision exists. `merge_plan_not_armable` — the PR is\nnot `verifying` (a red gate, gates never evaluated, or merged or closed).\n`merge_plan_merged` — the plan has merged and is final.",
             "content": {
               "application/json": {
                 "schema": {
@@ -25933,7 +26116,7 @@
             }
           },
           "409": {
-            "description": "`merge_recheck_failed` — the re-check refused the merge; `details.reason` is one of\n`head_moved`, `gate_red`, `gates_pending`, `host_not_open`, `host_head_moved`,\n`host_conflict` or `host_refused`. `merge_plan_merged` — the plan has merged and is final.",
+            "description": "`dry_run_policy_active` — the workspace's dry-run policy is active (#382), checked before\nthe merge and again at execution; nothing merges. `merge_recheck_failed` — the re-check\nrefused the merge; `details.reason` is one of `head_moved`, `gate_red`, `gates_pending`,\n`host_not_open`, `host_head_moved`, `host_conflict` or `host_refused`.\n`merge_plan_merged` — the plan has merged and is final.",
             "content": {
               "application/json": {
                 "schema": {
@@ -32274,8 +32457,9 @@
       "PrMergeRefusalCode": {
         "type": "string",
         "title": "PrMergeRefusalCode",
-        "description": "Why the executor's re-check refused a merge. `gates_pending` never disarms; every other\ncode disarms an armed plan.",
+        "description": "Why the executor's re-check refused a merge. `gates_pending` never disarms; every other\ncode disarms an armed plan. `dry_run_policy_active` (#382) is the workspace's dry-run\npolicy, re-checked at execution — a plan armed before it turned on is disarmed, never merged.",
         "enum": [
+          "dry_run_policy_active",
           "head_moved",
           "gate_red",
           "gates_pending",
@@ -32305,6 +32489,7 @@
           "armedAgainstRevisionId",
           "disarmReason",
           "mergedResult",
+          "dryRun",
           "updatedAt"
         ],
         "properties": {
@@ -32442,9 +32627,59 @@
               }
             ]
           },
+          "dryRun": {
+            "$ref": "#/components/schemas/PrMergeDryRunState"
+          },
           "updatedAt": {
             "type": "string",
             "format": "date-time"
+          }
+        }
+      },
+      "PrMergeDryRunState": {
+        "type": "object",
+        "title": "PrMergeDryRunState",
+        "additionalProperties": false,
+        "description": "The workspace's dry-run policy as it bears on one plan (#382) — the same policy\n`GET /api/v1/policies/dry-run` answers. While `active`, the merge affordance reads\n**Dry-run — review the draft PR** and arming or merging answers `409 dry_run_policy_active`.",
+        "required": [
+          "active",
+          "reason",
+          "autoMerge"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`dry-run policy active` while active, otherwise null — the designed reason a surface renders."
+          },
+          "autoMerge": {
+            "type": "object",
+            "additionalProperties": false,
+            "description": "The PR's pinned workflow's `open_pr_automerge` terminal under the policy — overridden at\nevaluation, never mutated, so turning dry-run off restores it exactly.",
+            "required": [
+              "requested",
+              "effective",
+              "overridden"
+            ],
+            "properties": {
+              "requested": {
+                "type": "boolean",
+                "description": "Whether the pinned workflow's terminal asks for auto-merge — its stored config."
+              },
+              "effective": {
+                "type": "boolean",
+                "description": "What happens — `requested` unless dry-run overrides it."
+              },
+              "overridden": {
+                "type": "boolean",
+                "description": "Whether dry-run is what turned a requested auto-merge off."
+              }
+            }
           }
         }
       },
@@ -37211,6 +37446,63 @@
           "joined": {
             "type": "boolean",
             "description": "True when a scan was already running and this request joined it."
+          }
+        }
+      },
+      "DryRunPolicy": {
+        "type": "object",
+        "title": "DryRunPolicy",
+        "additionalProperties": false,
+        "description": "The workspace's dry-run policy (#382). `explicit: false` with null stamps is a workspace\nthat never answered — it reads off; completing the Get Started wizard turns it on.",
+        "required": [
+          "dryRun",
+          "explicit",
+          "reason",
+          "updatedAt",
+          "updatedBy"
+        ],
+        "properties": {
+          "dryRun": {
+            "type": "boolean"
+          },
+          "explicit": {
+            "type": "boolean",
+            "description": "Whether the value is a stored answer — the onboarding default or a person's flip."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`dry-run policy active` while active, otherwise null."
+          },
+          "updatedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "updatedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who last flipped it — null for the onboarding default, or a person since deleted."
+          }
+        }
+      },
+      "DryRunPolicyPatch": {
+        "type": "object",
+        "title": "DryRunPolicyPatch",
+        "additionalProperties": false,
+        "required": [
+          "dryRun"
+        ],
+        "properties": {
+          "dryRun": {
+            "type": "boolean",
+            "description": "The new value — `false` lets the system merge without a human in the loop."
           }
         }
       },

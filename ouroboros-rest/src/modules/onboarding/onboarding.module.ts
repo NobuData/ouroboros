@@ -23,6 +23,7 @@ import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
 import { BacklogHealthRepository } from "../planning/health.repository";
+import { PoliciesModule } from "../policies/policies.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { FirstIssueRepository } from "./first-issue.repository";
 import { FirstIssueService } from "./first-issue.service";
@@ -33,7 +34,7 @@ import { TemplateTilesRepository } from "./templates.repository";
 import { TemplateInstantiationService } from "./templates.service";
 
 @Module({
-  imports: [DbModule, WorkflowsModule],
+  imports: [DbModule, WorkflowsModule, PoliciesModule],
   controllers: [OnboardingController],
   providers: [
     OnboardingService,

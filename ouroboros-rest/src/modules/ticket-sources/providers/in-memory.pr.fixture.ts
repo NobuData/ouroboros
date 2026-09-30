@@ -108,6 +108,8 @@ export interface InMemoryPull {
   readonly title: string;
   /** Its description. */
   readonly body: string | null;
+  /** Whether it was opened as a draft. */
+  readonly draft: boolean;
   /** Where it stands. */
   state: HostPrState;
   /** The head it merged at — frozen once merged, since the branch may then be deleted. */
@@ -367,6 +369,7 @@ export class InMemoryPrHost {
       base: input.base,
       title: input.title,
       body: input.body,
+      draft: input.draft === true,
       state: "open",
       mergedHead: null,
       mergedCommits: null,
@@ -807,7 +810,7 @@ export class InMemoryPrTicketSourceProvider
         this.host.findOpen(context.credentials, project, input.branch, input.base) ??
         this.host.open(context.credentials, project, { ...input, title: input.title.trim() });
 
-      return { number: pull.number, url: pullUrl(project, pull.number) };
+      return { number: pull.number, url: pullUrl(project, pull.number), draft: pull.draft };
     });
   }
 

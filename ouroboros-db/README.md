@@ -1005,6 +1005,14 @@
 > (source, matched fact); append-only by trigger and grant. The dev seed gained Ken's correction
 > note on Build 1 of `#482`, whose first sentence is the awaiting-review k_msgq fact — now citing
 > that classification with the honest line `from correction note (run #1847)`.
+>
+> `V075` ([#382](https://github.com/NobuData/ouroboros/issues/382)) adds `org_policies` — the
+> workspace's **dry-run** policy the PR plane enforces (decision **O3**) — in `workspace_settings`'
+> shape: one lazily created row per workspace, `dry_run boolean not null default true`,
+> `updated_by` set null on delete. `org_policies_effective` reads a workspace with no row as
+> dry-run **off**, so nothing changes for a workspace at deploy; onboarding completion's
+> `insert … on conflict do nothing` writes `true` when unset and never overwrites an explicit
+> `false`, and the owner/admin flip is an upsert audited in `audit_events`.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -2249,6 +2257,7 @@ ouroboros-db/
 │   ├── V072__playbooks.sql                  # playbooks (pinned workflow version, typed skill overrides / context preset / issue filter, source run provenance), runs.playbook_id + queue_items.playbook_id; no count column — #407
 │   ├── V073__env_recipes.sql                # env_recipes (ordered {command, comment?} setup commands per repo, immutable dense versions, detected|edited), env_recipes_current; no snapshot fields — #408
 │   ├── V074__fact_proposers.sql             # fact provenance widened (classification, waiver, steer, run_stage, gate, person — resolved in-workspace); fact_suppressions (append-only dedupe record) — #412
+│   ├── V075__org_policies.sql               # org_policies (dry_run, lazy rows) + org_policies_effective (no row ⇒ off; onboarding writes true when unset) — #382
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2402,6 +2411,7 @@ outside this module alters it.
 | `facts` | `V071` | Mockup 14's *Learned by the loop* card ([#406](https://github.com/NobuData/ouroboros/issues/406), BE.2, decisions **K3**/**K4**) — `repo_ref`, `text`, `status`, `proposer`, `provenance`, `confirmed_by`, `confirmed_at`, `expired_reason`, `previous_use_count`, `relearned_from_fact_id`, `status_changed_by`, `status_reason` | born `proposed`; `facts_legal_transition` allows only `proposed→confirmed\|rejected`, `confirmed→stale`, `stale→expired\|confirmed`, and `confirmed`/`rejected`/`expired` need `status_changed_by` (`facts_transition_actor`); `proposer` is `manual\|correction_note\|waiver\|steer\|import\|llm`; `provenance` is typed by `fact_provenance_typed` and its run/PR/ticket refs — since `V074` also classification/waiver/steer/run_stage/gate/person — resolve in-workspace (`facts_provenance_resolves`); `confirmed_at` exactly while confirmed/stale/expired; `expired_reason` and `previous_use_count` exactly when expired, and an expired row is frozen (`facts_expired_frozen`); re-learn names an expired fact of the same workspace (`facts_relearn_from_expired`); `ouroboros_app` may not delete |
 | `fact_transitions` | `V071` | Every fact creation and status move ([#406](https://github.com/NobuData/ouroboros/issues/406)) — `from_status`, `to_status`, `actor_id`, `reason`, `at` | written only by the `security definer` `fact_transitions_record()` trigger; append-only (`fact_transitions_no_update`, the actor set-null excepted); `ouroboros_app` may only select |
 | `fact_suppressions` | `V074` | A fact candidate a proposer did not propose ([#412](https://github.com/NobuData/ouroboros/issues/412), BF.3, decision **K5**) — `repo_ref`, `proposer`, `proposer_version`, `text`, `normalized_text`, `matched_fact_id`, `provenance`, `source_key`, `created_at` | `proposer` is `correction_note\|waiver\|steer\|import\|llm` (never `manual`); `matched_fact_id` is a fact of the same workspace in any status (composite FK, cascade); `provenance` typed and resolved as a fact's; one row per `(organization_id, source_key, matched_fact_id)`; append-only (`fact_suppressions_no_update`); `ouroboros_app` may select and insert only |
+| `org_policies` | `V075` | The workspace's **dry-run** policy ([#382](https://github.com/NobuData/ouroboros/issues/382), BA.3, decision **O3**) — `dry_run`, `updated_by`, `created_at`, `updated_at` | one row per organization, as a primary key, which the onboarding default (`on conflict do nothing`) and the flip (`on conflict do update`) both conflict on; **absent while never answered** — read through `org_policies_effective`, which reads that as `false`; `dry_run` is `not null default true`; `updated_by` references `"user"` and sets null rather than cascading |
 | `fact_anchors` | `V071` | Why a fact can expire ([#406](https://github.com/NobuData/ouroboros/issues/406), **K4**) — `kind`, `value`, `last_checked_at` | `kind` is `path_glob\|dependency\|platform_version`; `(fact_id, kind, value)` unique; a `path_glob` is relative with no `..`; indexed `(kind, value)` for the staleness sweep, with `path_glob_matches(glob, path)` for a changed path set; a fact with none is never flagged |
 | `context_injections` | `V071` | What context assembly actually injected ([#406](https://github.com/NobuData/ouroboros/issues/406)) — `consumer`, `estimate_id`, `run_stage_id`, `run_id`, `skill_version_ids`, `fact_ids`, `manifest_hash`, `injected_at` | `consumer` is `estimator` (estimate) \| `run_stage` (stage + its run) \| `playbook` (the launched run); arrays are sets; every fact is a confirmed fact and every skill version a published version of a non-draft skill of the workspace (`context_injections_resolves`); GIN-indexed arrays; append-only by trigger and grant — the sole source of every usage number |
 | `playbooks` | `V072` | Mockup 14's playbooks card ([#407](https://github.com/NobuData/ouroboros/issues/407), BE.3, decision **K6**) — `name`, `description`, `workflow_id`, `workflow_version`, `skill_overrides`, `context_preset`, `source_run_id`, `issue_filter` | `name` unique per organization; `(workflow_id, workflow_version)` is a published version of a workflow of the same workspace (`playbooks_workflow_version_fk`, `playbooks_workflow_fk` cascading) — `not null`, so never head; `skill_overrides` `{enable?, disable?}` (disjoint uuid sets ≤ 64), `context_preset` `{steer_notes?, fact_ids?}` and `issue_filter` `{labels?, repos?}` are typed by `playbook_*_typed`; `playbooks_refs_resolve` holds skill and fact ids to the workspace and refuses disabling a required skill; `source_run_id` is a run of the workspace, `on delete set null (source_run_id)`; launches are `runs.playbook_id` / `queue_items.playbook_id` (same-workspace, set null) — **no count column**; `ouroboros_app` has full DML |
@@ -2505,6 +2515,10 @@ reads `auto_merge_on_checks = false` from the database rather than from an appli
 memory of the default. Read settings here; write the table, with an `on conflict
 (organization_id) do update` upsert. `is_explicit` is the one column that still tells a
 written default from no row, for onboarding and audit lines.
+
+**`org_policies_effective`** (`V075`) is the same shape over `org_policies`: one row per
+organization, `dry_run` coalesced to `false` for a workspace that never answered — the dry-run
+promise is the Get Started wizard's, and its completion is what writes `true` (#382).
 
 **`alias_references`** (`V023`) is what references a model alias, across every storage shape
 one can be referenced from — `(organization_id, alias_id, alias, kind, ref_id, ref_label,

@@ -38,8 +38,15 @@
  * only while the plan is neither armed nor merged: arming confirmed the plan's terms, so they are
  * changed by disarming first. `merge.edit.ts` says what an edit changes.
  *
- * **Not wired yet, deliberately:** the dry-run policy (#382) and the org policy document's
- * `auto_merge` rule (#481) — both amend this executor, and neither's storage exists yet.
+ * **The dry-run policy** (BA.3, #382, decision O3) sits below all of it. While it is active an arm
+ * or a direct merge is refused with the designed `409 dry_run_policy_active`, and every run
+ * re-reads the policy **uncached** before anything else — so a plan armed before dry-run turned on
+ * is disarmed with `dry_run_policy_active` rather than merged. The pinned workflow's auto-merge
+ * terminal is overridden at evaluation (`plan.dryRun.autoMerge`), never rewritten, so turning
+ * dry-run off restores it exactly.
+ *
+ * **Not wired yet, deliberately:** the org policy document's `auto_merge` rule (#481) — it amends
+ * this executor, and its storage does not exist yet.
  */
 
 import {
@@ -57,6 +64,8 @@ import {
   FOREIGN_KEY_VIOLATION,
   isDatabaseFailure,
 } from "../../tenancy/constraints";
+import { OrgPolicyService, type DryRunPolicyReader } from "../../policies/org-policy.service";
+import { dryRunStateOf } from "../../policies/org-policy.rules";
 import { TicketSourceError, statusReasonFor } from "../../ticket-sources/ticket-source.errors";
 import type { MergePrResult, PullRequestSnapshot } from "../../ticket-sources/ticket-source.pr";
 import { pullRequestNotFound } from "../criteria/criteria.errors";
@@ -84,6 +93,8 @@ import {
   type MergePlanEdit,
 } from "./merge.edit";
 import {
+  DRY_RUN_REFUSAL_MESSAGE,
+  mergeDryRunActive,
   mergeNotPolicyEligible,
   mergePlanArmed,
   mergePlanEpicNotFound,
@@ -211,12 +222,14 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
    * @param host - The PR sync service — the only way to the host.
    * @param criteria - The criteria matrix, for the evidence summary.
    * @param listeners - Where the gate engine announces each evaluation.
+   * @param policy - The workspace's dry-run policy (BA.3, #382).
    */
   constructor(
     @Inject(MergeRepository) private readonly store: MergeStore,
     @Inject(PrSyncService) private readonly host: MergeHost,
     @Inject(CriteriaService) private readonly criteria: MergeCriteria,
     private readonly listeners: GateListeners,
+    @Inject(OrgPolicyService) private readonly policy: DryRunPolicyReader,
   ) {}
 
   /** Listen to the gate engine. */
@@ -289,7 +302,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
       return locked.plan ?? tx.materialize(prId);
     });
 
-    return this.resource(plan);
+    return this.resource(organizationId, plan);
   }
 
   /**
@@ -357,7 +370,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
       }
     });
 
-    return this.resource(plan);
+    return this.resource(organizationId, plan);
   }
 
   /**
@@ -371,7 +384,8 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
    * @returns The armed plan. Arming a plan already armed answers it unchanged.
    * @throws {NotFoundError} `pull_request_not_found`.
    * @throws {ForbiddenError} `merge_not_policy_eligible` for a member whose PR does not auto-merge.
-   * @throws {ConflictError} `merge_plan_merged`, `merge_revision_stale` or `merge_plan_not_armable`.
+   * @throws {ConflictError} `dry_run_policy_active` while the dry-run policy is active, or
+   *   `merge_plan_merged`, `merge_revision_stale` or `merge_plan_not_armable`.
    */
   async arm(
     organizationId: string,
@@ -380,6 +394,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
     revisionId: string,
   ): Promise<MergePlanResource> {
     await this.assertMayMerge(organizationId, prId, actor);
+    await this.assertNotDryRun(organizationId, prId);
 
     const plan = await this.store.transaction(async (tx) => {
       const { pr, plan: stored, latest } = await this.lockOrThrow(tx, organizationId, prId);
@@ -410,7 +425,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
     // Already green: "merge when all gates green" is now.
     this.schedule(organizationId, prId);
 
-    return this.resource(plan);
+    return this.resource(organizationId, plan);
   }
 
   /**
@@ -448,7 +463,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
       return disarmed;
     });
 
-    return this.resource(plan);
+    return this.resource(organizationId, plan);
   }
 
   /**
@@ -461,7 +476,8 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
    * @returns The final plan, the ticket's closure and any action that did not run.
    * @throws {NotFoundError} `pull_request_not_found`.
    * @throws {ForbiddenError} `merge_not_policy_eligible`.
-   * @throws {ConflictError} `merge_plan_merged`, or `merge_recheck_failed` with the reason.
+   * @throws {ConflictError} `dry_run_policy_active` while the dry-run policy is active,
+   *   `merge_plan_merged`, or `merge_recheck_failed` with the reason.
    */
   async merge(
     organizationId: string,
@@ -469,6 +485,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
     actor: MergeActor,
   ): Promise<MergeOutcomeResource> {
     await this.assertMayMerge(organizationId, prId, actor);
+    await this.assertNotDryRun(organizationId, prId);
 
     const outcome = await this.run(organizationId, prId, { kind: "direct", actorId: actor.id });
 
@@ -479,6 +496,11 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
       case "already_merged":
         throw mergePlanMerged(prId);
       case "refused":
+        // The policy turned on between the check above and the run — the same designed refusal.
+        if (outcome.refusal.code === "dry_run_policy_active") {
+          throw mergeDryRunActive(prId);
+        }
+
         throw mergeRecheckFailed(prId, {
           code: outcome.refusal.code,
           message: outcome.refusal.message,
@@ -486,7 +508,7 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
         });
       case "merged":
         return {
-          plan: await this.resource(outcome.plan),
+          plan: await this.resource(organizationId, outcome.plan),
           ticket: outcome.ticket,
           failedActions: outcome.failedActions,
         };
@@ -546,6 +568,13 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
     trigger: MergeTrigger,
   ): Promise<MergeRun> {
     const { pr, latest } = locked;
+
+    // Dry-run first, read uncached: the policy is re-checked at execution, not only at arming,
+    // so a plan armed before it turned on cannot slip through.
+    if (await this.policy.dryRunNow(pr.organizationId)) {
+      return this.refuse(tx, pr, plan, refusal("dry_run_policy_active", DRY_RUN_REFUSAL_MESSAGE));
+    }
+
     const gates =
       latest === null
         ? { mergeReady: false, red: [], satisfied: 0, required: 0 }
@@ -814,15 +843,39 @@ export class MergeExecutorService implements GateEvaluationListener, OnModuleIni
   }
 
   /**
-   * A plan as the routes answer it, naming who armed it.
+   * A plan as the routes answer it, naming who armed it and carrying the dry-run state.
    *
+   * @param organizationId - The workspace.
    * @param plan - The plan.
-   * @returns The resource — `armedByPerson` null for a plan nobody armed, or whose person is gone.
+   * @returns The resource — `armedByPerson` null for a plan nobody armed, or whose person is gone;
+   *   `dryRun.autoMerge.requested` read from the PR's pinned workflow, which is never written.
    */
-  private async resource(plan: StoredMergePlan): Promise<MergePlanResource> {
-    const armedBy = plan.armedBy === null ? undefined : await this.store.person(plan.armedBy);
+  private async resource(
+    organizationId: string,
+    plan: StoredMergePlan,
+  ): Promise<MergePlanResource> {
+    const [armedBy, dryRun, pr] = await Promise.all([
+      plan.armedBy === null ? undefined : this.store.person(plan.armedBy),
+      this.policy.dryRun(organizationId),
+      this.store.pr(organizationId, plan.prId),
+    ]);
+    const autoMerges = pr === undefined ? false : await this.store.autoMerges(pr);
 
-    return mergePlanResource(plan, armedBy ?? null);
+    return mergePlanResource(plan, armedBy ?? null, dryRunStateOf(dryRun, autoMerges));
+  }
+
+  /**
+   * Refuse an arm or a direct merge while the dry-run policy is active — read uncached, since
+   * this is a write.
+   *
+   * @param organizationId - The workspace.
+   * @param prId - The PR.
+   * @throws {ConflictError} `dry_run_policy_active`.
+   */
+  private async assertNotDryRun(organizationId: string, prId: string): Promise<void> {
+    if (await this.policy.dryRunNow(organizationId)) {
+      throw mergeDryRunActive(prId);
+    }
   }
 
   /**

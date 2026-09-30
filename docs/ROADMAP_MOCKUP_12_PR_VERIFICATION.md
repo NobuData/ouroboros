@@ -1062,6 +1062,8 @@ cursor/composer-2 [second opinion · rev 1] (was blocking) 14:12:44
 >     unknown. **The epic's name on the plan would be a REST follow-up.**
 > 14. **The dry-run amendment is not taken up.** #382 is open and its policy endpoint does not
 >     exist; the executor says the same of itself. The relabelling arrives with #382.
+>     *(#382 has since landed it: `plan.dryRun`, the `Dry-run — review the draft PR` label, and
+>     the executor's re-check at execution.)*
 > 15. **"Verified in e2e" is AY.8's** (#370); arm → the last gate flips → merged, with its
 >     receipt, is asserted in the UI suite here, and at the service in
 >     `merge.integration-spec.ts`.

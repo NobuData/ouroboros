@@ -2,6 +2,7 @@ import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
 
 import { document } from "../../../openapi/specification";
+import { dryRunStateOf } from "../../policies/org-policy.rules";
 import { mergePlanResource } from "./merge.resources";
 import type { StoredMergePlan } from "./merge.repository";
 
@@ -36,6 +37,9 @@ function wire(value: unknown): unknown {
 
 const KEN = { id: "user-ken", name: "Ken S" };
 
+/** Dry-run off, and no auto-merge terminal to override. */
+const OFF = dryRunStateOf(false, false);
+
 /** The seeded plan. */
 const STORED: StoredMergePlan = {
   id: "5eed0041-0000-4000-8000-000000000514",
@@ -69,9 +73,9 @@ describe("the merge plan keeps its OpenAPI contract (#369)", () => {
   const valid = validatorFor("PrMergePlan");
 
   it("sends a PrMergePlan — planned, armed by a person, armed by one who has gone", () => {
-    expect(valid(wire(mergePlanResource(STORED, null)))).toBeUndefined();
-    expect(valid(wire(mergePlanResource(ARMED, KEN)))).toBeUndefined();
-    expect(valid(wire(mergePlanResource(ARMED, null)))).toBeUndefined();
+    expect(valid(wire(mergePlanResource(STORED, null, OFF)))).toBeUndefined();
+    expect(valid(wire(mergePlanResource(ARMED, KEN, OFF)))).toBeUndefined();
+    expect(valid(wire(mergePlanResource(ARMED, null, OFF)))).toBeUndefined();
   });
 
   it("…edited, annotating an epic", () => {
@@ -84,6 +88,7 @@ describe("the merge plan keeps its OpenAPI contract (#369)", () => {
         epicId: "5eed001f-0000-4000-8000-000000000001",
       },
       null,
+      OFF,
     );
 
     expect(valid(wire(edited))).toBeUndefined();
@@ -96,6 +101,7 @@ describe("the merge plan keeps its OpenAPI contract (#369)", () => {
           mergePlanResource(
             { ...STORED, disarmReason: "gate_red: Physical HIL is red on revision 2." },
             null,
+            OFF,
           ),
         ),
       ),
@@ -114,17 +120,52 @@ describe("the merge plan keeps its OpenAPI contract (#369)", () => {
               },
             },
             null,
+            OFF,
           ),
         ),
       ),
     ).toBeUndefined();
   });
 
+  it("…under the dry-run policy, overriding an auto-merge terminal and disarmed by it (#382)", () => {
+    expect(valid(wire(mergePlanResource(STORED, null, dryRunStateOf(true, true))))).toBeUndefined();
+    expect(
+      valid(
+        wire(
+          mergePlanResource(
+            {
+              ...STORED,
+              disarmReason:
+                "dry_run_policy_active: dry-run policy active — the PR stays a draft and nothing merges until an owner or admin turns dry-run off in Settings → Policies.",
+            },
+            null,
+            dryRunStateOf(true, false),
+          ),
+        ),
+      ),
+    ).toBeUndefined();
+  });
+
+  it("documents the dry-run refusal on the arm and the merge (#382)", () => {
+    const paths = document().paths as Record<
+      string,
+      Record<string, { responses: Record<string, { description: string }> }>
+    >;
+
+    for (const route of ["arm", "merge"]) {
+      const { responses } = paths[`/api/v1/pull-requests/{id}/merge-plan/${route}`].post;
+
+      expect(responses["409"].description).toContain("dry_run_policy_active");
+    }
+  });
+
   it("names only the person who armed the plan", () => {
-    expect(mergePlanResource(ARMED, KEN).armedByPerson).toEqual(KEN);
+    expect(mergePlanResource(ARMED, KEN, OFF).armedByPerson).toEqual(KEN);
     // A person read for somebody else is never drawn as the one who armed.
-    expect(mergePlanResource(ARMED, { id: "user-mara", name: "Mara" }).armedByPerson).toBeNull();
-    expect(mergePlanResource(STORED, KEN).armedByPerson).toBeNull();
+    expect(
+      mergePlanResource(ARMED, { id: "user-mara", name: "Mara" }, OFF).armedByPerson,
+    ).toBeNull();
+    expect(mergePlanResource(STORED, KEN, OFF).armedByPerson).toBeNull();
   });
 
   it("documents the edit's body: every field optional, the epic alone nullable", () => {

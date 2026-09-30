@@ -216,8 +216,30 @@ export function mergePlan(over: Partial<PrMergePlan> = {}): PrMergePlan {
     armedAgainstRevisionId: null,
     disarmReason: null,
     mergedResult: null,
+    dryRun: DRY_RUN_OFF,
     updatedAt: "2026-09-27T14:32:00.000Z",
     ...over,
+  };
+}
+
+/** The dry-run policy off, and no auto-merge terminal (#382). */
+export const DRY_RUN_OFF: PrMergePlan["dryRun"] = {
+  active: false,
+  reason: null,
+  autoMerge: { requested: false, effective: false, overridden: false },
+};
+
+/**
+ * The dry-run policy on (#382).
+ *
+ * @param autoMerges Whether the pinned workflow's terminal asks for auto-merge — then overridden.
+ * @returns The plan's dry-run state.
+ */
+export function dryRunOn(autoMerges = false): PrMergePlan["dryRun"] {
+  return {
+    active: true,
+    reason: "dry-run policy active",
+    autoMerge: { requested: autoMerges, effective: false, overridden: autoMerges },
   };
 }
 

@@ -67,6 +67,8 @@ export interface RecordedPull {
   readonly title: string;
   /** The description. */
   readonly body: string | null;
+  /** Whether it was opened as a draft. */
+  readonly draft: boolean;
   /** `open` or `closed`. */
   state: "open" | "closed";
   /** When it merged, or null. */
@@ -178,6 +180,7 @@ export function prRecording(options: PrRecordingOptions = {}): PrRecording {
       html_url: `https://github.com/${SOURCE_LOGIN}/${SOURCE_REPO}/pull/${String(pull.number)}`,
       title: pull.title,
       body: pull.body,
+      draft: pull.draft,
       state: pull.state,
       merged: pull.mergedAt !== null,
       merged_at: pull.mergedAt,
@@ -211,6 +214,7 @@ export function prRecording(options: PrRecordingOptions = {}): PrRecording {
     base: string,
     title: string,
     body: string | null,
+    draft = false,
   ): RecordedPull => {
     if (
       !branches.has(branch) ||
@@ -229,6 +233,7 @@ export function prRecording(options: PrRecordingOptions = {}): PrRecording {
       base,
       title,
       body,
+      draft,
       state: "open",
       mergedAt: null,
       mergedHead: null,
@@ -274,6 +279,7 @@ export function prRecording(options: PrRecordingOptions = {}): PrRecording {
             String(params.base),
             String(params.title),
             typeof params.body === "string" ? params.body : null,
+            params.draft === true,
           ),
         );
 

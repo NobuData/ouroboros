@@ -112,9 +112,23 @@ describe("the GitHub PR members", () => {
     expect(first).toEqual({
       number: 1,
       url: `https://github.com/${SOURCE_LOGIN}/${SOURCE_REPO}/pull/1`,
+      draft: false,
     });
     expect(second).toEqual(first);
     expect(github.pulls.size).toBe(1);
+  });
+
+  it("sends draft only when asked, and reads it back (#382)", async () => {
+    const { github, provider } = build();
+
+    github.push("loop/482-canbus-flake", FIRST_PUSH);
+
+    const input = { branch: "loop/482-canbus-flake", base: "main", title: "t", body: null };
+
+    await expect(
+      provider.createPR(syncContext(), { ...input, draft: true }),
+    ).resolves.toMatchObject({ draft: true });
+    expect(github.pulls.get(1)?.draft).toBe(true);
   });
 
   it("refuses a PR it could not open before sending anything", async () => {

@@ -10,6 +10,7 @@
  */
 
 import type { PrMergeAction, PrMergeStrategy } from "../../db/schema";
+import type { DryRunState } from "../../policies/org-policy.rules";
 import type { TicketClosure } from "./merge.actions";
 import { parseDisarmReason, type MergeRefusalCode } from "./merge.recheck";
 import type { MergePerson, StoredMergePlan } from "./merge.repository";
@@ -66,6 +67,12 @@ export interface MergePlanResource {
   readonly disarmReason: DisarmReasonResource | null;
   /** What the merge did, once it has. */
   readonly mergedResult: MergedResultResource | null;
+  /**
+   * The workspace's dry-run policy as it bears on this plan (BA.3, #382) — whether it is active,
+   * its designed reason, and the pinned workflow's auto-merge terminal as requested and as
+   * overridden. The same policy the read API (`GET /policies/dry-run`) answers.
+   */
+  readonly dryRun: DryRunState;
   readonly updatedAt: string;
 }
 
@@ -91,11 +98,13 @@ export interface MergeOutcomeResource {
  * @param plan - The plan.
  * @param armedBy - Who armed it, as read for `plan.armedBy` — null when nobody did, or when the
  *   person is gone. A person who is not the plan's `armedBy` is never named.
+ * @param dryRun - The dry-run policy's state for this plan.
  * @returns The resource.
  */
 export function mergePlanResource(
   plan: StoredMergePlan,
   armedBy: MergePerson | null,
+  dryRun: DryRunState,
 ): MergePlanResource {
   return {
     prId: plan.prId,
@@ -124,6 +133,7 @@ export function mergePlanResource(
             actionsExecuted: plan.mergedResult.actions_executed,
             mergedAt: plan.mergedResult.merged_at,
           },
+    dryRun,
     updatedAt: plan.updatedAt.toISOString(),
   };
 }

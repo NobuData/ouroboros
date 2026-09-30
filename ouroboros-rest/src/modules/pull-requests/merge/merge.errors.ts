@@ -8,6 +8,7 @@
 
 import { ConflictError, ForbiddenError, InvalidRequestError } from "../../errors/error.envelope";
 import type { PullRequestState } from "../../db/schema";
+import { DRY_RUN_CODE, DRY_RUN_REASON } from "../../policies/org-policy.rules";
 import type { MergeRefusalCode } from "./merge.recheck";
 
 /** The `code` of each refusal. */
@@ -30,6 +31,11 @@ export const MERGE_ERRORS = Object.freeze({
    * the page plane already imports this one.
    */
   pullRequestNotOpen: "pull_request_not_open",
+  /**
+   * The workspace's dry-run policy is active (BA.3, #382) — nothing is armed or merged until an
+   * owner or admin turns it off. `409`, never a generic `403`: the cause is a policy, stated.
+   */
+  dryRun: DRY_RUN_CODE,
   /** Back-annotate would be on with no epic to annotate. `422`. */
   epicRequired: "merge_plan_epic_required",
   /** The epic is not one of this workspace's. `422`. */
@@ -162,4 +168,22 @@ export function mergePlanEpicNotFound(prId: string, epicId: string | null): Inva
     "No such roadmap epic in this workspace.",
     { prId, epicId },
   );
+}
+
+/** The dry-run refusal's sentence — the designed reason, and the path to the flip. */
+export const DRY_RUN_REFUSAL_MESSAGE =
+  `${DRY_RUN_REASON} — the PR stays a draft and nothing merges until an owner or admin turns ` +
+  "dry-run off in Settings → Policies.";
+
+/**
+ * @param prId - The PR.
+ * @returns The `409` for arming or merging while the dry-run policy is active — machine-readable
+ *   (`details.reason`, `details.policy`) so every surface renders the cause and the flip.
+ */
+export function mergeDryRunActive(prId: string): ConflictError {
+  return new ConflictError(MERGE_ERRORS.dryRun, DRY_RUN_REFUSAL_MESSAGE, {
+    prId,
+    reason: DRY_RUN_CODE,
+    policy: "dry_run",
+  });
 }

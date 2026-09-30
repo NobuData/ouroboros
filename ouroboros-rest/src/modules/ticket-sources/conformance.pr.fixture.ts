@@ -17,6 +17,7 @@
  *   ├─ declaration      coherent · agrees with the seven members
  *   ├─ round trip       push → createPR (twice → one PR) → getPR → syncPR revision 1 → no change →
  *   │                   push a second commit → revision 2 detected, with correct file counts
+ *   ├─ draft            createPR {draft: true} → a draft, and says so (dry-run, #382)
  *   ├─ merge            unadvertised strategy refused before any request · squash + delete branch ·
  *   │                   `Closes #N` verified closed · a foreign reference reported not closed ·
  *   │                   a retried merge merges nothing
@@ -482,6 +483,34 @@ export function describeTicketSourcePrConformance(
       }
 
       expect(violations).toEqual([]);
+    });
+
+    it("opens a draft when asked, and says so — what the dry-run policy relies on (#382)", async () => {
+      const harness = build();
+      const provider = prHost(harness.provider);
+
+      if (!provider.capabilities().pr.create) {
+        return;
+      }
+
+      const branch = "loop/482-dry-run";
+
+      harness.push(branch, FIRST_PUSH);
+
+      const draft = await attempt("createPR as a draft", () =>
+        provider.createPR(harness.context, {
+          branch,
+          base: harness.base,
+          title: "can: fix flaky telemetry frame order under ISR load",
+          body: null,
+          draft: true,
+        }),
+      );
+
+      expect([
+        ...draft.violations,
+        ...(draft.value?.draft === true ? [] : ["createPR {draft: true} must answer draft: true"]),
+      ]).toEqual([]);
     });
 
     it("refuses a strategy the host does not advertise before any request is sent", async () => {

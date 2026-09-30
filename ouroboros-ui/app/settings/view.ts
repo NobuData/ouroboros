@@ -7,8 +7,9 @@
  * section nav is six anchors — Workspace · Members · Policies · Integrations · Audit · Danger
  * zone. Decision **S2** of the Workspace Settings roadmap mounts the existing admin surfaces
  * beside them as tabs: Ticket sources was the first of those to exist, and the build farm's
- * enrollment tokens (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258)) the second.
- * So this is the section's tab set with two live tabs and six honest `soon` ones, each naming
+ * enrollment tokens (AI.3, [#258](https://github.com/NobuData/ouroboros/issues/258)) the second,
+ * and Policies — the dry-run flip (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382))
+ * — the third. So this is the section's tab set with three live tabs and five honest `soon` ones, each naming
  * BS.1 as where it comes from — the same honesty pair `app/models/view.ts` keeps for the Models
  * section: a live tab carries an `href` and a soon one carries a `note`, and the type makes it
  * impossible to have both or neither.
@@ -20,20 +21,19 @@
  * Framework-free and pure, the way `app/models/view.ts` is.
  */
 
-import { FARM_TOKENS_PATH, SOURCES_PATH } from "@/app/paths";
+import { FARM_TOKENS_PATH, POLICIES_PATH, SOURCES_PATH } from "@/app/paths";
 
 /** The eyebrow's first word — what every page in the section is filed under. */
 export const SETTINGS_EYEBROW = "Settings";
 
 /** The built surfaces of the section — the tabs that carry an `href`. */
-export type SettingsSurface = "sources" | "farm-tokens";
+export type SettingsSurface = "sources" | "farm-tokens" | "policies";
 
 /** Every tab the section's row draws, built or not. */
 export type SettingsTabId =
   | SettingsSurface
   | "workspace"
   | "members"
-  | "policies"
   | "integrations"
   | "audit"
   | "danger";
@@ -86,7 +86,7 @@ export const HUB_NOTE = "Arrives with #491.";
 export const SETTINGS_TABS: readonly SettingsTab[] = [
   { id: "workspace", label: "Workspace", note: HUB_NOTE },
   { id: "members", label: "Members", note: HUB_NOTE },
-  { id: "policies", label: "Policies", note: HUB_NOTE },
+  { id: "policies", label: "Policies", href: POLICIES_PATH },
   { id: "sources", label: "Sources", href: SOURCES_PATH },
   { id: "farm-tokens", label: "Farm tokens", href: FARM_TOKENS_PATH },
   { id: "integrations", label: "Integrations", note: HUB_NOTE },

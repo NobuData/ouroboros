@@ -41,6 +41,7 @@ import {
   PR_APPROVAL_REQUESTED_EVENT,
   KNOWLEDGE_IMPORTED_EVENT,
   KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
+  POLICY_DRY_RUN_CHANGED_EVENT,
 } from "./audit.events";
 
 /**
@@ -127,6 +128,7 @@ describe("the vocabulary", () => {
       "pr_thread.resolved",
       "knowledge.imported",
       "knowledge.repo_map_generated",
+      "policy.dry_run_changed",
     ]);
   });
 
@@ -148,7 +150,8 @@ describe("the vocabulary", () => {
     // token, thirteen about its build farm — its machines, the pools they run in and the
     // builds sent to them — three decisions about its failing tests (#332), three about
     // whether a PR does what its ticket said (#359), three about who approved a PR (#361), and one
-    // about who resolved a review-thread entry (#368). The
+    // about who resolved a review-thread entry (#368), and one about who flipped the dry-run
+    // policy (#382), under `policy.` so every org-policy change is one question. The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -159,6 +162,7 @@ describe("the vocabulary", () => {
       "credential",
       "github",
       "knowledge",
+      "policy",
       "pr_approval",
       "pr_criterion",
       "pr_thread",
@@ -212,6 +216,7 @@ describe("the vocabulary", () => {
       PR_THREAD_RESOLVED_EVENT,
       KNOWLEDGE_IMPORTED_EVENT,
       KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
+      POLICY_DRY_RUN_CHANGED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

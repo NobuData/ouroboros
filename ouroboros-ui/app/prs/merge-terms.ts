@@ -157,6 +157,11 @@ export interface RefusalView {
 
 /** Each refusal's headline, and what follows from it. */
 const REFUSALS: Readonly<Record<PrMergeRefusalCode, readonly [string, string]>> = {
+  dry_run_policy_active: [
+    "Dry-run is on",
+    "Nothing merges while the dry-run policy is active. An owner or admin can turn it off in " +
+      "Settings → Policies, then arm again.",
+  ],
   gate_red: ["A gate went red", "Fix it, or return the PR to the loop, then arm again."],
   head_moved: [
     "The head moved",

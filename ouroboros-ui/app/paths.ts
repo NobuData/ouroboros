@@ -115,6 +115,16 @@ export const SOURCES_PATH = `${SETTINGS_PATH}/sources`;
 export const FARM_TOKENS_PATH = `${SETTINGS_PATH}/farm-tokens`;
 
 /**
+ * Policies (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382)) — the settings
+ * section's Policies tab, where an owner or admin flips the workspace's **dry-run** policy.
+ *
+ * Every surface that states the dry-run promise — the merge plan card, the PR page's head, the
+ * refusals — points here for the flip. Spelled from {@link SETTINGS_PATH} for
+ * {@link SOURCES_PATH}'s reason.
+ */
+export const POLICIES_PATH = `${SETTINGS_PATH}/policies`;
+
+/**
  * The model registry ([#591](https://github.com/NobuData/ouroboros/issues/591)) — mockup 21.
  *
  * The third Models surface, and spelled from {@link MODELS_PATH} for the reason

@@ -36,6 +36,7 @@ import { RegistryReadModule } from "../registry-read/registry-read.module";
 import { RegistryModule } from "../registry/registry.module";
 import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
+import { PoliciesModule } from "../policies/policies.module";
 import { SkillsModule } from "../skills/skills.module";
 import { PlaybooksModule } from "../playbooks/playbooks.module";
 import { RepoMapModule } from "../repo-map/repo-map.module";
@@ -362,6 +363,10 @@ export class AppModule {
         // workflow and intake tables directly and writes only `onboarding_state`, so its position
         // carries no routing rule — nothing else claims the prefix.
         OnboardingModule,
+        // BA.3 ([#382](https://github.com/NobuData/ouroboros/issues/382)) — the dry-run policy
+        // under `/api/v1/policies/dry-run`. `PullRequestsModule` and `OnboardingModule` import it
+        // for enforcement and the onboarding default; nothing else claims the prefix.
+        PoliciesModule,
         // BB.1 ([#384](https://github.com/NobuData/ouroboros/issues/384)) — the repository
         // detector under `/api/v1/onboarding/detection`. A distinct literal segment beneath
         // `OnboardingModule`'s prefix, so its position carries no routing rule; it probes through

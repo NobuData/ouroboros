@@ -144,6 +144,8 @@ const pullPayload = z.object({
   state: z.enum(["open", "closed"]),
   merged_at: z.string().nullish(),
   merged_by: z.object({ login: z.string() }).nullish(),
+  // Absent from payloads of repositories without draft support.
+  draft: z.boolean().nullish(),
   // Null while GitHub is still computing it, and absent from the listing payloads.
   mergeable: z.boolean().nullish(),
   head: z.object({
@@ -264,6 +266,7 @@ export class GithubPullRequests {
       head: input.branch,
       base: input.base,
       ...(input.body === null ? {} : { body: input.body }),
+      ...(input.draft === true ? { draft: true } : {}),
     });
 
     return refOf(parse(pullPayload, created.data, CREATE_PULL_ROUTE));
@@ -665,7 +668,7 @@ function refOf(pull: PullPayload): PrRef {
     throw upstream(`#${String(pull.number)} answered a link that is not https`);
   }
 
-  return { number: pull.number, url: pull.html_url };
+  return { number: pull.number, url: pull.html_url, draft: pull.draft ?? false };
 }
 
 /**

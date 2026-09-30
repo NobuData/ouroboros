@@ -2,7 +2,8 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PrMergePlan, PullRequestPage } from "@/app/api/pull-requests";
-import { workflowPath } from "@/app/paths";
+import { POLICIES_PATH, workflowPath } from "@/app/paths";
+import { DRY_RUN_MERGE_LABEL, DRY_RUN_NOTE, POLICIES_LINK_LABEL } from "@/app/policies/view";
 import type { PollAnswer } from "@/app/poll";
 import {
   DISCARD_MESSAGE,
@@ -55,6 +56,7 @@ import {
   SEEDED_MESSAGE,
   armedPlan,
   blockedPage,
+  dryRunOn,
   mergeOutcome,
   mergePlan,
   mergedPlan,
@@ -1272,5 +1274,44 @@ describe("the roadmap", () => {
       "aria-checked",
       "true",
     );
+  });
+});
+
+describe("the dry-run policy (#382)", () => {
+  it("relabels the card's control and the head's, both inert, and sends nothing", async () => {
+    const planSenders = senders();
+
+    draw(readyPage({ plan: mergePlan({ dryRun: dryRunOn() }) }), { planSenders });
+
+    const control = within(card()).getByRole("button", { name: DRY_RUN_MERGE_LABEL });
+
+    expect(control).toHaveAttribute("aria-disabled", "true");
+    expect(control).toHaveAttribute("title", DRY_RUN_NOTE);
+    expect(screen.getAllByRole("button", { name: DRY_RUN_MERGE_LABEL })).toHaveLength(2);
+
+    await press(control);
+
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    expect(planSenders.arm).not.toHaveBeenCalled();
+    expect(planSenders.merge).not.toHaveBeenCalled();
+  });
+
+  it("states why, with the path to the flip — to a member as well", () => {
+    draw(prPage({ plan: mergePlan({ dryRun: dryRunOn(true) }) }), { mayArm: false });
+
+    const note = within(card()).getByRole("note");
+
+    expect(note).toHaveTextContent(DRY_RUN_NOTE);
+    expect(note).toHaveTextContent("overrides it without changing the workflow");
+    expect(within(note).getByRole("link", { name: POLICIES_LINK_LABEL })).toHaveAttribute(
+      "href",
+      POLICIES_PATH,
+    );
+  });
+
+  it("draws no note while dry-run is off", () => {
+    draw();
+
+    expect(within(card()).queryByRole("note")).toBeNull();
   });
 });

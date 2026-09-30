@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { type Ref, useId } from "react";
 
+import { POLICIES_PATH } from "@/app/paths";
+import { POLICIES_LINK_LABEL } from "@/app/policies/view";
 import {
   Button,
   Card,
@@ -294,6 +296,20 @@ export function MergePlanCard({
         </div>
 
         {view.footer !== null && <p className="prv-merge__footer">{view.footer}</p>}
+
+        {view.dryRun !== null && (
+          <div className="prv-merge__dry-run" role="note">
+            <p className="prv-merge__dry-run-text">
+              {view.dryRun.note}{" "}
+              <Link className="prv-merge__dry-run-link" href={POLICIES_PATH}>
+                {POLICIES_LINK_LABEL}
+              </Link>
+            </p>
+            {view.dryRun.override !== null && (
+              <p className="prv-merge__dry-run-text">{view.dryRun.override}</p>
+            )}
+          </div>
+        )}
 
         {view.handedOff !== null && (
           <p className="prv-merge__handoff" role="status">
