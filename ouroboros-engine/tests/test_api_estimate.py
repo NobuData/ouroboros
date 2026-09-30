@@ -182,6 +182,42 @@ def test_an_issue_with_no_labels_can_be_sized(
     assert response.status_code == 200
 
 
+def test_an_issue_can_be_sized_with_the_confirmed_facts_its_context_carries(
+    client: TestClient, estimate_body: dict
+) -> None:
+    # BF.5 (#414): ouroboros-rest's context assembly sends the confirmed facts it resolved
+    # for the issue's repository. heuristic-v0 reads none of them, so the answer is the one
+    # the same issue gets without them — the point is that the closed contract admits them.
+    facts = [
+        {
+            "id": "5eed0044-0000-4000-8000-000000000001",
+            "text": "CI needs `west update` before first build of the day",
+        }
+    ]
+    context = {**estimate_body["context"], "facts": facts}
+
+    with_facts = client.post(ESTIMATE_PATH, json=estimate_body | {"context": context})
+    without = client.post(ESTIMATE_PATH, json=estimate_body)
+
+    assert with_facts.status_code == 200
+    assert with_facts.json()["effort"] == without.json()["effort"]
+
+
+def test_a_fact_the_contract_does_not_describe_is_refused(
+    client: TestClient, estimate_body: dict
+) -> None:
+    fact = {
+        "id": "5eed0044-0000-4000-8000-000000000001",
+        "text": "x",
+        "status": "proposed",
+    }
+    context = {**estimate_body["context"], "facts": [fact]}
+
+    response = client.post(ESTIMATE_PATH, json=estimate_body | {"context": context})
+
+    assert response.status_code == 422
+
+
 def test_the_answer_is_drawn_from_the_vocabularies_the_caller_offered(
     client: TestClient, estimate_body: dict
 ) -> None:

@@ -39,6 +39,7 @@ import { SettingsModule } from "../settings/settings.module";
 import { SkillsModule } from "../skills/skills.module";
 import { FactsModule } from "../facts/facts.module";
 import { RuleImportModule } from "../knowledge-import/rule-import.module";
+import { ContextAssemblyModule } from "../context-assembly/context-assembly.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
 import { PlanningModule } from "../planning/planning.module";
@@ -362,6 +363,11 @@ export class AppModule {
         // probe machinery and writes skills and facts with their registries' own statements;
         // nothing else claims the prefix.
         RuleImportModule,
+        // BF.5 ([#414](https://github.com/NobuData/ouroboros/issues/414)) — context assembly
+        // under `/api/v1/knowledge/context`: the manifest preview and the injection record. A
+        // distinct literal segment beside `RuleImportModule`'s `import`; `EstimationModule`
+        // imports it too, so the estimator resolves through the same service.
+        ContextAssemblyModule,
         // L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the pipeline that
         // sizes what the sync mirrored. **After `BacklogSyncModule`, which imports it**, so
         // this entry is a statement rather than a requirement: Nest resolves the graph either

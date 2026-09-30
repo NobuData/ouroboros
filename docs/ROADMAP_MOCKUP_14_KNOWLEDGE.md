@@ -415,7 +415,7 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
 | BF.2 | #411 ✅ | 🟢 Done | ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep | Transitions, anchors, sweep, audit; inbox feed contract | mvp, knowledge, rest | N (after BE.2) | Y | M | ouroboros-rest |
 | BF.3 | #412 | 🟡 Open | ouroboros-rest: [BF.3] Deterministic fact proposers | Correction/waiver/steer promotion with provenance (K5) | mvp, knowledge, runs, rest | N (after BF.2, AT.4) | Y | M | ouroboros-rest |
 | BF.4 | #413 ✅ | 🟢 Done | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
-| BF.5 | #414 | 🟡 Open | ouroboros-rest: [BF.5] Context assembly & manifests | Closest-wins resolution, previews, injection recording (K8/K9) | mvp, knowledge, rest, intake | N (after BF.1, BF.2) | Y | L | ouroboros-rest |
+| BF.5 | #414 ✅ | 🟢 Done | ouroboros-rest: [BF.5] Context assembly & manifests | Closest-wins resolution, previews, injection recording (K8/K9) | mvp, knowledge, rest, intake | N (after BF.1, BF.2) | Y | L | ouroboros-rest |
 | BF.6 | #415 | 🟡 Open | ouroboros-rest: [BF.6] Playbooks & repo-map generator | Create-from-run, run-on-issue; nightly repo-map (K2/K6) | mvp, knowledge, rest | N (after BE.3, BF.5) | Y | M | ouroboros-rest |
 | BF.7 | #416 | 🟡 Open | ouroboros-rest: [BF.7] Knowledge integration tests | Lifecycle, proposers, import, assembly matrix, playbooks | mvp, knowledge, rest, ci | N (after BF.1–BF.6) | Y | M | ouroboros-rest |
 
@@ -585,7 +585,7 @@ import(helios-firmware): CLAUDE.md(3 sections) + .cursorrules(12 bullets)
 
 ### Issue BF.5 — ouroboros-rest: [BF.5] Context assembly & manifests
 
-> **GitHub issue:** #414 · **Status:** 🟡 Open · **Parent epic:** #402
+> **GitHub issue:** #414 ✅ · **Status:** 🟢 Done · **Parent epic:** #402
 
 - **Problem Statement:** The point of the page (K9): one resolution
   service turning scoped knowledge into the manifests every consumer
@@ -610,6 +610,23 @@ import(helios-firmware): CLAUDE.md(3 sections) + .cursorrules(12 bullets)
   INTAKE-L.1.
 - **Technical Stack:** NestJS, Kysely.
 - **Epic:** BF
+- **Delivered** (`ouroboros-rest/src/modules/context-assembly/`, REST 0.37.33, engine 0.7.6):
+  `ContextAssemblyService.assemble(org, {repo?, workflow?}, consumer, {overrides?, budgetTokens?})`
+  over the one pure resolver `context-assembly.resolve.ts`; `POST /api/v1/knowledge/context/preview`
+  (that call, served — every member, records nothing) and `POST …/injections` (member+, V071's
+  record). Decided on the issue: V069's slugs are unique per workspace, so a **conflict is the same
+  skill name, case-insensitive** (BF.1's clash rule) and a switched-off closest winner takes the name
+  out; `overrides` is V072's `{enable, disable}` skill-id delta applied last, a `disable` of a
+  required skill refused and listed in `refusedOverrides`; a required skill also cannot be shadowed
+  by a closer same-name one. **Budgets are per consumer** (`estimator` 8k tokens and 64 facts,
+  `run_stage`/`playbook` 32k; tokens `ceil(chars/4)`; a caller may only lower it), trimmed org →
+  repo → workflow, skills before facts, largest first, required never — every drop in `trimmed`.
+  **Triggers are not matched by assembly**: each entry carries `load`/`triggers` for the consumer.
+  The estimator's manifest is facts only — the engine's `EstimationContext` gained an optional
+  `facts: [{id, text}]` (≤ 64) — and it records `{estimator, estimateId, factIds, hash}` after the
+  estimate row is stored (the orchestrator mints the estimate id); a failed assembly sizes without
+  facts and a failed record keeps the estimate. The AR.1 per-stage contract is documented in the
+  service header and the REST README.
 
 ```
 assemble({org, repo: helios, workflow: standard-fix}, run_stage)

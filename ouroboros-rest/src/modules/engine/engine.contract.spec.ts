@@ -17,6 +17,7 @@ import {
   ESTIMATE_EFFORTS,
   ESTIMATE_RISKS,
   INTERNAL_KEY_HEADER,
+  MAX_CONTEXT_FACTS,
   echoRequestBody,
   echoResultSchema,
   engineRouteUrl,
@@ -291,8 +292,40 @@ describe("estimateRequestBody", () => {
       context: {
         workflow_tags: ["standard-fix", "docs-loop"],
         model_defaults: { default: "claude-fable-5", docs: "claude-haiku-4-5" },
+        facts: [
+          {
+            id: "5eed0044-0000-4000-8000-000000000001",
+            text: "CI needs `west update` before first build of the day",
+          },
+        ],
       },
     });
+  });
+
+  it("sends the confirmed facts context assembly resolved, and only their id and text (#414)", () => {
+    // The engine's ContextFact is closed: a manifest entry's tier or token estimate on the wire
+    // would be a 422 and no estimate at all.
+    const withManifestFields = {
+      ...ESTIMATE_REQUEST,
+      context: {
+        ...ESTIMATE_REQUEST.context,
+        facts: [{ id: "5eed0044-0000-4000-8000-000000000005", text: "t", tier: "org" }],
+      },
+    };
+    const body = estimateRequestBody(withManifestFields) as {
+      context: { facts: Record<string, unknown>[] };
+    };
+
+    expect(body.context.facts).toEqual([{ id: "5eed0044-0000-4000-8000-000000000005", text: "t" }]);
+  });
+
+  it("sends an empty fact list rather than omitting it", () => {
+    const body = estimateRequestBody({
+      ...ESTIMATE_REQUEST,
+      context: { ...ESTIMATE_REQUEST.context, facts: [] },
+    }) as { context: Record<string, unknown> };
+
+    expect(body.context).toHaveProperty("facts", []);
   });
 
   it("sends an absent description as the null the engine's contract declares", () => {
@@ -691,6 +724,22 @@ describe("the engine's own specification", () => {
       expect(Object.keys(schema.properties)).toContain(field);
       expect(schema.required).toContain(field);
     }
+  });
+
+  it("carries confirmed facts in the estimation context, capped where this client caps them", () => {
+    const schemas = engineDocument().components.schemas as Record<
+      string,
+      {
+        required: string[];
+        properties: Record<string, { maxItems?: number; items?: { $ref?: string } }>;
+      }
+    >;
+
+    expect(schemas.EstimationContext.properties.facts.items?.$ref).toBe(
+      "#/components/schemas/ContextFact",
+    );
+    expect(schemas.EstimationContext.properties.facts.maxItems).toBe(MAX_CONTEXT_FACTS);
+    expect(schemas.ContextFact.required).toEqual(["id", "text"]);
   });
 
   it("still answers the echo route with the request shape under `echo`", () => {

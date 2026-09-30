@@ -28,6 +28,7 @@ from ouroboros_engine.core.errors import ErrorEnvelope
 from ouroboros_engine.core.security import INTERNAL_KEY_HEADER, UNAUTHORIZED_BODY
 from ouroboros_engine.estimation.contract import (
     Breakdown,
+    ContextFact,
     Estimate,
     EstimateRequest,
     EstimationContext,
@@ -73,6 +74,7 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "EchoResponse": EchoResponse,
     "IssueContext": IssueContext,
     "EstimationContext": EstimationContext,
+    "ContextFact": ContextFact,
     "EstimateRequest": EstimateRequest,
     "Breakdown": Breakdown,
     "Trace": Trace,

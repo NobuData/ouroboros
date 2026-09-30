@@ -84,6 +84,12 @@
 import { Injectable, Logger } from "@nestjs/common";
 
 import type { EstimationContext } from "../engine/engine.contract";
+
+/**
+ * A workspace's vocabularies — the {@link EstimationContext} minus its facts, which are per
+ * repository and come from context assembly (`estimation.knowledge.ts`, #414).
+ */
+export type EstimationVocabulary = Omit<EstimationContext, "facts">;
 import { ResolutionService } from "../routing/resolution.service";
 import { WorkflowRegistryService } from "../workflows/registry.service";
 
@@ -159,7 +165,7 @@ export class EstimationContextService {
    *   empty *workflow* registry is deliberately not the same kind of answer: it has one, and
    *   `workflows/registry.service.ts` gives it.
    */
-  async forWorkspace(organizationId: string): Promise<EstimationContext | undefined> {
+  async forWorkspace(organizationId: string): Promise<EstimationVocabulary | undefined> {
     const wanted = Object.entries(MODEL_DEFAULT_KINDS);
 
     const [resolved, offered] = await Promise.all([

@@ -107,6 +107,18 @@ MAX_TAG_LENGTH = 64
 MAX_MODEL_DEFAULTS = 64
 MAX_MODEL_LENGTH = 128
 
+#: How many confirmed facts a caller may inject, and how long each may be. The length is
+#: ``facts.text``'s own ceiling in ``ouroboros-db`` (V071's ``facts_text_present``); the
+#: count is the estimator consumer's cap in ``ouroboros-rest``'s context assembly (BF.5,
+#: `#414 <https://github.com/NobuData/ouroboros/issues/414>`_), which trims — and records
+#: the trim — before a longer list could reach this contract.
+MAX_CONTEXT_FACTS = 64
+MAX_FACT_LENGTH = 500
+
+#: A fact's id: the canonical lower-case uuid ``ouroboros-db`` mints. Held to that shape so
+#: the id a caller records as injected is one this request could actually have carried.
+FACT_ID_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
+
 #: Bounds on what an estimate may say. These guard *this* service's own answer rather than
 #: a caller's request: every one of them is a field K.2 stores and something renders, and a
 #: breakdown carrying a thousand file paths is a bug in an estimator rather than an
@@ -178,6 +190,33 @@ class IssueContext(BaseModel):
     )
 
 
+class ContextFact(BaseModel):
+    """One confirmed fact from the caller's context manifest (BF.5, #414).
+
+    Decision **K9** of the knowledge roadmap: *"Confirmed facts are injected into every
+    run's context"*, and the estimator is the first consumer that exists. The caller's
+    context assembly decides which facts apply — confirmed only, scope-filtered, trimmed to
+    a budget — and records what it sent; this service only reads them.
+
+    Attributes:
+        id: The fact's id in ``ouroboros-db``, so an estimator's trace can say which facts
+            informed it.
+        text: The fact as a person confirmed it, inline-code spans and all.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: str = Field(
+        pattern=FACT_ID_PATTERN,
+        examples=["5eed0044-0000-4000-8000-000000000001"],
+    )
+    text: str = Field(
+        min_length=1,
+        max_length=MAX_FACT_LENGTH,
+        examples=["CI needs `west update` before first build of the day"],
+    )
+
+
 class EstimationContext(BaseModel):
     """The vocabularies that exist, told to the engine rather than assumed by it.
 
@@ -200,6 +239,11 @@ class EstimationContext(BaseModel):
             name for the class of work each is the default for. A map rather than a list
             because that is what the caller has (L.2 reads a label-to-model default out
             of it), and the values are what :attr:`Estimate.routed_model` must be one of.
+        facts: The confirmed facts the caller's context assembly resolved for the issue's
+            repository (BF.5, #414) — knowledge, not vocabulary, so nothing in an answer is
+            held to it. Optional and empty by default, which is what every caller before
+            #414 sent; ``heuristic-v0`` reads none of it, and O.2's LLM estimator is the
+            reader it is carried for.
     """
 
     model_config = ConfigDict(extra="forbid")
@@ -218,6 +262,10 @@ class EstimationContext(BaseModel):
         min_length=1,
         max_length=MAX_MODEL_DEFAULTS,
         examples=[{"default": "claude-fable-5", "docs": "claude-haiku-4-5"}],
+    )
+    facts: list[ContextFact] = Field(
+        default_factory=list,
+        max_length=MAX_CONTEXT_FACTS,
     )
 
 

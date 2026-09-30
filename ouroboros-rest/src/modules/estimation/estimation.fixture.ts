@@ -19,7 +19,8 @@
  * Not shipped: `tsconfig.build.json` excludes `*.fixture.ts` alongside the specs.
  */
 
-import type { Estimate, EstimationContext } from "../engine/engine.contract";
+import type { Estimate } from "../engine/engine.contract";
+import type { EstimationVocabulary } from "./estimation.context";
 import type { EstimableIssueRow } from "./estimation.repository";
 
 /** The workspace every unit suite here estimates for. */
@@ -38,7 +39,7 @@ export const FIXTURE_SLUG = "acme-robotics/helios-firmware";
  * routes both `implement` and `docs`, and because a map with one key would let a spec pass
  * without ever exercising the case the engine actually looks a key up in.
  */
-export const FIXTURE_CONTEXT: EstimationContext = {
+export const FIXTURE_CONTEXT: EstimationVocabulary = {
   workflowTags: ["standard-fix", "docs-loop", "feature-loop", "deps-refresh"],
   modelDefaults: { default: "claude-fable-5", docs: "claude-haiku-4-5" },
 };

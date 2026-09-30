@@ -128,6 +128,7 @@ $ curl http://localhost:4000/api/v1
 | `GET POST /api/v1/facts` · `/facts/needs-you` · `/facts/sweep` | [The fact lifecycle](#fact-lifecycle-and-the-staleness-sweep) (#411) — the learned-facts card, a manual proposal, the `fact_review` feed, an on-demand staleness sweep |
 | `…/facts/{factId}` · `…/confirm` · `…/reject` · `…/reconfirm` · `…/expire` · `…/relearn` · `…/anchors` | One fact and its audit; the K3 transitions (member+, actor recorded); anchor add/remove |
 | `POST /api/v1/knowledge/import/preview` · `…/apply` | [Rule-file import](#rule-file-import) (#413) — `CLAUDE.md` / `AGENTS.md` / `.cursorrules` / Copilot instructions → draft skills and proposed facts, previewed then applied exactly |
+| `POST /api/v1/knowledge/context/preview` · `…/injections` | [Context assembly](#context-assembly-and-manifests) (#414) — the what-would-inject manifest (closest scope wins, required locked on, trims recorded); a consumer's injection record |
 | `GET POST /api/v1/sources`                          | [Ticket sources](#pluggable-ticket-sources) (#141) — the workspace's list with masks, never values; add one, checked against its kind's schema |
 | `GET /api/v1/sources/catalog`                       | Every registered kind as the form it takes — `configSchema()` rendered to fields — plus its capabilities |
 | `GET PATCH /api/v1/sources/{id}`                    | One source; rename, change its settings, pause or resume it — `owner`/`admin` only |
@@ -3223,6 +3224,66 @@ section}]}` (V071). So an import fills the review queues and changes no run.
 | `409 knowledge_import_preview_stale` | a file, fact or slug changed since the preview |
 | `422 knowledge_import_too_large` | more than 100 skill drafts or 500 fact candidates in one import |
 | `429 knowledge_import_rate_limited` · `502 knowledge_import_source_failed` | the host refused a probe |
+
+## Context assembly and manifests
+
+**`ContextAssemblyService` is decision K8's one implementation** (BF.5,
+[#414](https://github.com/NobuData/ouroboros/issues/414)): scoped knowledge in, the manifest every
+consumer injects out — and the injection records that every usage number (`used 48×`,
+`61% of runs`, the ladder's counts) is counted from.
+
+```
+assemble({repo?, workflow?}, consumer, {overrides?, budgetTokens?})
+  ─▶ { skillVersions: [hil-safety(required) v3, zephyr-conventions v12, …], facts: [confirmed…],
+       estTokens, budgetTokens, trimmed: [], excluded: [], refusedOverrides: [], manifestHash }
+POST /api/v1/knowledge/context/preview     the same call, served — records nothing (every member)
+POST /api/v1/knowledge/context/injections  what a consumer actually injected → context_injections (member+)
+```
+
+| Rule (`context-assembly.resolve.ts`) | |
+| --- | --- |
+| Scope | an `org` skill is always in scope; a `repo` skill in its repository's (case-insensitive); a `workflow` skill in its workflow's |
+| Drafts | a draft skill, or one with no published version, never appears — not even as an exclusion |
+| Closest wins | a conflict is two in-scope skills with the same **name** (case-insensitive; slugs are unique per workspace): `workflow` > `repo` > `org`, ties by slug; the losers are `excluded: shadowed`. A switched-off winner takes the name out (`disabled`) — how a workflow-level skill switches a farther one off |
+| Required | always holds its name: a closer same-name skill cannot shadow it, a `disable` override is refused (`refusedOverrides: required`), the trim never drops it |
+| Overrides | V072's `{enable, disable}` skill-id delta, applied last: `disable` → `override_disabled`; `enable` re-admits a switched-off winner; anything else is refused `shadowed` / `not_resolved` (includes another workspace's ids) |
+| Facts | `confirmed` only — the workspace's always, a repository's in that repository's scope |
+
+| Consumer | Injects | Budget | Fact cap |
+| --- | --- | --- | --- |
+| `estimator` | facts (all `POST /v0/estimate` carries) | 8 000 | 64 (the engine's `MAX_CONTEXT_FACTS`) |
+| `run_stage` · `playbook` | skills and facts | 32 000 | — |
+
+**Trim** — tokens are `ceil(chars / 4)`; a caller may ask for a lower `budgetTokens`, never a higher
+one. Over a limit, entries drop `org` first, then `repo`, then `workflow` (skills before facts in a
+tier, largest first, ties by slug or id); the fact cap first (`item_limit`), the budget second
+(`over_budget`). **Every drop is in `trimmed`**, naming the skill *version*. `manifestHash` is
+sha256 over the consumer, scope, budget, kept version ids, kept facts and trims.
+
+**Consumers.**
+
+* **Estimator — wired** (`estimation/estimation.knowledge.ts`, the INTAKE-L.1 #105 amendment). Each
+  sizing assembles `estimator` for the issue's repository and sends the facts as
+  `context.facts` (engine 0.7.6); after the estimate row is stored it records
+  `{consumer: estimator, estimateId, factIds, manifestHash}`. A failed assembly sizes without facts
+  and a failed record keeps the estimate — knowledge never blocks an estimate; a manifest with no
+  facts records nothing.
+* **Execution — the AR.1 (#315) contract.** One manifest **per stage**, assembled as the stage
+  starts: scope `{repo: <run's repository>, workflow: <run's workflow slug>}`, consumer
+  `run_stage`. The stage's `skill:` reference is an ordinary skill — in scope to be injected. A
+  playbook launch passes the playbook's `skill_overrides` as `overrides` and records as
+  `playbook` against the launched run. The stage injects `skillVersions[].body` (applying each
+  entry's `load` / `triggers` to its own task text — assembly does not match triggers) and
+  `facts[].text`, then records `{consumer: run_stage, runStageId, runId, skillVersionIds, factIds,
+  manifestHash}` — `injectionOf(manifest)`, less any `on_trigger` skill it skipped.
+* **Dry run (R.2 #144, #560)** — an ordinary consumer; a preview needs no record.
+
+| Refusal | When |
+| --- | --- |
+| `404 context_workflow_not_found` | the scope names a workflow this workspace does not have |
+| `422 context_overrides_overlap` | one skill id is both enabled and disabled |
+| `422 context_injection_consumer_reference` | the references do not fit the consumer (V071's `context_injections_consumer_ref`) |
+| `422 context_injection_unresolved` | V071's trigger refused an id: another workspace's, an unconfirmed fact, a draft skill's version |
 
 ## Pluggable ticket sources
 
