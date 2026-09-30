@@ -281,6 +281,15 @@ export interface ToggleProps {
   /** The id of an element describing the read-only state, when there is one. */
   readonly describedBy?: string;
   /**
+   * Whether the switch is **locked**: the position it shows is one the service refuses to
+   * change — mockup 14's `hil-safety`, required by policy
+   * ([#418](https://github.com/NobuData/ouroboros/issues/418)). It is drawn as the mockup's
+   * `.switch.locked` and announced `aria-readonly`, but it is **not** inert: a press still
+   * reaches `onClick`, so the caller can make the call the service refuses and surface *its*
+   * reason. A `disabled` lock would be the page's opinion; this one is the API's.
+   */
+  readonly locked?: boolean;
+  /**
    * Whether pressing it submits the form around it. `submit` is how this product writes —
    * a switch inside a one-field form calling a Server Action, which works before hydration
    * and without JavaScript. Defaults to `button`, which does nothing without an `onClick`.
@@ -311,6 +320,7 @@ export function Toggle({
   label,
   reason,
   describedBy: describedById,
+  locked,
   type = "button",
   onClick,
   className,
@@ -322,10 +332,11 @@ export function Toggle({
       // A read-only switch is never a submit button, whatever the caller asked for: the
       // form behind it would still accept the press.
       type={inert ? "button" : type}
-      className={cx("ou-switch", className)}
+      className={cx("ou-switch", locked && "ou-switch--locked", className)}
       role="switch"
       aria-checked={checked}
       aria-disabled={inert || undefined}
+      aria-readonly={locked || undefined}
       aria-describedby={describedById}
       title={reason}
       onClick={inert ? undefined : onClick}

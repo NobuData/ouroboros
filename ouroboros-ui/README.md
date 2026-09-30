@@ -3438,8 +3438,8 @@ disabled would reasonably expect to draft and be refused on the first click.
 
 `/knowledge` ([#417](https://github.com/NobuData/ouroboros/issues/417)) is
 [`docs/mockups/14-knowledge.html`](../docs/mockups/14-knowledge.html)'s **frame**: the page head,
-its two actions, and the two seats the rest of the page grows into — the skills table
-([#418](https://github.com/NobuData/ouroboros/issues/418)) and the learned-facts card
+its two actions, and the two seats the rest of the page grows into — the [skills table](#the-skills-table)
+([#418](https://github.com/NobuData/ouroboros/issues/418), built) and the learned-facts card
 ([#419](https://github.com/NobuData/ouroboros/issues/419)). The sidebar's **Knowledge** entry is live
 and leads here, which retires the `/knowledge` placeholder #49 held; the mockup's topbar is
 superseded by the shell.
@@ -3449,9 +3449,13 @@ KNOWLEDGE
 Teach the loop once. Every run remembers.        [Import CLAUDE.md / .cursorrules] [+ New skill]
 Skills you write, facts the loop learns (and you approve), and playbooks you can aim at any
 issue. Scoped per repo or org-wide.
-┌ SKILLS ──────────────────────────────┐
-│ arrives with #418                     │   ← #skills-drafts, where the import toast's link lands
-└───────────────────────────────────────┘
+┌ SKILLS  (5 active)                              Open in editor → ┐
+│ SKILL                 SCOPE     USED BY         UPDATED       ON  │   ← #skills-drafts
+│ zephyr-conventions    [repo]    61% of runs ⓘ  v12 · 2d ago  [on]│
+│ hil-safety            [repo]    physical tests  ⚠ required — cannot disable  [🔒on]
+│ repo-map              [repo]    every run       auto-generated nightly ⓘ [↻]  [on]
+│ power-budget-checks (draft)     — ⓘ            v1 · 20m ago  [off]   ← tinted
+└───────────────────────────────────────────────────────────────────┘
 ┌ LEARNED BY THE LOOP ─────────────────┐
 │ arrives with #419                     │   ← #facts-awaiting
 └───────────────────────────────────────┘
@@ -3511,6 +3515,59 @@ them.
 
 **Loading** is [`knowledge-skeleton.tsx`](app/knowledge/knowledge-skeleton.tsx): the head drawn for
 real, since none of it is read, over the two seats at the grid's geometry.
+
+### The skills table
+
+The card ([#418](https://github.com/NobuData/ouroboros/issues/418);
+[`skills-table.tsx`](app/knowledge/skills-table.tsx), every sentence and decision in
+[`skills.ts`](app/knowledge/skills.ts), the two server hops in
+[`skills-actions.ts`](app/knowledge/skills-actions.ts)) is mockup 14's, and its six seeded rows are
+four kinds of truth, each stated by the service rather than invented by the page:
+
+**The locked switch is the API's refusal.** `hil-safety` is `required`, and the tempting
+implementation — render it `disabled` — would make the lock the page's opinion while the skill
+stayed one call from off. So the switch is drawn locked (the #46 Toggle's new `locked` state:
+`aria-readonly`, the mockup's dimming) and **stays pressable**: a press makes the same
+`PATCH /api/v1/skills/{slug}` an ordinary row makes, the service answers `403 skill_required_locked`
+for every role, and *Not changed: required by policy — cannot disable.* lands in the row as an
+alert the switch is `aria-describedby`. The suite asserts the call and the refusal, never a
+`disabled` attribute. An ordinary row's press records the change and the row takes the skill the
+service answered with; the page re-reads behind it.
+
+**Used-by is a statistic, and carries its footnote.** `GET /api/v1/skills/stats` counts injection
+records over a stated window, and each figure's `ⓘ` says *11 of 18 runs in its scope carried it over
+the last 30 days (2026-08-31 to 2026-09-30); 11 injections across every consumer* — in the tooltip
+and in the accessibility tree. `—` is a **real zero** on an enabled skill (*enabled, and nothing has
+used it yet*, drawn in the value's ink), and on the draft row it is inert (*drafts never inject*,
+drawn dimmed with the row). A stats reading that failed says *not counted* with the reason, rather
+than a `—` that would claim a zero nobody counted.
+
+**`auto-generated nightly` is a promise about maintenance.** The tag on `repo-map` carries when the
+generator last published — the age and the instant of the version in force, so the reader can see
+whether it actually ran last night — and **↻** runs `POST /api/v1/knowledge/repo-map/regenerate`
+for the row's repository. The report lands as the page's toast (*published v61 … 4 modules*,
+*unchanged — nothing written*, or *not regenerated: the repository could not be read*) and the page
+re-reads; `409 repo_map_regenerate_too_soon` shows the wait under the tag.
+
+**The draft row is tinted because it is inert.** `power-budget-checks` wears the `draft` pill, the
+warn tint on its cells, an off switch, and the footnote above.
+
+**Where the editor is, honestly** — the same fact BG.1 recorded for the create's landing. The
+code-view frame opens `skills/<slug>.skill.md` with X.2
+([#181](https://github.com/NobuData/ouroboros/issues/181)), which is not built, so each row's door
+(the mono name) is inert with that reason, revealed under the description on a press; the generated
+row's door carries the **overwrite warning** with it — *manual edits are overwritten by the next
+generation* — in its tooltip, its accessible description and the revealed text, so it is where the
+door is on the day the door opens. The head's **Open in editor →** and the caption's link lead to
+the Workflow Studio, which exists.
+
+**A member** sees every switch in its real state, read-only with the reason (design system § 3.3),
+and the regenerate likewise; a hand-made call to either Server Action gets the service's `403`
+back as a value. **Sorting** is by Skill, Scope, Used by and Updated — the #46 Table's headings
+became buttons carrying `aria-sort` for this — and the switch column sorts by nothing. Ages are
+the calendar's (`coarseAgo` in [`format.ts`](app/format.ts): `2d ago`, `3w ago`, `2mo ago`),
+measured from the instant the page was read, which the reader passes down so the server and the
+browser agree about every figure.
 
 ## Run console
 

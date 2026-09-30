@@ -135,6 +135,165 @@
   }
 }
 
+/* ---------- the skills table (#418) ---------- */
+
+/*
+ * The mockup's skills card. The table is the #46 primitive; what the page adds is the cells'
+ * own shapes — the mono name over its description, the Used-by figure with its footnote glyph,
+ * the generated row's tag-and-regenerate pair, the refusal under a switch — and the draft row's
+ * tint, which is the warn hue at the mockup's near-invisible strength, on the cells (a `td`
+ * background survives the primitive's hover rule; a row's would not).
+ */
+/* The switch column is the mockup's 52px, in rem. */
+.knowledge-skills__col--on {
+  width: 3.25rem;
+}
+
+.knowledge-skills__name-cell {
+  min-width: 14rem;
+}
+
+.knowledge-skills__name-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/*
+ * The mockup's `.skill-name`, as the row's editor door: a button wearing the mono name's type
+ * and nothing of a button's. Inert until #181, it dims as every inert control does.
+ */
+.knowledge-skills__name {
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.knowledge-skills__name[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+/* The mockup's `.skill-desc`. */
+.knowledge-skills__desc {
+  margin-top: var(--sp-1);
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* Why the door is closed, revealed under the description once it is pressed. */
+.knowledge-skills__door {
+  max-width: 40ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-skills__door--warn {
+  color: var(--warn);
+}
+
+/* The Used-by figure and its footnote glyph. */
+.knowledge-skills__used {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  white-space: nowrap;
+}
+
+/* The figure itself, in tabular numerals so `61% of runs` and `7% of runs` line up. */
+.knowledge-skills__used-label {
+  font-variant-numeric: tabular-nums;
+}
+
+/* A real zero is a value, in the value's ink — not the faint ink of an absence. */
+.knowledge-skills__used-label--zero {
+  color: var(--ink-dim);
+}
+
+/* A draft's `—` is inert: it is drawn as the row is, dimmed. */
+.knowledge-skills__used-label--inert {
+  color: var(--ink-faint);
+}
+
+/* The `ⓘ` after a figure — decision P7's tooltip glyph, as the providers' meters wear it. */
+.knowledge-skills__info {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  cursor: help;
+}
+
+/* The generated row: the tag, the regenerate beside it, a refusal under both. */
+.knowledge-skills__generated {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.knowledge-skills__regenerate {
+  padding-inline: var(--sp-3);
+  font-size: var(--t-sm);
+}
+
+/* A skill before its first publish, in the faint ink of a value that is not there yet. */
+.knowledge-skills__unpublished {
+  color: var(--ink-faint);
+}
+
+/* The required tag's seat — an id the locked switch is described by. */
+.knowledge-skills__required {
+  display: inline-flex;
+}
+
+/* The switch and, under it, what the service said when it refused a press. */
+.knowledge-skills__switch {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.knowledge-skills__refusal {
+  max-width: 14rem;
+  color: var(--err);
+  font-family: var(--f-ui);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  white-space: normal;
+}
+
+/* The mockup's `tr.draft-row`: the warn hue as a wash over the whole row. */
+.knowledge-skills__row--draft td {
+  background: var(--warn-tint);
+}
+
+/* The mockup's `.tbl-caption`, with its link in the ink the page's links take. */
+.knowledge-skills__caption {
+  margin: var(--sp-5) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-skills__caption-link {
+  color: var(--ink-mut);
+  text-decoration: underline;
+  text-underline-offset: 0.125rem;
+}
+
+.knowledge-skills__caption-link:hover {
+  color: var(--ink);
+}
+
 /* ---------- the skeleton ---------- */
 
 .knowledge-skeleton__bar {

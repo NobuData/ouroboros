@@ -105,3 +105,22 @@ describe("the toast and the note", () => {
     expect(rule("\\.knowledge-import__note")).toMatch(/background:\s*var\(--warn-tint\)/);
   });
 });
+
+describe("the skills table (#418)", () => {
+  it("tints the draft row's cells with the warn triple — on the cells, so the hover rule cannot hide it", () => {
+    expect(rule("\\.knowledge-skills__row--draft td")).toMatch(/background:\s*var\(--warn-tint\)/);
+  });
+
+  it("sets the switch column's width in rem, so the 125% font scale widens it with the type", () => {
+    expect(rule("\\.knowledge-skills__col--on")).toMatch(/width:\s*[\d.]+rem/);
+  });
+
+  it("draws a real zero in the value's ink and a draft's — in the faint one", () => {
+    expect(rule("\\.knowledge-skills__used-label--zero")).toMatch(/color:\s*var\(--ink-dim\)/);
+    expect(rule("\\.knowledge-skills__used-label--inert")).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+
+  it("writes the refusal under a switch in the error hue", () => {
+    expect(rule("\\.knowledge-skills__refusal")).toMatch(/color:\s*var\(--err\)/);
+  });
+});

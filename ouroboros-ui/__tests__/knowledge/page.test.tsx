@@ -22,6 +22,7 @@ vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() 
 vi.mock("@/app/knowledge/data", () => ({ readKnowledge: (access: unknown) => readKnowledge(access) }));
 vi.mock("@/app/knowledge/create-actions", () => ({ createSkill: vi.fn() }));
 vi.mock("@/app/knowledge/import-actions", () => ({ previewImport: vi.fn(), applyImport: vi.fn() }));
+vi.mock("@/app/knowledge/skills-actions", () => ({ setSkillEnabled: vi.fn(), regenerateRepoMap: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));

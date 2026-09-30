@@ -743,7 +743,7 @@ tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BG.1 | #417 ✅ | 🟢 Done | ouroboros-ui: [BG.1] Knowledge route, head & import flow | `/knowledge` frame, New-skill flow, import preview/apply | mvp, knowledge, ui, design | N (after #41, BF.4, BA-D.5) | Y | M | ouroboros-ui |
-| BG.2 | #418 | 🟡 Open | ouroboros-ui: [BG.2] Skills table | All row states, locked/draft treatments, editor links, stats | mvp, knowledge, ui, design | N (after BG.1, BF.1) | Y | M | ouroboros-ui |
+| BG.2 | #418 ✅ | 🟢 Done | ouroboros-ui: [BG.2] Skills table | All row states, locked/draft treatments, editor links, stats | mvp, knowledge, ui, design | N (after BG.1, BF.1) | Y | M | ouroboros-ui |
 | BG.3 | #419 | 🟡 Open | ouroboros-ui: [BG.3] Learned-facts card | Lifecycle rows, Confirm/Reject/Re-learn, provenance popovers | mvp, knowledge, ui, design | N (after BG.1, BF.2/BF.3) | Y | M | ouroboros-ui |
 | BG.4 | #420 | 🟡 Open | ouroboros-ui: [BG.4] Playbooks & repo-profile cards | Recipes + run-on-issue; profile + env recipe + honest snapshot | mvp, knowledge, ui, design | N (after BG.1, BF.6, BE.4) | Y | M | ouroboros-ui |
 | BG.5 | #421 | 🟡 Open | ouroboros-ui: [BG.5] Scope ladder & manifest preview | The ladder with live counts; what-would-inject preview | mvp, knowledge, ui, design | N (after BG.1, BF.5) | Y | S | ouroboros-ui |
@@ -794,7 +794,7 @@ tokens (both themes; the mockup is dark-only).
 
 ### Issue BG.2 — ouroboros-ui: [BG.2] Skills table
 
-> **GitHub issue:** #418 · **Status:** 🟡 Open · **Parent epic:** #403
+> **GitHub issue:** #418 ✅ · **Status:** 🟢 Done · **Parent epic:** #403
 
 - **Problem Statement:** The table's five columns with every state:
   scopes, injection-derived used-by, version/age, the auto-generated
@@ -813,6 +813,32 @@ tokens (both themes; the mockup is dark-only).
 - **Parallelism/Dependencies:** Needs BG.1, BF.1.
 - **Technical Stack:** React, #46 Table/Switch.
 - **Epic:** BG
+- **Delivered** (`ouroboros-ui/app/knowledge/skills-table.tsx`, judgements in `skills.ts`, server
+  hops in `skills-actions.ts`; UI 0.112.0): the card fills the `#skills-drafts` seat BG.1 left —
+  the head's active count from the list's own `active` (never a draft), **Open in editor →**, the
+  five columns, the caption. **The locked switch is the API's refusal**: `hil-safety`'s switch is
+  drawn locked (`aria-readonly`, the mockup's dimming) and stays pressable; a press makes the
+  `PATCH /api/v1/skills/hil-safety {enabled:false}`, the service answers
+  `403 skill_required_locked`, and *Not changed: required by policy — cannot disable.* lands in the
+  row as an alert the switch is described by — the suite asserts the call and the refusal, not a
+  `disabled` attribute. **Used-by** is `GET /api/v1/skills/stats`: each figure's `ⓘ` states the
+  numerator, the denominator, the window's days and dates, and the injection count; an enabled
+  skill's `—` reads *enabled, and nothing has used it yet* (a real zero, in the value's ink), a
+  draft's reads *drafts never inject*, and an unread stats reading says *not counted* rather than
+  claiming a zero. **`auto-generated nightly`** carries the last generation's age and instant from
+  the version in force, and **↻** runs `POST /api/v1/knowledge/repo-map/regenerate` for the row's
+  repository — the report lands as the page's toast (`published v61 … 4 modules` / `unchanged` /
+  `skipped: …`), the page re-reads, and `409 repo_map_regenerate_too_soon` shows the wait. **The
+  draft row** is tinted with the warn triple on its cells, wears the pill, and is switched off.
+  **Updated** spells the calendar's units (`coarseAgo`: `2d`, `3w`, `2mo`). A **member** sees every
+  switch in its real state, read-only with the reason, and the regenerate likewise; the gates are
+  the service's. **Sorting** by Skill, Scope, Used by and Updated through the #46 Table's new
+  sortable headings (`aria-sort`, a button per heading); the switch column sorts by nothing.
+  Decided on the issue, as BG.1 did for the create's landing: the code-view frame cannot open
+  `skills/<slug>.skill.md` until X.2 (#181), so each row's editor door is inert with that reason —
+  a press reveals it — and the generated row's carries the overwrite warning with it, in the
+  tooltip, the accessible description and the revealed text; the head's link and the caption's
+  lead to the Workflow Studio, which exists. The #46 Toggle gained the `locked` state for this.
 
 ```
 zephyr-conventions  Kconfig… [repo] 61% of runs  v12 · 2d  [on]

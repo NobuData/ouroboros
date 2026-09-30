@@ -634,3 +634,53 @@ describe("both palettes", () => {
     expect(light).toBe(dark);
   });
 });
+
+describe("sortable headings (#418)", () => {
+  /**
+   * The suite's columns, with one sortable.
+   *
+   * @param direction Which way the sortable column is sorted, or `null`.
+   * @param onSort What a press calls.
+   * @returns The columns.
+   */
+  function sortable(direction: "ascending" | "descending" | null, onSort: () => void): readonly Column<Run>[] {
+    return [
+      { key: "repo", header: "Repository", mono: true, sort: { direction, onSort }, cell: (run) => run.repo },
+      { key: "minutes", header: "Minutes", align: "end", cell: (run) => run.minutes },
+    ];
+  }
+
+  it("makes the heading a button the keyboard reaches, and leaves the others as text", () => {
+    const onSort = vi.fn();
+    render(<Table caption="Recent runs" columns={sortable(null, onSort)} rows={RUNS} rowKey={(run) => run.id} />);
+
+    const heading = screen.getByRole("button", { name: "Repository" });
+
+    expect(heading).toHaveAttribute("type", "button");
+    expect(heading.closest("th")).not.toHaveAttribute("aria-sort");
+    expect(screen.queryByRole("button", { name: "Minutes" })).toBeNull();
+
+    fireEvent.click(heading);
+
+    expect(onSort).toHaveBeenCalledOnce();
+  });
+
+  it("says which way the sorted column runs on the heading cell, with a glyph hidden from the tree", () => {
+    render(<Table caption="Recent runs" columns={sortable("descending", vi.fn())} rows={RUNS} rowKey={(run) => run.id} />);
+
+    const heading = screen.getByRole("button", { name: "Repository" });
+
+    expect(heading.closest("th")).toHaveAttribute("aria-sort", "descending");
+    expect(heading).toHaveClass("ou-table__sort--active");
+    expect(heading.querySelector("[aria-hidden]")).toHaveTextContent("▼");
+  });
+
+  it("renders the same markup in both palettes", () => {
+    const [light, dark] = renderInBothPalettes(
+      <Table caption="Recent runs" columns={sortable("ascending", vi.fn())} rows={RUNS} rowKey={(run) => run.id} />,
+    );
+
+    expect(light).toBe(dark);
+    expect(light).toContain("▲");
+  });
+});

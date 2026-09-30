@@ -24,7 +24,7 @@
 import type { EnabledRepo } from "@/app/api/enablement";
 import type { Role } from "@/app/api/membership";
 import type { Reading } from "@/app/api/reading";
-import type { SkillList } from "@/app/api/skills";
+import type { SkillList, SkillStats } from "@/app/api/skills";
 
 /* ------------------------------------------------------------------ the head */
 
@@ -99,12 +99,6 @@ export const FACTS_REGION_ID = "facts-awaiting";
 /** The skills region's title — the mockup's card head. */
 export const SKILLS_TITLE = "Skills";
 
-/** What stands where the skills table will, until #418 draws it. */
-export const SKILLS_SEAT_NOTE =
-  "The skills table — every skill's scope, use and switch, with draft rows for what an import " +
-  "or a create left unpublished — arrives with #418. Drafts created here are stored now and " +
-  "listed there then.";
-
 /** The facts region's title — the mockup's card head. */
 export const FACTS_TITLE = "Learned by the loop";
 
@@ -120,8 +114,16 @@ export const FACTS_SEAT_NOTE =
  * the list, the import without a repository to name — and nothing else.
  */
 export interface KnowledgeReadings {
-  /** Every skill of the workspace — what the create dialog checks a slug against before sending. */
+  /** Every skill of the workspace — the table's rows, and what the create dialog checks a slug against. */
   readonly skills: Reading<SkillList>;
+  /** The Used-by column's figures, over the service's stated window (BG.2, #418). */
+  readonly stats: Reading<SkillStats>;
   /** The enabled repositories — what the import sheet offers, and a repo-scoped skill's referent. */
   readonly repos: Reading<readonly EnabledRepo[]>;
+  /**
+   * The instant the page was read, ISO 8601 — what every relative age in the table is measured
+   * from. Passed down rather than each row reading a clock, so a server render and its
+   * hydration agree about every `2d ago`.
+   */
+  readonly readAt: string;
 }

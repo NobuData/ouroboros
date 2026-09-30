@@ -5,13 +5,18 @@ import type {
   RuleImportResult,
   RuleImportTotals,
 } from "@/app/api/knowledge-import";
-import type { SkillList, SkillSummary } from "@/app/api/skills";
+import type { RepoMapReport } from "@/app/api/repo-map";
+import type { SkillList, SkillStats, SkillSummary } from "@/app/api/skills";
 import type { KnowledgeReadings } from "@/app/knowledge/view";
 
 /**
- * Knowledge fixtures (#417): the development seed's skills (mockup 14's six) and an import preview
- * of the fixture `CLAUDE.md`, trimmed to what the frame reads and the sheet draws.
+ * Knowledge fixtures (#417, #418): the development seed's skills (mockup 14's six, with the ages,
+ * versions and Used-by figures the seed gives them) and an import preview of the fixture
+ * `CLAUDE.md`, trimmed to what the frame reads and the table and the sheet draw.
  */
+
+/** The `owner/name` of the first seeded repository. */
+export const SEEDED_REPO = "acme-robotics/helios-firmware";
 
 /**
  * One skill, seed-shaped.
@@ -41,36 +46,126 @@ export function skillSummary(over: Partial<SkillSummary> = {}): SkillSummary {
   };
 }
 
+/** The instant the suite reads the page at — every seeded age below is measured from it. */
+export const READ_AT = "2026-09-30T14:00:00.000Z";
+
 /**
- * The seeded list: mockup 14's six skills, one of them a draft.
+ * An instant some minutes before {@link READ_AT}.
  *
- * @returns The list.
+ * @param minutes How long before.
+ * @returns ISO 8601.
+ */
+function minutesAgo(minutes: number): string {
+  return new Date(new Date(READ_AT).getTime() - minutes * 60_000).toISOString();
+}
+
+/** One seeded row: what `R__dev_seed_workspace_knowledge.sql` writes, trimmed to the table's columns. */
+type SeedRow = readonly [
+  slug: string,
+  name: string,
+  description: string,
+  scope: SkillSummary["scope"],
+  flags: { enabled: boolean; required: boolean; draft: boolean; origin: SkillSummary["origin"] },
+  version: number,
+  publishedMinutesAgo: number,
+];
+
+/** Mockup 14's six rows, as the development seed writes them. */
+const SEED: readonly SeedRow[] = [
+  ["zephyr-conventions", "Zephyr conventions", "Kconfig, devicetree & ISR-safety house rules", "repo",
+    { enabled: true, required: false, draft: false, origin: "authored" }, 12, 2 * 1440],
+  ["repo-map", "Repo map", "Module & ownership map of the source tree", "repo",
+    { enabled: true, required: false, draft: false, origin: "generated" }, 60, 420],
+  ["pr-etiquette", "PR etiquette", "PR title format, changelog entry, reviewer ping rules", "org",
+    { enabled: true, required: false, draft: false, origin: "authored" }, 4, 21 * 1440],
+  ["hil-safety", "HIL safety", "Hardware-in-loop interlocks before any motor spins", "repo",
+    { enabled: true, required: true, draft: false, origin: "authored" }, 3, 40 * 1440],
+  ["commit-style", "Commit style", "Conventional commits, 72-char body wrap, sign-off", "org",
+    { enabled: true, required: false, draft: false, origin: "authored" }, 2, 61 * 1440],
+  ["power-budget-checks", "Power budget checks", "Flag changes that raise idle current above 120 µA", "repo",
+    { enabled: false, required: false, draft: true, origin: "authored" }, 1, 20],
+];
+
+/**
+ * The seeded list: mockup 14's six skills — the locked `hil-safety`, the generated `repo-map`,
+ * the draft `power-budget-checks` — with the versions and ages the seed gives them.
+ *
+ * @returns The list, in the service's order (by slug).
  */
 export function seededSkills(): SkillList {
-  const rows: readonly [string, string, SkillSummary["scope"], boolean][] = [
-    ["zephyr-conventions", "Zephyr conventions", "repo", false],
-    ["repo-map", "Repo map", "repo", false],
-    ["pr-etiquette", "PR etiquette", "org", false],
-    ["hil-safety", "HIL safety", "repo", false],
-    ["commit-style", "Commit style", "org", false],
-    ["power-budget-checks", "Power budget checks", "repo", true],
-  ];
+  const skills = SEED.map(([slug, name, description, scope, flags, version, publishedMinutesAgo], index) =>
+    skillSummary({
+      id: `5eed0410-0000-4000-8000-00000000000${String(index + 1)}`,
+      slug,
+      name,
+      description,
+      scope,
+      repoRef: scope === "repo" ? SEEDED_REPO : null,
+      ...flags,
+      active: flags.enabled && !flags.draft,
+      currentVersion: version,
+      publishedAt: minutesAgo(publishedMinutesAgo),
+      updatedAt: minutesAgo(publishedMinutesAgo),
+      path: `skills/${slug}.skill.md`,
+    }),
+  ).sort((a, b) => a.slug.localeCompare(b.slug));
 
+  return { skills, active: skills.filter((skill) => skill.active).length };
+}
+
+/** One seeded skill, by slug — `seededSkill("hil-safety")`. */
+export function seededSkill(slug: string): SkillSummary {
+  const skill = seededSkills().skills.find((one) => one.slug === slug);
+  if (skill === undefined) throw new Error(`no seeded skill ${slug}`);
+
+  return skill;
+}
+
+/** The Used-by figures the seed's injection records count to — the mockup's six cells. */
+const SEED_STATS: readonly [slug: string, label: string, carried: number, inScope: number, injections: number][] = [
+  ["zephyr-conventions", "61% of runs", 11, 18, 11],
+  ["repo-map", "every run", 18, 18, 21],
+  ["pr-etiquette", "every PR", 7, 21, 7],
+  ["hil-safety", "physical tests", 5, 18, 5],
+  ["commit-style", "every run", 21, 21, 21],
+  ["power-budget-checks", "—", 0, 0, 0],
+];
+
+/**
+ * The stats over the thirty days before {@link READ_AT}.
+ *
+ * @returns The window and the six lines.
+ */
+export function seededStats(): SkillStats {
   return {
-    skills: rows.map(([slug, name, scope, draft], index) =>
-      skillSummary({
-        id: `5eed0410-0000-4000-8000-00000000000${String(index + 1)}`,
-        slug,
-        name,
-        scope,
-        repoRef: scope === "repo" ? "acme-robotics/helios-firmware" : null,
-        draft,
-        active: !draft,
-        currentVersion: draft ? null : 1,
-        path: `skills/${slug}.skill.md`,
-      }),
-    ),
-    active: 5,
+    window: { days: 30, from: minutesAgo(30 * 1440), to: READ_AT },
+    skills: SEED_STATS.map(([slug, label, carried, inScope, injections]) => ({
+      slug,
+      active: slug !== "power-budget-checks",
+      usedBy: { label, carried, inScope },
+      injections,
+    })),
+  };
+}
+
+/**
+ * One generation's report — a manual regenerate that published.
+ *
+ * @param over Fields to replace.
+ * @returns The report.
+ */
+export function repoMapReport(over: Partial<RepoMapReport> = {}): RepoMapReport {
+  return {
+    repo: SEEDED_REPO,
+    outcome: "published",
+    skill: "repo-map",
+    version: 61,
+    generatedAt: READ_AT,
+    trigger: "manual",
+    reason: null,
+    modules: 4,
+    truncated: false,
+    ...over,
   };
 }
 
@@ -96,9 +191,6 @@ export function seededRepos(): EnabledRepo[] {
     enabledRepo({ id: "5eed0044-0000-4000-8000-000000000102", name: "helios-tools" }),
   ];
 }
-
-/** The `owner/name` of the first seeded repository. */
-export const SEEDED_REPO = "acme-robotics/helios-firmware";
 
 /** A preview's fingerprint — 64 lower-case hex characters, as the contract requires. */
 export const FINGERPRINT = "9c1f4e2a7b3d6c5e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6";
@@ -267,7 +359,9 @@ export function importResult(): RuleImportResult {
 export function knowledgeReadings(over: Partial<KnowledgeReadings> = {}): KnowledgeReadings {
   return {
     skills: { ok: true, value: seededSkills() },
+    stats: { ok: true, value: seededStats() },
     repos: { ok: true, value: seededRepos() },
+    readAt: READ_AT,
     ...over,
   };
 }

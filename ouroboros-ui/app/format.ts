@@ -337,6 +337,45 @@ export function relativeAgo(iso: string, now: Date): string {
   return `${Math.floor(elapsed / DAY_MS)}d ago`;
 }
 
+/** A week and a calendar month, for {@link coarseAgo} — the month the mockups' `2mo` rounds to. */
+const WEEK_MS = 7 * DAY_MS;
+const MONTH_MS = 30 * DAY_MS;
+const YEAR_MS = 365 * DAY_MS;
+
+/**
+ * How long ago an instant was, in the coarsest unit that is still honest — mockup 14's
+ * `20m ago`, `2d ago`, `3w ago`, `2mo ago`.
+ *
+ * {@link relativeAgo} is exact to the minute and stops at days, which is right for a provider
+ * used three minutes ago and wrong for a skill published two months ago: `61d ago` is a figure a
+ * reader has to divide. The skills table's Updated cell
+ * ([#418](https://github.com/NobuData/ouroboros/issues/418)) wants the calendar's own units, so
+ * this rounds down through weeks, thirty-day months and years past the first week.
+ *
+ * Whole units, rounded down, for {@link ageOfSeconds}'s reason: `13d` is not yet two weeks.
+ *
+ * @param iso The instant, ISO 8601.
+ * @param now The instant the page was read.
+ * @returns `41s ago`, `20m ago`, `7h ago`, `2d ago`, `3w ago`, `2mo ago` or `1y ago`. A future
+ *   instant reads `0s ago`, and an unparseable one as itself.
+ */
+export function coarseAgo(iso: string, now: Date): string {
+  const then = new Date(iso);
+
+  if (Number.isNaN(then.getTime())) return iso;
+
+  const elapsed = Math.max(0, now.getTime() - then.getTime());
+
+  if (elapsed < MINUTE_MS) return `${Math.floor(elapsed / SECOND_MS)}s ago`;
+  if (elapsed < HOUR_MS) return `${Math.floor(elapsed / MINUTE_MS)}m ago`;
+  if (elapsed < DAY_MS) return `${Math.floor(elapsed / HOUR_MS)}h ago`;
+  if (elapsed < WEEK_MS) return `${Math.floor(elapsed / DAY_MS)}d ago`;
+  if (elapsed < MONTH_MS) return `${Math.floor(elapsed / WEEK_MS)}w ago`;
+  if (elapsed < YEAR_MS) return `${Math.floor(elapsed / MONTH_MS)}mo ago`;
+
+  return `${Math.floor(elapsed / YEAR_MS)}y ago`;
+}
+
 /** Seconds in a minute, an hour and a day, for {@link ageOfSeconds}. */
 const MINUTE_S = 60;
 const HOUR_S = 60 * MINUTE_S;
