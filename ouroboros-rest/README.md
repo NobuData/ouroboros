@@ -114,6 +114,8 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/onboarding/detection`                  | [The detection card](#repository-detection) (#384) — the newest scan's rows, evidence, `detected \| measured` label and progress |
 | `GET /api/v1/onboarding/detection/scans/{scanSeq}`  | One earlier scan, as stored — re-scans version by `scan_seq` |
 | `POST /api/v1/onboarding/detection/scan`            | `202` — scan (or join the running scan); debounced 30 s, `409 detection_rescan_too_soon` |
+| `GET /api/v1/onboarding/first-issue`                | [The safe first issue](#the-safe-first-issue-picker) (#387) — a scored, explained pick; cold states answered honestly |
+| `GET /api/v1/onboarding/first-issue/alternatives`   | *Or pick your own* — the qualifying backlog, safest first, each with its own reasoning (`?limit=` 1–50) |
 | `GET POST /api/v1/workflows`                        | [The workflow lifecycle](#the-workflow-lifecycle-api) (#134) — the rail with P.4's captions; **+ New workflow** |
 | `GET PATCH /api/v1/workflows/{id}`                  | One workflow, its draft and one version (`?version=` for history); rename, pause or archive |
 | `PUT /api/v1/workflows/{id}/draft`                  | The canvas's autosave, guarded by an `If-Match` draft etag — a stale one is a `409`, never an overwrite |
@@ -2763,6 +2765,49 @@ select quick-fixes ─▶ locked? ─▶ 409 onboarding_template_locked { progre
 - **Captions are qualitative** (**O8**): a caption with a digit or `%` is dropped on the way out,
   on top of V068's CHECK — no tile prints an invented statistic.
 - Selecting publishes, so it takes the studio's publish roles (owner, admin), not a pick's.
+
+## The safe-first-issue picker
+
+Step 4's *"We picked a safe one"* ([#387](https://github.com/NobuData/ouroboros/issues/387), BB.4,
+decision **O5**), since REST 0.37.31. The pick is **a deterministic score, never a model's
+opinion**, over the repository's sized GitHub mirror (INTAKE-L.3's estimates), and the card's
+line is that score rendered:
+
+```
+GET /api/v1/onboarding/first-issue?repo=owner/name               any member — the card
+GET /api/v1/onboarding/first-issue/alternatives?repo=…&limit=10  any member — or pick your own
+```
+
+| Component | Signal                          | `safety-v1` points                                    |
+|-----------|---------------------------------|-------------------------------------------------------|
+| effort    | the estimate's size             | XS 35 · S 20 · M 5 · L / XL **excluded**              |
+| workflow  | the suggested workflow          | `docs-loop` 30 · `standard-fix` 15 · anything else 0  |
+| paths     | breakdown files                 | ∩ protected globs ≠ ∅ **disqualifies** · no code 25 · code 5 |
+| freshness | the issue's last activity       | 10, halved every 14 days of quiet                     |
+
+The safety bar is 45 of 100. The weights live in `onboarding/first-issue.score.ts` and every
+answer names their version (`weightsVersion`).
+
+```
+score(#488) = XS 35 + docs-loop 30 + no code 25 + fresh 9.4 = 99.4 ─▶ picked
+reasoning.fragments = [paths "no code paths touched", estimate "est. 4 min"]  (+ cost "est. $0.03" only when priced)
+reasoning.line      = fragments joined with " · "
+```
+
+- **The reasoning is the score, rendered.** Each fragment names its source — a score component
+  or the estimate — and `reasoning.components` is the full breakdown for the detail affordance.
+  No string is written for a particular issue (`first-issue.score.spec.ts` asserts it).
+- **Minutes come from the estimate**: the midpoint of `breakdown.cycle_min`/`cycle_max`, rounded
+  down — a loop's wall clock — not `est_minutes`, which is the queue's planning number.
+- **Cost only when priced** (decision N10): the routed model through `ouroboros.model_price()`,
+  costed at its input rate as the planning footer does. Unpriced, seat- or usage-billed →
+  `cost` is **absent**, never `$0`.
+- **A protected path disqualifies** (`protected_path_policies`, #380) — the candidate leaves the
+  ranking whatever it would score. **Nothing below the bar is ever picked.**
+- **Cold states**: `sizing` (open issues, none sized — `estimator` is the nightly job's real
+  schedule and last run, AL.5 #281), `empty` (no open issues — `planning.path` is `/planning`),
+  `none_safe` (sized issues, none clears the bar). `estimator` travels on any answer while issues
+  still wait to be sized.
 
 ## The workflow lifecycle API
 
@@ -5557,7 +5602,7 @@ ouroboros-rest/
 │       ├── auth/           # sign-out, the legacy cookie · #33 #703 · discovery #712
 │       ├── engine/         # typed internal client + /engine/status       · #35
 │       ├── preferences/    # the caller's own font scale                  · #649
-│       ├── onboarding/     # the Get Started wizard — derived rail, guards · #385
+│       ├── onboarding/     # the Get Started wizard — derived rail, guards · #385; first-issue picker · #387
 │       ├── detection/      # repo detection — rule packs over the probe SPI · #384
 │       ├── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
 │       ├── pricing/        # what a model costs, with provenance          · #586

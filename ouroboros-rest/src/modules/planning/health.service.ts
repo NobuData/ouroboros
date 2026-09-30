@@ -59,16 +59,31 @@ export class BacklogHealthService {
         thresholdDays,
         filter: { state: "open", staleDays: thresholdDays },
       },
-      reestimation: {
-        schedule: {
-          hourUtc: this.config.reestimationHourUtc,
-          jitterMinutes: this.config.reestimationJitterMinutes,
-          batchLimit: this.config.reestimationBatch,
-        },
-        lastRun: lastRun === undefined ? null : runResource(lastRun),
-      },
+      reestimation: reestimationStatus(this.config, lastRun),
     };
   }
+}
+
+/**
+ * The nightly job's schedule and latest run — the card's footnote, and what the onboarding
+ * picker passes through when a backlog is still unsized (BB.4, #387).
+ *
+ * @param config - The job's schedule.
+ * @param lastRun - The latest run, or undefined before the job has ever run.
+ * @returns The status.
+ */
+export function reestimationStatus(
+  config: AppConfigService,
+  lastRun: LastRunRow | undefined,
+): BacklogHealthResource["reestimation"] {
+  return {
+    schedule: {
+      hourUtc: config.reestimationHourUtc,
+      jitterMinutes: config.reestimationJitterMinutes,
+      batchLimit: config.reestimationBatch,
+    },
+    lastRun: lastRun === undefined ? null : runResource(lastRun),
+  };
 }
 
 /**

@@ -5,6 +5,7 @@ import { validate } from "class-validator";
 
 import {
   CompleteStepDto,
+  FirstIssueAlternativesQuery,
   OnboardingRepoQuery,
   PatchOnboardingDto,
   SelectTemplateDto,
@@ -89,5 +90,27 @@ describe("the select-template body (#386)", () => {
 
   it.each([undefined, null, "", "Quick Fixes", "-quick", 7])("refuses %j", async (slug) => {
     await expect(failing(SelectTemplateDto, { slug })).resolves.toEqual(["slug"]);
+  });
+});
+
+describe("the first-issue alternatives query (#387)", () => {
+  const REPO = "acme-robotics/helios-firmware";
+
+  it.each([undefined, 1, 10, 50, "7"])("accepts a limit of %j", async (limit) => {
+    await expect(failing(FirstIssueAlternativesQuery, { repo: REPO, limit })).resolves.toEqual([]);
+  });
+
+  it("converts a query-string limit to a number", () => {
+    expect(plainToInstance(FirstIssueAlternativesQuery, { repo: REPO, limit: "7" }).limit).toBe(7);
+  });
+
+  it.each([0, 51, -1, 2.5, "many"])("refuses a limit of %j", async (limit) => {
+    await expect(failing(FirstIssueAlternativesQuery, { repo: REPO, limit })).resolves.toEqual([
+      "limit",
+    ]);
+  });
+
+  it("still requires the repository", async () => {
+    await expect(failing(FirstIssueAlternativesQuery, { limit: 5 })).resolves.toEqual(["repo"]);
   });
 });
