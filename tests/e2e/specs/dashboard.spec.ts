@@ -14,7 +14,8 @@
  * > no data.
  *
  * The two halves are the same page in two workspaces, which is why this file switches
- * organizations rather than users: `acme-robotics` has fifty-three runs, twelve queue items
+ * organizations rather than users: `acme-robotics` has fifty-three runs in the dashboard's
+ * windows (and five older playbook launches beyond them, #409), twelve queue items
  * and a day of token spend behind it, and `kensuenobu` — the personal workspace #704 gives
  * everybody at first sign-in — deliberately has **no row in any of the four read-model
  * tables**. Every zero state on this page is therefore a *workspace*, not a fixture.

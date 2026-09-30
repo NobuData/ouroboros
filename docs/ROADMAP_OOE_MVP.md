@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**298 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 is in progress.
+**308 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,8 +40,8 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 | **262** |
-| 🟡 **In progress** | P11 | **36** of 38 |
-| — **Not started** | P12–P17 | 0 of 154 |
+| 🟡 **In progress** | P11, P12 | **46** of 66 |
+| — **Not started** | P13–P17 | 0 of 126 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
 > them with `gh issue list --state closed --limit 1000 --json number` whenever the plan
@@ -115,7 +115,7 @@ position is not forced by dependencies, one of these decided it.
 | **P9** | Build farm & runner agent | ✅ 20/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | ✅ 17/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
-| **P12** | Knowledge & onboarding mechanism | — 0/28 | 28 | 83 | Mockups 14, 13 |
+| **P12** | Knowledge & onboarding mechanism | 🟡 10/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | — 0/32 | 32 | 109 | Mockups 15, 18 |
 | **P14** | Decisions & governance — inbox, settings | — 0/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
@@ -1541,7 +1541,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **28 issues** · 83 complexity points · order **#301–#328** · 8 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_14_KNOWLEDGE.md`, `ROADMAP_MOCKUP_13_ONBOARDING.md` (Epics BA, BB)
-> **Status:** ⬜ **Not started** — 0 of 28 issues closed
+> **Status:** 🟡 **In progress** — 10 of 28 issues closed
 
 **Goal.** Deliver the knowledge layer — authored and generated skills with versioning and scope, the fact store with its confirm/reject/re-learn lifecycle, playbooks that launch real queued runs, and the context-assembly contract the loop's consumers use — alongside onboarding's detection engine, template set and dry-run policy machinery.
 
@@ -1553,16 +1553,16 @@ the blockquote above that records what it did and what it did differently.
 
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
-| 301 | **BA.1** | [#380](https://github.com/NobuData/ouroboros/issues/380) | Wizard state & detection storage | ouroboros-db | M | Q.1 |
-| 302 | **BA.2** | [#381](https://github.com/NobuData/ouroboros/issues/381) | Workflow template registry schema | ouroboros-db | S | P.1 |
-| 303 | **BE.1** | [#405](https://github.com/NobuData/ouroboros/issues/405) | Skills & versions schema | ouroboros-db | M | B.3, P.1 |
-| 304 | **BB.2** | [#385](https://github.com/NobuData/ouroboros/issues/385) | Wizard orchestration API | ouroboros-rest | M | BA.1 |
-| 305 | **BE.2** | [#406](https://github.com/NobuData/ouroboros/issues/406) | Facts, anchors & injection records | ouroboros-db | M | BE.1 |
-| 306 | **BE.3** | [#407](https://github.com/NobuData/ouroboros/issues/407) | Playbooks schema | ouroboros-db | S | P.1, BE.1 |
-| 307 | **BE.4** | [#408](https://github.com/NobuData/ouroboros/issues/408) | Environment recipes | ouroboros-db | S | BA.1 |
-| 308 | **BB.1** | [#384](https://github.com/NobuData/ouroboros/issues/384) | Repo detection service (rule packs) | ouroboros-rest | L | Q.3, BA.1 |
-| 309 | **BB.3** | [#386](https://github.com/NobuData/ouroboros/issues/386) | Template instantiation service | ouroboros-rest | M | P.3, BA.2 |
-| 310 | **BE.5** | [#409](https://github.com/NobuData/ouroboros/issues/409) | Knowledge seeds — mockup-14 parity + probes | ouroboros-db, .github | M | 3.6, BE.2, BE.4 |
+| 301 | **BA.1** | ✅ [#380](https://github.com/NobuData/ouroboros/issues/380) | Wizard state & detection storage | ouroboros-db | M | Q.1 |
+| 302 | **BA.2** | ✅ [#381](https://github.com/NobuData/ouroboros/issues/381) | Workflow template registry schema | ouroboros-db | S | P.1 |
+| 303 | **BE.1** | ✅ [#405](https://github.com/NobuData/ouroboros/issues/405) | Skills & versions schema | ouroboros-db | M | B.3, P.1 |
+| 304 | **BB.2** | ✅ [#385](https://github.com/NobuData/ouroboros/issues/385) | Wizard orchestration API | ouroboros-rest | M | BA.1 |
+| 305 | **BE.2** | ✅ [#406](https://github.com/NobuData/ouroboros/issues/406) | Facts, anchors & injection records | ouroboros-db | M | BE.1 |
+| 306 | **BE.3** | ✅ [#407](https://github.com/NobuData/ouroboros/issues/407) | Playbooks schema | ouroboros-db | S | P.1, BE.1 |
+| 307 | **BE.4** | ✅ [#408](https://github.com/NobuData/ouroboros/issues/408) | Environment recipes | ouroboros-db | S | BA.1 |
+| 308 | **BB.1** | ✅ [#384](https://github.com/NobuData/ouroboros/issues/384) | Repo detection service (rule packs) | ouroboros-rest | L | Q.3, BA.1 |
+| 309 | **BB.3** | ✅ [#386](https://github.com/NobuData/ouroboros/issues/386) | Template instantiation service | ouroboros-rest | M | P.3, BA.2 |
+| 310 | **BE.5** | ✅ [#409](https://github.com/NobuData/ouroboros/issues/409) | Knowledge seeds — mockup-14 parity + probes | ouroboros-db, .github | M | 3.6, BE.2, BE.4 |
 | 311 | **BF.1** | [#410](https://github.com/NobuData/ouroboros/issues/410) | Skills service & registry integration | ouroboros-rest | M | R.3, BE.1 |
 | 312 | **BF.2** | [#411](https://github.com/NobuData/ouroboros/issues/411) | Fact lifecycle & staleness sweep | ouroboros-rest | M | BE.2 |
 | 313 | **BB.4** | [#387](https://github.com/NobuData/ouroboros/issues/387) | Safe-first-issue picker | ouroboros-rest | M | L.3 |

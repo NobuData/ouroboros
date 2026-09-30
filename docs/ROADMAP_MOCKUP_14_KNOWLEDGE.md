@@ -239,7 +239,7 @@ v2`** created at filing; every issue assigned. Complexity chips: **XS · S · M 
 | BE.2 | #406 ✅ | 🟢 Done | ouroboros-db: [BE.2] Facts, anchors & injection records | Lifecycle states, typed provenance, expiry anchors, usage (K3/K4) | mvp, knowledge, db | N (after BE.1) | Y | M | ouroboros-db |
 | BE.3 | #407 ✅ | 🟢 Done | ouroboros-db: [BE.3] Playbooks schema | Recipes: pins, skill overrides, context presets, run counts (K6) | mvp, knowledge, db | N (after BE.1, WF-P.1) | Y | S | ouroboros-db |
 | BE.4 | #408 ✅ | 🟢 Done | ouroboros-db: [BE.4] Environment recipes | Ordered setup commands per repo, versioned, consumer-ready (K7) | mvp, knowledge, db | N (after BA.1) | Y | S | ouroboros-db |
-| BE.5 | #409 | 🟡 Open | ouroboros-db: [BE.5] Knowledge seeds — mockup-14 parity + probes | Six skills, five facts, three playbooks, profile; ci checks | mvp, knowledge, db, ci | N (after BE.2–BE.4, #24) | Y | M | ouroboros-db, .github |
+| BE.5 | #409 ✅ | 🟢 Done | ouroboros-db: [BE.5] Knowledge seeds — mockup-14 parity + probes | Six skills, five facts, three playbooks, profile; ci checks | mvp, knowledge, db, ci | N (after BE.2–BE.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue BE.1 — ouroboros-db: [BE.1] Skills & versions schema
 
@@ -369,7 +369,7 @@ env_recipe(helios-firmware, v3): [west init -m …, west update --narrow…,
 
 ### Issue BE.5 — ouroboros-db: [BE.5] Knowledge seeds — mockup-14 parity + probes
 
-> **GitHub issue:** #409 · **Status:** 🟡 Open · **Parent epic:** #401
+> **GitHub issue:** #409 ✅ · **Status:** 🟢 Done · **Parent epic:** #401
 
 - **Problem Statement:** Design review needs the mockup's exact knowledge
   state without running proposers or generators.
@@ -388,6 +388,17 @@ env_recipe(helios-firmware, v3): [west init -m …, west update --narrow…,
 - **Parallelism/Dependencies:** Needs BE.2–BE.4 (+AO.5/AW.5 coordination).
 - **Technical Stack:** Flyway repeatable migration, SQL.
 - **Epic:** BE
+- **Delivered** (`R__dev_seed_workspace_knowledge.sql`): 51 injection records from which
+  `48×`/`12×`/`31×`, `61% of runs` (11 of 18), `every run`, `every PR`, `physical tests` and
+  `—` are counted; 26 launches for `run 9×`/`14×`/`3×`. Decided on the issue: five older
+  `CVE bump` runs (`#290`–`#294`, >30 days, outside every dashboard window) because the
+  workspace has only nine `deps-refresh` runs; Maya confirms the rig fact (Priya is a pending
+  invite in mockup 17); the confirmed facts keep the mockup's lines and cite older tickets
+  (`#552`, `#560`) — PR `#498` is not mirrored and runs go back 14 days; `every PR` and
+  `physical tests` are run-level (opened a PR / took HIL measurements); the fact audit is
+  stamped at seed time (`clock_timestamp()`), ages come from `confirmed_at`. Nine new `ci/db`
+  probes (fact machine, required lock, re-attribution, injection shape ×3, negative snapshot,
+  cross-workspace pin and launch) plus a BE.5 section in `constraints.sql`.
 
 ```
 seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) · 3 playbooks ·

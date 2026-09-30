@@ -25401,6 +25401,492 @@ select pg_temp.must_hold(
   'a deleted workspace takes its environment recipes');
 
 -- ===========================================================================
+-- BE.5 — the knowledge domain's rules, covered rather than merely closed (#409)
+-- ===========================================================================
+--
+-- AW.5's argument (#356), one mockup on. The V069, V071 and V072 sections assert each rule of
+-- the knowledge domain against a fixture built for it; this section covers the six rules BE.5's
+-- `ci/db` scope names from the point of view of the seeded page that stands on them, and does it
+-- exhaustively where the rule is a finite space:
+--
+--   * **the fact transition machine** — every ordered pair of the five states, each attempted
+--     from a fact walked there along legal edges: the five K3 edges succeed and the other fifteen
+--     fail, with every column the target state needs supplied, so the machine is the only thing
+--     that can refuse;
+--   * **required ⇒ enabled** — at insert, by switching off, and by locking a switched-off skill;
+--   * **skill-version immutability** — every column of a published version, read out of the
+--     catalogue so a column added later is covered by being added, and re-attribution beside
+--     them; the draft and the publisher's own set-null stay writable;
+--   * **injection record shape** — every consumer against every combination of references, the
+--     hash, and both manifest arrays;
+--   * **expiry needs its reason and its snapshot** — every combination of the two, and neither
+--     outside `expired`;
+--   * **playbook pin integrity** — a published version of the playbook's own workflow of its own
+--     workspace, re-pinnable only to another published version, and launches that stay home.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-be5',       'Knowledge Seeds Works',       'knowledge-seeds-works',       now()),
+  ('org-be5-other', 'Other Knowledge Seeds Works', 'other-knowledge-seeds-works', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('ab500000-0000-0000-0000-00000000000a', 'Ken S',  'ken@knowledge-seeds.dev',  true),
+  ('ab500000-0000-0000-0000-00000000000b', 'Maya C', 'maya@knowledge-seeds.dev', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('ab510000-0000-0000-0000-00000000000a', 'org-be5',       'knowledge-seeds-works',       true),
+  ('ab510000-0000-0000-0000-00000000000b', 'org-be5-other', 'other-knowledge-seeds-works', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('ab520000-0000-0000-0000-00000000000a', 'ab510000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('ab520000-0000-0000-0000-00000000000b', 'ab510000-0000-0000-0000-00000000000b',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('ab530000-0000-0000-0000-000000000482', 'org-be5', 'ab520000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'coding', 'Implementing', 4, 6, now() - interval '12 minutes'),
+    ('ab530000-0000-0000-0000-000000000900', 'org-be5-other',
+     'ab520000-0000-0000-0000-00000000000b', 900, 'Elsewhere', 'standard-fix', 'claude-fable-5',
+     'coding', 'Implementing', 4, 6, now() - interval '10 minutes');
+
+insert into ouroboros.run_stages
+    (id, run_id, stage_key, stage_label, "position", attempt, status, started_at)
+  values ('ab540000-0000-0000-0000-000000000001', 'ab530000-0000-0000-0000-000000000482',
+          'implement', 'Implementing', 4, 1, 'active', now() - interval '5 minutes');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('ab550000-0000-0000-0000-00000000000a', 'org-be5', 'github', 'GitHub · knowledge-seeds-works');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values ('ab560000-0000-0000-0000-000000000560', 'org-be5', 'ab550000-0000-0000-0000-00000000000a',
+          '560', '#560', 'https://github.com/knowledge-seeds-works/helios-firmware/issues/560',
+          'Conformance tests on the bench DK', 'open', now() - interval '90 days', now());
+
+insert into ouroboros.issue_estimates
+    (id, ticket_id, version, effort, confidence, suggested_workflow, routed_model, breakdown,
+     risk, risk_note, trace)
+  values
+    ('ab570000-0000-0000-0000-000000000001', 'ab560000-0000-0000-0000-000000000560', 1, 's', 80,
+     'standard-fix', 'claude-fable-5',
+     '{"files": [], "est_tokens": 90000, "cycle_min": 8, "cycle_max": 14, "est_minutes": 20}',
+     'low', 'Isolated.',
+     '{"estimator": "heuristic-v0", "sized_at": "2026-09-17T02:14:00Z", "tokens_used": 0,
+       "signals": []}');
+
+-- --- the fact transition machine: all twenty ordered pairs -------------------------------------
+--
+-- pg_temp.be5_fact(from) inserts a proposal and walks it to `from` along legal edges, filling in
+-- what each state needs. pg_temp.be5_move(id, to) is the update that asks for `to` with every
+-- column `to` needs — the stamp, the actor, the reason and the snapshot, and no stamp for the
+-- two states that must not carry one — so the machine is the only rule left to refuse it.
+create function pg_temp.be5_fact(from_status text) returns uuid
+language plpgsql as $$
+declare
+  fact uuid := gen_random_uuid();
+begin
+  insert into ouroboros.facts (id, organization_id, text, proposer, provenance)
+  values (fact, 'org-be5', 'A fact walked to ' || from_status, 'manual',
+          '{"line": "from the BE.5 matrix", "refs": []}');
+  if from_status in ('confirmed', 'stale', 'expired') then
+    update ouroboros.facts
+       set status = 'confirmed', confirmed_at = now(),
+           status_changed_by = 'ab500000-0000-0000-0000-00000000000a'
+     where id = fact;
+  end if;
+  if from_status in ('stale', 'expired') then
+    update ouroboros.facts set status = 'stale', status_changed_by = null where id = fact;
+  end if;
+  if from_status = 'expired' then
+    update ouroboros.facts
+       set status = 'expired', expired_reason = 'Zephyr 4.1 migration', previous_use_count = 0,
+           status_changed_by = 'ab500000-0000-0000-0000-00000000000a'
+     where id = fact;
+  end if;
+  if from_status = 'rejected' then
+    update ouroboros.facts
+       set status = 'rejected', status_changed_by = 'ab500000-0000-0000-0000-00000000000b'
+     where id = fact;
+  end if;
+  return fact;
+end;
+$$;
+
+create function pg_temp.be5_move(fact uuid, to_status text) returns text
+language sql immutable as $$
+  select format($m$update ouroboros.facts
+                      set status = %L,
+                          confirmed_at = %s,
+                          expired_reason = %s,
+                          previous_use_count = %s,
+                          status_changed_by = 'ab500000-0000-0000-0000-00000000000a'
+                    where id = %L$m$,
+                to_status,
+                case when to_status in ('confirmed', 'stale', 'expired')
+                     then 'coalesce(confirmed_at, now())' else 'null' end,
+                case when to_status = 'expired' then quote_literal('Zephyr 4.1 migration')
+                     else 'null' end,
+                case when to_status = 'expired' then '0' else 'null' end,
+                fact)
+$$;
+
+do $matrix$
+declare
+  states constant text[] := array['proposed', 'confirmed', 'rejected', 'stale', 'expired'];
+  legal  constant text[] := array['proposed→confirmed', 'proposed→rejected', 'confirmed→stale',
+                                  'stale→expired', 'stale→confirmed'];
+  from_status text;
+  to_status   text;
+  fact        uuid;
+begin
+  foreach from_status in array states loop
+    foreach to_status in array states loop
+      continue when from_status = to_status;
+      fact := pg_temp.be5_fact(from_status);
+      if from_status || '→' || to_status = any (legal) then
+        execute pg_temp.be5_move(fact, to_status);
+        perform pg_temp.must_hold(
+          (select status = to_status from ouroboros.facts where id = fact),
+          format('the K3 edge %s → %s is open', from_status, to_status));
+      elsif from_status = 'expired' then
+        -- An expired fact is frozen before the machine is asked: facts_expired_frozen fires
+        -- first, which is the stronger refusal and the one V071 promises the struck-through row.
+        perform pg_temp.must_reject(
+          pg_temp.be5_move(fact, to_status),
+          format('expired is terminal — %s → %s fails at the database', from_status, to_status));
+      else
+        perform pg_temp.must_reject(
+          pg_temp.be5_move(fact, to_status),
+          format('%s → %s is not a K3 edge and fails at the database', from_status, to_status),
+          'facts_legal_transition');
+      end if;
+    end loop;
+  end loop;
+end
+$matrix$;
+
+select pg_temp.must_hold(
+  (select count(*) = 20 from ouroboros.facts where organization_id = 'org-be5'),
+  'the transition matrix walked twenty facts, one per ordered pair');
+
+-- --- required ⇒ enabled: at insert, by switching off, and by locking a switched-off skill -------
+insert into ouroboros.skills
+    (id, organization_id, slug, name, description, scope, repo_ref, enabled, required, draft)
+  values
+    ('ab580000-0000-0000-0000-000000000001', 'org-be5', 'hil-safety', 'hil-safety',
+     'Hardware-in-loop interlocks before any motor spins', 'repo',
+     'knowledge-seeds-works/helios-firmware', true, true, false),
+    ('ab580000-0000-0000-0000-000000000002', 'org-be5', 'power-budget-checks',
+     'power-budget-checks', 'Flag changes that raise idle current above 120 µA', 'repo',
+     'knowledge-seeds-works/helios-firmware', false, false, true),
+    ('ab580000-0000-0000-0000-000000000003', 'org-be5', 'zephyr-conventions',
+     'zephyr-conventions', 'Kconfig, devicetree & ISR-safety house rules', 'repo',
+     'knowledge-seeds-works/helios-firmware', true, false, false),
+    ('ab580000-0000-0000-0000-000000000004', 'org-be5', 'commit-style', 'commit-style',
+     'Conventional commits, 72-char body wrap, sign-off', 'org', null, false, false, false);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.skills
+      (organization_id, slug, name, description, scope, enabled, required)
+    values ('org-be5', 'locked-off', 'locked-off', 'x', 'org', false, true)$$,
+  'a required skill cannot be written switched off', 'skills_required_enabled');
+
+select pg_temp.must_reject(
+  $$update ouroboros.skills set enabled = false
+     where id = 'ab580000-0000-0000-0000-000000000001'$$,
+  'the locked hil-safety switch cannot be turned off', 'skills_required_enabled');
+
+select pg_temp.must_reject(
+  $$update ouroboros.skills set required = true
+     where id = 'ab580000-0000-0000-0000-000000000004'$$,
+  'a switched-off skill cannot be locked on without switching it on', 'skills_required_enabled');
+
+select pg_temp.must_reject(
+  $$update ouroboros.skills set required = true, enabled = true
+     where id = 'ab580000-0000-0000-0000-000000000002'$$,
+  'nor locked on while it is still a draft', 'skills_required_not_draft');
+
+update ouroboros.skills set required = true where id = 'ab580000-0000-0000-0000-000000000003';
+
+select pg_temp.must_hold(
+  (select required and enabled from ouroboros.skills
+    where id = 'ab580000-0000-0000-0000-000000000003'),
+  'an enabled, published skill can be locked on');
+
+-- --- skill-version immutability, column by column -----------------------------------------------
+insert into ouroboros.skill_versions
+    (id, skill_id, version, body, frontmatter, published_at, published_by, change_note)
+  values
+    ('ab590000-0000-0000-0000-000000000001', 'ab580000-0000-0000-0000-000000000001', 1,
+     '# HIL safety', '{"name": "hil-safety", "load": "always"}', now(),
+     'ab500000-0000-0000-0000-00000000000a', 'First publish');
+
+insert into ouroboros.skill_versions (id, skill_id, body)
+  values ('ab590000-0000-0000-0000-000000000002', 'ab580000-0000-0000-0000-000000000001',
+          '# HIL safety, being edited');
+
+-- Every column but the key, each given a value it does not hold. A column added to
+-- skill_versions later is covered by this loop the day it is added.
+do $columns$
+declare
+  col text;
+begin
+  for col in select c.column_name::text
+               from information_schema.columns c
+              where c.table_schema = 'ouroboros' and c.table_name = 'skill_versions'
+                and c.column_name <> 'id'
+              order by c.ordinal_position loop
+    perform pg_temp.must_raise(
+      format('update ouroboros.skill_versions set %I = %s
+               where id = ''ab590000-0000-0000-0000-000000000001''',
+             col,
+             case col
+               when 'skill_id'     then quote_literal('ab580000-0000-0000-0000-000000000003')
+               when 'version'      then '2'
+               when 'body'         then quote_literal('# rewritten')
+               when 'frontmatter'  then quote_literal('{"name": "rewritten"}')
+               when 'published_at' then 'published_at - interval ''1 day'''
+               when 'published_by' then quote_literal('ab500000-0000-0000-0000-00000000000b')
+               when 'change_note'  then quote_literal('rewritten')
+               else col || ' - interval ''1 day'''
+             end),
+      '23001',
+      format('a published skill version''s %s cannot be revised', col));
+  end loop;
+end
+$columns$;
+
+select pg_temp.must_raise(
+  $$update ouroboros.skill_versions set published_by = 'ab500000-0000-0000-0000-00000000000b'
+     where id = 'ab590000-0000-0000-0000-000000000001'$$,
+  '23001', 'a published skill version cannot be re-attributed to somebody else');
+
+update ouroboros.skill_versions set body = '# HIL safety, edited again'
+ where id = 'ab590000-0000-0000-0000-000000000002';
+
+select pg_temp.must_hold(
+  (select body = '# HIL safety, edited again' from ouroboros.skill_versions
+    where id = 'ab590000-0000-0000-0000-000000000002'),
+  'the draft stays writable');
+
+-- --- injection record shape: every consumer against every combination of references ------------
+do $shapes$
+declare
+  consumer text;
+  combo    integer;
+  est      boolean;
+  stg      boolean;
+  rn       boolean;
+  valid    boolean;
+  stmt     text;
+begin
+  foreach consumer in array array['estimator', 'run_stage', 'playbook'] loop
+    for combo in 0..7 loop
+      est := (combo & 1) <> 0;
+      stg := (combo & 2) <> 0;
+      rn  := (combo & 4) <> 0;
+      valid := case consumer
+                 when 'estimator' then est and not stg and not rn
+                 when 'run_stage' then stg and rn and not est
+                 when 'playbook'  then rn and not est and not stg
+               end;
+      stmt := format(
+        'insert into ouroboros.context_injections
+             (organization_id, consumer, estimate_id, run_stage_id, run_id, manifest_hash)
+           values (''org-be5'', %L, %s, %s, %s, repeat(''ab'', 32))',
+        consumer,
+        case when est then quote_literal('ab570000-0000-0000-0000-000000000001') else 'null' end,
+        case when stg then quote_literal('ab540000-0000-0000-0000-000000000001') else 'null' end,
+        case when rn  then quote_literal('ab530000-0000-0000-0000-000000000482') else 'null' end);
+      if valid then
+        execute stmt;
+      else
+        perform pg_temp.must_reject(
+          stmt,
+          format('the consumer names its own reference and no other: %s with estimate=%s stage=%s run=%s',
+                 consumer, est, stg, rn),
+          'context_injections_consumer_ref');
+      end if;
+    end loop;
+  end loop;
+end
+$shapes$;
+
+select pg_temp.must_hold(
+  (select array_agg(consumer order by consumer) = array['estimator', 'playbook', 'run_stage']
+     from ouroboros.context_injections where organization_id = 'org-be5'),
+  'exactly one combination of references is a record, for each consumer');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections (organization_id, consumer, run_id, manifest_hash)
+    values ('org-be5', 'observer', 'ab530000-0000-0000-0000-000000000482', repeat('ab', 32))$$,
+  'the consumer vocabulary is closed', 'context_injections_consumer_valid');
+
+do $hashes$
+declare
+  bad text;
+begin
+  foreach bad in array array[repeat('AB', 32), repeat('ab', 31), repeat('ab', 33),
+                             repeat('gh', 32), ''] loop
+    perform pg_temp.must_reject(
+      format('insert into ouroboros.context_injections (organization_id, consumer, run_id, manifest_hash)
+               values (''org-be5'', ''playbook'', ''ab530000-0000-0000-0000-000000000482'', %L)', bad),
+      format('a manifest hash is 64 lower-case hex characters, never %L', bad),
+      'context_injections_manifest_hash_format');
+  end loop;
+end
+$hashes$;
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.context_injections
+             (organization_id, consumer, run_id, fact_ids, manifest_hash)
+           values ('org-be5', 'playbook', 'ab530000-0000-0000-0000-000000000482',
+                   array[%1$L, %1$L]::uuid[], repeat('ab', 32))$$,
+         (select f.id from ouroboros.facts f
+           where f.organization_id = 'org-be5' and f.status = 'confirmed'
+           order by f.id limit 1)),
+  'a manifest names a fact once', 'context_injections_facts_set');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections
+      (organization_id, consumer, run_id, skill_version_ids, manifest_hash)
+    values ('org-be5', 'playbook', 'ab530000-0000-0000-0000-000000000482',
+            array['ab590000-0000-0000-0000-000000000001', 'ab590000-0000-0000-0000-000000000001']::uuid[],
+            repeat('ab', 32))$$,
+  'a manifest names a skill version once', 'context_injections_skill_versions_set');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.context_injections
+      (organization_id, consumer, run_id, skill_version_ids, manifest_hash)
+    values ('org-be5', 'playbook', 'ab530000-0000-0000-0000-000000000482',
+            array['ab590000-0000-0000-0000-000000000002']::uuid[], repeat('ab', 32))$$,
+  'a draft version is never injected', 'context_injections_resolves');
+
+-- --- expiry needs both its reason and its snapshot, and nothing else has either -----------------
+do $expiry$
+declare
+  fact uuid;
+  reason text;
+  snapshot text;
+begin
+  foreach reason in array array['null', quote_literal('Zephyr 4.1 migration'), quote_literal('  ')] loop
+    foreach snapshot in array array['null', '31', '-1'] loop
+      continue when reason = quote_literal('Zephyr 4.1 migration') and snapshot = '31';
+      fact := pg_temp.be5_fact('stale');
+      perform pg_temp.must_reject(
+        format('update ouroboros.facts
+                   set status = ''expired'', expired_reason = %s, previous_use_count = %s,
+                       status_changed_by = ''ab500000-0000-0000-0000-00000000000a''
+                 where id = %L', reason, snapshot, fact),
+        format('expiry needs a reason and a non-negative snapshot, not reason=%s snapshot=%s',
+               reason, snapshot));
+    end loop;
+  end loop;
+
+  fact := pg_temp.be5_fact('stale');
+  execute format('update ouroboros.facts
+                     set status = ''expired'', expired_reason = ''Zephyr 4.1 migration'',
+                         previous_use_count = 31,
+                         status_changed_by = ''ab500000-0000-0000-0000-00000000000a''
+                   where id = %L', fact);
+  perform pg_temp.must_hold(
+    (select status = 'expired' and previous_use_count = 31 from ouroboros.facts where id = fact),
+    'a reason and a snapshot together expire a stale fact');
+
+  fact := pg_temp.be5_fact('confirmed');
+  perform pg_temp.must_reject(
+    format('update ouroboros.facts set expired_reason = ''early'' where id = %L', fact),
+    'a live fact carries no expiry reason', 'facts_expired_reason');
+  perform pg_temp.must_reject(
+    format('update ouroboros.facts set previous_use_count = 31 where id = %L', fact),
+    'a live fact carries no use-count snapshot', 'facts_expired_use_count');
+end
+$expiry$;
+
+select pg_temp.must_reject(
+  $$update ouroboros.facts
+       set status = 'expired', expired_reason = 'Zephyr 4.1 migration', previous_use_count = -1,
+           status_changed_by = 'ab500000-0000-0000-0000-00000000000a'
+     where id = (select id from ouroboros.facts
+                  where organization_id = 'org-be5' and status = 'stale' limit 1)$$,
+  'a use-count snapshot is never negative', 'facts_expired_use_count');
+
+-- --- playbook pin integrity ------------------------------------------------------------------------
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('ab5a0000-0000-0000-0000-000000000001', 'org-be5',       'standard-fix', 'standard-fix'),
+  ('ab5a0000-0000-0000-0000-000000000002', 'org-be5',       'deps-refresh', 'deps-refresh'),
+  ('ab5a0000-0000-0000-0000-000000000003', 'org-be5-other', 'standard-fix', 'standard-fix');
+
+-- standard-fix v1–v2 and a draft; deps-refresh v1–v3; the other workspace's v1.
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+  select 'ab5a0000-0000-0000-0000-000000000001', n, '{}', now() from generate_series(1, 2) as n;
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+  select 'ab5a0000-0000-0000-0000-000000000002', n, '{}', now() from generate_series(1, 3) as n;
+insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at)
+  values ('ab5a0000-0000-0000-0000-000000000003', 1, '{}', now());
+insert into ouroboros.workflow_versions (workflow_id, definition)
+  values ('ab5a0000-0000-0000-0000-000000000001', '{}');
+
+insert into ouroboros.playbooks
+    (id, organization_id, name, description, workflow_id, workflow_version)
+  values ('ab5b0000-0000-0000-0000-000000000001', 'org-be5', 'Flaky test hunt',
+          'Finds & fixes the flakiest test in the suite',
+          'ab5a0000-0000-0000-0000-000000000001', 2);
+
+select pg_temp.must_reject(
+  $$update ouroboros.playbooks set workflow_version = 3
+     where id = 'ab5b0000-0000-0000-0000-000000000001'$$,
+  'a pin names a version its workflow has published — standard-fix has no v3, though deps-refresh does',
+  'playbooks_workflow_version_fk');
+
+select pg_temp.must_reject(
+  $$update ouroboros.playbooks set workflow_version = null
+     where id = 'ab5b0000-0000-0000-0000-000000000001'$$,
+  'a pin is never head — the draft and "latest" are unnamable');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.playbooks
+      (organization_id, name, description, workflow_id, workflow_version)
+    values ('org-be5', 'Borrowed', 'x', 'ab5a0000-0000-0000-0000-000000000003', 1)$$,
+  'a pin names a workflow of the playbook''s own workspace', 'playbooks_workflow_fk');
+
+update ouroboros.playbooks set workflow_version = 1
+ where id = 'ab5b0000-0000-0000-0000-000000000001';
+
+select pg_temp.must_hold(
+  (select workflow_version = 1 from ouroboros.playbooks
+    where id = 'ab5b0000-0000-0000-0000-000000000001'),
+  'a person re-pins deliberately, to another published version');
+
+update ouroboros.runs set playbook_id = 'ab5b0000-0000-0000-0000-000000000001'
+ where id = 'ab530000-0000-0000-0000-000000000482';
+
+select pg_temp.must_reject(
+  $$update ouroboros.runs set playbook_id = 'ab5b0000-0000-0000-0000-000000000001'
+     where id = 'ab530000-0000-0000-0000-000000000900'$$,
+  'a launch stays in its workspace — run 9× never counts another tenant''s run', 'runs_playbook_fk');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.runs
+    where playbook_id = 'ab5b0000-0000-0000-0000-000000000001'),
+  'the playbook''s launch count is its runs, counted');
+
+-- --- nothing kept ----------------------------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-be5', 'org-be5-other');
+delete from ouroboros."user" where "id" in ('ab500000-0000-0000-0000-00000000000a',
+                                          'ab500000-0000-0000-0000-00000000000b');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.facts where organization_id in ('org-be5', 'org-be5-other'))
+  and not exists (select 1 from ouroboros.skills where organization_id = 'org-be5')
+  and not exists (select 1 from ouroboros.context_injections where organization_id = 'org-be5'),
+  'and the BE.5 fixture leaves nothing behind');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
