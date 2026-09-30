@@ -417,7 +417,7 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
 | BF.4 | #413 ✅ | 🟢 Done | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
 | BF.5 | #414 ✅ | 🟢 Done | ouroboros-rest: [BF.5] Context assembly & manifests | Closest-wins resolution, previews, injection recording (K8/K9) | mvp, knowledge, rest, intake | N (after BF.1, BF.2) | Y | L | ouroboros-rest |
 | BF.6 | #415 ✅ | 🟢 Done | ouroboros-rest: [BF.6] Playbooks & repo-map generator | Create-from-run, run-on-issue; nightly repo-map (K2/K6) | mvp, knowledge, rest | N (after BE.3, BF.5) | Y | M | ouroboros-rest |
-| BF.7 | #416 | 🟡 Open | ouroboros-rest: [BF.7] Knowledge integration tests | Lifecycle, proposers, import, assembly matrix, playbooks | mvp, knowledge, rest, ci | N (after BF.1–BF.6) | Y | M | ouroboros-rest |
+| BF.7 | #416 ✅ | 🟢 Done | ouroboros-rest: [BF.7] Knowledge integration tests | Lifecycle, proposers, import, assembly matrix, playbooks | mvp, knowledge, rest, ci | N (after BF.1–BF.6) | Y | M | ouroboros-rest |
 
 ### Issue BF.1 — ouroboros-rest: [BF.1] Skills service & registry integration
 
@@ -701,7 +701,7 @@ nightly: tree+CODEOWNERS ─▶ repo-map v(n+1) only on change · tagged auto-ge
 
 ### Issue BF.7 — ouroboros-rest: [BF.7] Knowledge integration tests
 
-> **GitHub issue:** #416 · **Status:** 🟡 Open · **Parent epic:** #402
+> **GitHub issue:** #416 ✅ · **Status:** 🟢 Done · **Parent epic:** #402
 
 - **Problem Statement:** Lifecycle, resolution, and cross-plane wiring
   are the regression surface.
@@ -715,6 +715,17 @@ nightly: tree+CODEOWNERS ─▶ repo-map v(n+1) only on change · tagged auto-ge
 - **Parallelism/Dependencies:** Needs BF.1–BF.6.
 - **Technical Stack:** Jest, Testcontainers.
 - **Epic:** BF
+- **Delivered** (`ouroboros-rest`, test-only — no version bump): eight `ci/rest` suites, 112 tests, ~24 s —
+  `skills.certification` (immutability, required lock on every path, owner-only flag, catalog /
+  completions / unknown-skill warning, code-view round-trip), `facts.certification` (API and
+  database transition matrices, path / dependency / platform sweep, anchor-less never flagged,
+  frozen expiry snapshot, lineage), `proposers` (code spans, remember-this, dedupe in every
+  state, no auto-confirm, `/v0/learn` drift), `rule-import` (golden, preview = apply, idempotent,
+  empty repo), `context-assembly` (generated 32-cell resolution matrix, trim reasons, preview =
+  assemble, estimator facts, `48×` / `61%`), `playbooks` (capture, derived counts, filter),
+  `repo-map` (no change → no version) and `knowledge.isolation` (every knowledge route, both
+  directions). Removing the required lock, closest-scope-wins, a trim record, the no-auto-confirm
+  seal, the derived count or an org filter was each checked to turn a suite red.
 
 ```
 suites: skills ✓ · facts ✓ · proposers ✓ · import ✓ · assembly ✓ · playbooks ✓ · generator ✓
