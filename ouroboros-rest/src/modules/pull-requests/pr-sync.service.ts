@@ -30,6 +30,12 @@
  * for its re-check, {@link PrSyncService.merge}, {@link PrSyncService.comment} for the evidence
  * summary, and {@link PrSyncService.sync} to mirror the merge once it has committed. Nothing calls
  * `sync` on a schedule yet; a `prEvents` poll loop joins the executor there.
+ *
+ * **Opening a PR is dry-run's first enforcement point** (BA.3, #382): {@link PrSyncService.create}
+ * is the plane's only way to the SPI's `createPR`, and it forces `draft` while the workspace's
+ * dry-run policy is active, whatever the caller asked — so a loop-created PR (AZ.5, #375) inherits
+ * the guarantee rather than having to remember it. Without a policy reader (a context that did not
+ * wire one) every PR opens as a draft: the safe direction.
  */
 
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
@@ -37,11 +43,15 @@ import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type { TicketSourceKind } from "../db/schema";
 import { describeForLog } from "../errors/failure";
 import { FACT_COMMIT_OBSERVER, type FactCommitObserver } from "../facts/facts.observer";
+import { OrgPolicyService, type DryRunPolicyReader } from "../policies/org-policy.service";
+import { draftFor } from "../policies/org-policy.rules";
 import type {
+  CreatePrInput,
   MergePrInput,
   MergePrResult,
   PrCommentInput,
   PrCommentResult,
+  PrRef,
   PullRequestSnapshot,
   ReviewRequestResult,
 } from "../ticket-sources/ticket-source.pr";
@@ -82,6 +92,8 @@ export class PrSyncService {
    * @param gates - The gate engine's sink, told about every sync; absent in a context without it.
    * @param facts - The fact staleness sweep, told about every merge this sync is the first to see
    *   (BF.2, #411); absent in a context without it.
+   * @param policy - The dry-run policy (BA.3, #382), read by {@link PrSyncService.create}; absent
+   *   in a context without it, where every PR opens as a draft.
    */
   constructor(
     @Inject(PrMirrorRepository) private readonly store: PrMirrorStore,
@@ -89,7 +101,34 @@ export class PrSyncService {
     @Inject(TicketSourcesService) private readonly sources: PrSourceOpener,
     @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
     @Optional() @Inject(FACT_COMMIT_OBSERVER) private readonly facts?: FactCommitObserver,
+    @Optional() @Inject(OrgPolicyService) private readonly policy?: DryRunPolicyReader,
   ) {}
+
+  /**
+   * Open a PR on the source's host — a **draft** while the dry-run policy is active, regardless of
+   * what the caller asked (BA.3, #382).
+   *
+   * @param organizationId - The workspace asking.
+   * @param sourceId - The git-host source to open it on.
+   * @param input - The branches, title, description and the caller's draft wish.
+   * @returns The PR — the open one already proposing this branch into this base when there is one
+   *   (which keeps its own draft state) — or null when the provider does not open PRs.
+   * @throws {NotFoundError} `pr_source_not_found` for a source the workspace does not have.
+   * @throws {ConflictError} `pr_source_has_no_pull_requests` for a tracker without PRs.
+   * @throws {TicketSourceError} The host's refusal, classified by the provider.
+   */
+  async create(
+    organizationId: string,
+    sourceId: string,
+    input: CreatePrInput,
+  ): Promise<PrRef | null> {
+    const dryRun = this.policy === undefined ? true : await this.policy.dryRunNow(organizationId);
+    const draft = draftFor(input.draft, dryRun);
+
+    return this.withHost(organizationId, sourceId, (provider, context) =>
+      provider.createPR(context, { ...input, draft }),
+    );
+  }
 
   /**
    * Bring one PR's mirror up to date, recording a revision when its head moved.

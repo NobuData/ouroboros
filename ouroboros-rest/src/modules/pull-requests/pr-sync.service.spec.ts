@@ -364,3 +364,82 @@ describe("PrSyncService.comment", () => {
     expect((refused as TicketSourceError).errorClass).toBe("permission");
   });
 });
+
+describe("PrSyncService.create — the dry-run policy's first enforcement point (BA.3, #382)", () => {
+  /** A policy reader answering `active`, counting its uncached reads. */
+  function policy(active: boolean) {
+    return {
+      reads: 0,
+      dryRun: () => Promise.resolve(active),
+      dryRunNow(): Promise<boolean> {
+        this.reads += 1;
+        return Promise.resolve(active);
+      },
+    };
+  }
+
+  /**
+   * A service whose host has a pushed branch and no PR for it.
+   *
+   * @param reader - The policy reader, or undefined for a context without one.
+   * @returns The service and host.
+   */
+  function opening(reader?: ReturnType<typeof policy>) {
+    const built = build();
+
+    built.host.push("loop/483-dry-run", FIRST_PUSH);
+
+    return {
+      ...built,
+      service: new PrSyncService(
+        built.store,
+        new TicketSourceRegistry([
+          new InMemoryPrTicketSourceProvider(new InMemoryTracker(), built.host),
+        ]),
+        built.opener,
+        undefined,
+        undefined,
+        reader,
+      ),
+    };
+  }
+
+  const INPUT = {
+    branch: "loop/483-dry-run",
+    base: IN_MEMORY_DEFAULT_BRANCH,
+    title: "can: fix frame order",
+    body: null,
+  };
+
+  it("forces a draft while dry-run is active, even when the caller asked for a ready PR", async () => {
+    const reader = policy(true);
+    const { service } = opening(reader);
+
+    await expect(
+      service.create(ORG, SOURCE.sourceId, { ...INPUT, draft: false }),
+    ).resolves.toMatchObject({ draft: true });
+    // Read uncached — opening a PR is a write.
+    expect(reader.reads).toBe(1);
+  });
+
+  it("opens what the caller asked once dry-run is off", async () => {
+    await expect(
+      opening(policy(false)).service.create(ORG, SOURCE.sourceId, INPUT),
+    ).resolves.toMatchObject({ draft: false });
+    await expect(
+      opening(policy(false)).service.create(ORG, SOURCE.sourceId, { ...INPUT, draft: true }),
+    ).resolves.toMatchObject({ draft: true });
+  });
+
+  it("opens a draft in a context that wired no policy — the safe direction", async () => {
+    await expect(opening().service.create(ORG, SOURCE.sourceId, INPUT)).resolves.toMatchObject({
+      draft: true,
+    });
+  });
+
+  it("refuses a source the workspace does not have before reading the host", async () => {
+    await expect(
+      opening(policy(true)).service.create(ORG, "src-nowhere", INPUT),
+    ).rejects.toMatchObject({ response: { code: "pr_source_not_found" } });
+  });
+});

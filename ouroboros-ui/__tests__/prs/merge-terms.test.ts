@@ -188,6 +188,7 @@ describe("the re-check, stated", () => {
 
 describe("refusalView — a failed re-check says why", () => {
   const CODES: readonly PrMergeRefusalCode[] = [
+    "dry_run_policy_active",
     "head_moved",
     "gate_red",
     "gates_pending",
@@ -217,6 +218,13 @@ describe("refusalView — a failed re-check says why", () => {
       expect(view.next.length).toBeGreaterThan(0);
       expect(view.message).toBe("as the service said it");
     }
+  });
+
+  it("names the dry-run policy and where to turn it off (#382)", () => {
+    const view = refusalView("dry_run_policy_active", "dry-run policy active — …");
+
+    expect(view.headline).toBe("Dry-run is on");
+    expect(view.next).toContain("Settings → Policies");
   });
 
   it("points a refusal for pending gates at arming instead", () => {

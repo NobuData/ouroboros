@@ -1,7 +1,7 @@
 import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { FARM_TOKENS_PATH, SOURCES_PATH } from "@/app/paths";
+import { FARM_TOKENS_PATH, POLICIES_PATH, SOURCES_PATH } from "@/app/paths";
 import { SettingsFrame } from "@/app/settings/settings-frame";
 import { HUB_NOTE, SETTINGS_TABS, isLiveTab, settingsEyebrow } from "@/app/settings/view";
 
@@ -10,7 +10,8 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 /**
  * The settings section's frame and tab row
  * ([#141](https://github.com/NobuData/ouroboros/issues/141), ahead of BS.1 #491): mockup 17's
- * chrome, the mounted live tabs — Sources, and Farm tokens since #258 — and six honest `soon` ones.
+ * chrome, the mounted live tabs — Sources, Farm tokens since #258 and Policies since #382 — and
+ * five honest `soon` ones.
  */
 
 function frame() {
@@ -84,7 +85,7 @@ describe("the tab row", () => {
     expect([...tabs.children].map((tab) => tab.textContent)).toEqual([
       "Workspacesoon",
       "Memberssoon",
-      "Policiessoon",
+      "Policies",
       "Sources",
       "Farm tokens",
       "Integrationssoon",
@@ -105,7 +106,12 @@ describe("the tab row", () => {
     // The build farm's enrollment tokens, mounted by the amendment on #258 (decision S2).
     expect(farmTokens).toHaveAttribute("href", FARM_TOKENS_PATH);
     expect(farmTokens).not.toHaveAttribute("aria-current");
-    expect(within(tabs).getAllByRole("link")).toHaveLength(2);
+    // The dry-run policy's flip (BA.3, #382).
+    expect(within(tabs).getByRole("link", { name: "Policies" })).toHaveAttribute(
+      "href",
+      POLICIES_PATH,
+    );
+    expect(within(tabs).getAllByRole("link")).toHaveLength(3);
 
     for (const tab of SETTINGS_TABS) {
       if (isLiveTab(tab)) continue;

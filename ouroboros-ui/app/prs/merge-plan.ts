@@ -13,6 +13,7 @@
  * Back-annotate roadmap (OTA hardening ▾)                             [off]
  * Merges as the workspace's configured token — bot identity arrives with the GitHub App (#374)
  * [Merge when all gates green] ─▶ armed ● (Disarm) ─▶ merged ✓ sha · identity · actions
+ * dry-run on (#382): [Dry-run — review the draft PR] (inert) · the policy's note → Settings → Policies
  * ```
  *
  * **This card arms an irreversible action, so every sentence on it is one the code keeps.** Its
@@ -44,6 +45,7 @@ import type {
   PullRequestState,
 } from "@/app/api/pull-requests";
 import { workflowPath } from "@/app/paths";
+import { DRY_RUN_MERGE_LABEL, DRY_RUN_NOTE, dryRunNotes } from "@/app/policies/view";
 import { clockOf } from "@/app/test-results/timeline";
 
 import { standing } from "./criteria";
@@ -293,6 +295,12 @@ export interface MergePlanCardView {
   readonly disarm: boolean;
   /** What is said when the head handed the reader here, or `null`. */
   readonly handedOff: string | null;
+  /**
+   * The dry-run policy's note (#382) — drawn for every reader while it is active and the plan is
+   * still open — and, when the pinned workflow's auto-merge is overridden, that too. `null` when
+   * dry-run is off.
+   */
+  readonly dryRun: { readonly note: string; readonly override: string | null } | null;
 }
 
 /** A roadmap epic, as the card holds one. */
@@ -487,12 +495,19 @@ function armedView(page: PullRequestPage): ArmedView {
  *   *Merge when all gates green*; inert, with the reason, for a PR that cannot be armed or a
  *   message with unsaved edits. `null` for a reader who may not arm, and once there is nothing
  *   left to decide. An armed plan whose gates are all green offers *Merge now* too: the armed
- *   merge should already have fired, and this is the way out if it did not.
+ *   merge should already have fired, and this is the way out if it did not. While the dry-run
+ *   policy is active it is {@link DRY_RUN_MERGE_LABEL}, inert with {@link DRY_RUN_NOTE} (#382).
  */
 function primary(input: MergePlanCardInput, where: PlanStanding): PrimaryView | null {
   if (!input.mayArm) return null;
 
   const { page } = input;
+
+  // Dry-run (#382): the affordance is relabelled and inert, with the policy as its reason.
+  if (page.plan.dryRun.active && (where === "planned" || where === "disarmed" || where === "armed")) {
+    return { kind: "arm", label: DRY_RUN_MERGE_LABEL, reason: DRY_RUN_NOTE };
+  }
+
   const ready = page.gates?.aggregate?.mergeReady === true && latestRevision(page) !== null;
   const unsaved = input.draft === null ? null : SAVE_FIRST;
 
@@ -573,6 +588,10 @@ export function mergePlanCard(input: MergePlanCardInput): MergePlanCardView {
       input.chosen === null || control === null || control.reason !== null
         ? null
         : handedOff(input.chosen, control.kind),
+    dryRun:
+      where === "planned" || where === "disarmed" || where === "armed"
+        ? dryRunNotes(plan.dryRun)
+        : null,
   };
 }
 

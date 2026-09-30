@@ -161,11 +161,13 @@ function as<T>(role: OrganizationRole, work: () => Promise<T>): Promise<T> {
 
 describe("the onboarding service", () => {
   let fake: FakeOnboarding;
+  let adoptDefault: jest.Mock<Promise<boolean>, [string]>;
   let service: OnboardingService;
 
   beforeEach(() => {
     fake = new FakeOnboarding();
-    service = new OnboardingService(fake.asRepository());
+    adoptDefault = jest.fn<Promise<boolean>, [string]>().mockResolvedValue(true);
+    service = new OnboardingService(fake.asRepository(), { adoptDefault });
   });
 
   describe("reads", () => {
@@ -244,6 +246,9 @@ describe("the onboarding service", () => {
         expect(done.choices.completedAt).not.toBeNull();
       });
 
+      // Completion turns the dry-run policy on when unset (BA.3, #382) — once, at step 4 only.
+      expect(adoptDefault.mock.calls).toEqual([[ORG]]);
+
       // Every write, across the whole traversal, touched choice columns or the completion stamp.
       expect(fake.writes.map((write) => write.method)).toEqual([
         "saveChoices",
@@ -305,6 +310,16 @@ describe("the onboarding service", () => {
       await service.completeStep(ORG, REPO, 1);
 
       expect(fake.writes).toEqual([]);
+      expect(adoptDefault).not.toHaveBeenCalled();
+    });
+
+    it("never touches the dry-run policy when step 4 is refused", async () => {
+      fake.sources = [SOURCE];
+
+      await expect(service.completeStep(ORG, REPO, 4)).rejects.toMatchObject({
+        response: { code: "onboarding_step_incomplete" },
+      });
+      expect(adoptDefault).not.toHaveBeenCalled();
     });
   });
 

@@ -10,6 +10,7 @@
  * the question:
  *
  * ```
+ * dry-run policy active? (#382)               yes → dry_run_policy_active (disarm)
  * armed against the latest revision?          no  → head_moved        (disarm)
  * any required gate red on it?                yes → gate_red          (disarm)
  * every required gate satisfied?              no  → gates_pending     (wait — nothing changes)
@@ -28,6 +29,10 @@
  * until it has; the merge request itself is refused if there is a conflict, and that refusal
  * disarms as `host_refused`. Refusing on null would disarm a clean PR for asking too soon.
  *
+ * **Dry-run is asked first, and by the executor** (BA.3, #382): the policy is read uncached at
+ * execution, so a plan armed before dry-run turned on is disarmed rather than merged. It is not an
+ * input of these pure functions — the executor refuses with {@link refusal} before asking them.
+ *
  * A merge is never attempted on anything but a passing re-check — the executor's only path to the
  * SPI's `mergePR` runs through {@link recheck} returning `ok`.
  *
@@ -39,6 +44,7 @@ import { sameCommit } from "../gates/gate.providers";
 
 /** Why a re-check refused a merge — the machine-readable half of `disarm_reason`. */
 export type MergeRefusalCode =
+  | "dry_run_policy_active"
   | "head_moved"
   | "gate_red"
   | "gates_pending"
@@ -49,6 +55,7 @@ export type MergeRefusalCode =
 
 /** Every code, in the order the re-check asks. */
 export const MERGE_REFUSAL_CODES = [
+  "dry_run_policy_active",
   "head_moved",
   "gate_red",
   "gates_pending",

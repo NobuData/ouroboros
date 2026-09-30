@@ -551,6 +551,30 @@
   color: var(--ink);
 }
 
+/* The dry-run policy's note (#382): why nothing merges, and where the flip is. */
+.prv-merge__dry-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: var(--sp-5) 0 0;
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+}
+
+.prv-merge__dry-run-text {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.prv-merge__dry-run-link {
+  color: var(--accent);
+}
+
 .prv-merge__actions {
   display: flex;
   flex-wrap: wrap;

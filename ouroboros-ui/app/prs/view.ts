@@ -37,6 +37,7 @@ import type {
   ReturnToLoop,
 } from "@/app/api/pull-requests";
 import { runPath } from "@/app/paths";
+import { DRY_RUN_MERGE_LABEL, DRY_RUN_NOTE } from "@/app/policies/view";
 import type { ChipDot, ChipTone } from "@/app/ui";
 
 /** The eyebrow's first words — the mockup's `PR Verification`. */
@@ -500,13 +501,20 @@ export function returnAction(page: PullRequestPage): ActionView {
  * @param page The PR page.
  * @returns The button: on only for a PR that can be armed — `verifying`, with a revision — and
  *   inert with the stated reason otherwise. It is named {@link MERGE_NOW_LABEL} when every
- *   required gate is already green, which is what the card then offers (#369).
+ *   required gate is already green, which is what the card then offers (#369). While the
+ *   workspace's dry-run policy is active it is {@link DRY_RUN_MERGE_LABEL}, inert with
+ *   {@link DRY_RUN_NOTE} — the relabelling contract of #382 — until the PR is merged or closed.
  */
 export function mergeAction(page: PullRequestPage): ActionView {
   const { state } = page.pullRequest;
   const revision = latestRevision(page);
   const aggregate = page.gates?.aggregate ?? null;
   const ready = state === "verifying" && revision !== null && aggregate?.mergeReady === true;
+
+  // The dry-run policy (#382) relabels the affordance and says why, whatever the PR's state.
+  if (page.plan.dryRun.active && hostOwnedReason(state) === null) {
+    return { label: DRY_RUN_MERGE_LABEL, reason: DRY_RUN_NOTE };
+  }
 
   return {
     label: ready ? MERGE_NOW_LABEL : MERGE_LABEL,

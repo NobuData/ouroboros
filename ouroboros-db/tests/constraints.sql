@@ -26173,6 +26173,71 @@ select pg_temp.must_hold(
   'and the BE.5 fixture leaves nothing behind');
 
 -- ===========================================================================
+-- V075 — org_policies and org_policies_effective: the dry-run policy (#382, BA.3)
+-- ===========================================================================
+--
+-- V011's shape. A workspace that has never answered reads dry-run off (it keeps merging as it did
+-- before V075); onboarding completion's default is an insert of the column default `true` that does
+-- nothing over an explicit answer, and the flip is an upsert. Both are asked here verbatim.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v075',       'Dry Works',  'dry-works-v075',  now()),
+  ('org-v075-fresh', 'Fresh Works', 'fresh-works-v075', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a7500000-0000-0000-0000-00000000000a', 'Dana Flip', 'dana@dry-works.example', true);
+
+select pg_temp.must_hold(
+  (select not dry_run and not is_explicit from ouroboros.org_policies_effective
+    where organization_id = 'org-v075-fresh'),
+  'a workspace that never answered reads dry_run = false — nothing changes for it at deploy');
+
+-- A row written without naming the column is the onboarding answer: dry-run on.
+insert into ouroboros.org_policies (organization_id) values ('org-v075');
+
+select pg_temp.must_hold(
+  (select dry_run and is_explicit from ouroboros.org_policies_effective
+    where organization_id = 'org-v075'),
+  'a written row defaults to dry_run = true');
+
+-- The flip, verbatim.
+insert into ouroboros.org_policies (organization_id, dry_run, updated_by)
+  values ('org-v075', false, 'a7500000-0000-0000-0000-00000000000a')
+  on conflict (organization_id) do update
+    set dry_run = excluded.dry_run, updated_by = excluded.updated_by;
+
+-- The onboarding default, verbatim: it must not overwrite an explicit false.
+insert into ouroboros.org_policies (organization_id, dry_run) values ('org-v075', true)
+  on conflict (organization_id) do nothing;
+
+select pg_temp.must_hold(
+  (select not dry_run and is_explicit from ouroboros.org_policies_effective
+    where organization_id = 'org-v075'),
+  'the onboarding default leaves an explicit false alone');
+
+select pg_temp.must_reject(
+  $$update ouroboros.org_policies set dry_run = null where organization_id = 'org-v075'$$,
+  'dry_run cannot be null — absence of the row is the only "unset"');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.org_policies (organization_id) values ('org-nowhere')$$,
+  'org_policies.organization_id must name a real workspace',
+  'org_policies_organization_id_fkey');
+
+-- Deleting the person who flipped it keeps the answer.
+delete from ouroboros."user" where "id" = 'a7500000-0000-0000-0000-00000000000a';
+
+select pg_temp.must_hold(
+  (select not dry_run and updated_by is null from ouroboros.org_policies
+    where organization_id = 'org-v075'),
+  'deleting the person who flipped dry-run keeps the policy and forgets only who');
+
+delete from ouroboros.organization where "id" in ('org-v075', 'org-v075-fresh');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.org_policies where organization_id = 'org-v075'),
+  'a deleted workspace takes its policy with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

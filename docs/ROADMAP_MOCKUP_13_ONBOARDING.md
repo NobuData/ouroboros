@@ -235,7 +235,7 @@ v2`** created at filing; every issue assigned. Complexity chips: **XS · S · M 
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BA.1 | #380 ✅ | 🟢 Done | ouroboros-db: [BA.1] Wizard state & detection storage | `onboarding_state`, detection results with evidence, protected paths | mvp, onboarding, db | N (after WF-Q.1) | Y | M | ouroboros-db |
 | BA.2 | #381 ✅ | 🟢 Done | ouroboros-db: [BA.2] Workflow template registry schema | Templates with definitions, tiers, unlock rules (delivers WF-T.5 data) | mvp, onboarding, workflow, db | N (after WF-P.1) | Y | S | ouroboros-db |
-| BA.3 | #382 | 🟡 Open | ouroboros-rest: [BA.3] Dry-run policy plane | `policy.dry_run` storage + PR-plane enforcement + audited flip | mvp, onboarding, pr, rest | N (after AX.4, AW.4) | Y | M | ouroboros-rest, ouroboros-db |
+| BA.3 | #382 ✅ | 🟢 Done | ouroboros-rest: [BA.3] Dry-run policy plane | `policy.dry_run` storage + PR-plane enforcement + audited flip | mvp, onboarding, pr, rest | N (after AX.4, AW.4) | Y | M | ouroboros-rest, ouroboros-db |
 | BA.4 | #383 | 🟡 Open | ouroboros-db: [BA.4] Onboarding seeds — mockup-13 parity + probes | Mid-wizard state, detection rows, four templates, safe pick | mvp, onboarding, db, ci | N (after BA.1–BA.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BA.1 — ouroboros-db: [BA.1] Wizard state & detection storage
@@ -321,7 +321,7 @@ instantiate ─▶ workflows row {template: quick-fixes@v3}  (editable in the St
 
 ### Issue BA.3 — ouroboros-rest: [BA.3] Dry-run policy plane
 
-> **GitHub issue:** #382 · **Status:** 🟡 Open · **Parent epic:** #376
+> **GitHub issue:** #382 ✅ · **Status:** 🟢 Done · **Parent epic:** #376
 
 
 - **Problem Statement:** "Starts in dry-run: draft PRs, never merges" must
@@ -344,6 +344,22 @@ instantiate ─▶ workflows row {template: quick-fixes@v3}  (editable in the St
   truth; amends AX/AY.
 - **Technical Stack:** NestJS, Kysely, audit shape.
 - **Epic:** BA
+- **Delivered** (`V075`, `ouroboros-rest/src/modules/policies/`, REST 0.37.36): `org_policies`
+  (lazy rows, V011's shape) read through `org_policies_effective`; `OrgPolicyService` with a
+  per-process 30s cache busted by every write. **Decided on the issue: a workspace that never
+  answered reads dry-run off** — the promise is the wizard's, so onboarding completion (step 4)
+  writes `true` when unset and never overwrites an explicit `false`; a workspace from before V075
+  keeps merging as it did. Enforcement: `PrSyncService.create` forces `draft` (the SPI's
+  `CreatePrInput.draft` / `PrRef.draft`, GitHub and in-memory, conformance-checked); arm and
+  direct merge answer `409 dry_run_policy_active`; every executor run re-reads the policy
+  **uncached** and disarms an armed plan with `dry_run_policy_active` rather than merging;
+  `plan.dryRun` carries `{active, reason, autoMerge: {requested, effective, overridden}}` — the
+  pinned workflow's `open_pr_automerge` overridden at evaluation, never written. Read API
+  `GET /api/v1/policies/dry-run` (every member); flip `PATCH` owner/admin, audited
+  `policy.dry_run_changed` with `previous`. UI: **Settings → Policies** tab with a consequences
+  confirmation; the merge card and head relabelled `Dry-run — review the draft PR`, inert, with
+  the policy's note and a link to the flip. The wizard's safety rows are BC.4's (#393) to read
+  from the same endpoint.
 
 ```
 policy.dry_run = true ─▶ createPR(draft) · arm ─▶ ✗ "dry-run policy active" · buttons relabeled

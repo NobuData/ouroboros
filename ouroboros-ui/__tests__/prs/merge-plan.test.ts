@@ -48,6 +48,7 @@ import {
   SEEDED_MESSAGE,
   armedPlan,
   blockedPage,
+  dryRunOn,
   mergeOutcome,
   mergePlan,
   mergedPlan,
@@ -55,6 +56,11 @@ import {
   readyPage,
   revision,
 } from "../helpers/pull-requests";
+import {
+  AUTO_MERGE_OVERRIDDEN,
+  DRY_RUN_MERGE_LABEL,
+  DRY_RUN_NOTE,
+} from "@/app/policies/view";
 
 /**
  * The Merge plan card's decisions (#369): where the plan stands, what each reader may change,
@@ -651,5 +657,59 @@ describe("the notices", () => {
     });
 
     expect(mergedNotice(bot).text).toBe("Merged as configured token (9c4ab7f).");
+  });
+});
+
+describe("the dry-run policy (#382)", () => {
+  it("relabels the primary control and holds it inert with the policy as its reason", () => {
+    for (const page of [
+      prPage({ plan: mergePlan({ dryRun: dryRunOn() }) }),
+      readyPage({ plan: mergePlan({ dryRun: dryRunOn() }) }),
+    ]) {
+      expect(card(page).primary).toEqual({
+        kind: "arm",
+        label: DRY_RUN_MERGE_LABEL,
+        reason: DRY_RUN_NOTE,
+      });
+    }
+  });
+
+  it("states the policy to every reader, the member and the viewer included", () => {
+    const page = prPage({ plan: mergePlan({ dryRun: dryRunOn() }) });
+
+    expect(card(page, { mayArm: false, mayContribute: false }).dryRun).toEqual({
+      note: DRY_RUN_NOTE,
+      override: null,
+    });
+    expect(card(page, { mayArm: false }).primary).toBeNull();
+  });
+
+  it("says a workflow's auto-merge is overridden, never edited", () => {
+    const page = prPage({ plan: mergePlan({ dryRun: dryRunOn(true) }) });
+
+    expect(card(page).dryRun?.override).toBe(AUTO_MERGE_OVERRIDDEN);
+  });
+
+  it("offers no hand-off sentence for an inert control", () => {
+    const page = prPage({ plan: mergePlan({ dryRun: dryRunOn() }) });
+
+    expect(card(page, { chosen: 2 }).handedOff).toBeNull();
+  });
+
+  it("says nothing once the plan is final, and nothing while dry-run is off", () => {
+    expect(card(prPage({ plan: mergedPlan({ dryRun: dryRunOn() }) })).dryRun).toBeNull();
+    expect(card(prPage()).dryRun).toBeNull();
+    expect(card(prPage()).primary?.label).toBe(MERGE_LABEL);
+  });
+
+  it("relabels the head's button the same way, from the same plan", () => {
+    const page = readyPage({ plan: mergePlan({ dryRun: dryRunOn() }) });
+
+    expect(mergeAction(page)).toEqual({ label: DRY_RUN_MERGE_LABEL, reason: DRY_RUN_NOTE });
+    // A PR the host owns keeps its own reason.
+    expect(
+      mergeAction(prPage({ pullRequest: { state: "merged" }, plan: mergePlan({ dryRun: dryRunOn() }) }))
+        .label,
+    ).toBe(MERGE_LABEL);
   });
 });

@@ -107,6 +107,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/runs/{id}/events`                      | The transcript's tail past `?after=` (#304): typed entries, `live`, `latestSeq`, `pollAfter`, with `X-Ouro-Poll-After` |
 | `GET /api/v1/runs/{id}/transcript.jsonl`            | *Raw JSONL ↗* (#304): the `run_events_jsonl` projection, streamed, opening with `# simulated run` on a simulated run |
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
+| `GET PATCH /api/v1/policies/dry-run`                | [The dry-run policy](#the-dry-run-policy) (#382) — read by any member, flipped by `owner`/`admin`, audited `policy.dry_run_changed` |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
@@ -5590,9 +5591,36 @@ the plan, `{id, name}`, for the card's footer; `armedBy` stays the id.
 message's `Closes <key>.` keyword. A message edited to drop it leaves the ticket open, and the
 merge reports `close_ticket` among the actions that did not run.
 
-**Not wired yet:** the dry-run policy (#382) and the policy document's `auto_merge` rule (#481);
-explicit ticket closing — the SPI has no member for it, so a failed keyword close is reported; a
+**The dry-run policy** ([below](#the-dry-run-policy)) sits under all of it: arm and merge answer
+`409 dry_run_policy_active` while it is active, and every run re-reads it uncached first, so a plan
+armed before it turned on is disarmed with `dry_run_policy_active` rather than merged. The plan
+carries `dryRun {active, reason, autoMerge {requested, effective, overridden}}`.
+
+**Not wired yet:** the policy document's `auto_merge` rule (#481); explicit ticket closing — the SPI has no member for it, so a failed keyword close is reported; a
 `Co-authored-by:` trailer for the arming person — the message is sent as written.
+
+### The dry-run policy
+
+BA.3 ([#382](https://github.com/NobuData/ouroboros/issues/382)), decision **O3**, in
+[`src/modules/policies/`](src/modules/policies) over V075's `org_policies` (read through
+`org_policies_effective`). Mockup 13's *"starts in dry-run: draft PRs, never merges"* as a policy the
+PR plane enforces **below** every surface that could merge.
+
+| point | while dry-run is active |
+| ----- | ----------------------- |
+| `PrSyncService.create` (the SPI's `createPR`) | forced to **draft**, whatever the caller asked |
+| `POST …/merge-plan/arm`, `…/merge` | `409 dry_run_policy_active`, `details {reason, policy}` |
+| every executor run | re-read **uncached**; an armed plan is disarmed `dry_run_policy_active`, never merged |
+| `plan.dryRun.autoMerge` | a pinned `open_pr_automerge` terminal overridden at evaluation — the document is never written |
+
+| route | what | who |
+| ----- | ---- | --- |
+| `GET /api/v1/policies/dry-run` | `{dryRun, explicit, reason, updatedAt, updatedBy}` — the one read every surface uses | every member |
+| `PATCH /api/v1/policies/dry-run` `{dryRun}` | flip; audited `policy.dry_run_changed` (subject `org_policy`) with `previous` | owner, admin |
+
+**A workspace that never answered reads off**; completing the Get Started wizard (step 4) writes
+`dry_run = true` when unset and never overwrites an explicit `false`. Reads are cached per process
+for 30 s and every write busts the cache; the merge path never trusts the cache.
 
 ### PR page reads & head actions
 

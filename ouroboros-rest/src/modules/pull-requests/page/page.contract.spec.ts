@@ -4,6 +4,7 @@ import addFormats from "ajv-formats";
 import { document } from "../../../openapi/specification";
 import type { RunControlResource } from "../../controls/controls.resources";
 import { criteriaCounts } from "../criteria/criteria.resources";
+import { dryRunStateOf } from "../../policies/org-policy.rules";
 import { mergePlanResource } from "../merge/merge.resources";
 import { PageActionsService } from "./page.actions";
 import { PageService } from "./page.service";
@@ -60,6 +61,7 @@ const PLAN = mergePlanResource(
     updatedAt: new Date("2026-09-27T14:31:00Z"),
   },
   null,
+  dryRunStateOf(true, false),
 );
 
 /**

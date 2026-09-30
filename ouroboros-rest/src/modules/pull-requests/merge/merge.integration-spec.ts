@@ -21,6 +21,7 @@ import {
 } from "../../ticket-sources/providers/in-memory.provider.fixture";
 import { TicketSourceRegistry } from "../../ticket-sources/ticket-source.registry";
 import { TicketSourcesService } from "../../ticket-sources/ticket-sources.service";
+import { OrgPolicyService } from "../../policies/org-policy.service";
 import { VaultService } from "../../vault/vault.service";
 import { CriteriaRepository } from "../criteria/criteria.repository";
 import { CriteriaService } from "../criteria/criteria.service";
@@ -194,6 +195,7 @@ describe("the merge executor, against a migrated database", () => {
       hostSurface,
       new CriteriaService(api.nest.get(CriteriaRepository), sync, api.nest.get(AuditService)),
       new GateListeners(),
+      api.nest.get(OrgPolicyService),
     );
 
     await verdict(build.id, revision.id, "green");
@@ -332,6 +334,67 @@ describe("the merge executor, against a migrated database", () => {
         { action: "pr_merge_plan.merged", actor_id: at.ownerId },
       ]),
     );
+  });
+
+  it("holds to the dry-run policy (#382): refused, re-checked at execution, workflow untouched, restored", async () => {
+    const at = await scene();
+    const policies = api.nest.get(OrgPolicyService);
+    const owner = { id: at.ownerId, roles: ["owner" as const] };
+    const pinned = () =>
+      one<{ definition: unknown }>(
+        `select v.definition from ${SCHEMA_NAME}.runs r
+           join ${SCHEMA_NAME}.workflows w
+             on w.organization_id = r.organization_id and w.slug = r.workflow_tag
+           join ${SCHEMA_NAME}.workflow_versions v
+             on v.workflow_id = w.id and v.version = r.workflow_version_pin
+          where r.id = $1`,
+        [at.runId],
+      );
+    const before = await pinned();
+
+    // Armed while dry-run is off; then an owner turns it on and the last gate flips.
+    await at.executor.arm(at.org, at.prId, owner, at.revisionId);
+    await at.executor.settled();
+    await policies.setDryRun(at.org, at.ownerId, true);
+    await verdict(at.testId, at.revisionId, "green");
+    at.executor.gateEvaluated({
+      prId: at.prId,
+      organizationId: at.org,
+      revisionId: at.revisionId,
+      state: "armed",
+      mergeReady: true,
+      redCount: 0,
+    });
+    await at.executor.settled();
+
+    expect(at.host.ledger().merged).toEqual([]);
+    expect(await plan(at.prId)).toMatchObject({
+      armed: false,
+      disarm_reason: expect.stringMatching(
+        /^dry_run_policy_active: dry-run policy active/,
+      ) as unknown,
+    });
+
+    // Arming again is refused with the designed reason; the plan renders the override.
+    await expect(at.executor.arm(at.org, at.prId, owner, at.revisionId)).rejects.toMatchObject({
+      response: { code: "dry_run_policy_active" },
+    });
+    await expect(at.executor.plan(at.org, at.prId)).resolves.toMatchObject({
+      dryRun: { active: true, autoMerge: { requested: true, effective: false, overridden: true } },
+    });
+    // Overridden, never mutated: the pinned document is byte-for-byte what it was.
+    expect(await pinned()).toEqual(before);
+
+    // Flip off: the workflow's auto-merge is back exactly, and the merge goes through.
+    await policies.setDryRun(at.org, at.ownerId, false);
+    await expect(at.executor.plan(at.org, at.prId)).resolves.toMatchObject({
+      dryRun: { active: false, autoMerge: { requested: true, effective: true, overridden: false } },
+    });
+    await at.executor.arm(at.org, at.prId, owner, at.revisionId);
+    await at.executor.settled();
+
+    expect(at.host.ledger().merged).toEqual([at.prNumber]);
+    expect(await pinned()).toEqual(before);
   });
 
   it("disarms, never merges, when a gate goes red between arm and fire — and says why", async () => {

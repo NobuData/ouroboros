@@ -4321,6 +4321,21 @@ export interface TokenUsageDailyView {
 }
 
 /**
+ * `ouroboros.org_policies_effective` — every workspace's policies with the defaults resolved
+ * (V075, [#382](https://github.com/NobuData/ouroboros/issues/382)). **Read here, write the table.**
+ */
+export interface OrgPoliciesEffectiveView {
+  organization_id: string;
+  /** Whether dry-run is active — `false` for a workspace that has never answered (no row). */
+  dry_run: boolean;
+  /** Whether the workspace has an `org_policies` row. */
+  is_explicit: boolean;
+  /** When a policy last changed, or null when nothing ever has. */
+  updated_at: Date | null;
+  updated_by: string | null;
+}
+
+/**
  * `ouroboros.workspace_settings_effective` — every workspace's settings with the defaults
  * resolved (V011).
  *
@@ -4402,6 +4417,7 @@ export const READ_ONLY_VIEWS = [
   "v_run_guardrails_latest",
   "test_run_coverage",
   "pr_gate_results_latest",
+  "org_policies_effective",
 ] as const;
 
 /**
@@ -5543,6 +5559,25 @@ export interface ContextInjectionsTable {
  * skill overrides relative to assembly, a typed context preset, an optional issue filter and the run
  * it was learned from. *run 9×* is `count(*)` of `runs.playbook_id` — there is no counter column.
  */
+/**
+ * `ouroboros.org_policies` — org-level policies the PR plane enforces (V075,
+ * [#382](https://github.com/NobuData/ouroboros/issues/382), decision **O3**).
+ *
+ * {@link WorkspaceSettingsTable}'s shape: one row per workspace, created lazily — by onboarding
+ * completion or by a person. Read through {@link OrgPoliciesEffectiveView}, which reads a workspace
+ * that never answered as dry-run off.
+ */
+export interface OrgPoliciesTable {
+  /** The workspace, and the key the onboarding default and the flip conflict on. */
+  organization_id: string;
+  /** The dry-run policy — draft PRs, no merges. Defaults `true`: onboarding completion's answer. */
+  dry_run: Generated<boolean>;
+  /** Who last changed it, or null for the onboarding default. `on delete set null`. */
+  updated_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
 export interface PlaybooksTable {
   id: Generated<string>;
   organization_id: string;
@@ -5700,6 +5735,7 @@ export interface Database {
   fact_transitions: FactTransitionsTable;
   fact_suppressions: FactSuppressionsTable;
   playbooks: PlaybooksTable;
+  org_policies: OrgPoliciesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -5711,6 +5747,7 @@ export interface Database {
   v_run_guardrails_latest: RunGuardrailsLatestView;
   test_run_coverage: TestRunCoverageView;
   pr_gate_results_latest: PrGateResultsLatestView;
+  org_policies_effective: OrgPoliciesEffectiveView;
 }
 
 /**
@@ -6801,6 +6838,8 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  org_policies: ["organization_id", "dry_run", "updated_by", "created_at", "updated_at"],
+  org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   planning_epic_progress: [
     "epic_id",
     "organization_id",
@@ -7404,3 +7443,9 @@ export type FactSuppression = Selectable<FactSuppressionsTable>;
 
 /** A row of `ouroboros.playbooks`, as a `select` returns it. */
 export type Playbook = Selectable<PlaybooksTable>;
+
+/** A row of `ouroboros.org_policies`, as a `select` returns it. */
+export type OrgPolicies = Selectable<OrgPoliciesTable>;
+
+/** A row of `ouroboros.org_policies_effective`, as a `select` returns it. Write `org_policies`. */
+export type OrgPoliciesEffective = Selectable<OrgPoliciesEffectiveView>;

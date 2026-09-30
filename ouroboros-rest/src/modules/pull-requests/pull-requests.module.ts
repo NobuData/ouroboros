@@ -16,7 +16,8 @@
  * It imports `FactsModule` for `FACT_COMMIT_OBSERVER` — the sync tells the fact staleness sweep
  * about every merge it is the first to see (BF.2, #411), and `FactProposersModule` for
  * `FACT_SOURCE_OBSERVER` — a criterion's waiver reason is a source BF.3's waiver proposer reads
- * (#412).
+ * (#412). It imports `PoliciesModule` for the dry-run policy (BA.3, #382) the executor and
+ * `PrSyncService.create` enforce.
  */
 
 import { Module } from "@nestjs/common";
@@ -26,6 +27,7 @@ import { ControlsModule } from "../controls/controls.module";
 import { DbModule } from "../db/db.module";
 import { FactProposersModule } from "../fact-proposers/proposers.module";
 import { FactsModule } from "../facts/facts.module";
+import { PoliciesModule } from "../policies/policies.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { CriteriaController } from "./criteria/criteria.controller";
 import { CriteriaRepository } from "./criteria/criteria.repository";
@@ -52,6 +54,7 @@ import { PrSyncService } from "./pr-sync.service";
     ControlsModule,
     FactsModule,
     FactProposersModule,
+    PoliciesModule,
   ],
   controllers: [CriteriaController, MergeController, PageController],
   providers: [

@@ -1972,6 +1972,51 @@ export interface paths {
         patch: operations["patchAutoMergeSetting"];
         trace?: never;
     };
+    "/api/v1/policies/dry-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The dry-run policy
+         * @description The workspace's dry-run policy (BA.3, [#382](https://github.com/NobuData/ouroboros/issues/382),
+         *     decision **O3**) — *"Ouroboros starts in dry-run: it opens draft PRs and never merges until
+         *     you say so."* **The one source every consuming surface reads**, so the wizard's safety
+         *     rows, the PR page and the merge plan cannot disagree about it.
+         *
+         *     While `dryRun` is true: a PR the plane opens is a **draft**, whatever the caller asked;
+         *     arming and merging answer `409 dry_run_policy_active`; the executor re-checks the policy at
+         *     execution, so a plan armed before it turned on is disarmed rather than merged; and a
+         *     pinned workflow's `open_pr_automerge` terminal is overridden at evaluation — never
+         *     rewritten, so turning dry-run off restores it exactly.
+         *
+         *     **Any member may read it**, viewers included. `explicit: false` is a workspace that never
+         *     answered — it reads **off**, and completing the Get Started wizard turns it on (an explicit
+         *     `false` is never overwritten).
+         */
+        get: operations["readDryRunPolicy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Flip the dry-run policy
+         * @description Turn dry-run on or off. **Turning it off means the system may merge code without a human
+         *     in the loop** — every surface that could merge lifts its refusal at once, because every
+         *     one reads this policy.
+         *
+         *     **`owner` or `admin`, and nobody else** — a `member` or a `viewer` gets the API's one `403`
+         *     on a direct call exactly as in the UI, and writes nothing. Every persisted flip is audited
+         *     as `policy.dry_run_changed` (subject `org_policy`, the workspace id) with its actor, its
+         *     instant and `detail.previous` — the value it replaced — so *"when did we start
+         *     auto-merging, and who decided"* is one query of the audit trail.
+         */
+        patch: operations["patchDryRunPolicy"];
+        trace?: never;
+    };
     "/api/v1/settings/github-token": {
         parameters: {
             query?: never;
@@ -9881,10 +9926,11 @@ export interface components {
         /**
          * PrMergeRefusalCode
          * @description Why the executor's re-check refused a merge. `gates_pending` never disarms; every other
-         *     code disarms an armed plan.
+         *     code disarms an armed plan. `dry_run_policy_active` (#382) is the workspace's dry-run
+         *     policy, re-checked at execution — a plan armed before it turned on is disarmed, never merged.
          * @enum {string}
          */
-        PrMergeRefusalCode: "head_moved" | "gate_red" | "gates_pending" | "host_not_open" | "host_head_moved" | "host_conflict" | "host_refused";
+        PrMergeRefusalCode: "dry_run_policy_active" | "head_moved" | "gate_red" | "gates_pending" | "host_not_open" | "host_head_moved" | "host_conflict" | "host_refused";
         /** PrMergePlan */
         PrMergePlan: {
             /** Format: uuid */
@@ -9926,8 +9972,32 @@ export interface components {
                 /** Format: date-time */
                 mergedAt: string;
             } | null;
+            dryRun: components["schemas"]["PrMergeDryRunState"];
             /** Format: date-time */
             updatedAt: string;
+        };
+        /**
+         * PrMergeDryRunState
+         * @description The workspace's dry-run policy as it bears on one plan (#382) — the same policy
+         *     `GET /api/v1/policies/dry-run` answers. While `active`, the merge affordance reads
+         *     **Dry-run — review the draft PR** and arming or merging answers `409 dry_run_policy_active`.
+         */
+        PrMergeDryRunState: {
+            active: boolean;
+            /** @description `dry-run policy active` while active, otherwise null — the designed reason a surface renders. */
+            reason: string | null;
+            /**
+             * @description The PR's pinned workflow's `open_pr_automerge` terminal under the policy — overridden at
+             *     evaluation, never mutated, so turning dry-run off restores it exactly.
+             */
+            autoMerge: {
+                /** @description Whether the pinned workflow's terminal asks for auto-merge — its stored config. */
+                requested: boolean;
+                /** @description What happens — `requested` unless dry-run overrides it. */
+                effective: boolean;
+                /** @description Whether dry-run is what turned a requested auto-merge off. */
+                overridden: boolean;
+            };
         };
         /** PrMergeOutcome */
         PrMergeOutcome: {
@@ -11877,6 +11947,27 @@ export interface components {
             progress: components["schemas"]["RepoDetectionProgress"];
             /** @description True when a scan was already running and this request joined it. */
             joined: boolean;
+        };
+        /**
+         * DryRunPolicy
+         * @description The workspace's dry-run policy (#382). `explicit: false` with null stamps is a workspace
+         *     that never answered — it reads off; completing the Get Started wizard turns it on.
+         */
+        DryRunPolicy: {
+            dryRun: boolean;
+            /** @description Whether the value is a stored answer — the onboarding default or a person's flip. */
+            explicit: boolean;
+            /** @description `dry-run policy active` while active, otherwise null. */
+            reason: string | null;
+            /** Format: date-time */
+            updatedAt: string | null;
+            /** @description Who last flipped it — null for the onboarding default, or a person since deleted. */
+            updatedBy: string | null;
+        };
+        /** DryRunPolicyPatch */
+        DryRunPolicyPatch: {
+            /** @description The new value — `false` lets the system merge without a human in the loop. */
+            dryRun: boolean;
         };
         /**
          * AutoMergeSetting
@@ -27714,6 +27805,261 @@ export interface operations {
              *     keyed by the field. A `"true"`, a `1` or a `null` is refused, not coerced,
              *     because a workspace's merge posture is nothing to flip by accident of type.
              */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readDryRunPolicy: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The policy. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "dryRun": true,
+                     *       "explicit": true,
+                     *       "reason": "dry-run policy active",
+                     *       "updatedAt": "2026-09-30T12:00:00.000Z",
+                     *       "updatedBy": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRunPolicy"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchDryRunPolicy: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "dryRun": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["DryRunPolicyPatch"];
+            };
+        };
+        responses: {
+            /** @description The policy after the flip. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "dryRun": false,
+                     *       "explicit": true,
+                     *       "reason": null,
+                     *       "updatedAt": "2026-09-30T12:00:00.000Z",
+                     *       "updatedBy": "aBcD1234eFgH5678iJkL9012mNoP3456"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DryRunPolicy"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — flipping the dry-run policy is `owner` or `admin` only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `dryRun` is missing or not a boolean. */
             422: {
                 headers: {
                     [name: string]: unknown;
@@ -54504,7 +54850,9 @@ export interface operations {
                 };
             };
             /**
-             * @description `merge_revision_stale` — a newer revision exists. `merge_plan_not_armable` — the PR is
+             * @description `dry_run_policy_active` — the workspace's dry-run policy is active (#382); `details`
+             *     carries `reason: dry_run_policy_active` and `policy: dry_run`, and nothing is armed.
+             *     `merge_revision_stale` — a newer revision exists. `merge_plan_not_armable` — the PR is
              *     not `verifying` (a red gate, gates never evaluated, or merged or closed).
              *     `merge_plan_merged` — the plan has merged and is final.
              */
@@ -54789,9 +55137,11 @@ export interface operations {
                 };
             };
             /**
-             * @description `merge_recheck_failed` — the re-check refused the merge; `details.reason` is one of
-             *     `head_moved`, `gate_red`, `gates_pending`, `host_not_open`, `host_head_moved`,
-             *     `host_conflict` or `host_refused`. `merge_plan_merged` — the plan has merged and is final.
+             * @description `dry_run_policy_active` — the workspace's dry-run policy is active (#382), checked before
+             *     the merge and again at execution; nothing merges. `merge_recheck_failed` — the re-check
+             *     refused the merge; `details.reason` is one of `head_moved`, `gate_red`, `gates_pending`,
+             *     `host_not_open`, `host_head_moved`, `host_conflict` or `host_refused`.
+             *     `merge_plan_merged` — the plan has merged and is final.
              */
             409: {
                 headers: {

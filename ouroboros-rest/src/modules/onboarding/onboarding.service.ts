@@ -15,12 +15,13 @@
  *     that picks a template or a ticket needs a contributor (owner, admin or member).
  */
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable } from "@nestjs/common";
 
 import { CONTRIBUTORS } from "../tenancy/roles.guard";
 import { currentMembership } from "../tenancy/tenant.context";
 import { forbidden } from "../tenancy/tenancy.errors";
 import type { OnboardingState } from "../db/schema";
+import { OrgPolicyService } from "../policies/org-policy.service";
 import {
   blockingStep,
   deriveRail,
@@ -46,6 +47,9 @@ import {
 } from "./resources";
 
 /** How a covering source is preferred when several list the repository: healthy first. */
+/** The dry-run policy, as completion reaches it (BA.3, #382). */
+export type OnboardingPolicies = Pick<OrgPolicyService, "adoptDefault">;
+
 const SOURCE_PREFERENCE: Readonly<Record<GithubSourceRow["status"], number>> = {
   active: 0,
   error: 1,
@@ -56,8 +60,13 @@ const SOURCE_PREFERENCE: Readonly<Record<GithubSourceRow["status"], number>> = {
 export class OnboardingService {
   /**
    * @param onboarding - The statements: the wizard's own row, and each subsystem's question.
+   * @param policies - The dry-run policy — completion turns it on when the workspace never
+   *   answered (BA.3, #382).
    */
-  constructor(private readonly onboarding: OnboardingRepository) {}
+  constructor(
+    private readonly onboarding: OnboardingRepository,
+    @Inject(OrgPolicyService) private readonly policies: OnboardingPolicies,
+  ) {}
 
   /**
    * The wizard for one repository — derived steps, stored choices, card references and the
@@ -133,7 +142,9 @@ export class OnboardingService {
    *
    * Steps 1–3 write nothing: their state is derived, so "completing" one is the guard answering
    * yes and the rail being returned. Step 4 stamps `completed_at` (once; a repeat keeps the
-   * first time).
+   * first time) and sets the workspace's dry-run policy to `true` when it was never answered —
+   * an explicit `false` is left alone (BA.3, #382). That is what makes *"starts in dry-run"* true
+   * for the exact population the wizard promised it to.
    *
    * @param organizationId - The workspace.
    * @param repo - `owner/name`.
@@ -160,6 +171,7 @@ export class OnboardingService {
     }
 
     await this.onboarding.markCompleted(organizationId, ref);
+    await this.policies.adoptDefault(organizationId);
 
     return this.compose(organizationId, ref);
   }

@@ -535,7 +535,7 @@ ouroboros-ui/
 contribute nothing to the URL, so the dashboard is `/dashboard`, model routing is
 `/models`, the workflow studio is `/workflows` (and `/workflows/<slug>` for one workflow),
 ticket sources are `/settings/sources`, the build farm's enrollment tokens are
-`/settings/farm-tokens` and sign-in is `/login`.
+`/settings/farm-tokens`, the dry-run policy is `/settings/policies` and sign-in is `/login`.
 `/` belongs to no module and is a redirect to the dashboard, kept so that everything
 already pointing at it still arrives. `(app)`
 renders its screens inside the [app shell](#app-shell); `(auth)` is a pass-through, because
@@ -3008,6 +3008,18 @@ for a reader who may have it, and tells anybody else so by role.
 **The gates that decide are the service's.** Minting, listing and revoking are `owner` or `admin`
 at `ouroboros-rest`, and minting and revoking are audited there (AH.2). What the UI does for a
 member — no selector, no copy, no sheet — is presentation.
+
+### The dry-run policy (#382)
+
+**Settings → Policies** (`/settings/policies`,
+[`app/policies/`](app/policies)) shows the workspace's dry-run policy — *PRs open as drafts and
+nothing merges* — read through `GET /api/v1/policies/dry-run`, the one source every surface uses.
+An owner or admin flips it through a confirmation that states the consequences first (turning it
+off lets the loop merge without a person); anybody else sees the policy and why they may not, and
+the service refuses them on a direct call too. On the PR page, while it is active, the merge plan
+card's control and the head's are relabelled **Dry-run — review the draft PR**, inert, and the card
+states the policy — and an overridden workflow auto-merge — with a link to the flip
+([`view.ts`](app/policies/view.ts) holds every sentence).
 
 ### The pools card
 

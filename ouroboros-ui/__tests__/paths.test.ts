@@ -5,6 +5,7 @@ import {
   DASHBOARD_PATH,
   DASHBOARD_QUEUE_HASH,
   FARM_TOKENS_PATH,
+  POLICIES_PATH,
   ISSUES_PATH,
   LOGIN_PATH,
   MODELS_PATH,
@@ -102,6 +103,11 @@ describe("the paths themselves", () => {
     expect(FARM_TOKENS_PATH).toBe("/settings/farm-tokens");
     expect(FARM_TOKENS_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
     expect(FARM_TOKENS_PATH.startsWith(`${BUILD_FARM_PATH}/`)).toBe(false);
+  });
+
+  it("mounts the dry-run policy's flip under settings (#382)", () => {
+    expect(POLICIES_PATH).toBe("/settings/policies");
+    expect(POLICIES_PATH.startsWith(`${SETTINGS_PATH}/`)).toBe(true);
   });
 
   it("give the workflow studio a section of its own, with each workflow beneath it (#147)", () => {

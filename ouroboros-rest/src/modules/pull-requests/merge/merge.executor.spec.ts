@@ -81,7 +81,7 @@ async function ticks(): Promise<void> {
  * @param options - The host's merger, the ticket's key and whether the PR has a run.
  * @returns Everything a case needs.
  */
-function build(options: { merger?: string; ticketKey?: string | null } = {}) {
+function build(options: { merger?: string; ticketKey?: string | null; dryRun?: boolean } = {}) {
   const host = new InMemoryPrHost(options.merger === undefined ? {} : { merger: options.merger });
   const issue = host.openIssue();
 
@@ -125,16 +125,30 @@ function build(options: { merger?: string; ticketKey?: string | null } = {}) {
     },
   } satisfies MergeHost;
   const listeners = new GateListeners();
+  // The workspace's dry-run policy (BA.3, #382) — off unless a case turns it on. `reads` counts
+  // the uncached reads, which is what the execution re-check must use.
+  const policy = {
+    active: options.dryRun ?? false,
+    reads: 0,
+    dryRun(): Promise<boolean> {
+      return Promise.resolve(this.active);
+    },
+    dryRunNow(): Promise<boolean> {
+      this.reads += 1;
+      return Promise.resolve(this.active);
+    },
+  };
   const executor = new MergeExecutorService(
     store,
     adapter,
     { matrix: () => Promise.resolve(MATRIX) },
     listeners,
+    policy,
   );
 
   executor.onModuleInit();
 
-  return { host, provider, store, adapter, executor, listeners, pull, issue, synced };
+  return { host, provider, store, adapter, executor, listeners, pull, issue, synced, policy };
 }
 
 /**
@@ -1008,5 +1022,137 @@ describe("hostFailure", () => {
     expect(hostFailure("comment", new Error("secret token abc"))).toBe(
       "The host could not comment.",
     );
+  });
+});
+
+describe("MergeExecutorService — the dry-run policy (BA.3, #382)", () => {
+  it("refuses an arm with the designed, machine-readable reason, and arms nothing", async () => {
+    const { store, executor } = build({ dryRun: true });
+
+    await expect(executor.arm(ORG, "pr-514", KEN, "rev-1")).rejects.toMatchObject({
+      status: 409,
+      response: {
+        code: "dry_run_policy_active",
+        message: expect.stringContaining("dry-run policy active") as string,
+        details: { prId: "pr-514", reason: "dry_run_policy_active", policy: "dry_run" },
+      },
+    });
+    expect(store.state.plan?.armed ?? false).toBe(false);
+    expect(store.state.pr.state).toBe("verifying");
+    expect(store.state.audit).toEqual([]);
+  });
+
+  it("refuses a direct merge of a green PR, and never calls the host's merge", async () => {
+    const built = build({ dryRun: true });
+
+    built.store.state.gates = GREEN;
+
+    await expect(built.executor.merge(ORG, "pr-514", KEN)).rejects.toMatchObject({
+      response: { code: "dry_run_policy_active" },
+    });
+    expect(built.adapter.merge).not.toHaveBeenCalled();
+    expect(built.host.ledger().merged).toEqual([]);
+  });
+
+  it("re-checks at execution: a plan armed before dry-run turned on is disarmed, never merged", async () => {
+    const built = build();
+    const { store, executor, host, policy } = built;
+
+    await executor.arm(ORG, "pr-514", KEN, "rev-1");
+    await executor.settled();
+
+    // Dry-run turns on while the plan waits; then the last gate flips.
+    policy.active = true;
+    await store.gateEvaluation((state) => {
+      state.gates = GREEN;
+    });
+    const readsBefore = policy.reads;
+    await evaluated(built);
+
+    expect(host.ledger().merged).toEqual([]);
+    expect(built.adapter.merge).not.toHaveBeenCalled();
+    expect(policy.reads).toBeGreaterThan(readsBefore);
+    expect(store.state.plan?.armed).toBe(false);
+    expect(parseDisarmReason(store.state.plan?.disarmReason ?? null)).toEqual({
+      code: "dry_run_policy_active",
+      message: expect.stringContaining("dry-run policy active") as string,
+    });
+    expect(store.state.pr.state).toBe("verifying");
+  });
+
+  it("answers a direct merge that meets dry-run at execution with the same designed refusal", async () => {
+    const built = build();
+    const { executor, policy } = built;
+
+    built.store.state.gates = GREEN;
+    // Off at the route's check, on by the time the run reads it.
+    let reads = 0;
+    policy.dryRunNow = () => {
+      reads += 1;
+      return Promise.resolve(reads > 1);
+    };
+
+    await expect(executor.merge(ORG, "pr-514", KEN)).rejects.toMatchObject({
+      response: { code: "dry_run_policy_active" },
+    });
+    expect(built.adapter.merge).not.toHaveBeenCalled();
+  });
+
+  it("renders the policy on the plan, overriding a workflow's auto-merge without touching it", async () => {
+    const { store, executor } = build({ dryRun: true });
+
+    store.autoMerge = true;
+
+    await expect(executor.plan(ORG, "pr-514")).resolves.toMatchObject({
+      dryRun: {
+        active: true,
+        reason: "dry-run policy active",
+        autoMerge: { requested: true, effective: false, overridden: true },
+      },
+    });
+    // The pinned workflow still asks for auto-merge — overridden, not mutated.
+    expect(store.autoMerge).toBe(true);
+  });
+
+  it("restores the workflow's auto-merge exactly once dry-run is off", async () => {
+    const built = build({ dryRun: true });
+    const { store, executor, policy, host, pull } = built;
+
+    store.autoMerge = true;
+    await expect(executor.arm(ORG, "pr-514", KEN, "rev-1")).rejects.toMatchObject({
+      response: { code: "dry_run_policy_active" },
+    });
+
+    policy.active = false;
+
+    await expect(executor.plan(ORG, "pr-514")).resolves.toMatchObject({
+      dryRun: {
+        active: false,
+        reason: null,
+        autoMerge: { requested: true, effective: true, overridden: false },
+      },
+    });
+
+    // And the merge path is the one it always was.
+    await executor.arm(ORG, "pr-514", KEN, "rev-1");
+    await store.gateEvaluation((state) => {
+      state.gates = GREEN;
+    });
+    await evaluated(built);
+    expect(host.ledger().merged).toEqual([pull.number]);
+  });
+
+  it("still lets anyone disarm, and anyone read, while dry-run is active", async () => {
+    const built = build();
+    const { executor, policy, store } = built;
+
+    await executor.arm(ORG, "pr-514", KEN, "rev-1");
+    policy.active = true;
+
+    await expect(executor.disarm(ORG, "pr-514", { id: "user-mara" })).resolves.toMatchObject({
+      armed: false,
+      dryRun: { active: true },
+    });
+    expect(store.state.plan?.armed).toBe(false);
   });
 });
