@@ -731,7 +731,7 @@ tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BG.1 | #417 | 🟡 Open | ouroboros-ui: [BG.1] Knowledge route, head & import flow | `/knowledge` frame, New-skill flow, import preview/apply | mvp, knowledge, ui, design | N (after #41, BF.4, BA-D.5) | Y | M | ouroboros-ui |
+| BG.1 | #417 ✅ | 🟢 Done | ouroboros-ui: [BG.1] Knowledge route, head & import flow | `/knowledge` frame, New-skill flow, import preview/apply | mvp, knowledge, ui, design | N (after #41, BF.4, BA-D.5) | Y | M | ouroboros-ui |
 | BG.2 | #418 | 🟡 Open | ouroboros-ui: [BG.2] Skills table | All row states, locked/draft treatments, editor links, stats | mvp, knowledge, ui, design | N (after BG.1, BF.1) | Y | M | ouroboros-ui |
 | BG.3 | #419 | 🟡 Open | ouroboros-ui: [BG.3] Learned-facts card | Lifecycle rows, Confirm/Reject/Re-learn, provenance popovers | mvp, knowledge, ui, design | N (after BG.1, BF.2/BF.3) | Y | M | ouroboros-ui |
 | BG.4 | #420 | 🟡 Open | ouroboros-ui: [BG.4] Playbooks & repo-profile cards | Recipes + run-on-issue; profile + env recipe + honest snapshot | mvp, knowledge, ui, design | N (after BG.1, BF.6, BE.4) | Y | M | ouroboros-ui |
@@ -740,7 +740,7 @@ tokens (both themes; the mockup is dark-only).
 
 ### Issue BG.1 — ouroboros-ui: [BG.1] Knowledge route, head & import flow
 
-> **GitHub issue:** #417 · **Status:** 🟡 Open · **Parent epic:** #403
+> **GitHub issue:** #417 ✅ · **Status:** 🟢 Done · **Parent epic:** #403
 
 - **Problem Statement:** The frame: headline copy, the New-skill entry
   (into the code-view editing frame), and the working import flow with
@@ -755,6 +755,26 @@ tokens (both themes; the mockup is dark-only).
 - **Parallelism/Dependencies:** Needs #41, BF.4, BA-D.5. Blocks BG.2–BG.5.
 - **Technical Stack:** Next.js, #46 primitives.
 - **Epic:** BG
+- **Delivered** (`ouroboros-ui/app/knowledge/`, `app/(app)/knowledge/`, UI 0.110.0): `/knowledge`
+  mounts in the shell content pane under the sidebar **Knowledge** entry (the #49 *soon* row
+  retired, `KNOWLEDGE_PATH` in `app/paths.ts`); the head is the mockup's to the character. Both
+  actions are drawn for `owner`/`admin` **only** — a member sees neither and a read-only note
+  under the head; the service's `403` enforces. **+ New skill** collects name, slug (follows the
+  name until edited, checked against the page's `GET /api/v1/skills` list **before** creation —
+  `409 skill_slug_taken` lands on the same box), description and scope (`org`, or `repo` from
+  the enabled-repository select), composes the frontmatter document and makes one
+  `POST /api/v1/skills`. Decided on the issue: the code-view frame cannot open
+  `skills/<slug>.skill.md` until X.2 (#181) lands, so the create **lands honestly on
+  `/knowledge`** with a toast naming the draft, that nothing is enabled, and #181 as where the
+  editor arrives — never a tree row that opens nothing (§ 3.5). **Import CLAUDE.md /
+  .cursorrules** is a two-step sheet over BF.4: a repository select (the header's focus repo
+  preselected) → `POST …/import/preview` → the files table (found / not found / truncated),
+  the totals line, up to five samples per kind, the deduped count, and the explicit statement
+  *nothing imported is enabled* → **Apply** sends the fingerprint back → a toast quoting the
+  service's `created` counts with links to `#skills-drafts` and `#facts-awaiting`, the seats
+  BG.2/BG.3 fill. Three previews are not imports and say which: none of the four files (honest
+  empty result with guidance), unchanged re-import (everything deduped — no apply offered), and
+  files that parse to nothing; `knowledge_import_preview_stale` says to preview again.
 
 ```
 [Knowledge] Teach the loop once. Every run remembers.
@@ -1087,7 +1107,7 @@ Amendments posted at filing:
 | INTAKE-M.3 (#112) | queue items carry `playbook_id` — the preset reaches the run and `run 9×` derives |
 | AP.4 (#306) | steers gain an explicit remember-this flag |
 | DASH-J.2 (#90) | the needs-you feed gains fact reviews (contract for mockup 16) |
-| #49 | `/knowledge` stub retired by BG.1 (#417) |
+| #49 | `/knowledge` stub retired by BG.1 (#417) ✅ |
 | #56 | knowledge e2e leg, including the estimator-context assertion (BG.6, #422) |
 
 ## References
@@ -1130,7 +1150,7 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BG.1 | #417 | 🟡 Open | Mounts in the shell content pane; navigation via the sidebar **Knowledge** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
+| BG.1 | #417 ✅ | 🟢 Done | Mounts in the shell content pane; navigation via the sidebar **Knowledge** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
 | BG.2–BG.5 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
 | BG.6 | #422 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 

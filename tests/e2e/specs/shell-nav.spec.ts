@@ -111,9 +111,10 @@ const ALL_ELEVEN = [
  * [#115](https://github.com/NobuData/ouroboros/issues/115)), which is the order it should
  * happen in. **Planning** joined it on the commit that built its route too (AM.1,
  * [#283](https://github.com/NobuData/ouroboros/issues/283)), and so did **Build Farm** (AI.1,
- * [#256](https://github.com/NobuData/ouroboros/issues/256)).
+ * [#256](https://github.com/NobuData/ouroboros/issues/256)) and **Knowledge** (BG.1,
+ * [#417](https://github.com/NobuData/ouroboros/issues/417)).
  */
-const LIVE_ENTRIES = ["Dashboard", "Issues", "Models", "Build Farm", "Planning"] as const;
+const LIVE_ENTRIES = ["Dashboard", "Issues", "Models", "Build Farm", "Knowledge", "Planning"] as const;
 
 /** The sidebar landmark — its accessible name is `aria-label="Primary"`. */
 function sidebar(page: Page) {

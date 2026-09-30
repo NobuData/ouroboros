@@ -1,0 +1,351 @@
+/*
+ * Knowledge — `/knowledge` (#417), from `docs/mockups/14-knowledge.html`.
+ *
+ * The page head (eyebrow, heading, subline, the two actions), the read-only note under it, the
+ * toast seat, the twelve-column frame the regions sit in — the left `c-7` today, since the right
+ * column's cards are #420 and #421 — the New skill dialog's form, and the import sheet: the files
+ * table, the totals line, the samples and the statement that nothing is enabled.
+ *
+ * Every length is a token or `rem`, so the font-size preference scales the page with the rest of
+ * the product (design system § 3.2), and every hue is a token, so both palettes are the token
+ * sheet's. The page adds no fixed or sticky chrome: the shell's content pane is the scroll
+ * container, and the overlays portal out of it.
+ */
+
+.knowledge {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.knowledge__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-9);
+}
+
+/* The floor keeps the heading from wrapping a word a line beside the actions; they drop instead. */
+.knowledge__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.knowledge__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+}
+
+/* The mockup's measure: one long sentence, kept to two lines on a laptop. */
+.knowledge__sub {
+  max-width: 72ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.knowledge__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+/* Why the head has no actions, for a reader who may not act — the settings pages' note. */
+.knowledge-readonly {
+  max-width: 72ch;
+  margin: 0 0 var(--sp-9);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-readonly__head {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/* ---------- the toast ---------- */
+
+/*
+ * The toast's seat, under the head: always mounted so the live region exists before it has
+ * something to say, and collapsed to nothing while it is empty.
+ */
+.knowledge-toast__seat:empty {
+  display: none;
+}
+
+.knowledge-toast__seat {
+  margin-bottom: var(--sp-8);
+}
+
+/* The accent triple says *this happened*; the links beside the sentence say where to look. */
+.knowledge-toast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-6);
+  padding: var(--sp-4) var(--sp-6);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-toast__text {
+  flex: 1;
+  min-width: 14rem;
+}
+
+/* ---------- the grid ---------- */
+
+.knowledge__grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-8);
+}
+
+/* The mockup's `c-7 col`: the skills table over the learned-facts card, at the grid's gap. */
+.knowledge__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  grid-column: span 7;
+}
+
+/*
+ * A region's seat carries the anchor the toast links to. The scroll margin keeps the shell's
+ * sticky chrome from covering the card head a link lands on.
+ */
+.knowledge__seat {
+  scroll-margin-top: var(--sp-10);
+}
+
+/* The mockup's step: below it, the column takes the full width. */
+@media (max-width: 68.75rem) {
+  .knowledge__main {
+    grid-column: span 12;
+  }
+}
+
+@media (max-width: 40rem) {
+  .knowledge {
+    padding-inline: var(--sp-6);
+  }
+}
+
+/* ---------- the skeleton ---------- */
+
+.knowledge-skeleton__bar {
+  display: block;
+  height: var(--sp-6);
+  margin-top: var(--sp-4);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+.knowledge-skeleton__bar--title {
+  width: 9rem;
+  margin-top: 0;
+}
+
+.knowledge-skeleton__button {
+  display: block;
+  width: 9rem;
+  height: var(--sp-9);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* ---------- the New skill dialog ---------- */
+
+.knowledge-create {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/* The refusal, in the error hue, above the actions it explains. */
+.knowledge-create__failure,
+.knowledge-import__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A line the dialog says about itself: the write in flight. */
+.knowledge-create__state,
+.knowledge-import__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The action row — the primary control leading, the way out beside it. */
+.knowledge-create__actions,
+.knowledge-import__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* ---------- the import sheet ---------- */
+
+.knowledge-import {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/* The repository the preview is of, in the mono face — an address, not prose. */
+.knowledge-import__repo {
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+/* The four files, as probed: a compact two-column table with hairline rows. */
+.knowledge-import__files {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-import__files th,
+.knowledge-import__files td {
+  padding: var(--sp-3) var(--sp-4);
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: top;
+}
+
+.knowledge-import__files thead th {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.knowledge-import__caption {
+  padding-bottom: var(--sp-3);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  text-align: left;
+}
+
+.knowledge-import__path {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* A file the repository does not have is drawn, quietly: absent is an answer, not a gap. */
+.knowledge-import__file--absent th,
+.knowledge-import__file--absent td {
+  color: var(--ink-faint);
+}
+
+/* What an apply writes, summed — the sheet's one figure, set in the mono face. */
+.knowledge-import__totals {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+/* The statement the preview makes about what it will not do — the line that makes Apply easy. */
+.knowledge-import__note {
+  margin: 0;
+  padding: var(--sp-4) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-import__samples {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr));
+  gap: var(--sp-8);
+}
+
+.knowledge-import__kind {
+  min-width: 0;
+}
+
+.knowledge-import__kind-title {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.knowledge-import__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One sample: the mockup's `.fact` rhythm — a row per candidate, hairlines between. */
+.knowledge-import__sample {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-import__sample:last-child {
+  border-bottom: none;
+}
+
+.knowledge-import__sample-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-3);
+}
+
+/* The mockup's `.skill-name`: the slug in the mono face. */
+.knowledge-import__slug {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.knowledge-import__name {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/* The mockup's `.skill-desc`. */
+.knowledge-import__desc {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.knowledge-import__fact {
+  color: var(--ink);
+}
+
+/* The mockup's `.fact-src`: where it came from, in the mono face. */
+.knowledge-import__src {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}

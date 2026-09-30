@@ -150,6 +150,17 @@ export const PLANNING_PATH = "/planning";
 export const BUILD_FARM_PATH = "/build-farm";
 
 /**
+ * Knowledge ([#417](https://github.com/NobuData/ouroboros/issues/417)) — mockup 14.
+ *
+ * Written down here for the reason every route in this file is: the sidebar's registry entry
+ * (`app/shell/nav-modules.ts`) names it as the **Knowledge** destination, the post-import toast
+ * links back to anchors under it (`app/knowledge/import.ts`), and `isActiveRoute` in
+ * `app/shell/nav.ts` matches the URL against it, so none of the three can come to disagree. This
+ * retires the `/knowledge` placeholder #49 held for it.
+ */
+export const KNOWLEDGE_PATH = "/knowledge";
+
+/**
  * The workflow studio ([#147](https://github.com/NobuData/ouroboros/issues/147)) — mockup 04.
  *
  * Written down here for the reason every other route in this file is: three modules have to

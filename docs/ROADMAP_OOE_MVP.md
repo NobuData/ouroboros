@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**315 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
+**316 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 | **262** |
-| 🟡 **In progress** | P11, P12 | **53** of 66 |
+| 🟡 **In progress** | P11, P12 | **54** of 66 |
 | — **Not started** | P13–P17 | 0 of 126 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -115,7 +115,7 @@ position is not forced by dependencies, one of these decided it.
 | **P9** | Build farm & runner agent | ✅ 20/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | ✅ 17/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
-| **P12** | Knowledge & onboarding mechanism | 🟡 17/28 | 28 | 83 | Mockups 14, 13 |
+| **P12** | Knowledge & onboarding mechanism | 🟡 18/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | — 0/32 | 32 | 109 | Mockups 15, 18 |
 | **P14** | Decisions & governance — inbox, settings | — 0/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
@@ -1541,7 +1541,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **28 issues** · 83 complexity points · order **#301–#328** · 8 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_14_KNOWLEDGE.md`, `ROADMAP_MOCKUP_13_ONBOARDING.md` (Epics BA, BB)
-> **Status:** 🟡 **In progress** — 17 of 28 issues closed
+> **Status:** 🟡 **In progress** — 18 of 28 issues closed
 
 **Goal.** Deliver the knowledge layer — authored and generated skills with versioning and scope, the fact store with its confirm/reject/re-learn lifecycle, playbooks that launch real queued runs, and the context-assembly contract the loop's consumers use — alongside onboarding's detection engine, template set and dry-run policy machinery.
 
@@ -1570,7 +1570,7 @@ the blockquote above that records what it did and what it did differently.
 | 315 | **BF.5** | ✅ [#414](https://github.com/NobuData/ouroboros/issues/414) | Context assembly & manifests | ouroboros-rest | L | BF.1, BF.2 |
 | 316 | **BF.3** | ✅ [#412](https://github.com/NobuData/ouroboros/issues/412) | Deterministic fact proposers | ouroboros-rest | M | AT.4, BF.2 |
 | 317 | **BF.6** | ✅ [#415](https://github.com/NobuData/ouroboros/issues/415) | Playbooks & repo-map generator | ouroboros-rest | M | BE.3, BF.5 |
-| 318 | **BG.1** | [#417](https://github.com/NobuData/ouroboros/issues/417) | Knowledge route, head & import flow | ouroboros-ui | M | 5.3, D.5, BF.4 |
+| 318 | **BG.1** | ✅ [#417](https://github.com/NobuData/ouroboros/issues/417) | Knowledge route, head & import flow | ouroboros-ui | M | 5.3, D.5, BF.4 |
 | 319 | **BA.3** | [#382](https://github.com/NobuData/ouroboros/issues/382) | Dry-run policy plane | ouroboros-rest, ouroboros-db | M | AW.4, AX.4 |
 | 320 | **BF.7** | [#416](https://github.com/NobuData/ouroboros/issues/416) | Knowledge integration tests | ouroboros-rest | M | BF.1, BF.6 |
 | 321 | **BG.2** | [#418](https://github.com/NobuData/ouroboros/issues/418) | Skills table | ouroboros-ui | M | BF.1, BG.1 |

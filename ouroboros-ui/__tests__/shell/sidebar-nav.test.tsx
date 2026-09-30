@@ -5,6 +5,7 @@ import {
   BUILD_FARM_PATH,
   DASHBOARD_PATH,
   ISSUES_PATH,
+  KNOWLEDGE_PATH,
   MODELS_PATH,
   PLANNING_PATH,
   SETTINGS_PATH,
@@ -192,11 +193,11 @@ describe("what the sidebar links to", () => {
   it("links only to routes that exist", () => {
     render(<SidebarNav />);
 
-    // The seven screens that are built: the dashboard (#45), Issues (#115), Workflows (#147),
-    // Models (#200), Build Farm (#256), Planning (#283) and Settings (#141, whose `/settings`
-    // redirects to its one built tab until #491). Every other entry is a screen nobody has
-    // built, and a link to one would be a 404 in the product's primary navigation. The count is
-    // asserted too, so an eighth link cannot appear without somebody deciding it should.
+    // The eight screens that are built: the dashboard (#45), Issues (#115), Workflows (#147),
+    // Models (#200), Build Farm (#256), Knowledge (#417), Planning (#283) and Settings (#141,
+    // whose `/settings` redirects to its one built tab until #491). Every other entry is a screen
+    // nobody has built, and a link to one would be a 404 in the product's primary navigation. The
+    // count is asserted too, so a ninth link cannot appear without somebody deciding it should.
     const links = screen.getAllByRole("link");
 
     expect(links.map((link) => link.getAttribute("href"))).toEqual([
@@ -205,6 +206,7 @@ describe("what the sidebar links to", () => {
       WORKFLOWS_PATH,
       MODELS_PATH,
       BUILD_FARM_PATH,
+      KNOWLEDGE_PATH,
       PLANNING_PATH,
       SETTINGS_PATH,
     ]);
@@ -279,14 +281,22 @@ describe("the active entry", () => {
   });
 
   it("never highlights an entry whose screen does not exist", () => {
-    // /knowledge is a real path in the registry and an unbuilt one in the product. Until the
-    // knowledge base lands it must not light up, or the shell claims a page that is not there.
-    // (This case named /issues until #115 built that screen, /workflows until #147 and
-    // /build-farm until #256.)
-    path.current = "/knowledge";
+    // /research is a real path in the registry and an unbuilt one in the product. Until research
+    // lands it must not light up, or the shell claims a page that is not there. (This case named
+    // /issues until #115 built that screen, /workflows until #147, /build-farm until #256 and
+    // /knowledge until #417.)
+    path.current = "/research";
     const { container } = render(<SidebarNav />);
 
     expect(container.querySelectorAll(".shell-nav__item--active")).toHaveLength(0);
+  });
+
+  it("lights Knowledge on its own route, now that #417 has built the page", () => {
+    path.current = KNOWLEDGE_PATH;
+    const { container } = render(<SidebarNav />);
+
+    expect(container.querySelectorAll(".shell-nav__item--active")).toHaveLength(1);
+    expect(screen.getByRole("link", { name: "Knowledge" })).toHaveAttribute("aria-current", "page");
   });
 
   it("lights Build Farm on its own route, now that #256 has built the page", () => {
