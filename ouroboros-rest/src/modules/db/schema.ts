@@ -5537,6 +5537,36 @@ export interface ContextInjectionsTable {
 }
 
 /**
+ * `ouroboros.playbooks` — the knowledge domain's recipes (V072,
+ * [#407](https://github.com/NobuData/ouroboros/issues/407), decision **K6**); served by BF.6
+ * ([#415](https://github.com/NobuData/ouroboros/issues/415)). A pinned published workflow version,
+ * skill overrides relative to assembly, a typed context preset, an optional issue filter and the run
+ * it was learned from. *run 9×* is `count(*)` of `runs.playbook_id` — there is no counter column.
+ */
+export interface PlaybooksTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** "Flaky test hunt" — unique per workspace, at most 120 characters. */
+  name: string;
+  /** The line beneath the name, at most 300 characters. */
+  description: string;
+  /** The workflow the recipe runs, a workflow of the same workspace. */
+  workflow_id: string;
+  /** The pinned published version of that workflow — never its head. */
+  workflow_version: number;
+  /** `{"enable"?: [skill id…], "disable"?: [skill id…]}`. Written through `JSON.stringify`. */
+  skill_overrides: ColumnType<unknown, string | undefined, string>;
+  /** `{"steer_notes"?: [text…], "fact_ids"?: [fact id…]}`. Written through `JSON.stringify`. */
+  context_preset: ColumnType<unknown, string | undefined, string>;
+  /** The run it was created from, or null for a hand-authored recipe. */
+  source_run_id: string | null;
+  /** Null (every issue) or `{"labels"?: […], "repos"?: [owner/name…]}`. */
+  issue_filter: ColumnType<unknown, string | null | undefined, string | null>;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.build_job_artifact_uploads` — the job-scoped upload's token ledger while open, and its
  * receipt once closed (V060, [#330](https://github.com/NobuData/ouroboros/issues/330)): the attempt
  * it filled, the manifest of every collected file and the job warnings. `build_jobs`' result
@@ -5669,6 +5699,7 @@ export interface Database {
   fact_anchors: FactAnchorsTable;
   fact_transitions: FactTransitionsTable;
   fact_suppressions: FactSuppressionsTable;
+  playbooks: PlaybooksTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6756,6 +6787,20 @@ export const TABLE_COLUMNS = {
     "source_key",
     "created_at",
   ],
+  playbooks: [
+    "id",
+    "organization_id",
+    "name",
+    "description",
+    "workflow_id",
+    "workflow_version",
+    "skill_overrides",
+    "context_preset",
+    "source_run_id",
+    "issue_filter",
+    "created_at",
+    "updated_at",
+  ],
   planning_epic_progress: [
     "epic_id",
     "organization_id",
@@ -7356,3 +7401,6 @@ export type FactTransition = Selectable<FactTransitionsTable>;
 
 /** A row of `ouroboros.fact_suppressions`, as a `select` returns it. */
 export type FactSuppression = Selectable<FactSuppressionsTable>;
+
+/** A row of `ouroboros.playbooks`, as a `select` returns it. */
+export type Playbook = Selectable<PlaybooksTable>;

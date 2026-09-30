@@ -12,6 +12,7 @@ import {
   DEFAULT_BACKLOG_STALE_DAYS,
   DEFAULT_REESTIMATION_BATCH,
   DEFAULT_FACT_SWEEP_HOUR_UTC,
+  DEFAULT_REPO_MAP_HOUR_UTC,
   DEFAULT_FLAKE_RESCORE_CAP,
   DEFAULT_FLAKE_RESCORE_HOUR_UTC,
   DEFAULT_REESTIMATION_HOUR_UTC,
@@ -144,6 +145,7 @@ describe("the development defaults", () => {
       flakeRescoreHourUtc: DEFAULT_FLAKE_RESCORE_HOUR_UTC,
       flakeRescoreCap: DEFAULT_FLAKE_RESCORE_CAP,
       factSweepHourUtc: DEFAULT_FACT_SWEEP_HOUR_UTC,
+      repoMapHourUtc: DEFAULT_REPO_MAP_HOUR_UTC,
     });
   });
 });
@@ -1073,6 +1075,7 @@ describe("the nightly flake re-scorer variables (AT.3, #331)", () => {
     ["OURO_FLAKE_RESCORE_HOUR_UTC", "flakeRescoreHourUtc", ["0", "3", "23"]],
     ["OURO_FLAKE_RESCORE_CAP", "flakeRescoreCap", ["1", "2000", "100000"]],
     ["OURO_FACT_SWEEP_HOUR_UTC", "factSweepHourUtc", ["0", "4", "23"]],
+    ["OURO_REPO_MAP_HOUR_UTC", "repoMapHourUtc", ["0", "5", "23"]],
   ] as const)("reads %s inside its range", (variable, field, values) => {
     for (const value of values) {
       expect(loadConfiguration(testEnvironment({ [variable]: value }))[field]).toBe(Number(value));
@@ -1086,6 +1089,7 @@ describe("the nightly flake re-scorer variables (AT.3, #331)", () => {
     ["OURO_FLAKE_RESCORE_CAP", "100001", "expected between 1 and 100000"],
     ["OURO_FACT_SWEEP_HOUR_UTC", "24", "expected between 0 and 23"],
     ["OURO_FACT_SWEEP_HOUR_UTC", "-1", "expected between 0 and 23"],
+    ["OURO_REPO_MAP_HOUR_UTC", "24", "expected between 0 and 23"],
   ])("rejects %s=%s", (variable, value, message) => {
     expect(failureFor(testEnvironment({ [variable]: value }))).toContain(`${variable}: ${message}`);
   });

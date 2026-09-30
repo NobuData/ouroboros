@@ -395,3 +395,28 @@ describe("reading a repository's files (BF.4's import, #413)", () => {
     ).rejects.toMatchObject({ errorClass: "rate_limit" });
   });
 });
+
+describe("listing a repository's tree and picked files (BF.6's repo-map, #415)", () => {
+  it("lists the tree once, then reads only the paths picked from it, on one credential", async () => {
+    const provider = fixtureProvider(ZEPHYR);
+    const { service, opener } = build(provider);
+    const { tree, files } = await service.readTree(DETECTION_WORKSPACE, DETECTION_REPO, (listed) =>
+      listed.entries.some((entry) => entry.path === "west.yml") ? ["west.yml", "CODEOWNERS"] : [],
+    );
+
+    expect(tree.entries.some((entry) => entry.path === "src/main.c")).toBe(true);
+    expect([...files.keys()]).toEqual(["west.yml", "CODEOWNERS"]);
+    expect(files.get("CODEOWNERS")).toBeNull();
+    expect(provider.calls).toEqual(["tree", "file:west.yml", "file:CODEOWNERS"]);
+    expect(opener.opened).toHaveLength(1);
+  });
+
+  it("lets the host's refusal through, sending nothing after it", async () => {
+    const provider = fixtureProvider(ZEPHYR, { remaining: 0 });
+    const { service } = build(provider);
+
+    await expect(
+      service.readTree(DETECTION_WORKSPACE, DETECTION_REPO, () => ["CODEOWNERS"]),
+    ).rejects.toMatchObject({ errorClass: "rate_limit" });
+  });
+});

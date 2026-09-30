@@ -237,6 +237,7 @@ describe("the bulk queue write", () => {
           workflowVersion: null,
           workflowPinReason: "suggested",
           estMinutes: 45,
+          playbookId: null,
         },
       ]);
     });
@@ -430,6 +431,45 @@ describe("the bulk queue write", () => {
       const [, rows] = repository.append.mock.calls[0];
       expect(rows.map((row) => row.workflowTag)).toEqual(["standard-fix"]);
       expect(workflows.asked).toEqual([]);
+    });
+  });
+
+  describe("a playbook launch (#415)", () => {
+    const LAUNCH = {
+      workflow: "standard-fix",
+      version: 14,
+      playbookId: "5eed0046-0000-4000-8000-000000000001",
+    };
+
+    it("pins the playbook's version, reason explicit, without asking the trigger service", async () => {
+      await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] }, LAUNCH);
+
+      expect(pins.requests).toHaveLength(0);
+      expect(repository.append.mock.calls[0][1]).toEqual([
+        expect.objectContaining({
+          workflowTag: "standard-fix",
+          workflowVersion: 14,
+          workflowPinReason: "explicit",
+          playbookId: LAUNCH.playbookId,
+        }),
+      ]);
+    });
+
+    it("holds the playbook's workflow to the registry like any named workflow", async () => {
+      queue = new BacklogQueueService(repository, registry(["docs-loop"]).service, pins.service);
+
+      await expect(
+        queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] }, LAUNCH),
+      ).rejects.toMatchObject({ code: QUEUE_ERRORS.workflowUnknown });
+      expect(repository.append).not.toHaveBeenCalled();
+    });
+
+    it("writes no playbook on an ordinary queue write", async () => {
+      await queue.queueSelection(WORKSPACE, { issueIds: [ISSUE_485] });
+
+      expect(repository.append.mock.calls[0][1]).toEqual([
+        expect.objectContaining({ playbookId: null }),
+      ]);
     });
   });
 

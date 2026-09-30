@@ -344,6 +344,15 @@ export const PR_THREAD_RESOLVED_EVENT = "pr_thread.resolved";
 export const KNOWLEDGE_IMPORTED_EVENT = "knowledge.imported";
 
 /**
+ * The repo-map generator ran for a repository (BF.6,
+ * [#415](https://github.com/NobuData/ouroboros/issues/415)) — nightly (no actor) or on request.
+ * Subject `repository` (`owner/name`); the detail carries the trigger, the outcome (`published`,
+ * `unchanged` or `skipped`), the skill and version in force, why a skip happened, and the module
+ * count. Written on **every** run, so a night that found nothing to publish is recorded too.
+ */
+export const KNOWLEDGE_REPO_MAP_GENERATED_EVENT = "knowledge.repo_map_generated";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -390,6 +399,7 @@ export const AUDIT_ACTIONS = [
   PR_APPROVAL_DECLINED_EVENT,
   PR_THREAD_RESOLVED_EVENT,
   KNOWLEDGE_IMPORTED_EVENT,
+  KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

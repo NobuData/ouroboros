@@ -388,6 +388,11 @@ export class AppConfigService {
     return this.config.getOrThrow<number>("factSweepHourUtc");
   }
 
+  /** The UTC hour the nightly repo-map generator is scheduled at — `OURO_REPO_MAP_HOUR_UTC`. */
+  get repoMapHourUtc(): number {
+    return this.config.getOrThrow<number>("repoMapHourUtc");
+  }
+
   /**
    * The merged-loop threshold that unlocks an advanced onboarding template —
    * `OURO_ONBOARDING_UNLOCK_THRESHOLD`. `undefined` when unset: each template's own rule stands.
@@ -472,6 +477,7 @@ export class AppConfigService {
       flakeRescoreHourUtc: this.flakeRescoreHourUtc,
       flakeRescoreCap: this.flakeRescoreCap,
       factSweepHourUtc: this.factSweepHourUtc,
+      repoMapHourUtc: this.repoMapHourUtc,
       localProviderUrls: this.localProviderUrls,
       onboardingUnlockThreshold: this.onboardingUnlockThreshold,
     };

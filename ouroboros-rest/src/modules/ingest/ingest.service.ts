@@ -201,6 +201,16 @@ export class IngestService {
         throw workflowPinUnreadable(request.workflow.tag, request.workflow.version);
       }
 
+      // A run opened for an issue a playbook queued, under the playbook's pin, is that
+      // playbook's launch (BF.6, #415) — `run 9×` counts it.
+      const playbookId = await this.runs.queuedPlaybook(trx, {
+        organizationId: ticket.organizationId,
+        githubRepoId: request.repository,
+        issueNumber,
+        workflowTag: request.workflow.tag,
+        workflowVersion: request.workflow.version,
+      });
+
       const run = await this.runs.insertRun(trx, {
         organization_id: ticket.organizationId,
         github_repo_id: request.repository,
@@ -220,6 +230,7 @@ export class IngestService {
         branch_name: request.branchName ?? null,
         merge_strategy: request.mergeStrategy ?? null,
         simulated,
+        playbook_id: playbookId,
       });
 
       const response: RunOpenedResource = {

@@ -109,6 +109,12 @@ export interface QueueAppendRow {
   readonly workflowPinReason: QueueWorkflowPinReason;
   /** The minutes to store, or `null` — reconciled by `queue.resources.ts`, never invented here. */
   readonly estMinutes: number | null;
+  /**
+   * The playbook the issue is launched through (V072, BF.6
+   * [#415](https://github.com/NobuData/ouroboros/issues/415)) — inherited by the run that claims
+   * the row. Absent or `null` for an ordinary queue write.
+   */
+  readonly playbookId?: string | null;
 }
 
 @Injectable()
@@ -231,6 +237,7 @@ export class BacklogQueueRepository {
                 workflow_pin_reason: row.workflowPinReason,
                 position: from + index,
                 est_minutes: row.estMinutes,
+                playbook_id: row.playbookId ?? null,
               })),
             )
             .returningAll()

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.34"
+  version: "0.37.35"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -17696,6 +17696,945 @@ paths:
             `context_injection_unresolved` — an estimate, run, stage, fact or skill version is not
             this workspace's, a fact is not confirmed, or a skill version is a draft or a draft
             skill's. `validation_failed` for a malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/playbooks:
+    get:
+      tags: [knowledge]
+      summary: List the workspace's playbooks
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — mockup 14's playbooks card:
+        every recipe by name (`3 recipes` is `items.length`), each a pinned workflow version, skill
+        overrides relative to context assembly, a context preset and an optional issue filter.
+        **`runCount` is counted** — the runs whose `playbook_id` names the recipe (V072) — never a
+        stored counter; a queued launch counts once a run opens for it.
+
+        **Open to every member.**
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: listPlaybooks
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The recipes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaybookList"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [knowledge]
+      summary: Create a playbook
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — a hand-authored recipe. The
+        pin must be a **published** version of a workflow of this workspace — a playbook never tracks
+        a workflow's head; re-pinning is a deliberate `PATCH`. `skillOverrides` is V072's
+        `{enable, disable}` delta relative to assembly (a required skill cannot be disabled);
+        `contextPreset` carries steer notes and extra fact ids; `issueFilter` narrows
+        **Run on issue… ▾** (absent, `null` or empty admits every issue). `201`.
+
+        **`owner` or `admin`** — a recipe changes which skills a run is injected with; the gate writing a skill takes.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: createPlaybook
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaybookBody"
+            example:
+              name: Flaky test hunt
+              description: Hunt the flakiest suite first
+              workflow: standard-fix
+              workflowVersion: 14
+              contextPreset:
+                steerNotes: [focus the flakiest suite first]
+              issueFilter:
+                labels: [flaky]
+      responses:
+        "201":
+          description: The playbook.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playbook"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `playbook_name_taken` — another playbook of this workspace has that name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `playbook_workflow_not_found` — no workflow by that slug here.
+            `playbook_workflow_version_not_published` — the version is not a published version of it.
+            `playbook_overrides_overlap` — one skill id is in both `enable` and `disable`.
+            `playbook_reference_unresolved` — a skill or fact is not this workspace's, or a required skill
+            is disabled. `validation_failed` for a malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/playbooks/counts:
+    get:
+      tags: [knowledge]
+      summary: Count every playbook's launches
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — `run 9×` for every recipe,
+        zero included: `count(*)` of the runs carrying its `playbook_id`. Derived from launches, so it
+        cannot drift from them; there is no counter column.
+
+        **Open to every member.**
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: countPlaybookRuns
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaybookCounts"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/playbooks/from-run/{runId}:
+    get:
+      tags: [knowledge]
+      summary: Preview a playbook learned from a past run
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415), decision **K6**) — what
+        **+ New playbook from a past run…** would capture, before a person names it. From a
+        **terminal** run: its workflow pin; its injected manifest as a delta against what assembly
+        resolves for the run's scope today (`enable` what it carried that assembly would not, `disable`
+        what it went without — never a required skill; a run with no injection record derives none);
+        and the steer notes typed into it, verbatim, oldest first, de-duplicated, at most 16. Writes
+        nothing.
+
+        **Open to every member.**
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: draftPlaybookFromRun
+      parameters:
+        - name: runId
+          in: path
+          required: true
+          description: A terminal run of this workspace.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The draft.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaybookDraft"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `playbook_run_not_found` — no such run in this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `playbook_run_not_terminal` — the run has not finished; a recipe is learned from one that has.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `playbook_run_unpinned` — the run carries no published workflow version to pin.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/playbooks/from-run:
+    post:
+      tags: [knowledge]
+      summary: Create a playbook from a past run
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — the draft
+        `GET …/from-run/{runId}` serves, named and stored, with `sourceRunId` recording the run it
+        was learned from. `description` defaults to the draft's suggestion. `201`.
+
+        **`owner` or `admin`** — a recipe changes which skills a run is injected with; the gate writing a skill takes.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: createPlaybookFromRun
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePlaybookFromRunBody"
+            example:
+              runId: 5eed0009-0000-4000-8000-000000001791
+              name: Flaky test hunt
+              issueFilter:
+                labels: [flaky]
+      responses:
+        "201":
+          description: The playbook.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playbook"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `playbook_run_not_found` — no such run in this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `playbook_run_not_terminal` — the run has not finished. `playbook_name_taken` — the name is another playbook's.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `playbook_run_unpinned` — the run carries no published workflow version to pin.
+            `playbook_workflow_not_found` — no workflow by that slug here.
+            `playbook_workflow_version_not_published` — the version is not a published version of it.
+            `playbook_overrides_overlap` — one skill id is in both `enable` and `disable`.
+            `playbook_reference_unresolved` — a skill or fact is not this workspace's, or a required skill
+            is disabled. `validation_failed` for a malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/playbooks/{id}:
+    get:
+      tags: [knowledge]
+      summary: Read a playbook
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — one recipe, with its counted
+        launches.
+
+        **Open to every member.**
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: getPlaybook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The playbook's id.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The playbook.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playbook"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `playbook_not_found` — no such playbook in this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [knowledge]
+      summary: Change a playbook
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — absent fields keep their
+        value; `issueFilter: null` clears the filter; `workflow`/`workflowVersion` re-pin (to a
+        published version). `sourceRunId` is provenance and never changes.
+
+        **`owner` or `admin`** — a recipe changes which skills a run is injected with; the gate writing a skill takes.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: updatePlaybook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The playbook's id.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePlaybookBody"
+            example:
+              workflowVersion: 15
+              issueFilter: null
+      responses:
+        "200":
+          description: The playbook after the change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Playbook"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `playbook_not_found` — no such playbook in this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `playbook_name_taken` — another playbook of this workspace has that name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `playbook_workflow_not_found` — no workflow by that slug here.
+            `playbook_workflow_version_not_published` — the version is not a published version of it.
+            `playbook_overrides_overlap` — one skill id is in both `enable` and `disable`.
+            `playbook_reference_unresolved` — a skill or fact is not this workspace's, or a required skill
+            is disabled. `validation_failed` for a malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [knowledge]
+      summary: Delete a playbook
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — `204`. The runs and queued
+        items launched through it keep their history: V072 clears their `playbook_id`.
+
+        **`owner` or `admin`** — a recipe changes which skills a run is injected with; the gate writing a skill takes.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: deletePlaybook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The playbook's id.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "204":
+          description: Deleted.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `playbook_not_found` — no such playbook in this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/playbooks/{id}/issues:
+    get:
+      tags: [knowledge]
+      summary: List the issues a playbook may run on
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — **Run on issue… ▾**'s list:
+        open issues of the workspace that the playbook's issue filter admits — V072's
+        `playbook_issue_filter_admits`, the one implementation of the rule (every listed repository
+        must include the issue's; the issue must carry one of the listed labels). Newest first; each
+        says whether the queue already holds it.
+
+        **Open to every member.**
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: listPlaybookIssues
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The playbook's id.
+          schema:
+            type: string
+            format: uuid
+        - name: q
+          in: query
+          required: false
+          description: A substring of the title, or an issue number (`485` or `#485`).
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: limit
+          in: query
+          required: false
+          description: The most issues to answer; 25 when absent.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The candidates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaybookIssueList"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `playbook_not_found` — no such playbook in this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` for a malformed query.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/playbooks/{id}/context:
+    get:
+      tags: [knowledge]
+      summary: Preview the context a playbook attaches
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — what a launch of this
+        playbook into `repo` attaches: the manifest context assembly produces for the `playbook`
+        consumer with the playbook's `skillOverrides` applied (BF.5's one resolution), and the
+        preset's steer notes and extra facts. Records nothing.
+
+        **Open to every member.**
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: getPlaybookContext
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The playbook's id.
+          schema:
+            type: string
+            format: uuid
+        - name: repo
+          in: query
+          required: false
+          description: "`owner/name`; omit for the workspace-wide manifest."
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 255
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The context.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaybookContext"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `playbook_not_found` — no such playbook in this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` for a malformed query.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/playbooks/{id}/launch:
+    post:
+      tags: [knowledge]
+      summary: Run a playbook on an issue
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415)) — **Run on issue… ▾**. The
+        issue is queued by M.3's queue write ([#112](https://github.com/NobuData/ouroboros/issues/112))
+        under the playbook's workflow **at its pinned version** (R.1's pin,
+        [#143](https://github.com/NobuData/ouroboros/issues/143), reason `explicit`), and the queued
+        item carries the playbook's id. The run that opens for that item under that pin inherits the
+        id — and that run is what `runCount` counts. The answer is a receipt: the queued item in the
+        dashboard queue's own shape, its position, the context attached (manifest and preset) and
+        links. `201`.
+
+        Refused exactly as queueing the issue would be: `queue_issues_not_queueable` (not sized),
+        `queue_issues_conflict` (already queued), `queue_workflow_unknown` (the playbook's workflow
+        is no longer active).
+
+        **`owner`, `admin` or `member`** — the queue write's own gate.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: launchPlaybook
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The playbook's id.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LaunchPlaybookBody"
+            example:
+              issueId: 5eed0018-0000-4000-8000-000000000485
+      responses:
+        "201":
+          description: The receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlaybookLaunchReceipt"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner`, `admin` or `member`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `playbook_not_found` — no such playbook. `playbook_issue_not_found` — no such issue in this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `queue_issues_conflict` — the queue already holds the issue.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `playbook_issue_filtered` — the playbook's issue filter does not admit the issue.
+            `queue_issues_not_queueable` — the issue is not sized. `queue_workflow_unknown` — the
+            playbook's workflow is not an active workflow of this workspace. `validation_failed` for a
+            malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/repo-map/regenerate:
+    post:
+      tags: [knowledge]
+      summary: Regenerate a repository's repo-map now
+      description: |-
+        BF.6 ([#415](https://github.com/NobuData/ouroboros/issues/415), decision **K2**) — the skills
+        table's regenerate action for `repo-map`, which a nightly job otherwise runs for every enabled
+        repository (`OURO_REPO_MAP_HOUR_UTC`). One **bounded** walk through the provider SPI — a single
+        tree listing and the CODEOWNERS file it holds — plus the newest detection scan (BB.1), rendered
+        to a deterministic module and ownership map. **Diff-aware**: identical to the version in force
+        → `unchanged`, nothing written; different → the next version of the repository's `generated`
+        skill (`repo-map`, or `repo-map-<name>` when that slug is taken), `published_at` the
+        generation time. A host rate limit or refusal → `skipped`, nothing written. Every run is
+        audited as `knowledge.repo_map_generated`. `200`.
+
+        **`owner` or `admin`** — a regenerate may publish a skill version.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: regenerateRepoMap
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegenerateRepoMapBody"
+            example:
+              repo: acme-robotics/helios-firmware
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoMapReport"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `repo_map_regenerate_too_soon` — regenerated under a minute ago; `details.retryAfterSeconds` says when to ask again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` for a malformed body.
           content:
             application/json:
               schema:
@@ -39036,6 +39975,494 @@ components:
         injectedAt:
           type: string
           format: date-time
+
+    PlaybookSkillOverrides:
+      type: object
+      title: PlaybookSkillOverrides
+      description: |-
+        A playbook's stored delta of skill ids, relative to context assembly (V072): `enable`
+        re-admits a skill assembly would not inject, `disable` leaves one out — never a required
+        one. Both empty is no delta.
+      additionalProperties: false
+      required: [enable, disable]
+      properties:
+        enable:
+          type: array
+          items:
+            type: string
+            format: uuid
+        disable:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    PlaybookContextPreset:
+      type: object
+      title: PlaybookContextPreset
+      description: The steer notes and extra facts a playbook carries into its runs (V072).
+      additionalProperties: false
+      required: [steerNotes, factIds]
+      properties:
+        steerNotes:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            maxLength: 2000
+          examples: [[focus the flakiest suite first]]
+        factIds:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            format: uuid
+
+    PlaybookIssueFilter:
+      type: object
+      title: PlaybookIssueFilter
+      description: |-
+        What narrows **Run on issue… ▾**: `labels` (the issue carries one of them) and `repos`
+        (`owner/name`, lower-case — the issue lives in one of them). `null` for a key the filter
+        says nothing of.
+      additionalProperties: false
+      required: [labels, repos]
+      properties:
+        labels:
+          type: [array, "null"]
+          items:
+            type: string
+        repos:
+          type: [array, "null"]
+          items:
+            type: string
+
+    PlaybookWorkflow:
+      type: object
+      title: PlaybookWorkflow
+      description: The pinned workflow — `standard-fix@v14`.
+      additionalProperties: false
+      required: [id, slug, version]
+      properties:
+        id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+          examples: [standard-fix]
+        version:
+          type: integer
+          minimum: 1
+          examples: [14]
+
+    Playbook:
+      type: object
+      title: Playbook
+      description: One recipe, as mockup 14's playbooks card draws it (BF.6, #415).
+      additionalProperties: false
+      required:
+        [id, name, description, workflow, skillOverrides, contextPreset, issueFilter, sourceRunId, runCount, createdAt, updatedAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          examples: [Flaky test hunt]
+        description:
+          type: string
+        workflow:
+          $ref: "#/components/schemas/PlaybookWorkflow"
+        skillOverrides:
+          $ref: "#/components/schemas/PlaybookSkillOverrides"
+        contextPreset:
+          $ref: "#/components/schemas/PlaybookContextPreset"
+        issueFilter:
+          oneOf:
+            - $ref: "#/components/schemas/PlaybookIssueFilter"
+            - type: "null"
+          description: "`null` offers the playbook for every issue."
+        sourceRunId:
+          type: [string, "null"]
+          format: uuid
+          description: The run it was created from; null for a hand-authored recipe or a deleted run.
+        runCount:
+          type: integer
+          minimum: 0
+          description: "`run 9×` — the runs launched through it, counted from `runs.playbook_id`."
+          examples: [9]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    PlaybookList:
+      type: object
+      title: PlaybookList
+      description: Every recipe of the workspace, by name.
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Playbook"
+
+    PlaybookCounts:
+      type: object
+      title: PlaybookCounts
+      description: Every playbook's launch count, derived from the runs carrying its id.
+      additionalProperties: false
+      required: [counts]
+      properties:
+        counts:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [playbookId, runs]
+            properties:
+              playbookId:
+                type: string
+                format: uuid
+              runs:
+                type: integer
+                minimum: 0
+
+    PlaybookDraft:
+      type: object
+      title: PlaybookDraft
+      description: What create-from-run captured from a terminal run, before a person names it.
+      additionalProperties: false
+      required:
+        [sourceRunId, sourceLoopSeq, workflow, skillOverrides, contextPreset, derivedFrom, suggestedDescription]
+      properties:
+        sourceRunId:
+          type: string
+          format: uuid
+        sourceLoopSeq:
+          type: integer
+          examples: [1791]
+        workflow:
+          $ref: "#/components/schemas/PlaybookWorkflow"
+        skillOverrides:
+          $ref: "#/components/schemas/PlaybookSkillOverrides"
+        contextPreset:
+          $ref: "#/components/schemas/PlaybookContextPreset"
+        derivedFrom:
+          type: object
+          additionalProperties: false
+          required: [repo, injections, steers]
+          properties:
+            repo:
+              type: string
+              description: The run's repository — the scope the overrides were derived against.
+            injections:
+              type: integer
+              minimum: 0
+              description: The run's injection records; `0` derives no overrides.
+            steers:
+              type: integer
+              minimum: 0
+              description: The steers the run carried, before de-duplication and bounds.
+        suggestedDescription:
+          type: string
+          maxLength: 300
+
+    PlaybookContext:
+      type: object
+      title: PlaybookContext
+      description: The context a playbook launch attaches — the manifest and the preset.
+      additionalProperties: false
+      required: [manifest, steerNotes, factIds]
+      properties:
+        manifest:
+          $ref: "#/components/schemas/ContextManifest"
+        steerNotes:
+          type: array
+          items:
+            type: string
+        factIds:
+          type: array
+          items:
+            type: string
+            format: uuid
+
+    PlaybookIssueCandidate:
+      type: object
+      title: PlaybookIssueCandidate
+      description: One issue **Run on issue… ▾** offers.
+      additionalProperties: false
+      required: [id, number, title, repo, labels, sizingStatus, queued]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: "`github_issues.id` — what `launch` takes."
+        number:
+          type: integer
+          examples: [485]
+        title:
+          type: string
+        repo:
+          type: string
+          examples: [acme-robotics/helios-firmware]
+        labels:
+          type: array
+          items:
+            type: string
+        sizingStatus:
+          type: string
+          enum: [unsized, estimating, sized, needs_human]
+          description: Only a `sized` issue can be launched.
+        queued:
+          type: boolean
+          description: The queue already holds it — a launch would be refused `409`.
+
+    PlaybookIssueList:
+      type: object
+      title: PlaybookIssueList
+      description: The picker's list, narrowed by the playbook's issue filter.
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/PlaybookIssueCandidate"
+
+    PlaybookLaunchReceipt:
+      type: object
+      title: PlaybookLaunchReceipt
+      description: The proof a launch happened, and where to look next.
+      additionalProperties: false
+      required: [playbookId, item, position, context, links]
+      properties:
+        playbookId:
+          type: string
+          format: uuid
+        item:
+          $ref: "#/components/schemas/QueueItemSummary"
+        position:
+          type: integer
+          minimum: 1
+          description: The item's place in the queue; `1` is next.
+        context:
+          $ref: "#/components/schemas/PlaybookContext"
+        links:
+          type: object
+          additionalProperties: false
+          required: [queue, playbook, issue]
+          properties:
+            queue:
+              type: string
+              examples: [/api/v1/queue]
+            playbook:
+              type: string
+            issue:
+              type: string
+
+    PlaybookContextPresetBody:
+      type: object
+      title: PlaybookContextPresetBody
+      description: A preset to store — both keys optional.
+      additionalProperties: false
+      properties:
+        steerNotes:
+          type: array
+          maxItems: 16
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 2000
+        factIds:
+          type: array
+          maxItems: 64
+          uniqueItems: true
+          items:
+            type: string
+            format: uuid
+
+    PlaybookIssueFilterBody:
+      type: object
+      title: PlaybookIssueFilterBody
+      description: A filter to store; `{}` (or both empty) admits every issue and is stored as null.
+      additionalProperties: false
+      properties:
+        labels:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 1
+            maxLength: 100
+        repos:
+          type: array
+          maxItems: 32
+          uniqueItems: true
+          items:
+            type: string
+            minLength: 3
+            maxLength: 255
+            pattern: '^(?!(?:.*\/)?\.\.?(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+$'
+
+    CreatePlaybookBody:
+      type: object
+      title: CreatePlaybookBody
+      description: A hand-authored recipe.
+      additionalProperties: false
+      required: [name, description, workflow, workflowVersion]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          minLength: 1
+          maxLength: 300
+        workflow:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+        workflowVersion:
+          type: integer
+          minimum: 1
+        skillOverrides:
+          $ref: "#/components/schemas/SkillOverrides"
+        contextPreset:
+          $ref: "#/components/schemas/PlaybookContextPresetBody"
+        issueFilter:
+          oneOf:
+            - $ref: "#/components/schemas/PlaybookIssueFilterBody"
+            - type: "null"
+
+    UpdatePlaybookBody:
+      type: object
+      title: UpdatePlaybookBody
+      description: A change — every field optional; `issueFilter` null clears the filter.
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          minLength: 1
+          maxLength: 300
+        workflow:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+        workflowVersion:
+          type: integer
+          minimum: 1
+        skillOverrides:
+          $ref: "#/components/schemas/SkillOverrides"
+        contextPreset:
+          $ref: "#/components/schemas/PlaybookContextPresetBody"
+        issueFilter:
+          oneOf:
+            - $ref: "#/components/schemas/PlaybookIssueFilterBody"
+            - type: "null"
+
+    CreatePlaybookFromRunBody:
+      type: object
+      title: CreatePlaybookFromRunBody
+      description: The run to learn from, and the name; the rest is captured from the run.
+      additionalProperties: false
+      required: [runId, name]
+      properties:
+        runId:
+          type: string
+          format: uuid
+        name:
+          type: string
+          minLength: 1
+          maxLength: 120
+        description:
+          type: string
+          minLength: 1
+          maxLength: 300
+        issueFilter:
+          oneOf:
+            - $ref: "#/components/schemas/PlaybookIssueFilterBody"
+            - type: "null"
+
+    LaunchPlaybookBody:
+      type: object
+      title: LaunchPlaybookBody
+      description: The issue to run the playbook on.
+      additionalProperties: false
+      required: [issueId]
+      properties:
+        issueId:
+          type: string
+          format: uuid
+          description: "`github_issues.id`, as the picker lists it."
+
+    RegenerateRepoMapBody:
+      type: object
+      title: RegenerateRepoMapBody
+      description: The repository whose map to regenerate.
+      additionalProperties: false
+      required: [repo]
+      properties:
+        repo:
+          type: string
+          minLength: 3
+          maxLength: 255
+          pattern: '^(?!(?:.*\/)?\.\.?(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+$'
+          examples: [acme-robotics/helios-firmware]
+
+    RepoMapReport:
+      type: object
+      title: RepoMapReport
+      description: One repo-map generation — the regenerate's answer, and what the audit records.
+      additionalProperties: false
+      required: [repo, outcome, skill, version, generatedAt, trigger, reason, modules, truncated]
+      properties:
+        repo:
+          type: string
+          examples: [acme-robotics/helios-firmware]
+        outcome:
+          type: string
+          enum: [published, unchanged, skipped]
+          description: |-
+            `published` — the map changed and a new `generated` version is in force; `unchanged` —
+            identical to the version in force, nothing written; `skipped` — the repository could
+            not be read.
+        skill:
+          type: [string, "null"]
+          examples: [repo-map]
+        version:
+          type: [integer, "null"]
+          description: The version in force after the generation.
+          examples: [61]
+        generatedAt:
+          type: string
+          format: date-time
+          description: When it ran — the new version's `published_at` when one was published.
+        trigger:
+          type: string
+          enum: [nightly, manual]
+        reason:
+          type: [string, "null"]
+          enum: [no_source, rate_limit, host_error, null]
+          description: Why it was skipped; null unless `outcome` is `skipped`.
+        modules:
+          type: integer
+          minimum: 0
+        truncated:
+          type: boolean
+          description: Whether a bound cut the tree listing.
 
     WorkflowCodeConfig:
       type: object

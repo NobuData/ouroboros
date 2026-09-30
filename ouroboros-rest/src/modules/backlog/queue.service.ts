@@ -50,6 +50,17 @@
  * estimate for naming a workflow that has since been renamed, which is exactly the history
  * decision **F8** keeps readable: the queue row is opaque text, and a tag that no longer
  * resolves is a fact about the past rather than a broken write.
+ *
+ * ---------------------------------------------------------------------------
+ * **A playbook launch is the same write with its pin decided**
+ * ([#415](https://github.com/NobuData/ouroboros/issues/415), BF.6, amending #112).
+ *
+ * *Run on issue… ▾* queues through {@link BacklogQueueService.queueSelection} with a
+ * {@link QueueLaunch}: the playbook's workflow is the explicit workflow (held to the registry like
+ * any other), the playbook's **pinned version** replaces the trigger service's answer — reason
+ * `explicit`, because a person chose the recipe — and every row carries the `playbook_id` the run
+ * that claims it inherits. Every refusal above is unchanged, so a launch is refused exactly as a
+ * queue write would be.
  */
 
 import { Injectable } from "@nestjs/common";
@@ -77,6 +88,16 @@ import {
   type QueueCandidate,
 } from "./queue.repository";
 import type { QueueSelectionBody } from "./queue.dto";
+
+/** A launch through a playbook — its pinned workflow, and the playbook every row carries. */
+export interface QueueLaunch {
+  /** The playbook's workflow slug. Held to the workspace's active workflows like `workflow`. */
+  readonly workflow: string;
+  /** The playbook's pinned published version — stored as the row's pin, never the head. */
+  readonly version: number;
+  /** The playbook, written onto every row as `playbook_id`. */
+  readonly playbookId: string;
+}
 
 /** A candidate that passed every check — the four nullable fields narrowed by having done so. */
 interface QueueableIssue extends QueueCandidate {
@@ -108,6 +129,8 @@ export class BacklogQueueService {
    *   scoped by it, so an id belonging to another workspace is simply not found.
    * @param body - The issues, in the order to append them, and the workflow they all run under
    *   when one is named.
+   * @param launch - A playbook launch (BF.6): its workflow and pinned version replace `workflow`
+   *   and the trigger service, and its id is written onto every row. Absent for an ordinary write.
    * @returns The created queue items in queue order, each pinned to a workflow version, and
    *   their combined estimate — the number the selection action bar renders as *"est. 1h 10m
    *   combined autonomous work"*.
@@ -121,8 +144,12 @@ export class BacklogQueueService {
    * @throws {ConflictError} `queue_issues_conflict` — the queue already holds one of them, or
    *   two of them share a GitHub number.
    */
-  async queueSelection(organizationId: string, body: QueueSelectionBody): Promise<QueuedSelection> {
-    await this.refuseUnknownWorkflow(organizationId, body.workflow);
+  async queueSelection(
+    organizationId: string,
+    body: QueueSelectionBody,
+    launch?: QueueLaunch,
+  ): Promise<QueuedSelection> {
+    await this.refuseUnknownWorkflow(organizationId, launch?.workflow ?? body.workflow);
 
     const found = await this.queue.selection(organizationId, body.issueIds);
     // Reordered into the request's own order: positions are handed out down this list, so the
@@ -141,12 +168,13 @@ export class BacklogQueueService {
     // After every refusal, so a request that is going to be refused never reads a workflow; and
     // once, before the write, so the append's position retries reuse one snapshot of the pins.
     // The pins come back in `queueable`'s order, which is what pairs them by index.
-    const pins = await this.triggers.pin(
-      organizationId,
-      queueable.map(queuedTicket),
-      body.workflow,
+    const pins =
+      launch === undefined
+        ? await this.triggers.pin(organizationId, queueable.map(queuedTicket), body.workflow)
+        : queueable.map(() => launchPin(launch));
+    const rows = queueable.map((issue, index) =>
+      appendRow(issue, pins[index], launch?.playbookId ?? null),
     );
-    const rows = queueable.map((issue, index) => appendRow(issue, pins[index]));
 
     try {
       return queuedSelection(await this.queue.append(organizationId, rows));
@@ -345,14 +373,29 @@ function queuedTicket(issue: QueueableIssue): QueuedTicket {
 }
 
 /**
+ * The pin a playbook launch stores: the playbook's own version, chosen by a person.
+ *
+ * @param launch - The launch.
+ * @returns The pin, reason `explicit`, matching nothing — no trigger was consulted.
+ */
+function launchPin(launch: QueueLaunch): WorkflowPin {
+  return { slug: launch.workflow, version: launch.version, reason: "explicit", matched: [] };
+}
+
+/**
  * One queue row, from one sized issue and the workflow pinned on it.
  *
  * @param issue - The issue and the estimate in force.
  * @param pin - The workflow that claimed it, the version in force and the reason.
+ * @param playbookId - The playbook launching it, or `null`.
  * @returns The row to append. Every other value is copied — see `queue.resources.ts` for the two
  *   places a copy has to reconcile two migrations' bounds.
  */
-function appendRow(issue: QueueableIssue, pin: WorkflowPin): QueueAppendRow {
+function appendRow(
+  issue: QueueableIssue,
+  pin: WorkflowPin,
+  playbookId: string | null,
+): QueueAppendRow {
   return {
     githubRepoId: issue.githubRepoId,
     issueNumber: issue.number,
@@ -362,5 +405,6 @@ function appendRow(issue: QueueableIssue, pin: WorkflowPin): QueueAppendRow {
     workflowVersion: pin.version,
     workflowPinReason: pin.reason,
     estMinutes: queueEstMinutes(issue.estMinutes),
+    playbookId,
   };
 }

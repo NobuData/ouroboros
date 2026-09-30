@@ -156,6 +156,9 @@ function stubRepository() {
 
     lockRun: jest.fn((_w: unknown, _r: string): Promise<Run | undefined> => Promise.resolve(run())),
     insertRun: jest.fn((_w: unknown, _row: Record<string, unknown>) => Promise.resolve(run())),
+    queuedPlaybook: jest.fn((_w: unknown, _pin: Record<string, unknown>): Promise<string | null> =>
+      Promise.resolve(null),
+    ),
     setReservation: jest.fn((_w: unknown, _r: string, _j: string | null) => {
       written.reservations += 1;
 
@@ -313,6 +316,29 @@ describe("opening a run", () => {
       stage_total: 2,
       workflow_version_pin: 14,
     });
+  });
+
+  it("inherits the playbook of the queued row it claims, under that row's pin (#415)", async () => {
+    const { repository, spy } = stubRepository();
+    spy.queuedPlaybook.mockResolvedValueOnce("5eed0046-0000-4000-8000-000000000001");
+
+    await new IngestService(repository, stubGuardrails()).openRun(OPEN, false);
+
+    expect(spy.queuedPlaybook.mock.calls[0][1]).toMatchObject({
+      organizationId: WORKSPACE,
+      workflowVersion: 14,
+    });
+    expect(spy.insertRun.mock.calls[0][1]).toMatchObject({
+      playbook_id: "5eed0046-0000-4000-8000-000000000001",
+    });
+  });
+
+  it("opens an ordinary run with no playbook when no queued row names one", async () => {
+    const { repository, spy } = stubRepository();
+
+    await new IngestService(repository, stubGuardrails()).openRun(OPEN, false);
+
+    expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ playbook_id: null });
   });
 
   it("refuses a ticket that is not mirrored", async () => {

@@ -83,6 +83,27 @@ describe("the ingestion repository", () => {
       expect(database.statements[0].parameters).toEqual([WORKSPACE, "standard-fix", 14]);
     });
 
+    it("finds the queued playbook only under the run's own pin, within the workspace", async () => {
+      // A run under another workflow or version is not the playbook's launch (#415).
+      await runs.queuedPlaybook(database.service.db, {
+        organizationId: WORKSPACE,
+        githubRepoId: "repo-id",
+        issueNumber: 485,
+        workflowTag: "standard-fix",
+        workflowVersion: 14,
+      });
+
+      expect(only()).toContain('from "ouroboros"."queue_items"');
+      expect(only()).toContain('"playbook_id" is not null');
+      expect(database.statements[0].parameters).toEqual([
+        WORKSPACE,
+        "repo-id",
+        485,
+        "standard-fix",
+        14,
+      ]);
+    });
+
     it("checks a build job against the run's workspace", async () => {
       await runs.buildJobBelongsTo(database.service.db, WORKSPACE, "job-id");
 

@@ -327,6 +327,7 @@ export class IngestRepository {
       branch_name: string | null;
       merge_strategy: Database["runs"]["merge_strategy"];
       simulated: boolean;
+      playbook_id?: string | null;
     },
   ): Promise<Run> {
     return writer
@@ -334,6 +335,43 @@ export class IngestRepository {
       .values({ ...run, status: "coding" })
       .returningAll()
       .executeTakeFirstOrThrow();
+  }
+
+  /**
+   * The playbook a queued issue was launched through, when the run being opened is that launch
+   * (BF.6, [#415](https://github.com/NobuData/ouroboros/issues/415)).
+   *
+   * The queue row carries `playbook_id` (V072) and *"the run that claims it inherits it"*. A run
+   * claims it when it opens for the same issue of the same repository **under the pin the row
+   * holds** — the playbook's workflow at its pinned version. A run opened under another workflow
+   * or version is not the playbook's launch, and does not count towards *run 9×*.
+   *
+   * @param writer - The transaction.
+   * @param pin - The workspace, repository, issue number and the run's workflow pin.
+   * @returns The playbook's id, or `null` when no queued row of that pin names one.
+   */
+  async queuedPlaybook(
+    writer: Writer,
+    pin: {
+      organizationId: string;
+      githubRepoId: string;
+      issueNumber: number;
+      workflowTag: string;
+      workflowVersion: number;
+    },
+  ): Promise<string | null> {
+    const row = await writer
+      .selectFrom("queue_items")
+      .select("playbook_id")
+      .where("organization_id", "=", pin.organizationId)
+      .where("github_repo_id", "=", pin.githubRepoId)
+      .where("issue_number", "=", pin.issueNumber)
+      .where("workflow_tag", "=", pin.workflowTag)
+      .where("workflow_version", "=", pin.workflowVersion)
+      .where("playbook_id", "is not", null)
+      .executeTakeFirst();
+
+    return row?.playbook_id ?? null;
   }
 
   /**
