@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.37.28",
+    "version": "0.37.29",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -89,6 +89,10 @@
     {
       "name": "workflows",
       "description": "**Workflow Studio's own surface** (mockup 04, epic\n[#127](https://github.com/NobuData/ouroboros/issues/127)) — the rail, the canvas, the\ndraft, and the **Publish v15** button.\n\nA workflow is an entity with a slug, a title, a status, and a version history. The slug\nis load-bearing: `runs.workflow_tag` and `queue_items.workflow_tag` are opaque text by\ndecision **F8**, and the slug is what one of those resolves through — so a closed run is\nstill rendered under the workflow it named, and a slug cannot be changed.\n\n**A workflow has one draft and any number of published versions.** The draft is the only\nmutable document; a published version cannot be revised by anybody, including an owner,\nbecause a run pins the version it executed (decision **P1**, enforced in the database).\nChanging a workflow therefore means editing its draft and publishing the next version.\n\n**Two operations here are easy to get subtly wrong, and are specified accordingly.**\nSaving a draft requires an `If-Match` carrying the etag of the draft you read, so a\nsecond tab cannot silently overwrite the first — a stale one is a `409` with the current\netag in `details`. Publishing runs two validators, this service's and\n`ouroboros-engine`'s, and creates a version only when both are green; a finding from\neither is a `422` with node-anchored errors and **nothing written**.\n\nReading is every member's, `viewer` included. Creating, renaming, pausing, saving a\ndraft and publishing are `owner` or `admin` — a `member` is somebody who works here,\nand publishing changes what every future run of the workspace does."
+    },
+    {
+      "name": "skills",
+      "description": "**The skills registry** (mockup 14's skills card, BF.1,\n[#410](https://github.com/NobuData/ouroboros/issues/410)) — markdown with YAML frontmatter,\nscoped `org`, `repo` or `workflow`, versioned on WF-P.3's model: one mutable draft, and\nimmutable published versions.\n\n**The required lock is enforced here**, not only in the UI: switching off a required skill\nis `403 skill_required_locked` with the designed reason, and changing `required` is an\nowner's. **Delete is guarded** by the published workflows that reference a skill, and\n**scope moves are previewed** before they commit. The stage catalog, the inspector's P7\ncheck and the code view's `skills/` files read this registry.\n\nReading is every member's, `viewer` included. Every write is `owner` or `admin`."
     },
     {
       "name": "triage",
@@ -12888,7 +12892,7 @@
           "workflows"
         ],
         "summary": "The stage catalog — node types, their config schemas and defaults",
-        "description": "What mockup 04's **Add stage ▾** menu and the inspector render from — R.3\n([#145](https://github.com/NobuData/ouroboros/issues/145)). Hard-coding node types in the\nUI would fork the DSL, so they cross the wire instead.\n\n**One entry per node type the published DSL schema declares**, in its order: the menu\n`label`, the `glyph` and treatment `class` mockup 04 draws the node with (`.node.<class>`),\nthe `configSchema` the inspector renders its form from, and the `defaults` a freshly\ndropped node contains. A node type added to the DSL appears here with a working form and a\nneutral presentation, and no UI change.\n\n**`configSchema` is the published artifact, not a copy.** It is read at boot from\n[`schemas/workflow-dsl/v1.json`](https://github.com/NobuData/ouroboros/blob/main/schemas/workflow-dsl/v1.json)\n— the file both validators are held to — and served self-contained: the definition\n`configSchemaRef` names, plus a `$defs` holding exactly the definitions it references,\nunder their published names, so every reference inside it resolves against it.\n\n**Defaults decide only what has an obvious answer.** A model stage is dropped without a\nprompt template, a routing choice or its permissions (decision **P9**), so the validator\nflags it until the author supplies them; every other type's defaults validate as they\nstand.\n\n**`suggestions` are advice, never an enumeration** (decision **P7**). `taskRoutes` is this\nworkspace's task kinds in the routing matrix's order; `skills` is the deployment's\n`OURO_WORKFLOW_SKILL_SUGGESTIONS` until the skills registry exists. A workflow naming a\nname that is not suggested still saves and publishes — the inspector flags it as a\nwarning.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "description": "What mockup 04's **Add stage ▾** menu and the inspector render from — R.3\n([#145](https://github.com/NobuData/ouroboros/issues/145)). Hard-coding node types in the\nUI would fork the DSL, so they cross the wire instead.\n\n**One entry per node type the published DSL schema declares**, in its order: the menu\n`label`, the `glyph` and treatment `class` mockup 04 draws the node with (`.node.<class>`),\nthe `configSchema` the inspector renders its form from, and the `defaults` a freshly\ndropped node contains. A node type added to the DSL appears here with a working form and a\nneutral presentation, and no UI change.\n\n**`configSchema` is the published artifact, not a copy.** It is read at boot from\n[`schemas/workflow-dsl/v1.json`](https://github.com/NobuData/ouroboros/blob/main/schemas/workflow-dsl/v1.json)\n— the file both validators are held to — and served self-contained: the definition\n`configSchemaRef` names, plus a `$defs` holding exactly the definitions it references,\nunder their published names, so every reference inside it resolves against it.\n\n**Defaults decide only what has an obvious answer.** A model stage is dropped without a\nprompt template, a routing choice or its permissions (decision **P9**), so the validator\nflags it until the author supplies them; every other type's defaults validate as they\nstand.\n\n**`suggestions` are advice, never an enumeration** (decision **P7**). `taskRoutes` is this\nworkspace's task kinds in the routing matrix's order; `skills` is this workspace's skills\nregistry ([#410](https://github.com/NobuData/ouroboros/issues/410)) — every skill that is\nnot a draft and has a published version, by slug. A workflow naming a name that is not\nsuggested still saves and publishes — the inspector flags it as a warning, and for skills\nthat warning is registry truth: the skill genuinely does not exist here.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
         "operationId": "readWorkflowStageCatalog",
         "parameters": [
           {
@@ -13110,7 +13114,7 @@
           "workflows"
         ],
         "summary": "The code editor's symbol table — completions and hover docs",
-        "description": "What mockup 05's code editor completes and documents from — W.1\n([#177](https://github.com/NobuData/ouroboros/issues/177)). Decision **C5**: editor\nintelligence from what is already known statically, not from a language server.\n\n**Scopes** say what to offer at each place in a workflow file: `stage.llm.options` is a\nmodel stage's option keys and nothing else, `stage.openPr.merge` its merge methods,\n`predicate.effort` the methods after `i.effort.`. **Symbols** say what a hover card\nshows: a signature in coloured runs and, when the schema has one, a doc line.\n\n**Nothing is invented.** The grammar names the words and where each lives in\n[`schemas/workflow-dsl/v1.json`](https://github.com/NobuData/ouroboros/blob/main/schemas/workflow-dsl/v1.json),\nand every type, value and `doc` is read from that schema at boot. A symbol whose schema\nlocation has no description has no `doc`, and a name the table does not list has no\ncard.\n\n**Suggestions are advice** (decision **P7**). `route.task` offers this workspace's task\nkinds in the routing matrix's order and `stage.llm.skill` the deployment's\n`OURO_WORKFLOW_SKILL_SUGGESTIONS`, each marked `suggestion: true`. They are the names the\nstage catalog suggests, from the same read.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "description": "What mockup 05's code editor completes and documents from — W.1\n([#177](https://github.com/NobuData/ouroboros/issues/177)). Decision **C5**: editor\nintelligence from what is already known statically, not from a language server.\n\n**Scopes** say what to offer at each place in a workflow file: `stage.llm.options` is a\nmodel stage's option keys and nothing else, `stage.openPr.merge` its merge methods,\n`predicate.effort` the methods after `i.effort.`. **Symbols** say what a hover card\nshows: a signature in coloured runs and, when the schema has one, a doc line.\n\n**Nothing is invented.** The grammar names the words and where each lives in\n[`schemas/workflow-dsl/v1.json`](https://github.com/NobuData/ouroboros/blob/main/schemas/workflow-dsl/v1.json),\nand every type, value and `doc` is read from that schema at boot. A symbol whose schema\nlocation has no description has no `doc`, and a name the table does not list has no\ncard.\n\n**Suggestions are advice** (decision **P7**). `route.task` offers this workspace's task\nkinds in the routing matrix's order and `stage.llm.skill` this workspace's published,\nnon-draft skills from the registry (#410), each marked `suggestion: true`. They are the\nnames the stage catalog suggests, from the same read.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
         "operationId": "readWorkflowCodeSymbols",
         "parameters": [
           {
@@ -13274,7 +13278,7 @@
           "workflows"
         ],
         "summary": "The code view's explorer — the files the project has",
-        "description": "What mockup 05's explorer lists — U.3\n([#167](https://github.com/NobuData/ouroboros/issues/167)). Decision **C6**: the tree is\nregistry-backed and honest.\n\n**A `workflows/<slug>.loop.ts` per workflow on the rail**, in the rail's order and with its\nstatus, so a paused workflow draws its err-dot here as it does on the rail. Archived\nworkflows are absent, as they are from the rail. **Then `ouroboros.config.ts`**, read-only.\n\n**Directories are not entries.** A client groups files by the directory in their `path`,\nso an empty directory cannot be served: mockup 05's `skills/` and `lib/` appear when a file\nunder them exists (X.2, [#181](https://github.com/NobuData/ouroboros/issues/181)), not as\nplaceholder rows before then.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "description": "What mockup 05's explorer lists — U.3\n([#167](https://github.com/NobuData/ouroboros/issues/167)). Decision **C6**: the tree is\nregistry-backed and honest.\n\n**A `workflows/<slug>.loop.ts` per workflow on the rail**, in the rail's order and with its\nstatus, so a paused workflow draws its err-dot here as it does on the rail. Archived\nworkflows are absent, as they are from the rail. **Then a `skills/<slug>.skill.md` per\nskill in the registry**, by slug, drafts included (X.2,\n[#181](https://github.com/NobuData/ouroboros/issues/181), delivered by\n[#410](https://github.com/NobuData/ouroboros/issues/410)) — opened and saved through\n`GET|PUT /api/v1/skills/{slug}/code`. **Then `ouroboros.config.ts`**, read-only.\n\n**Directories are not entries.** A client groups files by the directory in their `path`,\nso an empty directory cannot be served: `skills/` appears when the workspace has a skill,\nand mockup 05's `lib/` when a file under it exists, not as placeholder rows before then.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
         "operationId": "readWorkflowCodeTree",
         "parameters": [
           {
@@ -13304,6 +13308,13 @@
                       "readOnly": false,
                       "slug": "hotfix-p0",
                       "status": "paused"
+                    },
+                    {
+                      "path": "skills/hil-safety.skill.md",
+                      "kind": "skill",
+                      "readOnly": false,
+                      "slug": "hil-safety",
+                      "status": null
                     },
                     {
                       "path": "ouroboros.config.ts",
@@ -15097,6 +15108,1436 @@
           },
           "502": {
             "description": "`engine_unavailable` — `ouroboros-engine` could not validate the definition. Nothing\nstands in for its opinion, so the validation is refused rather than answered green.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "Mockup 14's skills card — every skill, and the active count",
+        "description": "The knowledge page's skills table — BF.1 ([#410](https://github.com/NobuData/ouroboros/issues/410)).\nEvery skill of the workspace by slug, with its scope and referent, its switch, the lock\n(`required` — the locked switch's `required — cannot disable`), the draft tint, its origin,\nand the version in force with when it was published (`v12 · 2d ago`).\n\n**`active` counts what context assembly could inject** — enabled, not a draft, published —\nso a draft skill is shown and never counted.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "listSkills",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The skills.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "+ New skill — a skill and its first draft",
+        "description": "**+ New skill**. The document is markdown with YAML frontmatter; its `name` names the skill\nand, unless `slug` is sent, is what the slug is built from. `scope` defaults to what the\nfrontmatter declares, then to `org`; `repo` scope needs `repoRef`, `workflow` scope a\n`workflowId` of this workspace. Nothing is published: the editor opens on the draft, and the\nfirst publish makes v1.\n\n**`owner` or `admin`.**\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "createSkill",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSkillBody"
+              },
+              "example": {
+                "text": "---\nname: power-budget-checks\ndescription: Flag changes that raise idle current above 120 µA\n---\n\nMeasure idle current on the bench DK before and after.",
+                "scope": "repo",
+                "repoRef": "acme-robotics/helios-firmware"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The skill and its draft; no version yet.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to\nread and an administrator's to change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`skill_slug_taken` — a skill with that slug already exists in this workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`skill_document_invalid` — the document does not read (see `PUT …/draft`). `skill_slug_required`\nwhen the name yields no slug and none was sent. `skill_scope_invalid` for a referent missing,\nsuperfluous or not this workspace's. `skill_scope_mismatch` when the frontmatter declares\nanother scope than the one asked for. `validation_failed` for a malformed body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills/stats": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "The Used-by column, counted over a stated window",
+        "description": "Mockup 14's **Used by** — `61% of runs`, `every run`, `every PR`, `physical tests`, `—` —\ncounted from the injection records context assembly wrote (V071), never stored. Over the runs\ncontext was assembled for in the window and in the skill's scope: none carried it is `—`,\nall did is `every run`, exactly those that opened a PR is `every PR`, exactly those with HIL\nmeasurements is `physical tests`, otherwise the rounded share. `injections` counts manifests\nof every consumer. **The window is stated** in `window`, 30 days unless `days` says otherwise.\n\n**A draft is never active**: its label is `—` and `active` is `false`, whatever was recorded.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "readSkillStats",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "days",
+            "in": "query",
+            "required": false,
+            "description": "The window, in whole days back from now. 1–365; 30 when absent.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 365
+            },
+            "example": 30
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The window and every skill's figures.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillStats"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are\na member of. The two are deliberately one answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a field is missing, has the wrong type, or is out of range;\n`details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{slug}": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "One skill, a version of it, and its draft slot",
+        "description": "One skill: its table row, the version in force (or the one `?version=` names), and its draft\nslot. `draftEtag` is always present — `none` for an empty slot — and is the `If-Match` of the\nnext `PUT …/draft` or `PUT …/code`.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "readSkill",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "description": "A published version to read instead of the one in force. A number that names no\nversion of this skill is a `404 skill_version_not_found`.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 12
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The skill.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a field is missing, has the wrong type, or is out of range;\n`details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "The switch, the lock and the draft flag",
+        "description": "**The required lock is enforced here.** Switching off a required skill is a `403` with the\ndesigned reason — `skill_required_locked`, *\"required by policy — cannot disable\"*,\n`details.reason: required_by_policy` — for every role, owner included, and V069's\n`skills_required_enabled` holds it once more beneath. **Changing `required` is an owner's**:\nanybody else sending a different value is `403 skill_required_owner_only`. Making a skill\nrequired switches it on. `draft: false` promotes a draft skill, which needs a published\nversion; `draft: true` returns one to draft, and a draft is never injected. An explicit `null`\nis refused: it is no switch position.\n\n**`owner` or `admin`.**\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "updateSkill",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSkillBody"
+              },
+              "example": {
+                "enabled": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The skill after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`skill_required_locked` — the skill is required and this would switch it off; `details.reason`\nis `required_by_policy`. `skill_required_owner_only` — only an owner may change `required`.\n`forbidden` — the caller is not `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_required_locked",
+                  "message": "required by policy — cannot disable",
+                  "details": {
+                    "slug": "hil-safety",
+                    "reason": "required_by_policy"
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`skill_unpublished` — promoting a skill out of draft needs a published version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`skill_required_draft` — a draft cannot be required. `validation_failed` for a field that is\nnot a boolean.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "Delete a skill — guarded",
+        "description": "**Refused while a published workflow references it.** A skill reference is a validated string\n(decision **P7**), so a delete that went through would leave every workflow naming the skill\nwith a stage that injects nothing. The refusal names each workflow whose version in force\nreferences it, so the person knows what to fix. A required skill cannot be deleted either.\nIts versions go with it.\n\n**`owner` or `admin`.**\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "deleteSkill",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted, with its version history."
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`skill_required_locked` — the skill is required (`details.reason: required_by_policy`).\n`forbidden` — the caller is not `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`skill_referenced` — published workflows reference the skill; `details.workflows` names each\n(`id`, `slug`, `name`, and the `version` in force that holds the reference).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_referenced",
+                  "message": "This skill is referenced by published workflows (feature-loop, standard-fix). Remove the references first.",
+                  "details": {
+                    "slug": "repo-map",
+                    "workflows": [
+                      {
+                        "id": "5eed0029-0000-4000-8000-000000000002",
+                        "slug": "feature-loop",
+                        "name": "Feature loop",
+                        "version": 1
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a field is missing, has the wrong type, or is out of range;\n`details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{slug}/draft": {
+      "put": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "Draft-save — guarded by If-Match",
+        "description": "WF-P.3's draft-save, for a skill: the whole document, markdown with frontmatter, written into\nthe one mutable draft if `If-Match` still admits it. A save that does not read is refused whole\nand the stored draft is untouched. Publishing is what makes a version.\n\n**`owner` or `admin`.**\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "saveSkillDraft",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The draft slot's etag this document was edited from — `draftEtag` from\n`GET …/{slug}`, `etag` from a draft or a file, or `none` for an empty slot. `*`\nopts out of the guard. Missing is `400 skill_draft_etag_required`; stale is\n`409 skill_draft_conflict`.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "none"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveSkillDocumentBody"
+              },
+              "example": {
+                "text": "---\nname: zephyr-conventions\ndescription: Kconfig, devicetree & ISR-safety house rules\nload: on_trigger\ntriggers:\n  - Kconfig\n  - ISR\n---\n\n# Zephyr conventions\n\nPrefer `k_msgq` over `k_fifo` in ISR paths."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The draft after the write, with the etag for the next save.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillDraft"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. `skill_draft_etag_required` — no `If-Match`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to\nread and an administrator's to change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`skill_draft_conflict` — the draft moved since the document was read (`details.expected`,\n`details.current`). Reload, then save again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`skill_document_invalid` — the document does not read as a skill: no opening `---`, an\nunclosed frontmatter, YAML that does not parse, or a frontmatter outside V069's typed shape\n(`name` and `description` required; `scope`, `load`, `triggers`, `provenance` checked).\n`details.issues` anchors each on its line. Nothing was written. `validation_failed` for a\nbody that is not `{text}`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_document_invalid",
+                  "message": "This file does not read as a skill, so it was not saved. The draft is unchanged.",
+                  "details": {
+                    "issues": [
+                      {
+                        "path": "load",
+                        "line": 4,
+                        "message": "load: load: on_trigger needs at least one trigger"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{slug}/publish": {
+      "post": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "Publish the draft as the next immutable version",
+        "description": "The draft becomes the next version, dense from 1, and the version in force; published versions\nare immutable for every role (V069's trigger). The frontmatter's `name` and `description`\nbecome the table row's. A draft that declares a `scope` must declare the skill's own. `200`:\nthe version is read back through `GET …/{slug}?version=`.\n\n**`owner` or `admin`.**\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "publishSkill",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PublishSkillBody"
+              },
+              "example": {
+                "changeNote": "Drop the legacy-timer rule for Zephyr 4.1."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The version now in force.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillVersion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to\nread and an administrator's to change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`skill_draft_absent` — nothing to publish. `skill_draft_conflict` — the draft changed while\nit was being checked. `skill_publish_conflict` — somebody published first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`skill_document_invalid` — the draft's frontmatter is incomplete or its body empty.\n`skill_scope_mismatch` — the draft declares another scope than the skill's\n(`details.declared`, `details.actual`). `validation_failed` for a malformed body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{slug}/versions": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "A skill's history, newest first",
+        "description": "The published versions, newest first, without their documents — one is read by number through\n`GET …/{slug}?version=`. `isCurrent` marks the version in force.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "listSkillVersions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillVersionPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a field is missing, has the wrong type, or is out of range;\n`details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{slug}/scope/preview": {
+      "post": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "What a scope move would do — before it is committed",
+        "description": "Moving a skill between `org`, `repo` and `workflow` changes what it applies to. The preview\nsays how: the repositories and workflows the move **gains and loses**, every published workflow\nreferencing the skill and whether the move leaves it **out of reach**, and every skill already\nat the destination with the **same name** (case-insensitive) — a clash the commit must resolve\nexplicitly. Its `previewToken` is what `POST …/scope` sends back. Writes nothing, so every\nmember may ask; `200`.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "previewSkillScopeMove",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SkillScopeTarget"
+              },
+              "example": {
+                "scope": "org"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The preview.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillScopePreview"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`skill_scope_invalid` — the referent is missing, superfluous or not this workspace's, or the\nskill already applies there. `validation_failed` for a malformed body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{slug}/scope": {
+      "post": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "Commit a previewed scope move",
+        "description": "The move the preview described, and only that: the preview is recomputed under a lock and its\ntoken compared with `previewToken`, so a move that would now do something else is refused\nrather than committed unseen. A preview showing clashes needs `resolve: keep_both`. A draft\ndeclaring the old scope is brought along, so it can still publish. `200`.\n\n**`owner` or `admin`.**\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "moveSkillScope",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MoveSkillScopeBody"
+              },
+              "example": {
+                "scope": "org",
+                "previewToken": "9c1f4e2a7b3d6c5e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6",
+                "resolve": "keep_both"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The skill in its new scope.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillSummary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to\nread and an administrator's to change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`skill_scope_preview_stale` — what the move would do changed since the preview; preview\nagain. `skill_scope_conflict` — the preview showed clashes (`details.clashes`) and `resolve`\nwas not `keep_both`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`skill_scope_invalid` — as the preview. `validation_failed` for a malformed body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/skills/{slug}/code": {
+      "get": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "A skill as a file of the code view",
+        "description": "`skills/<slug>.skill.md` in mockup 05's editor (X.2, [#181](https://github.com/NobuData/ouroboros/issues/181)):\nthe same file shape and `If-Match` guard as `GET /api/v1/workflows/{slug}/code`, so skills\nedit in the same frame as workflows. Without `?version=` the file is the draft, or the version\nin force when there is no draft — editable either way, and the first save creates the draft.\nWith `?version=` it is that published version, `readOnly`.\n\n**Every member may read it**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "readSkillCode",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "name": "version",
+            "in": "query",
+            "required": false,
+            "description": "A published version to read instead of the one in force. A number that names no\nversion of this skill is a `404 skill_version_not_found`.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "example": 12
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The file.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillCode"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`skill_draft_absent` — the skill has neither a draft nor a published version.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a field is missing, has the wrong type, or is out of range;\n`details.fields` names each.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "skills"
+        ],
+        "summary": "Save the file into the draft — guarded by If-Match",
+        "description": "The code view's save: `PUT …/draft`, answered as a file. A save here moves the draft etag the\ndetail and the draft-save carry, so a stale save in either is a `409`.\n\n**`owner` or `admin`.**\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "saveSkillCode",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SkillSlug"
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "description": "The draft slot's etag this document was edited from — `draftEtag` from\n`GET …/{slug}`, `etag` from a draft or a file, or `none` for an empty slot. `*`\nopts out of the guard. Missing is `400 skill_draft_etag_required`; stale is\n`409 skill_draft_conflict`.",
+            "schema": {
+              "type": "string"
+            },
+            "example": "none"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveSkillDocumentBody"
+              },
+              "example": {
+                "text": "---\nname: zephyr-conventions\ndescription: Kconfig, devicetree & ISR-safety house rules\nload: on_trigger\ntriggers:\n  - Kconfig\n  - ISR\n---\n\n# Zephyr conventions\n\nPrefer `k_msgq` over `k_fifo` in ISR paths."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The file as stored, with the draft's new etag.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SkillCode"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none. `skill_draft_etag_required` — no `If-Match`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller's role is not `owner` or `admin`. Skills are every member's to\nread and an administrator's to change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`skill_not_found` — no skill with that slug, **or none this caller may know about**;\n`details.slug` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_not_found",
+                  "message": "No such skill.",
+                  "details": {
+                    "slug": "hil-safety"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`skill_draft_conflict` — the draft moved since the document was read (`details.expected`,\n`details.current`). Reload, then save again.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`skill_document_invalid` — the document does not read as a skill: no opening `---`, an\nunclosed frontmatter, YAML that does not parse, or a frontmatter outside V069's typed shape\n(`name` and `description` required; `scope`, `load`, `triggers`, `provenance` checked).\n`details.issues` anchors each on its line. Nothing was written. `validation_failed` for a\nbody that is not `{text}`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "skill_document_invalid",
+                  "message": "This file does not read as a skill, so it was not saved. The draft is unchanged.",
+                  "details": {
+                    "issues": [
+                      {
+                        "path": "load",
+                        "line": 4,
+                        "message": "load: load: on_trigger needs at least one trigger"
+                      }
+                    ]
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
             "content": {
               "application/json": {
                 "schema": {
@@ -22939,6 +24380,19 @@
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
         },
         "example": "standard-fix"
+      },
+      "SkillSlug": {
+        "name": "slug",
+        "in": "path",
+        "required": true,
+        "description": "The skill by its slug — `skills.slug`, lower-case words separated by single hyphens, at\nmost 64 characters (V069), the name a workflow's `skill:` references. Anything that could\nnot be a slug is a `422` naming the field; a slug that names nothing *this caller may see*\nis a `404`.",
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "example": "hil-safety"
       },
       "ConnectionId": {
         "name": "id",
@@ -39692,7 +41146,7 @@
         "properties": {
           "skills": {
             "type": "array",
-            "description": "The deployment's `OURO_WORKFLOW_SKILL_SUGGESTIONS`, until the skills registry exists.",
+            "description": "This workspace's skills registry (#410) — every skill that is not a draft and has a\npublished version, by slug. Empty when the workspace has none, and then every skill a\nworkflow names is flagged as unknown.",
             "items": {
               "type": "string",
               "minLength": 1,
@@ -40782,6 +42236,7 @@
             "type": "string",
             "examples": [
               "workflows/hotfix-p0.loop.ts",
+              "skills/hil-safety.skill.md",
               "ouroboros.config.ts"
             ]
           },
@@ -40789,9 +42244,10 @@
             "type": "string",
             "enum": [
               "workflow",
-              "config"
+              "config",
+              "skill"
             ],
-            "description": "A workflow's file, or the read-only configuration projection."
+            "description": "A workflow's file, the read-only configuration projection, or a skill's\n`skills/<slug>.skill.md` (X.2, [#410](https://github.com/NobuData/ouroboros/issues/410))\n— read and saved through `GET|PUT /api/v1/skills/{slug}/code`."
           },
           "readOnly": {
             "type": "boolean",
@@ -40802,7 +42258,7 @@
               "string",
               "null"
             ],
-            "description": "The workflow's slug, which `GET /api/v1/workflows/{slug}/code` reads; `null` for the\nconfiguration.",
+            "description": "The workflow's slug, which `GET /api/v1/workflows/{slug}/code` reads, or the skill's,\nwhich `GET /api/v1/skills/{slug}/code` reads; `null` for the configuration.",
             "examples": [
               "hotfix-p0"
             ]
@@ -40816,7 +42272,916 @@
                 "type": "null"
               }
             ],
-            "description": "The workflow's status, so `paused` draws the rail's err-dot; `null` for the\nconfiguration."
+            "description": "The workflow's status, so `paused` draws the rail's err-dot; `null` for the\nconfiguration and for a skill."
+          }
+        }
+      },
+      "SkillScope": {
+        "type": "string",
+        "title": "SkillScope",
+        "enum": [
+          "org",
+          "repo",
+          "workflow"
+        ],
+        "description": "Where a skill applies (V069). Closest scope wins on conflict (decision **K8**); the\nreferent a scope needs is `repoRef` for `repo` and `workflow` for `workflow`."
+      },
+      "SkillWorkflowRef": {
+        "type": "object",
+        "title": "SkillWorkflowRef",
+        "description": "A workflow, as a skill names it.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "slug"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string",
+            "examples": [
+              "standard-fix"
+            ]
+          }
+        }
+      },
+      "SkillTarget": {
+        "type": "object",
+        "title": "SkillTarget",
+        "description": "Where a skill applies — its scope and that scope's referent.",
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "repoRef",
+          "workflow"
+        ],
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/SkillScope"
+          },
+          "repoRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`owner/name`, exactly when `scope` is `repo`.",
+            "examples": [
+              "acme-robotics/helios-firmware"
+            ]
+          },
+          "workflow": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SkillWorkflowRef"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The workflow, exactly when `scope` is `workflow`."
+          }
+        }
+      },
+      "SkillSummary": {
+        "type": "object",
+        "title": "SkillSummary",
+        "description": "One row of mockup 14's skills table (BF.1,\n[#410](https://github.com/NobuData/ouroboros/issues/410)).",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "description",
+          "scope",
+          "repoRef",
+          "workflow",
+          "enabled",
+          "required",
+          "draft",
+          "origin",
+          "currentVersion",
+          "publishedAt",
+          "active",
+          "path",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string",
+            "description": "What a workflow's `skill:` names. Lower-case kebab, unique per workspace.",
+            "examples": [
+              "hil-safety"
+            ]
+          },
+          "name": {
+            "type": "string",
+            "examples": [
+              "hil-safety"
+            ]
+          },
+          "description": {
+            "type": "string",
+            "examples": [
+              "Hardware-in-loop interlocks before any motor spins"
+            ]
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SkillScope"
+          },
+          "repoRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "acme-robotics/helios-firmware"
+            ]
+          },
+          "workflow": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SkillWorkflowRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "enabled": {
+            "type": "boolean",
+            "description": "The switch."
+          },
+          "required": {
+            "type": "boolean",
+            "description": "The locked switch — `required — cannot disable`. Switching it off is\n`403 skill_required_locked`; changing it is an owner's."
+          },
+          "draft": {
+            "type": "boolean",
+            "description": "The tinted row. A draft is never injected and never counted as active."
+          },
+          "origin": {
+            "type": "string",
+            "enum": [
+              "authored",
+              "imported",
+              "generated"
+            ],
+            "description": "`generated` is `repo-map`, rebuilt nightly — the `auto-generated nightly` tag."
+          },
+          "currentVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The version in force — the `v12` of `v12 · 2d ago` — or `null` before a publish.",
+            "examples": [
+              12
+            ]
+          },
+          "publishedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the version in force was published — the `2d ago`."
+          },
+          "active": {
+            "type": "boolean",
+            "description": "Whether context assembly could inject it — enabled, not a draft, published."
+          },
+          "path": {
+            "type": "string",
+            "description": "Where the code view opens it.",
+            "examples": [
+              "skills/hil-safety.skill.md"
+            ]
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SkillList": {
+        "type": "object",
+        "title": "SkillList",
+        "description": "Mockup 14's skills card.",
+        "additionalProperties": false,
+        "required": [
+          "skills",
+          "active"
+        ],
+        "properties": {
+          "skills": {
+            "type": "array",
+            "description": "Every skill of the workspace, by slug.",
+            "items": {
+              "$ref": "#/components/schemas/SkillSummary"
+            }
+          },
+          "active": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "The card's `6 active` — drafts never counted.",
+            "examples": [
+              5
+            ]
+          }
+        }
+      },
+      "SkillFrontmatter": {
+        "type": "object",
+        "title": "SkillFrontmatter",
+        "description": "A version's frontmatter, parsed and typed — V069's `skill_frontmatter_typed`. A version\nstored by an import or a seed may lack `name` and `description`, which this service\nrequires of every document it writes.",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 300
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SkillScope"
+          },
+          "load": {
+            "type": "string",
+            "enum": [
+              "always",
+              "on_trigger"
+            ]
+          },
+          "triggers": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "provenance": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "source"
+            ],
+            "properties": {
+              "source": {
+                "type": "string",
+                "minLength": 1,
+                "examples": [
+                  "CLAUDE.md"
+                ]
+              },
+              "section": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        }
+      },
+      "SkillVersion": {
+        "type": "object",
+        "title": "SkillVersion",
+        "description": "One published version, whole. Immutable.",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "frontmatter",
+          "body",
+          "publishedAt",
+          "publishedBy",
+          "changeNote"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1,
+            "examples": [
+              13
+            ]
+          },
+          "frontmatter": {
+            "$ref": "#/components/schemas/SkillFrontmatter"
+          },
+          "body": {
+            "type": "string",
+            "description": "The markdown after the frontmatter."
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "publishedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who published it; `null` for a seed, an import or the generator."
+          },
+          "changeNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          }
+        }
+      },
+      "SkillVersionSummary": {
+        "type": "object",
+        "title": "SkillVersionSummary",
+        "description": "One row of a skill's history — everything but the document.",
+        "additionalProperties": false,
+        "required": [
+          "version",
+          "publishedAt",
+          "publishedBy",
+          "changeNote",
+          "isCurrent"
+        ],
+        "properties": {
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "publishedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "publishedBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "changeNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500
+          },
+          "isCurrent": {
+            "type": "boolean",
+            "description": "Whether this is the version in force."
+          }
+        }
+      },
+      "SkillVersionPage": {
+        "type": "object",
+        "title": "SkillVersionPage",
+        "description": "One page of a skill's history, newest first — the",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillVersionSummary"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "SkillDraft": {
+        "type": "object",
+        "title": "SkillDraft",
+        "description": "The mutable draft — WF-P.3's draft slot, for a skill.",
+        "additionalProperties": false,
+        "required": [
+          "etag",
+          "frontmatter",
+          "body",
+          "updatedAt"
+        ],
+        "properties": {
+          "etag": {
+            "type": "string",
+            "description": "The `If-Match` of the next save. Opaque."
+          },
+          "frontmatter": {
+            "$ref": "#/components/schemas/SkillFrontmatter"
+          },
+          "body": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "SkillDetail": {
+        "type": "object",
+        "title": "SkillDetail",
+        "description": "One skill, the version asked for (or the one in force), and its draft slot.",
+        "additionalProperties": false,
+        "required": [
+          "skill",
+          "version",
+          "draft",
+          "draftEtag"
+        ],
+        "properties": {
+          "skill": {
+            "$ref": "#/components/schemas/SkillSummary"
+          },
+          "version": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SkillVersion"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` before a first publish."
+          },
+          "draft": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/SkillDraft"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "`null` when there is no draft — after a publish, until the next edit."
+          },
+          "draftEtag": {
+            "type": "string",
+            "description": "The draft slot's etag, always — `none` for an empty slot.",
+            "examples": [
+              "none"
+            ]
+          }
+        }
+      },
+      "SkillCode": {
+        "type": "object",
+        "title": "SkillCode",
+        "description": "`skills/<slug>.skill.md` as the code view opens it — `WorkflowCode`'s shape for a skill\n(X.2, [#181](https://github.com/NobuData/ouroboros/issues/181)).",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "slug",
+          "text",
+          "etag",
+          "readOnly",
+          "version",
+          "currentVersion"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "examples": [
+              "skills/zephyr-conventions.skill.md"
+            ]
+          },
+          "slug": {
+            "type": "string"
+          },
+          "text": {
+            "type": "string",
+            "description": "The markdown with its `---`-fenced YAML frontmatter."
+          },
+          "etag": {
+            "type": "string",
+            "description": "The draft slot's etag — the `If-Match` of the next save."
+          },
+          "readOnly": {
+            "type": "boolean",
+            "description": "`true` for a published version read with `?version=`."
+          },
+          "version": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1,
+            "description": "The published version the text is, or `null` for the draft."
+          },
+          "currentVersion": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 1
+          }
+        }
+      },
+      "CreateSkillBody": {
+        "type": "object",
+        "title": "CreateSkillBody",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200000,
+            "description": "The whole document, markdown with YAML frontmatter."
+          },
+          "slug": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/SkillScope"
+          },
+          "repoRef": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "`owner/name` — exactly for `repo` scope."
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "A workflow of this workspace — exactly for `workflow` scope."
+          }
+        }
+      },
+      "SaveSkillDocumentBody": {
+        "type": "object",
+        "title": "SaveSkillDocumentBody",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200000,
+            "description": "The whole document, markdown with YAML frontmatter."
+          }
+        }
+      },
+      "PublishSkillBody": {
+        "type": "object",
+        "title": "PublishSkillBody",
+        "additionalProperties": false,
+        "properties": {
+          "changeNote": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          }
+        }
+      },
+      "UpdateSkillBody": {
+        "type": "object",
+        "title": "UpdateSkillBody",
+        "description": "Any subset of the three. An explicit `null` is refused.",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "required": {
+            "type": "boolean",
+            "description": "Owner-only, whichever way it is set."
+          },
+          "draft": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SkillScopeTarget": {
+        "type": "object",
+        "title": "SkillScopeTarget",
+        "description": "Where a skill would move.",
+        "additionalProperties": false,
+        "required": [
+          "scope"
+        ],
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/SkillScope"
+          },
+          "repoRef": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "MoveSkillScopeBody": {
+        "type": "object",
+        "title": "MoveSkillScopeBody",
+        "description": "The move, as previewed.",
+        "additionalProperties": false,
+        "required": [
+          "scope",
+          "previewToken"
+        ],
+        "properties": {
+          "scope": {
+            "$ref": "#/components/schemas/SkillScope"
+          },
+          "repoRef": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "workflowId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "previewToken": {
+            "type": "string",
+            "minLength": 64,
+            "maxLength": 64,
+            "description": "The preview's `previewToken`."
+          },
+          "resolve": {
+            "type": "string",
+            "enum": [
+              "keep_both"
+            ],
+            "description": "Required when the preview showed clashes — move anyway, keeping both skills."
+          }
+        }
+      },
+      "SkillReach": {
+        "type": "object",
+        "title": "SkillReach",
+        "description": "Repositories and workflows a skill applies to.",
+        "additionalProperties": false,
+        "required": [
+          "repos",
+          "workflows"
+        ],
+        "properties": {
+          "repos": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "examples": [
+              [
+                "acme-robotics/helios-app"
+              ]
+            ]
+          },
+          "workflows": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SkillWorkflowRef"
+            }
+          }
+        }
+      },
+      "SkillReference": {
+        "type": "object",
+        "title": "SkillReference",
+        "description": "A published workflow whose version in force names the skill.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "slug",
+          "name",
+          "version"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "slug": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          }
+        }
+      },
+      "SkillScopePreview": {
+        "type": "object",
+        "title": "SkillScopePreview",
+        "description": "What a scope move would do, before it is committed.",
+        "additionalProperties": false,
+        "required": [
+          "slug",
+          "from",
+          "to",
+          "reach",
+          "references",
+          "clashes",
+          "previewToken"
+        ],
+        "properties": {
+          "slug": {
+            "type": "string"
+          },
+          "from": {
+            "$ref": "#/components/schemas/SkillTarget"
+          },
+          "to": {
+            "$ref": "#/components/schemas/SkillTarget"
+          },
+          "reach": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "gains",
+              "loses"
+            ],
+            "properties": {
+              "gains": {
+                "$ref": "#/components/schemas/SkillReach"
+              },
+              "loses": {
+                "$ref": "#/components/schemas/SkillReach"
+              }
+            }
+          },
+          "references": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "workflow",
+                "outOfReach"
+              ],
+              "properties": {
+                "workflow": {
+                  "$ref": "#/components/schemas/SkillReference"
+                },
+                "outOfReach": {
+                  "type": "boolean",
+                  "description": "Whether the move leaves the skill no longer applying to this workflow."
+                }
+              }
+            }
+          },
+          "clashes": {
+            "type": "array",
+            "description": "Skills at the destination with the same name — non-empty needs `resolve`.",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "slug",
+                "name"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "slug": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "previewToken": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{64}$"
+          }
+        }
+      },
+      "SkillStats": {
+        "type": "object",
+        "title": "SkillStats",
+        "description": "The Used-by column, counted from injection records over a stated window.",
+        "additionalProperties": false,
+        "required": [
+          "window",
+          "skills"
+        ],
+        "properties": {
+          "window": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "days",
+              "from",
+              "to"
+            ],
+            "properties": {
+              "days": {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 365,
+                "examples": [
+                  30
+                ]
+              },
+              "from": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "to": {
+                "type": "string",
+                "format": "date-time"
+              }
+            }
+          },
+          "skills": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "slug",
+                "active",
+                "usedBy",
+                "injections"
+              ],
+              "properties": {
+                "slug": {
+                  "type": "string"
+                },
+                "active": {
+                  "type": "boolean",
+                  "description": "A draft is never active."
+                },
+                "usedBy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "label",
+                    "carried",
+                    "inScope"
+                  ],
+                  "properties": {
+                    "label": {
+                      "type": "string",
+                      "examples": [
+                        "61% of runs",
+                        "every run",
+                        "every PR",
+                        "physical tests",
+                        "—"
+                      ]
+                    },
+                    "carried": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Runs in the window whose manifests carried a version of the skill."
+                    },
+                    "inScope": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "description": "Runs in the window, in the skill's scope, context was assembled for."
+                    }
+                  }
+                },
+                "injections": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Manifests in the window carrying a version of it, every consumer."
+                }
+              }
+            }
           }
         }
       },

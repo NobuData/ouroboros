@@ -92,6 +92,7 @@ import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
+import { SkillsModule } from "../skills/skills.module";
 import { WorkflowCatalogRepository } from "./catalog.repository";
 import { readPublishedDslSchema } from "./catalog.schema";
 import { PUBLISHED_DSL_SCHEMA, WorkflowCatalogService } from "./catalog.service";
@@ -109,7 +110,9 @@ import { WorkflowsRepository } from "./workflows.repository";
 import { WorkflowsService } from "./workflows.service";
 
 @Module({
-  imports: [DbModule, EngineModule],
+  // `SkillsModule` for the registry's three reads (#410): the catalog's skill names, P7's
+  // reference check, and the code view's `skills/` files. It imports nothing of this module back.
+  imports: [DbModule, EngineModule, SkillsModule],
   controllers: [WorkflowsController],
   providers: [
     WorkflowsService,

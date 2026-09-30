@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**308 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
+**309 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 | **262** |
-| 🟡 **In progress** | P11, P12 | **46** of 66 |
+| 🟡 **In progress** | P11, P12 | **47** of 66 |
 | — **Not started** | P13–P17 | 0 of 126 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1541,7 +1541,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **28 issues** · 83 complexity points · order **#301–#328** · 8 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_14_KNOWLEDGE.md`, `ROADMAP_MOCKUP_13_ONBOARDING.md` (Epics BA, BB)
-> **Status:** 🟡 **In progress** — 10 of 28 issues closed
+> **Status:** 🟡 **In progress** — 11 of 28 issues closed
 
 **Goal.** Deliver the knowledge layer — authored and generated skills with versioning and scope, the fact store with its confirm/reject/re-learn lifecycle, playbooks that launch real queued runs, and the context-assembly contract the loop's consumers use — alongside onboarding's detection engine, template set and dry-run policy machinery.
 
@@ -1563,7 +1563,7 @@ the blockquote above that records what it did and what it did differently.
 | 308 | **BB.1** | ✅ [#384](https://github.com/NobuData/ouroboros/issues/384) | Repo detection service (rule packs) | ouroboros-rest | L | Q.3, BA.1 |
 | 309 | **BB.3** | ✅ [#386](https://github.com/NobuData/ouroboros/issues/386) | Template instantiation service | ouroboros-rest | M | P.3, BA.2 |
 | 310 | **BE.5** | ✅ [#409](https://github.com/NobuData/ouroboros/issues/409) | Knowledge seeds — mockup-14 parity + probes | ouroboros-db, .github | M | 3.6, BE.2, BE.4 |
-| 311 | **BF.1** | [#410](https://github.com/NobuData/ouroboros/issues/410) | Skills service & registry integration | ouroboros-rest | M | R.3, BE.1 |
+| 311 | **BF.1** | ✅ [#410](https://github.com/NobuData/ouroboros/issues/410) | Skills service & registry integration | ouroboros-rest | M | R.3, BE.1 |
 | 312 | **BF.2** | [#411](https://github.com/NobuData/ouroboros/issues/411) | Fact lifecycle & staleness sweep | ouroboros-rest | M | BE.2 |
 | 313 | **BB.4** | [#387](https://github.com/NobuData/ouroboros/issues/387) | Safe-first-issue picker | ouroboros-rest | M | L.3 |
 | 314 | **BF.4** | [#413](https://github.com/NobuData/ouroboros/issues/413) | Rule-file import service | ouroboros-rest | M | BB.1, BF.1 |

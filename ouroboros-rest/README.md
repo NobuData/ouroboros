@@ -120,6 +120,9 @@ $ curl http://localhost:4000/api/v1
 | `POST /api/v1/workflows/{id}/publish`               | The next immutable version, behind the zod **and** engine validators; a finding is a `422` and nothing is written |
 | `GET /api/v1/workflows/{id}/versions`               | The version history, newest first, without the documents |
 | `GET /api/v1/workflows/catalog`                     | [The stage catalog](#the-stage-catalog) (#145) — every node type's glyph, class, config schema and defaults, and advisory skill and task-route suggestions |
+| `GET POST /api/v1/skills`                           | [Skills](#skills) (#410) — the registry; **+ New skill** as a draft |
+| `…/skills/{slug}` · `…/draft` · `…/publish`         | Read, switch/lock (`required` owner-only; disabling it is the designed `403`), guarded delete; draft-save and publish |
+| `…/skills/{slug}/scope/preview` · `…/scope` · `…/code` · `/skills/stats` | Scope moves with a conflict preview; the code view's `skills/*.skill.md`; Used-by over a stated window |
 | `GET POST /api/v1/sources`                          | [Ticket sources](#pluggable-ticket-sources) (#141) — the workspace's list with masks, never values; add one, checked against its kind's schema |
 | `GET /api/v1/sources/catalog`                       | Every registered kind as the form it takes — `configSchema()` rendered to fields — plus its capabilities |
 | `GET PATCH /api/v1/sources/{id}`                    | One source; rename, change its settings, pause or resume it — `owner`/`admin` only |
@@ -272,7 +275,6 @@ service never starts half-configured.
 | `OURO_ARTIFACT_MAX_JOB_BYTES` | The per-job cap each offer carries; files past it are listed as skipped |     no — `268435456`     | at least the per-file cap, ≤ 64 GiB |
 | `OURO_ARTIFACT_RETENTION_DAYS` | Days an artifact is kept — its `retained_until` |     no — `30`     | 1–3650 |
 | `OURO_LOCAL_PROVIDER_URLS`  | Where this deployment's **local** model providers are — what a worker is told by the [internal surface](#the-internal-surface) ([#224](https://github.com/NobuData/ouroboros/issues/224)) |     no — unset     | comma-separated `kind=url` pairs; `ollama` and `openai_compatible` only, each an absolute `http(s)` URL |
-| `OURO_WORKFLOW_SKILL_SUGGESTIONS` | Skill names the [stage catalog](#the-stage-catalog) suggests to the workflow inspector ([#145](https://github.com/NobuData/ouroboros/issues/145)) — advice, never an enumeration |     no — unset     | comma-separated names, each at most 128 characters, none listed twice |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | Seconds between [provider health](#provider-health) sweeps, and the age at which a local provider's last check is stale ([#196](https://github.com/NobuData/ouroboros/issues/196)) — jittered ±25% |      no — 60       | a whole number of seconds, 10–86400 |
 | `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` | Seconds before a cloud provider's key validation is redone — deliberately much slower, because it asks a vendor rather than the operator's own machine |     no — 900      | a whole number of seconds, 60–86400 |
 | `OURO_BACKLOG_SYNC_INTERVAL_SECONDS` | Seconds between [backlog sync](#the-backlog-sync) cycles ([#102](https://github.com/NobuData/ouroboros/issues/102)) — jittered ±25%, and what the intake page's freshness tag counts from. Since [#139](https://github.com/NobuData/ouroboros/issues/139) the [ticket-source loop](#pluggable-ticket-sources) shares it: one knob for *how often does Ouroboros ask a tracker what changed*, for the one release in which two loops ask it |     no — 300      | a whole number of seconds, 60–86400 |
@@ -2890,7 +2892,7 @@ GET /api/v1/workflows/catalog
  ─▶ { schemaId: https://ouroboros.build/schemas/workflow-dsl/v1.json,
       nodeTypes: [ {type: trigger, label, glyph: ▸, class: trigger, configSchemaRef, configSchema, defaults},
                    {type: llm … ◆}, {type: infra … ▣}, {type: flow … ◇}, {type: term … ●} ],
-      suggestions: { skills: OURO_WORKFLOW_SKILL_SUGGESTIONS, taskRoutes: task_kinds in matrix order } }
+      suggestions: { skills: registry slugs (non-draft, published), taskRoutes: task_kinds in matrix order } }
 ```
 
 | Field | Where it comes from |
@@ -2900,7 +2902,7 @@ GET /api/v1/workflows/catalog
 | `label`, `glyph`, `class` | `catalog.presentation.ts` — mockup 04's `.node.<class>` treatments, held to the mockup by its spec |
 | `defaults` | `catalog.presentation.ts` — a model stage omits `prompt_template`, `routing` and `permissions` (decision **P9**) and is flagged until the author decides them; every other type's defaults validate |
 | `suggestions.taskRoutes` | The workspace's `task_kinds`, by `sort_order` — registry data, so the DSL, the catalog and the routing matrix share one vocabulary (decision **M3**) |
-| `suggestions.skills` | `OURO_WORKFLOW_SKILL_SUGGESTIONS`, until the skills registry ([#410](https://github.com/NobuData/ouroboros/issues/410)) |
+| `suggestions.skills` | The [skills registry](#skills) ([#410](https://github.com/NobuData/ouroboros/issues/410)) — every skill that is not a draft and has a published version, by slug. P7's unknown-skill warning checks the same list, so it fires only for a skill that genuinely does not exist |
 
 **The config schemas are the published artifact, not a copy.** The service reads
 `schemas/workflow-dsl/v1.json` — the file `dsl.conformance.spec.ts` compiles — and the container
@@ -3045,6 +3047,42 @@ regenerates the files. That command is refused where `CI` is set:
 ```bash
 OURO_UPDATE_GOLDENS=1 yarn jest src/modules/workflows/code.intelligence.spec.ts
 ```
+
+## Skills
+
+**`/api/v1/skills` is mockup 14's skills registry** (BF.1,
+[#410](https://github.com/NobuData/ouroboros/issues/410)) over V069's `skills` and
+`skill_versions`: markdown with YAML frontmatter, scoped `org`, `repo` or `workflow`, versioned on
+the workflow lifecycle's model — one mutable draft, immutable published versions. Every member
+reads; `owner` and `admin` write; `required` is an owner's.
+
+```
+GET    /api/v1/skills                    ─▶ { skills: [...], active }       drafts never counted as active
+POST   /api/v1/skills                    { text, slug?, scope?, repoRef?, workflowId? } ─▶ 201, a draft
+PUT    /api/v1/skills/{slug}/draft       If-Match: <etag> · { text }  ─▶ the draft   (stale ─▶ 409)
+POST   /api/v1/skills/{slug}/publish     { changeNote? } ─▶ v+1, in force; earlier versions immutable
+PATCH  /api/v1/skills/{slug}             { enabled?, required?, draft? }
+ ├ enabled: false on a required skill ─▶ 403 skill_required_locked "required by policy — cannot disable"
+ └ required changed by a non-owner    ─▶ 403 skill_required_owner_only
+DELETE /api/v1/skills/{slug}             referenced by published workflows ─▶ 409 skill_referenced {workflows}
+POST   /api/v1/skills/{slug}/scope/preview { scope, repoRef?, workflowId? } ─▶ { reach, references, clashes, previewToken }
+POST   /api/v1/skills/{slug}/scope       { …, previewToken, resolve?: keep_both } ─▶ 200 | 409 stale | 409 conflict
+GET    /api/v1/skills/stats?days=30      ─▶ { window: {days, from, to}, skills: [{ slug, active, usedBy, injections }] }
+GET|PUT /api/v1/skills/{slug}/code       skills/<slug>.skill.md — the code view's document API
+```
+
+| Rule | Where it is held |
+| --- | --- |
+| The frontmatter's shape | `skills.frontmatter.ts` checks V069's `skill_frontmatter_typed` first (plus `name` and `description`), so a bad file is a line-anchored `422 skill_document_invalid`, never a `500` |
+| The required lock | the service's designed `403` over V069's `skills_required_enabled` — a direct API call gets the same refusal the locked switch renders |
+| A reference is a string (P7) | the delete guard and the scope preview read `config.skill` out of each non-archived workflow's version in force |
+| A scope move's clash | another skill at the destination scope and referent with the same name, case-insensitive — slugs are unique per workspace, so the name is what can collide |
+| Used by | counted from V071's `context_injections` over the stated window with the BE.5 rule: `—`, `every run`, `every PR`, `physical tests`, else the rounded share |
+
+**The workflow studio reads this registry.** The stage catalog's `suggestions.skills`, the code
+symbol table's `stage.llm.skill`, and P7's unknown-skill warning are the published, non-draft
+slugs (`SkillsRegistryService`, the module's only export), and the code view's `code-tree` lists a
+`skills/<slug>.skill.md` per skill. `OURO_WORKFLOW_SKILL_SUGGESTIONS` is retired.
 
 ## Pluggable ticket sources
 

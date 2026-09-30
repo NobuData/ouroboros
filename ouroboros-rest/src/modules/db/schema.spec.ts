@@ -414,7 +414,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The ninety-third is V067's `repo_detections`, mirrored by BB.1 (#384) — the detection
     // service's card rows, and the one relabel `detected → measured` the grants allow.
-    expect(TABLE_NAMES).toHaveLength(93);
+    //
+    // The ninety-fourth to ninety-sixth are V069's `skills` and `skill_versions` and V071's
+    // `context_injections`, mirrored by BF.1 (#410) — the skills service, and the injection
+    // records its used-by stats are counted from.
+    expect(TABLE_NAMES).toHaveLength(96);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

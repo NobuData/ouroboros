@@ -11,7 +11,7 @@
  *           └ writes nothing: Validate is "check my work", not a publish (V.6, #174)
  * save    parse ─▶ check the slug ─▶ the shared guarded write
  *           └ refused whole, before anything is opened, when the file does not read
- * tree    the explorer, from the rail's statement
+ * tree    the explorer, from the rail's statement and the skills registry (X.2, #410)
  * config  ouroboros.config.ts, from the same statement
  * ```
  *
@@ -36,6 +36,7 @@
 import { Injectable } from "@nestjs/common";
 
 import type { Organization, Workflow, WorkflowVersion } from "../db/schema";
+import { SkillsRegistryService } from "../skills/skills.registry.service";
 import { WorkflowCatalogService } from "./catalog.service";
 import { loopCheckRows } from "./code.checks";
 import { printWorkflowConfig } from "./code.config";
@@ -107,6 +108,7 @@ export class WorkflowCodeService {
    *   against.
    * @param gate - The publish gate — zod, the registry, then the engine — which **Validate** runs
    *   without publishing (V.6, #174).
+   * @param skills - The skills registry, whose files the explorer lists under `skills/` (#410).
    */
   constructor(
     private readonly workflows: WorkflowsRepository,
@@ -114,6 +116,7 @@ export class WorkflowCodeService {
     private readonly lifecycle: WorkflowsService,
     private readonly catalog: WorkflowCatalogService,
     private readonly gate: WorkflowPublishGate,
+    private readonly skills: SkillsRegistryService,
   ) {}
 
   /**
@@ -284,10 +287,16 @@ export class WorkflowCodeService {
    * The explorer.
    *
    * @param organizationId - The workspace, from the tenant context.
-   * @returns A file per workflow on the rail, in the rail's order, then `ouroboros.config.ts`.
+   * @returns A file per workflow on the rail, in the rail's order, a file per skill in the
+   *   registry (X.2, #410), then `ouroboros.config.ts`.
    */
   async tree(organizationId: string): Promise<WorkflowCodeTree> {
-    return workflowCodeTree(await this.registry.registryEntries(organizationId));
+    const [rail, skills] = await Promise.all([
+      this.registry.registryEntries(organizationId),
+      this.skills.codeFiles(organizationId),
+    ]);
+
+    return workflowCodeTree(rail, skills);
   }
 
   /**

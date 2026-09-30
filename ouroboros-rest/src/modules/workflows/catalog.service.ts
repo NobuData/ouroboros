@@ -27,7 +27,7 @@
 
 import { Inject, Injectable } from "@nestjs/common";
 
-import { AppConfigService } from "../config/config.service";
+import { SkillsRegistryService } from "../skills/skills.registry.service";
 import { WorkflowCatalogRepository } from "./catalog.repository";
 import {
   stageCatalog,
@@ -57,7 +57,7 @@ export class WorkflowCatalogService {
 
   /**
    * @param repository - The workspace's task kinds.
-   * @param config - `OURO_WORKFLOW_SKILL_SUGGESTIONS`.
+   * @param skills - The skills registry (#410), whose slugs are the skill suggestions.
    * @param schema - The published workflow DSL schema.
    * @throws {DslSchemaError} If the schema lacks the node-type dispatch the catalog reads, or a
    *   location `code.grammar.ts` points at — at boot, where a schema edit the reader was not told
@@ -65,7 +65,7 @@ export class WorkflowCatalogService {
    */
   constructor(
     private readonly repository: WorkflowCatalogRepository,
-    private readonly config: AppConfigService,
+    private readonly skills: SkillsRegistryService,
     @Inject(PUBLISHED_DSL_SCHEMA) schema: JsonSchema,
   ) {
     this.schemaId = publishedSchemaId(schema);
@@ -87,8 +87,8 @@ export class WorkflowCatalogService {
    * The symbol table one workspace's code editor completes and documents from (W.1).
    *
    * @param organizationId - The workspace, from the tenant context.
-   * @returns The static table, with this workspace's task routes and the configured skills
-   *   offered as suggestions.
+   * @returns The static table, with this workspace's task routes and registry skills offered as
+   *   suggestions.
    */
   async codeSymbols(organizationId: string): Promise<CodeSymbolTable> {
     return codeSymbolTable(this.staticSymbols, await this.suggestions(organizationId));
@@ -98,8 +98,8 @@ export class WorkflowCatalogService {
    * The names one workspace's code view checks references against (W.2).
    *
    * @param organizationId - The workspace, from the tenant context.
-   * @returns The suggestions as decision **P7**'s catalogue: an empty list is left out, so it is
-   *   *not checked* rather than *nothing exists*.
+   * @returns The suggestions as decision **P7**'s catalogue: the registry's skills always, and the
+   *   task routes when there are any.
    */
   async dslCatalogue(organizationId: string): Promise<DslCatalogue> {
     return toDslCatalogue(await this.suggestions(organizationId));
@@ -109,12 +109,14 @@ export class WorkflowCatalogService {
    * What this workspace is advised to name — the one read every answer shares.
    *
    * @param organizationId - The workspace.
-   * @returns The configured skills and the workspace's task kinds, in matrix order.
+   * @returns The registry's skills, by slug, and the workspace's task kinds, in matrix order.
    */
   private async suggestions(organizationId: string): Promise<StageSuggestions> {
-    return {
-      skills: this.config.workflowSkillSuggestions,
-      taskRoutes: await this.repository.taskKindNames(organizationId),
-    };
+    const [skills, taskRoutes] = await Promise.all([
+      this.skills.catalogSlugs(organizationId),
+      this.repository.taskKindNames(organizationId),
+    ]);
+
+    return { skills, taskRoutes };
   }
 }

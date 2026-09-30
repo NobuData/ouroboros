@@ -17,9 +17,14 @@
  * and when the inspector asks whether a name is known, {@link toDslCatalogue} turns these
  * suggestions into the catalogue `dsl.references.ts` answers **warnings** from.
  *
- * An empty list means *nothing to suggest*, not *nothing exists*, so {@link toDslCatalogue}
- * leaves it out of the catalogue entirely: a deployment that configured no skills gets no
- * skill warnings, rather than one on every skill every workflow names.
+ * **Skills are registry truth** (BF.1, [#410](https://github.com/NobuData/ouroboros/issues/410)).
+ * The skill suggestions are the workspace's skills registry — every skill that is not a draft and
+ * has a published version — so {@link toDslCatalogue} always carries them: an empty registry
+ * means no skill exists, and every name a workflow references is then genuinely unknown. That is
+ * decision **P7**'s deferred behaviour upgraded; the reference itself stays a validated string.
+ *
+ * Task routes keep the older rule. An empty list there means *nothing to suggest*, not *nothing
+ * exists*, so it is left out of the catalogue and no task route is flagged.
  */
 
 import type { NodeTypeSchema } from "./catalog.schema";
@@ -31,7 +36,7 @@ export interface StageCatalogEntry extends StagePresentation, NodeTypeSchema {}
 
 /** The names the inspector offers — as suggestions, per decision **P7**. */
 export interface StageSuggestions {
-  /** Skill names, from `OURO_WORKFLOW_SKILL_SUGGESTIONS` until the skills registry (#410) lands. */
+  /** Skill slugs from the skills registry (#410) — non-draft skills with a published version. */
   readonly skills: readonly string[];
   /** The workspace's task kinds (`task_kinds`, V016), in the routing matrix's order. */
   readonly taskRoutes: readonly string[];
@@ -84,13 +89,13 @@ export function stageCatalog(
  * The suggestions, as the catalogue decision **P7**'s warnings are checked against.
  *
  * @param suggestions - The catalog's suggestions.
- * @returns A catalogue naming the non-empty lists only — see this file's header. `aliases` is
- *   never set: the catalog suggests no alias names, so it has no opinion about them — the
- *   publish gate reads the registry for itself (CH.6, #589).
+ * @returns A catalogue carrying the skills always, and the task routes when there are any — see
+ *   this file's header. `aliases` is never set: the catalog suggests no alias names, so it has no
+ *   opinion about them — the publish gate reads the registry for itself (CH.6, #589).
  */
 export function toDslCatalogue(suggestions: StageSuggestions): DslCatalogue {
   return {
-    ...(suggestions.skills.length > 0 ? { skills: suggestions.skills } : {}),
+    skills: suggestions.skills,
     ...(suggestions.taskRoutes.length > 0 ? { tasks: suggestions.taskRoutes } : {}),
   };
 }

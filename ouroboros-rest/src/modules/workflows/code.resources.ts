@@ -23,8 +23,13 @@
  *
  * Decision **C6**: one `workflows/<slug>.loop.ts` per workflow on the rail, and
  * `ouroboros.config.ts`. **Directories are not entries.** A client groups files by the directory
- * in their `path`, so an empty directory cannot be served at all, and mockup 05's `skills/` and
- * `lib/` appear on the day a file under them does (X.2, #181) rather than as placeholders now.
+ * in their `path`, so an empty directory cannot be served at all, and mockup 05's `lib/` appears on
+ * the day a file under it does rather than as a placeholder now.
+ *
+ * `skills/` is that day for skills (X.2, #181, delivered by BF.1,
+ * [#410](https://github.com/NobuData/ouroboros/issues/410)): one `skills/<slug>.skill.md` per
+ * skill in the registry, opened and saved through `GET|PUT /api/v1/skills/{slug}/code` — the same
+ * file shape and `If-Match` guard as a workflow's file, so both edit in one frame.
  *
  * ## Every file carries its span map and its diagnostics
  *
@@ -48,6 +53,7 @@ import type { CodeDiagnostic } from "./code.diagnostics";
 import type { CodeRange, WorkflowCodeErrorCode } from "./code.errors";
 import type { NodeSpan } from "./code.printer";
 import type { PublishFinding, PublishVerdict } from "./publish.gate";
+import type { SkillCodeFile } from "../skills/skills.registry.service";
 import type { WorkflowRegistryRow } from "./stats.repository";
 
 /** The directory the workflow files live in. */
@@ -157,26 +163,29 @@ export interface WorkflowCodeValidation {
   readonly engineConsulted: boolean;
 }
 
-/** What a file of the explorer is. */
-export type WorkflowCodeFileKind = "workflow" | "config";
+/** What a file of the explorer is — a workflow, the configuration, or a skill (X.2, #410). */
+export type WorkflowCodeFileKind = "workflow" | "config" | "skill";
 
 /** One file of the explorer. */
 export interface WorkflowCodeTreeFile {
-  /** Where it sits — `workflows/hotfix-p0.loop.ts`, `ouroboros.config.ts`. */
+  /** Where it sits — `workflows/hotfix-p0.loop.ts`, `skills/hil-safety.skill.md`, `ouroboros.config.ts`. */
   readonly path: string;
-  /** A workflow's file, or the configuration projection. */
+  /** A workflow's file, a skill's, or the configuration projection. */
   readonly kind: WorkflowCodeFileKind;
   /** Whether a save is refused. `true` for the configuration and nothing else. */
   readonly readOnly: boolean;
-  /** The workflow's slug — its `GET …/{slug}/code` — or `null` for the configuration. */
+  /**
+   * The workflow's slug — its `GET /api/v1/workflows/{slug}/code` — or the skill's — its
+   * `GET /api/v1/skills/{slug}/code` — or `null` for the configuration.
+   */
   readonly slug: string | null;
-  /** `active`, or `paused` for the rail's err-dot; `null` for the configuration. */
+  /** `active`, or `paused` for the rail's err-dot; `null` for the configuration and a skill. */
   readonly status: WorkflowStatus | null;
 }
 
 /** The explorer. */
 export interface WorkflowCodeTree {
-  /** The workflows in the rail's order, then `ouroboros.config.ts`. */
+  /** The workflows in the rail's order, then the skills by slug, then `ouroboros.config.ts`. */
   readonly files: readonly WorkflowCodeTreeFile[];
 }
 
@@ -307,10 +316,13 @@ export function workflowCodeValidation(
  * @param rail - The workspace's non-archived workflows in the rail's order, as
  *   `WorkflowStatsRepository.registryEntries` reads them — so the explorer and the rail cannot
  *   list different workflows.
- * @returns One file per workflow, then the configuration.
+ * @param skills - The skills registry's files, by slug (#410). Empty for a workspace with none,
+ *   which serves no `skills/` directory at all.
+ * @returns One file per workflow, one per skill, then the configuration.
  */
 export function workflowCodeTree(
   rail: readonly Pick<WorkflowRegistryRow, "slug" | "status">[],
+  skills: readonly SkillCodeFile[] = [],
 ): WorkflowCodeTree {
   return {
     files: [
@@ -320,6 +332,13 @@ export function workflowCodeTree(
         readOnly: false,
         slug: entry.slug,
         status: entry.status,
+      })),
+      ...skills.map((skill): WorkflowCodeTreeFile => ({
+        path: skill.path,
+        kind: "skill",
+        readOnly: false,
+        slug: skill.slug,
+        status: null,
       })),
       { path: CONFIG_FILE_PATH, kind: "config", readOnly: true, slug: null, status: null },
     ],

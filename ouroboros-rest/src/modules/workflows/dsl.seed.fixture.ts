@@ -35,6 +35,12 @@ export const SEED_PATH = resolve(
   "../../../../ouroboros-db/migrations/R__dev_seed_workflows.sql",
 );
 
+/** The knowledge seed migration, which writes the development workspace's skills (#409). */
+export const KNOWLEDGE_SEED_PATH = resolve(
+  __dirname,
+  "../../../../ouroboros-db/migrations/R__dev_seed_workspace_knowledge.sql",
+);
+
 /** The routing seed migration, which writes the development workspace's task kinds. */
 export const ROUTING_SEED_PATH = resolve(
   __dirname,
@@ -165,4 +171,31 @@ export function seededTaskKinds(): string[] {
     .map((row) => ({ order: Number(row[1]), name: row[2] }))
     .sort((a, b) => a.order - b.order)
     .map((row) => row.name);
+}
+
+/**
+ * The skill slugs a development workspace's stage catalog suggests — the knowledge seed's skills
+ * that are not drafts, by slug, which is what `SkillsRepository.catalogSlugs` reads (#410). Read
+ * from the migration, as {@link seededTaskKinds} is, so the two cannot drift.
+ *
+ * @returns The slugs, sorted.
+ * @throws {Error} When the seed's `insert into ouroboros.skills` statement cannot be found.
+ */
+export function seededSkillSlugs(): string[] {
+  const sql = readFileSync(KNOWLEDGE_SEED_PATH, "utf8");
+  const statement = /insert into ouroboros\.skills\b[\s\S]*?\) as seed \(ordinal, slug/.exec(sql);
+  const rows = [
+    ...(statement?.[0] ?? "").matchAll(
+      /\(\d+,\s*'([a-z0-9-]+)',\s*'[^']*',\s*'(?:org|repo|workflow)',\s*(?:true|false),\s*(?:true|false),\s*(true|false),/g,
+    ),
+  ];
+
+  if (rows.length === 0) {
+    throw new Error(`No skills rows found in ${KNOWLEDGE_SEED_PATH}; has the seed been reshaped?`);
+  }
+
+  return rows
+    .filter((row) => row[2] === "false")
+    .map((row) => row[1])
+    .sort();
 }

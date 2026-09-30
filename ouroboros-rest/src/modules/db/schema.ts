@@ -5334,6 +5334,85 @@ export interface RepoDetectionsTable {
   updated_at: Stamped;
 }
 
+/** `skills.scope` (V069) — where a skill applies; closest scope wins on conflict (decision K8). */
+export type SkillScope = "org" | "repo" | "workflow";
+
+/** The scopes, in the ladder's order from widest to closest. */
+export const SKILL_SCOPES: readonly SkillScope[] = ["org", "repo", "workflow"];
+
+/** `skills.origin` (V069) — a person, a rules file, or the #415 generator (`repo-map`). */
+export type SkillOrigin = "authored" | "imported" | "generated";
+
+/**
+ * `ouroboros.skills` — the knowledge domain's skill registry (V069,
+ * [#405](https://github.com/NobuData/ouroboros/issues/405)); served by BF.1
+ * ([#410](https://github.com/NobuData/ouroboros/issues/410)). Scoped `org|repo|workflow` with the
+ * referent stored (`skills_scope_referent`), locked on by `required` (`skills_required_enabled`),
+ * held out of assembly by `draft`, and pointed at the published version in force. No usage column:
+ * *61% of runs* is counted from `context_injections`.
+ */
+export interface SkillsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** Lower-case kebab, unique per workspace — what a workflow's `skill:` names. */
+  slug: string;
+  name: string;
+  description: string;
+  scope: SkillScope;
+  /** `owner/name`, set exactly when `scope = repo`. */
+  repo_ref: string | null;
+  /** A workflow of the same workspace, set exactly when `scope = workflow`. */
+  workflow_id: string | null;
+  enabled: Generated<boolean>;
+  required: Generated<boolean>;
+  draft: Generated<boolean>;
+  origin: ColumnType<SkillOrigin, SkillOrigin | undefined, SkillOrigin>;
+  /** The published version in force — the `v12` of `v12 · 2d ago` — or null before a publish. */
+  current_version: number | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.skill_versions` — a skill's immutable published history plus its one mutable draft
+ * (V069, V029's model). `version` null is the draft; publishing gives it the next number.
+ */
+export interface SkillVersionsTable {
+  id: Generated<string>;
+  skill_id: string;
+  version: number | null;
+  /** The markdown after the frontmatter. */
+  body: string;
+  /** The frontmatter, parsed and typed (`skill_frontmatter_typed`). */
+  frontmatter: ColumnType<unknown, string | undefined, string>;
+  published_at: Date | null;
+  published_by: string | null;
+  change_note: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `context_injections.consumer` (V071) — who assembled the manifest. */
+export type ContextInjectionConsumer = "estimator" | "run_stage" | "playbook";
+
+/**
+ * `ouroboros.context_injections` — what context assembly actually injected, one row per manifest
+ * (V071, [#406](https://github.com/NobuData/ouroboros/issues/406)). Append-only; the sole source
+ * of every usage number BF.1's stats serve.
+ */
+export interface ContextInjectionsTable {
+  id: Generated<string>;
+  organization_id: string;
+  consumer: ContextInjectionConsumer;
+  estimate_id: string | null;
+  run_stage_id: string | null;
+  run_id: string | null;
+  skill_version_ids: ColumnType<string[], string[] | undefined, never>;
+  fact_ids: ColumnType<string[], string[] | undefined, never>;
+  manifest_hash: string;
+  injected_at: ColumnType<Date, Date | undefined, never>;
+}
+
 /**
  * `ouroboros.build_job_artifact_uploads` — the job-scoped upload's token ledger while open, and its
  * receipt once closed (V060, [#330](https://github.com/NobuData/ouroboros/issues/330)): the attempt
@@ -5460,6 +5539,9 @@ export interface Database {
   onboarding_state: OnboardingStateTable;
   repo_detection_scans: RepoDetectionScansTable;
   repo_detections: RepoDetectionsTable;
+  skills: SkillsTable;
+  skill_versions: SkillVersionsTable;
+  context_injections: ContextInjectionsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6473,6 +6555,47 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  skills: [
+    "id",
+    "organization_id",
+    "slug",
+    "name",
+    "description",
+    "scope",
+    "repo_ref",
+    "workflow_id",
+    "enabled",
+    "required",
+    "draft",
+    "origin",
+    "current_version",
+    "created_at",
+    "updated_at",
+  ],
+  skill_versions: [
+    "id",
+    "skill_id",
+    "version",
+    "body",
+    "frontmatter",
+    "published_at",
+    "published_by",
+    "change_note",
+    "created_at",
+    "updated_at",
+  ],
+  context_injections: [
+    "id",
+    "organization_id",
+    "consumer",
+    "estimate_id",
+    "run_stage_id",
+    "run_id",
+    "skill_version_ids",
+    "fact_ids",
+    "manifest_hash",
+    "injected_at",
+  ],
   planning_epic_progress: [
     "epic_id",
     "organization_id",
@@ -7055,3 +7178,9 @@ export type RepoDetectionScan = Selectable<RepoDetectionScansTable>;
 
 /** A row of `ouroboros.repo_detections`, as a `select` returns it. */
 export type RepoDetection = Selectable<RepoDetectionsTable>;
+
+/** A row of `ouroboros.skills`, as a `select` returns it. */
+export type Skill = Selectable<SkillsTable>;
+
+/** A row of `ouroboros.skill_versions`, as a `select` returns it. */
+export type SkillVersion = Selectable<SkillVersionsTable>;

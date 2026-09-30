@@ -1,6 +1,7 @@
 import { startEngineStub, type EngineStub } from "../../testing/engine.stub.fixture";
 import { ApiHarness, type Person } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
+import { seedPublishedSkills } from "../../testing/skills.seed.fixture";
 import { SCHEMA_NAME } from "../db/schema";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
@@ -39,7 +40,7 @@ import type { WorkflowDetail } from "./workflows.resources";
  * this suite holds what `GET` and `PUT /api/v1/workflows/{slug}/code`, its `checks` and
  * `code-symbols` actually serve to the same goldens, from a development workspace built the way the
  * seed builds one: every seeded workflow (standard-fix's predecessor as its published v1), the
- * routing seed's task kinds, and `.env.example`'s skill suggestions.
+ * routing seed's task kinds, and the knowledge seed's published skills in its registry (#410).
  *
  *   * **Node→span accuracy**: every seed's served span map, on the lines the compiler finds each
  *     stage call — and after a save that grows or shrinks the content above a stage, every span and
@@ -111,10 +112,7 @@ describe("the code view's intelligence, against a migrated database", () => {
 
   beforeAll(async () => {
     engine = await startEngineStub();
-    api = await ApiHarness.start({
-      OURO_ENGINE_URL: engine.url,
-      OURO_WORKFLOW_SKILL_SUGGESTIONS: SUGGESTIONS.skills.join(","),
-    });
+    api = await ApiHarness.start({ OURO_ENGINE_URL: engine.url });
 
     owner = await api.signIn({ email: "owner@ouroboros.invalid" });
     const workspace = await api.workspace(owner);
@@ -122,6 +120,8 @@ describe("the code view's intelligence, against a migrated database", () => {
 
     // Publishing standard-fix's predecessor resolves its pins against the registry (CH.6, #589).
     await seedPinnedAliases(api, workspace.id);
+    // The development workspace's skills, which the suggestions now read from the registry (#410).
+    await seedPublishedSkills(api, workspace.id, SUGGESTIONS.skills);
 
     for (const [index, name] of SUGGESTIONS.taskRoutes.entries()) {
       await api.sql.query(
