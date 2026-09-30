@@ -5,6 +5,7 @@ import { Reflector } from "@nestjs/core";
 import type { Principal } from "../auth/principal";
 import type { Organization } from "../db/schema";
 import { ADMINISTRATORS, CONTRIBUTORS, REQUIRED_ROLES } from "../tenancy/roles.guard";
+import type { FirstIssueService } from "./first-issue.service";
 import { OnboardingController } from "./onboarding.controller";
 import type { OnboardingService } from "./onboarding.service";
 import type { TemplateInstantiationService } from "./templates.service";
@@ -17,6 +18,7 @@ const PRINCIPAL = { user: { id: "user-1" } } as Principal;
 describe("the onboarding controller", () => {
   let service: jest.Mocked<OnboardingService>;
   let templates: jest.Mocked<TemplateInstantiationService>;
+  let picker: jest.Mocked<FirstIssueService>;
   let controller: OnboardingController;
 
   beforeEach(() => {
@@ -32,7 +34,12 @@ describe("the onboarding controller", () => {
       select: jest.fn().mockResolvedValue(RESOURCE),
     } as unknown as jest.Mocked<TemplateInstantiationService>;
 
-    controller = new OnboardingController(service, templates);
+    picker = {
+      pick: jest.fn().mockResolvedValue(RESOURCE),
+      alternatives: jest.fn().mockResolvedValue(RESOURCE),
+    } as unknown as jest.Mocked<FirstIssueService>;
+
+    controller = new OnboardingController(service, templates, picker);
   });
 
   it("scopes every route to the workspace and the repository", async () => {
@@ -53,6 +60,25 @@ describe("the onboarding controller", () => {
 
     expect(templates.list).toHaveBeenCalledWith("org-1", QUERY.repo);
     expect(templates.select).toHaveBeenCalledWith("org-1", QUERY.repo, "quick-fixes", "user-1");
+  });
+
+  it("routes the first-issue pick and its alternatives to the picker (#387)", async () => {
+    await controller.firstIssue(WORKSPACE, QUERY);
+    await controller.firstIssueAlternatives(WORKSPACE, { ...QUERY, limit: 5 });
+    await controller.firstIssueAlternatives(WORKSPACE, QUERY);
+
+    expect(picker.pick).toHaveBeenCalledWith("org-1", QUERY.repo);
+    expect(picker.alternatives).toHaveBeenNthCalledWith(1, "org-1", QUERY.repo, 5);
+    expect(picker.alternatives).toHaveBeenNthCalledWith(2, "org-1", QUERY.repo, undefined);
+  });
+
+  it("lets any member read the first-issue pick and its alternatives", () => {
+    const reflector = new Reflector();
+
+    expect(reflector.get<string[]>(REQUIRED_ROLES, controller.firstIssue)).toBeUndefined();
+    expect(
+      reflector.get<string[]>(REQUIRED_ROLES, controller.firstIssueAlternatives),
+    ).toBeUndefined();
   });
 
   it("asks administrators of select-template — it publishes — and nobody of the tiles", () => {

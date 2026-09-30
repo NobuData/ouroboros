@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.30"
+  version: "0.37.31"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -5512,6 +5512,161 @@ paths:
           description: |-
             `engine_unavailable` — `ouroboros-engine` could not answer the gate's validation.
             The selection is refused rather than waved through, as a studio publish is.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/first-issue:
+    get:
+      tags: [onboarding]
+      summary: Step 4's safe first issue — a deterministic, explained pick
+      description: |-
+        The *Your First Issue* card of mockup 13
+        ([#387](https://github.com/NobuData/ouroboros/issues/387), BB.4, decision O5). Every sized
+        open issue of the repository's GitHub mirror is scored with documented, versioned weights
+        (`weightsVersion`, `safety-v1`) — effort (XS 35 · S 20 · M 5; L and above excluded),
+        suggested workflow (`docs-loop` 30 · `standard-fix` 15 · anything else 0), path risk
+        (no code touched 25 · code 5) and freshness (10, halved every 14 days of quiet).
+
+        **A protected path disqualifies.** A breakdown file matching one of the repository's
+        protected globs removes the candidate before scoring, whatever it would have scored.
+
+        **The reasoning is the score, rendered.** `pick.reasoning.line` —
+        `no code paths touched · est. 4 min` — is `fragments` joined, and each fragment names
+        the component or estimate it came from. The minutes are the estimate's cycle range's
+        midpoint. `cost` is present **only** when the routed model is priced; it is never `$0`
+        for an unknown rate.
+
+        **Cold states are answered, not hidden.** `state` is `picked`, `sizing` (open issues,
+        none sized yet — `estimator` carries the nightly job's real schedule and last run),
+        `empty` (no open issues — `planning` points at the planning surface) or `none_safe`
+        (nothing reaches `safetyBar`; nothing is picked). A repository the workspace does not
+        mirror answers `empty`.
+
+        Any member.
+      operationId: readOnboardingFirstIssue
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingFirstIssue"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
+            entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/first-issue/alternatives:
+    get:
+      tags: [onboarding]
+      summary: Or pick your own — the backlog's safety-ranked candidates
+      description: |-
+        *"or pick your own ▾"* ([#387](https://github.com/NobuData/ouroboros/issues/387), BB.4):
+        every sized open issue that is not disqualified (protected path, effort L or above),
+        safest first under the same weights as the pick, each with its own reasoning and whether
+        it clears the safety bar. Ties go to the lower issue number. `excluded` counts what was
+        set aside, and why.
+
+        Any member.
+      operationId: listOnboardingFirstIssueAlternatives
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - name: limit
+          in: query
+          required: false
+          description: How many candidates to return, safest first. Defaults to 10.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+            default: 10
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The ranked candidates.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingFirstIssueAlternatives"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or is not `owner/name`, or `limit` is not a
+            whole number from 1 to 50. `details` carries the entry keyed by the field.
           content:
             application/json:
               schema:
@@ -29241,6 +29396,235 @@ components:
             - type: "null"
           description: The newest live workflow instantiated from this template, or null.
 
+    OnboardingFirstIssueExclusions:
+      type: object
+      title: OnboardingFirstIssueExclusions
+      description: How many sized candidates were set aside, and why (#387).
+      additionalProperties: false
+      required: [protectedPath, tooLarge, belowBar]
+      properties:
+        protectedPath:
+          type: integer
+          minimum: 0
+          description: A breakdown file matched a protected path — disqualified, whatever it scored.
+        tooLarge:
+          type: integer
+          minimum: 0
+          description: An effort of `l` or above — excluded from first picks.
+        belowBar:
+          type: integer
+          minimum: 0
+          description: Scored below the safety bar.
+
+    OnboardingFirstIssueComponent:
+      type: object
+      title: OnboardingFirstIssueComponent
+      description: One term of the safety score — the detail affordance (#387).
+      additionalProperties: false
+      required: [key, signal, points, maxPoints, label]
+      properties:
+        key:
+          type: string
+          enum: [effort, workflow, paths, freshness]
+        signal:
+          type: string
+          description: "What the term read: `xs`, `docs-loop`, `no_code` or `code`, or whole days since the last activity."
+        points:
+          type: number
+          minimum: 0
+        maxPoints:
+          type: number
+          minimum: 0
+        label:
+          type: string
+          examples: [no code paths touched]
+
+    OnboardingFirstIssueFragment:
+      type: object
+      title: OnboardingFirstIssueFragment
+      description: One piece of the reasoning line, and what produced it (#387).
+      additionalProperties: false
+      required: [source, text]
+      properties:
+        source:
+          type: string
+          enum: [effort, workflow, paths, freshness, estimate, cost]
+        text:
+          type: string
+          examples: [est. 4 min]
+
+    OnboardingFirstIssueCandidate:
+      type: object
+      title: OnboardingFirstIssueCandidate
+      description: A scored candidate with its reasoning (#387).
+      additionalProperties: false
+      required:
+        [issueId, number, title, url, effort, suggestedWorkflow, score, clearsBar, estimate, reasoning]
+      properties:
+        issueId:
+          type: string
+          format: uuid
+          description: "`github_issues.id`."
+        number:
+          type: integer
+          examples: [488]
+        title:
+          type: string
+        url:
+          type: string
+          format: uri
+        effort:
+          type: string
+          enum: [xs, s, m]
+        suggestedWorkflow:
+          type: string
+          examples: [docs-loop]
+        score:
+          type: number
+          description: The total under the weights in force.
+        clearsBar:
+          type: boolean
+        estimate:
+          type: object
+          additionalProperties: false
+          required: [version, routedModel, cycleMin, cycleMax, loopMinutes, estTokens]
+          properties:
+            version:
+              type: integer
+              minimum: 1
+            routedModel:
+              type: string
+            cycleMin:
+              type: number
+              minimum: 0
+            cycleMax:
+              type: number
+              minimum: 0
+            loopMinutes:
+              type: integer
+              minimum: 0
+              description: The printed minutes — the cycle range's midpoint, rounded down.
+            estTokens:
+              type: number
+              minimum: 0
+        cost:
+          type: object
+          description: Present only when the routed model is priced; absent, never zero, when it is not.
+          additionalProperties: false
+          required: [cents, display]
+          properties:
+            cents:
+              type: integer
+              minimum: 0
+            display:
+              type: string
+              examples: [$0.03]
+        reasoning:
+          type: object
+          additionalProperties: false
+          required: [line, fragments, components]
+          properties:
+            line:
+              type: string
+              description: The fragments joined with ` · `.
+              examples: [no code paths touched · est. 4 min]
+            fragments:
+              type: array
+              items:
+                $ref: "#/components/schemas/OnboardingFirstIssueFragment"
+            components:
+              type: array
+              items:
+                $ref: "#/components/schemas/OnboardingFirstIssueComponent"
+
+    OnboardingFirstIssue:
+      type: object
+      title: OnboardingFirstIssue
+      description: |-
+        Step 4's *Your First Issue* card ([#387](https://github.com/NobuData/ouroboros/issues/387)).
+      additionalProperties: false
+      required:
+        [repo, weightsVersion, safetyBar, state, backlog, pick, estimator, planning, excluded]
+      properties:
+        repo:
+          type: string
+          description: "`owner/name`, lower-case."
+          examples: [acme-robotics/helios-firmware]
+        weightsVersion:
+          type: string
+          examples: [safety-v1]
+        safetyBar:
+          type: number
+        state:
+          type: string
+          enum: [picked, sizing, empty, none_safe]
+        backlog:
+          type: object
+          description: The repository's open issues by sizing status.
+          additionalProperties: false
+          required: [open, sized, sizing, needsHuman]
+          properties:
+            open:
+              type: integer
+              minimum: 0
+            sized:
+              type: integer
+              minimum: 0
+            sizing:
+              type: integer
+              minimum: 0
+              description: "`unsized` or `estimating`."
+            needsHuman:
+              type: integer
+              minimum: 0
+        pick:
+          description: The pick when `state` is `picked` — never a candidate below the bar.
+          oneOf:
+            - $ref: "#/components/schemas/OnboardingFirstIssueCandidate"
+            - type: "null"
+        estimator:
+          description: The nightly estimator's real status, whenever open issues still wait to be sized.
+          oneOf:
+            - $ref: "#/components/schemas/PlanningReestimationStatus"
+            - type: "null"
+        planning:
+          description: The planning pointer, when `state` is `empty`.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [path]
+              properties:
+                path:
+                  type: string
+                  examples: [/planning]
+            - type: "null"
+        excluded:
+          $ref: "#/components/schemas/OnboardingFirstIssueExclusions"
+
+    OnboardingFirstIssueAlternatives:
+      type: object
+      title: OnboardingFirstIssueAlternatives
+      description: |-
+        *Or pick your own* ([#387](https://github.com/NobuData/ouroboros/issues/387)).
+      additionalProperties: false
+      required: [repo, weightsVersion, safetyBar, candidates, excluded]
+      properties:
+        repo:
+          type: string
+          examples: [acme-robotics/helios-firmware]
+        weightsVersion:
+          type: string
+          examples: [safety-v1]
+        safetyBar:
+          type: number
+        candidates:
+          type: array
+          description: Candidates not disqualified, safest first.
+          items:
+            $ref: "#/components/schemas/OnboardingFirstIssueCandidate"
+        excluded:
+          $ref: "#/components/schemas/OnboardingFirstIssueExclusions"
+
     OnboardingTemplateTiles:
       type: object
       title: OnboardingTemplateTiles
@@ -38348,29 +38732,36 @@ components:
             filter:
               $ref: "#/components/schemas/PlanningIntakeFilter"
         reestimation:
+          $ref: "#/components/schemas/PlanningReestimationStatus"
+
+    PlanningReestimationStatus:
+      type: object
+      title: PlanningReestimationStatus
+      description: |-
+        The nightly re-estimation job's schedule and latest run (#281) — the Backlog Health
+        footnote, and what the onboarding picker passes through for an unsized backlog (#387).
+      additionalProperties: false
+      required: [schedule, lastRun]
+      properties:
+        schedule:
           type: object
           additionalProperties: false
-          required: [schedule, lastRun]
+          required: [hourUtc, jitterMinutes, batchLimit]
           properties:
-            schedule:
-              type: object
-              additionalProperties: false
-              required: [hourUtc, jitterMinutes, batchLimit]
-              properties:
-                hourUtc:
-                  type: integer
-                  minimum: 0
-                  maximum: 23
-                jitterMinutes:
-                  type: integer
-                  minimum: 1
-                batchLimit:
-                  type: integer
-                  minimum: 1
-            lastRun:
-              oneOf:
-                - $ref: "#/components/schemas/PlanningReestimationRun"
-                - type: "null"
+            hourUtc:
+              type: integer
+              minimum: 0
+              maximum: 23
+            jitterMinutes:
+              type: integer
+              minimum: 1
+            batchLimit:
+              type: integer
+              minimum: 1
+        lastRun:
+          oneOf:
+            - $ref: "#/components/schemas/PlanningReestimationRun"
+            - type: "null"
 
     PlanningMilestones:
       type: object

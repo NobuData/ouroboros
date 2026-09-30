@@ -9,6 +9,7 @@
  * surfacing    when /get-started is offered (pure)    → onboarding.surfacing.ts
  * repository   the statements                         → onboarding.repository.ts
  * templates    step 3's tiles and instantiation       → templates.service.ts (#386)
+ * first issue  step 4's safe pick (scored, pure)      → first-issue.service.ts / .score.ts (#387)
  * ```
  *
  * It reads four subsystems' tables directly rather than importing their modules: tenancy exports
@@ -21,7 +22,10 @@
 import { Module } from "@nestjs/common";
 
 import { DbModule } from "../db/db.module";
+import { BacklogHealthRepository } from "../planning/health.repository";
 import { WorkflowsModule } from "../workflows/workflows.module";
+import { FirstIssueRepository } from "./first-issue.repository";
+import { FirstIssueService } from "./first-issue.service";
 import { OnboardingController } from "./onboarding.controller";
 import { OnboardingRepository } from "./onboarding.repository";
 import { OnboardingService } from "./onboarding.service";
@@ -36,6 +40,9 @@ import { TemplateInstantiationService } from "./templates.service";
     OnboardingRepository,
     TemplateInstantiationService,
     TemplateTilesRepository,
+    FirstIssueService,
+    FirstIssueRepository,
+    BacklogHealthRepository,
   ],
 })
 export class OnboardingModule {}

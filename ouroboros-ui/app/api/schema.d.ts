@@ -1750,6 +1750,74 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/onboarding/first-issue": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Step 4's safe first issue — a deterministic, explained pick
+         * @description The *Your First Issue* card of mockup 13
+         *     ([#387](https://github.com/NobuData/ouroboros/issues/387), BB.4, decision O5). Every sized
+         *     open issue of the repository's GitHub mirror is scored with documented, versioned weights
+         *     (`weightsVersion`, `safety-v1`) — effort (XS 35 · S 20 · M 5; L and above excluded),
+         *     suggested workflow (`docs-loop` 30 · `standard-fix` 15 · anything else 0), path risk
+         *     (no code touched 25 · code 5) and freshness (10, halved every 14 days of quiet).
+         *
+         *     **A protected path disqualifies.** A breakdown file matching one of the repository's
+         *     protected globs removes the candidate before scoring, whatever it would have scored.
+         *
+         *     **The reasoning is the score, rendered.** `pick.reasoning.line` —
+         *     `no code paths touched · est. 4 min` — is `fragments` joined, and each fragment names
+         *     the component or estimate it came from. The minutes are the estimate's cycle range's
+         *     midpoint. `cost` is present **only** when the routed model is priced; it is never `$0`
+         *     for an unknown rate.
+         *
+         *     **Cold states are answered, not hidden.** `state` is `picked`, `sizing` (open issues,
+         *     none sized yet — `estimator` carries the nightly job's real schedule and last run),
+         *     `empty` (no open issues — `planning` points at the planning surface) or `none_safe`
+         *     (nothing reaches `safetyBar`; nothing is picked). A repository the workspace does not
+         *     mirror answers `empty`.
+         *
+         *     Any member.
+         */
+        get: operations["readOnboardingFirstIssue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/first-issue/alternatives": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Or pick your own — the backlog's safety-ranked candidates
+         * @description *"or pick your own ▾"* ([#387](https://github.com/NobuData/ouroboros/issues/387), BB.4):
+         *     every sized open issue that is not disqualified (protected path, effort L or above),
+         *     safest first under the same weights as the pick, each with its own reasoning and whether
+         *     it clears the safety bar. Ties go to the lower issue number. `excluded` counts what was
+         *     set aside, and why.
+         *
+         *     Any member.
+         */
+        get: operations["listOnboardingFirstIssueAlternatives"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/onboarding/detection": {
         parameters: {
             query?: never;
@@ -10961,6 +11029,137 @@ export interface components {
             workflow: components["schemas"]["OnboardingInstantiatedWorkflow"] | null;
         };
         /**
+         * OnboardingFirstIssueExclusions
+         * @description How many sized candidates were set aside, and why (#387).
+         */
+        OnboardingFirstIssueExclusions: {
+            /** @description A breakdown file matched a protected path — disqualified, whatever it scored. */
+            protectedPath: number;
+            /** @description An effort of `l` or above — excluded from first picks. */
+            tooLarge: number;
+            /** @description Scored below the safety bar. */
+            belowBar: number;
+        };
+        /**
+         * OnboardingFirstIssueComponent
+         * @description One term of the safety score — the detail affordance (#387).
+         */
+        OnboardingFirstIssueComponent: {
+            /** @enum {string} */
+            key: "effort" | "workflow" | "paths" | "freshness";
+            /** @description What the term read: `xs`, `docs-loop`, `no_code` or `code`, or whole days since the last activity. */
+            signal: string;
+            points: number;
+            maxPoints: number;
+            /** @example no code paths touched */
+            label: string;
+        };
+        /**
+         * OnboardingFirstIssueFragment
+         * @description One piece of the reasoning line, and what produced it (#387).
+         */
+        OnboardingFirstIssueFragment: {
+            /** @enum {string} */
+            source: "effort" | "workflow" | "paths" | "freshness" | "estimate" | "cost";
+            /** @example est. 4 min */
+            text: string;
+        };
+        /**
+         * OnboardingFirstIssueCandidate
+         * @description A scored candidate with its reasoning (#387).
+         */
+        OnboardingFirstIssueCandidate: {
+            /**
+             * Format: uuid
+             * @description `github_issues.id`.
+             */
+            issueId: string;
+            /** @example 488 */
+            number: number;
+            title: string;
+            /** Format: uri */
+            url: string;
+            /** @enum {string} */
+            effort: "xs" | "s" | "m";
+            /** @example docs-loop */
+            suggestedWorkflow: string;
+            /** @description The total under the weights in force. */
+            score: number;
+            clearsBar: boolean;
+            estimate: {
+                version: number;
+                routedModel: string;
+                cycleMin: number;
+                cycleMax: number;
+                /** @description The printed minutes — the cycle range's midpoint, rounded down. */
+                loopMinutes: number;
+                estTokens: number;
+            };
+            /** @description Present only when the routed model is priced; absent, never zero, when it is not. */
+            cost?: {
+                cents: number;
+                /** @example $0.03 */
+                display: string;
+            };
+            reasoning: {
+                /**
+                 * @description The fragments joined with ` · `.
+                 * @example no code paths touched · est. 4 min
+                 */
+                line: string;
+                fragments: components["schemas"]["OnboardingFirstIssueFragment"][];
+                components: components["schemas"]["OnboardingFirstIssueComponent"][];
+            };
+        };
+        /**
+         * OnboardingFirstIssue
+         * @description Step 4's *Your First Issue* card ([#387](https://github.com/NobuData/ouroboros/issues/387)).
+         */
+        OnboardingFirstIssue: {
+            /**
+             * @description `owner/name`, lower-case.
+             * @example acme-robotics/helios-firmware
+             */
+            repo: string;
+            /** @example safety-v1 */
+            weightsVersion: string;
+            safetyBar: number;
+            /** @enum {string} */
+            state: "picked" | "sizing" | "empty" | "none_safe";
+            /** @description The repository's open issues by sizing status. */
+            backlog: {
+                open: number;
+                sized: number;
+                /** @description `unsized` or `estimating`. */
+                sizing: number;
+                needsHuman: number;
+            };
+            /** @description The pick when `state` is `picked` — never a candidate below the bar. */
+            pick: components["schemas"]["OnboardingFirstIssueCandidate"] | null;
+            /** @description The nightly estimator's real status, whenever open issues still wait to be sized. */
+            estimator: components["schemas"]["PlanningReestimationStatus"] | null;
+            /** @description The planning pointer, when `state` is `empty`. */
+            planning: {
+                /** @example /planning */
+                path: string;
+            } | null;
+            excluded: components["schemas"]["OnboardingFirstIssueExclusions"];
+        };
+        /**
+         * OnboardingFirstIssueAlternatives
+         * @description *Or pick your own* ([#387](https://github.com/NobuData/ouroboros/issues/387)).
+         */
+        OnboardingFirstIssueAlternatives: {
+            /** @example acme-robotics/helios-firmware */
+            repo: string;
+            /** @example safety-v1 */
+            weightsVersion: string;
+            safetyBar: number;
+            /** @description Candidates not disqualified, safest first. */
+            candidates: components["schemas"]["OnboardingFirstIssueCandidate"][];
+            excluded: components["schemas"]["OnboardingFirstIssueExclusions"];
+        };
+        /**
          * OnboardingTemplateTiles
          * @description Step 3's tile grid ([#386](https://github.com/NobuData/ouroboros/issues/386)).
          */
@@ -17848,14 +18047,20 @@ export interface components {
                 thresholdDays: number;
                 filter: components["schemas"]["PlanningIntakeFilter"];
             };
-            reestimation: {
-                schedule: {
-                    hourUtc: number;
-                    jitterMinutes: number;
-                    batchLimit: number;
-                };
-                lastRun: components["schemas"]["PlanningReestimationRun"] | null;
+            reestimation: components["schemas"]["PlanningReestimationStatus"];
+        };
+        /**
+         * PlanningReestimationStatus
+         * @description The nightly re-estimation job's schedule and latest run (#281) — the Backlog Health
+         *     footnote, and what the onboarding picker passes through for an unsized backlog (#387).
+         */
+        PlanningReestimationStatus: {
+            schedule: {
+                hourUtc: number;
+                jitterMinutes: number;
+                batchLimit: number;
             };
+            lastRun: components["schemas"]["PlanningReestimationRun"] | null;
         };
         /** PlanningMilestones */
         PlanningMilestones: {
@@ -25233,6 +25438,258 @@ export interface operations {
              *     The selection is refused rather than waved through, as a studio publish is.
              */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readOnboardingFirstIssue: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingFirstIssue"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
+             *     entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listOnboardingFirstIssueAlternatives: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+                /** @description How many candidates to return, safest first. Defaults to 10. */
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The ranked candidates. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingFirstIssueAlternatives"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo` is missing or is not `owner/name`, or `limit` is not a
+             *     whole number from 1 to 50. `details` carries the entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

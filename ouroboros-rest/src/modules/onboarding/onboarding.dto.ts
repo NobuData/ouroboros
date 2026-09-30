@@ -19,6 +19,8 @@ import {
   IsUUID,
   Length,
   Matches,
+  Max,
+  Min,
   ValidateIf,
 } from "class-validator";
 
@@ -79,4 +81,18 @@ export class SelectTemplateDto {
   @IsString()
   @Matches(TEMPLATE_SLUG_PATTERN, { message: "slug must be a template slug" })
   slug!: string;
+}
+
+/** The most alternatives one request may ask for (BB.4, #387). */
+export const ALTERNATIVES_LIMIT_MAX = 50;
+
+/** The query of `GET /api/v1/onboarding/first-issue/alternatives` (BB.4, #387). */
+export class FirstIssueAlternativesQuery extends OnboardingRepoQuery {
+  /** How many candidates to return, safest first — 1 to 50, default 10. */
+  @ValidateIf((query: FirstIssueAlternativesQuery) => query.limit !== undefined)
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(ALTERNATIVES_LIMIT_MAX)
+  limit?: number;
 }

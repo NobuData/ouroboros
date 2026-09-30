@@ -9,6 +9,8 @@
  * POST  /api/v1/onboarding/skip?repo=owner/name            contributors — the import-skip
  * GET   /api/v1/onboarding/templates?repo=owner/name       any member — step 3's tiles (#386)
  * POST  /api/v1/onboarding/select-template?repo=owner/name administrators — instantiate (#386)
+ * GET   /api/v1/onboarding/first-issue?repo=owner/name     any member — step 4's safe pick (#387)
+ * GET   /api/v1/onboarding/first-issue/alternatives?repo=  any member — "or pick your own" (#387)
  * ```
  *
  * `select-template` publishes a workflow, so it carries the studio's publish rule —
@@ -29,10 +31,13 @@ import { ADMINISTRATORS, CONTRIBUTORS, Roles } from "../tenancy/roles.guard";
 import { CurrentTenant } from "../tenancy/tenant.decorators";
 import {
   CompleteStepDto,
+  FirstIssueAlternativesQuery,
   OnboardingRepoQuery,
   PatchOnboardingDto,
   SelectTemplateDto,
 } from "./onboarding.dto";
+import type { FirstIssueAlternativesResource, FirstIssueResource } from "./first-issue.resources";
+import { FirstIssueService } from "./first-issue.service";
 import { OnboardingService } from "./onboarding.service";
 import type { OnboardingResource, OnboardingSkipResource } from "./resources";
 import type { TemplateSelectionResource, TemplateTilesResource } from "./templates.resources";
@@ -43,6 +48,7 @@ export class OnboardingController {
   constructor(
     private readonly onboarding: OnboardingService,
     private readonly templates: TemplateInstantiationService,
+    private readonly picker: FirstIssueService,
   ) {}
 
   /**
@@ -148,5 +154,37 @@ export class OnboardingController {
     @Body() body: SelectTemplateDto,
   ): Promise<TemplateSelectionResource> {
     return this.templates.select(tenant.id, query.repo, body.slug, principal.user.id);
+  }
+
+  /**
+   * Step 4's safe first issue — a deterministic, explained pick over the sized backlog (BB.4,
+   * #387).
+   *
+   * @param tenant - The workspace.
+   * @param query - `?repo=owner/name`.
+   * @returns The state (`picked`, `sizing`, `empty`, `none_safe`), the pick and its reasoning.
+   */
+  @Get("first-issue")
+  firstIssue(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: OnboardingRepoQuery,
+  ): Promise<FirstIssueResource> {
+    return this.picker.pick(tenant.id, query.repo);
+  }
+
+  /**
+   * *Or pick your own* — the backlog's qualifying candidates, safest first, each with its own
+   * reasoning (BB.4, #387).
+   *
+   * @param tenant - The workspace.
+   * @param query - `?repo=owner/name&limit=10`.
+   * @returns The ranked candidates.
+   */
+  @Get("first-issue/alternatives")
+  firstIssueAlternatives(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: FirstIssueAlternativesQuery,
+  ): Promise<FirstIssueAlternativesResource> {
+    return this.picker.alternatives(tenant.id, query.repo, query.limit);
   }
 }

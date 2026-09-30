@@ -4,6 +4,9 @@ import { Test } from "@nestjs/testing";
 
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
+import { BacklogHealthRepository } from "../planning/health.repository";
+import { FirstIssueRepository } from "./first-issue.repository";
+import { FirstIssueService } from "./first-issue.service";
 import { OnboardingController } from "./onboarding.controller";
 import { OnboardingModule } from "./onboarding.module";
 import { OnboardingRepository } from "./onboarding.repository";
@@ -24,6 +27,9 @@ describe("the onboarding module", () => {
       TemplateInstantiationService,
     );
     expect(moduleRef.get(TemplateTilesRepository)).toBeInstanceOf(TemplateTilesRepository);
+    expect(moduleRef.get(FirstIssueService)).toBeInstanceOf(FirstIssueService);
+    expect(moduleRef.get(FirstIssueRepository)).toBeInstanceOf(FirstIssueRepository);
+    expect(moduleRef.get(BacklogHealthRepository)).toBeInstanceOf(BacklogHealthRepository);
 
     await moduleRef.close();
   });
