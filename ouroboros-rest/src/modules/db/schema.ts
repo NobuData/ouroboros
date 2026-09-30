@@ -5485,6 +5485,36 @@ export interface FactTransitionsTable {
   at: ColumnType<Date, never, never>;
 }
 
+/** `fact_suppressions.proposer` (V074) — every automatic proposer; a manual fact is never suppressed. */
+export type FactSuppressionProposer = Exclude<FactProposer, "manual">;
+
+/**
+ * `ouroboros.fact_suppressions` — a candidate a proposer did not propose because its normalized
+ * text matched an existing fact of the repository or the workspace in any status (V074,
+ * [#412](https://github.com/NobuData/ouroboros/issues/412), BF.3). One row per (source, matched
+ * fact); append-only by trigger and grant — the application role may select and insert.
+ */
+export interface FactSuppressionsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** `owner/name`, or null for the whole workspace. */
+  repo_ref: string | null;
+  proposer: FactSuppressionProposer;
+  /** The proposer's registry version that produced the candidate. */
+  proposer_version: number;
+  /** The candidate as extracted. */
+  text: string;
+  /** The key it was matched on. */
+  normalized_text: string;
+  /** The existing fact it matched, in any status. */
+  matched_fact_id: string;
+  /** The candidate's typed provenance (`fact_provenance_typed`). Written through `JSON.stringify`. */
+  provenance: ColumnType<unknown, string, never>;
+  /** The source row, `<kind>:<id>`. */
+  source_key: string;
+  created_at: Stamped;
+}
+
 /** `context_injections.consumer` (V071) — who assembled the manifest. */
 export type ContextInjectionConsumer = "estimator" | "run_stage" | "playbook";
 
@@ -5638,6 +5668,7 @@ export interface Database {
   facts: FactsTable;
   fact_anchors: FactAnchorsTable;
   fact_transitions: FactTransitionsTable;
+  fact_suppressions: FactSuppressionsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6712,6 +6743,19 @@ export const TABLE_COLUMNS = {
   ],
   fact_anchors: ["id", "fact_id", "kind", "value", "last_checked_at", "created_at"],
   fact_transitions: ["id", "fact_id", "from_status", "to_status", "actor_id", "reason", "at"],
+  fact_suppressions: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "proposer",
+    "proposer_version",
+    "text",
+    "normalized_text",
+    "matched_fact_id",
+    "provenance",
+    "source_key",
+    "created_at",
+  ],
   planning_epic_progress: [
     "epic_id",
     "organization_id",
@@ -7309,3 +7353,6 @@ export type FactAnchor = Selectable<FactAnchorsTable>;
 
 /** A row of `ouroboros.fact_transitions`, as a `select` returns it. */
 export type FactTransition = Selectable<FactTransitionsTable>;
+
+/** A row of `ouroboros.fact_suppressions`, as a `select` returns it. */
+export type FactSuppression = Selectable<FactSuppressionsTable>;

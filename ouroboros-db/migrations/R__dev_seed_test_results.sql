@@ -99,7 +99,7 @@
 --   | `hil_measurements` (6)         | `5eed0034…`  | issue · attempt · case                      |
 --   | `test_case_history` (208)      | `5eed0035…`  | the case's own number                       |
 --   | `flake_scores` (1)             | `5eed0036…`  | the issue number                            |
---   | `failure_classifications` (1)  | `5eed0037…`  | the issue number                            |
+--   | `failure_classifications` (2)  | `5eed0037…`  | the issue number (· attempt, for Build 1's) |
 --   | `test_artifacts` (5)           | `5eed0038…`  | issue · attempt · artifact                  |
 --
 -- `run_pr_intents` is keyed by its run and needs no id of its own.
@@ -454,6 +454,30 @@ select '5eed0037-0000-4000-8000-000000000482'::uuid,
   join ouroboros.test_suites test_suite on test_suite.id = test_case.test_suite_id
   join ouroboros.test_runs test_run     on test_run.id = test_suite.test_run_id
  where test_case.id = '5eed0033-0000-4000-8000-000048230501'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- The correction note — Ken's product-bug call on Build 1's ISR-ordering failure (#412).
+--
+-- *"frames keep order under ISR load"* failed on the first attempt, and Ken said why in the note
+-- the next attempt's planning context carried. Its first sentence is the rule the team holds, and
+-- BF.3's correction-note proposer promotes exactly that sentence: the knowledge seed's
+-- *"Team prefers `k_msgq` over `k_fifo` in ISR paths"* is that proposal, citing this row. Build 1
+-- only — Build 3's card, which mockup 11 draws, keeps its one heuristic hint.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.failure_classifications (id, organization_id, test_case_id, class, note,
+                                               actor, created_by, created_at)
+select '5eed0037-0000-4000-8000-000000048201'::uuid,
+       test_case.organization_id, test_case.id, 'product_bug',
+       'Team prefers `k_msgq` over `k_fifo` in ISR paths. Keep the `k_msgq`, but move PID '
+         || 'sampling out of the ISR.',
+       'human', ken."id", test_run.started_at + make_interval(secs => 900)
+  from ouroboros.test_cases test_case
+  join ouroboros.test_suites test_suite on test_suite.id = test_case.test_suite_id
+  join ouroboros.test_runs test_run     on test_run.id = test_suite.test_run_id
+  join ouroboros."user" ken             on ken.email = 'ken@acme-robotics.dev'
+ where test_case.id = '5eed0033-0000-4000-8000-000048210202'
    and ${ouro_dev_seed}
 on conflict do nothing;
 

@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.7.6",
+    "version": "0.7.7",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
     "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
@@ -80,7 +80,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.7.6"
+                  "version": "0.7.7"
                 }
               }
             }
@@ -109,7 +109,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.7.6",
+                  "version": "0.7.7",
                   "uptime_seconds": 1234.567
                 }
               }
@@ -161,7 +161,7 @@
                       "note": "hello from ouroboros-rest"
                     }
                   },
-                  "engine_version": "0.7.6"
+                  "engine_version": "0.7.7"
                 }
               }
             }
@@ -875,6 +875,86 @@
                     }
                   ],
                   "planner": "outline-v0",
+                  "notes": []
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/v0/learn": {
+      "post": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Learn candidate facts from a source bundle",
+        "description": "Turn what the loop wrote — a PR's review cycle, a run's observations, a correction note,\na waiver reason, a remembered steer — into candidate facts, each with a confidence and\nthe typed provenance it will be stored with.\n\n**The contract is committed before its implementation**, BF.3\n([#412](https://github.com/NobuData/ouroboros/issues/412)), decision **K5**. Facts are\nlearned deterministically in the MVP by `ouroboros-rest`'s proposer registry, which\nneeds no model. BH.1 ([#423](https://github.com/NobuData/ouroboros/issues/423)) answers\n**this same shape** with an LLM extractor, and `ouroboros-rest` plugs it into that\nregistry as the `llm` proposer without a reshape. Until then the installed extractor,\n`unavailable-v0`, answers every bundle with **no candidates** and a note saying why: an\nanswer that looked like extraction with no model behind it would be the overclaiming\nK5 rules out. The example below is the shape BH.1 answers.\n\n**Provenance is drawn from the sources, never invented.** A candidate names the source\nit came from by index, and every ref it cites is one of that source's own refs — an\nanswer that cites anything else is a `500` here rather than provenance that reaches a\nrow. The display line may be as rich as the extraction was (*\"from PR #498 review\ncycle\"*).\n\n**There is no status in this contract.** Every candidate lands `proposed` in\n`ouroboros-rest` (decision **K3**); a person confirms or rejects it. `ouroboros-rest`\ndedupes each candidate against every fact it holds — rejected ones included — whatever\n`context.existing_facts` led the extractor to do.\n\n**`extractor` is always recorded** — decision **K10**.",
+        "operationId": "learnFacts",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LearnRequest"
+              },
+              "example": {
+                "sources": [
+                  {
+                    "kind": "pr_review_cycle",
+                    "label": "PR #498 review cycle",
+                    "text": "Reviewer: tests under tests/hil/ touched the rig without reserving it again. Please always `rig claim` before any HIL test — we lost a morning to this.",
+                    "refs": [
+                      {
+                        "kind": "pull_request",
+                        "id": "a7150000-0000-0000-0000-000000000498"
+                      }
+                    ]
+                  }
+                ],
+                "context": {
+                  "repo": "acme-robotics/helios-firmware",
+                  "existing_facts": [
+                    "CI needs `west update` before first build of the day"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The candidates — here the mockup's *\"Tests under `tests/hil/` require rig\nreservation via `rig claim`\"*, as BH.1 would extract it. `unavailable-v0` answers\n`candidates: []` with its note instead.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Learned"
+                },
+                "example": {
+                  "candidates": [
+                    {
+                      "text": "Tests under `tests/hil/` require rig reservation via `rig claim`",
+                      "category": "environment",
+                      "confidence": 0.82,
+                      "source_index": 0,
+                      "provenance": {
+                        "line": "from PR #498 review cycle",
+                        "refs": [
+                          {
+                            "kind": "pull_request",
+                            "id": "a7150000-0000-0000-0000-000000000498"
+                          }
+                        ]
+                      }
+                    }
+                  ],
+                  "extractor": "llm-v1",
                   "notes": []
                 }
               }
@@ -2172,6 +2252,276 @@
               [
                 "Add a structured outline to split this into multiple tickets, or wait for the full planner."
               ]
+            ]
+          }
+        }
+      },
+      "LearnRef": {
+        "type": "object",
+        "title": "LearnRef",
+        "description": "One typed provenance reference — a row a fact was learned from. The vocabulary is\n`ouroboros-db`'s `fact_provenance_typed` (V071, widened by V074 for #412) minus `import`,\nwhich names a file and is the rule-file import's alone. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "id"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "run",
+              "pull_request",
+              "ticket",
+              "classification",
+              "waiver",
+              "steer",
+              "run_stage",
+              "gate",
+              "person"
+            ],
+            "examples": [
+              "pull_request"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "description": "The row's canonical uuid, or a person's user id for `person`.",
+            "examples": [
+              "a7150000-0000-0000-0000-000000000498"
+            ]
+          }
+        }
+      },
+      "LearnSource": {
+        "type": "object",
+        "title": "LearnSource",
+        "description": "One thing the loop wrote, offered for extraction. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "label",
+          "text",
+          "refs"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "pr_review_cycle",
+              "run_observation",
+              "correction_note",
+              "waiver",
+              "steer"
+            ],
+            "description": "What it is. The first two are BH.1's sources; the last three are the deterministic\nproposers' own, carried so an extractor may read them too.",
+            "examples": [
+              "pr_review_cycle"
+            ]
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "How a provenance line names it.",
+            "examples": [
+              "PR #498 review cycle"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "description": "The source's text, as people wrote it."
+          },
+          "refs": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/LearnRef"
+            },
+            "description": "The rows it stands for. Every ref a candidate cites comes from here."
+          }
+        }
+      },
+      "LearnContext": {
+        "type": "object",
+        "title": "LearnContext",
+        "description": "What the candidates are for, and what already exists. Closed.",
+        "additionalProperties": false,
+        "required": [],
+        "properties": {
+          "repo": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 255,
+            "default": null,
+            "description": "`owner/name` the facts would be scoped to, or `null` for the workspace.",
+            "examples": [
+              "acme-robotics/helios-firmware"
+            ]
+          },
+          "existing_facts": {
+            "type": "array",
+            "maxItems": 500,
+            "default": [],
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 500
+            },
+            "description": "Facts the caller already holds, in any status — a hint an extractor may use to\navoid restating them. The caller dedupes again regardless."
+          }
+        }
+      },
+      "LearnRequest": {
+        "type": "object",
+        "title": "LearnRequest",
+        "description": "The body of a `POST /v0/learn` request — a source bundle. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "sources",
+          "context"
+        ],
+        "properties": {
+          "sources": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 32,
+            "items": {
+              "$ref": "#/components/schemas/LearnSource"
+            }
+          },
+          "context": {
+            "$ref": "#/components/schemas/LearnContext"
+          }
+        }
+      },
+      "LearnProvenance": {
+        "type": "object",
+        "title": "LearnProvenance",
+        "description": "What a candidate's fact will be stored with. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "line",
+          "refs"
+        ],
+        "properties": {
+          "line": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The card's line — honest about the extraction that produced it.",
+            "examples": [
+              "from PR #498 review cycle"
+            ]
+          },
+          "refs": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/LearnRef"
+            },
+            "description": "The rows it learned from — each one of its source's refs."
+          }
+        }
+      },
+      "LearnCandidate": {
+        "type": "object",
+        "title": "LearnCandidate",
+        "description": "One fact an extractor offers. It lands `proposed` in `ouroboros-rest` — there is no\nfield to say otherwise (decision **K3**). Closed.",
+        "additionalProperties": false,
+        "required": [
+          "text",
+          "category",
+          "confidence",
+          "source_index",
+          "provenance"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The fact, inline-code spans verbatim."
+          },
+          "category": {
+            "type": "string",
+            "enum": [
+              "convention",
+              "environment",
+              "limitation",
+              "instruction"
+            ],
+            "examples": [
+              "convention"
+            ]
+          },
+          "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "The extractor's confidence.",
+            "examples": [
+              0.82
+            ]
+          },
+          "source_index": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 31,
+            "description": "Which of the request's sources it came from, 0-based.",
+            "examples": [
+              0
+            ]
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/LearnProvenance"
+          }
+        }
+      },
+      "Learned": {
+        "type": "object",
+        "title": "Learned",
+        "description": "The body of a `POST /v0/learn` response — candidates, and what produced them. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "candidates",
+          "extractor",
+          "notes"
+        ],
+        "properties": {
+          "candidates": {
+            "type": "array",
+            "maxItems": 64,
+            "items": {
+              "$ref": "#/components/schemas/LearnCandidate"
+            },
+            "description": "What was learned. Empty is a real answer."
+          },
+          "extractor": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "What produced the candidates — `unavailable-v0` today, BH.1's `llm-v1` later.\nDecision **K10**: required and non-empty.",
+            "examples": [
+              "unavailable-v0"
+            ]
+          },
+          "notes": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 512
+            },
+            "description": "Sentences for an operator — why nothing was extracted, say.",
+            "examples": [
+              []
             ]
           }
         }

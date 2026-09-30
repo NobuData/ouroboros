@@ -24,6 +24,9 @@ request/response exemplar the rest of the contract is written to,
 :mod:`ouroboros_engine.api.estimate`, which sizes an issue — the first operation the gateway
 calls for an answer rather than for a round trip — and :mod:`ouroboros_engine.api.workflows`,
 which validates a workflow definition and walks it for a ticket without running anything.
+:mod:`ouroboros_engine.api.plan` drafts tickets from an outline, and
+:mod:`ouroboros_engine.api.learn` is BF.3's (#412) committed ``/v0/learn`` contract — candidate
+facts from a source bundle, answered today by an extractor that extracts nothing and says so.
 
 The estimate operation is also where the rule above gets its first real test: the estimator
 behind it is replaced twice (L.2, then O.2) and the contract it answers through is not

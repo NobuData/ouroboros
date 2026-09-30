@@ -42,7 +42,7 @@
  * `pr_criterion.unverified` and `pr_criterion.waived`.
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 
 import {
   PR_CRITERION_UNVERIFIED_EVENT,
@@ -53,6 +53,10 @@ import {
 import { AuditService } from "../../audit/audit.service";
 import type { NewPrCriterionEvidence, PrCriterion, PrWaiver } from "../../db/schema";
 import { DomainError } from "../../errors/error.envelope";
+import {
+  FACT_SOURCE_OBSERVER,
+  type FactSourceObserver,
+} from "../../fact-proposers/proposers.observer";
 import {
   CHECK_VIOLATION,
   FOREIGN_KEY_VIOLATION,
@@ -125,11 +129,14 @@ export class CriteriaService {
    * @param store - Every statement this service issues.
    * @param host - AX.1's PR surface, for the waiver annotation.
    * @param audit - AD.4's trail.
+   * @param factSources - BF.3's proposers (#412): a waiver's reason is a source the waiver
+   *   proposer promotes into a `proposed` fact. Optional, and never throws.
    */
   constructor(
     private readonly store: CriteriaRepository,
     private readonly host: PrSyncService,
     private readonly audit: AuditService,
+    @Optional() @Inject(FACT_SOURCE_OBSERVER) private readonly factSources?: FactSourceObserver,
   ) {}
 
   // --- reads -------------------------------------------------------------------------------
@@ -450,6 +457,7 @@ export class CriteriaService {
       waiver_id: waiver.id,
       annotation: annotation.state,
     });
+    await this.factSources?.sourceWritten(organizationId, { kind: "waiver", id: waiver.id });
 
     return { criterion: await this.resource(written.criterion, waiver), annotation };
   }

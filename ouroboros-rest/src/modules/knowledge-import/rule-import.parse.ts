@@ -266,21 +266,9 @@ export function parseRuleFile(file: string, content: string): ParsedRuleFile {
 }
 
 /**
- * Normalize a fact's text for dedupe: case, width, inline markup and trailing punctuation do not
- * make two rules different.
- *
- * @param text - A fact's text.
- * @returns The comparison key.
+ * The fact dedupe key — shared with BF.3's proposers (#412), so it lives with the facts.
  */
-export function normalizeFactText(text: string): string {
-  return text
-    .normalize("NFKC")
-    .toLowerCase()
-    .replace(/[*_`]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .replace(/[\s.;:!,]+$/, "");
-}
+export { normalizeFactText } from "../facts/facts.text";
 
 /**
  * Normalize a skill body for dedupe: trailing whitespace and runs of blank lines are not changes.

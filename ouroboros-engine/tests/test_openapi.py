@@ -36,6 +36,15 @@ from ouroboros_engine.estimation.contract import (
     Trace,
 )
 from ouroboros_engine.estimation.heuristic import HeuristicEstimator
+from ouroboros_engine.learning.contract import (
+    LearnCandidate,
+    LearnContext,
+    Learned,
+    LearnProvenance,
+    LearnRef,
+    LearnRequest,
+    LearnSource,
+)
 from ouroboros_engine.main import _PUBLIC_PATHS, create_app
 from ouroboros_engine.planning.contract import Draft, Plan, PlanningContext, PlanRequest
 from ouroboros_engine.planning.outline_planner import OutlinePlanner
@@ -96,6 +105,13 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "Draft": Draft,
     "Plan": Plan,
     "Error": ErrorEnvelope,
+    "LearnRef": LearnRef,
+    "LearnSource": LearnSource,
+    "LearnContext": LearnContext,
+    "LearnRequest": LearnRequest,
+    "LearnProvenance": LearnProvenance,
+    "LearnCandidate": LearnCandidate,
+    "Learned": Learned,
 }
 
 

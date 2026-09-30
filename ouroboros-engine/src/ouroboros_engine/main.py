@@ -23,6 +23,7 @@ from fastapi import FastAPI
 from ouroboros_engine.api import (
     estimate,
     health,
+    learn,
     plan,
     root,
     status,
@@ -34,6 +35,7 @@ from ouroboros_engine.core.logging import configure_logging
 from ouroboros_engine.core.security import InternalKeyMiddleware
 from ouroboros_engine.core.uptime import Uptime
 from ouroboros_engine.estimation.heuristic import HeuristicEstimator
+from ouroboros_engine.learning.extractor import UnavailableExtractor
 from ouroboros_engine.openapi import document
 from ouroboros_engine.planning.outline_planner import OutlinePlanner
 from ouroboros_engine.settings import Settings, load_settings
@@ -60,9 +62,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         re-reading the environment, whose ``state.uptime`` is the stopwatch
         ``/v0/status`` reports from, whose ``state.estimator`` is the
         :class:`~ouroboros_engine.estimation.heuristic.HeuristicEstimator`
-        ``POST /v0/estimate`` calls, and whose ``state.planner`` is the
+        ``POST /v0/estimate`` calls, whose ``state.planner`` is the
         :class:`~ouroboros_engine.planning.outline_planner.OutlinePlanner`
-        ``POST /v0/plan`` calls.
+        ``POST /v0/plan`` calls, and whose ``state.extractor`` is the
+        :class:`~ouroboros_engine.learning.extractor.UnavailableExtractor`
+        ``POST /v0/learn`` calls.
 
     Raises:
         ouroboros_engine.settings.SettingsError: If ``settings`` was omitted and the
@@ -126,6 +130,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # exists, and installing it is this line. See `ouroboros_engine.planning`.
     app.state.planner = OutlinePlanner()
 
+    # And which extractor answers `POST /v0/learn` (BF.3, #412), by the same rule.
+    # `UnavailableExtractor` extracts nothing and says so — the deterministic proposers run in
+    # ouroboros-rest and need no model. BH.1 (#423) is the LLM extractor that answers the same
+    # contract, and installing it is this line. See `ouroboros_engine.learning`.
+    app.state.extractor = UnavailableExtractor()
+
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that
     # is added later, and an unauthenticated request never reaches routing at all.
@@ -148,6 +158,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(estimate.router)
     app.include_router(workflows.router)
     app.include_router(plan.router)
+    app.include_router(learn.router)
     _mount_simulator(app, resolved)
     return app
 

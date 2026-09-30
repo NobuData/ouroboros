@@ -465,6 +465,18 @@
 #   commands are typed                           drop env_recipes_commands_typed
 #   no snapshot field exists                     add a boot_seconds column
 #
+# V074 (#412, BF.3) widens fact provenance and adds the suppression record:
+#
+#   BF.3 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a classification ref resolves to the         rewrite facts_guard_provenance() so the
+#     workspace                                    classification branch never matches
+#   a suppression's refs resolve                 drop the fact_suppressions_provenance_resolves
+#                                                  trigger
+#   one suppression per source and fact          drop fact_suppressions_source_fact_key
+#   the matched fact is the workspace's own      drop fact_suppressions_matched_fact_fk
+#   a suppression is never revised               drop the fact_suppressions_no_update trigger
+#
 # #409 (BE.5) seeds mockup 14 and adds a probe per `ci/db` scope bullet the BE.1–BE.3 rows above
 # leave unwatched — each one a *subtler* loss than dropping the rule outright:
 #
@@ -1867,6 +1879,42 @@ expect_red 'environment recipe commands may be untyped' \
 expect_red 'an environment recipe may store a boot time' \
   'no snapshot, boot-time or prebuild-schedule column exists on env_recipes' \
   'alter table ouroboros.env_recipes add column boot_seconds integer;'
+
+# V074 (#412): the source refs resolve, and the suppression record is shaped and append-only.
+# The resolver answers for eleven kinds; the rewrite keeps every other branch and lets a
+# classification of any workspace through — the cross-tenant citation a proposer bug would write.
+provenance_classification_rewrite="
+do \$probe\$
+declare
+  body text := pg_get_functiondef('ouroboros.facts_guard_provenance()'::regprocedure);
+  aimed text := 'when ''classification'' then';
+begin
+  if position(aimed in body) = 0 then
+    raise exception 'facts_guard_provenance() no longer carries the classification branch';
+  end if;
+  execute replace(body, aimed, 'when ''classification-unresolved'' then');
+end
+\$probe\$;"
+
+expect_red 'a fact may cite another workspace.s classification' \
+  'a provenance classification resolves to this workspace .*facts_provenance_resolves did not fire' \
+  "$provenance_classification_rewrite"
+
+expect_red 'a suppression may cite another workspace' \
+  'a suppression.s provenance resolves to its workspace .*facts_provenance_resolves did not fire' \
+  'drop trigger fact_suppressions_provenance_resolves on ouroboros.fact_suppressions;'
+
+expect_red 'a source may be suppressed against a fact twice' \
+  'a source is suppressed against a fact once .*fact_suppressions_source_fact_key did not fire' \
+  'alter table ouroboros.fact_suppressions drop constraint fact_suppressions_source_fact_key;'
+
+expect_red 'a suppression may name another workspace.s fact' \
+  'a suppression names a fact of its own workspace .*fact_suppressions_matched_fact_fk did not fire' \
+  'alter table ouroboros.fact_suppressions drop constraint fact_suppressions_matched_fact_fk;'
+
+expect_red 'a suppression may be revised' \
+  'a suppression cannot be revised \(statement was accepted\)' \
+  'drop trigger fact_suppressions_no_update on ouroboros.fact_suppressions;'
 
 
 # ---------------------------------------------------------------------------

@@ -5253,6 +5253,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/fact-proposers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The fact proposer registry
+         * @description The deterministic proposers (BF.3, [#412](https://github.com/NobuData/ouroboros/issues/412)),
+         *     as data — each entry's kind, version, trigger, source, extraction rule and provenance shape,
+         *     and the registry's own version. `landsAs` is always `proposed`: no proposer can land a
+         *     candidate in any other status (decision **K3**).
+         *
+         *     **Every member**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["listFactProposers"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fact-proposers/suppressions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Candidates a proposer did not propose, and the fact each matched
+         * @description Dedupe made observable (BF.3, [#412](https://github.com/NobuData/ouroboros/issues/412)): a
+         *     candidate whose normalized text — case, width, inline markup, whitespace and trailing
+         *     punctuation folded — matches an existing fact of its repository or the whole workspace, in
+         *     **any** status (a rejected fact does not come back next week), is not proposed. Each such
+         *     suppression is recorded once per source and matched fact, with the proposer, its version,
+         *     the candidate text and its typed provenance. Newest first.
+         *
+         *     **Every member**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["listFactSuppressions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/fact-proposers/backfill": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run every proposer over one run's sources
+         * @description The proposers normally run when their source is written — a classification carrying a
+         *     correction note, a waiver, a steer flagged *remember this*. This runs them all over one run's
+         *     sources, oldest first, for a run whose sources predate BF.3
+         *     ([#412](https://github.com/NobuData/ouroboros/issues/412)). **Idempotent**: a source a fact
+         *     already cites answers `already_proposed`, a source already suppressed answers `suppressed`
+         *     with the same suppression, and neither writes anything.
+         *
+         *     Each outcome names its source and either the fact proposed (born `proposed`, never
+         *     confirmed), the fact it was suppressed against, or why it was skipped — `not_human` (a rule's
+         *     or a model's classification), `no_note`, `not_remembered`, or an extraction that left
+         *     nothing (`empty`), one word (`too_short`) or more than 200 characters (`too_long`).
+         *
+         *     **`owner` or `admin`** — it writes proposals on the workspace's behalf.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["backfillFactProposers"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/knowledge/import/preview": {
         parameters: {
             query?: never;
@@ -17337,13 +17433,189 @@ export interface components {
             /** @example from PR #514 review cycle */
             line: string;
             refs: {
-                /** @enum {string} */
-                kind: "run" | "pull_request" | "ticket" | "import";
-                /** Format: uuid */
+                /**
+                 * @description `run`, `pull_request` and `ticket` (V071), and — since BF.3 (#412) — the source a
+                 *     proposer learned from - `classification`, `waiver`, `steer`, `run_stage`, `gate`, and
+                 *     the `person` who steered. `import` names a rules file by `file` and `section`.
+                 * @enum {string}
+                 */
+                kind: "run" | "pull_request" | "ticket" | "classification" | "waiver" | "steer" | "run_stage" | "gate" | "person" | "import";
+                /** @description A row's uuid; a person's user id for `person`. Absent for `import`. */
                 id?: string;
                 file?: string;
                 section?: string;
             }[];
+        };
+        /**
+         * FactProposerDefinition
+         * @description One entry of the proposer registry, as data (BF.3,
+         */
+        FactProposerDefinition: {
+            /** @enum {string} */
+            kind: "correction_note" | "waiver" | "steer" | "import";
+            /** @description Bumped whenever the entry's rule would answer differently for the same source. */
+            version: number;
+            /** @description When it runs. */
+            trigger: string;
+            /** @description What it reads. */
+            source: string;
+            /** @description How it turns the source into text. */
+            extraction: string;
+            /**
+             * @description The provenance ref kinds its candidates carry; `?` optional, `*` zero or more.
+             * @example [
+             *       "run",
+             *       "pull_request?",
+             *       "classification"
+             *     ]
+             */
+            provenanceShape: string[];
+        };
+        /**
+         * FactProposerRegistry
+         * @description The deterministic proposers (BF.3,
+         */
+        FactProposerRegistry: {
+            /** @description The registry's own version. */
+            version: number;
+            /**
+             * @description Every candidate lands `proposed` — no proposer can confirm (K3).
+             * @constant
+             */
+            landsAs: "proposed";
+            proposers: components["schemas"]["FactProposerDefinition"][];
+        };
+        /**
+         * FactSuppression
+         * @description A candidate not proposed because an existing fact matched it (V074,
+         */
+        FactSuppression: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            proposer: "correction_note" | "waiver" | "steer" | "import" | "llm";
+            proposerVersion: number;
+            /** @example acme-robotics/helios-firmware */
+            repoRef: string | null;
+            /**
+             * @description The candidate as extracted, inline-code spans verbatim.
+             * @example Team prefers `k_msgq` over `k_fifo` in ISR paths
+             */
+            text: string;
+            /**
+             * Format: uuid
+             * @description The existing fact it matched, in any status — rejected and expired included.
+             */
+            matchedFactId: string;
+            provenance: components["schemas"]["FactProvenance"];
+            /**
+             * @description The source row as `<kind>:<id>`.
+             * @example classification:5eed0037-0000-4000-8000-000000048201
+             */
+            sourceKey: string;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /**
+         * FactSuppressionList
+         * @description A workspace's recorded suppressions, newest first.
+         */
+        FactSuppressionList: {
+            items: components["schemas"]["FactSuppression"][];
+        };
+        /**
+         * FactCandidateSource
+         * @description The row a candidate came from.
+         */
+        FactCandidateSource: {
+            /** @enum {string} */
+            kind: "classification" | "waiver" | "steer" | "import" | "pr_review_cycle" | "run_observation" | "correction_note";
+            /** @description The row's id, or `<file>#<section>` for an import. */
+            id: string;
+        };
+        /**
+         * FactCandidate
+         * @description A fact a proposer offered. There is no status — it lands `proposed` (K3). `proposer` names
+         *     what produced it, so the UI phrases provenance honestly.
+         */
+        FactCandidate: {
+            /** @example Team prefers `k_msgq` over `k_fifo` in ISR paths */
+            text: string;
+            repoRef: string | null;
+            /** @enum {string} */
+            proposer: "correction_note" | "waiver" | "steer" | "import" | "llm";
+            proposerVersion: number;
+            /**
+             * @description A waiver's reason is `environment` or a known `limitation`.
+             * @enum {string}
+             */
+            category: "convention" | "environment" | "limitation" | "instruction";
+            /** @description A model's confidence; `null` for a deterministic rule — no invented number. */
+            confidence: number | null;
+            provenance: components["schemas"]["FactProvenance"];
+            source: components["schemas"]["FactCandidateSource"];
+        };
+        /**
+         * FactProposalOutcome
+         * @description What became of one source.
+         */
+        FactProposalOutcome: {
+            /** @constant */
+            outcome: "proposed";
+            source: components["schemas"]["FactCandidateSource"];
+            /**
+             * Format: uuid
+             * @description The new fact — `proposed`, awaiting review.
+             */
+            factId: string;
+            candidate: components["schemas"]["FactCandidate"];
+        } | {
+            /** @constant */
+            outcome: "suppressed";
+            source: components["schemas"]["FactCandidateSource"];
+            /** Format: uuid */
+            matchedFactId: string;
+            /** Format: uuid */
+            suppressionId: string;
+            candidate: components["schemas"]["FactCandidate"];
+        } | {
+            /** @constant */
+            outcome: "already_proposed";
+            source: components["schemas"]["FactCandidateSource"];
+            /**
+             * Format: uuid
+             * @description The fact that already cites this source.
+             */
+            factId: string;
+        } | {
+            /** @constant */
+            outcome: "skipped";
+            source: components["schemas"]["FactCandidateSource"];
+            /** @enum {string} */
+            reason: "source_not_found" | "no_note" | "not_human" | "not_remembered" | "empty" | "too_short" | "too_long";
+        };
+        /**
+         * FactProposerBackfill
+         * @description What every source of one run became.
+         */
+        FactProposerBackfill: {
+            /** Format: uuid */
+            runId: string;
+            outcomes: components["schemas"]["FactProposalOutcome"][];
+            counts: {
+                proposed: number;
+                suppressed: number;
+                alreadyProposed: number;
+                skipped: number;
+            };
+        };
+        /**
+         * BackfillFactProposersBody
+         * @description Which run's sources to propose from.
+         */
+        BackfillFactProposersBody: {
+            /** Format: uuid */
+            runId: string;
         };
         /**
          * FactAnchor
@@ -43066,6 +43338,330 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — a malformed body or id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listFactProposers: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The registry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactProposerRegistry"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listFactSuppressions: {
+        parameters: {
+            query?: {
+                /** @description How many suppressions to return, newest first. */
+                limit?: number;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The suppressions. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactSuppressionList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a `limit` outside 1–200. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    backfillFactProposers: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "runId": "5eed0021-0000-4000-8000-000000000482"
+                 *     }
+                 */
+                "application/json": components["schemas"]["BackfillFactProposersBody"];
+            };
+        };
+        responses: {
+            /** @description What each source became, and the counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactProposerBackfill"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller's role is not `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `run_not_found` — no such run in this workspace. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a `runId` that is not a uuid. */
             422: {
                 headers: {
                     [name: string]: unknown;

@@ -199,6 +199,23 @@ describe("the control service", () => {
       expect(answer.remember).toBe(true);
     });
 
+    it("reports a remembered steer to BF.3's steer proposer (#412), and only that", async () => {
+      const observer = { sourceWritten: jest.fn().mockResolvedValue(undefined) };
+      const observed = new ControlsService(repo as unknown as ControlsRepository, CONFIG, observer);
+
+      const remembered = await observed.submit(ORG, RUN_ID, MEMBER, {
+        kind: "steer",
+        payload: "always use k_msgq",
+        remember: true,
+      });
+      await observed.submit(ORG, RUN_ID, MEMBER, { kind: "steer", payload: "just this once" });
+      await observed.submit(ORG, RUN_ID, ADMIN, { kind: "pause" });
+
+      expect(observer.sourceWritten.mock.calls).toEqual([
+        [ORG, { kind: "steer", id: remembered.id }],
+      ]);
+    });
+
     it("never makes an ordinary steer a correction round", async () => {
       const answer = await service.submit(ORG, RUN_ID, MEMBER, { kind: "steer", payload: "x" });
 

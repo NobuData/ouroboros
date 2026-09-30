@@ -127,6 +127,7 @@ $ curl http://localhost:4000/api/v1
 | `…/skills/{slug}/scope/preview` · `…/scope` · `…/code` · `/skills/stats` | Scope moves with a conflict preview; the code view's `skills/*.skill.md`; Used-by over a stated window |
 | `GET POST /api/v1/facts` · `/facts/needs-you` · `/facts/sweep` | [The fact lifecycle](#fact-lifecycle-and-the-staleness-sweep) (#411) — the learned-facts card, a manual proposal, the `fact_review` feed, an on-demand staleness sweep |
 | `…/facts/{factId}` · `…/confirm` · `…/reject` · `…/reconfirm` · `…/expire` · `…/relearn` · `…/anchors` | One fact and its audit; the K3 transitions (member+, actor recorded); anchor add/remove |
+| `GET /api/v1/fact-proposers` · `…/suppressions` · `POST …/backfill` | [Deterministic fact proposers](#deterministic-fact-proposers) (#412) — the registry, the dedupe record, every proposer over one run's sources |
 | `POST /api/v1/knowledge/import/preview` · `…/apply` | [Rule-file import](#rule-file-import) (#413) — `CLAUDE.md` / `AGENTS.md` / `.cursorrules` / Copilot instructions → draft skills and proposed facts, previewed then applied exactly |
 | `POST /api/v1/knowledge/context/preview` · `…/injections` | [Context assembly](#context-assembly-and-manifests) (#414) — the what-would-inject manifest (closest scope wins, required locked on, trims recorded); a consumer's injection record |
 | `GET POST /api/v1/sources`                          | [Ticket sources](#pluggable-ticket-sources) (#141) — the workspace's list with masks, never values; add one, checked against its kind's schema |
@@ -3186,10 +3187,62 @@ workspace-wide fact matches every repository's.
 **The needs-you feed is the `fact_review` contract** mockup 16's inbox (#461) consumes: one item per
 proposal awaiting review and per stale fact, `severity: info`, oldest wait first, `factId` its
 identity. `count` is the figure #90's needs-you pill joins; the dashboard's pill is not changed
-here. `FactsService.propose` is the entry point BF.3 (#412) calls with its own `proposer` and no
-actor — a proposal is never confirmed automatically. BF.4's [import](#rule-file-import) writes
+here. `FactsService.propose` is the entry point [BF.3's proposers](#deterministic-fact-proposers)
+(#412) call with their own `proposer` and no actor — a proposal is never confirmed automatically. BF.4's [import](#rule-file-import) writes
 through `FactsRepository.insert` instead, inside its one apply transaction, with the person applying
 as the actor.
+
+## Deterministic fact proposers
+
+**"Learned by the loop", without a model** (BF.3,
+[#412](https://github.com/NobuData/ouroboros/issues/412), decision **K5**). The loop already writes
+down what it learns — a person's correction note on a failing case, a waiver's reason, a steer
+flagged *remember this* — and `fact-proposers/` promotes each into a `proposed` fact whose typed
+provenance names the source itself.
+
+```
+source written ─▶ registry entry ─▶ skip {reason} | candidate ─▶ sealCandidate (no status, ever)
+  ─▶ a fact already cites the source?          already_proposed   (idempotent)
+  ─▶ normalized text matches a fact, any status suppressed + fact_suppressions row
+  ─▶ FactsService.propose(actor null)          proposed           awaiting review
+```
+
+| Proposer (v1) | Source | Candidate | Provenance refs · line |
+| --- | --- | --- | --- |
+| `correction_note` | a **person's** classification carrying a note (#332) | the note's lead instruction · `convention` | `run`, `pull_request?`, `classification` · `from correction note (run #1847)` |
+| `waiver` | a waiver's reason (#327, cases or a criterion) | the reason's lead · `environment` (rig, farm, network, toolchain…) or `limitation` | `run`, `pull_request?`, `gate*` (the PR's `test_suite`/`physical_hil` for a case waiver), `waiver` · `from waiver on PR #514 · environment` |
+| `steer` | a steer with `remember: true` (#306's amendment); without it, nothing | the steer's lead · `instruction` | `run`, `run_stage?`, `person?`, `steer` · `from remembered steer (run #1847 · Implement)` |
+| `import` | BF.4's bullets — the [import](#rule-file-import) runs it in its own apply | the bullet · `convention` | `import` · `imported from CLAUDE.md` |
+
+**The text rule** (`proposers.text.ts`): the lead sentence — up to the first `.`, `!`, `?`, `;` or
+line break outside a code span, not an abbreviation's dot — minus a list marker and conversational
+filler (*please*, *note:*, *remember to*, *we should*…), whitespace collapsed in prose,
+**inline-code spans copied byte for byte**, first letter capitalised, trailing punctuation dropped.
+Nothing, one word or more than 200 characters is a `skip`. **Honest provenance**: never the mockup's
+`from PR #498 review cycle` — that phrasing belongs to #423's extraction.
+
+**When they run.** The triage service (classify with a note, waive), the criteria service (waive) and
+the controls service (a remembered steer) report the row on `FACT_SOURCE_OBSERVER` once their own
+write has succeeded; the observer never throws, so a proposer failure is logged and the
+classification, waiver or steer stands. `POST /api/v1/fact-proposers/backfill {runId}`
+(`owner`/`admin`) runs every proposer over one run's sources, oldest first — idempotent.
+
+**Dedupe is observable.** A candidate whose normalized text (`facts/facts.text.ts`, the key BF.4's
+import uses) matches a fact of its repository or the workspace in **any** status — a rejected fact
+does not come back — is recorded in V074's append-only `fact_suppressions` (proposer, version, text,
+matched fact, provenance, `source_key`), once per source and fact. `GET …/suppressions?limit=` reads
+them newest first; `GET /api/v1/fact-proposers` serves the registry as data, `landsAs: proposed`.
+
+**Nothing auto-confirms, asserted.** A candidate type has no status; `sealCandidate` refuses any key
+a candidate does not have and freezes the rest; the only write is `FactsService.propose`, which
+inserts `proposed` (and V071's trigger refuses anything else). A new proposer is a registry entry and
+a loader — `FactProposersService.propose` is generic, and the lifecycle service does not change.
+
+**`/v0/learn`** is the engine contract #423's LLM proposer answers — a source bundle in, candidates
+with confidence and typed provenance out — mirrored in `engine/engine.contract.ts` and drift-checked
+in `engine.contract.spec.ts`. The engine's installed extractor (`unavailable-v0`) answers no
+candidates and says why; `proposers.learn.ts` maps an answer to sealed `llm` candidates, refusing
+provenance its sources did not carry.
 
 ## Rule-file import
 

@@ -493,6 +493,159 @@ export function planRequestBody(request: PlanRequest): Record<string, unknown> {
 }
 
 /**
+ * `POST` — candidate facts from a source bundle. BF.3
+ * ([#412](https://github.com/NobuData/ouroboros/issues/412)), decision **K5**: the contract is
+ * **committed now** and mirrored here so BH.1's LLM extractor
+ * ([#423](https://github.com/NobuData/ouroboros/issues/423)) plugs into the proposer registry as
+ * the `llm` proposer without a reshape (`fact-proposers/proposers.learn.ts`). Nothing calls it
+ * yet: the MVP's proposers are deterministic and need no model, and the engine's installed
+ * extractor, `unavailable-v0`, answers every bundle with no candidates and a note saying why.
+ *
+ * Mirrored from `ouroboros-engine/openapi.yaml`'s `LearnRequest` and `Learned` (0.7.7); the
+ * drift check is `engine.contract.spec.ts`, which reads that document.
+ */
+export const ENGINE_LEARN_ROUTE = `${ENGINE_API_VERSION}/learn`;
+
+/** The kinds of source a bundle carries — the first two are BH.1's. */
+export const LEARN_SOURCE_KINDS = [
+  "pr_review_cycle",
+  "run_observation",
+  "correction_note",
+  "waiver",
+  "steer",
+] as const;
+
+/** A source kind. */
+export type LearnSourceKind = (typeof LEARN_SOURCE_KINDS)[number];
+
+/** The provenance ref kinds a candidate may cite — V074's vocabulary without `import`. */
+export const LEARN_REF_KINDS = [
+  "run",
+  "pull_request",
+  "ticket",
+  "classification",
+  "waiver",
+  "steer",
+  "run_stage",
+  "gate",
+  "person",
+] as const;
+
+/** A ref kind. */
+export type LearnRefKind = (typeof LEARN_REF_KINDS)[number];
+
+/** A candidate's category — the proposer registry's `CandidateCategory`. */
+export const LEARN_CATEGORIES = ["convention", "environment", "limitation", "instruction"] as const;
+
+/** A category. */
+export type LearnCategory = (typeof LEARN_CATEGORIES)[number];
+
+/** The most sources one bundle may carry. */
+export const LEARN_MAX_SOURCES = 32;
+
+/** The longest candidate an answer may hold — the proposer registry's own cap. */
+export const LEARN_MAX_CANDIDATE_LENGTH = 200;
+
+/** One typed provenance reference. */
+export interface LearnRef {
+  kind: LearnRefKind;
+  id: string;
+}
+
+/** One thing the loop wrote, offered for extraction. */
+export interface LearnSource {
+  kind: LearnSourceKind;
+  /** How a provenance line names it — `PR #498 review cycle`. */
+  label: string;
+  text: string;
+  /** Every ref a candidate cites comes from here. */
+  refs: LearnRef[];
+}
+
+/** A source bundle. */
+export interface LearnRequest {
+  sources: LearnSource[];
+  context: {
+    /** `owner/name`, or null for the workspace. */
+    repo: string | null;
+    /** Facts already held, in any status — a hint; this service dedupes again regardless. */
+    existingFacts: string[];
+  };
+}
+
+/** One candidate, as the extractor answers it. There is no status — it lands `proposed` (K3). */
+export interface LearnCandidate {
+  text: string;
+  category: LearnCategory;
+  /** 0–1. */
+  confidence: number;
+  /** Which of the request's sources it came from. */
+  sourceIndex: number;
+  provenance: { line: string; refs: LearnRef[] };
+}
+
+/** An answer. */
+export interface Learned {
+  candidates: LearnCandidate[];
+  /** What produced them — `unavailable-v0`, BH.1's `llm-v1`. Never empty (K10). */
+  extractor: string;
+  notes: string[];
+}
+
+const learnRefSchema = z.object({ kind: z.enum(LEARN_REF_KINDS), id: z.string().min(1) });
+
+const learnCandidateSchema = z
+  .object({
+    text: z.string().min(1).max(LEARN_MAX_CANDIDATE_LENGTH),
+    category: z.enum(LEARN_CATEGORIES),
+    confidence: z.number().min(0).max(1),
+    source_index: z
+      .number()
+      .int()
+      .min(0)
+      .max(LEARN_MAX_SOURCES - 1),
+    provenance: z.object({ line: z.string().min(1).max(200), refs: z.array(learnRefSchema) }),
+  })
+  .transform((body): LearnCandidate => ({
+    text: body.text,
+    category: body.category,
+    confidence: body.confidence,
+    sourceIndex: body.source_index,
+    provenance: body.provenance,
+  }));
+
+/** `POST /v0/learn`, as it arrives. */
+export const learnedSchema = z
+  .object({
+    candidates: z.array(learnCandidateSchema),
+    extractor: z.string().min(1),
+    notes: z.array(z.string()),
+  })
+  .transform((body): Learned => ({
+    candidates: body.candidates,
+    extractor: body.extractor,
+    notes: body.notes,
+  }));
+
+/**
+ * A source bundle, as the engine's request body.
+ *
+ * @param request - The sources and context.
+ * @returns The body to serialise, in the engine's `snake_case`.
+ */
+export function learnRequestBody(request: LearnRequest): Record<string, unknown> {
+  return {
+    sources: request.sources.map((source) => ({
+      kind: source.kind,
+      label: source.label,
+      text: source.text,
+      refs: source.refs.map((ref) => ({ kind: ref.kind, id: ref.id })),
+    })),
+    context: { repo: request.context.repo, existing_facts: request.context.existingFacts },
+  };
+}
+
+/**
  * `POST` — the engine's opinion on a workflow definition. R.2
  * ([#144](https://github.com/NobuData/ouroboros/issues/144)), and the second half of P.3's
  * publish gate ([#134](https://github.com/NobuData/ouroboros/issues/134)).

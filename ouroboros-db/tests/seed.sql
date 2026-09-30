@@ -4223,8 +4223,21 @@ select pg_temp.must_hold(
                        and classification.routed is null and classification.superseded_by is null
                        and classification.test_case_id = '5eed0033-0000-4000-8000-000048230501')
      from ouroboros.failure_classifications classification
-    where classification.id::text like '5eed0037%'),
+    where classification.id::text like '5eed0037%'
+      and classification.id <> '5eed0037-0000-4000-8000-000000048201'),
   'one heuristic hint on Build 3''s overshoot: a product bug, a named rule, no confidence, nothing routed');
+
+-- The correction note BF.3's proposer promotes (#412): Ken's, on Build 1, its first sentence the
+-- knowledge seed's awaiting-review fact.
+select pg_temp.must_hold(
+  (select classification.actor = 'human' and classification.class = 'product_bug'
+          and classification.created_by = '5eed0003-0000-4000-8000-000000000001'
+          and classification.superseded_by is null
+          and classification.test_case_id = '5eed0033-0000-4000-8000-000048210202'
+          and classification.note like 'Team prefers `k_msgq` over `k_fifo` in ISR paths. %'
+     from ouroboros.failure_classifications classification
+    where classification.id = '5eed0037-0000-4000-8000-000000048201'),
+  'Ken''s correction note on Build 1 leads with the rule the team holds');
 
 select pg_temp.must_hold(
   (select intent.block_until_green and intent.auto_rerun_physical
@@ -4764,10 +4777,10 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select array_agg(fact.provenance ->> 'line' order by fact.id)
           = array['from build-farm failure pattern', 'from PR #498 review cycle',
-                  'from PR #514 review cycle', 'observed in loop #1847', 'imported from CLAUDE.md']
+                  'from correction note (run #1847)', 'observed in loop #1847', 'imported from CLAUDE.md']
      from ouroboros.facts fact
     where fact.id::text like '5eed0044-%'),
-  'each fact renders the mockup''s provenance line');
+  'each fact renders its provenance line — the mockup''s, except the correction note''s honest one (#412)');
 
 -- `confirmed by Ken, 6w ago` and `confirmed by Maya, 3w ago`.
 select pg_temp.must_hold(
@@ -4791,10 +4804,11 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select array_agg(fact.id::text || ':' || (ref ->> 'kind') || ':'
                     || coalesce(run.issue_number::text, pr.external_number::text,
-                                ticket.external_key, ref ->> 'file')
+                                ticket.external_key, ref ->> 'file', ref ->> 'id')
                     order by fact.id, ref ->> 'kind')
           = array['5eed0044-0000-4000-8000-000000000001:ticket:#552',
                   '5eed0044-0000-4000-8000-000000000002:ticket:#560',
+                  '5eed0044-0000-4000-8000-000000000003:classification:5eed0037-0000-4000-8000-000000048201',
                   '5eed0044-0000-4000-8000-000000000003:pull_request:514',
                   '5eed0044-0000-4000-8000-000000000003:run:482',
                   '5eed0044-0000-4000-8000-000000000004:run:482',

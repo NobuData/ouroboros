@@ -30,10 +30,14 @@
  * cannot be forgotten.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import { AppConfigService } from "../config/config.service";
 import type { OrganizationRole, RunControl } from "../db/schema";
+import {
+  FACT_SOURCE_OBSERVER,
+  type FactSourceObserver,
+} from "../fact-proposers/proposers.observer";
 import { runNotFound } from "../runs/runs.errors";
 import { forbidden } from "../tenancy/tenancy.errors";
 import type { AckControlDto, SubmitControlDto } from "./controls.dto";
@@ -84,6 +88,7 @@ export class ControlsService {
   constructor(
     private readonly controls: ControlsRepository,
     private readonly config: AppConfigService,
+    @Optional() @Inject(FACT_SOURCE_OBSERVER) private readonly factSources?: FactSourceObserver,
   ) {}
 
   // --- POST /api/v1/runs/:id/controls ----------------------------------------------------
@@ -106,14 +111,23 @@ export class ControlsService {
    * @throws {InvalidRequestError} `422 control_payload_invalid`, `422 abort_confirmation_invalid`.
    * @throws {NotFoundError} `404 run_not_found` — absent, or another workspace's.
    * @throws {ConflictError} `409 control_key_reused`.
+   *
+   * A steer flagged *remember this* is reported to BF.3's steer proposer (#412) once written —
+   * best-effort: the observer never throws, and a replay proposes nothing twice.
    */
-  submit(
+  async submit(
     organizationId: string,
     runId: string,
     requester: Requester,
     request: SubmitControlDto,
   ): Promise<RunControlResource> {
-    return this.queue(organizationId, runId, requester, request, false);
+    const control = await this.queue(organizationId, runId, requester, request, false);
+
+    if (control.kind === "steer" && control.remember) {
+      await this.factSources?.sourceWritten(organizationId, { kind: "steer", id: control.id });
+    }
+
+    return control;
   }
 
   // --- the correction round (#332) --------------------------------------------------------

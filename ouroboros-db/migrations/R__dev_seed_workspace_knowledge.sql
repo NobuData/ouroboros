@@ -55,8 +55,12 @@
 --      days ago (`3w`), helios-firmware, anchored on `tests/hil/**`. It rides in the twelve
 --      manifests of the runs whose work touched that tree: the two live loops at the rig
 --      (`#482`, `#479`) and `#471`, `#334` and `#310`.
---   3. *Team prefers `k_msgq` over `k_fifo` in ISR paths* — **proposed** from a correction
---      note on run `#482` (Loop #1847), citing that run and PR `#514`.
+--   3. *Team prefers `k_msgq` over `k_fifo` in ISR paths* — **proposed** by BF.3's
+--      correction-note proposer (#412) from Ken's note on Build 1 of run `#482` (Loop #1847),
+--      citing that run, PR `#514` and the classification, and saying so honestly: `from
+--      correction note (run #1847)`, not the mockup's `from PR #514 review cycle`, which is the
+--      richer extraction #423 will make. Running the proposer over this seed reports it
+--      `already_proposed` — this row is its output.
 --   4. *PID gains live in `config/control.yaml`, not in headers* — **proposed**, observed in
 --      loop #1847, citing the run.
 --   5. *Zephyr 4.0 needs `CONFIG_LEGACY_TIMER`* — imported from `CLAUDE.md` 199 days ago,
@@ -337,7 +341,14 @@ select ('5eed0044-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
                            where seed.cites_pr
                              and pr.organization_id = org."id" and pr.external_number = 514
                           union all
-                          select 4, jsonb_build_object('kind', 'import', 'file', 'CLAUDE.md',
+                          select 4, jsonb_build_object('kind', 'classification',
+                                                       'id', classification.id::text)
+                            from ouroboros.failure_classifications classification
+                           where seed.proposer = 'correction_note'
+                             and classification.organization_id = org."id"
+                             and classification.id = '5eed0037-0000-4000-8000-000000048201'
+                          union all
+                          select 5, jsonb_build_object('kind', 'import', 'file', 'CLAUDE.md',
                                                        'section', 'Kconfig')
                            where seed.proposer = 'import') as ref)),
        author."id",
@@ -352,7 +363,7 @@ select ('5eed0044-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid,
           'maya@acme-robotics.dev', 23 * 1440),
          (3, 'acme-robotics/helios-firmware',
           'Team prefers `k_msgq` over `k_fifo` in ISR paths',
-          'correction_note', 'from PR #514 review cycle', null, true, true,
+          'correction_note', 'from correction note (run #1847)', null, true, true,
           null, 1),
          (4, 'acme-robotics/helios-firmware',
           'PID gains live in `config/control.yaml`, not in headers',

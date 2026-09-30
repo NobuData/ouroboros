@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.6
+  version: 0.7.7
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -121,7 +121,7 @@ paths:
                 $ref: "#/components/schemas/ServiceIdentity"
               example:
                 service: ouroboros-engine
-                version: 0.7.6
+                version: 0.7.7
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -147,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ServiceStatus"
               example:
                 service: ouroboros-engine
-                version: 0.7.6
+                version: 0.7.7
                 uptime_seconds: 1234.567
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -195,7 +195,7 @@ paths:
                   task_kind: echo
                   payload:
                     note: hello from ouroboros-rest
-                engine_version: 0.7.6
+                engine_version: 0.7.7
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -891,6 +891,85 @@ paths:
                     suggested_workflow: docs-loop
                     dependencies: []
                 planner: outline-v0
+                notes: []
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /v0/learn:
+    post:
+      tags: [v0]
+      summary: Learn candidate facts from a source bundle
+      description: |-
+        Turn what the loop wrote — a PR's review cycle, a run's observations, a correction note,
+        a waiver reason, a remembered steer — into candidate facts, each with a confidence and
+        the typed provenance it will be stored with.
+
+        **The contract is committed before its implementation**, BF.3
+        ([#412](https://github.com/NobuData/ouroboros/issues/412)), decision **K5**. Facts are
+        learned deterministically in the MVP by `ouroboros-rest`'s proposer registry, which
+        needs no model. BH.1 ([#423](https://github.com/NobuData/ouroboros/issues/423)) answers
+        **this same shape** with an LLM extractor, and `ouroboros-rest` plugs it into that
+        registry as the `llm` proposer without a reshape. Until then the installed extractor,
+        `unavailable-v0`, answers every bundle with **no candidates** and a note saying why: an
+        answer that looked like extraction with no model behind it would be the overclaiming
+        K5 rules out. The example below is the shape BH.1 answers.
+
+        **Provenance is drawn from the sources, never invented.** A candidate names the source
+        it came from by index, and every ref it cites is one of that source's own refs — an
+        answer that cites anything else is a `500` here rather than provenance that reaches a
+        row. The display line may be as rich as the extraction was (*"from PR #498 review
+        cycle"*).
+
+        **There is no status in this contract.** Every candidate lands `proposed` in
+        `ouroboros-rest` (decision **K3**); a person confirms or rejects it. `ouroboros-rest`
+        dedupes each candidate against every fact it holds — rejected ones included — whatever
+        `context.existing_facts` led the extractor to do.
+
+        **`extractor` is always recorded** — decision **K10**.
+      operationId: learnFacts
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LearnRequest"
+            example:
+              sources:
+                - kind: pr_review_cycle
+                  label: "PR #498 review cycle"
+                  text: >-
+                    Reviewer: tests under tests/hil/ touched the rig without reserving it again.
+                    Please always `rig claim` before any HIL test — we lost a morning to this.
+                  refs:
+                    - kind: pull_request
+                      id: a7150000-0000-0000-0000-000000000498
+              context:
+                repo: acme-robotics/helios-firmware
+                existing_facts: ["CI needs `west update` before first build of the day"]
+      responses:
+        "200":
+          description: |-
+            The candidates — here the mockup's *"Tests under `tests/hil/` require rig
+            reservation via `rig claim`"*, as BH.1 would extract it. `unavailable-v0` answers
+            `candidates: []` with its note instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Learned"
+              example:
+                candidates:
+                  - text: "Tests under `tests/hil/` require rig reservation via `rig claim`"
+                    category: environment
+                    confidence: 0.82
+                    source_index: 0
+                    provenance:
+                      line: "from PR #498 review cycle"
+                      refs:
+                        - kind: pull_request
+                          id: a7150000-0000-0000-0000-000000000498
+                extractor: llm-v1
                 notes: []
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -1928,6 +2007,184 @@ components:
             is nothing to say.
           examples:
             - ["Add a structured outline to split this into multiple tickets, or wait for the full planner."]
+
+    LearnRef:
+      type: object
+      title: LearnRef
+      description: |-
+        One typed provenance reference — a row a fact was learned from. The vocabulary is
+        `ouroboros-db`'s `fact_provenance_typed` (V071, widened by V074 for #412) minus `import`,
+        which names a file and is the rule-file import's alone. Closed.
+      additionalProperties: false
+      required: [kind, id]
+      properties:
+        kind:
+          type: string
+          enum: [run, pull_request, ticket, classification, waiver, steer, run_stage, gate, person]
+          examples: [pull_request]
+        id:
+          type: string
+          minLength: 1
+          maxLength: 255
+          description: The row's canonical uuid, or a person's user id for `person`.
+          examples: [a7150000-0000-0000-0000-000000000498]
+
+    LearnSource:
+      type: object
+      title: LearnSource
+      description: One thing the loop wrote, offered for extraction. Closed.
+      additionalProperties: false
+      required: [kind, label, text, refs]
+      properties:
+        kind:
+          type: string
+          enum: [pr_review_cycle, run_observation, correction_note, waiver, steer]
+          description: |-
+            What it is. The first two are BH.1's sources; the last three are the deterministic
+            proposers' own, carried so an extractor may read them too.
+          examples: [pr_review_cycle]
+        label:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: How a provenance line names it.
+          examples: ["PR #498 review cycle"]
+        text:
+          type: string
+          minLength: 1
+          maxLength: 16384
+          description: The source's text, as people wrote it.
+        refs:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/LearnRef"
+          description: The rows it stands for. Every ref a candidate cites comes from here.
+
+    LearnContext:
+      type: object
+      title: LearnContext
+      description: What the candidates are for, and what already exists. Closed.
+      additionalProperties: false
+      required: []
+      properties:
+        repo:
+          type: [string, "null"]
+          maxLength: 255
+          default: null
+          description: "`owner/name` the facts would be scoped to, or `null` for the workspace."
+          examples: [acme-robotics/helios-firmware]
+        existing_facts:
+          type: array
+          maxItems: 500
+          default: []
+          items:
+            type: string
+            minLength: 1
+            maxLength: 500
+          description: |-
+            Facts the caller already holds, in any status — a hint an extractor may use to
+            avoid restating them. The caller dedupes again regardless.
+
+    LearnRequest:
+      type: object
+      title: LearnRequest
+      description: The body of a `POST /v0/learn` request — a source bundle. Closed.
+      additionalProperties: false
+      required: [sources, context]
+      properties:
+        sources:
+          type: array
+          minItems: 1
+          maxItems: 32
+          items:
+            $ref: "#/components/schemas/LearnSource"
+        context:
+          $ref: "#/components/schemas/LearnContext"
+
+    LearnProvenance:
+      type: object
+      title: LearnProvenance
+      description: What a candidate's fact will be stored with. Closed.
+      additionalProperties: false
+      required: [line, refs]
+      properties:
+        line:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The card's line — honest about the extraction that produced it.
+          examples: ["from PR #498 review cycle"]
+        refs:
+          type: array
+          maxItems: 16
+          items:
+            $ref: "#/components/schemas/LearnRef"
+          description: The rows it learned from — each one of its source's refs.
+
+    LearnCandidate:
+      type: object
+      title: LearnCandidate
+      description: |-
+        One fact an extractor offers. It lands `proposed` in `ouroboros-rest` — there is no
+        field to say otherwise (decision **K3**). Closed.
+      additionalProperties: false
+      required: [text, category, confidence, source_index, provenance]
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 200
+          description: The fact, inline-code spans verbatim.
+        category:
+          type: string
+          enum: [convention, environment, limitation, instruction]
+          examples: [convention]
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: The extractor's confidence.
+          examples: [0.82]
+        source_index:
+          type: integer
+          minimum: 0
+          maximum: 31
+          description: Which of the request's sources it came from, 0-based.
+          examples: [0]
+        provenance:
+          $ref: "#/components/schemas/LearnProvenance"
+
+    Learned:
+      type: object
+      title: Learned
+      description: The body of a `POST /v0/learn` response — candidates, and what produced them. Closed.
+      additionalProperties: false
+      required: [candidates, extractor, notes]
+      properties:
+        candidates:
+          type: array
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/LearnCandidate"
+          description: What was learned. Empty is a real answer.
+        extractor:
+          type: string
+          minLength: 1
+          maxLength: 64
+          description: |-
+            What produced the candidates — `unavailable-v0` today, BH.1's `llm-v1` later.
+            Decision **K10**: required and non-empty.
+          examples: [unavailable-v0]
+        notes:
+          type: array
+          maxItems: 16
+          items:
+            type: string
+            minLength: 1
+            maxLength: 512
+          description: Sentences for an operator — why nothing was extracted, say.
+          examples: [[]]
 
     Error:
       type: object

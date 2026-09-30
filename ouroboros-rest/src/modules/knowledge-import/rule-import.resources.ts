@@ -132,7 +132,7 @@ export function importedFrontmatter(skill: PlannedSkill): SkillFrontmatter {
  * @param fact - The planned fact.
  * @returns V071's typed document: the display line and one `import` reference.
  */
-export function importedProvenance(fact: PlannedFact): FactProvenance {
+export function importedProvenance(fact: Pick<PlannedFact, "file" | "section">): FactProvenance {
   return {
     line: `imported from ${fact.file}`,
     refs: [
