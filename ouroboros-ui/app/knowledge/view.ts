@@ -24,6 +24,7 @@
 import type { EnabledRepo } from "@/app/api/enablement";
 import type { Role } from "@/app/api/membership";
 import type { Reading } from "@/app/api/reading";
+import type { FactList } from "@/app/api/facts";
 import type { SkillList, SkillStats } from "@/app/api/skills";
 
 /* ------------------------------------------------------------------ the head */
@@ -102,10 +103,13 @@ export const SKILLS_TITLE = "Skills";
 /** The facts region's title — the mockup's card head. */
 export const FACTS_TITLE = "Learned by the loop";
 
-/** What stands where the learned-facts card will, until #419 draws it. */
-export const FACTS_SEAT_NOTE =
-  "The learned-facts card — each fact's lifecycle with Confirm and Reject — arrives with #419. " +
-  "Candidates an import proposes wait there for review; none is used until confirmed.";
+/** Where a ticket a fact cites is — its key and its tracker page. */
+export interface TicketLink {
+  /** The key the meta line prints — `#552`. */
+  readonly label: string;
+  /** The ticket on its tracker. */
+  readonly href: string;
+}
 
 /**
  * What the frame reads, and why not for what it could not.
@@ -118,6 +122,14 @@ export interface KnowledgeReadings {
   readonly skills: Reading<SkillList>;
   /** The Used-by column's figures, over the service's stated window (BG.2, #418). */
   readonly stats: Reading<SkillStats>;
+  /** Every learned fact and every status's count — the facts card's rows (BG.3, #419). */
+  readonly facts: Reading<FactList>;
+  /**
+   * The tickets the facts' provenance cites, resolved to where each one is — keyed by the ref's
+   * id. A ticket that could not be read is absent, and its ref is drawn as text rather than as a
+   * link to nowhere.
+   */
+  readonly tickets: Readonly<Record<string, TicketLink>>;
   /** The enabled repositories — what the import sheet offers, and a repo-scoped skill's referent. */
   readonly repos: Reading<readonly EnabledRepo[]>;
   /**

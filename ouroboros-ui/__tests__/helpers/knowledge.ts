@@ -1,4 +1,5 @@
 import type { EnabledRepo } from "@/app/api/enablement";
+import type { Fact, FactList } from "@/app/api/facts";
 import type {
   RuleImportFile,
   RuleImportPreview,
@@ -7,12 +8,13 @@ import type {
 } from "@/app/api/knowledge-import";
 import type { RepoMapReport } from "@/app/api/repo-map";
 import type { SkillList, SkillStats, SkillSummary } from "@/app/api/skills";
-import type { KnowledgeReadings } from "@/app/knowledge/view";
+import type { KnowledgeReadings, TicketLink } from "@/app/knowledge/view";
 
 /**
- * Knowledge fixtures (#417, #418): the development seed's skills (mockup 14's six, with the ages,
- * versions and Used-by figures the seed gives them) and an import preview of the fixture
- * `CLAUDE.md`, trimmed to what the frame reads and the table and the sheet draw.
+ * Knowledge fixtures (#417, #418, #419): the development seed's skills (mockup 14's six, with the
+ * ages, versions and Used-by figures the seed gives them), its five facts with their stamps and
+ * refs, and an import preview of the fixture `CLAUDE.md`, trimmed to what the frame reads and
+ * the table, the card and the sheet draw.
  */
 
 /** The `owner/name` of the first seeded repository. */
@@ -166,6 +168,166 @@ export function repoMapReport(over: Partial<RepoMapReport> = {}): RepoMapReport 
     modules: 4,
     truncated: false,
     ...over,
+  };
+}
+
+/* ------------------------------------------------------------------ facts (#419) */
+
+/** The ids the seed gives the rows the facts cite. */
+export const CITED_RUN_ID = "5eed0021-0000-4000-8000-000000000482";
+export const CITED_PR_ID = "5eed0024-0000-4000-8000-000000000514";
+export const CITED_TICKET_552 = "5eed0030-0000-4000-8000-000000000552";
+export const CITED_TICKET_560 = "5eed0030-0000-4000-8000-000000000560";
+export const CITED_CLASSIFICATION_ID = "5eed0037-0000-4000-8000-000000048201";
+
+/** Ken and Maya, as the audit names them. */
+export const KEN = { id: "5eed0003-0000-4000-8000-000000000001", name: "Ken" };
+export const MAYA = { id: "5eed0003-0000-4000-8000-000000000002", name: "Maya" };
+
+/**
+ * One fact, seed-shaped: a manual, workspace-wide proposal with one anchor.
+ *
+ * @param over Fields to replace.
+ * @returns The fact.
+ */
+export function fact(over: Partial<Fact> = {}): Fact {
+  return {
+    id: "5eed0044-0000-4000-8000-000000000001",
+    repoRef: null,
+    text: "CI needs `west update` before first build of the day",
+    status: "proposed",
+    proposer: "manual",
+    provenance: { line: "from build-farm failure pattern", refs: [{ kind: "ticket", id: CITED_TICKET_552 }] },
+    confirmation: null,
+    staleness: null,
+    expiry: null,
+    usedCount: 0,
+    relearnedFromFactId: null,
+    relearnedByFactIds: [],
+    anchors: [{ id: "5eed0045-0000-4000-8000-000000000001", kind: "dependency", value: "west", lastCheckedAt: null }],
+    sweep: { covered: true, reason: null },
+    createdAt: minutesAgo(44 * 1440),
+    updatedAt: minutesAgo(42 * 1440),
+    ...over,
+  };
+}
+
+/**
+ * The seed's five facts, newest first as the service lists them: two proposals, two confirmed,
+ * one expired — mockup 14's rows, with the honest MVP provenance on the correction-note one.
+ *
+ * @returns The facts.
+ */
+export function seededFactRows(): readonly Fact[] {
+  return [
+    fact({
+      id: "5eed0044-0000-4000-8000-000000000003",
+      repoRef: SEEDED_REPO,
+      text: "Team prefers `k_msgq` over `k_fifo` in ISR paths",
+      proposer: "correction_note",
+      provenance: {
+        line: "from correction note (run #1847)",
+        refs: [
+          { kind: "run", id: CITED_RUN_ID },
+          { kind: "pull_request", id: CITED_PR_ID },
+          { kind: "classification", id: CITED_CLASSIFICATION_ID },
+        ],
+      },
+      anchors: [{ id: "5eed0045-0000-4000-8000-000000000003", kind: "path_glob", value: "subsys/telemetry/**", lastCheckedAt: null }],
+      createdAt: minutesAgo(1),
+      updatedAt: minutesAgo(1),
+    }),
+    fact({
+      id: "5eed0044-0000-4000-8000-000000000004",
+      repoRef: SEEDED_REPO,
+      text: "PID gains live in `config/control.yaml`, not in headers",
+      provenance: { line: "observed in loop #1847", refs: [{ kind: "run", id: CITED_RUN_ID }] },
+      anchors: [{ id: "5eed0045-0000-4000-8000-000000000004", kind: "path_glob", value: "config/control.yaml", lastCheckedAt: null }],
+      createdAt: minutesAgo(2),
+      updatedAt: minutesAgo(2),
+    }),
+    fact({
+      id: "5eed0044-0000-4000-8000-000000000002",
+      repoRef: SEEDED_REPO,
+      text: "Tests under `tests/hil/` require rig reservation via `rig claim`",
+      status: "confirmed",
+      provenance: { line: "from PR #498 review cycle", refs: [{ kind: "ticket", id: CITED_TICKET_560 }] },
+      confirmation: { actor: MAYA, at: minutesAgo(21 * 1440), reason: null },
+      usedCount: 12,
+      anchors: [{ id: "5eed0045-0000-4000-8000-000000000002", kind: "path_glob", value: "tests/hil/**", lastCheckedAt: null }],
+      createdAt: minutesAgo(23 * 1440),
+      updatedAt: minutesAgo(21 * 1440),
+    }),
+    fact({
+      status: "confirmed",
+      confirmation: { actor: KEN, at: minutesAgo(42 * 1440), reason: null },
+      usedCount: 48,
+    }),
+    fact({
+      id: "5eed0044-0000-4000-8000-000000000005",
+      repoRef: SEEDED_REPO,
+      text: "Zephyr 4.0 needs `CONFIG_LEGACY_TIMER`",
+      status: "expired",
+      proposer: "import",
+      provenance: { line: "imported from CLAUDE.md", refs: [{ kind: "import", file: "CLAUDE.md", section: "Kconfig" }] },
+      confirmation: { actor: KEN, at: minutesAgo(199 * 1440), reason: null },
+      staleness: { actor: null, at: minutesAgo(60), reason: "platform_version anchor zephyr-4.0 no longer holds" },
+      expiry: {
+        reason: "Zephyr 4.1 migration",
+        previousUseCount: 31,
+        stamp: { actor: KEN, at: minutesAgo(30), reason: "Zephyr 4.1 migration" },
+      },
+      usedCount: 31,
+      anchors: [{ id: "5eed0045-0000-4000-8000-000000000005", kind: "platform_version", value: "zephyr-4.0", lastCheckedAt: minutesAgo(60) }],
+      createdAt: minutesAgo(200 * 1440),
+      updatedAt: minutesAgo(30),
+    }),
+  ];
+}
+
+/**
+ * The seeded list with its counts.
+ *
+ * @param items The rows. Defaults to the seed's five.
+ * @returns The list, its counts derived from the rows.
+ */
+export function seededFacts(items: readonly Fact[] = seededFactRows()): FactList {
+  const counts = { proposed: 0, confirmed: 0, rejected: 0, stale: 0, expired: 0 };
+  for (const one of items) counts[one.status] += 1;
+
+  return { items: [...items], counts };
+}
+
+/** One seeded fact, by its text's first word — `seededFact("Team")`. */
+export function seededFact(lead: string): Fact {
+  const found = seededFactRows().find((one) => one.text.startsWith(lead));
+  if (found === undefined) throw new Error(`no seeded fact starting ${lead}`);
+
+  return found;
+}
+
+/**
+ * The rig-reservation fact as the sweep would flag it: stale, with the anchor change named.
+ *
+ * @returns The fact.
+ */
+export function staleFact(): Fact {
+  return {
+    ...seededFact("Tests"),
+    status: "stale",
+    staleness: {
+      actor: null,
+      at: minutesAgo(3 * 1440),
+      reason: "path_glob anchor tests/hil/** matched: renamed tests/hil/rig.py (PR #540)",
+    },
+  };
+}
+
+/** The two cited tickets, resolved to their tracker pages. */
+export function seededTickets(): Readonly<Record<string, TicketLink>> {
+  return {
+    [CITED_TICKET_552]: { label: "#552", href: `https://github.com/${SEEDED_REPO}/issues/552` },
+    [CITED_TICKET_560]: { label: "#560", href: `https://github.com/${SEEDED_REPO}/issues/560` },
   };
 }
 
@@ -360,6 +522,8 @@ export function knowledgeReadings(over: Partial<KnowledgeReadings> = {}): Knowle
   return {
     skills: { ok: true, value: seededSkills() },
     stats: { ok: true, value: seededStats() },
+    facts: { ok: true, value: seededFacts() },
+    tickets: seededTickets(),
     repos: { ok: true, value: seededRepos() },
     readAt: READ_AT,
     ...over,

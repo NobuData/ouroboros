@@ -343,6 +343,13 @@ const MONTH_MS = 30 * DAY_MS;
 const YEAR_MS = 365 * DAY_MS;
 
 /**
+ * Where weeks give way to months: eight of them. The mockups count `6w` (mockup 14's
+ * *confirmed by Ken, 6w ago*, 42 days) and `2mo` (mockup 14's `v2 · 2mo ago`, 61 days), so a
+ * month is claimed only once weeks would read past seven.
+ */
+const WEEKS_UNTIL_MONTHS = 8;
+
+/**
  * How long ago an instant was, in the coarsest unit that is still honest — mockup 14's
  * `20m ago`, `2d ago`, `3w ago`, `2mo ago`.
  *
@@ -350,7 +357,8 @@ const YEAR_MS = 365 * DAY_MS;
  * used three minutes ago and wrong for a skill published two months ago: `61d ago` is a figure a
  * reader has to divide. The skills table's Updated cell
  * ([#418](https://github.com/NobuData/ouroboros/issues/418)) wants the calendar's own units, so
- * this rounds down through weeks, thirty-day months and years past the first week.
+ * this rounds down through weeks (until eight of them), thirty-day months and years past the
+ * first week.
  *
  * Whole units, rounded down, for {@link ageOfSeconds}'s reason: `13d` is not yet two weeks.
  *
@@ -370,7 +378,7 @@ export function coarseAgo(iso: string, now: Date): string {
   if (elapsed < HOUR_MS) return `${Math.floor(elapsed / MINUTE_MS)}m ago`;
   if (elapsed < DAY_MS) return `${Math.floor(elapsed / HOUR_MS)}h ago`;
   if (elapsed < WEEK_MS) return `${Math.floor(elapsed / DAY_MS)}d ago`;
-  if (elapsed < MONTH_MS) return `${Math.floor(elapsed / WEEK_MS)}w ago`;
+  if (elapsed < WEEKS_UNTIL_MONTHS * WEEK_MS) return `${Math.floor(elapsed / WEEK_MS)}w ago`;
   if (elapsed < YEAR_MS) return `${Math.floor(elapsed / MONTH_MS)}mo ago`;
 
   return `${Math.floor(elapsed / YEAR_MS)}y ago`;

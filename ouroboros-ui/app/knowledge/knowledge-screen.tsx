@@ -3,8 +3,9 @@
 import { useState } from "react";
 
 import type { Role } from "@/app/api/membership";
-import { Card, CardHead, EmptyState, Eyebrow } from "@/app/ui";
+import { Eyebrow } from "@/app/ui";
 
+import { FactsCard } from "./facts-card";
 import { ImportSheet } from "./import-sheet";
 import { KnowledgeToastSeat } from "./knowledge-toast";
 import { NewSkill } from "./new-skill";
@@ -12,8 +13,6 @@ import { SkillsTable } from "./skills-table";
 import type { KnowledgeToast } from "./toast";
 import {
   FACTS_REGION_ID,
-  FACTS_SEAT_NOTE,
-  FACTS_TITLE,
   KNOWLEDGE_EYEBROW,
   KNOWLEDGE_SUBLINE,
   KNOWLEDGE_TITLE,
@@ -48,14 +47,15 @@ import "./knowledge.css";
  * ### The grid claims only what exists
  *
  * The mockup's left column is the skills table (BG.2, #418, `skills-table.tsx`) and the
- * learned-facts card (BG.3, #419); the right is playbooks, the repo profile (BG.4, #420) and the
- * scope ladder (BG.5, #421). The table is built and mounts under the id the toast's *draft
- * skills* link names; the facts card is not, so its seat is drawn labelled with what arrives and
- * when, never blank (§ 3.5), under the id the toast's other anchor names — and nothing else.
+ * learned-facts card (BG.3, #419, `facts-card.tsx`), each mounted under the id the toast's
+ * anchor for it names; the right is playbooks, the repo profile (BG.4, #420) and the scope
+ * ladder (BG.5, #421), none of which is built, so the right column is not drawn at all.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles the two
  *   actions are for.
+ * @param props.mayDecide Whether this reader is an `owner`, an `admin` or a `member` — the roles
+ *   that decide a fact (BF.2's rule; a viewer reads).
  * @param props.role The reader's strongest role, for the read-only note.
  * @param props.workspaceId The workspace's id — what the focus-repo chip's choice is keyed by.
  * @returns The screen.
@@ -63,11 +63,13 @@ import "./knowledge.css";
 export function KnowledgeScreen({
   readings,
   mayAdminister,
+  mayDecide,
   role,
   workspaceId,
 }: Readonly<{
   readings: KnowledgeReadings;
   mayAdminister: boolean;
+  mayDecide: boolean;
   role: Role;
   workspaceId: string;
 }>) {
@@ -106,10 +108,14 @@ export function KnowledgeScreen({
             />
           </div>
           <div className="knowledge__seat" id={FACTS_REGION_ID}>
-            <Card aria-labelledby={`${FACTS_REGION_ID}-title`} as="section">
-              <CardHead title={FACTS_TITLE} titleId={`${FACTS_REGION_ID}-title`} />
-              <EmptyState note={FACTS_SEAT_NOTE} variant="flush" />
-            </Card>
+            <FactsCard
+              facts={readings.facts}
+              mayDecide={mayDecide}
+              onToast={setToast}
+              readAt={readings.readAt}
+              repos={readings.repos}
+              tickets={readings.tickets}
+            />
           </div>
         </div>
       </div>

@@ -1,5 +1,5 @@
 import { requireWorkspace } from "@/app/api/access";
-import { mayAdminister, primaryRole } from "@/app/api/membership";
+import { mayAdminister, mayContribute, primaryRole } from "@/app/api/membership";
 import { readKnowledge } from "@/app/knowledge/data";
 import { KnowledgeScreen } from "@/app/knowledge/knowledge-screen";
 
@@ -18,8 +18,9 @@ import { KnowledgeScreen } from "@/app/knowledge/knowledge-screen";
  * (`app/shell/nav-modules.ts`).
  *
  * The roles are decided here, once: **+ New skill** and **Import CLAUDE.md / .cursorrules** are
- * drawn for an `owner` or an `admin` and for nobody else; everyone reads. The gates that enforce
- * them are the service's.
+ * drawn for an `owner` or an `admin` and for nobody else; a fact is decided — confirmed,
+ * rejected, expired, re-learned, added — by an `owner`, an `admin` or a `member` (BF.2's rule,
+ * #411), and a viewer reads. The gates that enforce them are the service's.
  *
  * @returns The knowledge page, for the workspace this request is operating in.
  */
@@ -31,6 +32,7 @@ export default async function Page() {
   return (
     <KnowledgeScreen
       mayAdminister={mayAdminister(roles)}
+      mayDecide={mayContribute(roles)}
       readings={readings}
       role={primaryRole(roles)}
       workspaceId={access.membership.id}

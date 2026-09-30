@@ -744,7 +744,7 @@ tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BG.1 | #417 ✅ | 🟢 Done | ouroboros-ui: [BG.1] Knowledge route, head & import flow | `/knowledge` frame, New-skill flow, import preview/apply | mvp, knowledge, ui, design | N (after #41, BF.4, BA-D.5) | Y | M | ouroboros-ui |
 | BG.2 | #418 ✅ | 🟢 Done | ouroboros-ui: [BG.2] Skills table | All row states, locked/draft treatments, editor links, stats | mvp, knowledge, ui, design | N (after BG.1, BF.1) | Y | M | ouroboros-ui |
-| BG.3 | #419 | 🟡 Open | ouroboros-ui: [BG.3] Learned-facts card | Lifecycle rows, Confirm/Reject/Re-learn, provenance popovers | mvp, knowledge, ui, design | N (after BG.1, BF.2/BF.3) | Y | M | ouroboros-ui |
+| BG.3 | #419 ✅ | 🟢 Done | ouroboros-ui: [BG.3] Learned-facts card | Lifecycle rows, Confirm/Reject/Re-learn, provenance popovers | mvp, knowledge, ui, design | N (after BG.1, BF.2/BF.3) | Y | M | ouroboros-ui |
 | BG.4 | #420 | 🟡 Open | ouroboros-ui: [BG.4] Playbooks & repo-profile cards | Recipes + run-on-issue; profile + env recipe + honest snapshot | mvp, knowledge, ui, design | N (after BG.1, BF.6, BE.4) | Y | M | ouroboros-ui |
 | BG.5 | #421 | 🟡 Open | ouroboros-ui: [BG.5] Scope ladder & manifest preview | The ladder with live counts; what-would-inject preview | mvp, knowledge, ui, design | N (after BG.1, BF.5) | Y | S | ouroboros-ui |
 | BG.6 | #422 | 🟡 Open | ouroboros-ui: [BG.6] Knowledge states & e2e leg | Empty/cold states, themes, full author→inject→launch e2e | mvp, knowledge, ui, ci | N (after BG.2–BG.5) | Y | M | ouroboros-ui, .github |
@@ -848,7 +848,7 @@ power-budget-checks (draft) … [repo] — v1 · 20m [off]   ← tinted row
 
 ### Issue BG.3 — ouroboros-ui: [BG.3] Learned-facts card
 
-> **GitHub issue:** #419 · **Status:** 🟡 Open · **Parent epic:** #403
+> **GitHub issue:** #419 ✅ · **Status:** 🟢 Done · **Parent epic:** #403
 
 - **Problem Statement:** The fact lifecycle surface: confirmed rows with
   counts, awaiting rows with working Confirm/Reject, the expired
@@ -868,6 +868,35 @@ power-budget-checks (draft) … [repo] — v1 · 20m [off]   ← tinted row
 - **Parallelism/Dependencies:** Needs BG.1, BF.2/BF.3.
 - **Technical Stack:** React, #46 primitives.
 - **Epic:** BG
+- **Delivered** (`ouroboros-ui/app/knowledge/facts-card.tsx`, `add-fact.tsx`, judgements in
+  `facts.ts`, server hops in `facts-actions.ts`; UI 0.113.0): the card fills the
+  `#facts-awaiting` seat BG.1 left — the head's `2 awaiting review` from the list's counts (plus a
+  `1 stale` chip when the sweep flagged something; *all reviewed* when nothing waits),
+  **Review all →** inert with the reason that the inbox is mockup 16, **+ Add fact**, a row per
+  fact, the foot verbatim. **Provenance is typed and its links resolve**: the line is the
+  service's — *from correction note (run #1847)*, the honest K5 phrasing, never the mockup's
+  review-cycle line before BH.1 — and the refs behind it link a run to its console and a PR to its
+  page (both `?from=knowledge`, a new run origin), a ticket to its tracker page (`data.ts` reads
+  each cited ticket once through `GET /api/v1/backlog/{id}`; one it cannot read is drawn as text),
+  and an import to the file on its host by section; refs with no page (classification, steer) are
+  never drawn as links. Inline code spans render as `<code>`. **Confirm / Reject** round-trip
+  (`POST /api/v1/facts/{id}/confirm|reject`), the service records the session's person, the row
+  takes the answered fact — *confirmed by Ken, 0s ago*, `✓ confirmed` — and the head's count
+  decrements in place; a polite live region announces *Confirmed: …*. **Stale** rows name the
+  anchor change that flagged them (`staleness.reason`, with its age) and offer **Re-confirm** and
+  **Expire**, the latter opening a required-reason field in the row (`ExpireFactBody`). The
+  **expired** row is struck through with *expired on Zephyr 4.1 migration · was used 31×* (the
+  snapshot, never the live count) and **Re-learn**, which `POST …/relearn`s a **new linked
+  proposal** inserted at the top while the expired row stays and says so. A confirmed fact's
+  `used 48×` carries what it measures. **Add fact** collects the sentence, *Applies to* (the
+  workspace or an enabled repository), an optional provenance line and the **anchor editor** —
+  any number of path-glob, dependency or platform-version anchors, checked before a round trip
+  (empty, duplicate) — and lands `proposed` with a toast saying nothing is injected; the
+  service's `fact_anchor_invalid` / `fact_anchor_exists` lands under the anchor it named. Empty
+  (*Nothing learned yet* with how facts arrive), unread and all-reviewed states are drawn. **Who
+  decides is BF.2's rule**: owner, admin **and member**; a `viewer`'s actions are drawn inert with
+  the reason and the service refuses a direct call — the issue's *members cannot confirm* was read
+  as the contract's viewer, since the service admits members. Both palettes, keyboard, rem type.
 
 ```
 "Team prefers k_msgq over k_fifo in ISR paths"  from correction note · run #1847 ↗

@@ -158,7 +158,7 @@ describe("the Updated cell", () => {
 
     expect(cells).toEqual([
       ["commit-style", { kind: "version", text: "v2 · 2mo ago" }],
-      ["hil-safety", { kind: "required", tag: REQUIRED_TAG, note: `${REQUIRED_NOTE} v3 · 1mo ago.` }],
+      ["hil-safety", { kind: "required", tag: REQUIRED_TAG, note: `${REQUIRED_NOTE} v3 · 5w ago.` }],
       ["power-budget-checks", { kind: "version", text: "v1 · 20m ago" }],
       ["pr-etiquette", { kind: "version", text: "v4 · 3w ago" }],
       ["repo-map", { kind: "generated", tag: GENERATED_TAG, note: generatedNote(seededSkill("repo-map"), NOW) }],

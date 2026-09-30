@@ -294,6 +294,233 @@
   color: var(--ink);
 }
 
+/* ---------- the learned-facts card (#419) ---------- */
+
+/*
+ * The mockup's `.fact` rows: text over its source line, the status cluster trailing, hairlines
+ * between. The expired row strikes its text through in the faint ink — the card's best argument,
+ * kept exactly. Every length is a token or a rem; every hue a token.
+ */
+.knowledge-facts__head-actions {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+.knowledge-facts__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.knowledge-facts__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-6);
+  padding: var(--sp-6) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.knowledge-facts__row:last-child {
+  border-bottom: none;
+}
+
+.knowledge-facts__body {
+  flex: 1;
+  min-width: 0;
+}
+
+/* The mockup's `.fact-text`, with its inline code as code. */
+.knowledge-facts__text {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.knowledge-facts__text code {
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* The expired treatment: struck through, in the faint ink, its code likewise. */
+.knowledge-facts__row--expired .knowledge-facts__text,
+.knowledge-facts__row--expired .knowledge-facts__text code {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+  text-decoration-color: var(--line-strong);
+  text-decoration-thickness: 1px;
+}
+
+/* A rejected row stays, dimmed: it transitioned in place, and the page re-reads behind it. */
+.knowledge-facts__row--rejected .knowledge-facts__text {
+  color: var(--ink-faint);
+}
+
+/* The mockup's `.fact-src`: where it came from, in the mono face, its links beside it. */
+.knowledge-facts__src {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-facts__ref {
+  white-space: nowrap;
+}
+
+.knowledge-facts__link {
+  color: var(--ink-mut);
+  text-decoration: underline;
+  text-underline-offset: 0.125rem;
+}
+
+.knowledge-facts__link:hover {
+  color: var(--ink);
+}
+
+/* The anchor change that flagged a stale fact — the warn ink, since it asks for a look. */
+.knowledge-facts__stale {
+  margin: var(--sp-1) 0 0;
+  color: var(--warn);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* What a re-learn left under the expired row. */
+.knowledge-facts__note {
+  max-width: 48ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The expire form, opened in the row: the reason and its two actions. */
+.knowledge-facts__expire {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  max-width: 32rem;
+  margin-top: var(--sp-4);
+}
+
+.knowledge-facts__expire-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+/* What the service said when it refused a press. */
+.knowledge-facts__refusal {
+  margin: var(--sp-2) 0 0;
+  color: var(--err);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's `.fact-status`: the pill, the count, the actions, trailing and wrapping. */
+.knowledge-facts__status {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-3);
+  max-width: 45%;
+  padding-top: var(--sp-1);
+}
+
+/* The mockup's `.used`. */
+.knowledge-facts__used {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  white-space: nowrap;
+  cursor: help;
+}
+
+/* The mockup's `.card-foot`, verbatim. */
+.knowledge-facts__foot {
+  margin: var(--sp-6) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the Add fact dialog ---------- */
+
+.knowledge-add-fact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/* The anchor editor: a fieldset of rows, each a kind, a value and its removal. */
+.knowledge-add-fact__anchors {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.knowledge-add-fact__legend {
+  padding: 0 var(--sp-2);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.knowledge-add-fact__hint {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-add-fact__anchor {
+  display: grid;
+  grid-template-columns: minmax(9rem, 1fr) 2fr auto;
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+/* The removal sits on the value's baseline, under the row's labels. */
+.knowledge-add-fact__remove {
+  margin-top: var(--sp-8);
+}
+
+@media (max-width: 40rem) {
+  .knowledge-facts__row {
+    flex-direction: column;
+  }
+
+  .knowledge-facts__status {
+    max-width: none;
+    justify-content: flex-start;
+  }
+
+  .knowledge-add-fact__anchor {
+    grid-template-columns: 1fr;
+  }
+
+  .knowledge-add-fact__remove {
+    margin-top: 0;
+  }
+}
+
 /* ---------- the skeleton ---------- */
 
 .knowledge-skeleton__bar {
