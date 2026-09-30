@@ -4866,6 +4866,325 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/facts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The learned facts — mockup 14's *Learned by the loop* card
+         * @description Every fact of the workspace, newest first, or those of one `status`; and every status's count,
+         *     whatever the filter — the header's `2 awaiting review`. Each fact carries its confirmation stamp
+         *     and staleness reason read from the audit, its live use count (or the snapshot frozen at
+         *     expiry), its anchors, and whether the staleness sweep watches it at all.
+         *
+         *     **Every member**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["listFacts"];
+        put?: never;
+        /**
+         * Propose a fact by hand
+         * @description A fact written by a person. It is born `proposed`, like every fact — *"and you approve"* is the
+         *     only way to `confirmed`. Anchors are why it can expire; a fact with none is valid and is
+         *     **never** swept, which its `sweep` field says.
+         *
+         *     **`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["proposeFact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/needs-you": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The facts waiting on a person — the fact_review feed
+         * @description The needs-you feed contract mockup 16's inbox consumes as its `fact_review` decision kind:
+         *     one item per proposal awaiting review and per confirmed fact the staleness sweep flagged
+         *     `stale`, oldest wait first, always at `severity: info` — knowledge housekeeping never outranks
+         *     a blocked loop. `factId` is the item's identity; an item leaves the feed when a person
+         *     confirms, rejects, re-confirms or expires its fact. `count` is the figure the needs-you pill
+         *     joins (#90).
+         *
+         *     **Every member**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["listFactsNeedingReview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/sweep": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the staleness sweep for this workspace now
+         * @description The nightly pass, on demand: every merged PR of the workspace's enabled GitHub repositories
+         *     since each anchor was last checked is matched against its confirmed facts' anchors, and a
+         *     fact whose anchor matched moves to `stale` with nobody behind it and the matched anchor as the
+         *     reason. A match flags, it never expires. Anchor-less facts are never swept; `uncovered` counts
+         *     them.
+         *
+         *     **`owner` or `admin`.**
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["sweepFacts"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/{factId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One fact and its audit history
+         * @description The fact, and every status change it has made, oldest first, each with its actor — `null` for
+         *     the staleness sweep.
+         *
+         *     **Every member**, `viewer` included.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["readFact"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/{factId}/confirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Confirm a proposal
+         * @description `proposed → confirmed`. The fact is injected into every run's context from now on, and the card
+         *     reads *confirmed by <you>, <when>* from the audit row this writes.
+         *
+         *     **`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["confirmFact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/{factId}/reject": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reject a proposal
+         * @description `proposed → rejected`. Final.
+         *
+         *     **`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["rejectFact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/{factId}/reconfirm": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-confirm a stale fact
+         * @description `stale → confirmed` — a person looked at what the sweep flagged, and the fact still holds. The
+         *     confirmation stamp becomes theirs.
+         *
+         *     **`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["reconfirmFact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/{factId}/expire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Expire a confirmed or stale fact
+         * @description The fact stopped being true. The reason is required, and the use count is snapshotted in the same
+         *     statement and frozen from then on — *was used 31×*. A `confirmed` fact moves through `stale`
+         *     first, in the same transaction: two audited edges, both naming the person and the reason,
+         *     because the lifecycle has no direct `confirmed → expired` edge.
+         *
+         *     **`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["expireFact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/{factId}/relearn": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-learn an expired fact
+         * @description Proposes a **new** fact whose `relearnedFromFactId` names the expired one. The expired fact, its
+         *     reason and its frozen count stay exactly as they were. Anchors are not copied — the old ones are
+         *     why it expired.
+         *
+         *     **`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["relearnFact"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/{factId}/anchors": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Add an anchor — a reason the fact can expire
+         * @description A `path_glob` (matched against a merged PR's changed paths), a `dependency` (a manifest's changed
+         *     line naming it) or a `platform_version` (a platform marker's removed pin, e.g. `zephyr-4.0`).
+         *
+         *     **`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["addFactAnchor"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/facts/{factId}/anchors/{anchorId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove an anchor
+         * @description A fact left with no anchors is valid, and is never swept — its `sweep` field says so.
+         *
+         *     **`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        delete: operations["removeFactAnchor"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/planning/batches": {
         parameters: {
             query?: never;
@@ -16627,6 +16946,238 @@ export interface components {
             }[];
         };
         /**
+         * FactStatus
+         * @description Decision **K3**'s lifecycle. `proposed → confirmed | rejected`, `confirmed → stale` (the
+         *     sweep), `stale → confirmed | expired`. `rejected` and `expired` are terminal. Only
+         *     `confirmed` facts are injected.
+         * @enum {string}
+         */
+        FactStatus: "proposed" | "confirmed" | "rejected" | "stale" | "expired";
+        /**
+         * FactAnchorKind
+         * @enum {string}
+         */
+        FactAnchorKind: "path_glob" | "dependency" | "platform_version";
+        /**
+         * FactActor
+         * @description A person the audit names; `null` for the staleness sweep.
+         */
+        FactActor: {
+            /** @description The person's id, or `null` once they have been removed. */
+            id: string | null;
+            /** @example Ken */
+            name: string | null;
+        } | null;
+        /**
+         * FactStamp
+         * @description A transition's actor, instant and note, read from the audit.
+         */
+        FactStamp: {
+            actor: components["schemas"]["FactActor"];
+            /** Format: date-time */
+            at: string;
+            /** @example platform_version anchor zephyr-4.0 matched: removed "revision: v4.0.0" in west.yml (PR #531) */
+            reason: string | null;
+        } | null;
+        /**
+         * FactProvenance
+         * @description The card's provenance line, and the typed references it stands for.
+         */
+        FactProvenance: {
+            /** @example from PR #514 review cycle */
+            line: string;
+            refs: {
+                /** @enum {string} */
+                kind: "run" | "pull_request" | "ticket" | "import";
+                /** Format: uuid */
+                id?: string;
+                file?: string;
+                section?: string;
+            }[];
+        };
+        /**
+         * FactAnchor
+         * @description Why a fact can expire (decision **K4**).
+         */
+        FactAnchor: {
+            /** Format: uuid */
+            id: string;
+            kind: components["schemas"]["FactAnchorKind"];
+            /**
+             * @example tests/hil/**
+             * @example west
+             * @example zephyr-4.0
+             */
+            value: string;
+            /**
+             * Format: date-time
+             * @description When the nightly sweep last evaluated it; `null` until it has.
+             */
+            lastCheckedAt: string | null;
+        };
+        /**
+         * Fact
+         * @description A learned fact, as the card renders it.
+         */
+        Fact: components["schemas"]["FactFields"];
+        /**
+         * FactFields
+         * @description The fields every fact resource carries — `Fact` and `FactDetail` close over them.
+         */
+        FactFields: {
+            /** Format: uuid */
+            id: string;
+            /** @description The repository, `owner/name`, or `null` for the whole workspace. */
+            repoRef: string | null;
+            text: string;
+            status: components["schemas"]["FactStatus"];
+            /** @enum {string} */
+            proposer: "manual" | "correction_note" | "waiver" | "steer" | "import" | "llm";
+            provenance: components["schemas"]["FactProvenance"];
+            confirmation: components["schemas"]["FactStamp"];
+            staleness: components["schemas"]["FactStamp"];
+            /** @description Set exactly when `expired` — *expired on Zephyr 4.1 migration · was used 31×*. */
+            expiry: {
+                reason: string;
+                /** @description The use count snapshotted at expiry. Never changes afterwards. */
+                previousUseCount: number;
+                stamp: components["schemas"]["FactStamp"];
+            } | null;
+            /**
+             * @description Manifests that carried the fact — counted from `context_injections`, or the frozen
+             *     snapshot once expired.
+             */
+            usedCount: number;
+            /** Format: uuid */
+            relearnedFromFactId: string | null;
+            relearnedByFactIds: string[];
+            anchors: components["schemas"]["FactAnchor"][];
+            /**
+             * @description Whether the staleness sweep watches the fact. A fact with no anchors is never flagged
+             *     stale — stated here rather than implied.
+             */
+            sweep: {
+                covered: boolean;
+                /** @enum {string|null} */
+                reason: "no_anchors" | null;
+            };
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /**
+         * FactDetail
+         * @description A fact and its whole audit history, oldest first.
+         */
+        FactDetail: {
+            history: {
+                from: components["schemas"]["FactStatus"] | null;
+                to: components["schemas"]["FactStatus"];
+                actor: components["schemas"]["FactActor"];
+                reason: string | null;
+                /** Format: date-time */
+                at: string;
+            }[];
+        } & components["schemas"]["FactFields"];
+        /** FactList */
+        FactList: {
+            items: components["schemas"]["Fact"][];
+            /** @description Every status's count in the workspace, whatever the filter. */
+            counts: {
+                /** @example 2 */
+                proposed: number;
+                confirmed: number;
+                rejected: number;
+                stale: number;
+                expired: number;
+            };
+        };
+        /**
+         * FactNeedsYouItem
+         * @description One `fact_review` needs-you item (#461, mockup 16). Fields are added, never renamed;
+         *     `factId` is the item's identity.
+         */
+        FactNeedsYouItem: {
+            /** @constant */
+            kind: "fact_review";
+            /** @constant */
+            severity: "info";
+            /** Format: uuid */
+            factId: string;
+            /** @enum {string} */
+            reason: "awaiting_review" | "stale";
+            text: string;
+            repoRef: string | null;
+            provenanceLine: string;
+            staleness: components["schemas"]["FactStamp"];
+            /**
+             * Format: date-time
+             * @description When it started waiting — the proposal's creation, or the stale flag.
+             */
+            since: string;
+        };
+        /** FactNeedsYou */
+        FactNeedsYou: {
+            count: number;
+            items: components["schemas"]["FactNeedsYouItem"][];
+        };
+        /** FactSweepReport */
+        FactSweepReport: {
+            organizationId: string;
+            /** @description Merged PRs read. */
+            changes: number;
+            /** @description Anchors evaluated. */
+            anchors: number;
+            flagged: {
+                /** Format: uuid */
+                factId: string;
+                /** Format: uuid */
+                anchorId: string;
+                /** Format: uuid */
+                prId: string;
+                prNumber: number;
+                reason: string;
+            }[];
+            /** @description Confirmed facts with no anchors — never swept. */
+            uncovered: number;
+        };
+        /** FactAnchorBody */
+        FactAnchorBody: {
+            kind: components["schemas"]["FactAnchorKind"];
+            value: string;
+        };
+        /** ProposeFactBody */
+        ProposeFactBody: {
+            text: string;
+            /** @description `owner/name`; absent is the whole workspace. */
+            repoRef?: string;
+            /** @description The card's line under the fact; `added by hand` when absent. */
+            provenanceLine?: string;
+            refs?: {
+                /** @enum {string} */
+                kind: "run" | "pull_request" | "ticket";
+                /** Format: uuid */
+                id: string;
+            }[];
+            anchors?: components["schemas"]["FactAnchorBody"][];
+        };
+        /** FactTransitionBody */
+        FactTransitionBody: {
+            /** @description An optional note recorded beside the transition. */
+            reason?: string;
+        };
+        /** ExpireFactBody */
+        ExpireFactBody: {
+            /** @example Zephyr 4.1 migration */
+            reason: string;
+        };
+        /** RelearnFactBody */
+        RelearnFactBody: {
+            /** @description The new proposal's text; the expired fact's when absent. */
+            text?: string;
+        };
+        /**
          * WorkflowCodeConfig
          * @description `ouroboros.config.ts` as the code view opens it: read-only, printed from the registry on
          *     every read, stored nowhere.
@@ -18480,6 +19031,18 @@ export interface components {
          * @example hil-safety
          */
         SkillSlug: string;
+        /**
+         * @description A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.
+         * @example 5eed0044-0000-4000-8000-000000000005
+         */
+        FactId: string;
+        /**
+         * @description A fact anchor's id — `fact_anchors.id`.
+         * @example 5eed0045-0000-4000-8000-000000000005
+         */
+        FactAnchorId: string;
+        /** @description Only facts at this status; every fact when absent. */
+        FactStatusFilter: components["schemas"]["FactStatus"];
         /**
          * @description A provider connection's id. A connection of another workspace answers `404`, never
          *     `403`: confirming that an identifier names something real is the whole of what
@@ -39822,6 +40385,1738 @@ export interface operations {
                      *       }
                      *     }
                      */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listFacts: {
+        parameters: {
+            query?: {
+                /** @description Only facts at this status; every fact when absent. */
+                status?: components["parameters"]["FactStatusFilter"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The facts and the counts. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a malformed body or id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    proposeFact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "text": "Tests under `tests/hil/` require rig reservation via `rig claim`",
+                 *       "repoRef": "acme-robotics/helios-firmware",
+                 *       "provenanceLine": "from PR",
+                 *       "anchors": [
+                 *         {
+                 *           "kind": "path_glob",
+                 *           "value": "tests/hil/**"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["ProposeFactBody"];
+            };
+        };
+        responses: {
+            /** @description The new proposal. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller is a `viewer`. Facts are every member's to read, and an
+             *     `owner`'s, `admin`'s or `member`'s to decide.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `fact_anchor_exists` — the same anchor twice. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_anchor_invalid` — an anchor V071 would refuse (`details.kind`, `details.value`).
+             *     `fact_provenance_unresolved` — a cited run, pull request or ticket is not this workspace's.
+             *     `validation_failed` — a malformed body.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listFactsNeedingReview: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The feed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactNeedsYou"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    sweepFacts: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the pass read and flagged. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactSweepReport"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller's role is not `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readFact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.
+                 * @example 5eed0044-0000-4000-8000-000000000005
+                 */
+                factId: components["parameters"]["FactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The fact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_not_found` — no such fact, **or none this caller may know about**;
+             *     `details.factId` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_not_found",
+                     *       "message": "No such fact.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a malformed body or id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    confirmFact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.
+                 * @example 5eed0044-0000-4000-8000-000000000005
+                 */
+                factId: components["parameters"]["FactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "reason": "checked on the rig"
+                 *     }
+                 */
+                "application/json": components["schemas"]["FactTransitionBody"];
+            };
+        };
+        responses: {
+            /** @description The fact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller is a `viewer`. Facts are every member's to read, and an
+             *     `owner`'s, `admin`'s or `member`'s to decide.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_not_found` — no such fact, **or none this caller may know about**;
+             *     `details.factId` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_not_found",
+                     *       "message": "No such fact.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_transition_refused` — the fact's status does not allow this action; `message`
+             *     and `details.reason` state why, `details.from` / `details.to` name the edge.
+             *     `fact_changed` — the fact moved under a concurrent writer; reload and retry.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_transition_refused",
+                     *       "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005",
+                     *         "from": "expired",
+                     *         "to": "confirmed",
+                     *         "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a malformed body or id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rejectFact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.
+                 * @example 5eed0044-0000-4000-8000-000000000005
+                 */
+                factId: components["parameters"]["FactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["FactTransitionBody"];
+            };
+        };
+        responses: {
+            /** @description The fact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller is a `viewer`. Facts are every member's to read, and an
+             *     `owner`'s, `admin`'s or `member`'s to decide.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_not_found` — no such fact, **or none this caller may know about**;
+             *     `details.factId` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_not_found",
+                     *       "message": "No such fact.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_transition_refused` — the fact's status does not allow this action; `message`
+             *     and `details.reason` state why, `details.from` / `details.to` name the edge.
+             *     `fact_changed` — the fact moved under a concurrent writer; reload and retry.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_transition_refused",
+                     *       "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005",
+                     *         "from": "expired",
+                     *         "to": "confirmed",
+                     *         "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a malformed body or id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    reconfirmFact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.
+                 * @example 5eed0044-0000-4000-8000-000000000005
+                 */
+                factId: components["parameters"]["FactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["FactTransitionBody"];
+            };
+        };
+        responses: {
+            /** @description The fact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller is a `viewer`. Facts are every member's to read, and an
+             *     `owner`'s, `admin`'s or `member`'s to decide.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_not_found` — no such fact, **or none this caller may know about**;
+             *     `details.factId` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_not_found",
+                     *       "message": "No such fact.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_transition_refused` — the fact's status does not allow this action; `message`
+             *     and `details.reason` state why, `details.from` / `details.to` name the edge.
+             *     `fact_changed` — the fact moved under a concurrent writer; reload and retry.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_transition_refused",
+                     *       "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005",
+                     *         "from": "expired",
+                     *         "to": "confirmed",
+                     *         "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a malformed body or id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    expireFact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.
+                 * @example 5eed0044-0000-4000-8000-000000000005
+                 */
+                factId: components["parameters"]["FactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "reason": "Zephyr 4.1 migration"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ExpireFactBody"];
+            };
+        };
+        responses: {
+            /** @description The fact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller is a `viewer`. Facts are every member's to read, and an
+             *     `owner`'s, `admin`'s or `member`'s to decide.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_not_found` — no such fact, **or none this caller may know about**;
+             *     `details.factId` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_not_found",
+                     *       "message": "No such fact.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_transition_refused` — the fact's status does not allow this action; `message`
+             *     and `details.reason` state why, `details.from` / `details.to` name the edge.
+             *     `fact_changed` — the fact moved under a concurrent writer; reload and retry.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_transition_refused",
+                     *       "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005",
+                     *         "from": "expired",
+                     *         "to": "confirmed",
+                     *         "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a malformed body or id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    relearnFact: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.
+                 * @example 5eed0044-0000-4000-8000-000000000005
+                 */
+                factId: components["parameters"]["FactId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                /**
+                 * @example {
+                 *       "text": "Zephyr 4.1 needs `CONFIG_SYS_CLOCK_TICKS_PER_SEC` set explicitly"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RelearnFactBody"];
+            };
+        };
+        responses: {
+            /** @description The **new** proposal. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller is a `viewer`. Facts are every member's to read, and an
+             *     `owner`'s, `admin`'s or `member`'s to decide.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_not_found` — no such fact, **or none this caller may know about**;
+             *     `details.factId` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_not_found",
+                     *       "message": "No such fact.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_transition_refused` — the fact's status does not allow this action; `message`
+             *     and `details.reason` state why, `details.from` / `details.to` name the edge.
+             *     `fact_changed` — the fact moved under a concurrent writer; reload and retry.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_transition_refused",
+                     *       "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005",
+                     *         "from": "expired",
+                     *         "to": "confirmed",
+                     *         "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a malformed body or id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addFactAnchor: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.
+                 * @example 5eed0044-0000-4000-8000-000000000005
+                 */
+                factId: components["parameters"]["FactId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "kind": "platform_version",
+                 *       "value": "zephyr-4.0"
+                 *     }
+                 */
+                "application/json": components["schemas"]["FactAnchorBody"];
+            };
+        };
+        responses: {
+            /** @description The fact. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller is a `viewer`. Facts are every member's to read, and an
+             *     `owner`'s, `admin`'s or `member`'s to decide.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_not_found` — no such fact, **or none this caller may know about**;
+             *     `details.factId` echoes it. (`tenant_not_found` is the other `404` here.)
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "fact_not_found",
+                     *       "message": "No such fact.",
+                     *       "details": {
+                     *         "factId": "5eed0044-0000-4000-8000-000000000005"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `fact_frozen` — the fact is `rejected` or `expired`; nothing about it changes. `fact_anchor_exists`
+             *     — the fact already has that anchor.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `fact_anchor_invalid` — a value V071 would refuse. `validation_failed` — a malformed body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeFactAnchor: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.
+                 * @example 5eed0044-0000-4000-8000-000000000005
+                 */
+                factId: components["parameters"]["FactId"];
+                /**
+                 * @description A fact anchor's id — `fact_anchors.id`.
+                 * @example 5eed0045-0000-4000-8000-000000000005
+                 */
+                anchorId: components["parameters"]["FactAnchorId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The fact. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FactDetail"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — the caller is a `viewer`. Facts are every member's to read, and an
+             *     `owner`'s, `admin`'s or `member`'s to decide.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `fact_not_found`, or `fact_anchor_not_found` — no such anchor on this fact. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `fact_frozen` — the fact is `rejected` or `expired`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a malformed body or id. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["Error"];
                 };
             };

@@ -418,7 +418,11 @@ describe("TABLE_COLUMNS", () => {
     // The ninety-fourth to ninety-sixth are V069's `skills` and `skill_versions` and V071's
     // `context_injections`, mirrored by BF.1 (#410) — the skills service, and the injection
     // records its used-by stats are counted from.
-    expect(TABLE_NAMES).toHaveLength(96);
+    //
+    // The ninety-seventh to ninety-ninth are V071's `facts`, `fact_anchors` and
+    // `fact_transitions`, mirrored by BF.2 (#411) — the fact lifecycle, the anchors the staleness
+    // sweep reads, and the audit "confirmed by Ken, 6w ago" renders from.
+    expect(TABLE_NAMES).toHaveLength(99);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

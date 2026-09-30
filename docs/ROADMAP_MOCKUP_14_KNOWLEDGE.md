@@ -412,7 +412,7 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BF.1 | #410 ✅ | 🟢 Done | ouroboros-rest: [BF.1] Skills service & registry integration | CRUD/versions/locks; WF catalog + inspector + code-view wiring | mvp, knowledge, workflow, rest | N (after BE.1, WF-R.3) | Y | M | ouroboros-rest |
-| BF.2 | #411 | 🟡 Open | ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep | Transitions, anchors, sweep, audit; inbox feed contract | mvp, knowledge, rest | N (after BE.2) | Y | M | ouroboros-rest |
+| BF.2 | #411 ✅ | 🟢 Done | ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep | Transitions, anchors, sweep, audit; inbox feed contract | mvp, knowledge, rest | N (after BE.2) | Y | M | ouroboros-rest |
 | BF.3 | #412 | 🟡 Open | ouroboros-rest: [BF.3] Deterministic fact proposers | Correction/waiver/steer promotion with provenance (K5) | mvp, knowledge, runs, rest | N (after BF.2, AT.4) | Y | M | ouroboros-rest |
 | BF.4 | #413 | 🟡 Open | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
 | BF.5 | #414 | 🟡 Open | ouroboros-rest: [BF.5] Context assembly & manifests | Closest-wins resolution, previews, injection recording (K8/K9) | mvp, knowledge, rest, intake | N (after BF.1, BF.2) | Y | L | ouroboros-rest |
@@ -470,7 +470,7 @@ code-view: skills/zephyr-conventions.skill.md ⇄ BF.1 document API
 
 ### Issue BF.2 — ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep
 
-> **GitHub issue:** #411 · **Status:** 🟡 Open · **Parent epic:** #402
+> **GitHub issue:** #411 ✅ · **Status:** 🟢 Done · **Parent epic:** #402
 
 - **Problem Statement:** The K3 state machine with K4 staleness — plus
   the review-surface contracts (Confirm/Reject here, `Review all` in
@@ -491,6 +491,21 @@ code-view: skills/zephyr-conventions.skill.md ⇄ BF.1 document API
 - **Parallelism/Dependencies:** Needs BE.2. Blocks BF.3; feeds mockup-16.
 - **Technical Stack:** NestJS scheduler, Kysely.
 - **Epic:** BF
+- **Delivered** (`ouroboros-rest/src/modules/facts/`, REST 0.37.30): `/api/v1/facts` — the card
+  (every status's count), manual propose (`FactsService.propose` is BF.3/BF.4's entry point),
+  Confirm / Reject / Re-confirm / Expire / Re-learn (member+, the session's person audited by
+  V071's trigger; `confirmed by <actor>, <when>` is read back from `fact_transitions`), anchor
+  add/remove, `GET …/needs-you` (the `fact_review` feed contract, `severity: info`) and an
+  on-demand `POST …/sweep`. The machine is checked first with stated reasons
+  (`409 fact_transition_refused`), V071's trigger as backstop. Decided on the issue: **manual expire
+  of a confirmed fact is `confirmed → stale → expired` in one transaction** (two audited edges; V071
+  has no direct edge); the sync trigger is **PR sync's first sight of a merge**
+  (`FACT_COMMIT_OBSERVER`) plus a **nightly pass** at `OURO_FACT_SWEEP_HOUR_UTC` over merged PRs of
+  enabled repositories since each anchor's `last_checked_at`; `dependency` / `platform_version`
+  anchors match **manifest/marker diff heuristics** (a changed line naming the dependency; a
+  removed `v4.0.x` pin for `zephyr-4.0`), firing on the path alone when the sample holds no patch;
+  and the needs-you **count is served, not yet joined** into the dashboard pill — that join is
+  #90's. Anchor-less facts are never swept and each fact says so (`sweep.covered`).
 
 ```
 sync: zephyr 4.0→4.1 marker changed ─▶ anchor hit ─▶ confirmed→stale ─▶ human: expire

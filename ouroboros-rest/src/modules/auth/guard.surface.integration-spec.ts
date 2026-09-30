@@ -118,6 +118,11 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // onboarding routes this suite could not otherwise be shown to cover. A positive whole number,
   // so the pipe lets it through and what this suite sees is the guard's answer.
   scanSeq: "1",
+  // `/api/v1/facts/:factId…` and `DELETE …/anchors/:anchorId` (#411). Well-formed uuids — the
+  // seed's legacy-timer fact and its anchor — so the guard's answer, not the pipe's 422, is what
+  // this suite observes.
+  factId: "5eed0044-0000-4000-8000-000000000005",
+  anchorId: "5eed0045-0000-4000-8000-000000000005",
 };
 
 /**

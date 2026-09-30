@@ -69,6 +69,11 @@ export interface PrSyncOutcome {
   readonly newRevision: boolean;
   /** Whether this sync created the mirror row. */
   readonly created: boolean;
+  /**
+   * Whether this sync is the one that first saw the PR `merged` — the mirror was absent or not yet
+   * merged before it. The fact staleness sweep's commit awareness (BF.2, #411).
+   */
+  readonly newlyMerged: boolean;
 }
 
 /** The statements the PR sync needs — what its unit suite stands in for. */
@@ -241,6 +246,7 @@ export class PrMirrorRepository implements PrMirrorStore {
         .where("pr_id", "=", prId)
         .executeTakeFirst();
       const latestSeq = latest?.seq ?? null;
+      const newlyMerged = state === "merged" && existing?.state !== "merged";
 
       if (revision === null) {
         return {
@@ -249,6 +255,7 @@ export class PrMirrorRepository implements PrMirrorStore {
           revisionSeq: latestSeq,
           newRevision: false,
           created: existing === undefined,
+          newlyMerged,
         };
       }
 
@@ -278,6 +285,7 @@ export class PrMirrorRepository implements PrMirrorStore {
         revisionSeq: recorded?.revision_seq ?? latestSeq,
         newRevision: recorded !== undefined,
         created: existing === undefined,
+        newlyMerged,
       };
     });
   }

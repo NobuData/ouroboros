@@ -32,9 +32,11 @@
  * `sync` on a schedule yet; a `prEvents` poll loop joins the executor there.
  */
 
-import { Inject, Injectable, Optional } from "@nestjs/common";
+import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 
 import type { TicketSourceKind } from "../db/schema";
+import { describeForLog } from "../errors/failure";
+import { FACT_COMMIT_OBSERVER, type FactCommitObserver } from "../facts/facts.observer";
 import type {
   MergePrInput,
   MergePrResult,
@@ -70,17 +72,23 @@ export interface PrSourceOpener {
 
 @Injectable()
 export class PrSyncService {
+  /** Where a failed report to the fact sweep is logged. */
+  private readonly logger = new Logger(PrSyncService.name);
+
   /**
    * @param store - The mirror's statements.
    * @param registry - The providers, by kind.
    * @param sources - What opens a source's credential for one call.
    * @param gates - The gate engine's sink, told about every sync; absent in a context without it.
+   * @param facts - The fact staleness sweep, told about every merge this sync is the first to see
+   *   (BF.2, #411); absent in a context without it.
    */
   constructor(
     @Inject(PrMirrorRepository) private readonly store: PrMirrorStore,
     private readonly registry: TicketSourceRegistry,
     @Inject(TicketSourcesService) private readonly sources: PrSourceOpener,
     @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
+    @Optional() @Inject(FACT_COMMIT_OBSERVER) private readonly facts?: FactCommitObserver,
   ) {}
 
   /**
@@ -118,7 +126,29 @@ export class PrSyncService {
       prId: outcome.prId,
     });
 
+    if (outcome.newlyMerged) {
+      await this.reportMerge(organizationId, outcome.prId);
+    }
+
     return outcome;
+  }
+
+  /**
+   * Tell the fact staleness sweep a PR merged. The sync has committed; a sweep that fails costs
+   * the sync hook's flags until the nightly pass, never the sync.
+   *
+   * @param organizationId - The workspace.
+   * @param prId - The PR.
+   */
+  private async reportMerge(organizationId: string, prId: string): Promise<void> {
+    try {
+      await this.facts?.mergeObserved(organizationId, prId);
+    } catch (error) {
+      this.logger.error(
+        `Fact staleness sweep for merged PR ${prId} failed; the nightly pass will catch it.`,
+        describeForLog(error),
+      );
+    }
   }
 
   /**

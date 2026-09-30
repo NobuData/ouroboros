@@ -15,6 +15,9 @@ import { TicketSourceError } from "../ticket-sources/ticket-source.errors";
 import type { TicketSyncContext } from "../ticket-sources/ticket-source.provider";
 import { TicketSourceRegistry } from "../ticket-sources/ticket-source.registry";
 import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
+import { Logger } from "@nestjs/common";
+
+import type { FactCommitObserver } from "../facts/facts.observer";
 import type { GateEvidenceEvent, GateEvidenceSink } from "./gates/gate.evidence";
 import { PR_SYNC_ERRORS } from "./pr-sync.errors";
 import type { MirroredPr, PrMirrorStore, PrSyncOutcome, PrSyncWrite } from "./pr-sync.repository";
@@ -79,6 +82,9 @@ class RecordedStore implements PrMirrorStore {
       revisionSeq: this.heads.length === 0 ? null : this.heads.length,
       newRevision: write.revision !== null,
       created: this.writes.length === 1,
+      newlyMerged:
+        write.snapshot.state === "merged" &&
+        !this.writes.slice(0, -1).some((earlier) => earlier.snapshot.state === "merged"),
     });
   }
 }
@@ -116,13 +122,29 @@ class RecordedGates implements GateEvidenceSink {
   }
 }
 
+/** A fact sweep that keeps the merges it was told about. */
+class RecordedFacts implements FactCommitObserver {
+  /** Every merge, in order. */
+  readonly merges: [string, string][] = [];
+
+  /** @inheritdoc */
+  mergeObserved(organizationId: string, prId: string): Promise<void> {
+    this.merges.push([organizationId, prId]);
+    return Promise.resolve();
+  }
+}
+
 /**
  * A service over the in-memory host with one open PR.
  *
  * @param gates - The gate engine's sink, when the case listens to it.
+ * @param facts - The fact staleness sweep, when the case listens to it.
  * @returns The service, its collaborators and the PR's number.
  */
-function build(gates?: GateEvidenceSink): {
+function build(
+  gates?: GateEvidenceSink,
+  facts?: FactCommitObserver,
+): {
   service: PrSyncService;
   store: RecordedStore;
   opener: Opener;
@@ -146,7 +168,7 @@ function build(gates?: GateEvidenceSink): {
   ]);
 
   return {
-    service: new PrSyncService(store, registry, opener, gates),
+    service: new PrSyncService(store, registry, opener, gates, facts),
     store,
     opener,
     host,
@@ -193,6 +215,36 @@ describe("PrSyncService", () => {
       [ORG, { kind: "pr_synced", prId: "pr-1" }],
       [ORG, { kind: "revision_pushed", prId: "pr-1" }],
     ]);
+  });
+
+  it("tells the fact sweep about a merge once — the sync that first sees it merged", async () => {
+    const facts = new RecordedFacts();
+    const { service, host, prNumber } = build(undefined, facts);
+
+    const open = await service.sync(ORG, SOURCE.sourceId, prNumber);
+    host.merge(IN_MEMORY_TOKEN, IN_MEMORY_PROJECT, prNumber, "squash", "can: fix frame order");
+    const merged = await service.sync(ORG, SOURCE.sourceId, prNumber);
+    const again = await service.sync(ORG, SOURCE.sourceId, prNumber);
+
+    expect([open.newlyMerged, merged.newlyMerged, again.newlyMerged]).toEqual([false, true, false]);
+    expect(facts.merges).toEqual([[ORG, "pr-1"]]);
+  });
+
+  it("keeps the sync's outcome when the fact sweep fails, and logs it", async () => {
+    const error = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    const failing: FactCommitObserver = {
+      mergeObserved: () => Promise.reject(new Error("sweep down")),
+    };
+    const { service, host, prNumber } = build(undefined, failing);
+
+    host.merge(IN_MEMORY_TOKEN, IN_MEMORY_PROJECT, prNumber, "squash", "can: fix frame order");
+
+    await expect(service.sync(ORG, SOURCE.sourceId, prNumber)).resolves.toMatchObject({
+      state: "merged",
+      newlyMerged: true,
+    });
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
   });
 
   it("tells the gate engine nothing when the host refused", async () => {

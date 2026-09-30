@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.37.29",
+    "version": "0.37.30",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -93,6 +93,10 @@
     {
       "name": "skills",
       "description": "**The skills registry** (mockup 14's skills card, BF.1,\n[#410](https://github.com/NobuData/ouroboros/issues/410)) — markdown with YAML frontmatter,\nscoped `org`, `repo` or `workflow`, versioned on WF-P.3's model: one mutable draft, and\nimmutable published versions.\n\n**The required lock is enforced here**, not only in the UI: switching off a required skill\nis `403 skill_required_locked` with the designed reason, and changing `required` is an\nowner's. **Delete is guarded** by the published workflows that reference a skill, and\n**scope moves are previewed** before they commit. The stage catalog, the inspector's P7\ncheck and the code view's `skills/` files read this registry.\n\nReading is every member's, `viewer` included. Every write is `owner` or `admin`."
+    },
+    {
+      "name": "facts",
+      "description": "**The fact lifecycle and the staleness sweep** (mockup 14's *Learned by the loop* card,\nBF.2, [#411](https://github.com/NobuData/ouroboros/issues/411), decisions **K3**/**K4**).\nFacts are born `proposed`; a person confirms or rejects; the sweep flags a confirmed fact\n`stale` when a merged PR touches one of its anchors; a person re-confirms or expires it;\nan expired fact can be re-learned as a **new** linked proposal. Every transition is audited\nwith its actor, and the card's stamps are read from that audit.\n\n**Anchor-less facts are never swept**, and every fact says whether it is. The sweep runs\nwhen the source sync first sees a PR merged, and nightly at `OURO_FACT_SWEEP_HOUR_UTC`.\n\nReading is every member's, `viewer` included. Deciding is `owner`, `admin` or `member`;\nrunning the sweep on demand is `owner` or `admin`."
     },
     {
       "name": "triage",
@@ -16549,6 +16553,1261 @@
         }
       }
     },
+    "/api/v1/facts": {
+      "get": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "The learned facts — mockup 14's *Learned by the loop* card",
+        "description": "Every fact of the workspace, newest first, or those of one `status`; and every status's count,\nwhatever the filter — the header's `2 awaiting review`. Each fact carries its confirmation stamp\nand staleness reason read from the audit, its live use count (or the snapshot frozen at\nexpiry), its anchors, and whether the staleness sweep watches it at all.\n\n**Every member**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "listFacts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FactStatusFilter"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The facts and the counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body or id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "Propose a fact by hand",
+        "description": "A fact written by a person. It is born `proposed`, like every fact — *\"and you approve\"* is the\nonly way to `confirmed`. Anchors are why it can expire; a fact with none is valid and is\n**never** swept, which its `sweep` field says.\n\n**`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "proposeFact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProposeFactBody"
+              },
+              "example": {
+                "text": "Tests under `tests/hil/` require rig reservation via `rig claim`",
+                "repoRef": "acme-robotics/helios-firmware",
+                "provenanceLine": "from PR",
+                "anchors": [
+                  {
+                    "kind": "path_glob",
+                    "value": "tests/hil/**"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The new proposal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is a `viewer`. Facts are every member's to read, and an\n`owner`'s, `admin`'s or `member`'s to decide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fact_anchor_exists` — the same anchor twice.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`fact_anchor_invalid` — an anchor V071 would refuse (`details.kind`, `details.value`).\n`fact_provenance_unresolved` — a cited run, pull request or ticket is not this workspace's.\n`validation_failed` — a malformed body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/needs-you": {
+      "get": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "The facts waiting on a person — the fact_review feed",
+        "description": "The needs-you feed contract mockup 16's inbox consumes as its `fact_review` decision kind:\none item per proposal awaiting review and per confirmed fact the staleness sweep flagged\n`stale`, oldest wait first, always at `severity: info` — knowledge housekeeping never outranks\na blocked loop. `factId` is the item's identity; an item leaves the feed when a person\nconfirms, rejects, re-confirms or expires its fact. `count` is the figure the needs-you pill\njoins (#90).\n\n**Every member**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "listFactsNeedingReview",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The feed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactNeedsYou"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/sweep": {
+      "post": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "Run the staleness sweep for this workspace now",
+        "description": "The nightly pass, on demand: every merged PR of the workspace's enabled GitHub repositories\nsince each anchor was last checked is matched against its confirmed facts' anchors, and a\nfact whose anchor matched moves to `stale` with nobody behind it and the matched anchor as the\nreason. A match flags, it never expires. Anchor-less facts are never swept; `uncovered` counts\nthem.\n\n**`owner` or `admin`.**\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "sweepFacts",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the pass read and flagged.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactSweepReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller's role is not `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/{factId}": {
+      "get": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "One fact and its audit history",
+        "description": "The fact, and every status change it has made, oldest first, each with its actor — `null` for\nthe staleness sweep.\n\n**Every member**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "readFact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FactId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The fact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`fact_not_found` — no such fact, **or none this caller may know about**;\n`details.factId` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_not_found",
+                  "message": "No such fact.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005"
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body or id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/{factId}/confirm": {
+      "post": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "Confirm a proposal",
+        "description": "`proposed → confirmed`. The fact is injected into every run's context from now on, and the card\nreads *confirmed by <you>, <when>* from the audit row this writes.\n\n**`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "confirmFact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FactId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactTransitionBody"
+              },
+              "example": {
+                "reason": "checked on the rig"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The fact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is a `viewer`. Facts are every member's to read, and an\n`owner`'s, `admin`'s or `member`'s to decide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`fact_not_found` — no such fact, **or none this caller may know about**;\n`details.factId` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_not_found",
+                  "message": "No such fact.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fact_transition_refused` — the fact's status does not allow this action; `message`\nand `details.reason` state why, `details.from` / `details.to` name the edge.\n`fact_changed` — the fact moved under a concurrent writer; reload and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_transition_refused",
+                  "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005",
+                    "from": "expired",
+                    "to": "confirmed",
+                    "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body or id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/{factId}/reject": {
+      "post": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "Reject a proposal",
+        "description": "`proposed → rejected`. Final.\n\n**`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "rejectFact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FactId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactTransitionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The fact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is a `viewer`. Facts are every member's to read, and an\n`owner`'s, `admin`'s or `member`'s to decide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`fact_not_found` — no such fact, **or none this caller may know about**;\n`details.factId` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_not_found",
+                  "message": "No such fact.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fact_transition_refused` — the fact's status does not allow this action; `message`\nand `details.reason` state why, `details.from` / `details.to` name the edge.\n`fact_changed` — the fact moved under a concurrent writer; reload and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_transition_refused",
+                  "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005",
+                    "from": "expired",
+                    "to": "confirmed",
+                    "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body or id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/{factId}/reconfirm": {
+      "post": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "Re-confirm a stale fact",
+        "description": "`stale → confirmed` — a person looked at what the sweep flagged, and the fact still holds. The\nconfirmation stamp becomes theirs.\n\n**`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "reconfirmFact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FactId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactTransitionBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The fact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is a `viewer`. Facts are every member's to read, and an\n`owner`'s, `admin`'s or `member`'s to decide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`fact_not_found` — no such fact, **or none this caller may know about**;\n`details.factId` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_not_found",
+                  "message": "No such fact.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fact_transition_refused` — the fact's status does not allow this action; `message`\nand `details.reason` state why, `details.from` / `details.to` name the edge.\n`fact_changed` — the fact moved under a concurrent writer; reload and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_transition_refused",
+                  "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005",
+                    "from": "expired",
+                    "to": "confirmed",
+                    "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body or id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/{factId}/expire": {
+      "post": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "Expire a confirmed or stale fact",
+        "description": "The fact stopped being true. The reason is required, and the use count is snapshotted in the same\nstatement and frozen from then on — *was used 31×*. A `confirmed` fact moves through `stale`\nfirst, in the same transaction: two audited edges, both naming the person and the reason,\nbecause the lifecycle has no direct `confirmed → expired` edge.\n\n**`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "expireFact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FactId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExpireFactBody"
+              },
+              "example": {
+                "reason": "Zephyr 4.1 migration"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The fact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is a `viewer`. Facts are every member's to read, and an\n`owner`'s, `admin`'s or `member`'s to decide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`fact_not_found` — no such fact, **or none this caller may know about**;\n`details.factId` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_not_found",
+                  "message": "No such fact.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fact_transition_refused` — the fact's status does not allow this action; `message`\nand `details.reason` state why, `details.from` / `details.to` name the edge.\n`fact_changed` — the fact moved under a concurrent writer; reload and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_transition_refused",
+                  "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005",
+                    "from": "expired",
+                    "to": "confirmed",
+                    "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body or id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/{factId}/relearn": {
+      "post": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "Re-learn an expired fact",
+        "description": "Proposes a **new** fact whose `relearnedFromFactId` names the expired one. The expired fact, its\nreason and its frozen count stay exactly as they were. Anchors are not copied — the old ones are\nwhy it expired.\n\n**`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "relearnFact",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FactId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RelearnFactBody"
+              },
+              "example": {
+                "text": "Zephyr 4.1 needs `CONFIG_SYS_CLOCK_TICKS_PER_SEC` set explicitly"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The **new** proposal.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is a `viewer`. Facts are every member's to read, and an\n`owner`'s, `admin`'s or `member`'s to decide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`fact_not_found` — no such fact, **or none this caller may know about**;\n`details.factId` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_not_found",
+                  "message": "No such fact.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fact_transition_refused` — the fact's status does not allow this action; `message`\nand `details.reason` state why, `details.from` / `details.to` name the edge.\n`fact_changed` — the fact moved under a concurrent writer; reload and retry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_transition_refused",
+                  "message": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005",
+                    "from": "expired",
+                    "to": "confirmed",
+                    "reason": "An expired fact is frozen. Re-learn it instead, which proposes a new fact linked to this one."
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body or id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/{factId}/anchors": {
+      "post": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "Add an anchor — a reason the fact can expire",
+        "description": "A `path_glob` (matched against a merged PR's changed paths), a `dependency` (a manifest's changed\nline naming it) or a `platform_version` (a platform marker's removed pin, e.g. `zephyr-4.0`).\n\n**`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "addFactAnchor",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FactId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FactAnchorBody"
+              },
+              "example": {
+                "kind": "platform_version",
+                "value": "zephyr-4.0"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The fact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is a `viewer`. Facts are every member's to read, and an\n`owner`'s, `admin`'s or `member`'s to decide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`fact_not_found` — no such fact, **or none this caller may know about**;\n`details.factId` echoes it. (`tenant_not_found` is the other `404` here.)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                },
+                "example": {
+                  "code": "fact_not_found",
+                  "message": "No such fact.",
+                  "details": {
+                    "factId": "5eed0044-0000-4000-8000-000000000005"
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fact_frozen` — the fact is `rejected` or `expired`; nothing about it changes. `fact_anchor_exists`\n— the fact already has that anchor.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`fact_anchor_invalid` — a value V071 would refuse. `validation_failed` — a malformed body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/facts/{factId}/anchors/{anchorId}": {
+      "delete": {
+        "tags": [
+          "facts"
+        ],
+        "summary": "Remove an anchor",
+        "description": "A fact left with no anchors is valid, and is never swept — its `sweep` field says so.\n\n**`owner`, `admin` or `member`** — the session's person is recorded as the transition's actor.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "removeFactAnchor",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/FactId"
+          },
+          {
+            "$ref": "#/components/parameters/FactAnchorId"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The fact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FactDetail"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is a `viewer`. Facts are every member's to read, and an\n`owner`'s, `admin`'s or `member`'s to decide.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`fact_not_found`, or `fact_anchor_not_found` — no such anchor on this fact.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`fact_frozen` — the fact is `rejected` or `expired`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body or id.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/planning/batches": {
       "post": {
         "tags": [
@@ -24393,6 +25652,37 @@
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
         },
         "example": "hil-safety"
+      },
+      "FactId": {
+        "name": "factId",
+        "in": "path",
+        "required": true,
+        "description": "A fact's id — `facts.id`. A fact of another workspace answers `404`, never `403`.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed0044-0000-4000-8000-000000000005"
+      },
+      "FactAnchorId": {
+        "name": "anchorId",
+        "in": "path",
+        "required": true,
+        "description": "A fact anchor's id — `fact_anchors.id`.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed0045-0000-4000-8000-000000000005"
+      },
+      "FactStatusFilter": {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "description": "Only facts at this status; every fact when absent.",
+        "schema": {
+          "$ref": "#/components/schemas/FactStatus"
+        }
       },
       "ConnectionId": {
         "name": "id",
@@ -43182,6 +44472,713 @@
                 }
               }
             }
+          }
+        }
+      },
+      "FactStatus": {
+        "type": "string",
+        "title": "FactStatus",
+        "description": "Decision **K3**'s lifecycle. `proposed → confirmed | rejected`, `confirmed → stale` (the\nsweep), `stale → confirmed | expired`. `rejected` and `expired` are terminal. Only\n`confirmed` facts are injected.",
+        "enum": [
+          "proposed",
+          "confirmed",
+          "rejected",
+          "stale",
+          "expired"
+        ]
+      },
+      "FactAnchorKind": {
+        "type": "string",
+        "title": "FactAnchorKind",
+        "enum": [
+          "path_glob",
+          "dependency",
+          "platform_version"
+        ]
+      },
+      "FactActor": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "title": "FactActor",
+        "description": "A person the audit names; `null` for the staleness sweep.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name"
+        ],
+        "properties": {
+          "id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The person's id, or `null` once they have been removed."
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "Ken"
+            ]
+          }
+        }
+      },
+      "FactStamp": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "title": "FactStamp",
+        "description": "A transition's actor, instant and note, read from the audit.",
+        "additionalProperties": false,
+        "required": [
+          "actor",
+          "at",
+          "reason"
+        ],
+        "properties": {
+          "actor": {
+            "$ref": "#/components/schemas/FactActor"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "examples": [
+              "platform_version anchor zephyr-4.0 matched: removed \"revision: v4.0.0\" in west.yml (PR #531)"
+            ]
+          }
+        }
+      },
+      "FactProvenance": {
+        "type": "object",
+        "title": "FactProvenance",
+        "description": "The card's provenance line, and the typed references it stands for.",
+        "additionalProperties": false,
+        "required": [
+          "line",
+          "refs"
+        ],
+        "properties": {
+          "line": {
+            "type": "string",
+            "maxLength": 200,
+            "examples": [
+              "from PR #514 review cycle"
+            ]
+          },
+          "refs": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "required": [
+                "kind"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "run",
+                    "pull_request",
+                    "ticket",
+                    "import"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "file": {
+                  "type": "string"
+                },
+                "section": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      },
+      "FactAnchor": {
+        "type": "object",
+        "title": "FactAnchor",
+        "description": "Why a fact can expire (decision **K4**).",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "value",
+          "lastCheckedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FactAnchorKind"
+          },
+          "value": {
+            "type": "string",
+            "maxLength": 512,
+            "examples": [
+              "tests/hil/**",
+              "west",
+              "zephyr-4.0"
+            ]
+          },
+          "lastCheckedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the nightly sweep last evaluated it; `null` until it has."
+          }
+        }
+      },
+      "Fact": {
+        "title": "Fact",
+        "description": "A learned fact, as the card renders it.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FactFields"
+          }
+        ],
+        "unevaluatedProperties": false
+      },
+      "FactFields": {
+        "type": "object",
+        "title": "FactFields",
+        "description": "The fields every fact resource carries — `Fact` and `FactDetail` close over them.",
+        "required": [
+          "id",
+          "repoRef",
+          "text",
+          "status",
+          "proposer",
+          "provenance",
+          "confirmation",
+          "staleness",
+          "expiry",
+          "usedCount",
+          "relearnedFromFactId",
+          "relearnedByFactIds",
+          "anchors",
+          "sweep",
+          "createdAt",
+          "updatedAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repoRef": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The repository, `owner/name`, or `null` for the whole workspace."
+          },
+          "text": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "status": {
+            "$ref": "#/components/schemas/FactStatus"
+          },
+          "proposer": {
+            "type": "string",
+            "enum": [
+              "manual",
+              "correction_note",
+              "waiver",
+              "steer",
+              "import",
+              "llm"
+            ]
+          },
+          "provenance": {
+            "$ref": "#/components/schemas/FactProvenance"
+          },
+          "confirmation": {
+            "$ref": "#/components/schemas/FactStamp"
+          },
+          "staleness": {
+            "$ref": "#/components/schemas/FactStamp"
+          },
+          "expiry": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "Set exactly when `expired` — *expired on Zephyr 4.1 migration · was used 31×*.",
+            "additionalProperties": false,
+            "required": [
+              "reason",
+              "previousUseCount",
+              "stamp"
+            ],
+            "properties": {
+              "reason": {
+                "type": "string"
+              },
+              "previousUseCount": {
+                "type": "integer",
+                "minimum": 0,
+                "description": "The use count snapshotted at expiry. Never changes afterwards."
+              },
+              "stamp": {
+                "$ref": "#/components/schemas/FactStamp"
+              }
+            }
+          },
+          "usedCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Manifests that carried the fact — counted from `context_injections`, or the frozen\nsnapshot once expired."
+          },
+          "relearnedFromFactId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "relearnedByFactIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "anchors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FactAnchor"
+            }
+          },
+          "sweep": {
+            "type": "object",
+            "description": "Whether the staleness sweep watches the fact. A fact with no anchors is never flagged\nstale — stated here rather than implied.",
+            "additionalProperties": false,
+            "required": [
+              "covered",
+              "reason"
+            ],
+            "properties": {
+              "covered": {
+                "type": "boolean"
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "no_anchors",
+                  null
+                ]
+              }
+            }
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "FactDetail": {
+        "title": "FactDetail",
+        "description": "A fact and its whole audit history, oldest first.",
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/FactFields"
+          }
+        ],
+        "type": "object",
+        "unevaluatedProperties": false,
+        "required": [
+          "history"
+        ],
+        "properties": {
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "from",
+                "to",
+                "actor",
+                "reason",
+                "at"
+              ],
+              "properties": {
+                "from": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/FactStatus"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "to": {
+                  "$ref": "#/components/schemas/FactStatus"
+                },
+                "actor": {
+                  "$ref": "#/components/schemas/FactActor"
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              }
+            }
+          }
+        }
+      },
+      "FactList": {
+        "type": "object",
+        "title": "FactList",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "counts"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Fact"
+            }
+          },
+          "counts": {
+            "type": "object",
+            "description": "Every status's count in the workspace, whatever the filter.",
+            "additionalProperties": false,
+            "required": [
+              "proposed",
+              "confirmed",
+              "rejected",
+              "stale",
+              "expired"
+            ],
+            "properties": {
+              "proposed": {
+                "type": "integer",
+                "minimum": 0,
+                "examples": [
+                  2
+                ]
+              },
+              "confirmed": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "rejected": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "stale": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "expired": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          }
+        }
+      },
+      "FactNeedsYouItem": {
+        "type": "object",
+        "title": "FactNeedsYouItem",
+        "description": "One `fact_review` needs-you item (#461, mockup 16). Fields are added, never renamed;\n`factId` is the item's identity.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "severity",
+          "factId",
+          "reason",
+          "text",
+          "repoRef",
+          "provenanceLine",
+          "staleness",
+          "since"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "const": "fact_review"
+          },
+          "severity": {
+            "type": "string",
+            "const": "info"
+          },
+          "factId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "awaiting_review",
+              "stale"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "repoRef": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "provenanceLine": {
+            "type": "string"
+          },
+          "staleness": {
+            "$ref": "#/components/schemas/FactStamp"
+          },
+          "since": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When it started waiting — the proposal's creation, or the stale flag."
+          }
+        }
+      },
+      "FactNeedsYou": {
+        "type": "object",
+        "title": "FactNeedsYou",
+        "additionalProperties": false,
+        "required": [
+          "count",
+          "items"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FactNeedsYouItem"
+            }
+          }
+        }
+      },
+      "FactSweepReport": {
+        "type": "object",
+        "title": "FactSweepReport",
+        "additionalProperties": false,
+        "required": [
+          "organizationId",
+          "changes",
+          "anchors",
+          "flagged",
+          "uncovered"
+        ],
+        "properties": {
+          "organizationId": {
+            "type": "string"
+          },
+          "changes": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Merged PRs read."
+          },
+          "anchors": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Anchors evaluated."
+          },
+          "flagged": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "factId",
+                "anchorId",
+                "prId",
+                "prNumber",
+                "reason"
+              ],
+              "properties": {
+                "factId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "anchorId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "prId": {
+                  "type": "string",
+                  "format": "uuid"
+                },
+                "prNumber": {
+                  "type": "integer"
+                },
+                "reason": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "uncovered": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Confirmed facts with no anchors — never swept."
+          }
+        }
+      },
+      "FactAnchorBody": {
+        "type": "object",
+        "title": "FactAnchorBody",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "value"
+        ],
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/FactAnchorKind"
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          }
+        }
+      },
+      "ProposeFactBody": {
+        "type": "object",
+        "title": "ProposeFactBody",
+        "additionalProperties": false,
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "repoRef": {
+            "type": "string",
+            "maxLength": 255,
+            "description": "`owner/name`; absent is the whole workspace."
+          },
+          "provenanceLine": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "description": "The card's line under the fact; `added by hand` when absent."
+          },
+          "refs": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "kind",
+                "id"
+              ],
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "run",
+                    "pull_request",
+                    "ticket"
+                  ]
+                },
+                "id": {
+                  "type": "string",
+                  "format": "uuid"
+                }
+              }
+            }
+          },
+          "anchors": {
+            "type": "array",
+            "maxItems": 16,
+            "items": {
+              "$ref": "#/components/schemas/FactAnchorBody"
+            }
+          }
+        }
+      },
+      "FactTransitionBody": {
+        "type": "object",
+        "title": "FactTransitionBody",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "An optional note recorded beside the transition."
+          }
+        }
+      },
+      "ExpireFactBody": {
+        "type": "object",
+        "title": "ExpireFactBody",
+        "additionalProperties": false,
+        "required": [
+          "reason"
+        ],
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "examples": [
+              "Zephyr 4.1 migration"
+            ]
+          }
+        }
+      },
+      "RelearnFactBody": {
+        "type": "object",
+        "title": "RelearnFactBody",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "The new proposal's text; the expired fact's when absent."
           }
         }
       },
