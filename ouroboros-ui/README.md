@@ -3422,6 +3422,84 @@ that stays on screen, keeps its prompt, and is plain about what it needs. The no
 *filed* against a tracker rather than *pushed* to one, because a reader told only that push is
 disabled would reasonably expect to draft and be refused on the first click.
 
+## Knowledge
+
+`/knowledge` ([#417](https://github.com/NobuData/ouroboros/issues/417)) is
+[`docs/mockups/14-knowledge.html`](../docs/mockups/14-knowledge.html)'s **frame**: the page head,
+its two actions, and the two seats the rest of the page grows into — the skills table
+([#418](https://github.com/NobuData/ouroboros/issues/418)) and the learned-facts card
+([#419](https://github.com/NobuData/ouroboros/issues/419)). The sidebar's **Knowledge** entry is live
+and leads here, which retires the `/knowledge` placeholder #49 held; the mockup's topbar is
+superseded by the shell.
+
+```
+KNOWLEDGE
+Teach the loop once. Every run remembers.        [Import CLAUDE.md / .cursorrules] [+ New skill]
+Skills you write, facts the loop learns (and you approve), and playbooks you can aim at any
+issue. Scoped per repo or org-wide.
+┌ SKILLS ──────────────────────────────┐
+│ arrives with #418                     │   ← #skills-drafts, where the import toast's link lands
+└───────────────────────────────────────┘
+┌ LEARNED BY THE LOOP ─────────────────┐
+│ arrives with #419                     │   ← #facts-awaiting
+└───────────────────────────────────────┘
+```
+
+**The head is verbatim, and its actions are for administrators only.** Creating a skill and
+importing rules files are `owner`/`admin` writes, and the issue asks that a member see *neither*
+action rather than two switched-off ones — so [`knowledge-screen.tsx`](app/knowledge/knowledge-screen.tsx)
+does not mount them for anyone else and draws a `role="note"` under the head saying why. The
+service's `403` is what enforces it; a hand-made call to either Server Action gets that refusal
+back as a value and writes nothing.
+
+**+ New skill hands off rather than reimplementing.** A skill is markdown with frontmatter and
+there is already an editor for that, so the dialog ([`new-skill.tsx`](app/knowledge/new-skill.tsx),
+judgements in [`create.ts`](app/knowledge/create.ts)) collects only what cannot be inferred: the
+name, a slug that follows it until edited (the service's own `slugify` rule), a one-line description
+— the frontmatter requires one — and the scope, `org` or `repo` from the enabled-repository select.
+It composes the document and makes one `POST /api/v1/skills`. **A collision is surfaced before
+creation**: the page read `GET /api/v1/skills`, so a slug already in the workspace is refused under
+the box as it is typed, and the service's `409 skill_slug_taken` — two administrators, one minute —
+lands on the same box.
+
+**Where the editor is, honestly.** The issue lands the reader in the code-view frame on the new
+draft. That frame opens `skills/<slug>.skill.md` with X.2
+([#181](https://github.com/NobuData/ouroboros/issues/181)), which is not built: the tree lists the
+row since #410, but [`code-workbench.tsx`](app/workflows/code/code-workbench.tsx) can open only a
+workflow's file. A door that opens nothing is what the design system forbids (§ 3.5), so the create
+closes the dialog, re-reads the page, and leaves a toast naming the draft, that nothing is enabled
+until it is published, and #181 as where the editor arrives. The landing moves into the editor on
+the commit that builds it.
+
+**Import is the one that needs care.** A reader pressing *Import CLAUDE.md / .cursorrules* has no
+idea how many rules are in their files, so the sheet ([`import-sheet.tsx`](app/knowledge/import-sheet.tsx),
+judgements in [`import.ts`](app/knowledge/import.ts)) is probe → **preview** → apply over BF.4
+([#413](https://github.com/NobuData/ouroboros/issues/413)):
+
+1. **Which repository** — a select of the enabled repositories, opening on the header chip's focus
+   repo when it is one of them. With none enabled the head's action is inert with that reason.
+2. **Preview** (`POST /api/v1/knowledge/import/preview`, writes nothing) — the four files as
+   probed (found, not found, or only the first 256 KiB read) with what each would create; the
+   totals line (`2 skill drafts · 1 skill update · 9 fact candidates (3 already known)`); up to
+   five samples of each kind with their section; and the statement, in the warn tint, that
+   **nothing imported is enabled** — skills arrive as drafts, facts as candidates awaiting review.
+   That sentence is what makes pressing Apply an easy decision, so it is in the preview.
+3. **Apply** (`POST …/import/apply`) sends the preview's `fingerprint` back, so what is written is
+   exactly what was shown or nothing (`409 knowledge_import_preview_stale` says to preview again).
+   The toast quotes the service's `created` counts and links **Draft skills ↓** and **Facts
+   awaiting review ↓** — anchors on this page, under the ids `view.ts` declares so #418 and #419
+   mount their regions where the links already point.
+
+**Three previews are not imports, and each says which it is.** The service answers `200` to all
+three, so `previewKind` decides: none of the four files (the honest empty result, naming what was
+looked for and the two ways forward), files found but everything already in the workspace (an
+unchanged re-import — it says so rather than offering an apply that would create nothing), and
+files found that parse to no section and no imperative bullet. **Apply** is not drawn for any of
+them.
+
+**Loading** is [`knowledge-skeleton.tsx`](app/knowledge/knowledge-skeleton.tsx): the head drawn for
+real, since none of it is read, over the two seats at the grid's geometry.
+
 ## Run console
 
 `/runs/:id` ([#309](https://github.com/NobuData/ouroboros/issues/309)) is
@@ -5736,6 +5814,7 @@ caps, the strip and the states [#232](https://github.com/NobuData/ouroboros/issu
 the credential audit trail [#225](https://github.com/NobuData/ouroboros/issues/225) ·
 ticket sources [#141](https://github.com/NobuData/ouroboros/issues/141) ·
 planning [#283](https://github.com/NobuData/ouroboros/issues/283) ·
+knowledge [#417](https://github.com/NobuData/ouroboros/issues/417) ·
 build farm [#256](https://github.com/NobuData/ouroboros/issues/256) ·
 the runners table [#257](https://github.com/NobuData/ouroboros/issues/257) ·
 workflow studio [#147](https://github.com/NobuData/ouroboros/issues/147) ·
