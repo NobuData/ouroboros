@@ -13,6 +13,8 @@
  * imports `TicketSourcesModule` for the registry and the credential opener, and reaches a host only
  * through the SPI — `.dependency-cruiser.cjs`'s `ticket-source-core-imports-the-spi-only` holds it
  * to that, and `ticket-source-core-tests-run-on-the-fake` holds its suites to the in-memory host.
+ * It imports `FactsModule` for `FACT_COMMIT_OBSERVER` — the sync tells the fact staleness sweep
+ * about every merge it is the first to see (BF.2, #411).
  */
 
 import { Module } from "@nestjs/common";
@@ -20,6 +22,7 @@ import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { ControlsModule } from "../controls/controls.module";
 import { DbModule } from "../db/db.module";
+import { FactsModule } from "../facts/facts.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { CriteriaController } from "./criteria/criteria.controller";
 import { CriteriaRepository } from "./criteria/criteria.repository";
@@ -38,7 +41,7 @@ import { PrMirrorRepository } from "./pr-sync.repository";
 import { PrSyncService } from "./pr-sync.service";
 
 @Module({
-  imports: [DbModule, AuditModule, TicketSourcesModule, GatesModule, ControlsModule],
+  imports: [DbModule, AuditModule, TicketSourcesModule, GatesModule, ControlsModule, FactsModule],
   controllers: [CriteriaController, MergeController, PageController],
   providers: [
     PrSyncService,

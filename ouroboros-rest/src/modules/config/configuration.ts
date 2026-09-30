@@ -523,6 +523,13 @@ export const MIN_FLAKE_RESCORE_CAP = 1;
 export const MAX_FLAKE_RESCORE_CAP = 100000;
 
 /**
+ * The UTC hour the nightly fact staleness sweep is scheduled at, when `OURO_FACT_SWEEP_HOUR_UTC` is
+ * not set — four in the morning, an hour after the flake re-scorer so the nightly jobs do not share
+ * a slot (BF.2, #411).
+ */
+export const DEFAULT_FACT_SWEEP_HOUR_UTC = 4;
+
+/**
  * The largest merged-loop threshold an operator may configure for the onboarding tiles' unlock
  * rule (BB.3, #386) — ten thousand merged loops, far past any tier worth gating.
  */
@@ -923,6 +930,11 @@ export interface Configuration {
    */
   readonly flakeRescoreCap: number;
   /**
+   * The UTC hour the nightly fact staleness sweep is scheduled at. From `OURO_FACT_SWEEP_HOUR_UTC`,
+   * {@link DEFAULT_FACT_SWEEP_HOUR_UTC} when unset.
+   */
+  readonly factSweepHourUtc: number;
+  /**
    * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
    *
    * A map of provider kind to base URL, from a comma-separated list of `kind=url` pairs, and
@@ -1011,6 +1023,7 @@ export const VARIABLES = {
   reestimationBatch: "OURO_REESTIMATION_BATCH",
   flakeRescoreHourUtc: "OURO_FLAKE_RESCORE_HOUR_UTC",
   flakeRescoreCap: "OURO_FLAKE_RESCORE_CAP",
+  factSweepHourUtc: "OURO_FACT_SWEEP_HOUR_UTC",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
   onboardingUnlockThreshold: "OURO_ONBOARDING_UNLOCK_THRESHOLD",
 } as const satisfies Record<keyof Configuration, string>;
@@ -1572,6 +1585,8 @@ const environmentShape = z.object({
     MAX_FLAKE_RESCORE_CAP,
   ),
 
+  OURO_FACT_SWEEP_HOUR_UTC: boundedWhole(0, DEFAULT_FACT_SWEEP_HOUR_UTC, 23),
+
   // The onboarding tiles' unlock threshold override (BB.3, #386). Optional, and unset is the
   // normal posture: each advanced template's own `merged_loops_gte` is then the rule.
   OURO_ONBOARDING_UNLOCK_THRESHOLD: z
@@ -1782,6 +1797,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     reestimationBatch: values.OURO_REESTIMATION_BATCH,
     flakeRescoreHourUtc: values.OURO_FLAKE_RESCORE_HOUR_UTC,
     flakeRescoreCap: values.OURO_FLAKE_RESCORE_CAP,
+    factSweepHourUtc: values.OURO_FACT_SWEEP_HOUR_UTC,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
     onboardingUnlockThreshold: values.OURO_ONBOARDING_UNLOCK_THRESHOLD,
   });

@@ -123,6 +123,8 @@ $ curl http://localhost:4000/api/v1
 | `GET POST /api/v1/skills`                           | [Skills](#skills) (#410) — the registry; **+ New skill** as a draft |
 | `…/skills/{slug}` · `…/draft` · `…/publish`         | Read, switch/lock (`required` owner-only; disabling it is the designed `403`), guarded delete; draft-save and publish |
 | `…/skills/{slug}/scope/preview` · `…/scope` · `…/code` · `/skills/stats` | Scope moves with a conflict preview; the code view's `skills/*.skill.md`; Used-by over a stated window |
+| `GET POST /api/v1/facts` · `/facts/needs-you` · `/facts/sweep` | [The fact lifecycle](#fact-lifecycle-and-the-staleness-sweep) (#411) — the learned-facts card, a manual proposal, the `fact_review` feed, an on-demand staleness sweep |
+| `…/facts/{factId}` · `…/confirm` · `…/reject` · `…/reconfirm` · `…/expire` · `…/relearn` · `…/anchors` | One fact and its audit; the K3 transitions (member+, actor recorded); anchor add/remove |
 | `GET POST /api/v1/sources`                          | [Ticket sources](#pluggable-ticket-sources) (#141) — the workspace's list with masks, never values; add one, checked against its kind's schema |
 | `GET /api/v1/sources/catalog`                       | Every registered kind as the form it takes — `configSchema()` rendered to fields — plus its capabilities |
 | `GET PATCH /api/v1/sources/{id}`                    | One source; rename, change its settings, pause or resume it — `owner`/`admin` only |
@@ -291,6 +293,7 @@ service never starts half-configured.
 | `OURO_REESTIMATION_BATCH` | The most unsized tickets one night's run queues, across every workspace — the job's bound |     no — 100      | a whole number, 1–1000 |
 | `OURO_FLAKE_RESCORE_HOUR_UTC` | The UTC hour the [nightly flake re-scorer](#flake-scorer) is scheduled at; each pass lands at a random minute in the hour after it ([#331](https://github.com/NobuData/ouroboros/issues/331)) |      no — 3       | a whole number, 0–23 |
 | `OURO_FLAKE_RESCORE_CAP` | The most cases one workspace's nightly flake re-score covers, least recently scored first — the job's bound |     no — 2000     | a whole number, 1–100000 |
+| `OURO_FACT_SWEEP_HOUR_UTC` | The UTC hour the [nightly fact staleness sweep](#fact-lifecycle-and-the-staleness-sweep) is scheduled at; each pass lands at a random minute in the hour after it ([#411](https://github.com/NobuData/ouroboros/issues/411)) |      no — 4       | a whole number, 0–23 |
 | `OURO_ONBOARDING_UNLOCK_THRESHOLD` | The merged-loop count that unlocks an advanced [onboarding template tile](#template-tiles-and-instantiation) ([#386](https://github.com/NobuData/ouroboros/issues/386)), replacing each template's own rule |     no — unset     | a whole number, 0–10000; `0` unlocks every tier |
 
 Every one of them is documented with a development default in the repo-root
@@ -3083,6 +3086,61 @@ GET|PUT /api/v1/skills/{slug}/code       skills/<slug>.skill.md — the code vie
 symbol table's `stage.llm.skill`, and P7's unknown-skill warning are the published, non-draft
 slugs (`SkillsRegistryService`, the module's only export), and the code view's `code-tree` lists a
 `skills/<slug>.skill.md` per skill. `OURO_WORKFLOW_SKILL_SUGGESTIONS` is retired.
+
+## Fact lifecycle and the staleness sweep
+
+**`/api/v1/facts` is mockup 14's *Learned by the loop* card** (BF.2,
+[#411](https://github.com/NobuData/ouroboros/issues/411), decisions **K3**/**K4**) over V071's
+`facts`, `fact_anchors` and `fact_transitions`. Every member reads; `owner`, `admin` and `member`
+decide, and the session's person is recorded as every transition's actor.
+
+```
+GET    /api/v1/facts?status=              ─▶ { items: [...], counts: {proposed, confirmed, …} }   "2 awaiting review"
+POST   /api/v1/facts                      { text, repoRef?, provenanceLine?, refs?, anchors? } ─▶ 201, proposed
+GET    /api/v1/facts/needs-you            ─▶ { count, items: [{ kind: fact_review, severity: info, factId, reason, … }] }
+POST   /api/v1/facts/sweep                owner/admin ─▶ { changes, anchors, flagged: [...], uncovered }
+GET    /api/v1/facts/{factId}             ─▶ the fact + its audit history, oldest first
+POST   …/{factId}/confirm | /reject       proposed ─▶ confirmed | rejected        "confirmed by Ken, 6w ago"
+POST   …/{factId}/reconfirm               stale ─▶ confirmed
+POST   …/{factId}/expire                  { reason } stale ─▶ expired; confirmed ─▶ stale ─▶ expired (two audited edges)
+POST   …/{factId}/relearn                 { text? } expired ─▶ a NEW proposal, relearnedFromFactId = the expired one
+POST   …/{factId}/anchors · DELETE …/anchors/{anchorId}    path_glob | dependency | platform_version
+```
+
+| Rule | Where it is held |
+| --- | --- |
+| The transition matrix | `facts.lifecycle.ts` — a copy of V071's `facts_legal_transition`, checked first so a refusal is `409 fact_transition_refused` with a stated reason; the trigger is the backstop |
+| Every transition is audited | V071's `fact_transitions_record()` trigger, from the `status_changed_by` / `status_reason` the repository writes in the same statement; `confirmation`, `staleness` and `expiry.stamp` are read back from it |
+| Expiry snapshots the use count | `previous_use_count` is `count(*)` over `context_injections` in the expiring statement; V071 freezes it, and `usedCount` answers it from then on |
+| Re-learn never resurrects | a new `proposed` row with `relearned_from_fact_id`; the expired row, its reason and count stay as they were |
+| Anchor-less facts are never swept | the sweep reads only anchored confirmed facts, and every fact's `sweep: {covered, reason: "no_anchors"}` says so |
+
+**The staleness sweep** (`facts.sweep.ts`) flags, it never expires: a matching anchor means
+*something changed near this fact*, so a confirmed fact moves to `stale` with nobody behind it and
+the matched anchor as the reason — `platform_version anchor zephyr-4.0 matched: removed "revision:
+v4.0.0" in west.yml (PR #531)` — and joins the needs-you feed for a person to re-confirm or expire.
+
+| Trigger | What it reads |
+| --- | --- |
+| Sync-driven | PR sync reports a PR it is the first to see `merged` to `FACT_COMMIT_OBSERVER`; its newest revision's paths and diff sample are matched at once (stamps nothing) |
+| Nightly | at `OURO_FACT_SWEEP_HOUR_UTC` (04:00) plus a random minute in the hour after: every merged PR of an enabled GitHub repository since each anchor's `last_checked_at`, then every evaluated anchor stamped |
+
+| Anchor | Fires when (`facts.anchors.ts`) |
+| --- | --- |
+| `path_glob` | a changed path matches — `path_glob_matches`' grammar, ported and held to V071's probes |
+| `dependency` | a changed manifest (`west.yml`, `package.json`, `go.mod`, `Cargo.toml`, `requirements*.txt`, …) adds or removes a line naming it; or the manifest changed and its patch is not in the sample |
+| `platform_version` | a changed marker (`west.yml`, `VERSION`, `.nvmrc`, `.tool-versions`, …) removes the anchored version (`zephyr-4.0` → `v4.0.x`) without re-adding it, and names the platform; or the marker changed and its patch is not in the sample |
+
+A change counts for an anchor only if it merged after the fact's confirmation and the anchor's last
+check, so a re-confirmed fact is not flagged again by the change that flagged it. A
+repository-scoped fact matches only its own repository's PRs (a GitHub source's push target); a
+workspace-wide fact matches every repository's.
+
+**The needs-you feed is the `fact_review` contract** mockup 16's inbox (#461) consumes: one item per
+proposal awaiting review and per stale fact, `severity: info`, oldest wait first, `factId` its
+identity. `count` is the figure #90's needs-you pill joins; the dashboard's pill is not changed
+here. `FactsService.propose` is the entry point BF.3 (#412) and BF.4 (#413) call with their own
+`proposer` and no actor — a proposal is never confirmed automatically.
 
 ## Pluggable ticket sources
 

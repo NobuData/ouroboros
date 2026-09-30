@@ -11,6 +11,7 @@ import {
   DEFAULT_RUN_STEER_TTL_SECONDS,
   DEFAULT_BACKLOG_STALE_DAYS,
   DEFAULT_REESTIMATION_BATCH,
+  DEFAULT_FACT_SWEEP_HOUR_UTC,
   DEFAULT_FLAKE_RESCORE_CAP,
   DEFAULT_FLAKE_RESCORE_HOUR_UTC,
   DEFAULT_REESTIMATION_HOUR_UTC,
@@ -142,6 +143,7 @@ describe("the development defaults", () => {
       // AT.3's (#331) two, written out in the template at their defaults for the same reason.
       flakeRescoreHourUtc: DEFAULT_FLAKE_RESCORE_HOUR_UTC,
       flakeRescoreCap: DEFAULT_FLAKE_RESCORE_CAP,
+      factSweepHourUtc: DEFAULT_FACT_SWEEP_HOUR_UTC,
     });
   });
 });
@@ -1070,6 +1072,7 @@ describe("the nightly flake re-scorer variables (AT.3, #331)", () => {
   it.each([
     ["OURO_FLAKE_RESCORE_HOUR_UTC", "flakeRescoreHourUtc", ["0", "3", "23"]],
     ["OURO_FLAKE_RESCORE_CAP", "flakeRescoreCap", ["1", "2000", "100000"]],
+    ["OURO_FACT_SWEEP_HOUR_UTC", "factSweepHourUtc", ["0", "4", "23"]],
   ] as const)("reads %s inside its range", (variable, field, values) => {
     for (const value of values) {
       expect(loadConfiguration(testEnvironment({ [variable]: value }))[field]).toBe(Number(value));
@@ -1081,6 +1084,8 @@ describe("the nightly flake re-scorer variables (AT.3, #331)", () => {
     // A zero cap is a pass that never re-scores; an unbounded one is the job AT.3 forbids.
     ["OURO_FLAKE_RESCORE_CAP", "0", "expected between 1 and 100000"],
     ["OURO_FLAKE_RESCORE_CAP", "100001", "expected between 1 and 100000"],
+    ["OURO_FACT_SWEEP_HOUR_UTC", "24", "expected between 0 and 23"],
+    ["OURO_FACT_SWEEP_HOUR_UTC", "-1", "expected between 0 and 23"],
   ])("rejects %s=%s", (variable, value, message) => {
     expect(failureFor(testEnvironment({ [variable]: value }))).toContain(`${variable}: ${message}`);
   });

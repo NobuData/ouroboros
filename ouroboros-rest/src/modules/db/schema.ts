@@ -5392,6 +5392,99 @@ export interface SkillVersionsTable {
   updated_at: Stamped;
 }
 
+/** `facts.status` (V071, decision K3) — moved only along `facts_legal_transition`'s edges. */
+export type FactStatus = "proposed" | "confirmed" | "rejected" | "stale" | "expired";
+
+/** The statuses, in the lifecycle's order. */
+export const FACT_STATUSES: readonly FactStatus[] = [
+  "proposed",
+  "confirmed",
+  "rejected",
+  "stale",
+  "expired",
+];
+
+/** `facts.proposer` (V071) — who proposed a fact; `llm` is reserved for #423. */
+export type FactProposer = "manual" | "correction_note" | "waiver" | "steer" | "import" | "llm";
+
+/** The proposers V071's `facts_proposer_valid` accepts. */
+export const FACT_PROPOSERS: readonly FactProposer[] = [
+  "manual",
+  "correction_note",
+  "waiver",
+  "steer",
+  "import",
+  "llm",
+];
+
+/** `fact_anchors.kind` (V071, decision K4) — why a fact can expire. */
+export type FactAnchorKind = "path_glob" | "dependency" | "platform_version";
+
+/** The anchor kinds V071's `fact_anchors_kind_valid` accepts. */
+export const FACT_ANCHOR_KINDS: readonly FactAnchorKind[] = [
+  "path_glob",
+  "dependency",
+  "platform_version",
+];
+
+/**
+ * `ouroboros.facts` — learned facts with a lifecycle (V071,
+ * [#406](https://github.com/NobuData/ouroboros/issues/406)); served by BF.2
+ * ([#411](https://github.com/NobuData/ouroboros/issues/411)). Born `proposed`, moved only along
+ * K3's edges, every status change audited in `fact_transitions` by trigger. The writer sets
+ * `status_changed_by` / `status_reason` in the same statement as the status.
+ */
+export interface FactsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** `owner/name`, or null for the whole workspace. */
+  repo_ref: string | null;
+  text: string;
+  status: ColumnType<FactStatus, FactStatus | undefined, FactStatus>;
+  proposer: FactProposer;
+  /** `{"line": …, "refs": [...]}` (`fact_provenance_typed`). Written through `JSON.stringify`. */
+  provenance: ColumnType<unknown, string, string>;
+  confirmed_by: string | null;
+  confirmed_at: Date | null;
+  expired_reason: string | null;
+  /** The use count snapshotted at expiry — `was used 31×`. */
+  previous_use_count: number | null;
+  /** The expired fact a re-learn proposal names; fixed at insert. */
+  relearned_from_fact_id: string | null;
+  status_changed_by: string | null;
+  status_reason: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `ouroboros.fact_anchors` — why a fact can expire (V071, K4); what the staleness sweep reads. */
+export interface FactAnchorsTable {
+  id: Generated<string>;
+  fact_id: string;
+  kind: FactAnchorKind;
+  /** `tests/hil/**`, `west`, `zephyr-4.0`. */
+  value: string;
+  /** When the sweep last evaluated this anchor; null until it has. */
+  last_checked_at: Date | null;
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.fact_transitions` — every fact status change with its actor (V071). Written only by
+ * the `fact_transitions_record()` trigger; the application role may only select it.
+ */
+export interface FactTransitionsTable {
+  id: ColumnType<string, never, never>;
+  fact_id: ColumnType<string, never, never>;
+  /** Null on the row recording the fact's creation. */
+  from_status: ColumnType<FactStatus | null, never, never>;
+  to_status: ColumnType<FactStatus, never, never>;
+  /** Null for the staleness sweep. */
+  actor_id: ColumnType<string | null, never, never>;
+  reason: ColumnType<string | null, never, never>;
+  at: ColumnType<Date, never, never>;
+}
+
 /** `context_injections.consumer` (V071) — who assembled the manifest. */
 export type ContextInjectionConsumer = "estimator" | "run_stage" | "playbook";
 
@@ -5542,6 +5635,9 @@ export interface Database {
   skills: SkillsTable;
   skill_versions: SkillVersionsTable;
   context_injections: ContextInjectionsTable;
+  facts: FactsTable;
+  fact_anchors: FactAnchorsTable;
+  fact_transitions: FactTransitionsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6596,6 +6692,26 @@ export const TABLE_COLUMNS = {
     "manifest_hash",
     "injected_at",
   ],
+  facts: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "text",
+    "status",
+    "proposer",
+    "provenance",
+    "confirmed_by",
+    "confirmed_at",
+    "expired_reason",
+    "previous_use_count",
+    "relearned_from_fact_id",
+    "status_changed_by",
+    "status_reason",
+    "created_at",
+    "updated_at",
+  ],
+  fact_anchors: ["id", "fact_id", "kind", "value", "last_checked_at", "created_at"],
+  fact_transitions: ["id", "fact_id", "from_status", "to_status", "actor_id", "reason", "at"],
   planning_epic_progress: [
     "epic_id",
     "organization_id",
@@ -7184,3 +7300,12 @@ export type Skill = Selectable<SkillsTable>;
 
 /** A row of `ouroboros.skill_versions`, as a `select` returns it. */
 export type SkillVersion = Selectable<SkillVersionsTable>;
+
+/** A row of `ouroboros.facts`, as a `select` returns it. */
+export type Fact = Selectable<FactsTable>;
+
+/** A row of `ouroboros.fact_anchors`, as a `select` returns it. */
+export type FactAnchor = Selectable<FactAnchorsTable>;
+
+/** A row of `ouroboros.fact_transitions`, as a `select` returns it. */
+export type FactTransition = Selectable<FactTransitionsTable>;

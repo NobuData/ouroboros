@@ -383,6 +383,11 @@ export class AppConfigService {
     return this.config.getOrThrow<number>("flakeRescoreCap");
   }
 
+  /** The UTC hour the nightly fact staleness sweep is scheduled at — `OURO_FACT_SWEEP_HOUR_UTC`. */
+  get factSweepHourUtc(): number {
+    return this.config.getOrThrow<number>("factSweepHourUtc");
+  }
+
   /**
    * The merged-loop threshold that unlocks an advanced onboarding template —
    * `OURO_ONBOARDING_UNLOCK_THRESHOLD`. `undefined` when unset: each template's own rule stands.
@@ -466,6 +471,7 @@ export class AppConfigService {
       reestimationBatch: this.reestimationBatch,
       flakeRescoreHourUtc: this.flakeRescoreHourUtc,
       flakeRescoreCap: this.flakeRescoreCap,
+      factSweepHourUtc: this.factSweepHourUtc,
       localProviderUrls: this.localProviderUrls,
       onboardingUnlockThreshold: this.onboardingUnlockThreshold,
     };

@@ -37,6 +37,7 @@ import { RegistryModule } from "../registry/registry.module";
 import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { SkillsModule } from "../skills/skills.module";
+import { FactsModule } from "../facts/facts.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
 import { VaultModule } from "../vault/vault.module";
 import { PlanningModule } from "../planning/planning.module";
@@ -340,6 +341,10 @@ export class AppModule {
         // names, P7's reference check and the code view's `skills/` files; it imports nothing of
         // the workflow module's back, and nothing else claims the prefix.
         SkillsModule,
+        // BF.2 ([#411](https://github.com/NobuData/ouroboros/issues/411)) — the fact lifecycle and
+        // the staleness sweep under `/api/v1/facts`. `PullRequestsModule` imports it for the
+        // commit observer PR sync reports a merge to; nothing else claims the prefix.
+        FactsModule,
         // BB.2 ([#385](https://github.com/NobuData/ouroboros/issues/385)) — the Get Started
         // wizard's orchestration API under `/api/v1/onboarding`. After `TenancyModule`, whose
         // guards resolve the workspace and enforce `@Roles`; it reads the sources, tenancy,

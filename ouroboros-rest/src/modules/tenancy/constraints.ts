@@ -69,6 +69,18 @@ export function isDatabaseFailure(error: unknown): error is DatabaseFailure {
 }
 
 /**
+ * Whether an error is PostgreSQL refusing a write by a named constraint — a CHECK, a unique
+ * index, or a trigger that raised `using constraint = …`.
+ *
+ * @param error - Whatever was thrown.
+ * @param constraint - The constraint's name, as the migration spells it.
+ * @returns `true` for that constraint's violation.
+ */
+export function violatesConstraint(error: unknown, constraint: string): boolean {
+  return isDatabaseFailure(error) && error.constraint === constraint;
+}
+
+/**
  * The unique constraints these tables declare, and what each one means to a client.
  *
  * Keyed by the name the migration gives the constraint, so the key is greppable from the SQL
