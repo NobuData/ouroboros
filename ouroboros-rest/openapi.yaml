@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.31"
+  version: "0.37.32"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -576,6 +576,17 @@ tags:
 
       Reading is every member's, `viewer` included. Deciding is `owner`, `admin` or `member`;
       running the sweep on demand is `owner` or `admin`.
+
+  - name: knowledge
+    description: |-
+      **Importing agent rules files** (mockup 14's *Import CLAUDE.md / .cursorrules*, BF.4,
+      [#413](https://github.com/NobuData/ouroboros/issues/413)) — a repository's `CLAUDE.md`,
+      `AGENTS.md`, `.cursorrules` and Copilot instructions, parsed deterministically into draft
+      skills and proposed facts. **Preview before apply**, and the apply writes exactly what the
+      preview showed or nothing. **Everything lands gated**: drafts are never injected, proposed
+      facts await review. Re-importing unchanged files is a no-op.
+
+      Both operations are `owner` or `admin` — the same gate as creating a skill.
 
   - name: triage
     description: |-
@@ -17087,6 +17098,221 @@ paths:
           description: |-
             `internal_error` — the service itself failed. The message is a constant and
             `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/import/preview:
+    post:
+      tags: [knowledge]
+      summary: What importing a repository's rules files would create — before anything is written
+      description: |-
+        Mockup 14's **Import CLAUDE.md / .cursorrules** (BF.4,
+        [#413](https://github.com/NobuData/ouroboros/issues/413)). Reads `CLAUDE.md`, `AGENTS.md`,
+        `.cursorrules` and `.github/copilot-instructions.md` from the repository through the source
+        that covers it (the repository detector's probes, one host request each) and parses them
+        deterministically: each heading-delimited section becomes a **skill draft**, each short
+        imperative bullet a **fact candidate**, and a file with no headings one skill draft for the
+        whole file. Candidates already in the workspace — an earlier import's unchanged section, or
+        a fact of this repository or the whole workspace with the same normalized text, whatever its
+        status — are counted as deduped, not planned.
+
+        Answers the counts per file and kind, up to five samples of each, and the `fingerprint` that
+        `POST …/apply` must send back. **A repository with none of the four files is an empty
+        preview**, `filesFound: 0`, not an error. Writes nothing; `200`.
+
+        **`owner` or `admin`** — the same gate as creating a skill.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: previewRuleImport
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PreviewRuleImportBody"
+            example:
+              repo: acme-robotics/helios-firmware
+      responses:
+        "200":
+          description: The preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleImportPreview"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller's role is not `owner` or `admin`, who alone may create skills.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `detection_source_missing` — no connected source covers the repository, or none that can
+            read it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `knowledge_import_too_large` — the files would create more than 100 skill drafts or 500
+            fact candidates; `details` carries both counts and both caps. `validation_failed` for a
+            malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: |-
+            `knowledge_import_rate_limited` — the source's rate guard is holding its budget back
+            for the backlog sync. Try again later.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `knowledge_import_source_failed` — the host refused to read the repository;
+            `details.errorClass` names the refusal's class, never the host's own words.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/import/apply:
+    post:
+      tags: [knowledge]
+      summary: Create exactly what a preview showed, audited
+      description: |-
+        Re-reads the files and re-plans under a per-repository lock, and writes only when the plan's
+        fingerprint is still the preview's — so what is created is **exactly what the preview
+        showed**, or nothing. Created skills are `origin: imported`, `draft: true` and scoped to the
+        repository, with `provenance: {source, section}` in their frontmatter; a previously imported
+        skill whose section changed gets the new text as its **draft version** (replacing any
+        unpublished draft of it), leaving any published version in force. Facts are created `proposed`, `proposer: import`, with a
+        `{kind: import, file, section}` provenance reference. **Nothing is enabled or confirmed**:
+        drafts are never injected and proposed facts await review. Re-importing unchanged files
+        creates nothing. Audited as `knowledge.imported`, with the actor and what was created. `200`.
+
+        **`owner` or `admin`** — the same gate as creating a skill.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: applyRuleImport
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyRuleImportBody"
+            example:
+              repo: acme-robotics/helios-firmware
+              fingerprint: 9c1f4e2a7b3d6c5e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6
+      responses:
+        "200":
+          description: The preview it matched, and every skill and fact written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RuleImportResult"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller's role is not `owner` or `admin`, who alone may create skills.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `knowledge_import_preview_stale` — a file, a fact or a slug changed since the preview, so
+            the plan is no longer the one shown; nothing was written, preview again.
+            `detection_source_missing` — as the preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: knowledge_import_preview_stale
+                message: The rules files of acme-robotics/helios-firmware or this workspace changed since the preview. Preview again.
+                details:
+                  repo: acme-robotics/helios-firmware
+                  expected: 9c1f4e2a7b3d6c5e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6
+                  actual: 1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a69c1f4e2a7b3d6c5e8f0a
+        "422":
+          description: |-
+            `knowledge_import_too_large` — as the preview. `validation_failed` for a malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "429":
+          description: |-
+            `knowledge_import_rate_limited` — as the preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `knowledge_import_source_failed` — as the preview.
           content:
             application/json:
               schema:
@@ -37556,6 +37782,250 @@ components:
           minLength: 1
           maxLength: 500
           description: The new proposal's text; the expired fact's when absent.
+
+    PreviewRuleImportBody:
+      type: object
+      title: PreviewRuleImportBody
+      description: Which repository's rules files to read.
+      additionalProperties: false
+      required: [repo]
+      properties:
+        repo:
+          type: string
+          minLength: 3
+          maxLength: 255
+          pattern: '^(?!(?:.*\/)?\.\.?(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+$'
+          description: "`owner/name`. Compared case-insensitively."
+          examples: [acme-robotics/helios-firmware]
+
+    ApplyRuleImportBody:
+      type: object
+      title: ApplyRuleImportBody
+      description: The repository, and the preview's fingerprint the apply must still match.
+      additionalProperties: false
+      required: [repo, fingerprint]
+      properties:
+        repo:
+          type: string
+          minLength: 3
+          maxLength: 255
+          pattern: '^(?!(?:.*\/)?\.\.?(?:\/|$))[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)+$'
+          description: "`owner/name`. Compared case-insensitively."
+          examples: [acme-robotics/helios-firmware]
+        fingerprint:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: The preview's `fingerprint`, lower-case hex sha256.
+
+    RuleImportSkillSample:
+      type: object
+      title: RuleImportSkillSample
+      description: A skill draft the import writes.
+      additionalProperties: false
+      required: [action, slug, name, description, section]
+      properties:
+        action:
+          type: string
+          enum: [create, update]
+          description: |-
+            `create` a new draft skill; `update` writes the section's new text as the draft version of
+            the skill an earlier import created from it.
+        slug:
+          type: string
+          examples: [kconfig]
+        name:
+          type: string
+          maxLength: 120
+          examples: [Kconfig]
+        description:
+          type: string
+          maxLength: 300
+          description: The section's lead paragraph, or a sentence naming its source.
+        section:
+          type: [string, "null"]
+          maxLength: 200
+          description: The heading it was split at; `null` for a file with no headings.
+
+    RuleImportFactSample:
+      type: object
+      title: RuleImportFactSample
+      description: A fact candidate the import writes, with the provenance it will carry.
+      additionalProperties: false
+      required: [text, section, provenance]
+      properties:
+        text:
+          type: string
+          maxLength: 200
+          examples: ["Prefer `k_msgq` over `k_fifo` in ISR paths."]
+        section:
+          type: [string, "null"]
+          maxLength: 200
+        provenance:
+          $ref: "#/components/schemas/FactProvenance"
+
+    RuleImportSkills:
+      type: object
+      title: RuleImportSkills
+      description: One file's skill drafts.
+      additionalProperties: false
+      required: [planned, deduped, samples]
+      properties:
+        planned:
+          type: integer
+          minimum: 0
+          description: How many the apply writes.
+        deduped:
+          type: integer
+          minimum: 0
+          description: |-
+            How many dedupe away — unchanged since an earlier import — or, rarely, are left out
+            because every slug their name could take (up to `-100`) is in use.
+        samples:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/RuleImportSkillSample"
+
+    RuleImportFacts:
+      type: object
+      title: RuleImportFacts
+      description: One file's fact candidates.
+      additionalProperties: false
+      required: [planned, deduped, samples]
+      properties:
+        planned:
+          type: integer
+          minimum: 0
+          description: How many the apply writes.
+        deduped:
+          type: integer
+          minimum: 0
+          description: How many dedupe away — already a fact, or already planned from another line.
+        samples:
+          type: array
+          maxItems: 5
+          items:
+            $ref: "#/components/schemas/RuleImportFactSample"
+
+    RuleImportFile:
+      type: object
+      title: RuleImportFile
+      description: One of the four rules files, as probed.
+      additionalProperties: false
+      required: [path, found, sizeBytes, truncated, skills, facts]
+      properties:
+        path:
+          type: string
+          enum: [CLAUDE.md, AGENTS.md, .cursorrules, .github/copilot-instructions.md]
+        found:
+          type: boolean
+        sizeBytes:
+          type: integer
+          minimum: 0
+          description: Its size on the host; `0` when absent.
+        truncated:
+          type: boolean
+          description: Whether only its first 256 KiB were read.
+        skills:
+          $ref: "#/components/schemas/RuleImportSkills"
+        facts:
+          $ref: "#/components/schemas/RuleImportFacts"
+
+    RuleImportTotals:
+      type: object
+      title: RuleImportTotals
+      description: The whole import, summed.
+      additionalProperties: false
+      required: [filesFound, skillDrafts, skillUpdates, factCandidates, dedupedSkills, dedupedFacts]
+      properties:
+        filesFound:
+          type: integer
+          minimum: 0
+          maximum: 4
+          description: Rules files the repository has; `0` is the honest empty result.
+        skillDrafts:
+          type: integer
+          minimum: 0
+        skillUpdates:
+          type: integer
+          minimum: 0
+        factCandidates:
+          type: integer
+          minimum: 0
+        dedupedSkills:
+          type: integer
+          minimum: 0
+        dedupedFacts:
+          type: integer
+          minimum: 0
+
+    RuleImportPreviewFields:
+      type: object
+      title: RuleImportPreviewFields
+      required: [repo, fingerprint, files, totals]
+      properties:
+        repo:
+          type: string
+          description: "`owner/name`, lower-case."
+          examples: [acme-robotics/helios-firmware]
+        fingerprint:
+          type: string
+          pattern: "^[0-9a-f]{64}$"
+          description: sha256 of the repository and every planned write — what the apply sends back.
+        files:
+          type: array
+          minItems: 4
+          maxItems: 4
+          items:
+            $ref: "#/components/schemas/RuleImportFile"
+        totals:
+          $ref: "#/components/schemas/RuleImportTotals"
+
+    RuleImportPreview:
+      title: RuleImportPreview
+      description: What an apply with this fingerprint would write.
+      allOf:
+        - $ref: "#/components/schemas/RuleImportPreviewFields"
+      unevaluatedProperties: false
+
+    RuleImportResult:
+      title: RuleImportResult
+      description: The preview the apply matched, and every row it wrote.
+      allOf:
+        - $ref: "#/components/schemas/RuleImportPreviewFields"
+        - type: object
+          required: [created]
+          properties:
+            created:
+              type: object
+              additionalProperties: false
+              required: [skills, facts]
+              properties:
+                skills:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [slug, action]
+                    properties:
+                      slug:
+                        type: string
+                      action:
+                        type: string
+                        enum: [create, update]
+                facts:
+                  type: array
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [id, text]
+                    properties:
+                      id:
+                        type: string
+                        format: uuid
+                      text:
+                        type: string
+      unevaluatedProperties: false
 
     WorkflowCodeConfig:
       type: object

@@ -360,3 +360,38 @@ describe("reading", () => {
     expect((await service.read("org-elsewhere", DETECTION_REPO)).scan).toBeNull();
   });
 });
+
+describe("reading a repository's files (BF.4's import, #413)", () => {
+  it("answers each path through the covering source, null where the file is absent", async () => {
+    const provider = fixtureProvider({ languages: {}, files: { "CLAUDE.md": "# Rules\n" } });
+    const { service, opener } = build(provider);
+    const files = await service.readFiles(DETECTION_WORKSPACE, "Acme-Robotics/Helios-Firmware", [
+      "CLAUDE.md",
+      ".cursorrules",
+    ]);
+
+    expect([...files.entries()]).toEqual([
+      ["CLAUDE.md", { path: "CLAUDE.md", content: "# Rules\n", size: 8 }],
+      [".cursorrules", null],
+    ]);
+    expect(provider.calls).toEqual(["file:CLAUDE.md", "file:.cursorrules"]);
+    expect(opener.opened).toEqual([detectionSource()]);
+  });
+
+  it("is refused when no source covers the repository, having opened nothing", async () => {
+    const { service, opener } = build();
+    const error = await refusal(service.readFiles(DETECTION_WORKSPACE, "acme-robotics/other", []));
+
+    expect(error.getResponse()).toMatchObject({ code: DETECTION_ERRORS.sourceMissing });
+    expect(opener.opened).toEqual([]);
+  });
+
+  it("lets the host's refusal through, for the caller to classify", async () => {
+    const provider = fixtureProvider(ZEPHYR, { remaining: 0 });
+    const { service } = build(provider);
+
+    await expect(
+      service.readFiles(DETECTION_WORKSPACE, DETECTION_REPO, ["CLAUDE.md"]),
+    ).rejects.toMatchObject({ errorClass: "rate_limit" });
+  });
+});

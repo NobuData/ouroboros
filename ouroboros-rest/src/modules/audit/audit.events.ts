@@ -63,7 +63,8 @@ export type AuditSubjectType =
   | "pr_waiver"
   | "pr_criterion"
   | "pr_approval"
-  | "pr_thread_entry";
+  | "pr_thread_entry"
+  | "repository";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -330,6 +331,19 @@ export const PR_APPROVAL_DECLINED_EVENT = "pr_approval.declined";
 export const PR_THREAD_RESOLVED_EVENT = "pr_thread.resolved";
 
 /**
+ * A person applied a rule-file import to a repository (BF.4,
+ * [#413](https://github.com/NobuData/ouroboros/issues/413)): its `CLAUDE.md`, `AGENTS.md`,
+ * `.cursorrules` or Copilot instructions became draft skills and proposed facts. Subject
+ * `repository`, whose id is the `owner/name` reference (a repository has no row of its own); the
+ * detail carries the counts written and deduped, the created skills' slugs and the preview's
+ * fingerprint. Each fact's own creation is also in `fact_transitions`, with the same actor.
+ *
+ * **A family of its own, `knowledge`.** *Where did this skill come from* is answered by the skill's
+ * provenance; *who brought this file in, and when* is answered here.
+ */
+export const KNOWLEDGE_IMPORTED_EVENT = "knowledge.imported";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -375,6 +389,7 @@ export const AUDIT_ACTIONS = [
   PR_APPROVAL_APPROVED_EVENT,
   PR_APPROVAL_DECLINED_EVENT,
   PR_THREAD_RESOLVED_EVENT,
+  KNOWLEDGE_IMPORTED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

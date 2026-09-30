@@ -39,6 +39,7 @@ import {
   PR_APPROVAL_DECLINED_EVENT,
   PR_THREAD_RESOLVED_EVENT,
   PR_APPROVAL_REQUESTED_EVENT,
+  KNOWLEDGE_IMPORTED_EVENT,
 } from "./audit.events";
 
 /**
@@ -123,6 +124,7 @@ describe("the vocabulary", () => {
       "pr_approval.approved",
       "pr_approval.declined",
       "pr_thread.resolved",
+      "knowledge.imported",
     ]);
   });
 
@@ -154,6 +156,7 @@ describe("the vocabulary", () => {
     expect([...families].sort()).toEqual([
       "credential",
       "github",
+      "knowledge",
       "pr_approval",
       "pr_criterion",
       "pr_thread",
@@ -205,6 +208,7 @@ describe("the vocabulary", () => {
       PR_APPROVAL_APPROVED_EVENT,
       PR_APPROVAL_DECLINED_EVENT,
       PR_THREAD_RESOLVED_EVENT,
+      KNOWLEDGE_IMPORTED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

@@ -28,6 +28,7 @@ import { Inject, Injectable, Logger } from "@nestjs/common";
 import { retryAfterSeconds } from "../backlog/debounce";
 import { describeForLog } from "../errors/failure";
 import { TicketSourceError } from "../ticket-sources/ticket-source.errors";
+import type { RepoFile } from "../ticket-sources/ticket-source.probe";
 import {
   supportsRepoProbes,
   type ProbeCapableProvider,
@@ -228,6 +229,38 @@ export class DetectionService {
    */
   async settled(organizationId: string, repo: string): Promise<void> {
     await this.scans.get(scanKey(organizationId, repo.toLowerCase()))?.settled;
+  }
+
+  /**
+   * Read a few files of a repository through the source a scan would ride — the probe machinery
+   * other features reuse (BF.4's rule-file import,
+   * [#413](https://github.com/NobuData/ouroboros/issues/413)). One credential opening, one host
+   * request per path, in order; no debounce, because it writes nothing.
+   *
+   * @param organizationId - The workspace.
+   * @param repo - `owner/name`; compared lower-case.
+   * @param paths - The files, each one `isProbePath` admits.
+   * @returns Each path's file, or `null` where the repository has none.
+   * @throws {ConflictError} `detection_source_missing` when nothing connected can probe it.
+   * @throws {TicketSourceError} When the host refuses a request — `rate_limit` above all.
+   */
+  async readFiles(
+    organizationId: string,
+    repo: string,
+    paths: readonly string[],
+  ): Promise<Map<string, RepoFile | null>> {
+    const ref = repo.toLowerCase();
+    const { source, provider } = await this.prober(organizationId, ref);
+
+    return this.sources.withCredentials(source, async (context) => {
+      const files = new Map<string, RepoFile | null>();
+
+      for (const path of paths) {
+        files.set(path, await provider.repoFile(context, ref, path));
+      }
+
+      return files;
+    });
   }
 
   /**

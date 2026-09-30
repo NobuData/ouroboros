@@ -127,6 +127,7 @@ $ curl http://localhost:4000/api/v1
 | `…/skills/{slug}/scope/preview` · `…/scope` · `…/code` · `/skills/stats` | Scope moves with a conflict preview; the code view's `skills/*.skill.md`; Used-by over a stated window |
 | `GET POST /api/v1/facts` · `/facts/needs-you` · `/facts/sweep` | [The fact lifecycle](#fact-lifecycle-and-the-staleness-sweep) (#411) — the learned-facts card, a manual proposal, the `fact_review` feed, an on-demand staleness sweep |
 | `…/facts/{factId}` · `…/confirm` · `…/reject` · `…/reconfirm` · `…/expire` · `…/relearn` · `…/anchors` | One fact and its audit; the K3 transitions (member+, actor recorded); anchor add/remove |
+| `POST /api/v1/knowledge/import/preview` · `…/apply` | [Rule-file import](#rule-file-import) (#413) — `CLAUDE.md` / `AGENTS.md` / `.cursorrules` / Copilot instructions → draft skills and proposed facts, previewed then applied exactly |
 | `GET POST /api/v1/sources`                          | [Ticket sources](#pluggable-ticket-sources) (#141) — the workspace's list with masks, never values; add one, checked against its kind's schema |
 | `GET /api/v1/sources/catalog`                       | Every registered kind as the form it takes — `configSchema()` rendered to fields — plus its capabilities |
 | `GET PATCH /api/v1/sources/{id}`                    | One source; rename, change its settings, pause or resume it — `owner`/`admin` only |
@@ -3184,8 +3185,44 @@ workspace-wide fact matches every repository's.
 **The needs-you feed is the `fact_review` contract** mockup 16's inbox (#461) consumes: one item per
 proposal awaiting review and per stale fact, `severity: info`, oldest wait first, `factId` its
 identity. `count` is the figure #90's needs-you pill joins; the dashboard's pill is not changed
-here. `FactsService.propose` is the entry point BF.3 (#412) and BF.4 (#413) call with their own
-`proposer` and no actor — a proposal is never confirmed automatically.
+here. `FactsService.propose` is the entry point BF.3 (#412) calls with its own `proposer` and no
+actor — a proposal is never confirmed automatically. BF.4's [import](#rule-file-import) writes
+through `FactsRepository.insert` instead, inside its one apply transaction, with the person applying
+as the actor.
+
+## Rule-file import
+
+**`/api/v1/knowledge/import` is mockup 14's *Import CLAUDE.md / .cursorrules*** (BF.4,
+[#413](https://github.com/NobuData/ouroboros/issues/413)): the agent rules files a team already
+maintains become draft skills and proposed facts. Both routes are `owner`/`admin` — the gate on
+`POST /api/v1/skills`.
+
+```
+POST /api/v1/knowledge/import/preview  { repo }               ─▶ { repo, fingerprint, files: [4], totals }   writes nothing
+POST /api/v1/knowledge/import/apply    { repo, fingerprint }  ─▶ the same preview + created: { skills, facts } · audited
+```
+
+| Step | What happens (`knowledge-import/`) |
+| --- | --- |
+| Probe | `DetectionService.readFiles` reads `CLAUDE.md`, `AGENTS.md`, `.cursorrules`, `.github/copilot-instructions.md` through the source that covers the repository — #384's machinery, one request each. None found is an empty preview (`filesFound: 0`), not an error |
+| Parse | `rule-import.parse.ts`, deterministic: sections split at the shallowest heading level used more than once (deeper headings stay in the body) → one skill draft each, name from the heading, description from the lead paragraph; a file with no headings → one skill draft; every short (≤ 200 chars) bullet starting with an imperative word (`Use`, `Never`, `Don't`, … — `IMPERATIVE_WORDS`) and not ending in `:` → one fact candidate. Fenced code is never parsed |
+| Dedupe | `rule-import.plan.ts`: a section whose `(file, section)` an earlier import of this repository created is **deduped** when its text matches any version, or becomes that skill's **draft version** when it changed; a fact candidate whose normalized text (case, markup, spacing, trailing punctuation) is already a fact of the repository or workspace — **any status**, so a rejected rule is not proposed again — or already planned is deduped. A removed section or bullet removes nothing |
+| Preview | counts per file and kind, up to five samples each, and a sha256 `fingerprint` of every planned write |
+| Apply | re-probes, then inside one transaction takes a per-repository advisory lock, re-reads, re-plans and refuses with `409 knowledge_import_preview_stale` unless the fingerprint is the preview's — so it writes **exactly the preview, or nothing**. Audited as `knowledge.imported` (subject `repository`) with the actor, counts and created slugs |
+
+**Everything lands gated.** A created skill is `origin: imported`, `draft: true`, `scope: repo`, its
+frontmatter carrying `provenance: {source, section}` — a draft is never injected (V069). An update
+writes only a draft version — replacing any unpublished draft of that skill, which the preview
+shows as an `update` first — leaving the published version in force. A fact is `proposed`,
+`proposer: import`, with provenance `{line: "imported from CLAUDE.md", refs: [{kind: import, file,
+section}]}` (V071). So an import fills the review queues and changes no run.
+
+| Refusal | When |
+| --- | --- |
+| `409 detection_source_missing` | no connected source covers the repository |
+| `409 knowledge_import_preview_stale` | a file, fact or slug changed since the preview |
+| `422 knowledge_import_too_large` | more than 100 skill drafts or 500 fact candidates in one import |
+| `429 knowledge_import_rate_limited` · `502 knowledge_import_source_failed` | the host refused a probe |
 
 ## Pluggable ticket sources
 
