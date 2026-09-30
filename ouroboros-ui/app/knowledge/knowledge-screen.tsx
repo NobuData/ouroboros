@@ -8,6 +8,7 @@ import { Card, CardHead, EmptyState, Eyebrow } from "@/app/ui";
 import { ImportSheet } from "./import-sheet";
 import { KnowledgeToastSeat } from "./knowledge-toast";
 import { NewSkill } from "./new-skill";
+import { SkillsTable } from "./skills-table";
 import type { KnowledgeToast } from "./toast";
 import {
   FACTS_REGION_ID,
@@ -18,8 +19,6 @@ import {
   KNOWLEDGE_TITLE,
   type KnowledgeReadings,
   SKILLS_REGION_ID,
-  SKILLS_SEAT_NOTE,
-  SKILLS_TITLE,
   readOnlyNote,
 } from "./view";
 
@@ -48,10 +47,11 @@ import "./knowledge.css";
  *
  * ### The grid claims only what exists
  *
- * The mockup's left column is the skills table (BG.2, #418) and the learned-facts card (BG.3,
- * #419); the right is playbooks, the repo profile (BG.4, #420) and the scope ladder (BG.5, #421).
- * None is built, so this draws the two seats the toast links to — labelled with what arrives and
- * when, never blank (§ 3.5) — under the ids the toast's anchors name, and nothing else.
+ * The mockup's left column is the skills table (BG.2, #418, `skills-table.tsx`) and the
+ * learned-facts card (BG.3, #419); the right is playbooks, the repo profile (BG.4, #420) and the
+ * scope ladder (BG.5, #421). The table is built and mounts under the id the toast's *draft
+ * skills* link names; the facts card is not, so its seat is drawn labelled with what arrives and
+ * when, never blank (§ 3.5), under the id the toast's other anchor names — and nothing else.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles the two
@@ -97,10 +97,13 @@ export function KnowledgeScreen({
         <div className="knowledge__main">
           {/* The seats carry the ids the toast's anchors name, so a link lands on the region. */}
           <div className="knowledge__seat" id={SKILLS_REGION_ID}>
-            <Card aria-labelledby={`${SKILLS_REGION_ID}-title`} as="section">
-              <CardHead title={SKILLS_TITLE} titleId={`${SKILLS_REGION_ID}-title`} />
-              <EmptyState note={SKILLS_SEAT_NOTE} variant="flush" />
-            </Card>
+            <SkillsTable
+              mayAdminister={mayAdminister}
+              onToast={setToast}
+              readAt={readings.readAt}
+              skills={readings.skills}
+              stats={readings.stats}
+            />
           </div>
           <div className="knowledge__seat" id={FACTS_REGION_ID}>
             <Card aria-labelledby={`${FACTS_REGION_ID}-title`} as="section">

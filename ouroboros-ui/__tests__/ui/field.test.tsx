@@ -293,3 +293,33 @@ describe("both palettes", () => {
     expect(light).toBe(dark);
   });
 });
+
+describe("the locked switch (#418)", () => {
+  it("announces as read-only in its real state, and still takes the press", () => {
+    // The lock is the service's refusal, not the page's opinion: the press must reach the
+    // caller so the refused call can be made and its reason shown.
+    const onClick = vi.fn();
+    render(<Toggle checked label="Disable hil-safety" locked onClick={onClick} />);
+
+    const toggle = screen.getByRole("switch", { name: "Disable hil-safety" });
+
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAttribute("aria-readonly", "true");
+    expect(toggle).not.toHaveAttribute("aria-disabled");
+    expect(toggle).not.toBeDisabled();
+    expect(toggle).toHaveClass("ou-switch--locked");
+
+    fireEvent.click(toggle);
+
+    expect(onClick).toHaveBeenCalledOnce();
+  });
+
+  it("wears neither the lock nor the read-only mark unless told to", () => {
+    render(<Toggle checked={false} label="Enable acme-robotics" />);
+
+    const toggle = screen.getByRole("switch");
+
+    expect(toggle).not.toHaveAttribute("aria-readonly");
+    expect(toggle).not.toHaveClass("ou-switch--locked");
+  });
+});

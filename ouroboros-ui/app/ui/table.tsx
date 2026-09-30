@@ -97,6 +97,27 @@ import "./ui.css";
  * is in `ui.css`, on the modifier.
  */
 
+/** Which way a sorted column runs. */
+export type SortDirection = "ascending" | "descending";
+
+/**
+ * A column the reader may sort the table by
+ * ([#418](https://github.com/NobuData/ouroboros/issues/418)).
+ *
+ * Controlled, like {@link TableSelection}, and for the same reason: the order is the caller's —
+ * it is what the caller's row list is drawn in — and a table that remembered its own would be a
+ * second answer to which way the rows run. The heading becomes a button, so the keyboard reaches
+ * it as it reaches any control, and the `<th>` carries `aria-sort` while the column is the one
+ * sorted by — the WAI-ARIA sortable-table pattern, which is what lets a screen reader say *sorted
+ * ascending* on the heading rather than nothing.
+ */
+export interface ColumnSort {
+  /** Which way this column is sorted, or `null` while the table is sorted by another. */
+  readonly direction: SortDirection | null;
+  /** Called when the reader presses the heading. What the press does — cycle, flip — is the caller's. */
+  readonly onSort: () => void;
+}
+
 /** How a column's cells are aligned, which is a property of what is in them. */
 export type ColumnAlign =
   /** Text: aligned to the reading edge. The default. */
@@ -128,6 +149,11 @@ export interface Column<Row> {
    * is the fork of the design system this primitive exists to prevent.
    */
   readonly className?: string;
+  /**
+   * Makes the heading a sort control — see {@link ColumnSort}. Omitted, the heading is text and
+   * the column sorts by nothing, which is the right answer for a column of switches.
+   */
+  readonly sort?: ColumnSort;
   /** The cell for one row. */
   readonly cell: (row: Row) => ReactNode;
 }
@@ -312,8 +338,13 @@ export function Table<Row>({
         <thead>
           <tr>
             {columns.map((column) => (
-              <th key={column.key} scope="col" className={cellClass(column)}>
-                {column.header}
+              <th
+                key={column.key}
+                scope="col"
+                className={cellClass(column)}
+                aria-sort={column.sort?.direction ?? undefined}
+              >
+                {column.sort === undefined ? column.header : sortControl(column)}
               </th>
             ))}
           </tr>
@@ -610,6 +641,40 @@ const MOVES: ReadonlyMap<string, (row: Element, body: Element) => Element | null
   ["Enter", (row: Element) => row],
   [" ", (row: Element) => row],
 ]);
+
+/** The glyph after a sorted heading, per direction — a shape beside the `aria-sort` word. */
+const SORT_GLYPH: Record<SortDirection, string> = { ascending: "▲", descending: "▼" };
+
+/**
+ * A sortable column's heading: a button carrying the heading text and, while the column is the
+ * one sorted by, the direction's glyph.
+ *
+ * The glyph is hidden from the accessibility tree because the `<th>`'s `aria-sort` already says
+ * the direction; the button's name is the heading alone, so *Skill, button* reads the same
+ * sorted or not.
+ *
+ * @param column The column, with its {@link ColumnSort}.
+ * @returns The button.
+ * @typeParam Row The shape of one row of data.
+ */
+function sortControl<Row>(column: Column<Row>): ReactNode {
+  const direction = column.sort?.direction ?? null;
+
+  return (
+    <button
+      type="button"
+      className={cx("ou-table__sort", direction !== null && "ou-table__sort--active")}
+      onClick={column.sort?.onSort}
+    >
+      {column.header}
+      {direction !== null && (
+        <span className="ou-table__sort-glyph" aria-hidden="true">
+          {SORT_GLYPH[direction]}
+        </span>
+      )}
+    </button>
+  );
+}
 
 /**
  * The classes a column's cells wear, head and body alike — which is what keeps a numeric

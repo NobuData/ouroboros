@@ -9,6 +9,7 @@ import {
   latencyOfMs,
   moneyOfCents,
   ageOfSeconds,
+  coarseAgo,
   relativeAgo,
 } from "@/app/format";
 
@@ -280,6 +281,33 @@ describe("relativeAgo", () => {
   it("draws a future instant as now rather than as a negative, and a bad one as itself", () => {
     expect(relativeAgo("2026-08-23T10:05:00.000Z", NOW)).toBe("0s ago");
     expect(relativeAgo("not a date", NOW)).toBe("not a date");
+  });
+});
+
+describe("coarseAgo", () => {
+  const NOW = new Date("2026-09-30T14:00:00.000Z");
+
+  it("spells mockup 14's Updated cells through the calendar's units", () => {
+    // `v12 · 2d ago`, `v4 · 3w ago`, `v2 · 2mo ago`, `v1 · 20m ago` (#418).
+    expect(coarseAgo("2026-09-30T13:59:19.000Z", NOW)).toBe("41s ago");
+    expect(coarseAgo("2026-09-30T13:40:00.000Z", NOW)).toBe("20m ago");
+    expect(coarseAgo("2026-09-30T07:00:00.000Z", NOW)).toBe("7h ago");
+    expect(coarseAgo("2026-09-28T14:00:00.000Z", NOW)).toBe("2d ago");
+    expect(coarseAgo("2026-09-09T14:00:00.000Z", NOW)).toBe("3w ago");
+    expect(coarseAgo("2026-07-31T14:00:00.000Z", NOW)).toBe("2mo ago");
+    expect(coarseAgo("2024-09-30T14:00:00.000Z", NOW)).toBe("2y ago");
+  });
+
+  it("rounds down at every boundary, so a unit is claimed only once it has finished", () => {
+    expect(coarseAgo("2026-09-23T14:00:01.000Z", NOW)).toBe("6d ago");
+    expect(coarseAgo("2026-09-23T14:00:00.000Z", NOW)).toBe("1w ago");
+    expect(coarseAgo("2026-08-31T14:00:01.000Z", NOW)).toBe("4w ago");
+    expect(coarseAgo("2026-08-31T14:00:00.000Z", NOW)).toBe("1mo ago");
+  });
+
+  it("draws a future instant as now rather than as a negative, and a bad one as itself", () => {
+    expect(coarseAgo("2026-09-30T14:05:00.000Z", NOW)).toBe("0s ago");
+    expect(coarseAgo("not a date", NOW)).toBe("not a date");
   });
 });
 

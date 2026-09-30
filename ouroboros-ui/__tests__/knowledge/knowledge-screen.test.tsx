@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { CREATE_SUBMIT, DESCRIPTION_LABEL, NAME_LABEL, createdToast } from "@/app/knowledge/create";
+import { SKILLS_TABLE_NAME } from "@/app/knowledge/skills";
 import { DISMISS_TOAST } from "@/app/knowledge/toast";
 import {
   FACTS_REGION_ID,
@@ -13,7 +14,6 @@ import {
   KNOWLEDGE_TITLE,
   NEW_SKILL_LABEL,
   SKILLS_REGION_ID,
-  SKILLS_SEAT_NOTE,
   SKILLS_TITLE,
   readOnlyNote,
 } from "@/app/knowledge/view";
@@ -24,13 +24,15 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 /**
  * The knowledge frame as it is drawn (#417): the head copy verbatim in both palettes, the two
  * actions for an administrator and neither for anyone else, the toast a create leaves under the
- * head, and the two labelled seats the toast's anchors name.
+ * head, and the two seats the toast's anchors name — the skills table in one (#418), the
+ * labelled seat for the facts card in the other.
  */
 
 const createSkill = vi.fn();
 
 vi.mock("@/app/knowledge/create-actions", () => ({ createSkill: (body: unknown) => createSkill(body) }));
 vi.mock("@/app/knowledge/import-actions", () => ({ previewImport: vi.fn(), applyImport: vi.fn() }));
+vi.mock("@/app/knowledge/skills-actions", () => ({ setSkillEnabled: vi.fn(), regenerateRepoMap: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));
@@ -126,16 +128,23 @@ describe("the toast", () => {
 });
 
 describe("the regions", () => {
-  it("draws the two seats the toast's anchors name, labelled with what arrives and when", () => {
+  it("mounts the skills table under the toast's draft-skills anchor, and labels the facts seat", () => {
     const { container } = draw();
 
     const skills = container.querySelector(`#${SKILLS_REGION_ID}`);
     const facts = container.querySelector(`#${FACTS_REGION_ID}`);
 
     expect(skills).toHaveTextContent(SKILLS_TITLE);
-    expect(skills).toHaveTextContent(SKILLS_SEAT_NOTE);
+    expect(skills).toContainElement(screen.getByRole("table", { name: SKILLS_TABLE_NAME }));
+    expect(skills).toHaveTextContent("power-budget-checks");
     expect(facts).toHaveTextContent(FACTS_TITLE);
     expect(facts).toHaveTextContent(FACTS_SEAT_NOTE);
     expect(screen.getAllByRole("region")).toHaveLength(2);
+  });
+
+  it("hands the reader's role to the table, so a member's switches are read-only", () => {
+    draw(false);
+
+    for (const toggle of screen.getAllByRole("switch")) expect(toggle).toHaveAttribute("aria-disabled", "true");
   });
 });
