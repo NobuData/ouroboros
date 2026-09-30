@@ -1,5 +1,14 @@
+import type { RepoDetection, RepoDetectionRow } from "@/app/api/detection";
 import type { EnabledRepo } from "@/app/api/enablement";
+import type { EnvRecipe } from "@/app/api/env-recipes";
 import type { Fact, FactList } from "@/app/api/facts";
+import type {
+  Playbook,
+  PlaybookDraft,
+  PlaybookIssueCandidate,
+  PlaybookLaunchReceipt,
+  PlaybookList,
+} from "@/app/api/playbooks";
 import type {
   RuleImportFile,
   RuleImportPreview,
@@ -8,13 +17,16 @@ import type {
 } from "@/app/api/knowledge-import";
 import type { RepoMapReport } from "@/app/api/repo-map";
 import type { SkillList, SkillStats, SkillSummary } from "@/app/api/skills";
-import type { KnowledgeReadings, TicketLink } from "@/app/knowledge/view";
+import type { KnowledgeReadings, ProfileReadings, TicketLink } from "@/app/knowledge/view";
+
+import { queueItem } from "./dashboard";
 
 /**
- * Knowledge fixtures (#417, #418, #419): the development seed's skills (mockup 14's six, with the
- * ages, versions and Used-by figures the seed gives them), its five facts with their stamps and
- * refs, and an import preview of the fixture `CLAUDE.md`, trimmed to what the frame reads and
- * the table, the card and the sheet draw.
+ * Knowledge fixtures (#417, #418, #419, #420): the development seed's skills (mockup 14's six,
+ * with the ages, versions and Used-by figures the seed gives them), its five facts with their
+ * stamps and refs, its three playbooks with their launch-derived counts, the environment recipe
+ * at v3, a detection scan of the seeded repository, and an import preview of the fixture
+ * `CLAUDE.md`, trimmed to what the frame reads and the cards draw.
  */
 
 /** The `owner/name` of the first seeded repository. */
@@ -512,6 +524,275 @@ export function importResult(): RuleImportResult {
   };
 }
 
+/* ------------------------------------------------------------------ playbooks (#420) */
+
+/** The seed's `standard-fix` workflow, pinned at v14. */
+export const STANDARD_FIX = { id: "5eed0012-0000-4000-8000-000000000001", slug: "standard-fix", version: 14 };
+
+/** The run the seed learned `Flaky test hunt` from — loop #1791. */
+export const SOURCE_RUN_ID = "5eed0009-0000-4000-8000-000000001791";
+
+/**
+ * One playbook, seed-shaped: `Flaky test hunt`, run 9×.
+ *
+ * @param over Fields to replace.
+ * @returns The playbook.
+ */
+export function playbook(over: Partial<Playbook> = {}): Playbook {
+  return {
+    id: "5eed0046-0000-4000-8000-000000000001",
+    name: "Flaky test hunt",
+    description: "Finds & fixes the flakiest test in the suite",
+    workflow: STANDARD_FIX,
+    skillOverrides: { enable: [], disable: [] },
+    contextPreset: { steerNotes: ["focus the flakiest suite first"], factIds: [] },
+    issueFilter: { labels: ["flaky"], repos: null },
+    sourceRunId: SOURCE_RUN_ID,
+    runCount: 9,
+    createdAt: minutesAgo(30 * 1440),
+    updatedAt: minutesAgo(30 * 1440),
+    ...over,
+  };
+}
+
+/**
+ * The seed's three playbooks, by name as the service lists them — mockup 14's rows.
+ *
+ * @returns The playbooks.
+ */
+export function seededPlaybookRows(): readonly Playbook[] {
+  return [
+    playbook({
+      id: "5eed0046-0000-4000-8000-000000000002",
+      name: "CVE bump",
+      description: "Patch a vulnerable dep + prove no API break",
+      workflow: { id: "5eed0012-0000-4000-8000-000000000002", slug: "deps-refresh", version: 3 },
+      contextPreset: { steerNotes: [], factIds: [] },
+      issueFilter: { labels: ["security", "dependencies"], repos: null },
+      sourceRunId: null,
+      runCount: 14,
+    }),
+    playbook(),
+    playbook({
+      id: "5eed0046-0000-4000-8000-000000000003",
+      name: "New driver bring-up",
+      description: "Scaffold + HIL smoke test on the bench rig",
+      skillOverrides: { enable: ["5eed0410-0000-4000-8000-000000000004"], disable: [] },
+      contextPreset: { steerNotes: [], factIds: [] },
+      issueFilter: null,
+      sourceRunId: null,
+      runCount: 3,
+    }),
+  ];
+}
+
+/**
+ * The seeded list.
+ *
+ * @param items The rows. Defaults to the seed's three.
+ * @returns The list.
+ */
+export function seededPlaybooks(items: readonly Playbook[] = seededPlaybookRows()): PlaybookList {
+  return { items: [...items] };
+}
+
+/** One seeded playbook, by name — `seededPlaybook("CVE bump")`. */
+export function seededPlaybook(name: string): Playbook {
+  const found = seededPlaybookRows().find((one) => one.name === name);
+  if (found === undefined) throw new Error(`no seeded playbook ${name}`);
+
+  return found;
+}
+
+/**
+ * One issue the picker offers — `#485`, sized, not queued.
+ *
+ * @param over Fields to replace.
+ * @returns The candidate.
+ */
+export function candidate(over: Partial<PlaybookIssueCandidate> = {}): PlaybookIssueCandidate {
+  return {
+    id: "5eed0030-0000-4000-8000-000000000485",
+    number: 485,
+    title: "Watchdog reset on I²C bus lockup",
+    repo: SEEDED_REPO,
+    labels: ["flaky"],
+    sizingStatus: "sized",
+    queued: false,
+    ...over,
+  };
+}
+
+/**
+ * Five candidates in the service's order (newest first), one of every kind: an unsized one first,
+ * then sized, queued, estimating and needs-human — so the ranked order differs from the listed one.
+ *
+ * @returns The candidates.
+ */
+export function mixedCandidates(): readonly PlaybookIssueCandidate[] {
+  return [
+    candidate({ id: "5eed0030-0000-4000-8000-000000000490", number: 490, title: "Unsized thing", sizingStatus: "unsized" }),
+    candidate(),
+    candidate({ id: "5eed0030-0000-4000-8000-000000000483", number: 483, title: "Already queued thing", queued: true }),
+    candidate({ id: "5eed0030-0000-4000-8000-000000000488", number: 488, title: "Being sized thing", sizingStatus: "estimating" }),
+    candidate({ id: "5eed0030-0000-4000-8000-000000000481", number: 481, title: "Needs a person thing", sizingStatus: "needs_human" }),
+  ];
+}
+
+/**
+ * The receipt a launch of `Flaky test hunt` on `#485` leaves.
+ *
+ * @param over Fields to replace.
+ * @returns The receipt.
+ */
+export function launchReceipt(over: Partial<PlaybookLaunchReceipt> = {}): PlaybookLaunchReceipt {
+  return {
+    playbookId: playbook().id,
+    item: queueItem({ workflowVersion: 14, workflowPinReason: "explicit", position: 3 }),
+    position: 3,
+    context: {
+      manifest: {
+        consumer: "playbook",
+        scope: { repo: SEEDED_REPO, workflow: null },
+        budgetTokens: 6000,
+        estTokens: 0,
+        skillVersions: [],
+        facts: [],
+        trimmed: [],
+        excluded: [],
+        refusedOverrides: [],
+        manifestHash: "0".repeat(64),
+      },
+      steerNotes: ["focus the flakiest suite first"],
+      factIds: [],
+    },
+    links: {
+      queue: "/api/v1/queue",
+      playbook: `/api/v1/knowledge/playbooks/${playbook().id}`,
+      issue: "/api/v1/backlog/5eed0030-0000-4000-8000-000000000485",
+    },
+    ...over,
+  };
+}
+
+/**
+ * What create-from-run captures from the seeded run — loop #1791.
+ *
+ * @param over Fields to replace.
+ * @returns The draft.
+ */
+export function playbookDraft(over: Partial<PlaybookDraft> = {}): PlaybookDraft {
+  return {
+    sourceRunId: SOURCE_RUN_ID,
+    sourceLoopSeq: 1791,
+    workflow: STANDARD_FIX,
+    skillOverrides: { enable: ["5eed0410-0000-4000-8000-000000000004"], disable: ["5eed0410-0000-4000-8000-000000000002"] },
+    contextPreset: { steerNotes: ["focus the flakiest suite first", "leave the CAN driver alone"], factIds: [] },
+    derivedFrom: { repo: SEEDED_REPO, injections: 3, steers: 2 },
+    suggestedDescription: "Learned from loop #1791 — Fix flaky CAN-bus telemetry test",
+    ...over,
+  };
+}
+
+/* ------------------------------------------------------------------ the repo profile (#420) */
+
+/**
+ * One detection row.
+ *
+ * @param over Fields to replace.
+ * @returns The row.
+ */
+export function detectionRow(over: Partial<RepoDetectionRow> = {}): RepoDetectionRow {
+  return {
+    rowKey: "language",
+    verdict: "ok",
+    value: "C 92% · CMake",
+    label: "detected",
+    confidence: "high",
+    determined: true,
+    evidence: { pack: "language", version: "1.0.0" },
+    ...over,
+  };
+}
+
+/**
+ * The seeded repository's detection: mockup 13's rows as the card composes them, and the two
+ * protected paths.
+ *
+ * @param over Fields to replace.
+ * @returns The detection.
+ */
+export function seededDetection(over: Partial<RepoDetection> = {}): RepoDetection {
+  return {
+    repo: SEEDED_REPO,
+    scan: {
+      scanSeq: 3,
+      scannedAt: minutesAgo(2 * 1440),
+      durationMs: 38_000,
+      packVersions: { language: "1.0.0", build: "1.0.0", devcontainer: "1.0.0", tests: "1.0.0", protected_paths: "1.0.0", conventions: "1.0.0" },
+      probeBudgetUsed: 41,
+    },
+    rows: [
+      detectionRow(),
+      detectionRow({ rowKey: "build", value: "west + twister (found west.yml)", evidence: { pack: "build", version: "1.0.0" } }),
+      detectionRow({ rowKey: "devcontainer", value: "✓ .devcontainer.json", evidence: { pack: "devcontainer", version: "1.0.0" } }),
+      detectionRow({ rowKey: "tests", value: "412 tests (twister)", label: "measured", evidence: { pack: "tests", version: "1.0.0" } }),
+      detectionRow({ rowKey: "protected_paths", value: "boot/ keys/", evidence: { pack: "protected_paths", version: "1.0.0" } }),
+      detectionRow({ rowKey: "conventions", verdict: "warn", value: "no CLAUDE.md found — import one", confidence: "medium", evidence: { pack: "conventions", version: "1.0.0" } }),
+    ],
+    protectedPaths: [
+      { glob: "boot/**", source: "suggested" },
+      { glob: "keys/**", source: "edited" },
+    ],
+    progress: null,
+    ...over,
+  };
+}
+
+/** The seeded repository, never scanned. */
+export function unscannedDetection(): RepoDetection {
+  return seededDetection({ scan: null, rows: [], protectedPaths: [] });
+}
+
+/**
+ * The seed's environment recipe at v3 — mockup 14's four ordered commands, Ken's edit nine days
+ * before the read.
+ *
+ * @param over Fields to replace.
+ * @returns The recipe.
+ */
+export function seededRecipe(over: Partial<EnvRecipe> = {}): EnvRecipe {
+  return {
+    repo: SEEDED_REPO,
+    version: 3,
+    commands: [
+      { command: "west init -m git@github.com:acme-robotics/helios-firmware", comment: "manifest repo" },
+      { command: "west update --narrow -o=--depth=1", comment: "shallow module fetch" },
+      { command: "zephyr-sdk-install 0.17.2 --toolchains arm-zephyr-eabi", comment: "SDK + ARM toolchain" },
+      { command: "ccache --set-config=max_size=8G", comment: "shared build cache" },
+    ],
+    source: "edited",
+    updatedAt: minutesAgo(9 * 1440),
+    updatedBy: KEN,
+    ...over,
+  };
+}
+
+/**
+ * The profile readings for the seeded repository, every reading `ok`.
+ *
+ * @param over Readings to replace.
+ * @returns The readings.
+ */
+export function seededProfile(over: Partial<ProfileReadings> = {}): ProfileReadings {
+  return {
+    repo: enabledRepo(),
+    detection: { ok: true, value: seededDetection() },
+    recipe: { ok: true, value: seededRecipe() },
+    ...over,
+  };
+}
+
 /**
  * Every reading `ok`, with the seed's values.
  *
@@ -525,6 +806,8 @@ export function knowledgeReadings(over: Partial<KnowledgeReadings> = {}): Knowle
     facts: { ok: true, value: seededFacts() },
     tickets: seededTickets(),
     repos: { ok: true, value: seededRepos() },
+    playbooks: { ok: true, value: seededPlaybooks() },
+    profile: seededProfile(),
     readAt: READ_AT,
     ...over,
   };

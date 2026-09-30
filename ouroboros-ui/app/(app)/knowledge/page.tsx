@@ -2,6 +2,7 @@ import { requireWorkspace } from "@/app/api/access";
 import { mayAdminister, mayContribute, primaryRole } from "@/app/api/membership";
 import { readKnowledge } from "@/app/knowledge/data";
 import { KnowledgeScreen } from "@/app/knowledge/knowledge-screen";
+import { REPO_PARAM } from "@/app/knowledge/profile";
 
 /**
  * Knowledge ([#417](https://github.com/NobuData/ouroboros/issues/417)) — mockup 14's `/knowledge`.
@@ -17,16 +18,26 @@ import { KnowledgeScreen } from "@/app/knowledge/knowledge-screen";
  * sidebar's **Knowledge** entry stops being a *soon* row on the same commit
  * (`app/shell/nav-modules.ts`).
  *
- * The roles are decided here, once: **+ New skill** and **Import CLAUDE.md / .cursorrules** are
- * drawn for an `owner` or an `admin` and for nobody else; a fact is decided — confirmed,
- * rejected, expired, re-learned, added — by an `owner`, an `admin` or a `member` (BF.2's rule,
- * #411), and a viewer reads. The gates that enforce them are the service's.
+ * The roles are decided here, once: **+ New skill**, **Import CLAUDE.md / .cursorrules**,
+ * **+ New playbook from a past run…** and the Environment block's edit are drawn for an `owner`
+ * or an `admin` and for nobody else; a fact is decided — confirmed, rejected, expired, re-learned,
+ * added — and a playbook is run on an issue by an `owner`, an `admin` or a `member` (BF.2's and
+ * the queue write's rule), and a viewer reads. The gates that enforce them are the service's.
  *
+ * The address's `?repo=owner/name` names the repository the profile card draws (BG.4,
+ * [#420](https://github.com/NobuData/ouroboros/issues/420)); absent or not enabled, the card
+ * draws the first enabled one.
+ *
+ * @param props.searchParams The address's query.
  * @returns The knowledge page, for the workspace this request is operating in.
  */
-export default async function Page() {
+export default async function Page({
+  searchParams,
+}: Readonly<{ searchParams?: Promise<Record<string, string | string[] | undefined>> }> = {}) {
   const access = await requireWorkspace();
-  const readings = await readKnowledge(access);
+  const params = (await searchParams) ?? {};
+  const requested = params[REPO_PARAM];
+  const readings = await readKnowledge(access, new Date(), typeof requested === "string" ? requested : undefined);
   const { roles } = access.membership;
 
   return (

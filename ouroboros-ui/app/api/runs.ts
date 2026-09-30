@@ -74,7 +74,29 @@ export function isRunId(value: unknown): value is string {
   return typeof value === "string" && RUN_ID.test(value);
 }
 
+/** One page of a family of runs — `GET /api/v1/runs`. */
+export type RunPage = components["schemas"]["RunPage"];
+
+/** Which family {@link runs.list} answers: the runs still moving, or the ones that stopped. */
+export type RunFamily = "active" | "terminal";
+
 export const runs = {
+  /**
+   * List one family of the workspace's runs — the drill-in behind the dashboard's cards
+   * ([#71](https://github.com/NobuData/ouroboros/issues/71)). `terminal` is newest first, which
+   * is the order **+ New playbook from a past run…** offers them in
+   * ([#420](https://github.com/NobuData/ouroboros/issues/420)).
+   *
+   * @param family Which family.
+   * @param limit How many, at most. The service's ceiling applies.
+   * @param client The client to ask through. Defaults to the request-scoped one.
+   * @returns The page — empty for a workspace with no runs in the family, which is a state.
+   * @throws ApiError `422 validation_failed` for a window out of range.
+   */
+  async list(family: RunFamily, limit: number, client: ApiClient = api()): Promise<RunPage> {
+    return unwrap(await client.GET("/api/v1/runs", { params: { query: { status: family, limit } } }));
+  },
+
   /**
    * Read one run's console snapshot.
    *

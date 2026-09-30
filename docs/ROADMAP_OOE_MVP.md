@@ -1575,7 +1575,7 @@ the blockquote above that records what it did and what it did differently.
 | 320 | **BF.7** | ✅ [#416](https://github.com/NobuData/ouroboros/issues/416) | Knowledge integration tests | ouroboros-rest | M | BF.1, BF.6 |
 | 321 | **BG.2** | ✅ [#418](https://github.com/NobuData/ouroboros/issues/418) | Skills table | ouroboros-ui | M | BF.1, BG.1 |
 | 322 | **BG.3** | ✅ [#419](https://github.com/NobuData/ouroboros/issues/419) | Learned-facts card | ouroboros-ui | M | BF.2, BF.3, BG.1 |
-| 323 | **BG.4** | [#420](https://github.com/NobuData/ouroboros/issues/420) | Playbooks & repo-profile cards | ouroboros-ui | M | BE.4, BF.6, BG.1 |
+| 323 | **BG.4** | ✅ [#420](https://github.com/NobuData/ouroboros/issues/420) | Playbooks & repo-profile cards | ouroboros-ui | M | BE.4, BF.6, BG.1 |
 | 324 | **BG.5** | [#421](https://github.com/NobuData/ouroboros/issues/421) | Scope ladder & manifest preview | ouroboros-ui | S | BF.5, BG.1 |
 | 325 | **BA.4** | [#383](https://github.com/NobuData/ouroboros/issues/383) | Onboarding seeds — mockup-13 parity + probes | ouroboros-db, .github | S | 3.6, BA.1, BA.3 |
 | 326 | **BB.5** | [#388](https://github.com/NobuData/ouroboros/issues/388) | First-run launcher & smart defaults | ouroboros-rest | M | BA.3, BB.2, BB.4 |

@@ -5,6 +5,8 @@ import { CREATE_SUBMIT, DESCRIPTION_LABEL, NAME_LABEL, createdToast } from "@/ap
 import { FACTS_FOOT } from "@/app/knowledge/facts";
 import { SKILLS_TABLE_NAME } from "@/app/knowledge/skills";
 import { DISMISS_TOAST } from "@/app/knowledge/toast";
+import { NEW_PLAYBOOK, RUN_ON_ISSUE } from "@/app/knowledge/playbooks";
+import { ENV_EDIT, SNAPSHOT_HONEST } from "@/app/knowledge/profile";
 import {
   FACTS_REGION_ID,
   FACTS_TITLE,
@@ -13,6 +15,9 @@ import {
   KNOWLEDGE_SUBLINE,
   KNOWLEDGE_TITLE,
   NEW_SKILL_LABEL,
+  PLAYBOOKS_REGION_ID,
+  PLAYBOOKS_TITLE,
+  PROFILE_REGION_ID,
   SKILLS_REGION_ID,
   SKILLS_TITLE,
   readOnlyNote,
@@ -24,8 +29,8 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 /**
  * The knowledge frame as it is drawn (#417): the head copy verbatim in both palettes, the two
  * actions for an administrator and neither for anyone else, the toast a create leaves under the
- * head, and the two cards under the anchors the toast names — the skills table (#418) and the
- * learned-facts card (#419).
+ * head, the two cards under the anchors the toast names — the skills table (#418) and the
+ * learned-facts card (#419) — and the right column's playbooks card and repo profile (#420).
  */
 
 const createSkill = vi.fn();
@@ -34,6 +39,14 @@ vi.mock("@/app/knowledge/create-actions", () => ({ createSkill: (body: unknown) 
 vi.mock("@/app/knowledge/import-actions", () => ({ previewImport: vi.fn(), applyImport: vi.fn() }));
 vi.mock("@/app/knowledge/skills-actions", () => ({ setSkillEnabled: vi.fn(), regenerateRepoMap: vi.fn() }));
 vi.mock("@/app/knowledge/facts-actions", () => ({ decideFact: vi.fn(), proposeFact: vi.fn() }));
+vi.mock("@/app/knowledge/playbooks-actions", () => ({
+  listPlaybookIssues: vi.fn(),
+  launchPlaybook: vi.fn(),
+  listRecentRuns: vi.fn(),
+  draftPlaybook: vi.fn(),
+  createPlaybookFromRun: vi.fn(),
+}));
+vi.mock("@/app/knowledge/profile-actions", () => ({ saveEnvRecipe: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));
@@ -142,7 +155,35 @@ describe("the regions", () => {
     expect(facts).toHaveTextContent(FACTS_TITLE);
     expect(facts).toHaveTextContent("Zephyr 4.0 needs CONFIG_LEGACY_TIMER");
     expect(facts).toHaveTextContent(FACTS_FOOT);
-    expect(screen.getAllByRole("region")).toHaveLength(2);
+    expect(screen.getAllByRole("region")).toHaveLength(5);
+  });
+
+  it("mounts the playbooks card and the repo profile in the right column (#420)", () => {
+    const { container } = draw();
+
+    const playbooks = container.querySelector(`#${PLAYBOOKS_REGION_ID}`);
+    const profile = container.querySelector(`#${PROFILE_REGION_ID}`);
+
+    expect(container.querySelector(".knowledge__aside")).toContainElement(playbooks as HTMLElement);
+    expect(container.querySelector(".knowledge__aside")).toContainElement(profile as HTMLElement);
+    expect(playbooks).toHaveTextContent(PLAYBOOKS_TITLE);
+    expect(playbooks).toHaveTextContent("3 recipes");
+    expect(playbooks).toHaveTextContent("run 9×");
+    expect(playbooks).toHaveTextContent(NEW_PLAYBOOK);
+    expect(profile).toHaveTextContent("Repo profile — helios-firmware");
+    expect(profile).toHaveTextContent("west update --narrow -o=--depth=1");
+    expect(profile).toHaveTextContent(SNAPSHOT_HONEST);
+    expect(profile?.textContent).not.toContain("38s");
+  });
+
+  it("hands the reader's roles to the right column — a member launches but neither creates nor edits the recipe", () => {
+    draw(false);
+
+    for (const button of screen.getAllByRole("button", { name: /^Run on issue:/ })) expect(button).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByRole("button", { name: NEW_PLAYBOOK })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getByRole("button", { name: ENV_EDIT })).toHaveAttribute("aria-disabled", "true");
+    expect(screen.getAllByRole("button", { name: /^Run on issue:/ })).toHaveLength(3);
+    expect(screen.getAllByText(RUN_ON_ISSUE)).toHaveLength(3);
   });
 
   it("hands the reader's role to the table, so a member's switches are read-only", () => {

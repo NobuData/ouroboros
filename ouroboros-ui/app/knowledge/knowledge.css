@@ -2,9 +2,9 @@
  * Knowledge — `/knowledge` (#417), from `docs/mockups/14-knowledge.html`.
  *
  * The page head (eyebrow, heading, subline, the two actions), the read-only note under it, the
- * toast seat, the twelve-column frame the regions sit in — the left `c-7` today, since the right
- * column's cards are #420 and #421 — the New skill dialog's form, and the import sheet: the files
- * table, the totals line, the samples and the statement that nothing is enabled.
+ * toast seat, the twelve-column frame the regions sit in — the left `c-7` and the right `c-5`, whose
+ * playbooks and repo-profile cards are #420's — the New skill dialog's form, and the import sheet:
+ * the files table, the totals line, the samples and the statement that nothing is enabled.
  *
  * Every length is a token or `rem`, so the font-size preference scales the page with the rest of
  * the product (design system § 3.2), and every hue is a token, so both palettes are the token
@@ -114,6 +114,15 @@
   grid-column: span 7;
 }
 
+/* The mockup's `c-5 col`: the playbooks card over the repo profile (#420), at the same gap. */
+.knowledge__aside {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  grid-column: span 5;
+  min-width: 0;
+}
+
 /*
  * A region's seat carries the anchor the toast links to. The scroll margin keeps the shell's
  * sticky chrome from covering the card head a link lands on.
@@ -122,9 +131,10 @@
   scroll-margin-top: var(--sp-10);
 }
 
-/* The mockup's step: below it, the column takes the full width. */
+/* The mockup's step: below it, each column takes the full width, the right one after the left. */
 @media (max-width: 68.75rem) {
-  .knowledge__main {
+  .knowledge__main,
+  .knowledge__aside {
     grid-column: span 12;
   }
 }
@@ -503,8 +513,21 @@
 }
 
 @media (max-width: 40rem) {
-  .knowledge-facts__row {
+  .knowledge-facts__row,
+  .knowledge-playbooks__row,
+  .knowledge-picker__row,
+  .knowledge-new-playbook__run,
+  .knowledge-profile__row {
     flex-direction: column;
+    align-items: stretch;
+  }
+
+  .knowledge-profile__key {
+    width: auto;
+  }
+
+  .knowledge-new-playbook__facts {
+    grid-template-columns: 1fr;
   }
 
   .knowledge-facts__status {
@@ -519,6 +542,541 @@
   .knowledge-add-fact__remove {
     margin-top: 0;
   }
+}
+
+/* ---------- the playbooks card (#420) ---------- */
+
+/*
+ * The mockup's `.playbook` rows: the body over the row's action, a hairline between rows, and the
+ * dashed `.new-pb` tile after the last one. The run count is the mono faint figure beside the name;
+ * a launch made from this page is written beside it in the same face, since it is a fact about
+ * the count rather than a change to it.
+ */
+.knowledge-playbooks__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.knowledge-playbooks__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.knowledge-playbooks__row:last-child {
+  border-bottom: none;
+}
+
+.knowledge-playbooks__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.knowledge-playbooks__name {
+  margin: 0;
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-body);
+}
+
+.knowledge-playbooks__runs,
+.knowledge-playbooks__queued {
+  margin-left: var(--sp-4);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 400;
+}
+
+.knowledge-playbooks__queued {
+  color: var(--accent);
+}
+
+.knowledge-playbooks__desc {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-playbooks__filter {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's `.playbook.new-pb`: a dashed tile in the muted ink, the whole width of the card. */
+.knowledge-playbooks__tile {
+  width: 100%;
+  margin-top: var(--sp-6);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  padding: var(--sp-5) var(--sp-7);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  text-align: left;
+  justify-content: flex-start;
+}
+
+.knowledge-playbooks__tile:hover {
+  border-color: var(--ink-faint);
+  color: var(--ink-dim);
+}
+
+/* As the empty state's primary action it is a button, not a tile. */
+.knowledge-playbooks__tile--primary {
+  width: auto;
+  margin-top: var(--sp-6);
+  border-style: solid;
+  color: inherit;
+  text-align: center;
+  justify-content: center;
+}
+
+/* ---------- the ticket picker (#420) ---------- */
+
+.knowledge-picker__filter {
+  margin: 0 0 var(--sp-6);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-picker__search {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-6);
+}
+
+.knowledge-picker__search .ou-field {
+  flex: 1;
+}
+
+.knowledge-picker__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.knowledge-picker__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.knowledge-picker__row:last-child {
+  border-bottom: none;
+}
+
+.knowledge-picker__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.knowledge-picker__line {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-picker__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+/* Why a row cannot launch — the warn ink, since it is a caveat and not a failure. */
+.knowledge-picker__reason {
+  color: var(--warn);
+}
+
+.knowledge-picker__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-picker__refusal {
+  margin: var(--sp-2) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The receipt takes the accent triple — this happened, here is where to look. */
+.knowledge-picker__receipt {
+  padding: var(--sp-6);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+}
+
+.knowledge-picker__receipt-text {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-picker__receipt-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-top: var(--sp-5);
+}
+
+.knowledge-picker__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+  margin-top: var(--sp-7);
+}
+
+/* ---------- the New playbook dialog (#420) ---------- */
+
+.knowledge-new-playbook__runs,
+.knowledge-new-playbook__captured {
+  margin: 0 0 var(--sp-7);
+}
+
+.knowledge-new-playbook__legend {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.knowledge-new-playbook__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.knowledge-new-playbook__run {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.knowledge-new-playbook__run:last-child {
+  border-bottom: none;
+}
+
+.knowledge-new-playbook__run-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.knowledge-new-playbook__run-line {
+  margin: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-new-playbook__run-link {
+  color: inherit;
+  text-decoration: none;
+  border-bottom: 1px dotted var(--line-strong);
+}
+
+.knowledge-new-playbook__run-link:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.knowledge-new-playbook__run-meta {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-new-playbook__derived {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* What was captured, as a definition list: the term in the eyebrow face, the value beside it. */
+.knowledge-new-playbook__facts {
+  display: grid;
+  grid-template-columns: 8rem 1fr;
+  gap: var(--sp-3) var(--sp-6);
+  margin: 0 0 var(--sp-5);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-new-playbook__facts dt {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.knowledge-new-playbook__facts dd {
+  margin: 0;
+  min-width: 0;
+}
+
+.knowledge-new-playbook__mono {
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.knowledge-new-playbook__overrides,
+.knowledge-new-playbook__steers {
+  margin: 0;
+  padding-left: var(--sp-6);
+}
+
+.knowledge-new-playbook__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.knowledge-new-playbook__failure {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-new-playbook__state {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.knowledge-new-playbook__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-4);
+  margin-top: var(--sp-4);
+}
+
+/* ---------- the repo profile card (#420) ---------- */
+
+/* The head's repository select sits at the trailing edge and keeps to one line. */
+.knowledge-profile__select {
+  min-width: 14rem;
+}
+
+/*
+ * The mockup's `.profile-row`: the key in the eyebrow face at a fixed measure, the value beside it,
+ * a hairline between rows. The measure is the mockup's 106px, in rem.
+ */
+.knowledge-profile__rows {
+  margin: 0;
+}
+
+.knowledge-profile__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-6);
+  padding: var(--sp-4) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.knowledge-profile__key {
+  flex: none;
+  width: 6.625rem;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.knowledge-profile__value {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+  margin: 0;
+  min-width: 0;
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* A row's verdict is in its ink: a caveat warns, a missing thing errs, an absent row is faint. */
+.knowledge-profile__value--warn {
+  color: var(--warn);
+}
+
+.knowledge-profile__value--missing {
+  color: var(--err);
+}
+
+.knowledge-profile__value--absent {
+  color: var(--ink-faint);
+}
+
+/* `detected` / `measured` beside the value — the label the row carries, in the faint mono. */
+.knowledge-profile__labelled {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* The mockup's `.edit-link`: the dotted underline in the muted ink, drawn as the inert control it is. */
+.knowledge-profile__edit {
+  padding: 0;
+  border: none;
+  border-bottom: 1px dotted var(--line-strong);
+  border-radius: 0;
+  background: none;
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+}
+
+/* ---------- the environment block ---------- */
+
+.knowledge-profile__env {
+  margin-top: var(--sp-7);
+}
+
+.knowledge-profile__env-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+/* The mockup's `.env-eyebrow`. */
+.knowledge-profile__env-eyebrow {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 500;
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* `v3 · edited by Ken, 9d ago` — the version in force, beside the eyebrow. */
+.knowledge-profile__env-version {
+  flex: 1;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+.knowledge-profile__env-action {
+  margin-left: auto;
+}
+
+/* The mockup's `.code`: the recipe on the raised ground, in the mono face, one command a line. */
+.knowledge-profile__code {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.knowledge-profile__code-line {
+  display: inline;
+}
+
+/* A comment is for people: the faint ink, so the command reads first. */
+.knowledge-profile__code-comment {
+  color: var(--ink-faint);
+}
+
+/* Who runs the block — under it, in the faint ink, so editing reads as consequential. */
+.knowledge-profile__consumers {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-profile__editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.knowledge-profile__editor-actions {
+  display: flex;
+  gap: var(--sp-4);
+}
+
+.knowledge-profile__refusal {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the snapshot row ---------- */
+
+/*
+ * The mockup's three snapshot rows are one honest row until #426: the ring rather than the
+ * filled ok dot, because no state was measured, and the sentence saying so.
+ */
+.knowledge-profile__snapshot {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+  margin-top: var(--sp-7);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+}
+
+.knowledge-profile__snapshot-dot {
+  flex: none;
+  width: var(--sp-3);
+  height: var(--sp-3);
+  margin-top: var(--sp-2);
+  border: 1px solid var(--ink-faint);
+  border-radius: var(--r-pill);
+}
+
+.knowledge-profile__snapshot-text {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-profile__snapshot-label {
+  color: var(--ink-dim);
+  font-weight: 600;
 }
 
 /* ---------- the skeleton ---------- */

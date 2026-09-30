@@ -12,8 +12,8 @@ import "./knowledge.css";
  * (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 3.3), and Next.js's `loading.tsx` is how a route says what
  * that is. The head is drawn for real — its copy is constants, so none of it is read — and only the
  * two actions are bars, because whether they are drawn at all depends on a role this component has
- * not been told. The grid reserves the two seats the screen draws, in the page's own classes, so
- * nothing moves when the data lands.
+ * not been told. The grid reserves the four seats the screen draws — two a column — in the page's
+ * own classes, so nothing moves when the data lands.
  *
  * It says one thing to a screen reader, not several: the bars carry no text, the grid is
  * `aria-hidden`, and the page is marked busy and labelled once.
@@ -44,6 +44,16 @@ export function KnowledgeSkeleton() {
 
       <div aria-hidden className="knowledge__grid">
         <div className="knowledge__main">
+          <Card>
+            <span className="knowledge-skeleton__bar knowledge-skeleton__bar--title" />
+            <span className="knowledge-skeleton__bar" />
+          </Card>
+          <Card>
+            <span className="knowledge-skeleton__bar knowledge-skeleton__bar--title" />
+            <span className="knowledge-skeleton__bar" />
+          </Card>
+        </div>
+        <div className="knowledge__aside">
           <Card>
             <span className="knowledge-skeleton__bar knowledge-skeleton__bar--title" />
             <span className="knowledge-skeleton__bar" />

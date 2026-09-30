@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Role } from "@/app/api/membership";
 import { CONFIRM, VIEWER_REASON } from "@/app/knowledge/facts";
+import { LAUNCH_VIEWER_REASON } from "@/app/knowledge/playbooks";
 import { IMPORT_LABEL, KNOWLEDGE_TITLE, NEW_SKILL_LABEL, readOnlyNote } from "@/app/knowledge/view";
 
 import { knowledgeReadings } from "../helpers/knowledge";
@@ -20,11 +21,21 @@ const requireWorkspace = vi.fn();
 const readKnowledge = vi.fn();
 
 vi.mock("@/app/api/access", () => ({ requireWorkspace: () => requireWorkspace() }));
-vi.mock("@/app/knowledge/data", () => ({ readKnowledge: (access: unknown) => readKnowledge(access) }));
+vi.mock("@/app/knowledge/data", () => ({
+  readKnowledge: (access: unknown, now: unknown, repo?: string) => readKnowledge(access, now, repo),
+}));
 vi.mock("@/app/knowledge/create-actions", () => ({ createSkill: vi.fn() }));
 vi.mock("@/app/knowledge/import-actions", () => ({ previewImport: vi.fn(), applyImport: vi.fn() }));
 vi.mock("@/app/knowledge/skills-actions", () => ({ setSkillEnabled: vi.fn(), regenerateRepoMap: vi.fn() }));
 vi.mock("@/app/knowledge/facts-actions", () => ({ decideFact: vi.fn(), proposeFact: vi.fn() }));
+vi.mock("@/app/knowledge/playbooks-actions", () => ({
+  listPlaybookIssues: vi.fn(),
+  launchPlaybook: vi.fn(),
+  listRecentRuns: vi.fn(),
+  draftPlaybook: vi.fn(),
+  createPlaybookFromRun: vi.fn(),
+}));
+vi.mock("@/app/knowledge/profile-actions", () => ({ saveEnvRecipe: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));
@@ -53,8 +64,20 @@ describe("the knowledge route", () => {
   it("renders the frame for the workspace the gate returned", async () => {
     render(await Page());
 
-    expect(readKnowledge).toHaveBeenCalledExactlyOnceWith(access());
+    expect(readKnowledge).toHaveBeenCalledExactlyOnceWith(access(), expect.any(Date), undefined);
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(KNOWLEDGE_TITLE);
+  });
+
+  it("hands the address's ?repo= to the reader for the profile card (#420)", async () => {
+    render(await Page({ searchParams: Promise.resolve({ repo: "acme-robotics/helios-tools" }) }));
+
+    expect(readKnowledge).toHaveBeenCalledExactlyOnceWith(access(), expect.any(Date), "acme-robotics/helios-tools");
+  });
+
+  it("ignores a repeated ?repo=, reading for the first enabled repository", async () => {
+    render(await Page({ searchParams: Promise.resolve({ repo: ["a/b", "c/d"] }) }));
+
+    expect(readKnowledge).toHaveBeenCalledExactlyOnceWith(access(), expect.any(Date), undefined);
   });
 
   it("draws both actions for an owner or an admin", async () => {
@@ -77,6 +100,26 @@ describe("the knowledge route", () => {
       expect(screen.queryByRole("button", { name: IMPORT_LABEL })).toBeNull();
       expect(screen.getByRole("note")).toHaveTextContent(readOnlyNote(role).head);
       unmount();
+    }
+  });
+
+  it("lets an owner, an admin or a member run a playbook, and draws a viewer's Run on issue inert (#420)", async () => {
+    for (const role of ["owner", "admin", "member"] as const) {
+      requireWorkspace.mockResolvedValue(access([role]));
+      const { unmount } = render(await Page());
+
+      for (const button of screen.getAllByRole("button", { name: /^Run on issue:/ })) {
+        expect(button).not.toHaveAttribute("aria-disabled");
+      }
+      unmount();
+    }
+
+    requireWorkspace.mockResolvedValue(access(["viewer"]));
+    render(await Page());
+
+    for (const button of screen.getAllByRole("button", { name: /^Run on issue:/ })) {
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      expect(button).toHaveAttribute("title", LAUNCH_VIEWER_REASON);
     }
   });
 

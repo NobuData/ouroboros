@@ -745,7 +745,7 @@ tokens (both themes; the mockup is dark-only).
 | BG.1 | #417 ✅ | 🟢 Done | ouroboros-ui: [BG.1] Knowledge route, head & import flow | `/knowledge` frame, New-skill flow, import preview/apply | mvp, knowledge, ui, design | N (after #41, BF.4, BA-D.5) | Y | M | ouroboros-ui |
 | BG.2 | #418 ✅ | 🟢 Done | ouroboros-ui: [BG.2] Skills table | All row states, locked/draft treatments, editor links, stats | mvp, knowledge, ui, design | N (after BG.1, BF.1) | Y | M | ouroboros-ui |
 | BG.3 | #419 ✅ | 🟢 Done | ouroboros-ui: [BG.3] Learned-facts card | Lifecycle rows, Confirm/Reject/Re-learn, provenance popovers | mvp, knowledge, ui, design | N (after BG.1, BF.2/BF.3) | Y | M | ouroboros-ui |
-| BG.4 | #420 | 🟡 Open | ouroboros-ui: [BG.4] Playbooks & repo-profile cards | Recipes + run-on-issue; profile + env recipe + honest snapshot | mvp, knowledge, ui, design | N (after BG.1, BF.6, BE.4) | Y | M | ouroboros-ui |
+| BG.4 | #420 ✅ | 🟢 Done | ouroboros-ui: [BG.4] Playbooks & repo-profile cards | Recipes + run-on-issue; profile + env recipe + honest snapshot | mvp, knowledge, ui, design | N (after BG.1, BF.6, BE.4) | Y | M | ouroboros-ui, ouroboros-rest |
 | BG.5 | #421 | 🟡 Open | ouroboros-ui: [BG.5] Scope ladder & manifest preview | The ladder with live counts; what-would-inject preview | mvp, knowledge, ui, design | N (after BG.1, BF.5) | Y | S | ouroboros-ui |
 | BG.6 | #422 | 🟡 Open | ouroboros-ui: [BG.6] Knowledge states & e2e leg | Empty/cold states, themes, full author→inject→launch e2e | mvp, knowledge, ui, ci | N (after BG.2–BG.5) | Y | M | ouroboros-ui, .github |
 
@@ -906,7 +906,7 @@ power-budget-checks (draft) … [repo] — v1 · 20m [off]   ← tinted row
 
 ### Issue BG.4 — ouroboros-ui: [BG.4] Playbooks & repo-profile cards
 
-> **GitHub issue:** #420 · **Status:** 🟡 Open · **Parent epic:** #403
+> **GitHub issue:** #420 ✅ · **Status:** 🟢 Done · **Parent epic:** #403
 
 - **Problem Statement:** Recipes with real launches, and the profile
   card composing detection + protected paths + the env recipe + the
@@ -928,6 +928,31 @@ power-budget-checks (draft) … [repo] — v1 · 20m [off]   ← tinted row
 - **Parallelism/Dependencies:** Needs BG.1, BF.6, BE.4.
 - **Technical Stack:** React, #46 primitives.
 - **Epic:** BG
+- **Delivered** (`ouroboros-ui/app/knowledge/playbooks-card.tsx`, `run-on-issue.tsx`,
+  `new-playbook.tsx`, `profile-card.tsx`; decisions in `playbooks.ts` and `profile.ts`; UI 0.114.0,
+  REST 0.37.37): the right column. **Playbooks** — rows with the counted `run 9×`, the pin and
+  the filter line; **Run on issue… ▾** reads the playbook's admitted issues and ranks them safest
+  first (sized and unqueued, then being sized, unsized, needs-a-person, queued — each unlaunchable
+  row saying why), a search re-asks the service, **Queue** is `POST …/launch` and the receipt
+  (what, under which pin, at which position, links to the dashboard's queue and the issues page)
+  replaces the list and leaves the page's toast; the row notes *#485 queued — counts once its run
+  opens* and never moves the count by hand. **+ New playbook from a past run…** lists the terminal
+  runs newest first (each linking to its console), reads the draft and shows the pin, the overrides
+  by slug, the steer notes and where each came from before the name, the suggested description and
+  an optional label filter are saved through `POST …/from-run`; a taken name is refused before a
+  round trip. **Repo profile** — the `detected` pill (`not scanned` / `not read` honestly), Language
+  / Platform / Build / Devcontainer from detection's rows (the Platform says no rule pack reports one
+  yet), the protected paths as tags saying whether a scan suggested or a person edited each, every
+  edit affordance inert naming its owning surface (#391, #494) since neither is built; `?repo=`
+  chooses the repository when more than one is enabled. **Environment** — decided on the issue:
+  BE.4 shipped the table and no service, so a minimal `EnvRecipesModule` was added to REST
+  (`GET /api/v1/knowledge/env-recipe?repo=`, `PUT …` saving the next version, `409` on a race,
+  audited `knowledge.env_recipe_saved`); the block prints the commands in order with comments and
+  `v3 · edited by Ken, 1w ago`, edits as text in place (` # ` comments, refused before a round trip)
+  and takes the version the service answered. **Snapshot** — one honest row, *prebuilds arrive with
+  the build-farm tier (#399)*, no `38s` anywhere (asserted); #426 replaces it. Members launch;
+  create and the recipe edit are administrators'; a viewer's launch is inert and every direct call
+  is refused by the service. Both palettes, keyboard, rem type.
 
 ```
 Flaky test hunt (run 9×) [Run on issue… ▾ → #483 → queued ✓]
@@ -1217,7 +1242,8 @@ Issue-level impact:
 | Issue | Amendment |
 |---|---|
 | BG.1 | #417 ✅ | 🟢 Done | Mounts in the shell content pane; navigation via the sidebar **Knowledge** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
-| BG.2–BG.5 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
+| BG.2–BG.4 | ✅ | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
+| BG.5 | #421 | 🟡 Open | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
 | BG.6 | #422 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step

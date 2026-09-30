@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.36"
+  version: "0.37.37"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -598,6 +598,13 @@ tags:
       facts await review. Re-importing unchanged files is a no-op.
 
       Both operations are `owner` or `admin` — the same gate as creating a skill.
+
+      **Environment recipes** (mockup 14's Repo Profile card, BE.4's table served for BG.4,
+      [#420](https://github.com/NobuData/ouroboros/issues/420), decision **K7**) — a repository's
+      ordered setup commands, one immutable row per version. Any member reads the version in
+      force; an `owner` or `admin` saves the block as the **next** version, never a rewrite. The
+      farm's container-pool setup, the prebuild tier and execution workspace prep are its
+      consumers.
 
   - name: triage
     description: |-
@@ -18795,6 +18802,202 @@ paths:
         "422":
           description: |-
             `validation_failed` for a malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/knowledge/env-recipe:
+    get:
+      tags: [knowledge]
+      summary: A repository's environment recipe
+      description: |-
+        BG.4 ([#420](https://github.com/NobuData/ouroboros/issues/420)) — mockup 14's **Environment**
+        block: the version in force of the repository's setup recipe (V073's `env_recipes_current`),
+        its commands in the order consumers run them, each with the comment people read beside it,
+        the version number, who saved it and when, and whether a rule pack detected it or a person
+        edited it.
+
+        **A repository with no recipe is `404 env_recipe_not_found`** — a valid state the card
+        draws as *no environment recipe yet* with an add action, never an empty block.
+
+        **Open to every member.**
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: getEnvRecipe
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The recipe in force.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvRecipe"
+              example:
+                repo: acme-robotics/helios-firmware
+                version: 3
+                commands:
+                  - command: west init -m git@github.com:acme-robotics/helios-firmware
+                    comment: manifest repo
+                  - command: west update --narrow -o=--depth=1
+                    comment: shallow module fetch
+                  - command: zephyr-sdk-install 0.17.2 --toolchains arm-zephyr-eabi
+                    comment: SDK + ARM toolchain
+                  - command: ccache --set-config=max_size=8G
+                    comment: shared build cache
+                source: edited
+                updatedAt: "2026-09-21T14:00:00.000Z"
+                updatedBy:
+                  id: aBcD1234eFgH5678iJkL9012mNoP3456
+                  name: Ken
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `env_recipe_not_found` — the repository has no recipe yet (`details.repo`);
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or is not `owner/name`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [knowledge]
+      summary: Save a repository's environment recipe as its next version
+      description: |-
+        BG.4 ([#420](https://github.com/NobuData/ouroboros/issues/420)) — the Environment block's
+        **edit**. The whole block is sent and stored as the repository's **next version**, source
+        `edited`, in the signed-in person's name; the version it follows stays readable and is
+        never rewritten (V073's `env_recipes_no_update`). The first save of a repository with no
+        recipe writes `v1`. `201`: a version row was created.
+
+        Order is the content: consumers — the farm's container-pool setup, the prebuild tier
+        (BD.4, #399) and execution workspace prep (AR.1) — run `commands` in array order, each in a
+        shell at the repository root, stopping at the first non-zero exit; a `comment` is never
+        executed. Saving here changes what they run next.
+
+        Two editors racing both compute the same next number; the unique key lets one commit and
+        the other is `409 env_recipe_version_conflict` naming the version that was taken —
+        re-read, and edit again. Every persisted save is audited as `knowledge.env_recipe_saved`
+        (subject `repository`) with the version written and the one it followed.
+
+        **`owner` or `admin`** — the recipe is what the farm runs; the gate writing a skill takes.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: saveEnvRecipe
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SaveEnvRecipeBody"
+            example:
+              repo: acme-robotics/helios-firmware
+              commands:
+                - command: west init -m git@github.com:acme-robotics/helios-firmware
+                  comment: manifest repo
+                - command: west update --narrow -o=--depth=1
+                  comment: shallow module fetch
+                - command: zephyr-sdk-install 0.17.3 --toolchains arm-zephyr-eabi
+                  comment: SDK + ARM toolchain
+                - command: ccache --set-config=max_size=8G
+                  comment: shared build cache
+      responses:
+        "201":
+          description: The version now in force — the one just written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EnvRecipe"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — saving a recipe is `owner` or `admin` only.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `env_recipe_version_conflict` — another editor saved the next version first;
+            `details.version` is the number that was taken. Re-read and edit again.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` malformed, no commands, more than 64, a command or
+            comment blank, multi-line or over its length; `env_recipe_commands_invalid` — the
+            database's own shape check refused what validation admitted.
           content:
             application/json:
               schema:
@@ -40697,6 +40900,111 @@ components:
         truncated:
           type: boolean
           description: Whether a bound cut the tree listing.
+
+    EnvRecipeCommand:
+      type: object
+      title: EnvRecipeCommand
+      description: |-
+        One setup command in run order (V073). `command` is what a consumer runs in a shell at the
+        repository root; `comment` is for people and is never executed — `null` when the entry has
+        none.
+      additionalProperties: false
+      required: [command, comment]
+      properties:
+        command:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          examples: [west update --narrow -o=--depth=1]
+        comment:
+          type: [string, "null"]
+          maxLength: 300
+          examples: [shallow module fetch]
+
+    EnvRecipe:
+      type: object
+      title: EnvRecipe
+      description: |-
+        A repository's environment recipe, at the version in force (BG.4,
+        [#420](https://github.com/NobuData/ouroboros/issues/420)) — mockup 14's Environment block.
+        Holds no snapshot, boot-time or prebuild-schedule data: that is the prebuild tier's (BD.4,
+        #399), and the card says so until it measures one (decision **K7**).
+      additionalProperties: false
+      required: [repo, version, commands, source, updatedAt, updatedBy]
+      properties:
+        repo:
+          type: string
+          description: "`owner/name`, lower-case."
+          examples: [acme-robotics/helios-firmware]
+        version:
+          type: integer
+          minimum: 1
+          description: The version in force — dense from 1 per repository; an edit is the next.
+          examples: [3]
+        commands:
+          type: array
+          minItems: 1
+          maxItems: 64
+          description: The commands, in the order consumers run them.
+          items:
+            $ref: "#/components/schemas/EnvRecipeCommand"
+        source:
+          type: string
+          enum: [detected, edited]
+          description: "`detected` — a rule pack seeded it; `edited` — a person saved it."
+        updatedAt:
+          type: string
+          format: date-time
+          description: When this version was saved.
+        updatedBy:
+          type: [object, "null"]
+          description: Who saved it; null for a detected draft, or a person since removed.
+          additionalProperties: false
+          required: [id, name]
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+              examples: [Ken]
+
+    EnvRecipeCommandBody:
+      type: object
+      title: EnvRecipeCommandBody
+      description: One command to store. Omit `comment` rather than sending an empty one.
+      additionalProperties: false
+      required: [command]
+      properties:
+        command:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: One non-blank line.
+        comment:
+          type: string
+          minLength: 1
+          maxLength: 300
+          description: One non-blank line, for people.
+
+    SaveEnvRecipeBody:
+      type: object
+      title: SaveEnvRecipeBody
+      description: The whole block, saved as the repository's next version.
+      additionalProperties: false
+      required: [repo, commands]
+      properties:
+        repo:
+          type: string
+          minLength: 3
+          maxLength: 255
+          pattern: "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$"
+          examples: [acme-robotics/helios-firmware]
+        commands:
+          type: array
+          minItems: 1
+          maxItems: 64
+          items:
+            $ref: "#/components/schemas/EnvRecipeCommandBody"
 
     WorkflowCodeConfig:
       type: object

@@ -5858,6 +5858,63 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/env-recipe": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A repository's environment recipe
+         * @description BG.4 ([#420](https://github.com/NobuData/ouroboros/issues/420)) — mockup 14's **Environment**
+         *     block: the version in force of the repository's setup recipe (V073's `env_recipes_current`),
+         *     its commands in the order consumers run them, each with the comment people read beside it,
+         *     the version number, who saved it and when, and whether a rule pack detected it or a person
+         *     edited it.
+         *
+         *     **A repository with no recipe is `404 env_recipe_not_found`** — a valid state the card
+         *     draws as *no environment recipe yet* with an add action, never an empty block.
+         *
+         *     **Open to every member.**
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        get: operations["getEnvRecipe"];
+        /**
+         * Save a repository's environment recipe as its next version
+         * @description BG.4 ([#420](https://github.com/NobuData/ouroboros/issues/420)) — the Environment block's
+         *     **edit**. The whole block is sent and stored as the repository's **next version**, source
+         *     `edited`, in the signed-in person's name; the version it follows stays readable and is
+         *     never rewritten (V073's `env_recipes_no_update`). The first save of a repository with no
+         *     recipe writes `v1`. `201`: a version row was created.
+         *
+         *     Order is the content: consumers — the farm's container-pool setup, the prebuild tier
+         *     (BD.4, #399) and execution workspace prep (AR.1) — run `commands` in array order, each in a
+         *     shell at the repository root, stopping at the first non-zero exit; a `comment` is never
+         *     executed. Saving here changes what they run next.
+         *
+         *     Two editors racing both compute the same next number; the unique key lets one commit and
+         *     the other is `409 env_recipe_version_conflict` naming the version that was taken —
+         *     re-read, and edit again. Every persisted save is audited as `knowledge.env_recipe_saved`
+         *     (subject `repository`) with the version written and the one it followed.
+         *
+         *     **`owner` or `admin`** — the recipe is what the farm runs; the gate writing a skill takes.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        put: operations["saveEnvRecipe"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/planning/batches": {
         parameters: {
             query?: never;
@@ -18830,6 +18887,74 @@ export interface components {
             modules: number;
             /** @description Whether a bound cut the tree listing. */
             truncated: boolean;
+        };
+        /**
+         * EnvRecipeCommand
+         * @description One setup command in run order (V073). `command` is what a consumer runs in a shell at the
+         *     repository root; `comment` is for people and is never executed — `null` when the entry has
+         *     none.
+         */
+        EnvRecipeCommand: {
+            /** @example west update --narrow -o=--depth=1 */
+            command: string;
+            /** @example shallow module fetch */
+            comment: string | null;
+        };
+        /**
+         * EnvRecipe
+         * @description A repository's environment recipe, at the version in force (BG.4,
+         *     [#420](https://github.com/NobuData/ouroboros/issues/420)) — mockup 14's Environment block.
+         *     Holds no snapshot, boot-time or prebuild-schedule data: that is the prebuild tier's (BD.4,
+         *     #399), and the card says so until it measures one (decision **K7**).
+         */
+        EnvRecipe: {
+            /**
+             * @description `owner/name`, lower-case.
+             * @example acme-robotics/helios-firmware
+             */
+            repo: string;
+            /**
+             * @description The version in force — dense from 1 per repository; an edit is the next.
+             * @example 3
+             */
+            version: number;
+            /** @description The commands, in the order consumers run them. */
+            commands: components["schemas"]["EnvRecipeCommand"][];
+            /**
+             * @description `detected` — a rule pack seeded it; `edited` — a person saved it.
+             * @enum {string}
+             */
+            source: "detected" | "edited";
+            /**
+             * Format: date-time
+             * @description When this version was saved.
+             */
+            updatedAt: string;
+            /** @description Who saved it; null for a detected draft, or a person since removed. */
+            updatedBy: {
+                id: string;
+                /** @example Ken */
+                name: string;
+            } | null;
+        };
+        /**
+         * EnvRecipeCommandBody
+         * @description One command to store. Omit `comment` rather than sending an empty one.
+         */
+        EnvRecipeCommandBody: {
+            /** @description One non-blank line. */
+            command: string;
+            /** @description One non-blank line, for people. */
+            comment?: string;
+        };
+        /**
+         * SaveEnvRecipeBody
+         * @description The whole block, saved as the repository's next version.
+         */
+        SaveEnvRecipeBody: {
+            /** @example acme-robotics/helios-firmware */
+            repo: string;
+            commands: components["schemas"]["EnvRecipeCommandBody"][];
         };
         /**
          * WorkflowCodeConfig
@@ -46653,6 +46778,323 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` for a malformed body. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEnvRecipe: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The recipe in force. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "version": 3,
+                     *       "commands": [
+                     *         {
+                     *           "command": "west init -m git@github.com:acme-robotics/helios-firmware",
+                     *           "comment": "manifest repo"
+                     *         },
+                     *         {
+                     *           "command": "west update --narrow -o=--depth=1",
+                     *           "comment": "shallow module fetch"
+                     *         },
+                     *         {
+                     *           "command": "zephyr-sdk-install 0.17.2 --toolchains arm-zephyr-eabi",
+                     *           "comment": "SDK + ARM toolchain"
+                     *         },
+                     *         {
+                     *           "command": "ccache --set-config=max_size=8G",
+                     *           "comment": "shared build cache"
+                     *         }
+                     *       ],
+                     *       "source": "edited",
+                     *       "updatedAt": "2026-09-21T14:00:00.000Z",
+                     *       "updatedBy": {
+                     *         "id": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                     *         "name": "Ken"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["EnvRecipe"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `env_recipe_not_found` — the repository has no recipe yet (`details.repo`);
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+             *     a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or is not `owner/name`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    saveEnvRecipe: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "repo": "acme-robotics/helios-firmware",
+                 *       "commands": [
+                 *         {
+                 *           "command": "west init -m git@github.com:acme-robotics/helios-firmware",
+                 *           "comment": "manifest repo"
+                 *         },
+                 *         {
+                 *           "command": "west update --narrow -o=--depth=1",
+                 *           "comment": "shallow module fetch"
+                 *         },
+                 *         {
+                 *           "command": "zephyr-sdk-install 0.17.3 --toolchains arm-zephyr-eabi",
+                 *           "comment": "SDK + ARM toolchain"
+                 *         },
+                 *         {
+                 *           "command": "ccache --set-config=max_size=8G",
+                 *           "comment": "shared build cache"
+                 *         }
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["SaveEnvRecipeBody"];
+            };
+        };
+        responses: {
+            /** @description The version now in force — the one just written. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EnvRecipe"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — saving a recipe is `owner` or `admin` only. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `env_recipe_version_conflict` — another editor saved the next version first;
+             *     `details.version` is the number that was taken. Re-read and edit again.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo` malformed, no commands, more than 64, a command or
+             *     comment blank, multi-line or over its length; `env_recipe_commands_invalid` — the
+             *     database's own shape check refused what validation admitted.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;
