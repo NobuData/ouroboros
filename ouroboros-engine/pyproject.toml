@@ -7,7 +7,7 @@
 
 [project]
 name = "ouroboros-engine"
-version = "0.7.6"
+version = "0.7.7"
 description = "Ouroboros backend — executes the work ouroboros-rest brokers."
 readme = "README.md"
 license = "Apache-2.0"

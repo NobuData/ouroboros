@@ -88,6 +88,7 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `POST /v0/workflows/validate` | yes | The engine's findings on a workflow definition — the publish gate's second opinion |
 | `POST /v0/workflows/dry-run` | yes | Walk a definition for one ticket: ordered steps, a verdict per stage, the path to highlight — no model or provider call |
 | `POST /v0/plan` | yes | Draft a batch of tickets: `{narrative, outline?, context}` in, drafts with dependencies and provenance out |
+| `POST /v0/learn` | yes | Learn candidate facts: a source bundle in, candidates with confidence and typed provenance out — committed for #423; today `unavailable-v0` answers none and says why |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
 ```console
@@ -379,6 +380,29 @@ recorded case per rule beside it, because AN.1 implements the *same* contract an
 ([#280](https://github.com/NobuData/ouroboros/issues/280)) persists what comes back —
 `tests/test_planning_golden.py` holds this implementation to both.
 
+## Learning facts from a source bundle
+
+`POST /v0/learn` is the extraction contract BF.3
+([#412](https://github.com/NobuData/ouroboros/issues/412), decision **K5**) commits **before** its
+implementation. The MVP learns facts deterministically in `ouroboros-rest` — its proposer registry
+promotes correction notes, waiver reasons and remembered steers, and needs no model — and BH.1
+([#423](https://github.com/NobuData/ouroboros/issues/423)) answers this same shape with an LLM
+extractor for PR review cycles and run observations, which REST plugs into that registry as the
+`llm` proposer.
+
+- **Request** — `sources` (1–32 of `{kind, label, text, refs}`, `kind` one of `pr_review_cycle`,
+  `run_observation`, `correction_note`, `waiver`, `steer`) and `context` (`repo`,
+  `existing_facts` — a hint; REST dedupes again in any status).
+- **Response** — `candidates` (`{text ≤ 200, category, confidence 0–1, source_index,
+  provenance: {line, refs}}`), `extractor` (decision **K10**, never empty) and `notes`. There is
+  **no status** anywhere: every candidate lands `proposed`.
+- **Provenance is drawn, never invented.** A candidate citing a source that was not sent, or a ref
+  its source did not carry, is a `500` here (`learning.contract.honours_sources`) and is refused
+  again on the REST side.
+- **Installed today:** `UnavailableExtractor` — `candidates: []`, `extractor: unavailable-v0` and
+  a note saying why. An answer that looked like extraction with no model behind it would be the
+  overclaiming K5 rules out. Installing BH.1's extractor is one line in `create_app`.
+
 ## The simulated-run driver (development only)
 
 [#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by
@@ -663,6 +687,7 @@ ouroboros-engine/
 │   │   ├── estimate.py #   POST /v0/estimate — size one issue                   · #105
 │   │   ├── workflows.py#   POST /v0/workflows/validate · /dry-run               · #144
 │   │   ├── plan.py     #   POST /v0/plan — draft a batch of tickets             · #277
+│   │   ├── learn.py    #   POST /v0/learn — candidate facts from a bundle       · #412
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure
@@ -693,6 +718,9 @@ ouroboros-engine/
 │   │   ├── planner.py  #   the seam a planner plugs into, and the K5 check
 │   │   ├── outline.py  #   the five rules a markdown outline is read by
 │   │   └── outline_planner.py  # outline-v0: what that reading means
+│   ├── learning/       # the /v0/learn contract and the extractor seam          · #412
+│   │   ├── contract.py #   the source bundle and the candidates — no status, ever
+│   │   └── extractor.py#   the seam; unavailable-v0 is installed until #423
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON

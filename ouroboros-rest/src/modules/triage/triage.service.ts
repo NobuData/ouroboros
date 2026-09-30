@@ -42,7 +42,7 @@
  * `runner.job_submitted` by AH.4.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import { AuditService } from "../audit/audit.service";
 import {
@@ -55,6 +55,10 @@ import {
 import { ControlsService, type Requester } from "../controls/controls.service";
 import type { ClassificationReceipt, FailureClass, TestSelectionScope } from "../db/schema";
 import { DomainError } from "../errors/error.envelope";
+import {
+  FACT_SOURCE_OBSERVER,
+  type FactSourceObserver,
+} from "../fact-proposers/proposers.observer";
 import { FarmJobsService } from "../farm/dispatch/jobs.service";
 import { runNotFound } from "../runs/runs.errors";
 import { heuristicTriageResponse } from "./triage.contract";
@@ -111,12 +115,15 @@ export class TriageService {
    * @param controls - AP.4's queue, for the correction round.
    * @param jobs - AH.4's dispatch, for re-runs.
    * @param audit - AD.4's trail.
+   * @param factSources - BF.3's proposers (#412): a correction note and a waiver reason are
+   *   sources it promotes into `proposed` facts. Optional, and never throws.
    */
   constructor(
     private readonly triage: TriageRepository,
     private readonly controls: ControlsService,
     private readonly jobs: FarmJobsService,
     private readonly audit: AuditService,
+    @Optional() @Inject(FACT_SOURCE_OBSERVER) private readonly factSources?: FactSourceObserver,
   ) {}
 
   // --- GET hints ---------------------------------------------------------------------------
@@ -279,6 +286,13 @@ export class TriageService {
       },
     });
 
+    if (classification.note !== null) {
+      await this.factSources?.sourceWritten(organizationId, {
+        kind: "correction_note",
+        id: classification.id,
+      });
+    }
+
     return { classification: classificationResource(classification), routing };
   }
 
@@ -408,6 +422,7 @@ export class TriageService {
       at: waiver.created_at,
       detail: { run_id: attempt.run_id, test_run_id: testRunId, cases: caseKeys.length },
     });
+    await this.factSources?.sourceWritten(organizationId, { kind: "waiver", id: waiver.id });
 
     return waiverResource(waiver, testRunId);
   }

@@ -10,6 +10,7 @@ import {
   DRY_RUN_STEP_VERDICTS,
   ENGINE_ECHO_ROUTE,
   ENGINE_ESTIMATE_ROUTE,
+  ENGINE_LEARN_ROUTE,
   ENGINE_PLAN_ROUTE,
   ENGINE_STATUS_ROUTE,
   ENGINE_WORKFLOW_DRY_RUN_ROUTE,
@@ -17,6 +18,11 @@ import {
   ESTIMATE_EFFORTS,
   ESTIMATE_RISKS,
   INTERNAL_KEY_HEADER,
+  LEARN_CATEGORIES,
+  LEARN_MAX_CANDIDATE_LENGTH,
+  LEARN_MAX_SOURCES,
+  LEARN_REF_KINDS,
+  LEARN_SOURCE_KINDS,
   MAX_CONTEXT_FACTS,
   echoRequestBody,
   echoResultSchema,
@@ -26,6 +32,8 @@ import {
   engineWorkflowValidationSchema,
   estimateRequestBody,
   estimateSchema,
+  learnRequestBody,
+  learnedSchema,
   planRequestBody,
   planSchema,
   workflowDryRunRequestBody,
@@ -621,6 +629,86 @@ describe("planRequestBody", () => {
   });
 });
 
+describe("the learn contract (#412)", () => {
+  const answer = {
+    candidates: [
+      {
+        text: "Tests under `tests/hil/` require rig reservation via `rig claim`",
+        category: "environment",
+        confidence: 0.82,
+        source_index: 0,
+        provenance: {
+          line: "from PR #498 review cycle",
+          refs: [{ kind: "pull_request", id: "a7150000-0000-0000-0000-000000000498" }],
+        },
+      },
+    ],
+    extractor: "llm-v1",
+    notes: [],
+  };
+
+  it("renames every field, at every depth", () => {
+    expect(learnedSchema.parse(answer).candidates[0]).toEqual({
+      text: answer.candidates[0].text,
+      category: "environment",
+      confidence: 0.82,
+      sourceIndex: 0,
+      provenance: answer.candidates[0].provenance,
+    });
+  });
+
+  it("reads the installed extractor's empty answer", () => {
+    expect(
+      learnedSchema.parse({ candidates: [], extractor: "unavailable-v0", notes: ["why"] }),
+    ).toEqual({ candidates: [], extractor: "unavailable-v0", notes: ["why"] });
+  });
+
+  it.each([
+    ["an answer that cannot say what produced it", { ...answer, extractor: "" }],
+    [
+      "a confidence above 1",
+      { ...answer, candidates: [{ ...answer.candidates[0], confidence: 1.2 }] },
+    ],
+    [
+      "a candidate longer than the registry accepts",
+      {
+        ...answer,
+        candidates: [{ ...answer.candidates[0], text: "x".repeat(LEARN_MAX_CANDIDATE_LENGTH + 1) }],
+      },
+    ],
+    [
+      "a ref kind outside the vocabulary",
+      {
+        ...answer,
+        candidates: [
+          {
+            ...answer.candidates[0],
+            provenance: { line: "l", refs: [{ kind: "import", id: "CLAUDE.md" }] },
+          },
+        ],
+      },
+    ],
+  ])("refuses %s", (_name, body) => {
+    expect(learnedSchema.safeParse(body).success).toBe(false);
+  });
+
+  it("ignores a field the engine added", () => {
+    expect(learnedSchema.parse({ ...answer, trace: {} })).not.toHaveProperty("trace");
+  });
+
+  it("writes the engine's `snake_case`", () => {
+    expect(
+      learnRequestBody({
+        sources: [{ kind: "correction_note", label: "note", text: "t", refs: [] }],
+        context: { repo: null, existingFacts: ["a fact"] },
+      }),
+    ).toEqual({
+      sources: [{ kind: "correction_note", label: "note", text: "t", refs: [] }],
+      context: { repo: null, existing_facts: ["a fact"] },
+    });
+  });
+});
+
 describe("the engine's own specification", () => {
   it("serves the status route this client calls", () => {
     expect(engineDocument().paths).toHaveProperty(`/${ENGINE_STATUS_ROUTE}`);
@@ -635,6 +723,28 @@ describe("the engine's own specification", () => {
 
     expect(scheme.name).toBe(INTERNAL_KEY_HEADER);
     expect(scheme.in).toBe("header");
+  });
+
+  it("serves the learn route the proposer registry's llm proposer will call (#412)", () => {
+    expect(engineDocument().paths).toHaveProperty(`/${ENGINE_LEARN_ROUTE}`);
+  });
+
+  it.each([
+    ["LearnSource", "kind", LEARN_SOURCE_KINDS],
+    ["LearnRef", "kind", LEARN_REF_KINDS],
+    ["LearnCandidate", "category", LEARN_CATEGORIES],
+  ])("enumerates %s.%s exactly as this client mirrors it", (name, field, values) => {
+    expect(engineDocument().components.schemas[name].properties[field].enum).toEqual([...values]);
+  });
+
+  it("bounds a bundle and a candidate where this client bounds them", () => {
+    const schemas = engineDocument().components.schemas as Record<
+      string,
+      { properties: Record<string, { maxItems?: number; maxLength?: number }> }
+    >;
+
+    expect(schemas.LearnRequest.properties.sources.maxItems).toBe(LEARN_MAX_SOURCES);
+    expect(schemas.LearnCandidate.properties.text.maxLength).toBe(LEARN_MAX_CANDIDATE_LENGTH);
   });
 
   it("serves the plan route the planning API calls", () => {
@@ -696,6 +806,12 @@ describe("the engine's own specification", () => {
         "trace",
       ],
     ],
+    ["LearnRequest", ["sources", "context"]],
+    ["LearnSource", ["kind", "label", "text", "refs"]],
+    ["LearnRef", ["kind", "id"]],
+    ["LearnCandidate", ["text", "category", "confidence", "source_index", "provenance"]],
+    ["LearnProvenance", ["line", "refs"]],
+    ["Learned", ["candidates", "extractor", "notes"]],
     ["PlanRequest", ["narrative", "outline", "context"]],
     ["PlanningContext", ["workflow_tags", "milestone", "local_key_prefix"]],
     ["Draft", ["local_key", "title", "body", "suggested_workflow", "dependencies"]],

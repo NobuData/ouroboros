@@ -38,6 +38,7 @@ import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { SkillsModule } from "../skills/skills.module";
 import { FactsModule } from "../facts/facts.module";
+import { FactProposersModule } from "../fact-proposers/proposers.module";
 import { RuleImportModule } from "../knowledge-import/rule-import.module";
 import { ContextAssemblyModule } from "../context-assembly/context-assembly.module";
 import { TenancyModule } from "../tenancy/tenancy.module";
@@ -347,6 +348,12 @@ export class AppModule {
         // the staleness sweep under `/api/v1/facts`. `PullRequestsModule` imports it for the
         // commit observer PR sync reports a merge to; nothing else claims the prefix.
         FactsModule,
+        // BF.3 ([#412](https://github.com/NobuData/ouroboros/issues/412)) — the deterministic fact
+        // proposers under `/api/v1/fact-proposers`: the registry, the suppressions and a run's
+        // backfill. `ControlsModule`, `TriageModule` and `PullRequestsModule` import it for the
+        // source observer a new correction note, waiver or remembered steer is reported on;
+        // nothing else claims the prefix.
+        FactProposersModule,
         // BB.2 ([#385](https://github.com/NobuData/ouroboros/issues/385)) — the Get Started
         // wizard's orchestration API under `/api/v1/onboarding`. After `TenancyModule`, whose
         // guards resolve the workspace and enforce `@Roles`; it reads the sources, tenancy,

@@ -413,7 +413,7 @@ seeds: 6 skills (locked · generated · draft) · 5 facts (2✓·2?·1 expired) 
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BF.1 | #410 ✅ | 🟢 Done | ouroboros-rest: [BF.1] Skills service & registry integration | CRUD/versions/locks; WF catalog + inspector + code-view wiring | mvp, knowledge, workflow, rest | N (after BE.1, WF-R.3) | Y | M | ouroboros-rest |
 | BF.2 | #411 ✅ | 🟢 Done | ouroboros-rest: [BF.2] Fact lifecycle & staleness sweep | Transitions, anchors, sweep, audit; inbox feed contract | mvp, knowledge, rest | N (after BE.2) | Y | M | ouroboros-rest |
-| BF.3 | #412 | 🟡 Open | ouroboros-rest: [BF.3] Deterministic fact proposers | Correction/waiver/steer promotion with provenance (K5) | mvp, knowledge, runs, rest | N (after BF.2, AT.4) | Y | M | ouroboros-rest |
+| BF.3 | #412 ✅ | 🟢 Done | ouroboros-rest: [BF.3] Deterministic fact proposers | Correction/waiver/steer promotion with provenance (K5) | mvp, knowledge, runs, rest | N (after BF.2, AT.4) | Y | M | ouroboros-rest |
 | BF.4 | #413 ✅ | 🟢 Done | ouroboros-rest: [BF.4] Rule-file import service | CLAUDE.md/.cursorrules/AGENTS.md → drafts + candidates | mvp, knowledge, rest | N (after BF.1, BB.1) | Y | M | ouroboros-rest |
 | BF.5 | #414 ✅ | 🟢 Done | ouroboros-rest: [BF.5] Context assembly & manifests | Closest-wins resolution, previews, injection recording (K8/K9) | mvp, knowledge, rest, intake | N (after BF.1, BF.2) | Y | L | ouroboros-rest |
 | BF.6 | #415 | 🟡 Open | ouroboros-rest: [BF.6] Playbooks & repo-map generator | Create-from-run, run-on-issue; nightly repo-map (K2/K6) | mvp, knowledge, rest | N (after BE.3, BF.5) | Y | M | ouroboros-rest |
@@ -514,7 +514,7 @@ expired{reason: "Zephyr 4.1 migration", was_used: 31} · [Re-learn] ─▶ propo
 
 ### Issue BF.3 — ouroboros-rest: [BF.3] Deterministic fact proposers
 
-> **GitHub issue:** #412 · **Status:** 🟡 Open · **Parent epic:** #402
+> **GitHub issue:** #412 ✅ · **Status:** 🟢 Done · **Parent epic:** #402
 
 - **Problem Statement:** "Learned by the loop" starts honest (K5):
   promote the correction notes, waiver reasons, and steering messages
@@ -535,6 +535,26 @@ expired{reason: "Zephyr 4.1 migration", was_used: 31} · [Re-learn] ─▶ propo
 - **Parallelism/Dependencies:** Needs BF.2, AT.4 (+AP.4 flag amendment).
 - **Technical Stack:** NestJS, proposer registry.
 - **Epic:** BF
+- **Delivered** (`ouroboros-rest/src/modules/fact-proposers/`, REST 0.37.34, engine 0.7.7,
+  `V074`): a versioned, declarative registry — `correction_note` (a **person's** classification
+  carrying a note), `waiver` (a waiver's reason: `environment` when it names the rig, farm,
+  network, toolchain…, otherwise a known `limitation`), `steer` (only with *remember this*, V050's
+  flag) and `import` (BF.4's bullets, its own provenance). One deterministic text rule: the note's
+  **lead sentence**, conversational filler stripped, inline-code spans copied byte for byte.
+  Proposers run **when their source is written** (triage classify/waive, criteria waive and
+  controls submit report on `FACT_SOURCE_OBSERVER`, best-effort, never failing the write) and on
+  demand over one run (`POST /api/v1/fact-proposers/backfill`, owner/admin, idempotent);
+  `GET /api/v1/fact-proposers` serves the registry and `…/suppressions` the dedupe record. Decided
+  on the issue: **V074 widens typed provenance** with `classification`, `waiver`, `steer`,
+  `run_stage`, `gate` and `person` refs (each resolved to the workspace) and adds the append-only
+  **`fact_suppressions`** table, one row per (source, matched fact); **the seed gained Ken's
+  correction note on Build 1 of `#482`** whose lead sentence is the awaiting-review k_msgq fact,
+  and that fact's line became the honest `from correction note (run #1847)`. Dedupe uses BF.4's
+  normalized-text key (now `facts/facts.text.ts`) against the repository's and workspace's facts
+  in any status. No auto-confirm: `sealCandidate` refuses any key but a candidate's (a `status`
+  above all) and the only write is `FactsService.propose`. `/v0/learn` is committed in the engine
+  (`unavailable-v0` answers no candidates and says why), mirrored and drift-checked in
+  `engine.contract.spec.ts`, and `proposers.learn.ts` maps its answer to `llm` candidates.
 
 ```
 AT.4 note "Keep k_msgq, but move PID sampling…" ─▶ proposer ─▶

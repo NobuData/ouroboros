@@ -681,6 +681,57 @@ describe("the classification & routing service", () => {
     });
   });
 
+  describe("reporting teaching moments to BF.3's proposers (#412)", () => {
+    // Only who is told, and when — the rules are above. The observer never throws (its
+    // contract), so the service simply awaits it after its own write has succeeded.
+    let observer: { sourceWritten: jest.Mock };
+    let observed: TriageService;
+
+    beforeEach(() => {
+      observer = { sourceWritten: jest.fn().mockResolvedValue(undefined) };
+      observed = new TriageService(
+        repo as unknown as TriageRepository,
+        controls as unknown as ControlsService,
+        jobs as unknown as FarmJobsService,
+        { record: jest.fn().mockResolvedValue("event") } as unknown as AuditService,
+        observer,
+      );
+      repo.insertWaiver.mockResolvedValue({
+        id: "w-1",
+        run_id: RUN,
+        author: "user-admin",
+        reason: "Known rig drift.",
+        case_keys: [],
+        annotation_state: "pending_pr_plane",
+        created_at: new Date("2026-09-25T10:00:00.000Z"),
+      });
+    });
+
+    it("reports a classification carrying a correction note, after it is recorded", async () => {
+      const answer = await observed.classify(ORG, TEST_RUN, CASE, MEMBER, {
+        class: "product_bug",
+        note: "Team prefers `k_msgq` over `k_fifo` in ISR paths.",
+      });
+
+      expect(observer.sourceWritten).toHaveBeenCalledWith(ORG, {
+        kind: "correction_note",
+        id: answer.classification.id,
+      });
+    });
+
+    it("reports nothing for a classification without a note", async () => {
+      await observed.classify(ORG, TEST_RUN, CASE, MEMBER, { class: "flake_retry" });
+
+      expect(observer.sourceWritten).not.toHaveBeenCalled();
+    });
+
+    it("reports a waiver, after it is recorded", async () => {
+      await observed.waive(ORG, TEST_RUN, "user-admin", { reason: "Known rig drift." });
+
+      expect(observer.sourceWritten).toHaveBeenCalledWith(ORG, { kind: "waiver", id: "w-1" });
+    });
+  });
+
   describe("waiving", () => {
     beforeEach(() => {
       repo.insertWaiver.mockImplementation(

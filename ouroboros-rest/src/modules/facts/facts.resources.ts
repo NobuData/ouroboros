@@ -33,9 +33,17 @@ export interface FactActor {
   readonly name: string | null;
 }
 
-/** A typed provenance reference (V071's `fact_provenance_typed`). */
+/**
+ * The row kinds a provenance reference names by uuid — V071's `run`, `pull_request` and `ticket`,
+ * and V074's (#412) proposer sources: `classification`, `waiver`, `steer`, `run_stage` and `gate`.
+ */
+export type FactProvenanceRowKind =
+  "run" | "pull_request" | "ticket" | "classification" | "waiver" | "steer" | "run_stage" | "gate";
+
+/** A typed provenance reference (V071's `fact_provenance_typed`, widened by V074). */
 export type FactProvenanceRef =
-  | { readonly kind: "run" | "pull_request" | "ticket"; readonly id: string }
+  | { readonly kind: FactProvenanceRowKind; readonly id: string }
+  | { readonly kind: "person"; readonly id: string }
   | { readonly kind: "import"; readonly file: string; readonly section?: string };
 
 /** `facts.provenance` — the card's line, and what it stands for. */

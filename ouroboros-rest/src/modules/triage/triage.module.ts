@@ -21,6 +21,7 @@ import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { ControlsModule } from "../controls/controls.module";
 import { DbModule } from "../db/db.module";
+import { FactProposersModule } from "../fact-proposers/proposers.module";
 import { FarmDispatchModule } from "../farm/dispatch/dispatch.module";
 import { TriageController } from "./triage.controller";
 import { TriageIntentsController } from "./triage.intents.controller";
@@ -28,7 +29,7 @@ import { TriageRepository } from "./triage.repository";
 import { TriageService } from "./triage.service";
 
 @Module({
-  imports: [DbModule, AuditModule, ControlsModule, FarmDispatchModule],
+  imports: [DbModule, AuditModule, ControlsModule, FarmDispatchModule, FactProposersModule],
   controllers: [TriageController, TriageIntentsController],
   providers: [TriageRepository, TriageService],
 })

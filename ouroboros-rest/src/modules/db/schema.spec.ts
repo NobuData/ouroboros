@@ -422,7 +422,10 @@ describe("TABLE_COLUMNS", () => {
     // The ninety-seventh to ninety-ninth are V071's `facts`, `fact_anchors` and
     // `fact_transitions`, mirrored by BF.2 (#411) — the fact lifecycle, the anchors the staleness
     // sweep reads, and the audit "confirmed by Ken, 6w ago" renders from.
-    expect(TABLE_NAMES).toHaveLength(99);
+    //
+    // The hundredth is V074's `fact_suppressions`, mirrored by BF.3 (#412) — the record a
+    // proposer's deduped candidate leaves, so dedupe is observable rather than silent.
+    expect(TABLE_NAMES).toHaveLength(100);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

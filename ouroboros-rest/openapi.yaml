@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.33"
+  version: "0.37.34"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -576,6 +576,17 @@ tags:
 
       Reading is every member's, `viewer` included. Deciding is `owner`, `admin` or `member`;
       running the sweep on demand is `owner` or `admin`.
+
+  - name: fact-proposers
+    description: |-
+      **"Learned by the loop", deterministically** (BF.3,
+      [#412](https://github.com/NobuData/ouroboros/issues/412), decision **K5**). A versioned
+      registry of proposers promotes what the loop already writes — a person's correction note on
+      a failing case, a waiver's reason, a steer flagged *remember this* — into `proposed` facts
+      with typed provenance naming the source itself, and the rule-file import's bullets are its
+      fourth entry. Proposers run when their source is written; a candidate whose normalized text
+      matches an existing fact in **any** status (rejected included) is not proposed, and the
+      suppression is recorded. **Nothing auto-confirms** — every candidate lands `proposed`.
 
   - name: knowledge
     description: |-
@@ -17090,6 +17101,210 @@ paths:
         "422":
           description: |-
             `validation_failed` — a malformed body or id.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/fact-proposers:
+    get:
+      tags: [fact-proposers]
+      summary: The fact proposer registry
+      description: |-
+        The deterministic proposers (BF.3, [#412](https://github.com/NobuData/ouroboros/issues/412)),
+        as data — each entry's kind, version, trigger, source, extraction rule and provenance shape,
+        and the registry's own version. `landsAs` is always `proposed`: no proposer can land a
+        candidate in any other status (decision **K3**).
+
+        **Every member**, `viewer` included.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: listFactProposers
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The registry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactProposerRegistry"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/fact-proposers/suppressions:
+    get:
+      tags: [fact-proposers]
+      summary: Candidates a proposer did not propose, and the fact each matched
+      description: |-
+        Dedupe made observable (BF.3, [#412](https://github.com/NobuData/ouroboros/issues/412)): a
+        candidate whose normalized text — case, width, inline markup, whitespace and trailing
+        punctuation folded — matches an existing fact of its repository or the whole workspace, in
+        **any** status (a rejected fact does not come back next week), is not proposed. Each such
+        suppression is recorded once per source and matched fact, with the proposer, its version,
+        the candidate text and its typed provenance. Newest first.
+
+        **Every member**, `viewer` included.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: listFactSuppressions
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          description: How many suppressions to return, newest first.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The suppressions.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactSuppressionList"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a `limit` outside 1–200.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/fact-proposers/backfill:
+    post:
+      tags: [fact-proposers]
+      summary: Run every proposer over one run's sources
+      description: |-
+        The proposers normally run when their source is written — a classification carrying a
+        correction note, a waiver, a steer flagged *remember this*. This runs them all over one run's
+        sources, oldest first, for a run whose sources predate BF.3
+        ([#412](https://github.com/NobuData/ouroboros/issues/412)). **Idempotent**: a source a fact
+        already cites answers `already_proposed`, a source already suppressed answers `suppressed`
+        with the same suppression, and neither writes anything.
+
+        Each outcome names its source and either the fact proposed (born `proposed`, never
+        confirmed), the fact it was suppressed against, or why it was skipped — `not_human` (a rule's
+        or a model's classification), `no_note`, `not_remembered`, or an extraction that left
+        nothing (`empty`), one word (`too_short`) or more than 200 characters (`too_long`).
+
+        **`owner` or `admin`** — it writes proposals on the workspace's behalf.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: backfillFactProposers
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/BackfillFactProposersBody"
+            example:
+              runId: 5eed0021-0000-4000-8000-000000000482
+      responses:
+        "200":
+          description: What each source became, and the counts.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FactProposerBackfill"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller's role is not `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `run_not_found` — no such run in this workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a `runId` that is not a uuid.
           content:
             application/json:
               schema:
@@ -37604,14 +37819,277 @@ components:
             properties:
               kind:
                 type: string
-                enum: [run, pull_request, ticket, import]
+                enum:
+                  [run, pull_request, ticket, classification, waiver, steer, run_stage, gate, person, import]
+                description: |-
+                  `run`, `pull_request` and `ticket` (V071), and — since BF.3 (#412) — the source a
+                  proposer learned from - `classification`, `waiver`, `steer`, `run_stage`, `gate`, and
+                  the `person` who steered. `import` names a rules file by `file` and `section`.
               id:
                 type: string
-                format: uuid
+                description: A row's uuid; a person's user id for `person`. Absent for `import`.
               file:
                 type: string
               section:
                 type: string
+
+    FactProposerDefinition:
+      type: object
+      title: FactProposerDefinition
+      description: One entry of the proposer registry, as data (BF.3, #412).
+      additionalProperties: false
+      required: [kind, version, trigger, source, extraction, provenanceShape]
+      properties:
+        kind:
+          type: string
+          enum: [correction_note, waiver, steer, import]
+        version:
+          type: integer
+          minimum: 1
+          description: Bumped whenever the entry's rule would answer differently for the same source.
+        trigger:
+          type: string
+          description: When it runs.
+        source:
+          type: string
+          description: What it reads.
+        extraction:
+          type: string
+          description: How it turns the source into text.
+        provenanceShape:
+          type: array
+          items:
+            type: string
+          description: The provenance ref kinds its candidates carry; `?` optional, `*` zero or more.
+          examples: [[run, pull_request?, classification]]
+
+    FactProposerRegistry:
+      type: object
+      title: FactProposerRegistry
+      description: The deterministic proposers (BF.3, #412).
+      additionalProperties: false
+      required: [version, landsAs, proposers]
+      properties:
+        version:
+          type: integer
+          minimum: 1
+          description: The registry's own version.
+        landsAs:
+          type: string
+          const: proposed
+          description: Every candidate lands `proposed` — no proposer can confirm (K3).
+        proposers:
+          type: array
+          items:
+            $ref: "#/components/schemas/FactProposerDefinition"
+
+    FactSuppression:
+      type: object
+      title: FactSuppression
+      description: A candidate not proposed because an existing fact matched it (V074, #412).
+      additionalProperties: false
+      required:
+        [id, proposer, proposerVersion, repoRef, text, matchedFactId, provenance, sourceKey, createdAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        proposer:
+          type: string
+          enum: [correction_note, waiver, steer, import, llm]
+        proposerVersion:
+          type: integer
+          minimum: 1
+        repoRef:
+          type: [string, "null"]
+          examples: [acme-robotics/helios-firmware]
+        text:
+          type: string
+          description: The candidate as extracted, inline-code spans verbatim.
+          examples: ["Team prefers `k_msgq` over `k_fifo` in ISR paths"]
+        matchedFactId:
+          type: string
+          format: uuid
+          description: The existing fact it matched, in any status — rejected and expired included.
+        provenance:
+          $ref: "#/components/schemas/FactProvenance"
+        sourceKey:
+          type: string
+          description: The source row as `<kind>:<id>`.
+          examples: ["classification:5eed0037-0000-4000-8000-000000048201"]
+        createdAt:
+          type: string
+          format: date-time
+
+    FactSuppressionList:
+      type: object
+      title: FactSuppressionList
+      description: A workspace's recorded suppressions, newest first.
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/FactSuppression"
+
+    FactCandidateSource:
+      type: object
+      title: FactCandidateSource
+      description: The row a candidate came from.
+      additionalProperties: false
+      required: [kind, id]
+      properties:
+        kind:
+          type: string
+          enum: [classification, waiver, steer, import, pr_review_cycle, run_observation, correction_note]
+        id:
+          type: string
+          description: The row's id, or `<file>#<section>` for an import.
+
+    FactCandidate:
+      type: object
+      title: FactCandidate
+      description: |-
+        A fact a proposer offered. There is no status — it lands `proposed` (K3). `proposer` names
+        what produced it, so the UI phrases provenance honestly.
+      additionalProperties: false
+      required: [text, repoRef, proposer, proposerVersion, category, confidence, provenance, source]
+      properties:
+        text:
+          type: string
+          maxLength: 200
+          examples: ["Team prefers `k_msgq` over `k_fifo` in ISR paths"]
+        repoRef:
+          type: [string, "null"]
+        proposer:
+          type: string
+          enum: [correction_note, waiver, steer, import, llm]
+        proposerVersion:
+          type: integer
+          minimum: 1
+        category:
+          type: string
+          enum: [convention, environment, limitation, instruction]
+          description: A waiver's reason is `environment` or a known `limitation`.
+        confidence:
+          type: [number, "null"]
+          minimum: 0
+          maximum: 1
+          description: A model's confidence; `null` for a deterministic rule — no invented number.
+        provenance:
+          $ref: "#/components/schemas/FactProvenance"
+        source:
+          $ref: "#/components/schemas/FactCandidateSource"
+
+    FactProposalOutcome:
+      title: FactProposalOutcome
+      description: What became of one source.
+      oneOf:
+        - type: object
+          title: FactProposalProposed
+          additionalProperties: false
+          required: [outcome, source, factId, candidate]
+          properties:
+            outcome:
+              type: string
+              const: proposed
+            source:
+              $ref: "#/components/schemas/FactCandidateSource"
+            factId:
+              type: string
+              format: uuid
+              description: The new fact — `proposed`, awaiting review.
+            candidate:
+              $ref: "#/components/schemas/FactCandidate"
+        - type: object
+          title: FactProposalSuppressed
+          additionalProperties: false
+          required: [outcome, source, matchedFactId, suppressionId, candidate]
+          properties:
+            outcome:
+              type: string
+              const: suppressed
+            source:
+              $ref: "#/components/schemas/FactCandidateSource"
+            matchedFactId:
+              type: string
+              format: uuid
+            suppressionId:
+              type: string
+              format: uuid
+            candidate:
+              $ref: "#/components/schemas/FactCandidate"
+        - type: object
+          title: FactProposalAlreadyProposed
+          additionalProperties: false
+          required: [outcome, source, factId]
+          properties:
+            outcome:
+              type: string
+              const: already_proposed
+            source:
+              $ref: "#/components/schemas/FactCandidateSource"
+            factId:
+              type: string
+              format: uuid
+              description: The fact that already cites this source.
+        - type: object
+          title: FactProposalSkipped
+          additionalProperties: false
+          required: [outcome, source, reason]
+          properties:
+            outcome:
+              type: string
+              const: skipped
+            source:
+              $ref: "#/components/schemas/FactCandidateSource"
+            reason:
+              type: string
+              enum: [source_not_found, no_note, not_human, not_remembered, empty, too_short, too_long]
+
+    FactProposerBackfill:
+      type: object
+      title: FactProposerBackfill
+      description: What every source of one run became.
+      additionalProperties: false
+      required: [runId, outcomes, counts]
+      properties:
+        runId:
+          type: string
+          format: uuid
+        outcomes:
+          type: array
+          items:
+            $ref: "#/components/schemas/FactProposalOutcome"
+        counts:
+          type: object
+          additionalProperties: false
+          required: [proposed, suppressed, alreadyProposed, skipped]
+          properties:
+            proposed:
+              type: integer
+              minimum: 0
+            suppressed:
+              type: integer
+              minimum: 0
+            alreadyProposed:
+              type: integer
+              minimum: 0
+            skipped:
+              type: integer
+              minimum: 0
+
+    BackfillFactProposersBody:
+      type: object
+      title: BackfillFactProposersBody
+      description: Which run's sources to propose from.
+      additionalProperties: false
+      required: [runId]
+      properties:
+        runId:
+          type: string
+          format: uuid
 
     FactAnchor:
       type: object

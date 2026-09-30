@@ -25401,6 +25401,292 @@ select pg_temp.must_hold(
   'a deleted workspace takes its environment recipes');
 
 -- ===========================================================================
+-- V074 — the proposers' typed provenance and the suppression record (#412, BF.3)
+-- ===========================================================================
+--
+-- BF.3's deterministic proposers cite the source that taught a fact. Asserted: provenance admits
+-- the five new row kinds (classification, waiver, steer, run_stage, gate) and a person, each
+-- shaped; each resolves to the fact's own workspace — another workspace's row, a control that is
+-- not a steer and a person who is not a member are refused; a fact from any proposer is born
+-- proposed (no proposer can confirm at insert); fact_suppressions records a suppressed candidate
+-- with its proposer, version, matched fact (of its own workspace) and typed provenance, once per
+-- source and fact, and is append-only by trigger and by grant.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v074',       'Acme Robotics', 'acme-robotics-v074', now()),
+  ('org-v074-other', 'Other Works',   'other-works-v074',   now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a7400000-0000-0000-0000-00000000000a', 'Ken S',   'ken@proposers-v074.dev',   true),
+  ('a7400000-0000-0000-0000-00000000000b', 'Priya N', 'priya@proposers-v074.dev', true);
+
+insert into ouroboros.member ("id", "organizationId", "userId", "role", "createdAt") values
+  ('member-v074-ken',   'org-v074',       'a7400000-0000-0000-0000-00000000000a', 'owner',  now()),
+  ('member-v074-priya', 'org-v074-other', 'a7400000-0000-0000-0000-00000000000b', 'member', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a7410000-0000-0000-0000-00000000000a', 'org-v074',       'acme-robotics-v074', true),
+  ('a7410000-0000-0000-0000-00000000000b', 'org-v074-other', 'other-works-v074',   true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a741f000-0000-0000-0000-00000000000a', 'a7410000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a741f000-0000-0000-0000-00000000000b', 'a7410000-0000-0000-0000-00000000000b',
+   'other-firmware', true, 'main');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a7420000-0000-0000-0000-00000000000a', 'org-v074', 'a741f000-0000-0000-0000-00000000000a',
+     482, 'Fix flaky CAN-bus telemetry test', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '1 hour'),
+    ('a7420000-0000-0000-0000-00000000000b', 'org-v074-other', 'a741f000-0000-0000-0000-00000000000b',
+     7, 'Somebody else''s loop', 'standard-fix', 'claude-fable-5',
+     'building', 'Test', 6, 8, now() - interval '1 hour');
+
+insert into ouroboros.run_stages
+    (id, run_id, stage_key, stage_label, "position", attempt, status, started_at) values
+  ('a7430000-0000-0000-0000-00000000000a', 'a7420000-0000-0000-0000-00000000000a',
+   'implement', 'Implement', 4, 1, 'active', now() - interval '30 minutes'),
+  ('a7430000-0000-0000-0000-00000000000b', 'a7420000-0000-0000-0000-00000000000b',
+   'implement', 'Implement', 4, 1, 'active', now() - interval '30 minutes');
+
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status, started_at) values
+  ('a7440000-0000-0000-0000-00000000000a', 'org-v074', 'a7420000-0000-0000-0000-00000000000a',
+   1, 'complete', now() - interval '30 minutes'),
+  ('a7440000-0000-0000-0000-00000000000b', 'org-v074-other', 'a7420000-0000-0000-0000-00000000000b',
+   1, 'complete', now() - interval '30 minutes');
+
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind, meta) values
+  ('a7450000-0000-0000-0000-00000000000a', 'org-v074', 'a7440000-0000-0000-0000-00000000000a',
+   'telemetry integration', 'qemu_cortex_m3', 'sim', '{}'),
+  ('a7450000-0000-0000-0000-00000000000b', 'org-v074-other', 'a7440000-0000-0000-0000-00000000000b',
+   'telemetry integration', 'qemu_cortex_m3', 'sim', '{}');
+
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retries, retry_outcomes) values
+  ('a7460000-0000-0000-0000-00000000000a', 'org-v074', 'a7450000-0000-0000-0000-00000000000a',
+   'frames keep order under ISR load', 'telemetry', 'failed', 0, '["failed"]'),
+  ('a7460000-0000-0000-0000-00000000000b', 'org-v074-other', 'a7450000-0000-0000-0000-00000000000b',
+   'frames keep order under ISR load', 'telemetry', 'failed', 0, '["failed"]');
+
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, note, actor, created_by) values
+  ('a7470000-0000-0000-0000-00000000000a', 'org-v074', 'a7460000-0000-0000-0000-00000000000a',
+   'product_bug', 'Team prefers `k_msgq` over `k_fifo` in ISR paths.', 'human',
+   'a7400000-0000-0000-0000-00000000000a'),
+  ('a7470000-0000-0000-0000-00000000000b', 'org-v074-other', 'a7460000-0000-0000-0000-00000000000b',
+   'product_bug', 'Somebody else''s note.', 'human', 'a7400000-0000-0000-0000-00000000000b');
+
+insert into ouroboros.pr_waivers (id, organization_id, run_id, author, reason) values
+  ('a7480000-0000-0000-0000-00000000000a', 'org-v074', 'a7420000-0000-0000-0000-00000000000a',
+   'a7400000-0000-0000-0000-00000000000a', 'Rig 2''s thermal chamber is out for calibration.'),
+  ('a7480000-0000-0000-0000-00000000000b', 'org-v074-other', 'a7420000-0000-0000-0000-00000000000b',
+   'a7400000-0000-0000-0000-00000000000b', 'Somebody else''s waiver.');
+
+insert into ouroboros.run_controls (id, run_id, kind, payload, remember, requested_by, expires_at)
+  values
+    ('a7490000-0000-0000-0000-00000000000a', 'a7420000-0000-0000-0000-00000000000a', 'steer',
+     'Always run `west update` before the first build of the day.', true,
+     'a7400000-0000-0000-0000-00000000000a', now() + interval '5 minutes'),
+    ('a7490000-0000-0000-0000-00000000000b', 'a7420000-0000-0000-0000-00000000000b', 'steer',
+     'Somebody else''s steer.', true,
+     'a7400000-0000-0000-0000-00000000000b', now() + interval '5 minutes');
+
+insert into ouroboros.run_controls (id, run_id, kind, requested_by, expires_at) values
+  ('a7490000-0000-0000-0000-0000000000cc', 'a7420000-0000-0000-0000-00000000000a', 'pause',
+   'a7400000-0000-0000-0000-00000000000a', now() + interval '5 minutes');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name, config) values
+  ('a74a0000-0000-0000-0000-0000000000a1', 'org-v074', 'github', 'GitHub · acme-robotics',
+   '{"login": "acme-robotics-v074", "repos": ["helios-firmware"]}'),
+  ('a74a0000-0000-0000-0000-0000000000b1', 'org-v074-other', 'github', 'GitHub · other', '{}');
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title,
+     head_branch, base_branch, run_id)
+  values
+    ('a74b0000-0000-0000-0000-000000000514', 'org-v074', 'a74a0000-0000-0000-0000-0000000000a1',
+     514, 'https://github.com/acme-robotics/helios-firmware/pull/514',
+     'can: k_msgq in the ISR path', 'loop/1847-isr', 'main', 'a7420000-0000-0000-0000-00000000000a'),
+    ('a74b0000-0000-0000-0000-000000000077', 'org-v074-other', 'a74a0000-0000-0000-0000-0000000000b1',
+     77, 'https://github.com/other/repo/pull/77', 'somebody else''s change', 'x', 'main',
+     'a7420000-0000-0000-0000-00000000000b');
+
+insert into ouroboros.pr_gate_definitions (id, pr_id, gate_key, source, label) values
+  ('a74c0000-0000-0000-0000-00000000000a', 'a74b0000-0000-0000-0000-000000000514',
+   'test_suite', 'standard-fix@v14 pin', 'Test suite'),
+  ('a74c0000-0000-0000-0000-00000000000b', 'a74b0000-0000-0000-0000-000000000077',
+   'test_suite', 'standard-fix@v14 pin', 'Test suite');
+
+-- --- the widened shape ------------------------------------------------------------------------
+insert into ouroboros.facts (id, organization_id, repo_ref, text, proposer, provenance) values
+  ('a74d0000-0000-0000-0000-000000000001', 'org-v074', 'acme-robotics-v074/helios-firmware',
+   'Team prefers `k_msgq` over `k_fifo` in ISR paths', 'correction_note',
+   '{"line": "from correction note (run #1847)",
+     "refs": [{"kind": "run", "id": "a7420000-0000-0000-0000-00000000000a"},
+              {"kind": "pull_request", "id": "a74b0000-0000-0000-0000-000000000514"},
+              {"kind": "classification", "id": "a7470000-0000-0000-0000-00000000000a"}]}'),
+  ('a74d0000-0000-0000-0000-000000000002', 'org-v074', 'acme-robotics-v074/helios-firmware',
+   'Rig 2''s thermal chamber is out for calibration', 'waiver',
+   '{"line": "from waiver on PR #514",
+     "refs": [{"kind": "pull_request", "id": "a74b0000-0000-0000-0000-000000000514"},
+              {"kind": "gate", "id": "a74c0000-0000-0000-0000-00000000000a"},
+              {"kind": "waiver", "id": "a7480000-0000-0000-0000-00000000000a"}]}'),
+  ('a74d0000-0000-0000-0000-000000000003', 'org-v074', null,
+   'Always run `west update` before the first build of the day', 'steer',
+   '{"line": "from steer (run #1847)",
+     "refs": [{"kind": "run", "id": "a7420000-0000-0000-0000-00000000000a"},
+              {"kind": "run_stage", "id": "a7430000-0000-0000-0000-00000000000a"},
+              {"kind": "person", "id": "a7400000-0000-0000-0000-00000000000a"},
+              {"kind": "steer", "id": "a7490000-0000-0000-0000-00000000000a"}]}');
+
+select pg_temp.must_hold(
+  (select array_agg(distinct r ->> 'kind' order by r ->> 'kind')
+          = array['classification', 'gate', 'person', 'pull_request', 'run', 'run_stage', 'steer',
+                  'waiver']
+     from ouroboros.facts f
+     cross join lateral jsonb_array_elements(f.provenance -> 'refs') as r
+    where f.organization_id = 'org-v074'),
+  'provenance names the source itself: classification, waiver, steer, run stage, gate and person');
+
+select pg_temp.must_hold(
+  (select bool_and(f.status = 'proposed')
+     from ouroboros.facts f where f.organization_id = 'org-v074'),
+  'every proposer''s fact is born proposed');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.facts (organization_id, text, status, proposer, provenance)
+    values ('org-v074', 'probe', 'confirmed', %L, '{"line": "x", "refs": []}')$$, p),
+  'no proposer can insert a confirmed fact: ' || p, 'facts_legal_transition')
+  from unnest(array['correction_note', 'waiver', 'steer', 'import', 'llm']) as p;
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.facts (organization_id, text, proposer, provenance)
+    values ('org-v074', 'probe', 'steer', %L)$$, prov),
+  'the new provenance kinds are typed: ' || prov, 'facts_provenance_typed')
+  from unnest(array[
+    '{"line": "x", "refs": [{"kind": "classification"}]}',
+    '{"line": "x", "refs": [{"kind": "classification", "id": "1847"}]}',
+    '{"line": "x", "refs": [{"kind": "waiver", "id": "A7480000-0000-0000-0000-00000000000A"}]}',
+    '{"line": "x", "refs": [{"kind": "steer", "id": "a7490000-0000-0000-0000-00000000000a", "remember": true}]}',
+    '{"line": "x", "refs": [{"kind": "run_stage", "id": 4}]}',
+    '{"line": "x", "refs": [{"kind": "gate", "key": "test_suite"}]}',
+    '{"line": "x", "refs": [{"kind": "person"}]}',
+    '{"line": "x", "refs": [{"kind": "person", "id": " "}]}',
+    '{"line": "x", "refs": [{"kind": "person", "id": 7}]}',
+    '{"line": "x", "refs": [{"kind": "actor", "id": "a7400000-0000-0000-0000-00000000000a"}]}']) as prov;
+
+-- --- every new kind resolves to the fact's own workspace -----------------------------------------
+select pg_temp.must_reject(
+  format($$insert into ouroboros.facts (organization_id, text, proposer, provenance)
+    values ('org-v074', 'probe', 'steer', %L)$$,
+    jsonb_build_object('line', 'x', 'refs', jsonb_build_array(ref))),
+  'a provenance ' || (ref ->> 'kind') || ' resolves to this workspace', 'facts_provenance_resolves')
+  from unnest(array[
+    '{"kind": "classification", "id": "a7470000-0000-0000-0000-00000000000b"}'::jsonb,
+    '{"kind": "waiver", "id": "a7480000-0000-0000-0000-00000000000b"}',
+    '{"kind": "steer", "id": "a7490000-0000-0000-0000-00000000000b"}',
+    '{"kind": "run_stage", "id": "a7430000-0000-0000-0000-00000000000b"}',
+    '{"kind": "gate", "id": "a74c0000-0000-0000-0000-00000000000b"}',
+    '{"kind": "person", "id": "a7400000-0000-0000-0000-00000000000b"}',
+    '{"kind": "classification", "id": "a7470000-0000-0000-0000-00000000dead"}']) as ref;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.facts (organization_id, text, proposer, provenance)
+    values ('org-v074', 'probe', 'steer',
+            '{"line": "x", "refs": [{"kind": "steer",
+                                     "id": "a7490000-0000-0000-0000-0000000000cc"}]}')$$,
+  'a provenance steer is a steer, not another kind of control', 'facts_provenance_resolves');
+
+-- --- fact_suppressions ---------------------------------------------------------------------------
+insert into ouroboros.fact_suppressions
+    (id, organization_id, repo_ref, proposer, proposer_version, text, normalized_text,
+     matched_fact_id, provenance, source_key)
+  values
+    ('a74e0000-0000-0000-0000-000000000001', 'org-v074', 'acme-robotics-v074/helios-firmware',
+     'correction_note', 1, 'Team prefers `k_msgq` over `k_fifo` in ISR paths.',
+     'team prefers k_msgq over k_fifo in isr paths', 'a74d0000-0000-0000-0000-000000000001',
+     '{"line": "from correction note (run #1847)",
+       "refs": [{"kind": "classification", "id": "a7470000-0000-0000-0000-00000000000a"}]}',
+     'classification:a7470000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select s.proposer = 'correction_note' and s.proposer_version = 1
+          and s.matched_fact_id = 'a74d0000-0000-0000-0000-000000000001'
+          and s.provenance -> 'refs' -> 0 ->> 'kind' = 'classification'
+     from ouroboros.fact_suppressions s where s.id = 'a74e0000-0000-0000-0000-000000000001'),
+  'a suppression records its proposer, version, matched fact and provenance');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.fact_suppressions
+      (organization_id, proposer, proposer_version, text, normalized_text, matched_fact_id,
+       provenance, source_key)
+    values ('org-v074', 'correction_note', 1, 'again', 'again',
+            'a74d0000-0000-0000-0000-000000000001', '{"line": "x", "refs": []}',
+            'classification:a7470000-0000-0000-0000-00000000000a')$$,
+  'a source is suppressed against a fact once', 'fact_suppressions_source_fact_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.fact_suppressions
+      (organization_id, proposer, proposer_version, text, normalized_text, matched_fact_id,
+       provenance, source_key)
+    values ('org-v074-other', 'waiver', 1, 'x', 'x', 'a74d0000-0000-0000-0000-000000000001',
+            '{"line": "x", "refs": []}', 'waiver:a7480000-0000-0000-0000-00000000000b')$$,
+  'a suppression names a fact of its own workspace', 'fact_suppressions_matched_fact_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.fact_suppressions
+      (organization_id, proposer, proposer_version, text, normalized_text, matched_fact_id,
+       provenance, source_key)
+    values ('org-v074', 'waiver', 1, 'x', 'x', 'a74d0000-0000-0000-0000-000000000002',
+            '{"line": "x", "refs": [{"kind": "waiver",
+                                     "id": "a7480000-0000-0000-0000-00000000000b"}]}',
+            'waiver:a7480000-0000-0000-0000-00000000000b')$$,
+  'a suppression''s provenance resolves to its workspace', 'facts_provenance_resolves');
+
+select pg_temp.must_reject(
+  format($$insert into ouroboros.fact_suppressions
+      (organization_id, proposer, proposer_version, text, normalized_text, matched_fact_id,
+       provenance, source_key)
+    values ('org-v074', %L, %s, %L, 'x', 'a74d0000-0000-0000-0000-000000000002', %L, %L)$$,
+    probe.proposer, probe.version, probe.text, probe.provenance, probe.source_key),
+  'a suppression is shaped: ' || probe.name, probe.constraint_name)
+  from (values
+    ('manual is never suppressed', 'manual', 1, 'x', '{"line": "x", "refs": []}', 'waiver:1',
+     'fact_suppressions_proposer_valid'),
+    ('a version is at least 1', 'waiver', 0, 'x', '{"line": "x", "refs": []}', 'waiver:1',
+     'fact_suppressions_proposer_version_positive'),
+    ('the text is present', 'waiver', 1, ' ', '{"line": "x", "refs": []}', 'waiver:1',
+     'fact_suppressions_text_present'),
+    ('the provenance is typed', 'waiver', 1, 'x', '{"line": "x"}', 'waiver:1',
+     'fact_suppressions_provenance_typed'),
+    ('the source key names its kind', 'waiver', 1, 'x', '{"line": "x", "refs": []}', 'waiver',
+     'fact_suppressions_source_key_shape')
+  ) as probe (name, proposer, version, text, provenance, source_key, constraint_name);
+
+select pg_temp.must_reject(
+  $$update ouroboros.fact_suppressions set text = 'rewritten'
+     where id = 'a74e0000-0000-0000-0000-000000000001'$$,
+  'a suppression cannot be revised');
+
+select pg_temp.must_hold(
+  has_table_privilege('ouroboros_app', 'ouroboros.fact_suppressions', 'select')
+  and has_table_privilege('ouroboros_app', 'ouroboros.fact_suppressions', 'insert')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.fact_suppressions', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.fact_suppressions', 'delete'),
+  'the app role may read and append suppressions, and nothing else');
+
+delete from ouroboros.organization where "id" in ('org-v074', 'org-v074-other');
+delete from ouroboros."user" where "id" in ('a7400000-0000-0000-0000-00000000000a',
+                                           'a7400000-0000-0000-0000-00000000000b');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.fact_suppressions
+               where organization_id in ('org-v074', 'org-v074-other')),
+  'a deleted workspace takes its suppressions');
+
+-- ===========================================================================
 -- BE.5 — the knowledge domain's rules, covered rather than merely closed (#409)
 -- ===========================================================================
 --

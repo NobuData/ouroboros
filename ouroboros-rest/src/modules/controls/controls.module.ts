@@ -30,6 +30,7 @@ import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 
 import { DbModule } from "../db/db.module";
+import { FactProposersModule } from "../fact-proposers/proposers.module";
 import { ControlsController } from "./controls.controller";
 import { ControlsInternalController } from "./controls.internal.controller";
 import { ControlsRepository } from "./controls.repository";
@@ -37,7 +38,7 @@ import { ControlsService } from "./controls.service";
 import { ControlsSweeper } from "./controls.sweeper";
 
 @Module({
-  imports: [DbModule, ScheduleModule.forRoot()],
+  imports: [DbModule, ScheduleModule.forRoot(), FactProposersModule],
   controllers: [ControlsController, ControlsInternalController],
   providers: [ControlsRepository, ControlsService, ControlsSweeper],
   exports: [ControlsService],

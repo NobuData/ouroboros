@@ -25,6 +25,7 @@ import { TicketSourceRegistry } from "../../ticket-sources/ticket-source.registr
 import type { SyncSource } from "../../ticket-sources/ticket-sources.repository";
 import type { PrMirrorStore } from "../pr-sync.repository";
 import { PrSyncService, type PrSourceOpener } from "../pr-sync.service";
+import type { FactSourceObserver } from "../../fact-proposers/proposers.observer";
 import { waiverAnnotationKey } from "./criteria.annotation";
 import type { AttachEvidenceDto } from "./criteria.dto";
 import { CRITERIA_ERRORS } from "./criteria.errors";
@@ -333,9 +334,10 @@ const MIRROR: PrMirrorStore = {
  * The service over a store holding PR #514 (opened by run #482, on the fake host) with two
  * revisions, and the audit trail it writes.
  *
+ * @param factSources - BF.3's source observer (#412), when a case listens for it.
  * @returns Everything a case needs.
  */
-function build() {
+function build(factSources?: FactSourceObserver) {
   const store = new MemoryStore();
   const host = new InMemoryPrHost();
   const audit: AuditRecord[] = [];
@@ -377,7 +379,12 @@ function build() {
       return Promise.resolve("event-id");
     },
   } as unknown as AuditService;
-  const service = new CriteriaService(store as unknown as CriteriaRepository, sync, auditService);
+  const service = new CriteriaService(
+    store as unknown as CriteriaRepository,
+    sync,
+    auditService,
+    factSources,
+  );
 
   return { service, store, host, audit, prNumber };
 }
@@ -467,6 +474,19 @@ describe("CriteriaService", () => {
       ["pr_criterion.waived", KEN.id, "pr_criterion"],
     ]);
     expect(audit[1].detail).toMatchObject({ from: "verified", annotation: "annotated" });
+  });
+
+  it("reports the waiver to BF.3's waiver proposer (#412) once it is recorded", async () => {
+    const observer = { sourceWritten: jest.fn().mockResolvedValue(undefined) };
+    const { service } = build(observer);
+    const { id } = await service.create(ORG, PR_ID, KEN, { claim: "Flake must not reappear" });
+
+    const waived = await service.waive(ORG, PR_ID, id, KEN, { reason: "thermal chamber down" });
+
+    expect(observer.sourceWritten).toHaveBeenCalledWith(ORG, {
+      kind: "waiver",
+      id: waived.criterion.waiver?.id,
+    });
   });
 
   it("re-waiving edits the existing comment rather than posting a second one", async () => {
