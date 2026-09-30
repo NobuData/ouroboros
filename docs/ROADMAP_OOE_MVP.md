@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**319 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
+**320 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 | **262** |
-| 🟡 **In progress** | P11, P12 | **57** of 66 |
+| 🟡 **In progress** | P11, P12 | **58** of 66 |
 | — **Not started** | P13–P17 | 0 of 126 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1574,7 +1574,7 @@ the blockquote above that records what it did and what it did differently.
 | 319 | **BA.3** | ✅ [#382](https://github.com/NobuData/ouroboros/issues/382) | Dry-run policy plane | ouroboros-rest, ouroboros-db | M | AW.4, AX.4 |
 | 320 | **BF.7** | ✅ [#416](https://github.com/NobuData/ouroboros/issues/416) | Knowledge integration tests | ouroboros-rest | M | BF.1, BF.6 |
 | 321 | **BG.2** | ✅ [#418](https://github.com/NobuData/ouroboros/issues/418) | Skills table | ouroboros-ui | M | BF.1, BG.1 |
-| 322 | **BG.3** | [#419](https://github.com/NobuData/ouroboros/issues/419) | Learned-facts card | ouroboros-ui | M | BF.2, BF.3, BG.1 |
+| 322 | **BG.3** | ✅ [#419](https://github.com/NobuData/ouroboros/issues/419) | Learned-facts card | ouroboros-ui | M | BF.2, BF.3, BG.1 |
 | 323 | **BG.4** | [#420](https://github.com/NobuData/ouroboros/issues/420) | Playbooks & repo-profile cards | ouroboros-ui | M | BE.4, BF.6, BG.1 |
 | 324 | **BG.5** | [#421](https://github.com/NobuData/ouroboros/issues/421) | Scope ladder & manifest preview | ouroboros-ui | S | BF.5, BG.1 |
 | 325 | **BA.4** | [#383](https://github.com/NobuData/ouroboros/issues/383) | Onboarding seeds — mockup-13 parity + probes | ouroboros-db, .github | S | 3.6, BA.1, BA.3 |

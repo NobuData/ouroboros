@@ -15,7 +15,7 @@
  * read the same table.
  */
 
-import { BUILD_FARM_PATH, DASHBOARD_PATH, ISSUES_PATH, WORKFLOWS_PATH } from "@/app/paths";
+import { BUILD_FARM_PATH, DASHBOARD_PATH, ISSUES_PATH, KNOWLEDGE_PATH, WORKFLOWS_PATH } from "@/app/paths";
 
 /** A module a run console may be opened from. */
 export interface RunOrigin {
@@ -55,9 +55,19 @@ export const WORKFLOWS_ORIGIN: RunOrigin = Object.freeze({
   route: WORKFLOWS_PATH,
 });
 
+/**
+ * Knowledge — the learned-facts card's provenance links open the run a fact was learned from
+ * (BG.3, [#419](https://github.com/NobuData/ouroboros/issues/419)).
+ */
+export const KNOWLEDGE_ORIGIN: RunOrigin = Object.freeze({
+  id: "knowledge",
+  label: "Knowledge",
+  route: KNOWLEDGE_PATH,
+});
+
 /** Every accepted origin, by the id `?from=` carries. */
 const ORIGINS: ReadonlyMap<string, RunOrigin> = new Map(
-  [DASHBOARD_ORIGIN, BUILD_FARM_ORIGIN, ISSUES_ORIGIN, WORKFLOWS_ORIGIN].map((origin) => [
+  [DASHBOARD_ORIGIN, BUILD_FARM_ORIGIN, ISSUES_ORIGIN, WORKFLOWS_ORIGIN, KNOWLEDGE_ORIGIN].map((origin) => [
     origin.id,
     origin,
   ]),

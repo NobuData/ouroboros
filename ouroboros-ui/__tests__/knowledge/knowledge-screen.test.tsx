@@ -2,11 +2,11 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { CREATE_SUBMIT, DESCRIPTION_LABEL, NAME_LABEL, createdToast } from "@/app/knowledge/create";
+import { FACTS_FOOT } from "@/app/knowledge/facts";
 import { SKILLS_TABLE_NAME } from "@/app/knowledge/skills";
 import { DISMISS_TOAST } from "@/app/knowledge/toast";
 import {
   FACTS_REGION_ID,
-  FACTS_SEAT_NOTE,
   FACTS_TITLE,
   IMPORT_LABEL,
   KNOWLEDGE_EYEBROW,
@@ -24,8 +24,8 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 /**
  * The knowledge frame as it is drawn (#417): the head copy verbatim in both palettes, the two
  * actions for an administrator and neither for anyone else, the toast a create leaves under the
- * head, and the two seats the toast's anchors name — the skills table in one (#418), the
- * labelled seat for the facts card in the other.
+ * head, and the two cards under the anchors the toast names — the skills table (#418) and the
+ * learned-facts card (#419).
  */
 
 const createSkill = vi.fn();
@@ -33,6 +33,7 @@ const createSkill = vi.fn();
 vi.mock("@/app/knowledge/create-actions", () => ({ createSkill: (body: unknown) => createSkill(body) }));
 vi.mock("@/app/knowledge/import-actions", () => ({ previewImport: vi.fn(), applyImport: vi.fn() }));
 vi.mock("@/app/knowledge/skills-actions", () => ({ setSkillEnabled: vi.fn(), regenerateRepoMap: vi.fn() }));
+vi.mock("@/app/knowledge/facts-actions", () => ({ decideFact: vi.fn(), proposeFact: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));
@@ -51,6 +52,7 @@ function draw(mayAdminister = true) {
   return render(
     <KnowledgeScreen
       mayAdminister={mayAdminister}
+      mayDecide
       readings={knowledgeReadings()}
       role={mayAdminister ? "owner" : "member"}
       workspaceId={WORKSPACE_ID}
@@ -69,7 +71,7 @@ describe("the head", () => {
 
   it("renders the same markup in both palettes — the sheet is what differs", () => {
     const [light, dark] = renderInBothPalettes(
-      <KnowledgeScreen mayAdminister readings={knowledgeReadings()} role="owner" workspaceId={WORKSPACE_ID} />,
+      <KnowledgeScreen mayAdminister mayDecide readings={knowledgeReadings()} role="owner" workspaceId={WORKSPACE_ID} />,
     );
 
     expect(maskIds(light!)).toBe(maskIds(dark!));
@@ -128,7 +130,7 @@ describe("the toast", () => {
 });
 
 describe("the regions", () => {
-  it("mounts the skills table under the toast's draft-skills anchor, and labels the facts seat", () => {
+  it("mounts the skills table and the facts card under the anchors the toast names", () => {
     const { container } = draw();
 
     const skills = container.querySelector(`#${SKILLS_REGION_ID}`);
@@ -138,7 +140,8 @@ describe("the regions", () => {
     expect(skills).toContainElement(screen.getByRole("table", { name: SKILLS_TABLE_NAME }));
     expect(skills).toHaveTextContent("power-budget-checks");
     expect(facts).toHaveTextContent(FACTS_TITLE);
-    expect(facts).toHaveTextContent(FACTS_SEAT_NOTE);
+    expect(facts).toHaveTextContent("Zephyr 4.0 needs CONFIG_LEGACY_TIMER");
+    expect(facts).toHaveTextContent(FACTS_FOOT);
     expect(screen.getAllByRole("region")).toHaveLength(2);
   });
 

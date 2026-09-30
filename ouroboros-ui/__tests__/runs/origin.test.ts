@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { BUILD_FARM_PATH, DASHBOARD_PATH, ISSUES_PATH, WORKFLOWS_PATH } from "@/app/paths";
+import { BUILD_FARM_PATH, DASHBOARD_PATH, ISSUES_PATH, KNOWLEDGE_PATH, WORKFLOWS_PATH } from "@/app/paths";
 import {
   BUILD_FARM_ORIGIN,
   DASHBOARD_ORIGIN,
   ISSUES_ORIGIN,
+  KNOWLEDGE_ORIGIN,
   WORKFLOWS_ORIGIN,
   runOrigin,
 } from "@/app/runs/origin";
@@ -17,6 +18,7 @@ describe("runOrigin", () => {
     expect(runOrigin("build-farm")).toBe(BUILD_FARM_ORIGIN);
     expect(runOrigin("issues")).toBe(ISSUES_ORIGIN);
     expect(runOrigin("workflows")).toBe(WORKFLOWS_ORIGIN);
+    expect(runOrigin("knowledge")).toBe(KNOWLEDGE_ORIGIN);
   });
 
   it("leads each back to its own route", () => {
@@ -24,6 +26,7 @@ describe("runOrigin", () => {
     expect(BUILD_FARM_ORIGIN.route).toBe(BUILD_FARM_PATH);
     expect(ISSUES_ORIGIN.route).toBe(ISSUES_PATH);
     expect(WORKFLOWS_ORIGIN.route).toBe(WORKFLOWS_PATH);
+    expect(KNOWLEDGE_ORIGIN.route).toBe(KNOWLEDGE_PATH);
   });
 
   it("falls back to the dashboard for nothing, or for anything it does not know", () => {

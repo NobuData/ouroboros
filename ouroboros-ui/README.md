@@ -3438,8 +3438,8 @@ disabled would reasonably expect to draft and be refused on the first click.
 
 `/knowledge` ([#417](https://github.com/NobuData/ouroboros/issues/417)) is
 [`docs/mockups/14-knowledge.html`](../docs/mockups/14-knowledge.html)'s **frame**: the page head,
-its two actions, and the two seats the rest of the page grows into — the [skills table](#the-skills-table)
-([#418](https://github.com/NobuData/ouroboros/issues/418), built) and the learned-facts card
+its two actions, and the two cards the rest of the page grows around — the [skills table](#the-skills-table)
+([#418](https://github.com/NobuData/ouroboros/issues/418)) and the [learned-facts card](#the-learned-facts-card)
 ([#419](https://github.com/NobuData/ouroboros/issues/419)). The sidebar's **Knowledge** entry is live
 and leads here, which retires the `/knowledge` placeholder #49 held; the mockup's topbar is
 superseded by the shell.
@@ -3456,9 +3456,16 @@ issue. Scoped per repo or org-wide.
 │ repo-map              [repo]    every run       auto-generated nightly ⓘ [↻]  [on]
 │ power-budget-checks (draft)     — ⓘ            v1 · 20m ago  [off]   ← tinted
 └───────────────────────────────────────────────────────────────────┘
-┌ LEARNED BY THE LOOP ─────────────────┐
-│ arrives with #419                     │   ← #facts-awaiting
-└───────────────────────────────────────┘
+┌ LEARNED BY THE LOOP  (2 awaiting review)      [+ Add fact] Review all → ┐
+│ CI needs `west update` before first build of the day                     │   ← #facts-awaiting
+│ from build-farm failure pattern · confirmed by Ken, 6w ago · #552 ↗      │  ✓ confirmed  used 48×
+│ Team prefers `k_msgq` over `k_fifo` in ISR paths                         │
+│ from correction note (run #1847) · run ↗ · PR ↗           awaiting review  [Confirm] [Reject]
+│ ~~Zephyr 4.0 needs `CONFIG_LEGACY_TIMER`~~                               │
+│ expired on Zephyr 4.1 migration · was used 31× · CLAUDE.md § Kconfig ↗   │  expired  [Re-learn]
+│ Confirmed facts are injected into every run's context. Facts expire when │
+│ the code that taught them changes.                                       │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
 **The head is verbatim, and its actions are for administrators only.** Creating a skill and
@@ -3568,6 +3575,56 @@ became buttons carrying `aria-sort` for this — and the switch column sorts by 
 the calendar's (`coarseAgo` in [`format.ts`](app/format.ts): `2d ago`, `3w ago`, `2mo ago`),
 measured from the instant the page was read, which the reader passes down so the server and the
 browser agree about every figure.
+
+### The learned-facts card
+
+The card ([#419](https://github.com/NobuData/ouroboros/issues/419);
+[`facts-card.tsx`](app/knowledge/facts-card.tsx), the add dialog in
+[`add-fact.tsx`](app/knowledge/add-fact.tsx), every sentence and decision in
+[`facts.ts`](app/knowledge/facts.ts), the server hops in
+[`facts-actions.ts`](app/knowledge/facts-actions.ts)) has to earn trust for the whole feature, and
+it does it by showing its work:
+
+**Provenance is typed, and its links resolve.** The line under a fact is the service's — the
+proposer wrote it, honestly: *from correction note (run #1847)* for what BF.3 (#412) actually did,
+never the mockup's *from PR #514 review cycle*, which is the richer extraction #423 will make.
+The refs behind it become links exactly when there is somewhere to go: a run to its console and a
+PR to its page (`?from=knowledge` — a new entry in [`origin.ts`](app/runs/origin.ts), so the
+sidebar keeps **Knowledge** lit), a ticket to its tracker page (the reader in
+[`data.ts`](app/knowledge/data.ts) reads each cited ticket once through `GET /api/v1/backlog/{id}`
+for its number and repository; one it cannot read is drawn as *ticket (not readable)*, never as
+a dead link), and an import to the file on its host by section. A ref with no page of its own — a
+classification, a steer — is not drawn as a link at all. Inline code spans render as `<code>`.
+
+**Confirm and Reject are the product's gate.** Each is one `POST /api/v1/facts/{id}/…`; the
+service records the session's person as the actor, the row takes the fact it answered — *confirmed
+by Ken, 0s ago*, `✓ confirmed` — and the head's *awaiting review* decrements in place. A polite live
+region announces *Confirmed: …* for a reader who cannot see the row move; a refusal
+(`409 fact_transition_refused`, `fact_changed`) lands in the row as an alert the button is
+described by. The page re-reads behind every write.
+
+**A stale fact names the anchor change that flagged it** — *flagged stale 3d ago: path_glob anchor
+tests/hil/\*\* matched: …* — because *something near this changed, please look* is a different
+message from *this is wrong*. It offers **Re-confirm** (one press) and **Expire**, which opens a
+required-reason field in the row: the contract's `ExpireFactBody` wants the reason the row will
+print from then on.
+
+**The expired row is the card's best argument** and is kept exactly: struck through, *expired on
+Zephyr 4.1 migration · was used 31×* (the snapshot frozen at expiry, never the live count), and
+**Re-learn** — which makes a **new, linked proposal** at the top of the card while the expired row
+stays and says so. A confirmed fact's `used 48×` carries what it measures in its tooltip.
+
+**Add fact** collects the sentence, *Applies to* (the whole workspace or an enabled repository), an
+optional provenance line (*added by hand* when empty), and the **anchor editor**: any number of
+path-glob, dependency or platform-version anchors, refused before a round trip when one is empty
+or repeated. It lands `proposed`, like every fact (decision K3), with a toast saying nothing is
+injected until someone confirms it; the service's `fact_anchor_invalid` / `fact_anchor_exists`
+lands under the anchor it named.
+
+**Who decides is the service's rule** (BF.2, #411): owner, admin and member; a `viewer` sees every
+action in its place, inert with the reason, and a direct call gets the `403` back as a value.
+**Review all →** is inert with the reason that the needs-you inbox is mockup 16, not a dead end.
+Empty (*Nothing learned yet*, with how facts arrive), unread and *all reviewed* states are drawn.
 
 ## Run console
 

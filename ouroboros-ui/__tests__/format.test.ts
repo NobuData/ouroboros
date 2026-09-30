@@ -294,6 +294,7 @@ describe("coarseAgo", () => {
     expect(coarseAgo("2026-09-30T07:00:00.000Z", NOW)).toBe("7h ago");
     expect(coarseAgo("2026-09-28T14:00:00.000Z", NOW)).toBe("2d ago");
     expect(coarseAgo("2026-09-09T14:00:00.000Z", NOW)).toBe("3w ago");
+    expect(coarseAgo("2026-08-19T14:00:00.000Z", NOW)).toBe("6w ago");
     expect(coarseAgo("2026-07-31T14:00:00.000Z", NOW)).toBe("2mo ago");
     expect(coarseAgo("2024-09-30T14:00:00.000Z", NOW)).toBe("2y ago");
   });
@@ -301,8 +302,8 @@ describe("coarseAgo", () => {
   it("rounds down at every boundary, so a unit is claimed only once it has finished", () => {
     expect(coarseAgo("2026-09-23T14:00:01.000Z", NOW)).toBe("6d ago");
     expect(coarseAgo("2026-09-23T14:00:00.000Z", NOW)).toBe("1w ago");
-    expect(coarseAgo("2026-08-31T14:00:01.000Z", NOW)).toBe("4w ago");
-    expect(coarseAgo("2026-08-31T14:00:00.000Z", NOW)).toBe("1mo ago");
+    expect(coarseAgo("2026-08-05T14:00:01.000Z", NOW)).toBe("7w ago");
+    expect(coarseAgo("2026-08-05T14:00:00.000Z", NOW)).toBe("1mo ago");
   });
 
   it("draws a future instant as now rather than as a negative, and a bad one as itself", () => {

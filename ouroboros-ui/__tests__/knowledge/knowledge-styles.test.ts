@@ -124,3 +124,26 @@ describe("the skills table (#418)", () => {
     expect(rule("\\.knowledge-skills__refusal")).toMatch(/color:\s*var\(--err\)/);
   });
 });
+
+describe("the learned-facts card (#419)", () => {
+  it("strikes the expired row's text through in the faint ink — the mockup's `.fact.expired`", () => {
+    const expired = rule("\\.knowledge-facts__row--expired \\.knowledge-facts__text,\\s*\\.knowledge-facts__row--expired \\.knowledge-facts__text code");
+
+    expect(expired).toMatch(/text-decoration:\s*line-through/);
+    expect(expired).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+
+  it("draws inline code in the mono face on the raised ground", () => {
+    expect(rule("\\.knowledge-facts__text code")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.knowledge-facts__text code")).toMatch(/background:\s*var\(--raised\)/);
+  });
+
+  it("names the anchor change in the warn ink, and a refusal in the error ink", () => {
+    expect(rule("\\.knowledge-facts__stale")).toMatch(/color:\s*var\(--warn\)/);
+    expect(rule("\\.knowledge-facts__refusal")).toMatch(/color:\s*var\(--err\)/);
+  });
+
+  it("stacks a row on a narrow pane", () => {
+    expect(CODE).toMatch(/@media \(max-width: [\d.]+rem\)\s*\{[^@]*\.knowledge-facts__row\s*\{\s*flex-direction:\s*column;/);
+  });
+});

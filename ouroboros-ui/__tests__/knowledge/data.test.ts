@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
-import { READ_AT, seededRepos, seededSkills, seededStats } from "../helpers/knowledge";
+import { CITED_TICKET_552, CITED_TICKET_560, READ_AT, seededFacts, seededRepos, seededSkills, seededStats, seededTickets } from "../helpers/knowledge";
 import { TENANT_ID, enablement, membership, org, repo, sessionUser } from "../helpers/login";
 
 /**
- * The knowledge frame's reader (#417, the stats since #418): three reads in parallel, each kept as
- * a value, so a refused one degrades its own concern and the redirect signal still travels — and
- * the instant of the read, which every age on the page is measured from.
+ * The knowledge frame's reader (#417; the stats since #418; the facts and their cited tickets since
+ * #419): four reads in parallel, each kept as a value, so a refused one degrades its own concern
+ * and the redirect signal still travels — the tickets the facts cite resolved to their tracker
+ * pages, one read each — and the instant of the read, which every age on the page is measured from.
  */
 
 // The module is server-only; the marker refuses to load under jsdom, and the test is the server.
@@ -17,9 +18,13 @@ vi.mock("server-only", () => ({}));
 
 const list = vi.fn();
 const stats = vi.fn();
+const listFacts = vi.fn();
+const detail = vi.fn();
 const readEnablement = vi.fn();
 
 vi.mock("@/app/api/skills", () => ({ skills: { list: () => list(), stats: () => stats() } }));
+vi.mock("@/app/api/facts", () => ({ facts: { list: () => listFacts() } }));
+vi.mock("@/app/api/backlog", () => ({ backlog: { detail: (id: string) => detail(id) } }));
 vi.mock("@/app/api/enablement", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/api/enablement")>()),
   readEnablement: (tenantId: string) => readEnablement(tenantId),
@@ -50,6 +55,14 @@ const ENABLEMENT = enablement([
 beforeEach(() => {
   list.mockReset().mockResolvedValue(seededSkills());
   stats.mockReset().mockResolvedValue(seededStats());
+  listFacts.mockReset().mockResolvedValue(seededFacts());
+  detail.mockReset().mockImplementation((id: string) =>
+    Promise.resolve({
+      issue: { number: id === CITED_TICKET_552 ? 552 : 560, repository: "acme-robotics/helios-firmware" },
+      estimate: null,
+      history: [],
+    }),
+  );
   readEnablement.mockReset().mockResolvedValue(ENABLEMENT);
 });
 
@@ -60,8 +73,39 @@ describe("readKnowledge", () => {
     expect(readEnablement).toHaveBeenCalledExactlyOnceWith(ACCESS.membership.id);
     expect(readings.skills).toEqual({ ok: true, value: seededSkills() });
     expect(readings.stats).toEqual({ ok: true, value: seededStats() });
+    expect(readings.facts).toEqual({ ok: true, value: seededFacts() });
     expect(readings.repos).toEqual({ ok: true, value: seededRepos() });
     expect(readings.readAt).toBe(READ_AT);
+  });
+
+  it("resolves each cited ticket once, to its tracker page", async () => {
+    const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+    expect(readings.tickets).toEqual(seededTickets());
+    expect(detail).toHaveBeenCalledTimes(2);
+    expect(detail.mock.calls.map(([id]) => id).sort()).toEqual([CITED_TICKET_552, CITED_TICKET_560].sort());
+  });
+
+  it("leaves out a ticket it could not read, so the card draws its ref as text", async () => {
+    detail.mockImplementation((id: string) =>
+      id === CITED_TICKET_560
+        ? Promise.reject(new ApiError(404, "backlog_issue_not_found", "No such issue.", {}))
+        : Promise.resolve({ issue: { number: 552, repository: "acme-robotics/helios-firmware" }, estimate: null, history: [] }),
+    );
+
+    const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+    expect(Object.keys(readings.tickets)).toEqual([CITED_TICKET_552]);
+  });
+
+  it("resolves no tickets when the facts could not be read", async () => {
+    listFacts.mockRejectedValue(new ApiError(500, "internal_error", "The service failed.", {}));
+
+    const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+    expect(readings.facts).toEqual({ ok: false, reason: "The service failed." });
+    expect(readings.tickets).toEqual({});
+    expect(detail).not.toHaveBeenCalled();
   });
 
   it("stamps the clock's instant when none is given", async () => {

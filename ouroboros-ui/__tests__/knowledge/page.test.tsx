@@ -2,6 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Role } from "@/app/api/membership";
+import { CONFIRM, VIEWER_REASON } from "@/app/knowledge/facts";
 import { IMPORT_LABEL, KNOWLEDGE_TITLE, NEW_SKILL_LABEL, readOnlyNote } from "@/app/knowledge/view";
 
 import { knowledgeReadings } from "../helpers/knowledge";
@@ -23,6 +24,7 @@ vi.mock("@/app/knowledge/data", () => ({ readKnowledge: (access: unknown) => rea
 vi.mock("@/app/knowledge/create-actions", () => ({ createSkill: vi.fn() }));
 vi.mock("@/app/knowledge/import-actions", () => ({ previewImport: vi.fn(), applyImport: vi.fn() }));
 vi.mock("@/app/knowledge/skills-actions", () => ({ setSkillEnabled: vi.fn(), regenerateRepoMap: vi.fn() }));
+vi.mock("@/app/knowledge/facts-actions", () => ({ decideFact: vi.fn(), proposeFact: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));
@@ -75,6 +77,26 @@ describe("the knowledge route", () => {
       expect(screen.queryByRole("button", { name: IMPORT_LABEL })).toBeNull();
       expect(screen.getByRole("note")).toHaveTextContent(readOnlyNote(role).head);
       unmount();
+    }
+  });
+
+  it("lets an owner, an admin or a member decide a fact, and draws a viewer's Confirm inert with the reason", async () => {
+    for (const role of ["owner", "admin", "member"] as const) {
+      requireWorkspace.mockResolvedValue(access([role]));
+      const { unmount } = render(await Page());
+
+      for (const button of screen.getAllByRole("button", { name: new RegExp(`^${CONFIRM}:`) })) {
+        expect(button).not.toHaveAttribute("aria-disabled");
+      }
+      unmount();
+    }
+
+    requireWorkspace.mockResolvedValue(access(["viewer"]));
+    render(await Page());
+
+    for (const button of screen.getAllByRole("button", { name: new RegExp(`^${CONFIRM}:`) })) {
+      expect(button).toHaveAttribute("aria-disabled", "true");
+      expect(button).toHaveAttribute("title", VIEWER_REASON);
     }
   });
 
