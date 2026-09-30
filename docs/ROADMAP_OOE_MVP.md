@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**317 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
+**318 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 | **262** |
-| 🟡 **In progress** | P11, P12 | **55** of 66 |
+| 🟡 **In progress** | P11, P12 | **56** of 66 |
 | — **Not started** | P13–P17 | 0 of 126 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -115,7 +115,7 @@ position is not forced by dependencies, one of these decided it.
 | **P9** | Build farm & runner agent | ✅ 20/20 | 20 | 70 | Mockup 08 |
 | **P10** | Run console & ingestion contract | ✅ 17/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
-| **P12** | Knowledge & onboarding mechanism | 🟡 19/28 | 28 | 83 | Mockups 14, 13 |
+| **P12** | Knowledge & onboarding mechanism | 🟡 20/28 | 28 | 83 | Mockups 14, 13 |
 | **P13** | Analytics — insights & build analyzer | — 0/32 | 32 | 109 | Mockups 15, 18 |
 | **P14** | Decisions & governance — inbox, settings | — 0/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
@@ -1572,7 +1572,7 @@ the blockquote above that records what it did and what it did differently.
 | 317 | **BF.6** | ✅ [#415](https://github.com/NobuData/ouroboros/issues/415) | Playbooks & repo-map generator | ouroboros-rest | M | BE.3, BF.5 |
 | 318 | **BG.1** | ✅ [#417](https://github.com/NobuData/ouroboros/issues/417) | Knowledge route, head & import flow | ouroboros-ui | M | 5.3, D.5, BF.4 |
 | 319 | **BA.3** | ✅ [#382](https://github.com/NobuData/ouroboros/issues/382) | Dry-run policy plane | ouroboros-rest, ouroboros-db | M | AW.4, AX.4 |
-| 320 | **BF.7** | [#416](https://github.com/NobuData/ouroboros/issues/416) | Knowledge integration tests | ouroboros-rest | M | BF.1, BF.6 |
+| 320 | **BF.7** | ✅ [#416](https://github.com/NobuData/ouroboros/issues/416) | Knowledge integration tests | ouroboros-rest | M | BF.1, BF.6 |
 | 321 | **BG.2** | [#418](https://github.com/NobuData/ouroboros/issues/418) | Skills table | ouroboros-ui | M | BF.1, BG.1 |
 | 322 | **BG.3** | [#419](https://github.com/NobuData/ouroboros/issues/419) | Learned-facts card | ouroboros-ui | M | BF.2, BF.3, BG.1 |
 | 323 | **BG.4** | [#420](https://github.com/NobuData/ouroboros/issues/420) | Playbooks & repo-profile cards | ouroboros-ui | M | BE.4, BF.6, BG.1 |

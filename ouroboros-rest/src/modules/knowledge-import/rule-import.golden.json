@@ -1,0 +1,574 @@
+{
+  "about": "The fixtures' preview and what their apply stores. Regenerate with: OURO_UPDATE_GOLDENS=1 yarn test:integration src/modules/knowledge-import/rule-import.integration-spec.ts",
+  "cases": {
+    "preview": {
+      "repo": "acme-robotics/helios-firmware",
+      "fingerprint": "09aa530bcafb99fdac933022239e4518057d7900eed3bb5473f4b7aba4fac6f0",
+      "files": [
+        {
+          "path": "CLAUDE.md",
+          "found": true,
+          "sizeBytes": 753,
+          "truncated": false,
+          "skills": {
+            "planned": 3,
+            "deduped": 0,
+            "samples": [
+              {
+                "action": "create",
+                "slug": "kconfig",
+                "name": "Kconfig",
+                "description": "Every feature is gated behind a Kconfig symbol, declared in the module that owns it.",
+                "section": "Kconfig"
+              },
+              {
+                "action": "create",
+                "slug": "devicetree",
+                "name": "Devicetree",
+                "description": "Imported from CLAUDE.md — Devicetree.",
+                "section": "Devicetree"
+              },
+              {
+                "action": "create",
+                "slug": "isr-safety",
+                "name": "ISR safety",
+                "description": "Interrupt handlers must never block.",
+                "section": "ISR safety"
+              }
+            ]
+          },
+          "facts": {
+            "planned": 7,
+            "deduped": 0,
+            "samples": [
+              {
+                "text": "Run `west update` before the first build of the day.",
+                "section": null,
+                "provenance": {
+                  "line": "imported from CLAUDE.md",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": "CLAUDE.md"
+                    }
+                  ]
+                }
+              },
+              {
+                "text": "Use `CONFIG_HELIOS_` as the prefix for every new symbol.",
+                "section": "Kconfig",
+                "provenance": {
+                  "line": "imported from CLAUDE.md",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": "CLAUDE.md",
+                      "section": "Kconfig"
+                    }
+                  ]
+                }
+              },
+              {
+                "text": "Never enable `CONFIG_ASSERT` in release builds.",
+                "section": "Kconfig",
+                "provenance": {
+                  "line": "imported from CLAUDE.md",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": "CLAUDE.md",
+                      "section": "Kconfig"
+                    }
+                  ]
+                }
+              },
+              {
+                "text": "Keep one overlay per board under `boards/`.",
+                "section": "Devicetree",
+                "provenance": {
+                  "line": "imported from CLAUDE.md",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": "CLAUDE.md",
+                      "section": "Devicetree"
+                    }
+                  ]
+                }
+              },
+              {
+                "text": "Prefer `k_msgq` over `k_fifo` in ISR paths.",
+                "section": "ISR safety",
+                "provenance": {
+                  "line": "imported from CLAUDE.md",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": "CLAUDE.md",
+                      "section": "ISR safety"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "path": "AGENTS.md",
+          "found": false,
+          "sizeBytes": 0,
+          "truncated": false,
+          "skills": {
+            "planned": 0,
+            "deduped": 0,
+            "samples": []
+          },
+          "facts": {
+            "planned": 0,
+            "deduped": 0,
+            "samples": []
+          }
+        },
+        {
+          "path": ".cursorrules",
+          "found": true,
+          "sizeBytes": 752,
+          "truncated": false,
+          "skills": {
+            "planned": 1,
+            "deduped": 0,
+            "samples": [
+              {
+                "action": "create",
+                "slug": "cursorrules",
+                "name": ".cursorrules",
+                "description": "You are an expert embedded C engineer working on Zephyr RTOS.",
+                "section": null
+              }
+            ]
+          },
+          "facts": {
+            "planned": 6,
+            "deduped": 2,
+            "samples": [
+              {
+                "text": "Write unit tests with ztest for every driver change.",
+                "section": null,
+                "provenance": {
+                  "line": "imported from .cursorrules",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": ".cursorrules"
+                    }
+                  ]
+                }
+              },
+              {
+                "text": "Keep functions under 60 lines.",
+                "section": null,
+                "provenance": {
+                  "line": "imported from .cursorrules",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": ".cursorrules"
+                    }
+                  ]
+                }
+              },
+              {
+                "text": "Don't allocate from the heap in drivers.",
+                "section": null,
+                "provenance": {
+                  "line": "imported from .cursorrules",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": ".cursorrules"
+                    }
+                  ]
+                }
+              },
+              {
+                "text": "Always run `twister -T tests/` before pushing.",
+                "section": null,
+                "provenance": {
+                  "line": "imported from .cursorrules",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": ".cursorrules"
+                    }
+                  ]
+                }
+              },
+              {
+                "text": "Document every public API in its header.",
+                "section": null,
+                "provenance": {
+                  "line": "imported from .cursorrules",
+                  "refs": [
+                    {
+                      "kind": "import",
+                      "file": ".cursorrules"
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "path": ".github/copilot-instructions.md",
+          "found": false,
+          "sizeBytes": 0,
+          "truncated": false,
+          "skills": {
+            "planned": 0,
+            "deduped": 0,
+            "samples": []
+          },
+          "facts": {
+            "planned": 0,
+            "deduped": 0,
+            "samples": []
+          }
+        }
+      ],
+      "totals": {
+        "filesFound": 2,
+        "skillDrafts": 4,
+        "skillUpdates": 0,
+        "factCandidates": 13,
+        "dedupedSkills": 0,
+        "dedupedFacts": 2
+      }
+    },
+    "skills": [
+      {
+        "slug": "cursorrules",
+        "name": ".cursorrules",
+        "description": "You are an expert embedded C engineer working on Zephyr RTOS.",
+        "scope": "repo",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "origin": "imported",
+        "draft": true,
+        "enabled": true,
+        "current_version": null,
+        "versions": [
+          {
+            "body": "You are an expert embedded C engineer working on Zephyr RTOS.\n\n- use CONFIG_HELIOS_ as the prefix for every new symbol\n- Never enable `CONFIG_ASSERT` in release builds!\n- Write unit tests with ztest for every driver change.\n- Keep functions under 60 lines.\n- Don't allocate from the heap in drivers.\n- Always run `twister -T tests/` before pushing.\n- Document every public API in its header.\n- Name threads after their subsystem.\n- The HAL lives in `drivers/hal/`.\n- Style:\n- Tests are in `tests/`.\n- Use a very long sentence Use a very long sentence Use a very long sentence Use a very long sentence Use a very long sentence Use a very long sentence Use a very long sentence Use a very long sentence Use a very long sentence Use a very long sentence.",
+            "version": null,
+            "published": false,
+            "frontmatter": {
+              "name": ".cursorrules",
+              "scope": "repo",
+              "provenance": {
+                "source": ".cursorrules"
+              },
+              "description": "You are an expert embedded C engineer working on Zephyr RTOS."
+            }
+          }
+        ]
+      },
+      {
+        "slug": "devicetree",
+        "name": "Devicetree",
+        "description": "Imported from CLAUDE.md — Devicetree.",
+        "scope": "repo",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "origin": "imported",
+        "draft": true,
+        "enabled": true,
+        "current_version": null,
+        "versions": [
+          {
+            "body": "- Board overlays:\n  - Keep one overlay per board under `boards/`.\n\n```sh\n# west build -b nrf52840dk\n- use this line as code, not a rule\n```",
+            "version": null,
+            "published": false,
+            "frontmatter": {
+              "name": "Devicetree",
+              "scope": "repo",
+              "provenance": {
+                "source": "CLAUDE.md",
+                "section": "Devicetree"
+              },
+              "description": "Imported from CLAUDE.md — Devicetree."
+            }
+          }
+        ]
+      },
+      {
+        "slug": "isr-safety",
+        "name": "ISR safety",
+        "description": "Interrupt handlers must never block.",
+        "scope": "repo",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "origin": "imported",
+        "draft": true,
+        "enabled": true,
+        "current_version": null,
+        "versions": [
+          {
+            "body": "Interrupt handlers must never block.\n\n- Prefer `k_msgq` over `k_fifo` in ISR paths.\n- Avoid `printk` inside an ISR;\n  defer logging to a work queue.\n- ISR stacks are 2 KiB on every board.\n\n### Checklist\n\n1. Check `k_is_in_isr()` before sleeping.",
+            "version": null,
+            "published": false,
+            "frontmatter": {
+              "name": "ISR safety",
+              "scope": "repo",
+              "provenance": {
+                "source": "CLAUDE.md",
+                "section": "ISR safety"
+              },
+              "description": "Interrupt handlers must never block."
+            }
+          }
+        ]
+      },
+      {
+        "slug": "kconfig",
+        "name": "Kconfig",
+        "description": "Every feature is gated behind a Kconfig symbol, declared in the module that owns it.",
+        "scope": "repo",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "origin": "imported",
+        "draft": true,
+        "enabled": true,
+        "current_version": null,
+        "versions": [
+          {
+            "body": "Every feature is gated behind a **Kconfig** symbol,\ndeclared in the module that owns it.\n\n- Use `CONFIG_HELIOS_` as the prefix for every new symbol.\n- Never enable `CONFIG_ASSERT` in release builds.",
+            "version": null,
+            "published": false,
+            "frontmatter": {
+              "name": "Kconfig",
+              "scope": "repo",
+              "provenance": {
+                "source": "CLAUDE.md",
+                "section": "Kconfig"
+              },
+              "description": "Every feature is gated behind a Kconfig symbol, declared in the module that owns it."
+            }
+          }
+        ]
+      }
+    ],
+    "facts": [
+      {
+        "text": "Always run `twister -T tests/` before pushing.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from .cursorrules",
+          "refs": [
+            {
+              "file": ".cursorrules",
+              "kind": "import"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Avoid `printk` inside an ISR; defer logging to a work queue.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from CLAUDE.md",
+          "refs": [
+            {
+              "file": "CLAUDE.md",
+              "kind": "import",
+              "section": "ISR safety"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Check `k_is_in_isr()` before sleeping.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from CLAUDE.md",
+          "refs": [
+            {
+              "file": "CLAUDE.md",
+              "kind": "import",
+              "section": "ISR safety"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Document every public API in its header.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from .cursorrules",
+          "refs": [
+            {
+              "file": ".cursorrules",
+              "kind": "import"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Don't allocate from the heap in drivers.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from .cursorrules",
+          "refs": [
+            {
+              "file": ".cursorrules",
+              "kind": "import"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Keep functions under 60 lines.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from .cursorrules",
+          "refs": [
+            {
+              "file": ".cursorrules",
+              "kind": "import"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Keep one overlay per board under `boards/`.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from CLAUDE.md",
+          "refs": [
+            {
+              "file": "CLAUDE.md",
+              "kind": "import",
+              "section": "Devicetree"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Name threads after their subsystem.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from .cursorrules",
+          "refs": [
+            {
+              "file": ".cursorrules",
+              "kind": "import"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Never enable `CONFIG_ASSERT` in release builds.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from CLAUDE.md",
+          "refs": [
+            {
+              "file": "CLAUDE.md",
+              "kind": "import",
+              "section": "Kconfig"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Prefer `k_msgq` over `k_fifo` in ISR paths.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from CLAUDE.md",
+          "refs": [
+            {
+              "file": "CLAUDE.md",
+              "kind": "import",
+              "section": "ISR safety"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Run `west update` before the first build of the day.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from CLAUDE.md",
+          "refs": [
+            {
+              "file": "CLAUDE.md",
+              "kind": "import"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Use `CONFIG_HELIOS_` as the prefix for every new symbol.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from CLAUDE.md",
+          "refs": [
+            {
+              "file": "CLAUDE.md",
+              "kind": "import",
+              "section": "Kconfig"
+            }
+          ]
+        },
+        "confirmed_by": null
+      },
+      {
+        "text": "Write unit tests with ztest for every driver change.",
+        "status": "proposed",
+        "proposer": "import",
+        "repo_ref": "acme-robotics/helios-firmware",
+        "provenance": {
+          "line": "imported from .cursorrules",
+          "refs": [
+            {
+              "file": ".cursorrules",
+              "kind": "import"
+            }
+          ]
+        },
+        "confirmed_by": null
+      }
+    ]
+  }
+}
