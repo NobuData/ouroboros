@@ -181,6 +181,12 @@ service holds no list of workflow tags and no list of models, so it cannot inven
 an estimator that names something outside the offer is a `500` here rather than a value
 that reaches a row.
 
+**The caller may send confirmed facts.** `context.facts` — `[{id, text}]`, at most 64, each at
+most 500 characters — is what `ouroboros-rest`'s context assembly resolved for the issue's
+repository (BF.5, [#414](https://github.com/NobuData/ouroboros/issues/414)). It is knowledge,
+not vocabulary: nothing in an answer is held to it, it defaults to empty, and `heuristic-v0`
+reads none of it — O.2's LLM estimator is the reader it is carried for.
+
 **`trace.estimator` is required** — decision **K10**, enforced at this boundary and not
 only by the column's `not null`. Provenance checked at the last hop is provenance the hops
 before it can lose. It is why the answer above says `heuristic-v0` and never a model name:

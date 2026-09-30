@@ -226,6 +226,12 @@ describe("sizing an issue", () => {
       context: {
         workflow_tags: ["standard-fix", "docs-loop"],
         model_defaults: { default: "claude-fable-5", docs: "claude-haiku-4-5" },
+        facts: [
+          {
+            id: "5eed0044-0000-4000-8000-000000000001",
+            text: "CI needs `west update` before first build of the day",
+          },
+        ],
       },
     });
   });

@@ -59,14 +59,18 @@
  * `OURO_ESTIMATION_STALE_SECONDS`.
  */
 
+import { randomUUID } from "node:crypto";
+
 import { Injectable, Logger } from "@nestjs/common";
 
 import { AppConfigService } from "../config/config.service";
 import type { EstimableIssue, EstimationIntake } from "../backlog-sync/estimation.intake";
 import { EngineClient } from "../engine/engine.client";
+import type { ContextManifest } from "../context-assembly/context-assembly.resources";
 import type { Estimate, EstimateRequest, EstimationContext } from "../engine/engine.contract";
 import { describeForLog } from "../errors/failure";
-import { EstimationContextService } from "./estimation.context";
+import { EstimationContextService, type EstimationVocabulary } from "./estimation.context";
+import { EstimationKnowledge, factsOf } from "./estimation.knowledge";
 import { draftEstimateRow, estimateRow, statusFor, ticketEstimateRow } from "./estimation.outcome";
 import { EstimationQueue } from "./estimation.queue";
 import {
@@ -199,12 +203,14 @@ export class EstimationOrchestrator implements EstimationIntake {
    *   and already the owner of the deadline, the shared secret and the parse.
    * @param context - The vocabularies an estimate may use, resolved through routing (Z.4).
    * @param config - The concurrency, the confidence floor and the staleness threshold.
+   * @param knowledge - The estimator's context-assembly manifest and injection record (#414).
    */
   constructor(
     private readonly issues: EstimationRepository,
     private readonly engine: EngineClient,
     private readonly context: EstimationContextService,
     private readonly config: AppConfigService,
+    private readonly knowledge: EstimationKnowledge,
   ) {
     this.queue = new EstimationQueue(config.estimationConcurrency);
   }
@@ -401,14 +407,15 @@ export class EstimationOrchestrator implements EstimationIntake {
       return;
     }
 
-    const estimate = await this.size(issue, context);
+    const manifest = await this.knowledge.manifestFor(issue.organizationId, issue.repo);
+    const estimate = await this.size(issue, withFacts(context, manifest));
 
     if (estimate === undefined) {
       await this.giveUp(issue, "the engine could not be reached or could not answer");
       return;
     }
 
-    await this.store(issue, estimate);
+    await this.store(issue, estimate, manifest);
   }
 
   /**
@@ -442,7 +449,12 @@ export class EstimationOrchestrator implements EstimationIntake {
       claimed = true;
 
       const subject = `ticket ${ticket.externalKey} (${ticketId})`;
-      const estimate = await this.attempt(subject, { issue: ticketIssueContext(ticket), context });
+      const issue = ticketIssueContext(ticket);
+      const manifest = await this.knowledge.manifestFor(ticket.organizationId, issue.repo);
+      const estimate = await this.attempt(subject, {
+        issue,
+        context: withFacts(context, manifest),
+      });
 
       if (estimate === undefined) {
         await this.giveUpTicket(ticket, "the engine could not be reached or could not answer");
@@ -451,9 +463,13 @@ export class EstimationOrchestrator implements EstimationIntake {
 
       const status = statusFor(estimate, this.config.estimationConfidenceFloor);
       const sizedAt = new Date();
-      const version = await this.issues.persistTicket(ticketId, status, (next) =>
-        ticketEstimateRow(ticketId, next, estimate, sizedAt),
-      );
+      const estimateId = randomUUID();
+      const version = await this.issues.persistTicket(ticketId, status, (next) => ({
+        ...ticketEstimateRow(ticketId, next, estimate, sizedAt),
+        id: estimateId,
+      }));
+
+      await this.knowledge.record(ticket.organizationId, estimateId, manifest);
 
       this.logger.log(
         `${subject} is ${status} — ${estimate.effort.toUpperCase()}, ` +
@@ -527,6 +543,7 @@ export class EstimationOrchestrator implements EstimationIntake {
       return "skipped";
     }
 
+    const manifest = await this.knowledge.manifestFor(draft.organizationId, request.repo);
     const estimate = await this.attempt(`draft ${draft.localKey} (batch ${draft.batchId})`, {
       issue: {
         number: draftNumber(draft.localKey),
@@ -535,7 +552,7 @@ export class EstimationOrchestrator implements EstimationIntake {
         labels: [],
         repo: request.repo,
       },
-      context,
+      context: withFacts(context, manifest),
     });
 
     if (estimate === undefined) {
@@ -549,9 +566,13 @@ export class EstimationOrchestrator implements EstimationIntake {
 
     try {
       const sizedAt = new Date();
-      const version = await this.issues.persistDraft(draft.draftId, (next) =>
-        draftEstimateRow(draft.draftId, next, estimate, sizedAt),
-      );
+      const estimateId = randomUUID();
+      const version = await this.issues.persistDraft(draft.draftId, (next) => ({
+        ...draftEstimateRow(draft.draftId, next, estimate, sizedAt),
+        id: estimateId,
+      }));
+
+      await this.knowledge.record(draft.organizationId, estimateId, manifest);
 
       this.logger.log(
         `Draft ${draft.localKey} (batch ${draft.batchId}) is sized — ` +
@@ -624,21 +645,31 @@ export class EstimationOrchestrator implements EstimationIntake {
    *
    * @param issue - The issue that was sized.
    * @param estimate - What the engine answered.
+   * @param manifest - The context manifest whose facts the request carried, recorded against the
+   *   stored estimate (#414); `undefined` when none was assembled.
    * @returns When the row is written, or when the write failed and the issue has been given up
    *   on instead. A write that V026 refuses is an estimator producing something the schema
    *   forbids: it would fail identically on every retry, so retrying it is how a row gets stuck
    *   in a loop between this method and the sweep.
    */
-  private async store(issue: EstimableIssueRow, estimate: Estimate): Promise<void> {
+  private async store(
+    issue: EstimableIssueRow,
+    estimate: Estimate,
+    manifest: ContextManifest | undefined,
+  ): Promise<void> {
     const status = statusFor(estimate, this.config.estimationConfidenceFloor);
     // The estimator's clock and the row's are the same instant for this synchronous call, and
     // read once so the two cannot differ by the length of a transaction.
     const sizedAt = new Date();
 
+    // Minted here rather than by the database, so the injection record can name the row.
+    const estimateId = randomUUID();
+
     try {
-      const version = await this.issues.persist(issue.issueId, status, (next) =>
-        estimateRow(issue.issueId, next, estimate, sizedAt),
-      );
+      const version = await this.issues.persist(issue.issueId, status, (next) => ({
+        ...estimateRow(issue.issueId, next, estimate, sizedAt),
+        id: estimateId,
+      }));
 
       this.logger.log(
         `${issue.repo}#${String(issue.number)} is ${status} — ` +
@@ -653,7 +684,10 @@ export class EstimationOrchestrator implements EstimationIntake {
       );
 
       await this.giveUp(issue, "the estimate could not be stored");
+      return;
     }
+
+    await this.knowledge.record(issue.organizationId, estimateId, manifest);
   }
 
   /**
@@ -684,4 +718,18 @@ export class EstimationOrchestrator implements EstimationIntake {
       );
     }
   }
+}
+
+/**
+ * A workspace's vocabularies with one manifest's confirmed facts (#414).
+ *
+ * @param vocabulary - The workflow tags and model defaults.
+ * @param manifest - The estimator's manifest, or `undefined` when none was assembled.
+ * @returns The request's context.
+ */
+function withFacts(
+  vocabulary: EstimationVocabulary,
+  manifest: ContextManifest | undefined,
+): EstimationContext {
+  return { ...vocabulary, facts: factsOf(manifest) };
 }

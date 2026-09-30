@@ -31,10 +31,14 @@ from pydantic import ValidationError
 from ouroboros_engine.estimation.contract import (
     EFFORTS,
     MAX_CONFIDENCE,
+    MAX_CONTEXT_FACTS,
+    MAX_FACT_LENGTH,
     MIN_CONFIDENCE,
     RISKS,
     Breakdown,
+    ContextFact,
     Estimate,
+    EstimationContext,
     Trace,
 )
 
@@ -329,3 +333,54 @@ def test_the_contract_agrees_with_k2s_row_once_that_migration_exists() -> None:
         "them or this contract answers with fields nothing stores. Both are drift, and "
         "the fix is one edit to whichever of the two is wrong."
     )
+
+
+# ---------------------------------------------------------------------------
+# The confirmed facts a context carries (BF.5, #414)
+# ---------------------------------------------------------------------------
+
+_FACT_ID = "5eed0044-0000-4000-8000-000000000001"
+
+
+def _context(**fields: object) -> EstimationContext:
+    return EstimationContext.model_validate(
+        {"workflow_tags": ["standard-fix"], "model_defaults": {"default": "m"}} | fields
+    )
+
+
+def test_a_context_without_facts_is_what_every_caller_before_414_sent() -> None:
+    assert _context().facts == []
+
+
+def test_a_context_carries_the_confirmed_facts_it_was_given() -> None:
+    context = _context(facts=[{"id": _FACT_ID, "text": "CI needs `west update`"}])
+
+    assert context.facts == [ContextFact(id=_FACT_ID, text="CI needs `west update`")]
+
+
+def test_a_fact_is_as_long_as_the_database_lets_one_be() -> None:
+    # V071's facts_text_present: `length(text) <= 500`.
+    assert MAX_FACT_LENGTH == 500
+    ContextFact(id=_FACT_ID, text="x" * MAX_FACT_LENGTH)
+
+    with pytest.raises(ValidationError):
+        ContextFact(id=_FACT_ID, text="x" * (MAX_FACT_LENGTH + 1))
+
+
+@pytest.mark.parametrize("fact_id", ["", "not-a-uuid", _FACT_ID.upper()])
+def test_a_fact_id_is_a_canonical_uuid(fact_id: str) -> None:
+    with pytest.raises(ValidationError):
+        ContextFact(id=fact_id, text="x")
+
+
+def test_an_empty_fact_is_refused() -> None:
+    with pytest.raises(ValidationError):
+        ContextFact(id=_FACT_ID, text="")
+
+
+def test_more_facts_than_the_estimator_consumer_sends_are_refused() -> None:
+    fact = {"id": _FACT_ID, "text": "x"}
+
+    _context(facts=[fact] * MAX_CONTEXT_FACTS)
+    with pytest.raises(ValidationError):
+        _context(facts=[fact] * (MAX_CONTEXT_FACTS + 1))

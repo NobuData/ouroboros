@@ -53,12 +53,14 @@
 import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 
+import { ContextAssemblyModule } from "../context-assembly/context-assembly.module";
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
 import { RoutingModule } from "../routing/routing.module";
 import { WorkflowsModule } from "../workflows/workflows.module";
 import { EstimationContextService } from "./estimation.context";
 import { EstimationController } from "./estimation.controller";
+import { EstimationKnowledge } from "./estimation.knowledge";
 import { EstimationLimiter } from "./estimation.limiter";
 import { EstimationOrchestrator } from "./estimation.orchestrator";
 import { EstimationRepository } from "./estimation.repository";
@@ -66,12 +68,20 @@ import { EstimationSweeper } from "./estimation.sweeper";
 import { EstimationTriggerService } from "./estimation.trigger.service";
 
 @Module({
-  imports: [DbModule, EngineModule, RoutingModule, WorkflowsModule, ScheduleModule.forRoot()],
+  imports: [
+    DbModule,
+    EngineModule,
+    RoutingModule,
+    WorkflowsModule,
+    ContextAssemblyModule,
+    ScheduleModule.forRoot(),
+  ],
   controllers: [EstimationController],
   providers: [
     EstimationOrchestrator,
     EstimationRepository,
     EstimationContextService,
+    EstimationKnowledge,
     EstimationSweeper,
     EstimationTriggerService,
     // One limiter per process, for the reason `GithubRateLimiter` is one: a second instance

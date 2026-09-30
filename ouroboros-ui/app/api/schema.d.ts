@@ -5325,6 +5325,85 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/knowledge/context/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Preview the context manifest a consumer would receive
+         * @description BF.5 ([#414](https://github.com/NobuData/ouroboros/issues/414)) — **for this scope and this
+         *     consumer, exactly what would go in**, and what would not and why. The answer is
+         *     `ContextAssemblyService.assemble` for the same arguments, byte for byte: the one
+         *     implementation of decision **K8** that the estimator, and AR.1's execution after it, consume.
+         *     Records nothing — injection records are written by consumers that actually inject.
+         *
+         *     **Resolution.** Workflow beats repo beats org on a name conflict (skill names compared
+         *     case-insensitively; slugs are unique per workspace); a switched-off winner takes its name
+         *     out; a `required` skill always holds its name and cannot be disabled by any override (the
+         *     refusal is listed in `refusedOverrides`); draft skills and skills with no published version
+         *     never appear; only `confirmed` facts appear — the workspace's always, a repository's in that
+         *     repository's scope. `overrides` is V072's `{enable, disable}` delta of skill ids, applied
+         *     last.
+         *
+         *     **Trim.** Each consumer has a token budget (`estimator` 8 000, `run_stage` and `playbook`
+         *     32 000; a lower `budgetTokens` may be asked for) and the estimator a 64-fact cap. Over a
+         *     limit, entries are dropped `org` first, then `repo`, then `workflow` — skills before facts
+         *     within a tier, largest first — and **every drop is listed in `trimmed`**. Required skills are
+         *     never dropped. The `estimator` consumer's manifest holds facts only: that is all its engine
+         *     contract carries.
+         *
+         *     **Open to every member**, `viewer` included — it writes nothing.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["previewContext"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/knowledge/context/injections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record what a consumer actually injected
+         * @description BF.5 ([#414](https://github.com/NobuData/ouroboros/issues/414)) — one `context_injections`
+         *     row (V071): the skill versions and facts a consumer **actually injected** — the manifest's
+         *     ids, or a subset — with the manifest's hash and the consumer's own reference. Every usage
+         *     number in the product (`used 48×`, `61% of runs`, the ladder's counts) is counted from these
+         *     records. Append-only. `201`.
+         *
+         *     The references fit the consumer: an `estimator` names `estimateId`; a `run_stage` names
+         *     `runStageId` and its `runId`; a `playbook` names the `runId` it launched.
+         *
+         *     **`owner`, `admin` or `member`** — a `viewer` cannot inflate a usage count. In-process
+         *     consumers (the estimator) record through the service and never reach this route.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and membership is checked before this
+         *     operation runs.
+         */
+        post: operations["recordContextInjection"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/planning/batches": {
         parameters: {
             query?: never;
@@ -17589,6 +17668,210 @@ export interface components {
                     text: string;
                 }[];
             };
+        };
+        /**
+         * ContextConsumer
+         * @description Who a manifest is assembled for — `context_injections.consumer` (V071). Decides what the
+         *     manifest holds (the estimator's is facts only) and its budget.
+         * @enum {string}
+         */
+        ContextConsumer: "estimator" | "run_stage" | "playbook";
+        /**
+         * ManifestTier
+         * @description A manifest entry's trim tier, kept longest first. A skill's is `required` when it is
+         *     required and its scope otherwise; a fact's is `repo` or `org`.
+         * @enum {string}
+         */
+        ManifestTier: "required" | "workflow" | "repo" | "org";
+        /**
+         * SkillOverrides
+         * @description V072's delta of skill ids, applied after resolution. `enable` re-admits a skill that won its
+         *     name but is switched off; `disable` leaves a resolved skill out — never a required one.
+         */
+        SkillOverrides: {
+            enable?: string[];
+            disable?: string[];
+        };
+        /**
+         * PreviewContextBody
+         * @description The consumer, the scope, and optionally overrides and a tighter budget.
+         */
+        PreviewContextBody: {
+            consumer: components["schemas"]["ContextConsumer"];
+            /**
+             * @description `owner/name`, compared case-insensitively. Omit for a workspace-wide manifest.
+             * @example acme-robotics/helios-firmware
+             */
+            repo?: string;
+            /**
+             * @description A workflow's slug. Omit when no workflow is in scope.
+             * @example standard-fix
+             */
+            workflow?: string;
+            overrides?: components["schemas"]["SkillOverrides"];
+            /** @description A budget lower than the consumer's. A higher one is not an error; it is not granted. */
+            budgetTokens?: number;
+        };
+        /**
+         * ManifestSkill
+         * @description One resolved skill, at the version in force.
+         */
+        ManifestSkill: {
+            /** Format: uuid */
+            skillId: string;
+            /** @example zephyr-conventions */
+            slug: string;
+            name: string;
+            /** @enum {string} */
+            scope: "org" | "repo" | "workflow";
+            tier: components["schemas"]["ManifestTier"];
+            required: boolean;
+            /**
+             * Format: uuid
+             * @description The `skill_versions` row in force — what an injection record names. A manifest names
+             *     versions, not slugs.
+             */
+            versionId: string;
+            /** @example 12 */
+            version: number;
+            /**
+             * @description The frontmatter's `load`. Assembly does not match triggers; the consumer does, against
+             *     its own task text.
+             * @enum {string}
+             */
+            load: "always" | "on_trigger";
+            triggers: string[];
+            /** @description The body's estimate — a quarter of its length, rounded up. */
+            estTokens: number;
+            /** @description The markdown to inject. */
+            body: string;
+        };
+        /**
+         * ManifestFact
+         * @description One confirmed fact in scope.
+         */
+        ManifestFact: {
+            /** Format: uuid */
+            id: string;
+            text: string;
+            /** @description The repository it is about, or null for the whole workspace. */
+            repoRef: string | null;
+            /** @enum {string} */
+            tier: "repo" | "org";
+            estTokens: number;
+        };
+        /**
+         * TrimmedEntry
+         * @description One entry the trim dropped — never silently.
+         */
+        TrimmedEntry: {
+            /** @enum {string} */
+            kind: "skill" | "fact";
+            /**
+             * Format: uuid
+             * @description The skill version's id, or the fact's.
+             */
+            id: string;
+            /** @description The skill's slug; null for a fact. */
+            slug: string | null;
+            tier: components["schemas"]["ManifestTier"];
+            estTokens: number;
+            /**
+             * @description `over_budget` — the consumer's token budget; `item_limit` — the consumer's fact cap.
+             * @enum {string}
+             */
+            reason: "over_budget" | "item_limit";
+        };
+        /**
+         * ExcludedSkill
+         * @description One skill resolution left out. `disabled` — it won its name but is switched off;
+         *     `shadowed` — a closer or required same-name skill holds the name (`by`);
+         *     `override_disabled` — the request's `disable` removed it.
+         */
+        ExcludedSkill: {
+            /** Format: uuid */
+            skillId: string;
+            slug: string;
+            /** @enum {string} */
+            scope: "org" | "repo" | "workflow";
+            /** @enum {string} */
+            reason: "disabled" | "shadowed" | "override_disabled";
+            /** @description The slug that shadowed it; null for any other reason. */
+            by: string | null;
+        };
+        /**
+         * RefusedOverride
+         * @description One override that was not honoured. `required` — a required skill cannot be disabled;
+         *     `shadowed` — the skill loses its name to a closer or required one; `not_resolved` — it is
+         *     not in scope, a draft, unpublished, or not this workspace's.
+         */
+        RefusedOverride: {
+            /** Format: uuid */
+            skillId: string;
+            /** @enum {string} */
+            action: "enable" | "disable";
+            /** @enum {string} */
+            reason: "required" | "shadowed" | "not_resolved";
+        };
+        /**
+         * ContextManifest
+         * @description What would be injected for one scope and consumer (BF.5, #414), and what would not and why.
+         */
+        ContextManifest: {
+            consumer: components["schemas"]["ContextConsumer"];
+            scope: {
+                repo: string | null;
+                workflow: string | null;
+            };
+            budgetTokens: number;
+            /**
+             * @description The kept entries' total. Above `budgetTokens` only when the required skills alone
+             *     exceed it — they are never trimmed.
+             */
+            estTokens: number;
+            skillVersions: components["schemas"]["ManifestSkill"][];
+            facts: components["schemas"]["ManifestFact"][];
+            trimmed: components["schemas"]["TrimmedEntry"][];
+            excluded: components["schemas"]["ExcludedSkill"][];
+            refusedOverrides: components["schemas"]["RefusedOverride"][];
+            /** @description sha256 identity of the manifest — what an injection record names. */
+            manifestHash: string;
+        };
+        /**
+         * RecordInjectionBody
+         * @description What a consumer actually injected.
+         */
+        RecordInjectionBody: {
+            consumer: components["schemas"]["ContextConsumer"];
+            /** Format: uuid */
+            estimateId?: string | null;
+            /** Format: uuid */
+            runStageId?: string | null;
+            /** Format: uuid */
+            runId?: string | null;
+            skillVersionIds: string[];
+            factIds: string[];
+            manifestHash: string;
+        };
+        /**
+         * ContextInjection
+         * @description One recorded injection — a `context_injections` row (V071).
+         */
+        ContextInjection: {
+            /** Format: uuid */
+            id: string;
+            consumer: components["schemas"]["ContextConsumer"];
+            /** Format: uuid */
+            estimateId: string | null;
+            /** Format: uuid */
+            runStageId: string | null;
+            /** Format: uuid */
+            runId: string | null;
+            skillVersionIds: string[];
+            factIds: string[];
+            manifestHash: string;
+            /** Format: date-time */
+            injectedAt: string;
         };
         /**
          * WorkflowCodeConfig
@@ -43117,6 +43400,263 @@ export interface operations {
             };
             /** @description `knowledge_import_source_failed` — as the preview. */
             502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewContext: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "consumer": "run_stage",
+                 *       "repo": "acme-robotics/helios-firmware",
+                 *       "workflow": "standard-fix"
+                 *     }
+                 */
+                "application/json": components["schemas"]["PreviewContextBody"];
+            };
+        };
+        responses: {
+            /** @description The manifest. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextManifest"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `context_workflow_not_found` — the scope names a workflow this workspace does not have. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `context_overrides_overlap` — one skill id is in both `enable` and `disable`.
+             *     `validation_failed` for a malformed body.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    recordContextInjection: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "consumer": "run_stage",
+                 *       "runStageId": "5eed0011-0000-4000-8000-000000000001",
+                 *       "runId": "5eed0010-0000-4000-8000-000000000001",
+                 *       "skillVersionIds": [
+                 *         "5eed0070-0000-4000-8000-000000000012"
+                 *       ],
+                 *       "factIds": [
+                 *         "5eed0044-0000-4000-8000-000000000001"
+                 *       ],
+                 *       "manifestHash": "9c1f4e2a7b3d6c5e8f0a1b2c3d4e5f60718293a4b5c6d7e8f9a0b1c2d3e4f5a6"
+                 *     }
+                 */
+                "application/json": components["schemas"]["RecordInjectionBody"];
+            };
+        };
+        responses: {
+            /** @description The stored record. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ContextInjection"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is a `viewer`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `context_injection_consumer_reference` — the references do not fit the consumer.
+             *     `context_injection_unresolved` — an estimate, run, stage, fact or skill version is not
+             *     this workspace's, a fact is not confirmed, or a skill version is a draft or a draft
+             *     skill's. `validation_failed` for a malformed body.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
                 headers: {
                     [name: string]: unknown;
                 };

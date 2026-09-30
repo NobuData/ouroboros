@@ -199,6 +199,13 @@ export const ESTIMATE_REQUEST = {
   context: {
     workflowTags: ["standard-fix", "docs-loop"],
     modelDefaults: { default: "claude-fable-5", docs: "claude-haiku-4-5" },
+    // The seeded `west update` fact — a confirmed fact the estimator consumer carries (#414).
+    facts: [
+      {
+        id: "5eed0044-0000-4000-8000-000000000001",
+        text: "CI needs `west update` before first build of the day",
+      },
+    ],
   },
 };
 

@@ -30,6 +30,13 @@ import type {
   EstimationRepository,
 } from "./estimation.repository";
 import type { NewIssueEstimate } from "../db/schema";
+import type { ContextManifest } from "../context-assembly/context-assembly.resources";
+import type {
+  AssemblyScope,
+  ContextAssemblyService,
+  InjectionInput,
+} from "../context-assembly/context-assembly.service";
+import { EstimationKnowledge } from "./estimation.knowledge";
 import type { EstimatedStatus } from "./estimation.outcome";
 
 /**
@@ -51,6 +58,9 @@ interface RepositoryLog {
   ticketsClaimed: string[];
   ticketsPersisted: { ticketId: string; status: EstimatedStatus; row: NewIssueEstimate }[];
   ticketsSettled: { ticketId: string; status: EstimatedStatus }[];
+  /** What context assembly was asked for, and what was recorded against it (#414). */
+  assembled: { organizationId: string; repo: string | null | undefined }[];
+  injected: { organizationId: string; injection: InjectionInput }[];
 }
 
 /** How a stand-in is told to behave. */
@@ -74,6 +84,12 @@ interface Behaviour {
   concurrency?: number;
   confidenceFloor?: number;
   staleSeconds?: number;
+  /** The estimator's context manifest; none (no facts) by default. */
+  manifest?: ContextManifest;
+  /** Make context assembly fail. */
+  assemblyFails?: boolean;
+  /** Make the injection record fail. */
+  recordFails?: boolean;
 }
 
 /**
@@ -91,6 +107,8 @@ function build(behaviour: Behaviour = {}) {
     ticketsClaimed: [],
     ticketsPersisted: [],
     ticketsSettled: [],
+    assembled: [],
+    injected: [],
   };
   const requests: EstimateRequest[] = [];
   const staleReads: { olderThan: Date; limit: number }[] = [];
@@ -202,8 +220,31 @@ function build(behaviour: Behaviour = {}) {
     estimationStaleSeconds: behaviour.staleSeconds ?? 600,
   } as unknown as AppConfigService;
 
+  const assembly = {
+    assemble: async (organizationId: string, scope: AssemblyScope) => {
+      log.assembled.push({ organizationId, repo: scope.repo });
+      if (behaviour.assemblyFails === true) {
+        return Promise.reject(new Error("the skills read failed"));
+      }
+      return Promise.resolve(behaviour.manifest ?? estimatorManifest([]));
+    },
+    record: async (organizationId: string, injection: InjectionInput) => {
+      if (behaviour.recordFails === true) {
+        return Promise.reject(new Error("context_injections_resolves"));
+      }
+      log.injected.push({ organizationId, injection });
+      return Promise.resolve();
+    },
+  } as unknown as ContextAssemblyService;
+
   return {
-    orchestrator: new EstimationOrchestrator(issues, engine, context, config),
+    orchestrator: new EstimationOrchestrator(
+      issues,
+      engine,
+      context,
+      config,
+      new EstimationKnowledge(assembly),
+    ),
     log,
     requests,
     staleReads,
@@ -282,7 +323,7 @@ describe("the happy path", () => {
         labels: ["bug", "i2c", "watchdog"],
         repo: "acme-robotics/helios-firmware",
       },
-      context: FIXTURE_CONTEXT,
+      context: { ...FIXTURE_CONTEXT, facts: [] },
     });
   });
 
@@ -580,7 +621,7 @@ describe("sizing a ticket draft (AL.4, #280 — one sizer, decision N3)", () => 
         labels: [],
         repo: "acme-robotics/helios-firmware",
       },
-      context: FIXTURE_CONTEXT,
+      context: { ...FIXTURE_CONTEXT, facts: [] },
     });
     expect(log.draftsPersisted).toHaveLength(1);
     expect(log.draftsPersisted[0].row).toMatchObject({ draft_id: DRAFT_ID, github_issue_id: null });
@@ -699,7 +740,7 @@ describe("sizing a canonical ticket (AL.5, #281 — one sizer, decision N9)", ()
           labels: ["telemetry", "enhancement"],
           repo: "acme-robotics/helios-telemetry",
         },
-        context: FIXTURE_CONTEXT,
+        context: { ...FIXTURE_CONTEXT, facts: [] },
       },
     ]);
     expect(log.ticketsPersisted).toHaveLength(1);
@@ -800,5 +841,137 @@ describe("sizing a canonical ticket (AL.5, #281 — one sizer, decision N9)", ()
 
   it("keys the queue with a ticket: prefix", () => {
     expect(ticketQueueKey(TICKET_ID)).toBe(`ticket:${TICKET_ID}`);
+  });
+});
+
+/**
+ * An estimator manifest carrying these facts.
+ *
+ * @param facts - `[id, text]` pairs.
+ * @returns The manifest, as `ContextAssemblyService.assemble` would answer.
+ */
+function estimatorManifest(facts: readonly (readonly [string, string])[]): ContextManifest {
+  return {
+    consumer: "estimator",
+    scope: { repo: "acme-robotics/helios-firmware", workflow: null },
+    budgetTokens: 8000,
+    estTokens: facts.length * 10,
+    skillVersions: [],
+    facts: facts.map(([id, text]) => ({ id, text, repoRef: null, tier: "org", estTokens: 10 })),
+    trimmed: [],
+    excluded: [],
+    refusedOverrides: [],
+    manifestHash: "a".repeat(64),
+  };
+}
+
+describe("the estimator as a context-assembly consumer (#414)", () => {
+  const DRAFT = "d2800000-0000-0000-0000-0000000000d3";
+  const WEST = "5eed0044-0000-4000-8000-000000000001";
+  const TIMER = "5eed0044-0000-4000-8000-000000000005";
+  const manifest = estimatorManifest([
+    [WEST, "CI needs `west update` before first build of the day"],
+    [TIMER, "Zephyr needs `CONFIG_LEGACY_TIMER`"],
+  ]);
+
+  it("assembles for the issue's repository and sends the manifest's confirmed facts", async () => {
+    const { orchestrator, requests, log } = build({ manifest });
+
+    await orchestrator.accept([handoff()]);
+    await orchestrator.settled();
+
+    expect(log.assembled).toEqual([
+      { organizationId: FIXTURE_WORKSPACE, repo: "acme-robotics/helios-firmware" },
+    ]);
+    expect(requests[0]?.context.facts).toEqual([
+      { id: WEST, text: "CI needs `west update` before first build of the day" },
+      { id: TIMER, text: "Zephyr needs `CONFIG_LEGACY_TIMER`" },
+    ]);
+  });
+
+  it("records the injection against the estimate row it stored", async () => {
+    const { orchestrator, log } = build({ manifest });
+
+    await orchestrator.accept([handoff()]);
+    await orchestrator.settled();
+
+    const stored = log.persisted[0]?.row as { id?: string };
+    expect(stored.id).toMatch(/^[0-9a-f-]{36}$/);
+    expect(log.injected).toEqual([
+      {
+        organizationId: FIXTURE_WORKSPACE,
+        injection: {
+          consumer: "estimator",
+          estimateId: stored.id,
+          skillVersionIds: [],
+          factIds: [WEST, TIMER],
+          manifestHash: manifest.manifestHash,
+        },
+      },
+    ]);
+  });
+
+  it("records nothing when the estimate could not be stored", async () => {
+    const { orchestrator, log } = build({ manifest, persistFails: true });
+
+    await orchestrator.accept([handoff()]);
+    await orchestrator.settled();
+
+    expect(log.injected).toEqual([]);
+    expect(log.settled).toEqual([{ issueId: FIXTURE_ISSUE_ID, status: "needs_human" }]);
+  });
+
+  it("records nothing when the manifest carried no facts — nothing was injected", async () => {
+    const { orchestrator, log } = build();
+
+    await orchestrator.accept([handoff()]);
+    await orchestrator.settled();
+
+    expect(log.persisted).toHaveLength(1);
+    expect(log.injected).toEqual([]);
+  });
+
+  it("sizes without facts when assembly fails — knowledge never blocks an estimate", async () => {
+    const { orchestrator, requests, log } = build({ assemblyFails: true });
+
+    await orchestrator.accept([handoff()]);
+    await orchestrator.settled();
+
+    expect(requests[0]?.context.facts).toEqual([]);
+    expect(log.persisted[0]?.status).toBe("sized");
+    expect(log.injected).toEqual([]);
+  });
+
+  it("keeps the estimate when the injection record is refused", async () => {
+    const { orchestrator, log } = build({ manifest, recordFails: true });
+
+    await orchestrator.accept([handoff()]);
+    await orchestrator.settled();
+
+    expect(log.persisted[0]?.status).toBe("sized");
+    expect(log.settled).toEqual([]);
+  });
+
+  it("carries facts for a draft and records against the draft's estimate", async () => {
+    const { orchestrator, requests, log } = build({ manifest });
+
+    orchestrator.enqueueDraft({ draftId: DRAFT, repo: "acme-robotics/helios-firmware" });
+    await orchestrator.settled();
+
+    expect(requests[0]?.context.facts.map((fact) => fact.id)).toEqual([WEST, TIMER]);
+    const stored = log.draftsPersisted[0]?.row as { id?: string };
+    expect(log.injected[0]?.injection.estimateId).toBe(stored.id);
+  });
+
+  it("carries facts for a canonical ticket and records against the ticket's estimate", async () => {
+    const { orchestrator, requests, log } = build({ manifest });
+
+    orchestrator.enqueueTicket(TICKET_ID);
+    await orchestrator.settled();
+
+    expect(log.assembled[0]?.repo).toBe("acme-robotics/helios-telemetry");
+    expect(requests[0]?.context.facts.map((fact) => fact.id)).toEqual([WEST, TIMER]);
+    const stored = log.ticketsPersisted[0]?.row as { id?: string };
+    expect(log.injected[0]?.injection.estimateId).toBe(stored.id);
   });
 });

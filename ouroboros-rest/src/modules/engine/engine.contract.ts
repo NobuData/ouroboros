@@ -192,7 +192,32 @@ export interface EstimationContext {
   workflowTags: string[];
   /** Models an estimate may route to, keyed by the class of work each is the default for. */
   modelDefaults: Record<string, string>;
+  /**
+   * The confirmed facts context assembly resolved for the issue's repository (BF.5,
+   * [#414](https://github.com/NobuData/ouroboros/issues/414)) — at most
+   * {@link MAX_CONTEXT_FACTS}, each a fact the estimator consumer records as injected. Knowledge
+   * rather than vocabulary: nothing in the answer is held to it. Empty when none apply.
+   */
+  facts: ContextFact[];
 }
+
+/**
+ * One confirmed fact, as `EstimationContext.facts` carries it — the engine's `ContextFact`
+ * (`ouroboros-engine/openapi.yaml`, 0.7.6), mirrored.
+ */
+export interface ContextFact {
+  /** `facts.id`. */
+  id: string;
+  /** The fact as confirmed — at most 500 characters, V071's own ceiling. */
+  text: string;
+}
+
+/**
+ * How many facts one estimate request may carry — the engine's `MAX_CONTEXT_FACTS`, mirrored. The
+ * estimator consumer's context-assembly profile caps its manifests at the same number, so a
+ * longer list is trimmed (and the trim recorded) before it could be refused here.
+ */
+export const MAX_CONTEXT_FACTS = 64;
 
 /** A request to size one issue. */
 export interface EstimateRequest {
@@ -342,6 +367,7 @@ export function estimateRequestBody(request: EstimateRequest): Record<string, un
     context: {
       workflow_tags: request.context.workflowTags,
       model_defaults: request.context.modelDefaults,
+      facts: request.context.facts.map((fact) => ({ id: fact.id, text: fact.text })),
     },
   };
 }
