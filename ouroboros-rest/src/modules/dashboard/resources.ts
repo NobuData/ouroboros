@@ -109,6 +109,14 @@ export interface QueueItemSummary {
    */
   readonly estMinutes: number | null;
   readonly enqueuedAt: string;
+  /**
+   * The playbook the issue was queued under — *Run on issue…* on a recipe (BF.6,
+   * [#415](https://github.com/NobuData/ouroboros/issues/415)) — or `null` for an issue queued any
+   * other way. The run that opens under the same pin inherits it, which is what a playbook's
+   * `run 9×` counts; here it says which recipe's context the run will be given, before there is a
+   * run to ask (BG.6, [#422](https://github.com/NobuData/ouroboros/issues/422)).
+   */
+  readonly playbookId: string | null;
 }
 
 /** *Loops live* — how many runs are in flight, and in which stage. */
@@ -350,6 +358,7 @@ export function queueItemSummary(row: QueueItem): QueueItemSummary {
     position: row.position,
     estMinutes: row.est_minutes,
     enqueuedAt: at(row.enqueued_at),
+    playbookId: row.playbook_id,
   };
 }
 

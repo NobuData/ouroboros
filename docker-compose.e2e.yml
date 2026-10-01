@@ -230,6 +230,38 @@
 # read from a developer's `.env` could disagree with it, and this file is never handed to a
 # deployment. It differs from the engine's secret, which `rest` refuses to boot without.
 #
+# ---------------------------------------------------------------------------
+# The seventh line, and the leg it exists for (issue #422, BG.6).
+# ---------------------------------------------------------------------------
+#
+#   * `OURO_ENGINE_URL: http://engine-tap:8000` — the engine, by way of a wire that remembers
+#     what the estimator was sent.
+#
+# **What it is for.** The knowledge leg (specs/knowledge.spec.ts) is the roadmap's gate, and its
+# one assertion that no other test can make is that a fact confirmed in the browser is **in the
+# estimator's request payload**. `rest` posts that payload to the engine; the engine's
+# `heuristic-v0` reads none of it, its answer does not echo it, and nothing stores it — so
+# until this line the request the gate is about could not be observed from outside the two
+# processes. What `rest` *does* store is the injection record it writes beside the request, and
+# a leg asserting that would pass with the payload builder deleted.
+#
+# So `engine-tap` — `tests/e2e/fixtures/engine-tap/server.mjs`. It forwards everything `rest`
+# sends to `engine:8000` and returns the engine's own answer, unchanged both ways, and keeps a
+# copy of each `POST /v0/estimate` body. It is a wire, not a mock: nothing in it is told what
+# the suite expects and nothing in it answers for the engine.
+#
+# **Two listeners, and only one of them published.** `:8000` forwards and has no host port;
+# `:8081` serves `/__tap/estimates` and `/__tap/reset`, forwards nothing, and is published on
+# 127.0.0.1:4200. A tap that forwarded on its published port would be a host port for the
+# engine under another name, which docs/ARCHITECTURE.md § 10 forbids and specs/health.spec.ts
+# asserts is still forbidden.
+#
+# **What it changes for every other leg, which is nothing they can see.** With the engine
+# stopped the tap answers `502`, and `rest` reports `engine_unavailable` for every way an engine
+# call can fail (`engine.client.ts`) — so the `engine` pairs in scripts/verify-failure-modes.sh
+# go red with the markers they had. `rest` waits for the tap to be healthy, and the tap for the
+# engine, so *healthy* still means the estimator can be reached.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -241,11 +273,15 @@ services:
       OURO_ESTIMATION_STALE_SECONDS: "86400"
       OURO_GITHUB_API_BASE_URL: "http://tracker-stub:8080"
       OURO_RUN_SIMULATOR_SECRET: "e2e-run-simulator-secret"
+      OURO_ENGINE_URL: "http://engine-tap:8000"
     depends_on:
       # Appended to the base file's three. See the header: healthy must include *there is a
       # release to install*.
       runner-release:
         condition: service_completed_successfully
+      # And *the estimator can be reached*, which since #422 is by way of the tap.
+      engine-tap:
+        condition: service_healthy
 
   # The `runner` profile's three, moved into `full` too. Nothing else about them is restated.
   farm-gateway:
@@ -272,6 +308,30 @@ services:
       retries: 10
       start_period: 5s
       start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - full
+
+  engine-tap:
+    build:
+      context: ./tests/e2e/fixtures/engine-tap
+    depends_on:
+      engine:
+        condition: service_healthy
+    healthcheck:
+      # busybox's wget, for `provider-stub`'s reason. The controls' port: the probe asks whether
+      # the tap is up, and the engine's own health is the `depends_on` above.
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:8081/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+      start_interval: 1s
+    ports:
+      # The controls only — what the knowledge leg reads back. The forwarding port (8000) is
+      # deliberately not published: see the header. Loopback only, as every port here is.
+      - "127.0.0.1:4200:8081"
     networks:
       - ouroboros
     profiles:

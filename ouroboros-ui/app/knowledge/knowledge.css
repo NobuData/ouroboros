@@ -885,9 +885,20 @@
 
 /* ---------- the repo profile card (#420) ---------- */
 
-/* The head's repository select sits at the trailing edge and keeps to one line. */
+/*
+ * The head's repository select sits at the trailing edge — and drops under the title when the
+ * two do not fit on one line, which at the 125% font scale in the narrow column they do not
+ * (#422: a head that could not wrap pushed the whole pane sideways by the select's own width).
+ */
+.knowledge-profile__head {
+  flex-wrap: wrap;
+}
+
+/* Its own measure where there is room, never more; narrower where there is not. */
 .knowledge-profile__select {
-  min-width: 14rem;
+  flex: 0 1 14rem;
+  min-width: 0;
+  max-width: 100%;
 }
 
 /*
@@ -1082,25 +1093,216 @@
   font-weight: 600;
 }
 
+/* ---------- the states (#422) ---------- */
+
+/*
+ * What a new org sees. An empty state holds its own action — the skills table's two, the facts
+ * card's add, the recipe's add — under its note, at the note's left edge; a failed read holds
+ * the re-read in the same place.
+ */
+.knowledge-empty__actions,
+.knowledge-unread__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  align-items: center;
+}
+
+/*
+ * The maps with no row in the table yet. Pending is a dashed well in the neutral ink — nothing
+ * was attempted, and nothing is wrong; failed is a solid outline in the error triple. The two
+ * differ in line, ground and hue, so the difference survives a palette that mutes one of them.
+ */
+.knowledge-maps {
+  margin: var(--sp-6) 0 0;
+}
+
+.knowledge-maps__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* One line a repository: its name, its state, the action — a list, not a wall of notices. */
+.knowledge-maps__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: var(--sp-3) var(--sp-6);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--inset);
+}
+
+.knowledge-maps__row--failed {
+  border-style: solid;
+  border-color: var(--err-line);
+  background: var(--err-tint);
+}
+
+.knowledge-maps__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.knowledge-maps__name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: baseline;
+  margin: 0;
+}
+
+.knowledge-maps__slug {
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+}
+
+.knowledge-maps__repo {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  overflow-wrap: anywhere;
+}
+
+.knowledge-maps__detail {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-maps__refusal {
+  margin: var(--sp-2) 0 0;
+  color: var(--err);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.knowledge-maps__state {
+  display: flex;
+  flex-shrink: 0;
+  gap: var(--sp-3);
+  align-items: center;
+}
+
+/* What pending means, once, under the rows it is true of. */
+.knowledge-maps__note {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The status could not be read: one sentence, claiming neither state. */
+.knowledge-maps__unread {
+  margin: var(--sp-5) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+@media (max-width: 40rem) {
+  .knowledge-maps__row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
 /* ---------- the skeleton ---------- */
 
+/*
+ * Each card at its own geometry (#422) — table rows, fact rows, recipe rows, profile rows over a
+ * code block, the ladder's three wells — so nothing jumps when the reads land. The bars do not
+ * pulse: a bar is a placeholder's geometry, not a progress report.
+ */
 .knowledge-skeleton__bar {
   display: block;
   height: var(--sp-6);
-  margin-top: var(--sp-4);
   border-radius: var(--r-sm);
   background: var(--raised);
 }
 
 .knowledge-skeleton__bar--title {
   width: 9rem;
-  margin-top: 0;
+}
+
+.knowledge-skeleton__bar--short {
+  width: 60%;
+  height: var(--sp-4);
 }
 
 .knowledge-skeleton__button {
   display: block;
   width: 9rem;
   height: var(--sp-9);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+.knowledge-skeleton__rows {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--sp-6);
+}
+
+.knowledge-skeleton__row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.knowledge-skeleton__row:last-child {
+  border-bottom: none;
+}
+
+.knowledge-skeleton__lines {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+/* A profile row's key — the card's own measure, so the values line up where they will. */
+.knowledge-skeleton__key {
+  flex-shrink: 0;
+  width: 6.625rem;
+  height: var(--sp-4);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* A switch, a chip, a row's action. */
+.knowledge-skeleton__pill {
+  flex-shrink: 0;
+  width: 3rem;
+  height: 1.25rem;
+  border-radius: var(--r-pill);
+  background: var(--raised);
+}
+
+/* The environment block, and the new-playbook tile. */
+.knowledge-skeleton__block {
+  display: block;
+  height: 5rem;
+  margin-top: var(--sp-5);
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* One step of the ladder. */
+.knowledge-skeleton__step {
+  display: block;
+  height: 2.5rem;
+  margin-top: var(--sp-4);
   border-radius: var(--r-md);
   background: var(--raised);
 }

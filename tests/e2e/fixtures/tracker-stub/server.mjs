@@ -15,6 +15,8 @@
  * GET    /repos/{o}/{r}/milestones · POST                  ensureMilestone
  * GET    /repos/{o}/{r}/issues/{n}/dependencies/blocked_by · POST   native dependencies
  * GET    /repos/{o}/{r}/issues/{n}/sub_issues · POST                the epic parent link
+ * GET    /repos/{o}/{r}/contents/{path}                    one file — a rules-file import's read
+ * GET    /repos/{o}/{r}/git/trees/{sha}?recursive=1        the tree — the repo-map generator's read
  * ```
  *
  * ---------------------------------------------------------------------------
@@ -64,9 +66,34 @@
  * issue is therefore legible at a glance as this leg's, and a leg that read a seeded row
  * thinking it was its own — the failure mode hardest to see, because everything looks right —
  * cannot happen quietly.
+ *
+ * **Each repository numbers from its own range** ({@link NUMBER_RANGE} apart, since
+ * [#422](https://github.com/NobuData/ouroboros/issues/422)). GitHub numbers per repository,
+ * but the product's run queue is keyed by `(workspace, issue number)` — a workspace cannot
+ * queue `#9000` twice, whichever repositories the two live in. The planning leg pushes into
+ * the first repository and the knowledge leg files its issue in the second, on one stack and
+ * one workspace, so two repositories that both began at 9000 would make whichever leg ran
+ * second fail on the other's queue row. The first repository still begins at 9000, which is
+ * the number the planning leg's assertions were written against.
+ *
+ * ---------------------------------------------------------------------------
+ * **Repositories hold files too** (#422), read from `./repos/{owner}/{repo}/` beside this file
+ * when the process starts. The knowledge leg's subject is a rules-file **import**:
+ * `ouroboros-rest` asks the code host for `CLAUDE.md`, `AGENTS.md`, `.cursorrules` and
+ * `.github/copilot-instructions.md` through GitHub's contents route, and the repo-map generator
+ * asks for the tree. Both are answered here from the fixture files, in GitHub's documented
+ * shapes: a file is base64 in a `type: "file"` document, a path that is not there is a `404`,
+ * and the tree of a repository with no files is GitHub's `409` *Git Repository is empty* —
+ * which is what a repository this tracker holds only issues for is.
+ *
+ * The files are the fixture's and not the leg's: `/__sandbox/reset` empties the issues and
+ * leaves them, exactly as resetting a tracker would not delete a repository's source.
  */
 
+import { readFileSync, readdirSync } from "node:fs";
 import { createServer } from "node:http";
+import { dirname, join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 
 /**
  * The port. Fixed rather than read from the environment, for `provider-stub`'s reason: this is
@@ -95,6 +122,18 @@ const SEEDED_REPOS = [
 const FIRST_ISSUE_NUMBER = 9000;
 
 /**
+ * How far apart two repositories' issue numbers begin — see the module note. Five hundred is
+ * far past what any leg files in one run, so the ranges cannot meet.
+ */
+const NUMBER_RANGE = 500;
+
+/** Where the fixture repositories' files are — `./repos/{owner}/{repo}/…`, beside this file. */
+const FILES_ROOT = join(dirname(fileURLToPath(import.meta.url)), "repos");
+
+/** GitHub wraps a contents response's base64 at sixty characters; clients must tolerate it. */
+const BASE64_LINE = 60;
+
+/**
  * The host the `html_url`s claim.
  *
  * `https`, and that is a requirement rather than a flourish: `github.mapping.ts` refuses an
@@ -110,6 +149,45 @@ const RATE_LIMIT = 5000;
 
 /** The whole world: `owner/repo` to its contents. */
 const repos = new Map();
+
+/**
+ * Every file under a directory, as paths relative to it with `/` separators.
+ *
+ * @param {string} root The directory.
+ * @param {string} [directory] The directory being walked; `root` on the first call.
+ * @returns {string[]} The files' paths, sorted, so a tree listing is stable.
+ */
+function walk(root, directory = root) {
+  let entries;
+
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch {
+    // No fixture files for this repository: it holds issues only.
+    return [];
+  }
+
+  return entries
+    .flatMap((entry) => {
+      const path = join(directory, entry.name);
+
+      return entry.isDirectory() ? walk(root, path) : [relative(root, path).split(sep).join("/")];
+    })
+    .sort();
+}
+
+/**
+ * The fixture files of every repository: `owner/repo` to a map of path to bytes.
+ *
+ * Read once, at start, and never written — see the module note on why a reset leaves them.
+ */
+const files = new Map(
+  SEEDED_REPOS.map((slug) => {
+    const root = join(FILES_ROOT, ...slug.split("/"));
+
+    return [slug, new Map(walk(root).map((path) => [path, readFileSync(join(root, path))]))];
+  }),
+);
 
 /** The next issue id. GitHub's database id, which the relation routes take instead of a number. */
 let nextIssueId = 1;
@@ -137,11 +215,11 @@ let creationsBeforeRefusal = null;
 function reset() {
   repos.clear();
 
-  for (const slug of SEEDED_REPOS) {
+  for (const [index, slug] of SEEDED_REPOS.entries()) {
     repos.set(slug, {
       issues: [],
       milestones: [],
-      nextNumber: FIRST_ISSUE_NUMBER,
+      nextNumber: FIRST_ISSUE_NUMBER + index * NUMBER_RANGE,
       nextMilestone: 1,
     });
   }
@@ -327,6 +405,61 @@ function issueOf(repo, number) {
 }
 
 /**
+ * One file, in the shape GitHub's contents route documents — the fields
+ * `github.probe.ts` reads (`type`, `size`, `encoding`, `content`) and the three a client
+ * expects beside them.
+ *
+ * @param {string} path The file's path in the repository.
+ * @param {Buffer} bytes Its contents.
+ * @returns {object} The payload.
+ */
+function contentsPayload(path, bytes) {
+  const encoded = bytes.toString("base64");
+  const lines = [];
+
+  for (let at = 0; at < encoded.length; at += BASE64_LINE) {
+    lines.push(encoded.slice(at, at + BASE64_LINE));
+  }
+
+  return {
+    type: "file",
+    name: path.split("/").at(-1),
+    path,
+    size: bytes.length,
+    encoding: "base64",
+    content: `${lines.join("\n")}\n`,
+  };
+}
+
+/**
+ * A repository's tree, listed recursively, in the shape GitHub's trees route documents: a
+ * `tree` entry per directory and a `blob` per file.
+ *
+ * @param {Map<string, Buffer>} held The repository's files.
+ * @returns {object} The payload.
+ */
+function treePayload(held) {
+  const directories = new Set();
+
+  for (const path of held.keys()) {
+    const segments = path.split("/");
+
+    for (let depth = 1; depth < segments.length; depth += 1) {
+      directories.add(segments.slice(0, depth).join("/"));
+    }
+  }
+
+  return {
+    sha: "HEAD",
+    truncated: false,
+    tree: [
+      ...[...directories].sort().map((path) => ({ path, type: "tree", mode: "040000" })),
+      ...[...held.keys()].map((path) => ({ path, type: "blob", mode: "100644" })),
+    ],
+  };
+}
+
+/**
  * Handle one request.
  *
  * @param {import("node:http").IncomingMessage} request The request.
@@ -412,6 +545,35 @@ async function handle(request, response) {
   // GET /repos/{o}/{r} — the probe `validateConfig` sends.
   if (rest.length === 0 && method === "GET") {
     json(response, 200, { full_name: slug, has_issues: true });
+    return;
+  }
+
+  // ------------------------------------------------------------------ files
+  const held = files.get(slug) ?? new Map();
+
+  // GET /repos/{o}/{r}/contents/{path} — one file, or GitHub's 404 for a path that is not one.
+  if (rest[0] === "contents" && rest.length > 1 && method === "GET") {
+    const wanted = rest.slice(1).map(decodeURIComponent).join("/");
+    const bytes = held.get(wanted);
+
+    if (bytes === undefined) {
+      json(response, 404, { message: "Not Found" });
+      return;
+    }
+
+    json(response, 200, contentsPayload(wanted, bytes));
+    return;
+  }
+
+  // GET /repos/{o}/{r}/git/trees/{sha} — the whole tree. A repository with no files is, to a
+  // host, one with no commits, and GitHub says so with a 409 rather than an empty list.
+  if (rest[0] === "git" && rest[1] === "trees" && rest.length === 3 && method === "GET") {
+    if (held.size === 0) {
+      json(response, 409, { message: "Git Repository is empty." });
+      return;
+    }
+
+    json(response, 200, treePayload(held));
     return;
   }
 

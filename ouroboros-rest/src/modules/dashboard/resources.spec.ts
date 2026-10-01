@@ -145,6 +145,7 @@ describe("a queued issue", () => {
       position: 12,
       estMinutes: null,
       enqueuedAt: "2026-08-13T13:37:41.000Z",
+      playbookId: null,
     });
   });
 
@@ -159,6 +160,17 @@ describe("a queued issue", () => {
       workflowVersion: 14,
       workflowPinReason: "most_specific",
     });
+  });
+});
+
+describe("a queued issue's playbook", () => {
+  it("names the recipe it was queued under, and null for an issue queued any other way (#422)", () => {
+    // The run that opens under the same pin inherits it; the queue row is where it is first
+    // written, and the summary used to drop it.
+    const playbook = "5eed0045-0000-4000-8000-000000000001";
+
+    expect(queueItemSummary(QUEUED).playbookId).toBeNull();
+    expect(queueItemSummary({ ...QUEUED, playbook_id: playbook }).playbookId).toBe(playbook);
   });
 });
 

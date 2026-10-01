@@ -222,3 +222,64 @@ describe("the scope card and the manifest preview (#421)", () => {
     expect(rule("\\.knowledge-preview__over")).toMatch(/color:\s*var\(--warn\)/);
   });
 });
+
+describe("the states (#422)", () => {
+  it("draws a pending map and a failed one apart — in line, ground and hue, not in ink alone", () => {
+    const pending = rule("\\.knowledge-maps__row");
+
+    // One line a repository: the row centres its three parts rather than stacking a notice.
+    expect(pending).toMatch(/align-items:\s*center/);
+    const failed = rule("\\.knowledge-maps__row--failed");
+
+    expect(pending).toMatch(/border:\s*1px dashed var\(--line-strong\)/);
+    expect(pending).toMatch(/background:\s*var\(--inset\)/);
+    expect(failed).toMatch(/border-style:\s*solid/);
+    expect(failed).toMatch(/border-color:\s*var\(--err-line\)/);
+    expect(failed).toMatch(/background:\s*var\(--err-tint\)/);
+  });
+
+  it("writes a generation's refusal in the error ink, and the pending note and an unread status in the faint one", () => {
+    expect(rule("\\.knowledge-maps__refusal")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.knowledge-maps__note")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.knowledge-maps__unread")).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+
+  it("lets a long repository name wrap rather than push the chip out of its row at the 125% scale", () => {
+    expect(rule("\\.knowledge-maps__repo")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule("\\.knowledge-maps__body")).toMatch(/min-width:\s*0/);
+    expect(rule("\\.knowledge-maps__state")).toMatch(/flex-shrink:\s*0/);
+  });
+
+  it("stacks a map's row on a narrow pane", () => {
+    expect(CODE).toMatch(/@media \(max-width: 40rem\) \{\s*\.knowledge-maps__row \{\s*flex-direction: column;/);
+  });
+
+  it("wraps an empty state's actions, so two buttons never overflow a narrow card", () => {
+    expect(rule("\\.knowledge-empty__actions,\\s*\\.knowledge-unread__actions")).toMatch(/flex-wrap:\s*wrap/);
+  });
+});
+
+describe("the repo profile's head at the 125% scale (#422)", () => {
+  it("wraps, and lets the repository select shrink — a rigid head pushed the pane sideways", () => {
+    expect(rule("\\.knowledge-profile__head")).toMatch(/flex-wrap:\s*wrap/);
+
+    const select = rule("\\.knowledge-profile__select");
+
+    expect(select).toMatch(/min-width:\s*0/);
+    expect(select).toMatch(/max-width:\s*100%/);
+    expect(select).not.toMatch(/min-width:\s*14rem/);
+  });
+});
+
+describe("the skeleton (#422)", () => {
+  it("sets the profile key's measure to the card's own, so the values line up where they will land", () => {
+    expect(rule("\\.knowledge-skeleton__key")).toMatch(/width:\s*6\.625rem/);
+    // The card's own rule, past the narrow-pane override that precedes it in the sheet.
+    expect(CODE).toMatch(/\.knowledge-profile__key\s*\{\s*flex:\s*none;\s*width:\s*6\.625rem/);
+  });
+
+  it("separates rows with the hairline the cards use, and never animates a bar", () => {
+    expect(rule("\\.knowledge-skeleton__row")).toMatch(/border-bottom:\s*1px solid var\(--line\)/);
+    expect(CODE).not.toMatch(/knowledge-skeleton[^{]*\{[^}]*animation/);
+  });
+});

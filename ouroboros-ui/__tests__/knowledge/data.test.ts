@@ -8,6 +8,8 @@ import {
   CITED_TICKET_560,
   READ_AT,
   SEEDED_REPO,
+  pendingMap,
+  repoMapStatuses,
   seededDetection,
   seededFacts,
   seededPlaybooks,
@@ -21,7 +23,7 @@ import { TENANT_ID, enablement, membership, org, repo, sessionUser } from "../he
 
 /**
  * The knowledge frame's reader (#417; the stats since #418; the facts and their cited tickets since
- * #419; the playbooks and the profile since #420): five reads in parallel, each kept as a value, so
+ * #419; the playbooks and the profile since #420; the repo-map status since #422): six reads in parallel, each kept as a value, so
  * a refused one degrades its own concern and the redirect signal still travels — the tickets the
  * facts cite resolved to their tracker pages, one read each; the profile card's detection and
  * recipe read for the one repository it draws — and the instant of the read, which every age on
@@ -39,11 +41,13 @@ const readEnablement = vi.fn();
 const listPlaybooks = vi.fn();
 const readDetection = vi.fn();
 const readRecipe = vi.fn();
+const mapStatus = vi.fn();
 
 vi.mock("@/app/api/skills", () => ({ skills: { list: () => list(), stats: () => stats() } }));
 vi.mock("@/app/api/facts", () => ({ facts: { list: () => listFacts() } }));
 vi.mock("@/app/api/backlog", () => ({ backlog: { detail: (id: string) => detail(id) } }));
 vi.mock("@/app/api/playbooks", () => ({ playbooks: { list: () => listPlaybooks() } }));
+vi.mock("@/app/api/repo-map", () => ({ repoMap: { status: () => mapStatus() } }));
 vi.mock("@/app/api/detection", () => ({ detection: { read: (repo: string) => readDetection(repo) } }));
 vi.mock("@/app/api/env-recipes", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/api/env-recipes")>()),
@@ -91,6 +95,7 @@ beforeEach(() => {
   listPlaybooks.mockReset().mockResolvedValue(seededPlaybooks());
   readDetection.mockReset().mockResolvedValue(seededDetection());
   readRecipe.mockReset().mockResolvedValue(seededRecipe());
+  mapStatus.mockReset().mockResolvedValue(repoMapStatuses());
 });
 
 describe("readKnowledge", () => {
@@ -103,7 +108,32 @@ describe("readKnowledge", () => {
     expect(readings.facts).toEqual({ ok: true, value: seededFacts() });
     expect(readings.repos).toEqual({ ok: true, value: seededRepos() });
     expect(readings.playbooks).toEqual({ ok: true, value: seededPlaybooks() });
+    expect(readings.maps).toEqual({ ok: true, value: repoMapStatuses() });
     expect(readings.readAt).toBe(READ_AT);
+  });
+
+  describe("the repo-map status (#422)", () => {
+    it("is read once, as the service answers it — pending is the service's word, not an inference", async () => {
+      mapStatus.mockResolvedValue(repoMapStatuses([pendingMap()]));
+
+      const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+      expect(mapStatus).toHaveBeenCalledOnce();
+      expect(readings.maps).toEqual({ ok: true, value: repoMapStatuses([pendingMap()]) });
+    });
+
+    it("keeps its refusal as that reading's reason, and leaves every other reading whole", async () => {
+      mapStatus.mockRejectedValue(new ApiError(500, "internal_error", "The status failed.", {}));
+
+      const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+      expect(readings.maps).toEqual({ ok: false, reason: "The status failed." });
+      expect(readings.skills.ok).toBe(true);
+      expect(readings.facts.ok).toBe(true);
+      expect(readings.playbooks.ok).toBe(true);
+      expect(readings.repos.ok).toBe(true);
+      expect(readings.profile.detection.ok).toBe(true);
+    });
   });
 
   describe("the profile card's repository", () => {

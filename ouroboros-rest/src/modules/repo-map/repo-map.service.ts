@@ -50,7 +50,13 @@ import {
   type RepoMapDocument,
 } from "./repo-map.render";
 import { REPO_MAP_SLUG, RepoMapRepository, type RepoMapSkill } from "./repo-map.repository";
-import type { RepoMapReport, RepoMapSkipReason, RepoMapTrigger } from "./repo-map.resources";
+import type {
+  RepoMapReport,
+  RepoMapSkipReason,
+  RepoMapStatusList,
+  RepoMapTrigger,
+} from "./repo-map.resources";
+import { statusesOf } from "./repo-map.status";
 
 /**
  * The shortest gap between two manual regenerates of one repository — sixty seconds. A generation
@@ -117,6 +123,30 @@ export class RepoMapService {
     this.requested.set(key, now);
 
     return this.generate(organizationId, repo, "manual", actorId, now);
+  }
+
+  /**
+   * Where each enabled repository's map stands — generated, pending its first generation, or
+   * failed at it (BG.6, [#422](https://github.com/NobuData/ouroboros/issues/422)). Reads only:
+   * no host request is made, so asking never spends the repository's rate limit.
+   *
+   * @param organizationId - The workspace.
+   * @returns One status per enabled repository, by name.
+   */
+  async status(organizationId: string): Promise<RepoMapStatusList> {
+    const [repos, skills, generations] = await Promise.all([
+      this.store.enabledRepos(organizationId),
+      this.store.mapSkills(organizationId),
+      this.store.lastGenerations(organizationId),
+    ]);
+
+    return {
+      items: statusesOf(
+        repos.map((one) => one.repo),
+        skills,
+        generations,
+      ),
+    };
   }
 
   /**

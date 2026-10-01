@@ -30,6 +30,7 @@ import {
   READ_AT,
   SEEDED_REPO,
   repoMapReport,
+  repoMapStatuses,
   seededSkill,
   seededSkills,
   seededStats,
@@ -86,6 +87,7 @@ function draw(
     <SkillsTable
       mayAdminister
       onToast={onToast}
+      maps={{ ok: true, value: repoMapStatuses() }}
       readAt={READ_AT}
       skills={{ ok: true, value: seededSkills() }}
       stats={{ ok: true, value: seededStats() }}
@@ -162,6 +164,7 @@ describe("the six rows", () => {
   it("render the same markup in both palettes — the sheet is what differs", () => {
     const [light, dark] = renderInBothPalettes(
       <SkillsTable
+        maps={{ ok: true, value: repoMapStatuses() }}
         mayAdminister
         onToast={vi.fn()}
         readAt={READ_AT}

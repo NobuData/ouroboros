@@ -27,7 +27,7 @@ import type {
   PlaybookList,
   PlaybookResource,
 } from "../playbooks/playbooks.resources";
-import type { RepoMapReport } from "../repo-map/repo-map.resources";
+import type { RepoMapReport, RepoMapStatusList } from "../repo-map/repo-map.resources";
 import type { SkillDetail, SkillList, SkillStats } from "../skills/skills.resources";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import type { RepoFile, RepoTree } from "../ticket-sources/ticket-source.probe";
@@ -943,6 +943,21 @@ describe("organization isolation, on every knowledge route", () => {
         );
 
         expect(envelope.code).toBe(DETECTION_ERRORS.sourceMissing);
+      },
+    },
+    [`GET ${KNOWLEDGE}/repo-map`]: {
+      about: "reports its own repositories' maps and none of theirs",
+      check: async (self, other) => {
+        const list = bodyOf<RepoMapStatusList>(
+          await as(self)("get", `${KNOWLEDGE}/repo-map`).expect(200),
+        );
+
+        // Its own map is in force — the bench generated it — and the list is its repositories only,
+        // whatever generations the audit trail holds under another workspace.
+        expect(list.items.map((status) => [status.repo, status.state])).toEqual([
+          [self.repo, "generated"],
+        ]);
+        holdsNothingOf(list, other);
       },
     },
     [`POST ${KNOWLEDGE}/repo-map/regenerate`]: {

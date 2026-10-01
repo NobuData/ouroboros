@@ -60,6 +60,14 @@ import "./knowledge.css";
  * anchor for it names; the right is the playbooks card and the repo profile (BG.4, #420,
  * `playbooks-card.tsx` and `profile-card.tsx`) over the scope card (BG.5, #421, `scope-card.tsx`).
  *
+ * ### What a new org sees
+ *
+ * Every card draws its own empty, cold and unread state (BG.6,
+ * [#422](https://github.com/NobuData/ouroboros/issues/422), `app/knowledge/states.ts`). The one
+ * the screen takes part in is the empty skills table's: its two actions are the head's — this
+ * component's — so a second pair is handed down for the table to draw where the reader is
+ * looking, for the same roles the head draws them for.
+ *
  * ### The ladder's steps are decided here, because they narrow two other cards
  *
  * The scope card's steps are computed in this component (`ladder`, `app/knowledge/scope.ts`) from
@@ -145,6 +153,15 @@ export function KnowledgeScreen({
           <div className="knowledge__seat" id={SKILLS_REGION_ID}>
             <SkillsTable
               filter={filter}
+              emptyActions={
+                mayAdminister ? (
+                  <>
+                    <NewSkill onCreated={setToast} repos={readings.repos} skills={readings.skills} />
+                    <ImportSheet onImported={setToast} repos={readings.repos} workspaceId={workspaceId} />
+                  </>
+                ) : undefined
+              }
+              maps={readings.maps}
               mayAdminister={mayAdminister}
               onToast={setToast}
               readAt={readings.readAt}

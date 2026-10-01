@@ -39,3 +39,38 @@ export interface RepoMapReport {
   /** Whether a bound cut the tree listing. */
   readonly truncated: boolean;
 }
+
+/**
+ * Where a repository's map stands (BG.6, [#422](https://github.com/NobuData/ouroboros/issues/422)).
+ *
+ * `generated` — a map skill is in force; `pending` — none is, and no generation has been recorded
+ * for the repository, so the first one has not run yet; `failed` — none is, and the newest
+ * recorded generation was skipped, so the first one ran and could not read the repository.
+ */
+export type RepoMapState = "generated" | "pending" | "failed";
+
+/** The states, in the order a reader meets them. */
+export const REPO_MAP_STATES: readonly RepoMapState[] = ["generated", "pending", "failed"];
+
+/** One enabled repository's map, as the skills card draws it before and after a first generation. */
+export interface RepoMapStatus {
+  /** `owner/name`, lower-case. */
+  readonly repo: string;
+  readonly state: RepoMapState;
+  /** The map skill's slug; null until a generation publishes one. */
+  readonly skill: string | null;
+  /** The version in force; null until a generation publishes one. */
+  readonly version: number | null;
+  /**
+   * The newest recorded generation — whatever its outcome — or null when none was recorded. A
+   * `generated` map whose newest generation was `skipped` keeps its version in force, and this is
+   * what says the refresh did not happen.
+   */
+  readonly lastReport: RepoMapReport | null;
+}
+
+/** `GET /api/v1/knowledge/repo-map`. */
+export interface RepoMapStatusList {
+  /** One per enabled repository of the workspace, by name. */
+  readonly items: readonly RepoMapStatus[];
+}

@@ -14,7 +14,7 @@ to the product — and that question is what this directory exists to ask.
 
 It is deliberately a **smoke** suite. It does not re-test what a module already covers; it
 walks one path through each boundary and asserts the things that are only true of a running
-deployment. Five legs from the issue, and fifteen amended in since:
+deployment. Five legs from the issue, and sixteen amended in since:
 
 | Leg | Spec | What only this can see |
 |---|---|---|
@@ -38,6 +38,7 @@ deployment. Five legs from the issue, and fifteen amended in since:
 | 18 | [`specs/run-console.spec.ts`](specs/run-console.spec.ts) | **The Run Console MVP gate (#314)** — the whole stack moving together against a run that is genuinely moving: a finished seeded run (`#474`, merged) screenshot in both palettes with its outcome pill, frozen elapsed, pull-request link and closed steering; the driver's `482-gate-return` watched as its stepper advances, its transcript appends, a steer typed mid-attempt comes back *acknowledged*, guardrail verdicts render and a pause and resume both reach *acknowledged*; a second run aborted through the typed confirmation into the terminal state, and its JSONL export carrying the simulated watermark on every line; and the shell's promises on the console — fixed chrome under a pane scroll, the origin's sidebar entry lit, the 125% step |
 | 19 | [`specs/test-results.spec.ts`](specs/test-results.spec.ts) | **The test-results page's states (#342)** against the AS.5 seed: mockup 11's Build 3 screenshot in both palettes with its figures labelled *partial* and the ingest-lag banner naming when a report last arrived; a finished build with neither; a run without results leading to its console; a run that does not exist as the page's own not-found; an `?attempt=` naming a build the run never made; a report that parsed in part naming what failed and what is missing; a member served the re-runs and the classify form and offered no waive; **Mark & Route (#340)** — a rule's pick labelled `heuristic` and never a percentage, a decision answered with its routed receipt whose link leads into the run console and which is still on the card after a reload, both toggles stored when pressed, and a waiver asked its reason first in a dialog that keeps focus and closes on Escape; and the shell at 125%. The live chain — upload → parse → classify → correction → re-run → green — is written and **parked** on [#265](https://github.com/NobuData/ouroboros/issues/265) and [#991](https://github.com/NobuData/ouroboros/issues/991) |
 | 20 | [`specs/pr-verification.spec.ts`](specs/pr-verification.spec.ts) | **The PR verification page's states (#370)** against the AW.5 seed: mockup 12's `#514` screenshot in both palettes, saying that no sync has ever asked the host about it; a merged PR opening with its receipt and offering nothing to arm; a closed one; a disarmed plan naming **which** re-check refused; a blocked PR leading with *Return to loop*; a member offered no arm, no waive and no approve; the shell at 125% — and **the TOCTOU assertion, for real**: the seeded PR armed, a gate turned red before the last one is green, and **no merge**, with the executor's reason on the page. The live chain — sandbox PR → sync → gates → waive → arm → merged — is written and **parked** on a PR sync trigger, run linking ([#375](https://github.com/NobuData/ouroboros/issues/375)) and a sandbox host that serves pull requests |
+| 21 | [`specs/knowledge.spec.ts`](specs/knowledge.spec.ts) | **The knowledge page's states, and the Knowledge MVP gate (#422)**: what a new org sees — `acme-onboarding`, with no knowledge at all — five cards that teach rather than apologise, in both palettes, and a `repo-map` *pending its first generation* drawn apart from one a generation the host really refused left *failed*; mockup 14's seeded page in both palettes; a member's page, and each write they may not make refused when it is made past the page; the shell at 125% — and **the chain that makes it a knowledge *layer***: import the fixture `CLAUDE.md` and `.cursorrules` from the sandbox host, preview, apply, find the drafts in the table and the candidates in the card, confirm one fact, see it in the manifest preview, and then read **the estimator's own request to the engine off the wire** and find that fact in it; switch a skill off and watch the preview drop it; learn a playbook from a finished run, run it on an issue, and find the queue holding that issue **under that playbook**, with the fact in the context it attaches |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
 route-migration gate. Its containment assertions come with their own falsifier:
@@ -363,6 +364,86 @@ for none — each against a cold database:
 | the re-check — `recheckVerification` no longer looks at a red gate | the TOCTOU test, at the banner | *the plan must disarm naming the red gate — the merge executor re-checks the gates before it asks the host anything* | the plan **armed on a blocked PR** — the state the re-check exists to prevent |
 | the re-check — `recheckVerification` answers `ok` to everything | the TOCTOU test, at the arm | *the plan must arm — arming records the intent against the revision looked at, in the merge executor* | the plan disarmed `host_refused`: an unready PR went straight to the host, which could not be read |
 
+Leg 21 is [#422](https://github.com/NobuData/ouroboros/issues/422)'s — BG.6, the Knowledge
+roadmap's MVP gate — in about fifteen seconds of the suite's ten minutes; the issue allows two and
+a half. Six tests, in two blocks: four that read a page as the seed left it, and two that write.
+
+**Two workspaces, because no seeded one is both cold and able to run a loop.** The issue's chain
+opens *cold org → import …* and closes *… → run on issue → queue*, and the seed is right not to
+offer one workspace for both: `acme-onboarding` has no knowledge at all and — by its own seed's
+assertion — no workflow, route or provider; `acme-robotics` has all of those and mockup 14's six
+skills. So what a new org **sees** is asserted where a new org is, and the chain runs in the one
+workspace with an estimator route, a published workflow and a finished, pinned run, importing from
+a repository the seed holds no knowledge for (`acme-robotics/helios-console`).
+
+| The chain needed | What there was | What the leg brings |
+|---|---|---|
+| a host that serves **files** | `fixtures/tracker-stub` held issues only | GitHub's contents and trees routes over `fixtures/tracker-stub/repos/` — a `CLAUDE.md` and a `.cursorrules` |
+| a **credential** that opens | the seeded source's is a placeholder on purpose | the leg stores one on the source, as a person connecting it under Settings → Sources would |
+| a **finished run with a pin** | the only pinned run was the live `#482` | the seed pins `#471` under its playbook's `standard-fix` v14 (`R__dev_seed_workspace_knowledge.sql`, decision 8) |
+| an issue the queue does **not** hold | the issues leg queues the last free seeded one | a sandbox issue filed on the host and brought home by the intake mirror — which is also what makes the estimator run |
+| a way to **see the estimator's request** | none: the engine reads none of it and nothing stores it | `fixtures/engine-tap`, below |
+
+**The estimator assertion reads the wire.** The gate is that a fact confirmed in the browser is
+*present in the estimator's request payload*. `rest` posts that payload to the engine; the engine's
+`heuristic-v0` reads none of it, its answer does not echo it, and nothing stores it. What `rest`
+does store is the injection record it writes beside the request — and a leg asserting that would
+pass with the payload builder deleted, which the hand-breakage below shows. So
+`fixtures/engine-tap` sits between the two (`docker-compose.e2e.yml` points `rest`'s
+`OURO_ENGINE_URL` at it): it forwards everything to the engine unchanged, returns the engine's own
+answer, and keeps each `POST /v0/estimate` body. The leg confirms the fact in the card, files an
+issue on the host, lets the intake mirror bring it home, waits for the estimator to size it — the
+estimator runs because an issue arrived, which is how it runs — and then reads **that issue's
+request** off the tap and requires `context.facts` to hold the fact, by id and text, and not the
+candidate beside it that nobody confirmed. The tap publishes its controls only; the listener that
+forwards has no host port, so the engine is as unreachable from the host as leg 5 asserts.
+
+**Verified on the queue.** After *Run on issue…*, the leg reads `GET /api/v1/queue` and requires
+the issue's own entry to name the playbook (`playbookId`, new with this ticket), its workflow and
+its pinned version, `explicit` — and then reads the context that playbook attaches for the
+repository and requires the confirmed fact in it. Both reads come after the browser has pressed
+the button and read the receipt; neither replaces a browser assertion.
+
+**Pending and failed are both the service's.** In the cold workspace both repositories' `repo-map`
+are *pending first generation* — nothing has been attempted. The leg then presses **↻** on one,
+and the generation is refused for real: that workspace's source holds the seed's placeholder
+credential, so the read never reaches the host. The row turns *generation failed* with why, the
+other stays pending, a reload draws the same two, and the pair is photographed side by side.
+Nothing is intercepted or rewritten anywhere in this leg.
+
+**It changes both workspaces for good, so the two tests that write run last and the leg is green
+from a cold volume.** An import has no un-import, a confirmed fact's audit is append-only, the
+queue has no remove and every generation is audited — the planning leg's position (leg 15), for
+its reason. The first block's `beforeAll` reads both workspaces once and says so in words when the
+stack has already run the leg; the two writers sit outside that guard and state their own
+preconditions, so a worker restarted after one of them failed does not report the other as *not
+cold*. What can be put back, is: the sandbox issue is closed on its host, the workspace's GitHub
+token is removed, and the skill the chain switches off is switched on again — in the test, and
+again in teardown. **Nothing after this leg reads what it leaves**: every other leg was run in file
+order on one cold stack with it and without it, and each gave the same result both times.
+
+The four pairs were run and went red, each from a cold database: `db` at sign-in
+(`sign-in for … answered 500`), before any write; `tracker-stub` at the preview, which found no
+rules files; `engine-tap` at its first step, naming the fixture; and `engine` where the sandbox
+issue must be sized — last, because that one leaves the import behind. The issue asks for each
+hop to fail meaningfully when **its own layer** is broken, and those layers are code paths inside
+`rest`, so each was **broken by hand**, by leg 20's recipe — stub, `up -d --build rest`, recreate
+`ui`, restore the source at once, `grep` the stub in the container's `dist`, run the chain,
+rebuild clean and `grep` for none — each against a cold database:
+
+| Broken | Went red | With | And left |
+|---|---|---|---|
+| the importer — `RuleImportService.probe` asks the host for no files | the chain, at the preview | *the preview must find the fixture's CLAUDE.md and .cursorrules — the import reads the repository on its host through the connected source* | the files table reading `CLAUDE.md not found`; nothing imported |
+| context assembly — `facts()` no longer selects the confirmed ones | the chain, at the manifest preview | *the manifest preview must list the confirmed fact — context assembly resolves the confirmed facts of the repository* | the fact confirmed in the card, and a preview reading `Confirmed facts (0)` |
+| the estimator — `withFacts` sends an empty `context.facts` | the chain, at the tap | *the estimator's request must carry the confirmed fact in context.facts — estimation builds its context from the estimator manifest* | the issue **sized**, the wire carrying `[]` — and the fact's `usedCount` at **1** |
+| assembly's switch — a switched-off skill is read as enabled | the chain, at the second preview | *the manifest preview must follow the skill's switch at once — the switch is recorded and the next preview resolves without it* | the switch off in the table, `pr-etiquette@v4` still in the manifest |
+| the launch — the queue write drops the launch's playbook | the chain, on the queue | *the queue entry must name its playbook, and that playbook's context must carry the confirmed fact — the launch attaches the recipe and its manifest* | the receipt drawn as usual, the queue's entry with `playbookId: null` |
+
+**The third row is why the tap exists.** With the payload builder sending no facts, the estimator's
+request reached the engine empty — and the injection record `rest` writes beside it still named
+the fact, so the card read *used 1×*. A leg that asserted the record, or the count, or the
+estimator's manifest preview, would have passed.
+
 Leg 16 is [#262](https://github.com/NobuData/ouroboros/issues/262)'s — AI.7, mockup 08's MVP gate —
 and it is different in kind from the fifteen before it. They certify a UI against services in the
 same compose stack, written in the same language. This one certifies a chain that crosses a
@@ -504,11 +585,14 @@ works as-is. Override only when the stack is somewhere else.
 |---|---|---|
 | `OURO_E2E_UI_URL` | `http://localhost:3000` | Where `ouroboros-ui` answers |
 | `OURO_E2E_REST_URL` | `http://localhost:4000` | Where `ouroboros-rest` answers |
-| `OURO_E2E_TRACKER_URL` | `http://localhost:4100` | Where the suite's own sandbox tracker answers (leg 15) |
+| `OURO_E2E_TRACKER_URL` | `http://localhost:4100` | Where the suite's own sandbox tracker answers (legs 15 and 21) |
+| `OURO_E2E_TAP_URL` | `http://localhost:4200` | Where the engine tap's **controls** answer — the estimate requests it has seen (leg 21) |
 
 There is no address for `ouroboros-engine`, and there cannot be: it publishes no host port
 (`docs/ARCHITECTURE.md` § 10). Leg 4 reaches it the only way anything outside the compose
-network can, and leg 5 asserts that is still the only way.
+network can, and leg 5 asserts that is still the only way. The engine tap does not change that:
+the listener that forwards to the engine is not published, and the one that is published forwards
+nothing (`fixtures/engine-tap/server.mjs`).
 
 ### Signing in
 
@@ -556,7 +640,7 @@ tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19 and 20's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20 and 21's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
@@ -572,6 +656,7 @@ tests/e2e/
 │   ├── farm-runner.ts          # the build machine's three verbs: a fresh one, a pasted line, a pulled plug (leg 16)
 │   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (legs 17, 18)
 │   ├── pull-requests.ts        # what mockup 12 renders for the seeded PR, and the page's poll rewritten into the states the seed does not hold (leg 20)
+│   ├── knowledge.ts            # the cold workspace and the seeded one, the fixture import's figures, the sandbox issue, and the two reads beneath the browser (leg 21)
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
 │   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
@@ -585,7 +670,8 @@ tests/e2e/
 │   └── api.ts                  # scripted requests and their failure messages
 ├── fixtures/
 │   ├── provider-stub/          # the provider leg 10 connects to, and really stops
-│   ├── tracker-stub/           # the sandbox tracker leg 15 pushes to, and reads back
+│   ├── tracker-stub/           # the sandbox tracker leg 15 pushes to, and reads back — and the host leg 21 imports rules files from (repos/)
+│   ├── engine-tap/             # the wire between rest and the engine: forwards everything, remembers each estimate request (leg 21)
 │   ├── farm-gateway/           # TLS in front of rest, forwarding the runner's client certificate (leg 16)
 │   ├── runner-release/         # this checkout's agent release, for rest to serve (leg 16)
 │   └── runner-machine/         # the bare machine the copied enroll command is pasted into (leg 16)
@@ -692,6 +778,16 @@ time), `-blocked-head` and `-blocked-gates` the head and the gates card of a blo
 `-member-gates` the gates card as a member reads a waiting review, and `-sync-lag` the lag banner
 with its headline masked, since it names the day the leg ran.
 
+Leg 21's pairs are three. `knowledge-cold-{light,dark}` is the whole page of a workspace with no
+knowledge — the five empty states and both repositories' `repo-map` pending — and
+`knowledge-{light,dark}` the whole seeded page, each through a 1920 × 3200 window.
+**Three masks**, each over an age the seed wrote relative to the moment it migrated: the skills
+table's Updated cells that print one (the required and the generated rows' tags stay in view),
+the facts' source lines, and the environment recipe's version line. `knowledge-maps-{light,dark}`
+is the maps list alone, with one map pending and one failed side by side — the criterion that the
+two are visually distinct, as a picture — masking the failed row's sentence, which says how long
+ago it failed.
+
 Leg 12's pair is of the **canvas region alone** rather than the page —
 `studio-canvas-{light,dark}` in [`specs/studio.spec.ts`](specs/studio.spec.ts), through a
 1920 × 1400 window the leg asserts the canvas fits whole. The studio's head says *Last edited 2h
@@ -738,16 +834,18 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19 and 20's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+Legs 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 and 21's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
 --update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts`,
 `specs/issues.spec.ts`, `specs/studio.spec.ts`, `specs/code-editor.spec.ts`,
 `specs/registry.spec.ts`, `specs/planning.spec.ts`, `specs/farm.spec.ts`, `specs/runs.spec.ts`,
-`specs/run-console.spec.ts`, `specs/test-results.spec.ts` or `specs/pr-verification.spec.ts` — at
-step 2. The precondition is the same, and it is the same seed.
+`specs/run-console.spec.ts`, `specs/test-results.spec.ts`, `specs/pr-verification.spec.ts` or
+`specs/knowledge.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
 
 **Leg 20's pairs need a cold volume, as leg 15's do**, for the reason its section gives: its last
 test changes the seeded PR for good, and every pair before it photographs that PR as the seed left
-it.
+it. **Leg 21's do too**: its chain imports into the seeded workspace and its refused generation
+is recorded in the cold one, and all three pairs photograph those workspaces as the seed left
+them.
 
 **Leg 15's pair has one more precondition, and it is the same volume rule its whole file lives
 under.** The parity group asserts the seeded OTA batch *before* it has been pushed, so the pair
@@ -883,5 +981,11 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#360](https://github.com/NobuData/ouroboros/issues/360) — the merge executor and its re-check, which leg 20's TOCTOU test holds to its word
 - [#358](https://github.com/NobuData/ouroboros/issues/358) — the gate engine leg 20 turns a gate red through
 - [#375](https://github.com/NobuData/ouroboros/issues/375) — loop-created PRs, whose run linking is one of the things that un-parks leg 20's live chain
+- [#422](https://github.com/NobuData/ouroboros/issues/422) — leg 21, the knowledge page's states and the Knowledge MVP gate
+- [#409](https://github.com/NobuData/ouroboros/issues/409) — the knowledge seed leg 21's parity asserts against
+- [#413](https://github.com/NobuData/ouroboros/issues/413) — the rules-file import leg 21's chain begins with
+- [#414](https://github.com/NobuData/ouroboros/issues/414) — context assembly, whose manifest leg 21 follows a fact through
+- [#105](https://github.com/NobuData/ouroboros/issues/105) — the estimator, whose request leg 21 reads off the wire
+- [#415](https://github.com/NobuData/ouroboros/issues/415) — playbooks and the repo-map generator leg 21 launches and refuses
 - [#306](https://github.com/NobuData/ouroboros/issues/306) — the control queue leg 17's presses travel through
 - [#307](https://github.com/NobuData/ouroboros/issues/307) — the simulated-run driver that acknowledges them

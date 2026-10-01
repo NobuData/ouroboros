@@ -114,7 +114,14 @@ const ALL_ELEVEN = [
  * [#256](https://github.com/NobuData/ouroboros/issues/256)) and **Knowledge** (BG.1,
  * [#417](https://github.com/NobuData/ouroboros/issues/417)).
  */
-const LIVE_ENTRIES = ["Dashboard", "Issues", "Models", "Build Farm", "Knowledge", "Planning"] as const;
+const LIVE_ENTRIES = [
+  "Dashboard",
+  "Issues",
+  "Models",
+  "Build Farm",
+  "Knowledge",
+  "Planning",
+] as const;
 
 /** The sidebar landmark — its accessible name is `aria-label="Primary"`. */
 function sidebar(page: Page) {

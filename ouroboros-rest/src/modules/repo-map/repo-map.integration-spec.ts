@@ -10,8 +10,9 @@ import { SCHEMA_NAME } from "../db/schema";
 import { DetectionService } from "../detection/detection.service";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
+import { TicketSourceError } from "../ticket-sources/ticket-source.errors";
 import type { RepoFile, RepoTree } from "../ticket-sources/ticket-source.probe";
-import type { RepoMapReport } from "./repo-map.resources";
+import type { RepoMapReport, RepoMapStatusList } from "./repo-map.resources";
 import { RepoMapService, type RepoMapReader } from "./repo-map.service";
 
 /**
@@ -25,6 +26,10 @@ import { RepoMapService, type RepoMapReader } from "./repo-map.service";
  *   * a generation over an unchanged repository writes no version — manual or nightly;
  *   * a changed repository writes exactly one, and the next unchanged pass writes none again;
  *   * every generation is audited with its outcome, the ones that found nothing included.
+ *
+ * **Pending is not failed** (BG.6, [#422](https://github.com/NobuData/ouroboros/issues/422)): the
+ * status read tells a map nobody has generated from one whose generation was refused, out of that
+ * same audit trail — which is why it is held here, against the real `audit_events`.
  *
  * The repository is read through `DetectionService`, which this suite replaces with an in-memory
  * host: the host's own request walk is `repo-map.service.spec.ts`'s subject, and what is asserted
@@ -43,6 +48,9 @@ class FakeHost implements RepoMapReader {
     ".github/CODEOWNERS": "* @acme/firmware\n/drivers/ @acme/platform\n",
   };
 
+  /** When set, the host refuses every read with this — a generation is then skipped (#422). */
+  refusal: TicketSourceError | undefined;
+
   /**
    * The tree and the files the generator picks from it.
    *
@@ -56,6 +64,8 @@ class FakeHost implements RepoMapReader {
     _repo: string,
     pick: (tree: RepoTree) => readonly string[],
   ): ReturnType<RepoMapReader["readTree"]> {
+    if (this.refusal !== undefined) return Promise.reject(this.refusal);
+
     const dirs = new Set<string>();
 
     for (const path of Object.keys(this.files)) {
@@ -115,6 +125,7 @@ describe("the repo-map generator, against a migrated database", () => {
 
   afterEach(async () => {
     host.files = new FakeHost().files;
+    host.refusal = undefined;
     await api.truncate();
   });
 
@@ -207,6 +218,80 @@ describe("the repo-map generator, against a migrated database", () => {
       "unchanged",
       "unchanged",
       "unchanged",
+    ]);
+  });
+  it("says where a map stands — pending, then failed, then generated — to every member (#422)", async () => {
+    const { owner, workspace, repo } = await bench();
+    const member = await api.signIn({ email: "member@ouroboros.invalid" });
+
+    await api.join(workspace.id, member, "member");
+
+    /** The status, as one person reads it. */
+    const statusFor = async (person: Person): Promise<RepoMapStatusList> =>
+      bodyOf<RepoMapStatusList>(
+        await api.as(person)("get", REPO_MAP).set(TENANT_HEADER, workspace.slug).expect(200),
+      );
+
+    // Nothing attempted: pending, with nothing on the record — and a member may read it.
+    expect((await statusFor(member)).items).toEqual([
+      { repo, state: "pending", skill: null, version: null, lastReport: null },
+    ]);
+
+    // A generation the host refuses writes no skill — and is on the record, so the map is failed.
+    host.refusal = new TicketSourceError("auth", "the stored credential could not be opened");
+    await generator.generate(workspace.id, repo, "nightly", null);
+
+    const [failed] = (await statusFor(member)).items;
+
+    expect(failed).toMatchObject({
+      repo,
+      state: "failed",
+      skill: null,
+      version: null,
+      lastReport: { outcome: "skipped", reason: "host_error", trigger: "nightly" },
+    });
+    expect(await versions(workspace.id)).toHaveLength(0);
+
+    // The host answers: the first version is published, and the map is generated.
+    host.refusal = undefined;
+    await generator.generate(workspace.id, repo, "manual", owner.id);
+
+    expect((await statusFor(owner)).items).toEqual([
+      expect.objectContaining({ repo, state: "generated", skill: "repo-map", version: 1 }),
+    ]);
+
+    // A later refusal leaves the version in force: still generated, the newest report says why
+    // the refresh did not happen.
+    host.refusal = new TicketSourceError("rate_limit", "at the floor");
+    await generator.generate(workspace.id, repo, "nightly", null);
+
+    expect((await statusFor(owner)).items[0]).toMatchObject({
+      state: "generated",
+      version: 1,
+      lastReport: { outcome: "skipped", reason: "rate_limit" },
+    });
+  });
+
+  it("lists every enabled repository of the workspace, and none of another's (#422)", async () => {
+    const { owner, workspace, repo } = await bench();
+    const stranger = await api.signIn({ email: "stranger@ouroboros.invalid" });
+    const elsewhere = await workspaceWithRepo(api, stranger);
+
+    await generator.generate(
+      elsewhere.id,
+      `${elsewhere.slug}/${PRIMARY_REPO}`.toLowerCase(),
+      "nightly",
+      null,
+    );
+
+    const mine = bodyOf<RepoMapStatusList>(
+      await api.as(owner)("get", REPO_MAP).set(TENANT_HEADER, workspace.slug).expect(200),
+    );
+
+    // The other workspace generated its map; this one's is untouched by that, and names only
+    // this workspace's repository.
+    expect(mine.items).toEqual([
+      { repo, state: "pending", skill: null, version: null, lastReport: null },
     ]);
   });
 });
