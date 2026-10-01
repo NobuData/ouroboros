@@ -28097,6 +28097,896 @@ select pg_temp.must_hold(
 drop table v080_manifest;
 
 -- ===========================================================================
+-- V081 — analysis_findings and analysis_suggestions: what the analyzer found and suggests
+-- (#507, BU.2)
+-- ===========================================================================
+--
+-- Every chart chip and every suggestion of mockup 18 written as rows over a small corpus whose
+-- builds, test runs, cases, waivers, pools, runner and workflow version are real, so every
+-- evidence reference resolves. Then the per-type data contract, resolution, the stable identity
+-- across a re-run (a dismissal sticking), the A4 lifecycle, impact honesty and retention.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v081',       'Analyzer Findings', 'analyzer-findings-v081', now()),
+  ('org-v081-other', 'Other Findings',    'other-findings-v081',    now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v081', 'Ken V081', 'ken@analyzer-v081.example', true);
+
+-- --- The corpus the evidence points into ------------------------------------------
+
+insert into ouroboros.github_orgs (id, organization_id, login) values
+  ('a8100010-0000-4000-8000-000000000001', 'org-v081', 'acme-v081');
+insert into ouroboros.github_repos (id, org_id, name) values
+  ('a8100011-0000-4000-8000-000000000001', 'a8100010-0000-4000-8000-000000000001',
+   'helios-firmware');
+
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image, tags) values
+  ('a8100001-0000-4000-8000-000000000001', 'org-v081',       'pool-a', 'shell', null, '[]'),
+  ('a8100001-0000-4000-8000-000000000002', 'org-v081',       'pool-b', 'shell', null, '[]'),
+  ('a8100001-0000-4000-8000-000000000003', 'org-v081-other', 'pool-a', 'shell', null, '[]');
+
+insert into ouroboros.runners
+  (id, organization_id, pool_id, name, arch, status, desired_state, last_seen_at,
+   security_mode, cert_serial, telemetry, enrolled_at) values
+  ('a8100002-0000-4000-8000-000000000001', 'org-v081', 'a8100001-0000-4000-8000-000000000002',
+   'forge-02', 'linux/arm64', 'online', 'active', now(), 'mtls', '5a110002', '{}',
+   now() - interval '30 days');
+
+insert into ouroboros.runs
+  (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model,
+   status, stage_label, stage_index, stage_total) values
+  ('a8100003-0000-4000-8000-000000000001', 'org-v081', 'a8100011-0000-4000-8000-000000000001',
+   81, 'Analyzer corpus loop', 'standard-fix', 'claude-sonnet-5', 'building', 'Build farm', 5, 7);
+
+-- Three builds: the ccache merge, the Zephyr 4.1 merge and the LTO merge, by full sha.
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, github_repo_id, git_ref, commit_sha, label, title,
+   executor, command)
+select v.id::uuid, 'org-v081', v.n, 'a8100001-0000-4000-8000-000000000001',
+       'a8100011-0000-4000-8000-000000000001', 'refs/heads/main', rpad(v.sha, 40, '0'),
+       'zephyr build', v.title, 'shell', 'west build'
+  from (values ('a8100004-0000-4000-8000-000000000001', 1, 'ccace01', 'Enable ccache'),
+               ('a8100004-0000-4000-8000-000000000002', 2, 'deadbe2', 'Zephyr 4.1 migration'),
+               ('a8100004-0000-4000-8000-000000000003', 3, '1701ab3', 'Enable LTO (v2.3)'))
+       as v (id, n, sha, title);
+
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, commit_sha) values
+  ('a8100005-0000-4000-8000-000000000001', 'org-v081', 'a8100003-0000-4000-8000-000000000001',
+   1, 'b0a7e57');
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind) values
+  ('a8100006-0000-4000-8000-000000000001', 'org-v081', 'a8100005-0000-4000-8000-000000000001',
+   'OTA update', 'native_sim', 'sim');
+insert into ouroboros.test_cases
+  (id, organization_id, test_suite_id, name, status, retry_outcomes) values
+  ('a8100007-0000-4000-8000-000000000001', 'org-v081', 'a8100006-0000-4000-8000-000000000001',
+   'ota_fixture_setup', 'passed', '["passed"]');
+
+insert into ouroboros.pr_waivers (id, organization_id, run_id, author, reason)
+select ('a810000a-0000-4000-8000-00000000000' || n)::uuid, 'org-v081',
+       'a8100003-0000-4000-8000-000000000001', 'user-v081',
+       'Thermal chamber unavailable — waiver ' || n
+  from generate_series(1, 3) n;
+
+insert into ouroboros.workflows (id, organization_id, slug, name) values
+  ('a8100008-0000-4000-8000-000000000001', 'org-v081', 'standard-fix', 'Standard fix');
+insert into ouroboros.workflow_versions (id, workflow_id, definition) values
+  ('a8100009-0000-4000-8000-000000000001', 'a8100008-0000-4000-8000-000000000001', '{}');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a810000b-0000-4000-8000-000000000001', 'org-v081',       'github', 'GitHub · acme'),
+  ('a810000b-0000-4000-8000-000000000002', 'org-v081-other', 'github', 'GitHub · other');
+insert into ouroboros.draft_batches
+  (id, organization_id, source_prompt, planner, target_source_id, created_by) values
+  ('a810000c-0000-4000-8000-000000000001', 'org-v081', 'Analyzer drafts BA-1…BA-4',
+   'analyzer-v1', 'a810000b-0000-4000-8000-000000000001', 'user-v081'),
+  ('a810000c-0000-4000-8000-000000000002', 'org-v081-other', 'Somebody else''s drafts',
+   'analyzer-v1', 'a810000b-0000-4000-8000-000000000002', null);
+
+-- --- The run, and the findings it produces ---------------------------------------
+
+create temp table v081_set (s jsonb) on commit drop;
+insert into v081_set values (
+  '{"label": "deterministic analyzers v1",
+    "analyzers": [{"id": "change_point",      "version": 2, "kind": "deterministic"},
+                  {"id": "log_signature",     "version": 1, "kind": "deterministic"},
+                  {"id": "config_usage",      "version": 1, "kind": "deterministic"},
+                  {"id": "cache_window",      "version": 1, "kind": "deterministic"},
+                  {"id": "queue_correlation", "version": 1, "kind": "deterministic"},
+                  {"id": "waiver_cite",       "version": 1, "kind": "deterministic"},
+                  {"id": "workflow_outcome",  "version": 1, "kind": "deterministic"}]}');
+
+create temp table v081_manifest (m jsonb) on commit drop;
+insert into v081_manifest values (
+  '{"window":  {"from": "2026-07-03", "to": "2026-10-01", "days": 90},
+    "counts":  {"builds": 1284, "loops": 312, "log_lines": 4100000, "hil_sessions": 62},
+    "sources": {"builds":       {"sampled": false, "rate": 1, "cap": null},
+                "loops":        {"sampled": false, "rate": 1, "cap": null},
+                "log_lines":    {"sampled": false, "rate": 1, "cap": null},
+                "hil_sessions": {"sampled": false, "rate": 1, "cap": null}},
+    "budget":  {"max_builds": 2000, "max_log_lines": 5000000, "compute_ceiling_seconds": 3600}}');
+
+insert into ouroboros.analysis_runs (id, organization_id, repo_ref, trigger, analyzer_set)
+select 'a8110000-0000-4000-8000-000000000001', 'org-v081', 'acme/helios-firmware', 'weekly', s
+  from v081_set;
+
+-- Every mockup finding, as the analyzer would write it. `subject` is the stable identity
+-- component; the same rows are written again by the re-run below.
+create temp table v081_findings (subject text primary key, analyzer text, version int,
+                                 finding_type text, data jsonb, refs jsonb, confidence int)
+  on commit drop;
+insert into v081_findings values
+  -- The three chart chips.
+  ('build.duration_median@2026-05-18', 'change_point', 2, 'change_point',
+   '{"date": "2026-05-18", "metric": "build.duration_median", "delta_seconds": 90,
+     "candidates": [{"label": "Zephyr 4.1 migration", "score": 0.91,
+                     "ref": {"kind": "merge", "id": "deadbe2"}}]}',
+   '[{"kind": "merge", "id": "deadbe2"}, {"kind": "build", "id": "a8100004-0000-4000-8000-000000000002"}]', 90),
+  ('build.duration_median@2026-06-22', 'change_point', 2, 'change_point',
+   '{"date": "2026-06-22", "metric": "build.duration_median", "delta_seconds": -130,
+     "candidates": [{"label": "ccache enabled", "score": 0.94,
+                     "ref": {"kind": "merge", "id": "ccace01"}},
+                    {"label": "pool-a image bump", "score": 0.31,
+                     "ref": {"kind": "runner_pool", "id": "a8100001-0000-4000-8000-000000000001"}}]}',
+   '[{"kind": "merge", "id": "ccace01"},
+     {"kind": "runner_pool", "id": "a8100001-0000-4000-8000-000000000001"},
+     {"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"}]', 92),
+  ('build.duration_median@2026-07-30', 'change_point', 2, 'change_point',
+   '{"date": "2026-07-30", "metric": "build.duration_median", "delta_seconds": 40,
+     "candidates": [{"label": "twister suite growth", "score": 0.77,
+                     "ref": {"kind": "test_run", "id": "a8100005-0000-4000-8000-000000000001"}}]}',
+   '[{"kind": "test_run", "id": "a8100005-0000-4000-8000-000000000001"}]', 81),
+  -- Link step: the spike's evidence.
+  ('build.link_seconds@2026-06-02', 'change_point', 2, 'change_point',
+   '{"date": "2026-06-02", "metric": "build.link_seconds", "delta_seconds": 55,
+     "candidates": [{"label": "LTO enabled (v2.3)", "score": 0.81,
+                     "ref": {"kind": "merge", "id": "1701ab3"}}]}',
+   '[{"kind": "merge", "id": "1701ab3"}]', 72),
+  -- BA-1 and BA-2's signatures.
+  ('3f9a2c41d07e88b1', 'log_signature', 1, 'log_signature',
+   '{"template": "tests/ota: fixture setup timed out after <*>s", "signature_hash": "3f9a2c41d07e88b1",
+     "count": 31, "share": 0.072,
+     "sample_refs": [{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"},
+                     {"kind": "test_case", "id": "a8100007-0000-4000-8000-000000000001"}]}',
+   '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"},
+     {"kind": "test_case", "id": "a8100007-0000-4000-8000-000000000001"}]', 86),
+  ('c4c4e1412aa0b9d2', 'log_signature', 1, 'log_signature',
+   '{"template": "ccache: hash miss on <*> (manifest mismatch)", "signature_hash": "c4c4e1412aa0b9d2",
+     "count": 118, "share": 0.092,
+     "sample_refs": [{"kind": "build", "id": "a8100004-0000-4000-8000-000000000003"}]}',
+   '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000003"}]', 83),
+  -- BA-4's dead options (two of the twelve).
+  ('CONFIG_HELIOS_LEGACY_UART', 'config_usage', 1, 'config_usage',
+   '{"option": "CONFIG_HELIOS_LEGACY_UART", "occurrences": 0, "builds_considered": 1284,
+     "drift_warnings": 1}',
+   '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000003"}]', 95),
+  ('CONFIG_HELIOS_BOOT_BANNER', 'config_usage', 1, 'config_usage',
+   '{"option": "CONFIG_HELIOS_BOOT_BANNER", "occurrences": 0, "builds_considered": 1284}',
+   '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000003"}]', 95),
+  -- The ccache warm-up card.
+  ('deps-refresh', 'cache_window', 1, 'cache_window',
+   '{"trigger": "deps-refresh merge", "hit_rate_before": 0.78, "hit_rate_after": 0.31,
+     "window_hours": 6, "occurrences": 14}',
+   '[{"kind": "merge", "id": "ccace01"}, {"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"}]', 88),
+  -- The pool-move card.
+  ('a8100001-0000-4000-8000-000000000001', 'queue_correlation', 1, 'queue_correlation',
+   '{"window": {"from": "14:00", "to": "16:00"}, "metric": "queue_wait", "threshold_seconds": 300,
+     "days_exceeded": 11, "days_observed": 14, "idle_share": 0.82}',
+   '[{"kind": "runner_pool", "id": "a8100001-0000-4000-8000-000000000001"},
+     {"kind": "runner_pool", "id": "a8100001-0000-4000-8000-000000000002"},
+     {"kind": "runner",      "id": "a8100002-0000-4000-8000-000000000001"}]', 84),
+  -- BA-3's waivers.
+  ('thermal-coverage', 'waiver_cite', 1, 'waiver_cite',
+   '{"topic": "missing thermal coverage", "window_days": 60, "waiver_count": 3}',
+   '[{"kind": "waiver", "id": "a810000a-0000-4000-8000-000000000001"},
+     {"kind": "waiver", "id": "a810000a-0000-4000-8000-000000000002"},
+     {"kind": "waiver", "id": "a810000a-0000-4000-8000-000000000003"}]', 79),
+  -- The test-gate split's two halves, and the two workflow cards.
+  ('stage:qemu_cortex_m3', 'workflow_outcome', 1, 'workflow_outcome',
+   '{"workflow": "standard-fix", "scope": "stage qemu_cortex_m3", "metric": "unique_failures",
+     "value": 0, "unit": "count", "sample": 214}',
+   '[{"kind": "test_run", "id": "a8100005-0000-4000-8000-000000000001"}]', 91),
+  ('stage:hil', 'workflow_outcome', 1, 'workflow_outcome',
+   '{"workflow": "standard-fix", "scope": "stage hil", "metric": "unique_failures",
+     "value": 9, "unit": "count", "sample": 214}',
+   '[{"kind": "test_run", "id": "a8100005-0000-4000-8000-000000000001"}]', 90),
+  ('standard-fix:self-review-order', 'workflow_outcome', 1, 'workflow_outcome',
+   '{"workflow": "standard-fix", "scope": "failed builds", "metric": "defects_flagged_by_self_review",
+     "value": 0.34, "unit": "share", "sample": 50}',
+   '[{"kind": "workflow_version", "id": "a8100009-0000-4000-8000-000000000001"}]', 89),
+  ('paths:drivers/can', 'workflow_outcome', 1, 'workflow_outcome',
+   '{"workflow": "standard-fix", "scope": "merges touching drivers/can/",
+     "metric": "telemetry_flake_within_7d", "value": 3.1, "unit": "ratio", "sample": 21}',
+   '[{"kind": "merge", "id": "b0a7e57"}]', 77);
+
+insert into ouroboros.analysis_findings
+    (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+     data, evidence_refs, confidence, confidence_basis)
+select 'a8110000-0000-4000-8000-000000000001', 'org-v081', 'acme/helios-firmware',
+       analyzer, version, finding_type, subject, data, refs, confidence,
+       jsonb_build_object('method', analyzer || ' posterior', 'sample_size', 214,
+                          'effect_size', 1.4, 'stability', 0.9)
+  from v081_findings;
+
+select pg_temp.must_hold(
+  (select count(*) = (select count(*) from v081_findings)
+          and bool_and(identity_key = analyzer || '@v' || analyzer_version || '/' || subject_key)
+     from ouroboros.analysis_findings where run_id = 'a8110000-0000-4000-8000-000000000001'),
+  'every mockup finding is writable, each with its identity analyzer@v<version>/<subject>');
+
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.analysis_evidence_ref_resolves(f.organization_id, r))
+          and count(distinct r ->> 'kind') = 8
+     from ouroboros.analysis_findings f, jsonb_array_elements(f.evidence_refs) r
+    where f.run_id = 'a8110000-0000-4000-8000-000000000001'),
+  'every evidence reference resolves to a real row, across all eight kinds');
+
+-- The chart's chips, as text from the rows.
+create function pg_temp.v081_duration(s numeric) returns text language sql as $$
+  select case when s < 0 then '−' else '+' end
+         || case when abs(s) >= 60 then (abs(s)::int / 60) || 'm ' else '' end
+         || case when abs(s)::int % 60 > 0 or abs(s) < 60 then (abs(s)::int % 60) || 's' else '' end
+$$;
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s · %s %s',
+                           to_char((data ->> 'date')::date, 'Mon FMDD'),
+                           data #>> '{candidates,0,label}',
+                           btrim(pg_temp.v081_duration((data ->> 'delta_seconds')::numeric)))
+                    order by data ->> 'date')
+          = array['May 18 · Zephyr 4.1 migration +1m 30s',
+                  'Jun 22 · ccache enabled −2m 10s',
+                  'Jul 30 · twister suite growth +40s']
+     from ouroboros.analysis_findings
+    where run_id = 'a8110000-0000-4000-8000-000000000001'
+      and data ->> 'metric' = 'build.duration_median'),
+  'the mockup''s three chips are three change-point findings — date, best candidate, delta');
+
+-- --- The suggestions the run composes ---------------------------------------------
+
+create temp table v081_suggestions (name text primary key, kind text, subjects text[],
+                                    title text, evidence_line text, confidence smallint,
+                                    impact jsonb, binding jsonb, needs_spike boolean)
+  on commit drop;
+insert into v081_suggestions values
+  ('gate-split', 'build_process', '{stage:qemu_cortex_m3,stage:hil}',
+   'Split the test gate: native_sim every build, QEMU + HIL only before merge',
+   'qemu_cortex_m3 caught 0 unique failures in 214 builds; HIL caught 9 — all at merge gates', 91,
+   '{"estimate": -220, "unit": "seconds", "applies_to": "per loop",
+     "basis": {"method": "measured", "sample_size": 214,
+               "description": "measured QEMU stage time × observed frequency over 214 builds"}}',
+   '{"plane": "test_gate", "change": {"every_build": ["native_sim"], "pre_merge": ["qemu", "hil"]}}', false),
+  ('ccache-warm', 'build_process', '{deps-refresh}',
+   'Re-warm ccache right after deps-refresh merges',
+   'cache hit rate drops 78%→31% for ~6h after every deps-refresh merge (14 occurrences)', 88,
+   '{"estimate": -110, "unit": "seconds", "applies_to": "per build", "share": 0.2,
+     "basis": {"method": "measured", "sample_size": 14, "description": "14 windows measured"}}',
+   '{"plane": "job_hook", "change": {"after": "deps-refresh merge", "run": "ccache warm"}}', false),
+  ('pool-move', 'build_process', '{a8100001-0000-4000-8000-000000000001}',
+   'Move forge-02 to pool-a during 14:00–16:00 UTC',
+   'pool-a queue exceeds 5 min in that window on 11 of last 14 weekdays; pool-b sits idle 82% of it', 84,
+   '{"estimate": -240, "unit": "seconds", "applies_to": "queue p95",
+     "basis": {"method": "extrapolated", "description": "queue simulation over the last 14 weekdays"}}',
+   '{"plane": "farm_config", "change": {"runner": "forge-02", "pool": "pool-a", "window": "14:00-16:00"}}', false),
+  ('link-spike', 'build_process', '{build.link_seconds@2026-06-02}',
+   'Link zephyr.elf incrementally (partial link cache)',
+   'link step grew from 18% to 42% of build time since v2.3 (LTO enabled)', 72,
+   '{"estimate": -55, "unit": "seconds", "applies_to": "per build",
+     "basis": {"method": "extrapolated", "description": "link share × median build time; cache hit rate unknown"}}',
+   '{"plane": "planning", "change": {"spike": "partial link cache"}}', true),
+  ('self-review-first', 'workflow', '{standard-fix:self-review-order}',
+   'standard-fix: run self-review BEFORE the build stage',
+   '34% of failed builds in standard-fix loops contained defects the later self-review flagged anyway — reordering catches them pre-build', 89,
+   '{"estimate": -125, "unit": "seconds", "applies_to": "per failed attempt",
+     "basis": {"method": "measured", "sample_size": 50, "description": "build time of the 50 failed attempts"}}',
+   '{"plane": "workflow", "change": {"workflow": "standard-fix", "move": "self_review", "before": "build"}}', false),
+  ('can-flake-stage', 'workflow', '{paths:drivers/can}',
+   'Loops touching drivers/can/: add a ''flake-retry under load profile'' test stage',
+   'merges touching drivers/can are 3.1× more likely to flake the telemetry suite within 7 days (21 cases)', 77,
+   '{"estimate": -1, "unit": "interventions", "applies_to": "per week",
+     "basis": {"method": "extrapolated", "description": "21 flake cases over 13 weeks"}}',
+   '{"plane": "workflow", "change": {"workflow": "standard-fix", "add_stage": "flake-retry"}}', false),
+  ('BA-1', 'ticket_draft', '{3f9a2c41d07e88b1}',
+   'Refactor tests/ota fixtures — shared setup times out under load',
+   '7.2% of OTA suite failures share one fixture timeout signature (31 builds)', 86, null,
+   '{"plane": "planning", "change": {"size_hint": "M"}}', false),
+  ('BA-2', 'ticket_draft', '{c4c4e1412aa0b9d2}',
+   'Bump ccache 4.9 → 4.11 — upstream fixes the hash misses in our logs',
+   'cache-miss signature matches ccache issue #1412 in 118 builds', 83, null,
+   '{"plane": "planning", "change": {"size_hint": "XS"}}', false),
+  ('BA-3', 'ticket_draft', '{thermal-coverage}',
+   'Add thermal chamber to rig helios-rig-02',
+   '3 verification waivers in 60 days cite missing thermal coverage', 79, null,
+   '{"plane": "planning", "change": {"size_hint": "L"}}', false),
+  ('BA-4', 'ticket_draft', '{CONFIG_HELIOS_LEGACY_UART,CONFIG_HELIOS_BOOT_BANNER}',
+   'Delete 12 dead Kconfig options — never set in any build since May',
+   '0 of 1,284 builds toggled them; 4 caused config-drift warnings', 95, null,
+   '{"plane": "planning", "change": {"size_hint": "S"}}', false);
+
+-- Composes every suggestion of v081_suggestions from one run's findings.
+--   p_run — the run whose findings are cited
+-- Returns (name, id) for each.
+create function pg_temp.v081_compose(p_run uuid)
+returns table (name text, id uuid) language sql as $$
+  select s.name,
+         ouroboros.record_analysis_suggestion(
+           p_run, s.kind,
+           array(select f.id from ouroboros.analysis_findings f
+                  where f.run_id = p_run and f.subject_key = any (s.subjects)),
+           s.title, s.evidence_line, s.confidence, s.impact, s.binding, s.needs_spike)
+    from v081_suggestions s
+   order by s.name
+$$;
+
+create temp table v081_first on commit drop as
+  select * from pg_temp.v081_compose('a8110000-0000-4000-8000-000000000001');
+
+-- The identity rules are deferred to commit; ask them now.
+set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds immediate;
+set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds deferred;
+
+select pg_temp.must_hold(
+  (select count(*) = 10 and count(distinct id) = 10 from v081_first),
+  'every mockup suggestion is representable: four build-process cards, two workflow cards, four ticket drafts');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where kind = 'build_process' and status = 'open') = 4
+          and count(*) filter (where kind = 'workflow') = 2
+          and count(*) filter (where kind = 'ticket_draft') = 4
+          and count(*) filter (where needs_spike) = 1
+     from ouroboros.analysis_suggestions where organization_id = 'org-v081'),
+  'the build-process card reads "4 open", one of them a spike');
+
+select pg_temp.must_hold(
+  (select format('%s | Evidence %s | %s | conf %s%%', s.title, s.evidence_line,
+                 btrim(pg_temp.v081_duration((s.impact ->> 'estimate')::numeric)) || ' '
+                 || (s.impact ->> 'applies_to'),
+                 s.confidence)
+          = 'Split the test gate: native_sim every build, QEMU + HIL only before merge | Evidence qemu_cortex_m3 caught 0 unique failures in 214 builds; HIL caught 9 — all at merge gates | −3m 40s per loop | conf 91%'
+     from ouroboros.analysis_suggestions s
+     join v081_first v on v.id = s.id where v.name = 'gate-split'),
+  'the test-gate card is one row: title, Evidence line, impact pill and confidence');
+
+select pg_temp.must_hold(
+  (select array_agg(f.subject_key order by f.subject_key) = '{stage:hil,stage:qemu_cortex_m3}'
+     from ouroboros.analysis_suggestion_findings l
+     join ouroboros.analysis_findings f on f.id = l.finding_id
+     join v081_first v on v.id = l.suggestion_id where v.name = 'gate-split'),
+  'a composite suggestion round-trips with both findings it cites');
+
+select pg_temp.must_hold(
+  (select bool_and(s.identity_key = ouroboros.analysis_suggestion_identity(
+                     s.kind, array(select f.identity_key
+                                     from ouroboros.analysis_suggestion_findings l
+                                     join ouroboros.analysis_findings f on f.id = l.finding_id
+                                    where l.suggestion_id = s.id)))
+          and bool_and(s.last_run_id = 'a8110000-0000-4000-8000-000000000001')
+     from ouroboros.analysis_suggestions s where s.organization_id = 'org-v081'),
+  'every suggestion''s identity is the one its findings derive, and it names the run that composed it');
+
+select pg_temp.must_hold(
+  ouroboros.analysis_suggestion_identity('workflow', '{b,a,a}')
+    = ouroboros.analysis_suggestion_identity('workflow', '{a,b}')
+  and ouroboros.analysis_suggestion_identity('workflow', '{a,b}')
+    <> ouroboros.analysis_suggestion_identity('build_process', '{a,b}'),
+  'a suggestion identity ignores order and repeats, and includes the kind');
+
+-- --- The A4 lifecycle ---------------------------------------------------------------
+
+-- Dismiss the pool move; apply the test-gate split through its audit event; draft BA-1.
+update ouroboros.analysis_suggestions
+   set status = 'dismissed', resolved_by = 'user-v081', resolved_at = now(),
+       resolution_reason = 'forge-02 is reserved for HIL bring-up this quarter'
+ where id = (select id from v081_first where name = 'pool-move');
+
+insert into ouroboros.audit_events (id, organization_id, actor_id, action, subject_type, subject_id)
+select 'a8120000-0000-4000-8000-000000000001', 'org-v081', 'user-v081',
+       'analysis_suggestion.applied', 'analysis_suggestion', id::text
+  from v081_first where name = 'gate-split';
+insert into ouroboros.audit_events (id, organization_id, actor_id, action, subject_type, subject_id)
+select 'a8120000-0000-4000-8000-000000000002', 'org-v081', 'user-v081',
+       'analysis_suggestion.applied', 'analysis_suggestion', id::text
+  from v081_first where name = 'BA-2';
+
+update ouroboros.analysis_suggestions
+   set status = 'applied', resolved_by = 'user-v081', resolved_at = now(),
+       applied_event_id = 'a8120000-0000-4000-8000-000000000001'
+ where id = (select id from v081_first where name = 'gate-split');
+
+update ouroboros.analysis_suggestions
+   set status = 'drafted', resolved_by = 'user-v081', resolved_at = now(),
+       draft_batch_id = 'a810000c-0000-4000-8000-000000000001'
+ where id = (select id from v081_first where name = 'BA-1');
+
+select pg_temp.must_hold(
+  (select array_agg(v.name || ':' || s.status order by v.name)
+          = '{BA-1:drafted,gate-split:applied,pool-move:dismissed}'
+     from ouroboros.analysis_suggestions s join v081_first v on v.id = s.id
+    where s.status <> 'open'),
+  'open → dismissed (actor + reason), applied (audit event) and drafted (batch)');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set status = 'applied', resolved_at = now()
+     where title like 'Re-warm ccache%'$$,
+  'applied without an action record is refused', 'analysis_suggestions_applied_has_event');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set status = 'applied', resolved_at = now(),
+           applied_event_id = 'a8120000-0000-4000-8000-000000000001'
+     where title like 'Re-warm ccache%'$$,
+  'an apply''s audit event must be about this suggestion', 'analysis_suggestions_applied_event');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set status = 'drafted', resolved_at = now()
+     where title like 'Bump ccache%'$$,
+  'drafted without a batch is refused', 'analysis_suggestions_drafted_has_batch');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set status = 'drafted', resolved_at = now(),
+           draft_batch_id = 'a810000c-0000-4000-8000-000000000002'
+     where title like 'Bump ccache%'$$,
+  'a suggestion is drafted only into its own workspace''s batch', 'analysis_suggestions_draft_batch_scope');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set status = 'dismissed', resolved_at = now(), resolution_reason = 'not now'
+     where title like 'Re-warm ccache%'$$,
+  'a dismissal names who dismissed it', 'analysis_suggestions_dismiss_actor');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set status = 'dismissed', resolved_at = now(), resolved_by = 'user-v081'
+     where title like 'Re-warm ccache%'$$,
+  'a dismissal says why', 'analysis_suggestions_dismissed_has_reason');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set status = 'applied', resolved_at = now(),
+           applied_event_id = 'a8120000-0000-4000-8000-000000000002'
+     where title like 'Bump ccache%'$$,
+  'a ticket draft is drafted, never applied', 'analysis_suggestions_apply_is_a_change');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set status = 'drafted', resolved_at = now(),
+           draft_batch_id = 'a810000c-0000-4000-8000-000000000001'
+     where title like 'Re-warm ccache%'$$,
+  'a build-process change that is not a spike is applied, not drafted',
+  'analysis_suggestions_draft_is_a_ticket');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set status = 'open', resolved_at = null,
+                                              resolved_by = null, resolution_reason = null
+     where title like 'Move forge-02%'$$,
+  'a dismissal is terminal', 'analysis_suggestions_terminal');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set status = 'dismissed', applied_event_id = null, resolution_reason = 'changed my mind'
+     where title like 'Split the test gate%'$$,
+  'an apply is terminal', 'analysis_suggestions_terminal');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set title = 'Move forge-02 somewhere'
+     where title like 'Move forge-02%'$$,
+  'a resolved suggestion reads as it did when it was resolved', 'analysis_suggestions_resolved_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set kind = 'workflow'
+     where title like 'Re-warm ccache%'$$,
+  'a suggestion keeps its kind and identity', 'analysis_suggestions_identity_frozen');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_suggestions
+        (organization_id, repo_ref, kind, identity_key, title, evidence_line, confidence,
+         impact, action_binding, status, resolved_at, resolved_by, resolution_reason)
+    values ('org-v081', 'acme/helios-firmware', 'ticket_draft', 'ticket_draft:' || repeat('0', 64),
+            'x', 'y', 50, null, '{"plane": "planning", "change": {}}', 'dismissed', now(),
+            'user-v081', 'pre-dismissed')$$,
+  'a suggestion is born open', 'analysis_suggestions_born_open');
+
+-- --- Impact honesty --------------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set impact = impact #- '{basis}'
+     where title like 'Re-warm ccache%'$$,
+  'impact.basis is mandatory', 'analysis_suggestions_impact_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set impact = '{"estimate": null, "unit": "seconds", "applies_to": "per build",
+                      "basis": {"method": "unquantified", "description": "hit rate after warm-up unknown"}}'
+     where title like 'Re-warm ccache%'$$,
+  'an unquantifiable basis is a spike, not a card with no number',
+  'analysis_suggestions_unquantified_needs_spike');
+
+select pg_temp.must_hold(
+  (select bool_and(not coalesce(ouroboros.analysis_impact_valid(t.i), true))
+     from (values
+       ('{"estimate": -55, "unit": "seconds", "applies_to": "per build",
+          "basis": {"method": "unquantified", "description": "unknown"}}'::jsonb),
+       ('{"unit": "seconds", "applies_to": "per build",
+          "basis": {"method": "extrapolated", "description": "a guess"}}'),
+       ('{"estimate": -55, "unit": "seconds", "applies_to": "per build",
+          "basis": {"method": "measured", "description": "measured"}}'),
+       ('{"estimate": -55, "unit": "seconds", "applies_to": "per build",
+          "basis": {"method": "vibes", "description": "trust me"}}'),
+       ('{"estimate": -55, "unit": "seconds", "applies_to": "per build",
+          "basis": {"method": "extrapolated", "description": " "}}'),
+       ('{"estimate": -55, "unit": "dollars", "applies_to": "per build",
+          "basis": {"method": "extrapolated", "description": "x"}}'),
+       ('{"estimate": "-55s", "unit": "seconds", "applies_to": "per build",
+          "basis": {"method": "extrapolated", "description": "x"}}'),
+       ('{"estimate": -55, "unit": "seconds", "applies_to": "per build", "share": 1.5,
+          "basis": {"method": "extrapolated", "description": "x"}}'),
+       ('{"estimate": -55, "unit": "seconds",
+          "basis": {"method": "extrapolated", "description": "x"}}')) as t (i))
+  and ouroboros.analysis_impact_valid(
+        '{"estimate": null, "unit": "seconds", "applies_to": "per build",
+          "basis": {"method": "unquantified", "description": "cache model untested"}}')
+  and ouroboros.analysis_impact_valid(null) is null,
+  'an estimate exists exactly when the basis is quantified; a measured basis names its sample; units and shares are bounded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set impact = null where title like 'Re-warm ccache%'$$,
+  'a build-process card carries an impact', 'analysis_suggestions_impact_required');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set action_binding = '{"plane": "farm_config", "change": {}}'
+     where title like 'standard-fix: run self-review%'$$,
+  'a workflow suggestion composes the workflow plane', 'analysis_suggestions_binding_plane');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set needs_spike = false
+     where title like 'Link zephyr.elf%'$$,
+  'only ticket drafts and spikes bind to planning', 'analysis_suggestions_binding_plane');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set action_binding = '{"plane": "planning"}'
+     where title like 'Bump ccache%'$$,
+  'an action binding names a plane and a change', 'analysis_suggestions_action_binding_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set confidence = 101 where title like 'Bump ccache%'$$,
+  'suggestion confidence is 0–100', 'analysis_suggestions_confidence_range');
+
+-- --- The identity is derived, not minted ------------------------------------------
+
+select pg_temp.must_reject(
+  $q$do $x$
+  begin
+    insert into ouroboros.analysis_suggestions
+        (id, organization_id, repo_ref, kind, identity_key, title, evidence_line, confidence,
+         action_binding)
+    values ('a8130000-0000-4000-8000-000000000001', 'org-v081', 'acme/helios-firmware',
+            'ticket_draft', 'ticket_draft:' || repeat('a', 64), 'x', 'y', 50,
+            '{"plane": "planning", "change": {}}');
+    insert into ouroboros.analysis_suggestion_findings
+        (suggestion_id, finding_id, organization_id, repo_ref)
+    select 'a8130000-0000-4000-8000-000000000001', id, organization_id, repo_ref
+      from ouroboros.analysis_findings where subject_key = 'thermal-coverage';
+    set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds immediate;
+  end $x$ $q$,
+  'a hand-minted identity that its findings do not derive is refused at commit',
+  'analysis_suggestions_identity_derived');
+
+select pg_temp.must_reject(
+  $q$do $x$
+  begin
+    insert into ouroboros.analysis_suggestions
+        (organization_id, repo_ref, kind, identity_key, title, evidence_line, confidence,
+         action_binding)
+    values ('org-v081', 'acme/helios-firmware', 'ticket_draft',
+            ouroboros.analysis_suggestion_identity('ticket_draft', '{x}'), 'x', 'y', 50,
+            '{"plane": "planning", "change": {}}');
+    set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds immediate;
+  end $x$ $q$,
+  'a suggestion cites at least one finding', 'analysis_suggestions_cite_findings');
+
+select pg_temp.must_reject(
+  $$select ouroboros.record_analysis_suggestion(
+      'a8110000-0000-4000-8000-000000000001', 'ticket_draft', '{}', 'x', 'y', 50::smallint, null,
+      '{"plane": "planning", "change": {}}')$$,
+  'the composer cannot record a suggestion without findings', 'analysis_suggestions_cite_findings');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions set identity_key = 'workflow:' || repeat('b', 64)
+     where title like 'Re-warm ccache%'$$,
+  'an identity is never rewritten', 'analysis_suggestions_identity_frozen');
+
+-- --- The re-run: same corpus, same identities, no duplicates ------------------------
+
+update ouroboros.analysis_runs
+   set status = 'complete', finished_at = started_at + interval '41 minutes',
+       compute_seconds = 2460, confidence_note = 'high — 90d of stable telemetry',
+       corpus_manifest = (select m from v081_manifest)
+ where id = 'a8110000-0000-4000-8000-000000000001';
+
+insert into ouroboros.analysis_runs (id, organization_id, repo_ref, trigger, analyzer_set)
+select 'a8110000-0000-4000-8000-000000000002', 'org-v081', 'acme/helios-firmware', 'weekly', s
+  from v081_set;
+
+insert into ouroboros.analysis_findings
+    (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+     data, evidence_refs, confidence, confidence_basis)
+select 'a8110000-0000-4000-8000-000000000002', organization_id, repo_ref, analyzer,
+       analyzer_version, finding_type, subject_key, data, evidence_refs, confidence,
+       confidence_basis
+  from ouroboros.analysis_findings where run_id = 'a8110000-0000-4000-8000-000000000001';
+
+-- The composer words two cards differently this week.
+update v081_suggestions set evidence_line = evidence_line || ' — 15th occurrence this week'
+ where name in ('ccache-warm', 'pool-move');
+
+create temp table v081_second on commit drop as
+  select * from pg_temp.v081_compose('a8110000-0000-4000-8000-000000000002');
+set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds immediate;
+set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds deferred;
+
+select pg_temp.must_hold(
+  (select bool_and(a.id = b.id) and count(*) = 10
+     from v081_first a join v081_second b using (name))
+  and (select count(*) = 10 from ouroboros.analysis_suggestions where organization_id = 'org-v081'),
+  'a re-run over the same corpus updates the existing suggestions — ten before, the same ten after');
+
+select pg_temp.must_hold(
+  (select status = 'dismissed' and resolution_reason like 'forge-02 is reserved%'
+          and evidence_line not like '%15th occurrence%'
+          and last_run_id = 'a8110000-0000-4000-8000-000000000002'
+     from ouroboros.analysis_suggestions where id = (select id from v081_first where name = 'pool-move')),
+  'a dismissed suggestion stays dismissed across the re-run, reading as it did when dismissed');
+
+select pg_temp.must_hold(
+  (select status = 'open' and evidence_line like '%15th occurrence this week'
+          and last_run_id = 'a8110000-0000-4000-8000-000000000002'
+     from ouroboros.analysis_suggestions where id = (select id from v081_first where name = 'ccache-warm'))
+  and (select status = 'applied' from ouroboros.analysis_suggestions
+        where id = (select id from v081_first where name = 'gate-split')),
+  'an open suggestion takes the new composition; an applied one keeps its status');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 * (select sum(cardinality(subjects)) from v081_suggestions)
+     from ouroboros.analysis_suggestion_findings where organization_id = 'org-v081'),
+  'the re-run''s findings are cited alongside the first run''s');
+
+-- --- Findings: the data contract ---------------------------------------------------
+
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.analysis_finding_data_valid(finding_type, data, refs))
+     from v081_findings)
+  and ouroboros.analysis_finding_data_valid('custom:stage_timing', '{"anything": 1}',
+                                            '[{"kind": "merge", "id": "abc1234"}]'),
+  'every fixture finding satisfies its type, and a custom:* finding needs only an object');
+
+select pg_temp.must_hold(
+  (select bool_and(not ouroboros.analysis_finding_data_valid(f.finding_type, f.data #- t.path || coalesce(t.patch, '{}'), f.refs))
+     from v081_findings f
+     join (values
+       ('build.duration_median@2026-06-22', '{date}'::text[],      null::jsonb),
+       ('build.duration_median@2026-06-22', '{candidates}',        null),
+       ('build.duration_median@2026-06-22', '{x}',                 '{"delta_seconds": 0}'),
+       ('build.duration_median@2026-06-22', '{x}',                 '{"date": "June 22"}'),
+       ('build.duration_median@2026-06-22', '{x}',                 '{"candidates": []}'),
+       ('build.duration_median@2026-06-22', '{x}',
+        '{"candidates": [{"label": "ccache enabled", "score": 0.31, "ref": {"kind": "merge", "id": "ccace01"}},
+                         {"label": "pool bump", "score": 0.94, "ref": {"kind": "merge", "id": "ccace01"}}]}'),
+       ('build.duration_median@2026-06-22', '{x}',
+        '{"candidates": [{"label": "ccache enabled", "score": 1.4, "ref": {"kind": "merge", "id": "ccace01"}}]}'),
+       ('build.duration_median@2026-06-22', '{x}',
+        '{"candidates": [{"label": "ccache enabled", "score": 0.9, "ref": {"kind": "merge", "id": "fff0001"}}]}'),
+       ('3f9a2c41d07e88b1',                 '{sample_refs}',       null),
+       ('3f9a2c41d07e88b1',                 '{x}',                 '{"share": 7.2}'),
+       ('3f9a2c41d07e88b1',                 '{x}',                 '{"count": 0}'),
+       ('3f9a2c41d07e88b1',                 '{x}',                 '{"signature_hash": "not-hex"}'),
+       ('CONFIG_HELIOS_LEGACY_UART',        '{x}',                 '{"occurrences": 1300}'),
+       ('CONFIG_HELIOS_LEGACY_UART',        '{x}',                 '{"drift_warnings": -1}'),
+       ('CONFIG_HELIOS_LEGACY_UART',        '{option}',            null),
+       ('deps-refresh',                     '{x}',                 '{"hit_rate_after": 31}'),
+       ('deps-refresh',                     '{x}',                 '{"window_hours": 0}'),
+       ('a8100001-0000-4000-8000-000000000001', '{x}',             '{"window": {"from": "2pm", "to": "16:00"}}'),
+       ('a8100001-0000-4000-8000-000000000001', '{x}',             '{"days_exceeded": 15}'),
+       ('thermal-coverage',                 '{x}',                 '{"waiver_count": 4}'),
+       ('stage:hil',                        '{x}',                 '{"unit": "percent"}'),
+       ('standard-fix:self-review-order',   '{x}',                 '{"value": 34}'),
+       ('stage:hil',                        '{sample}',            null)) as t (subject, path, patch)
+       on t.subject = f.subject),
+  'malformed analyzer output fails its type: unranked or uncited candidates, shares above 1, counts that exceed their totals, a waiver count the refs do not back');
+
+select pg_temp.must_hold(
+  not ouroboros.analysis_finding_data_valid('change_point', '[]', '[]')
+  and ouroboros.analysis_finding_data_valid('vibes', '{}', '[]') is null,
+  'data is an object, and an unknown type has no contract — the type check refuses it');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_findings
+        (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+         data, evidence_refs, confidence, confidence_basis)
+    values ('a8110000-0000-4000-8000-000000000002', 'org-v081', 'acme/helios-firmware',
+            'log_signature', 1, 'log_signature', 'broken',
+            '{"template": "x", "signature_hash": "3f9a2c41d07e88b1", "count": 31, "share": "7%"}',
+            '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"}]', 80,
+            '{"method": "m", "sample_size": 1, "effect_size": 1, "stability": 1}')$$,
+  'a malformed finding is refused at write time', 'analysis_findings_data_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_findings
+        (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+         data, evidence_refs, confidence, confidence_basis)
+    values ('a8110000-0000-4000-8000-000000000002', 'org-v081', 'acme/helios-firmware',
+            'log_signature', 1, 'text', 'prose', '{}',
+            '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"}]', 80,
+            '{"method": "m", "sample_size": 1, "effect_size": 1, "stability": 1}')$$,
+  'there is no generic text finding', 'analysis_findings_type_known');
+
+-- --- Findings: evidence resolves ---------------------------------------------------
+
+select pg_temp.must_hold(
+  (select bool_and(not ouroboros.analysis_evidence_refs_valid(t.r))
+     from (values ('[]'::jsonb), ('{}'),
+                  ('[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"},
+                     {"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"}]'),
+                  ('[{"kind": "build", "id": "31 builds"}]'),
+                  ('[{"kind": "merge", "id": "enable ccache"}]'),
+                  ('[{"kind": "ticket", "id": "a8100004-0000-4000-8000-000000000001"}]'),
+                  ('[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001", "note": "x"}]'),
+                  ('["a8100004-0000-4000-8000-000000000001"]')) as t (r)),
+  'evidence is a non-empty list of distinct {kind, id} references in their kinds'' formats');
+
+select pg_temp.must_hold(
+  not ouroboros.analysis_evidence_ref_resolves('org-v081',
+        '{"kind": "test_run", "id": "a8100004-0000-4000-8000-000000000001"}')
+  and not ouroboros.analysis_evidence_ref_resolves('org-v081',
+        '{"kind": "runner_pool", "id": "a8100001-0000-4000-8000-000000000003"}')
+  and not ouroboros.analysis_evidence_ref_resolves('org-v081', '{"kind": "merge", "id": "fff0001"}')
+  and ouroboros.analysis_evidence_ref_resolves('org-v081',
+        jsonb_build_object('kind', 'merge', 'id', rpad('ccace01', 40, '0')))
+  and ouroboros.analysis_evidence_ref_resolves('org-v081', '{"kind": "merge", "id": "b0a7e57"}'),
+  'a reference resolves only to its own kind in its own workspace; a sha resolves abbreviated or in full');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_findings
+        (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+         data, evidence_refs, confidence, confidence_basis)
+    values ('a8110000-0000-4000-8000-000000000002', 'org-v081', 'acme/helios-firmware',
+            'config_usage', 1, 'config_usage', 'CONFIG_GHOST',
+            '{"option": "CONFIG_GHOST", "occurrences": 0, "builds_considered": 1284}',
+            '[{"kind": "test_run", "id": "a8100004-0000-4000-8000-000000000001"}]', 80,
+            '{"method": "m", "sample_size": 1, "effect_size": 1, "stability": 1}')$$,
+  'a build id offered as a test run does not resolve and is refused',
+  'analysis_findings_evidence_resolves');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_findings
+        (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+         data, evidence_refs, confidence, confidence_basis)
+    values ('a8110000-0000-4000-8000-000000000002', 'org-v081', 'acme/helios-firmware',
+            'change_point', 1, 'config_usage', 'CONFIG_GHOST',
+            '{"option": "CONFIG_GHOST", "occurrences": 0, "builds_considered": 1284}',
+            '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"}]', 80,
+            '{"method": "m", "sample_size": 1, "effect_size": 1, "stability": 1}')$$,
+  'a finding''s analyzer and version are in its run''s analyzer set', 'analysis_findings_analyzer_in_set');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_findings
+        (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+         data, evidence_refs, confidence, confidence_basis)
+    values ('a8110000-0000-4000-8000-000000000001', 'org-v081', 'acme/helios-firmware',
+            'config_usage', 1, 'config_usage', 'CONFIG_LATE',
+            '{"option": "CONFIG_LATE", "occurrences": 0, "builds_considered": 1284}',
+            '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"}]', 80,
+            '{"method": "m", "sample_size": 1, "effect_size": 1, "stability": 1}')$$,
+  'a finished run takes no new findings', 'analysis_findings_run_running');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_findings
+        (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+         data, evidence_refs, confidence, confidence_basis)
+    values ('a8110000-0000-4000-8000-000000000002', 'org-v081', 'acme/elsewhere',
+            'config_usage', 1, 'config_usage', 'CONFIG_ELSEWHERE',
+            '{"option": "CONFIG_ELSEWHERE", "occurrences": 0, "builds_considered": 1284}',
+            '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"}]', 80,
+            '{"method": "m", "sample_size": 1, "effect_size": 1, "stability": 1}')$$,
+  'a finding is its run''s repo''s', 'analysis_findings_run_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_findings
+        (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+         data, evidence_refs, confidence, confidence_basis)
+    select run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type,
+           subject_key, data, evidence_refs, confidence, confidence_basis
+      from ouroboros.analysis_findings
+     where run_id = 'a8110000-0000-4000-8000-000000000002' and subject_key = 'deps-refresh'$$,
+  'one finding per identity per run', 'analysis_findings_run_identity_key');
+
+-- --- Findings: confidence, and immutability ---------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_findings set confidence = 101 where subject_key = 'deps-refresh'$$,
+  'a finding is never revised', 'analysis_findings_immutable');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_findings
+        (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+         data, evidence_refs, confidence, confidence_basis)
+    values ('a8110000-0000-4000-8000-000000000002', 'org-v081', 'acme/helios-firmware',
+            'config_usage', 1, 'config_usage', 'CONFIG_SURE',
+            '{"option": "CONFIG_SURE", "occurrences": 0, "builds_considered": 1284}',
+            '[{"kind": "build", "id": "a8100004-0000-4000-8000-000000000001"}]', 101,
+            '{"method": "m", "sample_size": 1, "effect_size": 1, "stability": 1}')$$,
+  'finding confidence is 0–100', 'analysis_findings_confidence_range');
+
+select pg_temp.must_hold(
+  (select bool_and(not ouroboros.analysis_confidence_basis_valid(t.b))
+     from (values ('{"sample_size": 214, "effect_size": 1.4, "stability": 0.9}'::jsonb),
+                  ('{"method": "m", "effect_size": 1.4, "stability": 0.9}'),
+                  ('{"method": "m", "sample_size": 0, "effect_size": 1.4, "stability": 0.9}'),
+                  ('{"method": "m", "sample_size": 214, "stability": 0.9}'),
+                  ('{"method": "m", "sample_size": 214, "effect_size": 1.4, "stability": 2}')) as t (b)),
+  'a confidence basis states its method, sample size, effect size and stability');
+
+-- --- A suggestion cites only its own repo's findings --------------------------------
+
+insert into ouroboros.analysis_runs (id, organization_id, repo_ref, trigger, analyzer_set)
+select 'a8110000-0000-4000-8000-000000000003', 'org-v081', 'acme/other-firmware', 'manual', s
+  from v081_set;
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_suggestion_findings
+        (suggestion_id, finding_id, organization_id, repo_ref)
+    select s.id, f.id, 'org-v081', 'acme/other-firmware'
+      from ouroboros.analysis_suggestions s, ouroboros.analysis_findings f
+     where s.title like 'Re-warm ccache%' and f.subject_key = 'thermal-coverage'
+     limit 1$$,
+  'a citation cannot cross repositories', 'analysis_suggestion_findings_suggestion_fkey');
+
+select pg_temp.must_reject(
+  $$select ouroboros.record_analysis_suggestion(
+      'a8110000-0000-4000-8000-000000000003', 'ticket_draft',
+      array(select id from ouroboros.analysis_findings where subject_key = 'thermal-coverage'),
+      'x', 'y', 50::smallint, null, '{"plane": "planning", "change": {}}')$$,
+  'the composer cites only the composing run''s findings', 'analysis_suggestions_cite_findings');
+
+-- --- The service role ------------------------------------------------------------
+
+set local role ouroboros_app;
+select pg_temp.must_hold(
+  (select count(*) = 10 from ouroboros.analysis_suggestions where organization_id = 'org-v081'),
+  'the service reads suggestions');
+select pg_temp.must_raise(
+  $$delete from ouroboros.analysis_findings where subject_key = 'deps-refresh'$$, '42501',
+  'the service may not delete findings — their deletion is their run''s');
+reset role;
+
+-- --- Retention and lifecycle ------------------------------------------------------
+
+delete from ouroboros.analysis_runs
+ where id in ('a8110000-0000-4000-8000-000000000001', 'a8110000-0000-4000-8000-000000000002');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.analysis_findings where organization_id = 'org-v081')
+  and not exists (select 1 from ouroboros.analysis_suggestion_findings where organization_id = 'org-v081')
+  and (select count(*) = 10 and bool_and(last_run_id is null)
+         from ouroboros.analysis_suggestions where organization_id = 'org-v081')
+  and (select status = 'dismissed' from ouroboros.analysis_suggestions
+        where id = (select id from v081_first where name = 'pool-move')),
+  'retention takes runs, findings and citations; suggestions — and their dismissals — outlive them');
+
+delete from ouroboros."user" where "id" = 'user-v081';
+
+select pg_temp.must_hold(
+  (select status = 'dismissed' and resolved_by is null
+     from ouroboros.analysis_suggestions where id = (select id from v081_first where name = 'pool-move')),
+  'a removed person''s dismissal stands, unattributed');
+
+delete from ouroboros.organization where "id" in ('org-v081', 'org-v081-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.analysis_suggestions where organization_id like 'org-v081%'),
+  'a deleted workspace takes its suggestions with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

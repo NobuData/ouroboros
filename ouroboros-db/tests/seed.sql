@@ -5923,5 +5923,25 @@ select pg_temp.must_hold(
                    where jsonb_path_exists(analyzer_set, '$.analyzers[*] ? (@.kind == "llm")')),
   'no seeded analysis run carries an LLM cost or names an LLM analyzer — deterministic runs show compute time only');
 
+-- ===========================================================================
+-- V081 — the Build Analyzer's findings and suggestions (#507, BU.2)
+-- ===========================================================================
+--
+-- BU.4 (#509) seeds mockup 18's findings and suggestions. The probes hold from today so its
+-- seed cannot be where unresolvable evidence or an identity nobody derived first appears.
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.analysis_findings f, jsonb_array_elements(f.evidence_refs) r
+               where not ouroboros.analysis_evidence_ref_resolves(f.organization_id, r)),
+  'every seeded finding''s evidence resolves to a real row of its kind');
+
+select pg_temp.must_hold(
+  not exists (
+    select 1 from ouroboros.analysis_suggestions s
+     where s.identity_key is distinct from ouroboros.analysis_suggestion_identity(
+             s.kind, array(select f.identity_key from ouroboros.analysis_suggestion_findings l
+                             join ouroboros.analysis_findings f on f.id = l.finding_id
+                            where l.suggestion_id = s.id))),
+  'every seeded suggestion cites findings and carries the identity they derive');
+
 \o
 \echo 'seed.sql: all assertions passed'

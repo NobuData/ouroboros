@@ -238,7 +238,7 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BU.1 | #506 ✅ | 🟢 Done | ouroboros-db: [BU.1] Analysis runs & corpus snapshots | Run records, schedules, budgets, the meta-strip manifest (A2/A7) | mvp, analyzer, db | N (after AH.1, AS.1, AO.1, BI.1) | Y | M | ouroboros-db |
-| BU.2 | #507 | 🟡 Open | ouroboros-db: [BU.2] Findings & suggestions schema | Typed findings, evidence refs, suggestion lifecycle, confidence (A1/A4) | mvp, analyzer, db | N (after BU.1) | Y | M | ouroboros-db |
+| BU.2 | #507 ✅ | 🟢 Done | ouroboros-db: [BU.2] Findings & suggestions schema | Typed findings, evidence refs, suggestion lifecycle, confidence (A1/A4) | mvp, analyzer, db | N (after BU.1) | Y | M | ouroboros-db |
 | BU.3 | #508 | 🟡 Open | ouroboros-db: [BU.3] Application measurements & calibration | Predicted/measured windows, verdicts, confounds, factors (A6) | mvp, analyzer, db | N (after BU.2) | Y | S | ouroboros-db |
 | BU.4 | #509 | 🟡 Open | ouroboros-db: [BU.4] Analyzer seeds — mockup-18 parity + probes | 90d corpus stats, findings, suggestions, measurements; ci checks | mvp, analyzer, db, ci | N (after BU.3, #24) | Y | M | ouroboros-db, .github |
 
@@ -293,7 +293,21 @@ erDiagram
 
 ### Issue BU.2 — ouroboros-db: [BU.2] Findings & suggestions schema
 
-> **GitHub issue:** #507 · **Status:** 🟡 Open · **Parent epic:** #502
+> **GitHub issue:** #507 ✅ · **Status:** 🟢 Done · **Parent epic:** #502
+
+- **Delivered** (`ouroboros-db` `V081__analysis_findings_suggestions.sql`): `analysis_findings` —
+  `finding_type` (the seven families + `custom:*`) with `data` held to its type by
+  `analysis_finding_data_valid()`, `evidence_refs` `[{kind, id}]` over
+  `build|test_run|test_case|waiver|merge|workflow_version|runner_pool|runner` that must resolve in
+  the workspace when written, `confidence` 0–100 + `confidence_basis`, written only into a running
+  run by an analyzer in its set, immutable, identity `analyzer@v<version>/<subject_key>`.
+  `analysis_suggestions` — `kind`, composer-stored `title`/`evidence_line`/`confidence`, `impact`
+  with a mandatory basis (`unquantified` ⇒ no estimate and `needs_spike`), `action_binding`
+  `{plane, change}`, the A4 lifecycle enforced (`applied` needs its audit event, `dismissed` an
+  actor + reason, `drafted` a same-workspace batch; terminal and frozen), and a stable
+  `identity_key` derived from the cited findings. `analysis_suggestion_findings` is the
+  many-to-many citation; `record_analysis_suggestion()` upserts on identity so a re-run updates
+  rather than duplicates and dismissals stick.
 
 - **Problem Statement:** Typed findings with resolvable evidence, and
   suggestions with the A4 lifecycle — the page's two suggestion cards and
@@ -928,7 +942,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** AH, AS/AT.3, AO, AJ.4 shape, AG.5, AS.4,
    BI.1/BI.2, WF-P.3/S, AK/AL, farm config, BK.1, #41/#46.
-2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → BU.2 (#507) → BU.3 (#508) → BU.4 (#509)
+2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → BU.3 (#508) → BU.4 (#509)
 3. **Phase 2 — Pipeline:** BV.1 (#510) ⊕ (→) BV.2 (#511) → BV.3 (#512) →
    BV.4 (#513) → BV.5 (#514) → BV.6 (#515)
 4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
