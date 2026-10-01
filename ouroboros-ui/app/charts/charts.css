@@ -1,0 +1,387 @@
+/*
+ * The Insights chart primitives (#442) — mockup 15's `.chart-wrap`, `.tip`, `.hbar`, `.spark`
+ * and `.vb`, expressed in the #16 tokens.
+ *
+ * Held to the rules every sheet under app/ is (__tests__/styles.test.ts): colours are tokens,
+ * type is the rem scale, other lengths are tokens or rem with hairlines excepted. Both themes
+ * therefore come for free. The chart- prefix keeps it out of the primitives' ou- namespace.
+ *
+ * Data reaches this sheet one way only: a fraction in a custom property (--chart-fill,
+ * --chart-x, --chart-step), the way app/ui/meter.tsx passes its fill. The declarations that
+ * read them live here; the call site writes nothing but the number.
+ *
+ * Every entrance animation is inside the reduced-motion guard at the end of the sheet. It is
+ * decoration: the figure is drawn in full before it starts and after it ends.
+ */
+
+/* ============================================================ scroll wrapper */
+
+/*
+ * A wide chart scrolls inside its own box, never the content pane (CP.4,
+ * docs/DESIGN_SYSTEM_APP_SHELL.md § 1.3) — the same contract as .ou-table-scroll.
+ */
+.chart-scroll {
+  overflow-x: auto;
+}
+
+.chart-scroll__inner {
+  position: relative;
+  min-width: 40rem;
+}
+
+.chart-scroll__inner--half {
+  min-width: 30rem;
+}
+
+/* ============================================================ time series */
+
+.chart-ts__svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
+
+.chart-ts__grid {
+  stroke: var(--line);
+  stroke-width: 1;
+  opacity: 0.5;
+}
+
+.chart-ts__baseline {
+  stroke: var(--line);
+  stroke-width: 1;
+}
+
+.chart-ts__guide {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.chart-ts__area {
+  fill: var(--accent);
+  opacity: 0.12;
+}
+
+.chart-ts__line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart-ts__crosshair {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.chart-ts__dot {
+  fill: var(--accent);
+  stroke: var(--surface);
+  stroke-width: 2;
+}
+
+.chart-ts__text {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-ts__value {
+  fill: var(--ink);
+  font-size: var(--t-2xs);
+}
+
+.chart-ts__note {
+  fill: var(--ink-faint);
+  font-size: var(--t-2xs);
+}
+
+/*
+ * The hover and keyboard layer: one transparent column per point over the plot, so a pointer
+ * anywhere above a day — not only on the dot — selects it, and the same element is what the
+ * keyboard focuses. Clipped, because the end columns hang half outside the plot.
+ */
+.chart-ts__hits {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+
+.chart-ts__hit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--chart-x, 0%);
+  width: var(--chart-step, 0%);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  transform: translateX(-50%);
+  cursor: crosshair;
+}
+
+.chart-ts__hit:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  border-radius: var(--r-xs);
+}
+
+/* ============================================================ tooltip card */
+
+.chart-tip {
+  position: absolute;
+  top: var(--sp-3);
+  left: var(--chart-x, 0%);
+  width: max-content;
+  max-width: 16rem;
+  margin-left: var(--sp-6);
+  padding: var(--sp-4) var(--sp-5);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+  box-shadow: 0 var(--sp-4) var(--sp-10) var(--scrim);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-body);
+  pointer-events: none;
+}
+
+/* Past the middle, the card hangs to the left of the crosshair so it never leaves the plot. */
+.chart-tip--before {
+  margin-left: calc(var(--sp-6) * -1);
+  transform: translateX(-100%);
+}
+
+.chart-tip__date {
+  color: var(--ink-faint);
+}
+
+/* ============================================================ horizontal bars */
+
+/*
+ * One grid for every row, rather than a grid per row as the mockup has it, so a wide value
+ * (`6m 04s`) widens its column for all the rows and the bars still start and scale together.
+ */
+.chart-hbars {
+  display: grid;
+  grid-template-columns: 8.25rem 1fr minmax(2.125rem, max-content);
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.chart-hbar {
+  display: contents;
+}
+
+.chart-hbar__label {
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-size: var(--t-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chart-hbar__bar {
+  width: var(--chart-fill, 0%);
+  min-width: 0.1875rem;
+  height: var(--sp-4);
+  border-radius: 0 var(--r-xs) var(--r-xs) 0;
+  background: var(--accent);
+  opacity: 0.58;
+  transform-origin: left center;
+}
+
+.chart-hbar__value {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.chart-hbar--top .chart-hbar__bar {
+  opacity: 0.95;
+}
+
+.chart-hbar--top .chart-hbar__label,
+.chart-hbar--top .chart-hbar__value {
+  color: var(--ink);
+}
+
+.chart-hbar--dim .chart-hbar__label,
+.chart-hbar--dim .chart-hbar__value {
+  color: var(--ink-mut);
+}
+
+/* Token bars wear the model hue (mockup 15's `.hbar.tok`). */
+.chart-hbars--model .chart-hbar__bar {
+  background: var(--model);
+}
+
+/* ============================================================ sparkline */
+
+.chart-spark {
+  display: flex;
+  flex: none;
+  align-items: flex-end;
+  gap: var(--sp-1);
+  height: 1.125rem;
+}
+
+.chart-spark__bar {
+  width: 0.1875rem;
+  height: var(--chart-fill, 0%);
+  min-height: var(--sp-1);
+  border-radius: var(--sp-1) var(--sp-1) 0 0;
+  background: var(--accent);
+  opacity: 0.8;
+  transform-origin: bottom center;
+}
+
+.chart-spark--dim .chart-spark__bar {
+  opacity: 0.4;
+}
+
+/* ============================================================ stacked vertical bars */
+
+.chart-vbars {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: 0.1875rem;
+  height: 5.75rem;
+  padding-top: var(--sp-7);
+  border-bottom: 1px solid var(--line);
+}
+
+.chart-vb {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: var(--sp-1);
+  min-width: 0.1875rem;
+  transform-origin: bottom center;
+}
+
+.chart-vb__seg {
+  display: block;
+  flex: none;
+  height: var(--chart-fill, 0%);
+  border-radius: var(--sp-1) var(--sp-1) 0 0;
+  background: var(--accent);
+  opacity: 0.62;
+}
+
+.chart-vb__seg--failed {
+  background: var(--err);
+  opacity: 0.85;
+}
+
+/* A failure segment caps the bar, so the success segment under it loses its rounded top. */
+.chart-vb__seg--failed + .chart-vb__seg {
+  border-radius: 0;
+}
+
+.chart-vb--hot .chart-vb__seg {
+  opacity: 0.95;
+}
+
+.chart-vbars__note {
+  position: absolute;
+  top: calc(var(--sp-3) * -1);
+  left: var(--chart-x, 0%);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.chart-legend {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  color: var(--ink-mut);
+  font-size: var(--t-2xs);
+}
+
+.chart-legend__swatch {
+  flex: none;
+  width: var(--sp-4);
+  height: var(--sp-4);
+  border-radius: var(--sp-1);
+  background: var(--accent);
+  opacity: 0.75;
+}
+
+.chart-legend__swatch--failed {
+  background: var(--err);
+  opacity: 0.85;
+}
+
+.chart-legend__sep {
+  color: var(--ink-faint);
+}
+
+/* ============================================================ entrance, motion-guarded */
+
+/*
+ * Decoration only — every mark is in its final state without it. A reader who has asked for
+ * less motion gets the final state at once, because nothing outside this block animates.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .chart-ts__line {
+    stroke-dasharray: 1;
+    animation: chart-draw 600ms ease-out both;
+  }
+
+  .chart-ts__area {
+    animation: chart-fade 600ms ease-out both;
+  }
+
+  .chart-hbar__bar {
+    animation: chart-grow-x 400ms ease-out both;
+  }
+
+  .chart-spark__bar,
+  .chart-vb {
+    animation: chart-grow-y 400ms ease-out both;
+  }
+}
+
+@keyframes chart-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes chart-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes chart-grow-x {
+  from {
+    transform: scaleX(0);
+  }
+}
+
+@keyframes chart-grow-y {
+  from {
+    transform: scaleY(0);
+  }
+}

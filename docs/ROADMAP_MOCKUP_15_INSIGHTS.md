@@ -573,7 +573,7 @@ mockup is silent; the mockup remains binding where they differ.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BK.1 | #442 | 🟡 Open | ouroboros-ui: [BK.1] Chart primitives (SVG) | TimeSeries, HBars, Sparkline, StackedVBars — token-driven (I4) | mvp, insights, ui, design | N (after #46, #16) | Y | L | ouroboros-ui |
+| BK.1 | #442 ✅ | 🟢 Done | ouroboros-ui: [BK.1] Chart primitives (SVG) | TimeSeries, HBars, Sparkline, StackedVBars — token-driven (I4) | mvp, insights, ui, design | N (after #46, #16) | Y | L | ouroboros-ui |
 | BK.2 | #443 | 🟡 Open | ouroboros-ui: [BK.2] Insights route, head, range & KPI row | Frame, composed headline, range segment, five KPI cards | mvp, insights, ui, design | N (after #41, BJ.2, BA-D.5) | Y | M | ouroboros-ui |
 | BK.3 | #444 | 🟡 Open | ouroboros-ui: [BK.3] Time-series cards (throughput & cost) | Line/area charts with tooltip, guide, spike label, projections | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
 | BK.4 | #445 | 🟡 Open | ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards | Table + meters + suggestion slot; two hbar cards + insight lines | mvp, insights, ui, design | N (after BK.1, BJ.3) | Y | M | ouroboros-ui |
@@ -582,7 +582,18 @@ mockup is silent; the mockup remains binding where they differ.
 
 ### Issue BK.1 — ouroboros-ui: [BK.1] Chart primitives (SVG)
 
-> **GitHub issue:** #442 · **Status:** 🟡 Open · **Parent epic:** #430
+> **GitHub issue:** #442 ✅ · **Status:** 🟢 Done · **Parent epic:** #430
+
+- **Delivered** (`ouroboros-ui` 0.117.0): `app/charts/` — `TimeSeries`, `HBars`, `Sparkline`
+  and `StackedVBars` in hand-written SVG and CSS over `charts.css` (tokens only, rem type,
+  entrance animation inside the reduced-motion guard), with the pure geometry in
+  `geometry.ts`. Each chart is a named `role="img"`; a time series' days are one roving tab
+  stop (arrows, Home, End) whose names are the tooltip's sentence. Wide charts scroll in their
+  own `.chart-scroll` wrapper. `app/format.ts` gains `tokenCount` (`126M`, `26.4k`) and
+  `percentOf` (`98.9%`) beside `spanOfMs` and `moneyOfCents`. The fixture is the workshop's
+  `/workshop/charts` story over mockup 15's own data, photographed in both palettes and at
+  125 % by `tests/e2e/specs/charts.spec.ts`; `__tests__/charts/no-chart-library.test.ts`
+  holds the manifest and the built chunks free of any charting library.
 
 - **Problem Statement:** Eleven visuals reduce to four primitives — built
   once, token-themed, accessible, matching the mockup's hand-authored
