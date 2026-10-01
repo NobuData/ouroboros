@@ -244,7 +244,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BI.1 | #432 | 🟡 Open | ouroboros-db: [BI.1] Metric rollup schema & methodology registry | `metric_daily` grain + versioned formula registry (I1/I2) | mvp, insights, db | N (after DASH-F.1/F.3, AO/AW/AS) | Y | M | ouroboros-db |
+| BI.1 | #432 ✅ | 🟢 Done | ouroboros-db: [BI.1] Metric rollup schema & methodology registry | `metric_daily` grain + versioned formula registry (I1/I2) | mvp, insights, db | N (after DASH-F.1/F.3, AO/AW/AS) | Y | M | ouroboros-db |
 | BI.2 | #433 | 🟡 Open | ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors | Incremental daily fills per metric family; oracle parity | mvp, insights, rest | N (after BI.1) | Y | L | ouroboros-rest |
 | BI.3 | #434 | 🟡 Open | ouroboros-db: [BI.3] Intervention-cause taxonomy | Cause mapping rules + override rows (I5); AT.4 subtype amendment | mvp, insights, db | N (after AT.4, AO.4) | Y | M | ouroboros-db, ouroboros-rest |
 | BI.4 | #435 | 🟡 Open | ouroboros-rest: [BI.4] Estimator calibration records | Estimate-band vs actual joins; within-band computation (I7) | mvp, insights, rest, intake | N (after INTAKE-K.2, AO.1) | Y | S | ouroboros-rest, ouroboros-db |
@@ -252,7 +252,14 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ### Issue BI.1 — ouroboros-db: [BI.1] Metric rollup schema & methodology registry
 
-> **GitHub issue:** #432 · **Status:** 🟡 Open · **Parent epic:** #428
+> **GitHub issue:** #432 ✅ · **Status:** 🟢 Done · **Parent epic:** #428
+
+- **Delivered** (`ouroboros-db` `V076__metric_rollups.sql`): `metric_definitions` (versioned
+  registry, 11 shipped rows, `proxy` on change failure rate and MTTR, formula changes without a
+  version bump refused by trigger), `metric_daily` (unique nulls-not-distinct grain, BRIN on
+  `day`, rate components enforced through a composite `(metric_id, is_rate)` foreign key plus a
+  CHECK) and `metric_rollup_state` (per-family last-filled day, backfill cursor/end, last-run
+  status). `tests/constraints.sql` proves the 30-day oracle and an interrupted backfill resuming.
 
 - **Problem Statement:** Every page number needs a queryable daily grain and
   a formula that can be shown to the user (decisions I1/I2).
@@ -911,7 +918,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#324, #331), farm (#249), DASH-F.1 (#64)/F.3 (#66)/J.4 (#92),
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
-2. **Phase 1 — Domain & rollups:** BI.1 (#432) → BI.2 (#433) ⊕ { BI.3 (#434) ⊕ BI.4 (#435) } → BI.5 (#436)
+2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → BI.2 (#433) ⊕ { BI.3 (#434) ⊕ BI.4 (#435) } → BI.5 (#436)
 3. **Phase 2 — Services:** BJ.1 (#437) → { BJ.2 (#438) ⊕ BJ.3 (#439) ⊕ BJ.4 (#440) } → BJ.5 (#441)
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*
