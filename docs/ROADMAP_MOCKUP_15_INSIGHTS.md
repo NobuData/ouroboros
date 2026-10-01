@@ -495,7 +495,7 @@ seeds: 30d × all families ─▶ every mockup number reproduced · Aug-4 toolti
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BJ.1 | #437 ✅ | 🟢 Done | ouroboros-rest: [BJ.1] Windowed metrics service | Range + prior-delta over rollups + live tail; registry-driven (I1–I3) | mvp, insights, rest | N (after BI.2) | Y | L | ouroboros-rest |
-| BJ.2 | #438 | 🟡 Open | ouroboros-rest: [BJ.2] Insights read APIs | KPIs, series, hbar sets, scoreboard, flaky, DORA payloads | mvp, insights, rest | N (after BJ.1, BI.3) | Y | M | ouroboros-rest |
+| BJ.2 | #438 ✅ | 🟢 Done | ouroboros-rest: [BJ.2] Insights read APIs | KPIs, series, hbar sets, scoreboard, flaky, DORA payloads | mvp, insights, rest | N (after BJ.1, BI.3) | Y | M | ouroboros-rest |
 | BJ.3 | #439 ✅ | 🟢 Done | ouroboros-rest: [BJ.3] Model scoreboard aggregation | Task×model outcomes: untouched %, $/success, trends (I6) | mvp, insights, rest, routing | N (after BJ.1, AW) | Y | M | ouroboros-rest |
 | BJ.4 | #440 | 🟡 Open | ouroboros-rest: [BJ.4] Email digest generation | Weekly registry-rendered digest per subscriber (I9) | mvp, insights, rest | N (after BJ.1, BA-E.3 mailer) | Y | M | ouroboros-rest |
 | BJ.5 | #441 | 🟡 Open | ouroboros-rest: [BJ.5] Insights integration tests | Parity, deltas, taxonomy, scoreboard, digest, isolation | mvp, insights, rest, ci | N (after BJ.2–BJ.4) | Y | M | ouroboros-rest |
@@ -552,7 +552,43 @@ window(merge_rate, 30d) ─▶ {value: 92%, prior: 89%, delta: +3pts,
 
 ### Issue BJ.2 — ouroboros-rest: [BJ.2] Insights read APIs
 
-> **GitHub issue:** #438 · **Status:** 🟡 Open · **Parent epic:** #429
+> **GitHub issue:** #438 ✅ · **Status:** 🟢 Done · **Parent epic:** #429
+
+- **Delivered** (`ouroboros-rest` `src/modules/insights/page/`, 0.38.2; `ouroboros-db`
+  `V083__token_metrics_by_task_kind.sql`): `GET /api/v1/insights?range=7d|30d|90d&repo=` answers
+  `{range, window, repo, usage, head, kpis[5], series, hbars, performance[6], flaky, scoreboard,
+  dora[4]}` to any member; `30d` when the range is absent, `422` for anything else (`custom`
+  included), `404` for another workspace's header. `InsightsPageService` is exported for BJ.4.
+  It computes nothing of its own: every figure is BJ.1's windowed metric, read through two new
+  `MetricsService` reads — `windows()` (N metrics from one scan and one live tail per family)
+  and `breakdown()` (one window per dimension label) — and shaped by pure composers. **Lines
+  are computed** (I5) from the bars they sit under and are null when the window has nothing
+  true to say. **Money** follows one rule (I8): a dollar key exists only where priced usage
+  backs it, so an unpriced workspace gets tokens and no dollar key at all. The budget guide is
+  the sum of the enabled provider connections' real monthly caps over the days in the month;
+  the projection states `method: "linear_to_date"`; the spike is a plain value with no
+  narrative. **Gates are missing keys** (I10): no alerts claim (#237), no routing suggestion
+  (#209) and no cluster note (mockup 18) until each source exists, and the closed OpenAPI
+  schemas keep them out.
+  **Added beyond the issue's module**, by decision at implementation: *tokens by stage* had no
+  metric, so V083 registers `tokens_by_task_kind` (dimension `task_kind`) and `local_tokens`,
+  the cost extractor fills both, and the dev seed carries them (71M / 18M / 14M / 12M / 8M / 3M,
+  31% local). The **flaky card** is derived from real history (`FlakeStateService.card`):
+  `fixed` is a case back at `healthy` inside the window, and `platform` / `resolvedBy` appear
+  only when the occurrences can name them.
+  **Where the dev seed and the mockup differ** — stated, not hidden. Workspace-wide over 30
+  days the KPI row (92% ▲3 · 78% · 14m 20s ▼2m · $1.87 ▼$0.41 · 20 ▼5), the causes
+  (8/5/4/2/1, ~40%), the stages (8m 20s), the effort ladder (89%) and the DORA proxy flags
+  match. Builds (412, 377 ✓ / 35 ✗), cases run (26.4k) and the suites (14/10/5/3/1, 0.12%)
+  match on `?repo=acme-robotics/helios-firmware`, the scope BI.5's seed asserts them for; the
+  whole workspace adds the other repositories' farm jobs. Today's figures come from the live
+  tail, so the seeded ledger's row for today is not what the page draws: the head reads 21
+  merges (the mockup's 27 counts six seeded for today) and tokens read 123M, not 126M, with the
+  cost chart ending at today's real usage. The head's interventions read 15, not 2, because the
+  seed dates fifteen of its twenty interventions inside the last week. The tokens line reads
+  *≈ 1.4M tokens per merged PR · 31% served by local models*: the mockup's `4.6M` does not
+  follow from its own 126M over 96 merges, and "at $0" is not a claim the data can make. The
+  seeded scoreboard has no rows and the flaky card shows the one seeded `watching` case.
 
 - **Problem Statement:** The page needs shaped payloads for eleven visuals
   plus the head's composed sentence.
@@ -1032,7 +1068,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
 2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { **BI.3 (#434) ✅** ⊕ **BI.4 (#435) ✅** } → **BI.5 (#436) ✅**
-3. **Phase 2 — Services:** **BJ.1 (#437) ✅** → { BJ.2 (#438) ⊕ **BJ.3 (#439) ✅** ⊕ BJ.4 (#440) } → BJ.5 (#441)
+3. **Phase 2 — Services:** **BJ.1 (#437) ✅** → { **BJ.2 (#438) ✅** ⊕ **BJ.3 (#439) ✅** ⊕ BJ.4 (#440) } → BJ.5 (#441)
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*
 5. **v2:** BL.1 (#448) with mockup 19; BL.2 (#449) with AB.3 (#209);

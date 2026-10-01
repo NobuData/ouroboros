@@ -108,6 +108,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/runs/{id}/transcript.jsonl`            | *Raw JSONL ↗* (#304): the `run_events_jsonl` projection, streamed, opening with `# simulated run` on a simulated run |
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
 | `GET PATCH /api/v1/policies/dry-run`                | [The dry-run policy](#the-dry-run-policy) (#382) — read by any member, flipped by `owner`/`admin`, audited `policy.dry_run_changed` |
+| `GET /api/v1/insights`                             | [The Insights page](#insights-page) (#438) — `?range=7d\|30d\|90d` (`30d` when absent), optional `?repo=owner/name`; head, KPIs, series, bar cards with computed lines, performance, flaky, scoreboard and DORA in one payload; any member |
 | `GET /api/v1/insights/calibration`                 | [Estimator calibration](#estimator-calibration) (#435) — `?window=7d\|30d\|90d`; within-band headline, unestimated count and per-effort bias direction; any member |
 | `POST /api/v1/insights/interventions/{id}/recategorize` | [Intervention causes](#intervention-causes) (#434) — a person's cause with a reason, audited in `intervention_overrides`; never overwritten by a rule run; `owner`/`admin`/`member` |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
@@ -5851,7 +5852,7 @@ and **UTC day** — from the source planes; nothing here is an endpoint yet
 | `throughput` | `merged_prs`, `merge_rate`, `merged_untouched_rate` | loop PRs merged that day, or closed unmerged on the day their loop finished; *untouched* is I6: every revision's head sha is a commit the loop reported |
 | `interventions` | `human_interventions` (v2, by `cause`) | V079's intervention events per cause, read from `intervention_cause_daily` — needs-human handoffs, human classifications, waivers, the first `fail` of each guardrail check per loop (`review_required` is the policy gate) and blocking votes (#434) |
 | `cycle` | `cycle_time`, `stage_duration` (by stage) | loops that finished `merged`; medians |
-| `cost` | `cost_cents`, `tokens`, `unpriced_tokens` | run-attributed usage; no `cost_cents` row on a day with nothing priced (unpriced ≠ $0). `cost_per_merged_pr` is Σ`cost_cents` / Σ`merged_prs` per window, never stored per day |
+| `cost` | `cost_cents`, `tokens`, `unpriced_tokens`, `local_tokens`, `tokens_by_task_kind` (by task kind) | run-attributed usage; no `cost_cents` row on a day with nothing priced (unpriced ≠ $0). `cost_per_merged_pr` is Σ`cost_cents` / Σ`merged_prs` per window, never stored per day. `local_tokens` is the part an `ollama`/`openai_compatible` connection served — where the model ran, not what it cost. Usage with no task kind is in `tokens` and in no `tokens_by_task_kind` row (V083, #438) |
 | `builds` | `builds`, `build_failures`, `build_success_rate` | farm jobs finished `succeeded`/`failed`/`retried` |
 | `tests` | `test_cases_run`, `test_pass_rate`, `test_failures_by_suite` (by suite) | finished test runs started that day, from suite counts |
 | `effort` | `completion_time_by_effort` (by effort) | `estimate_outcomes` merged that day; medians |
@@ -5907,6 +5908,18 @@ It refuses (`MetricWindowError`) a metric not in the registry, one no rollup fam
 (calibration reads its own table), and a dimensioned median asked for without a dimension.
 The dashboard's pulse card and merged stat read it (the DASH-G.3 amendment).
 
+Two reads serve a page that draws many figures at once (#438), under the same rules and cache:
+
+```ts
+metrics.windows(["merge_rate", "cycle_time", …], scope)  // ⇒ Map<metricId, MetricWindow>
+metrics.breakdown("human_interventions", scope)          // ⇒ { dimensionKind: "cause", entries: [{dimension, window}, …] }
+```
+
+`windows` answers N metrics from **one** rollup scan and one live tail per family. `breakdown`
+answers a dimensioned metric as one window per label seen in the window or its prior, labels
+ascending; it refuses a metric with no dimension. Each window is the one `window()` would answer
+alone.
+
 ```bash
 yarn test src/modules/insights/metrics                 # window matrix vs an event-level oracle
 yarn test:integration src/modules/insights/metrics     # vs rewindow, live tail, isolation, KPI budget
@@ -5948,6 +5961,68 @@ source planes per request and is not on the daily grain.
 ```bash
 yarn test src/modules/insights/scoreboard              # mockup rows, badge, pricing, trend, slot
 yarn test:integration src/modules/insights/scoreboard  # real loops, KPI parity, human push, isolation
+```
+
+### Insights page
+
+BJ.2 ([#438](https://github.com/NobuData/ouroboros/issues/438)), decisions **I1**, **I5**, **I6**,
+**I8** and **I10**, in [`src/modules/insights/page/`](src/modules/insights/page). Mockup 15 in one
+read. `InsightsPageService` is exported by `InsightsModule`, so the email digest (#440) reads the
+same payload.
+
+| route | what | who |
+| ----- | ---- | --- |
+| `GET /api/v1/insights?range=7d\|30d\|90d&repo=owner/name` | `{range, window, repo, usage, head, kpis[5], series, hbars, performance[6], flaky, scoreboard, dora[4]}`; `30d` when `range` is absent, the whole workspace when `repo` is; a range outside the three (`custom` included) or a malformed `repo` is `422 validation_failed` | every member |
+
+The service computes nothing of its own. Every figure is a [windowed metric](#windowed-metrics-service)
+read with one `now`, and the composers (`page.cards.ts`, `page.series.ts`, `page.hbars.ts`,
+`page.flaky.ts`) are pure functions from those facts to the payload.
+
+| Part | Source | Notes |
+| ---- | ------ | ----- |
+| `head` | `merged_prs`, `human_interventions` over **7d** | Always the last week, whatever `range` is. The numbers behind the headline; the sentence is the client's. |
+| `kpis` | `merge_rate`, `merged_untouched_rate`, `cycle_time`, `cost_per_merged_pr`, `human_interventions` | `value`, `prior`, `delta`, `trend {direction, good}` and the registry `methodology`. |
+| `series` | `merged_prs` (+ interventions and the day's cost for the tooltip), `cost_cents`/`tokens`, `builds`/`build_failures` | One point per UTC day of the window. |
+| `hbars` | `breakdown()` of `human_interventions`, `stage_duration`, `test_failures_by_suite`, `completion_time_by_effort`, `tokens_by_task_kind` | Bars plus a computed `line` (below). |
+| `performance` | `builds`, `build_success_rate`, `test_cases_run`, `test_pass_rate`, `tokens`, `cost_cents` | Rates carry `components`. |
+| `flaky` | `FlakeStateService.card` (AT.3) | Non-healthy cases, plus cases that came back to `healthy` inside the window (`fixed`). Rate and per-day history come from `test_case_history`. `platform` only when every flaky occurrence ran on one; `resolvedBy {runId, issueNumber}` only when a loop's build produced the first clean pass. |
+| `scoreboard` | [`ScoreboardService`](#model-scoreboard) | As it answers it. |
+| `dora` | `deploy_frequency` (as `per_day`), `lead_time`, `change_failure_rate`, `mttr` | `sparkline` per day; `proxy` is the registry's flag. |
+
+**Insight lines are computed** (I5). Each is arithmetic over the bars above it, and `null` when
+the window gives it nothing true to say:
+
+| Card | Line | Arithmetic |
+| ---- | ---- | ---------- |
+| interventions | *Fix the top row and interventions drop ~40%.* | top cause ÷ all causes |
+| stages | *Implement dominates the loop — the other five stages sum to 8m 20s.* | Σ of the other stages' medians |
+| suites | *33 failing cases total — 0.12% of everything that ran.* | Σ failures ÷ `test_cases_run` |
+| effort | *Estimator calibration: 89% of issues land within their predicted band.* | [calibration](#estimator-calibration)'s `withinBandPct` |
+| tokens | *≈ 1.3M tokens per merged PR · 31% served by local models.* | `tokens` ÷ `merged_prs`; `local_tokens` ÷ `tokens` |
+
+**Money is present or absent, never zero by default** (I8). `usage.pricing` is `priced`,
+`unpriced` or `none`. A dollar key (`costCents`, `budget`, `projection`, `spike`) exists only where
+priced usage backs it. In a workspace nothing prices, the payload has tokens and no dollar key:
+the fourth KPI reads tokens per merged PR under the `tokens` methodology and `total_cost` is
+`null`.
+
+| Cost-chart key | Rule |
+| -------------- | ---- |
+| `budget` | Σ `monthly_cap_cents` of the enabled `provider_connections` that have one, and that sum ÷ the days in the current UTC month. Absent with no cap or no priced usage. |
+| `projection` | `method: "linear_to_date"`: month-to-date priced spend ÷ days elapsed × days in month. Absent with no priced usage this month. |
+| `spike` | The highest priced day, when it costs at least twice the window's median priced day and the window has five priced days. A plain value: nothing attributes it to a cause. |
+
+**A gated claim is a missing key** (I10). Cap alerts (#237), the routing suggestion (#209) and the
+analyzer's cluster note have no source yet, so the payload has no key for them. The OpenAPI
+schemas are closed (`additionalProperties: false`), so one cannot appear without a contract
+change.
+
+Today's figures come from the live tail, so on the dev seed the last day of each series is what
+the source planes hold, not the seeded `metric_daily` row for today.
+
+```bash
+yarn test src/modules/insights/page                # composers, lines, money rule, contract
+yarn test:integration src/modules/insights/page    # one truth vs window(), gates, isolation
 ```
 
 ### PR page reads & head actions

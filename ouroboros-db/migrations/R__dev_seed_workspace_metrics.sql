@@ -35,6 +35,8 @@
 --   | Suites 14/10/5/3/1, *0.12%*            | the test plane's failures plus extras, over cases run   |
 --   | Effort ladder XS 6m … XL 2h 10m        | each effort's pooled lead-time samples                  |
 --   | *89% within band*                      | nine graded merges, eight inside their band (#435)      |
+--   | Tokens by stage 71M … 3M, *31% local*  | each day's tokens split by task kind, and the part of   |
+--   |                                        | each kind a local model served (V083, #438)             |
 --   | DORA cells and their sparklines        | deploys, lead time, reverts and recoveries per day      |
 --
 -- ---------------------------------------------------------------------------
@@ -84,12 +86,11 @@
 --   * Cost is $1.87 per merged PR, as the KPI says, so the month is about $181, not the strip's
 --     $563.20. The $18.60 endpoint and the $31.40 spike are kept.
 --
--- **And four visuals have no storage yet**, so nothing here can seed them:
+-- **And three visuals have no storage here**, so nothing in this file can seed them:
 --
 --   | Visual                               | Waits for                                          |
 --   |--------------------------------------|----------------------------------------------------|
 --   | Model scoreboard (incl. $0.00 local) | BJ.3 (#439) — its registry entries and aggregation |
---   | Tokens by stage, *31% local at $0*   | a registered per-task-kind token metric (BJ.2)     |
 --   | $20 budget guide, $600 cap, 90% alert | provider caps (AF.4), decision I8                  |
 --   | Flaky tests card                     | nothing: it reads AT.3's `flake_scores`, which the  |
 --   |                                      | test-results seed holds (one `watching` case); this |
@@ -321,6 +322,7 @@ select count(outcome.pr_id) as graded
 -- Ledger columns — components, never values:
 --   closed, merged, autonomous, untouched, reverted     loop PRs, the throughput and CFR components
 --   cost_cents, tokens, unpriced_tokens                  priced spend; every token; the unpriced part
+--                                                        (`token_kinds` splits tokens by task kind)
 --   extra_builds, extra_failed_builds                    helios-firmware builds beyond the farm seed's
 --   deploys                                              successful default-branch builds
 --   extra_cases                                          test cases beyond the test plane's
@@ -450,6 +452,26 @@ effort_centres (first_d, last_d, effort, centre_ms, step_ms) as (
          (60, 89, 'xs', 450000,  20000), (60, 89, 's',  750000,  20000),
          (60, 89, 'm', 1320000,  40000), (60, 89, 'l', 3300000, 120000),
          (60, 89, 'xl', 9000000, 240000)
+),
+-- What a day's tokens were spent on, and how much of each kind a local model served: the bars'
+-- weights (they sum to the ledger's month in millions) and each kind's local percentage. A kind's
+-- tokens are the day's tokens × weight / Σ weights, floored; the rounding goes to the heaviest
+-- kind, so every day's bars sum to that day's tokens exactly.
+token_kinds (kind, weight, local_pct) as (
+  values ('implement', 71, 3), ('review', 18, 0), ('plan', 14, 100),
+         ('analyze', 12, 100), ('test-gen', 8, 100), ('docs', 3, 100)
+),
+token_split as (
+  select share.d, share.kind, share.local_pct,
+         share.floored
+           + case when share.weight = share.heaviest
+                  then share.tokens - sum(share.floored) over (partition by share.d)
+                  else 0 end as tokens
+    from (select l.d, l.tokens, k.kind, k.weight, k.local_pct,
+                 max(k.weight) over () as heaviest,
+                 floor(l.tokens::numeric * k.weight
+                         / sum(k.weight) over (partition by l.d)) as floored
+            from ledger l cross join token_kinds k) share
 ),
 stage_centres (first_d, last_d, stage, centre_ms) as (
   values (0, 29, 'analyze',  60000), (0, 29, 'plan', 120000), (0, 29, 'implement', 364000),
@@ -617,6 +639,15 @@ rows (repo_ref, metric_id, is_rate, dimension, day, value, numerator, denominato
   select scope.repo_ref, 'unpriced_tokens', false, '', scope.today - l.d, l.unpriced_tokens,
          null, null, '{}'
     from scope, ledger l
+  union all
+  select scope.repo_ref, 'tokens_by_task_kind', false, t.kind, scope.today - t.d, t.tokens,
+         null, null, '{}'
+    from scope, token_split t
+  union all
+  select scope.repo_ref, 'local_tokens', false, '', scope.today - t.d,
+         sum(floor(t.tokens * t.local_pct / 100)), null, null, '{}'
+    from scope, token_split t
+   group by scope.repo_ref, scope.today, t.d
   -- dora
   union all
   select scope.repo_ref, 'deploy_frequency', false, '', scope.today - l.d, l.deploys, null, null,

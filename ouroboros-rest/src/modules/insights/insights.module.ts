@@ -22,12 +22,19 @@
  * mockup 15's model scoreboard — task kind × serving model, untouched %, $/success, trend, role and
  * sample — exported for the Insights read APIs (#438). AB.3 (#209) binds `SCOREBOARD_SUGGESTIONS`
  * when it exists; nothing here does.
+ *
+ * BJ.2 ([#438](https://github.com/NobuData/ouroboros/issues/438)) adds the page itself:
+ * `GET /api/v1/insights?range=` (`page/`), one payload composed from the services above, the
+ * flakes plane's card read (`FlakesModule`) and the workspace's provider caps. {@link
+ * InsightsPageService} is exported so the email digest (#440) is assembled from the same payload
+ * and inherits its honesty rules rather than re-deriving a number.
  */
 
 import { Module } from "@nestjs/common";
 import { ScheduleModule } from "@nestjs/schedule";
 
 import { DbModule } from "../db/db.module";
+import { FlakesModule } from "../flakes/flakes.module";
 import { CalibrationController } from "./calibration.controller";
 import { CALIBRATION_MERGE_OBSERVER } from "./calibration.observer";
 import { CalibrationRepository } from "./calibration.repository";
@@ -37,7 +44,10 @@ import { InterventionRepository } from "./interventions.repository";
 import { InterventionsService } from "./interventions.service";
 import { MetricsCache } from "./metrics/metrics.cache";
 import { MetricsRepository } from "./metrics/metrics.repository";
-import { MetricsService } from "./metrics/metrics.service";
+import { METRICS_CLOCK, MetricsService } from "./metrics/metrics.service";
+import { InsightsPageController } from "./page/page.controller";
+import { InsightsPageRepository } from "./page/page.repository";
+import { InsightsPageService } from "./page/page.service";
 import { ROLLUP_EXTRACTORS } from "./rollup/rollup.extractors";
 import { RollupRepository } from "./rollup/rollup.repository";
 import { RollupScheduler } from "./rollup/rollup.scheduler";
@@ -46,8 +56,8 @@ import { ScoreboardRepository } from "./scoreboard/scoreboard.repository";
 import { ScoreboardService } from "./scoreboard/scoreboard.service";
 
 @Module({
-  imports: [DbModule, ScheduleModule.forRoot()],
-  controllers: [CalibrationController, InterventionsController],
+  imports: [DbModule, FlakesModule, ScheduleModule.forRoot()],
+  controllers: [CalibrationController, InterventionsController, InsightsPageController],
   providers: [
     CalibrationRepository,
     CalibrationService,
@@ -60,10 +70,14 @@ import { ScoreboardService } from "./scoreboard/scoreboard.service";
     InterventionsService,
     MetricsRepository,
     MetricsCache,
+    // The wall clock, bound by name so a suite can hold the page to one instant (#438).
+    { provide: METRICS_CLOCK, useValue: Date.now },
     MetricsService,
     ScoreboardRepository,
     ScoreboardService,
+    InsightsPageRepository,
+    InsightsPageService,
   ],
-  exports: [CALIBRATION_MERGE_OBSERVER, MetricsService, ScoreboardService],
+  exports: [CALIBRATION_MERGE_OBSERVER, MetricsService, ScoreboardService, InsightsPageService],
 })
 export class InsightsModule {}

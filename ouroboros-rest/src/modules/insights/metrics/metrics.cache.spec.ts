@@ -5,6 +5,7 @@ import {
   type MetricsCacheKey,
 } from "./metrics.cache";
 import { metricWindow } from "./metrics.fixture";
+import type { MetricBreakdown } from "./metrics.types";
 
 /** The window cache (BJ.1, #437): TTL, key isolation, refresh invalidation, bound. */
 
@@ -83,5 +84,59 @@ describe("the metrics cache", () => {
     expect(cache.size).toBe(METRICS_CACHE_MAX_ENTRIES);
     expect(cache.get({ ...KEY, metricId: "m0" })).toBeUndefined();
     expect(cache.get({ ...KEY, metricId: `m${String(METRICS_CACHE_MAX_ENTRIES)}` })).toBeDefined();
+  });
+
+  describe("breakdowns (#438)", () => {
+    /** A breakdown of two causes. */
+    const breakdown: MetricBreakdown = {
+      metricId: "human_interventions",
+      dimensionKind: "cause",
+      range: "30d",
+      from: "2026-08-03",
+      to: "2026-09-01",
+      entries: [
+        { dimension: "infra_rig", window: metricWindow("human_interventions", { value: 8 }) },
+        { dimension: "other", window: metricWindow("human_interventions", { value: 1 }) },
+      ],
+      methodology: metricWindow("human_interventions").methodology,
+    };
+    const CAUSES: MetricsCacheKey = { ...KEY, metricId: "human_interventions" };
+
+    it("serves a breakdown until its TTL, then misses", () => {
+      cache.setBreakdown(CAUSES, breakdown);
+
+      jest.advanceTimersByTime(METRICS_CACHE_TTL_MS - 1);
+      expect(cache.getBreakdown(CAUSES)).toBe(breakdown);
+
+      jest.advanceTimersByTime(1);
+      expect(cache.getBreakdown(CAUSES)).toBeUndefined();
+    });
+
+    it("never answers a window with a breakdown, or a breakdown with a window", () => {
+      const total = metricWindow("human_interventions", { value: 9 });
+
+      cache.set(CAUSES, total);
+      cache.setBreakdown(CAUSES, breakdown);
+
+      expect(cache.get(CAUSES)).toBe(total);
+      expect(cache.getBreakdown(CAUSES)).toBe(breakdown);
+      expect(cache.size).toBe(2);
+    });
+
+    it("is every label, so a key's dimension does not split it", () => {
+      cache.setBreakdown({ ...CAUSES, dimension: "infra_rig" }, breakdown);
+
+      expect(cache.getBreakdown(CAUSES)).toBe(breakdown);
+    });
+
+    it("keeps workspaces, repositories and rollup refreshes apart, and is forgotten with its workspace", () => {
+      cache.setBreakdown(CAUSES, breakdown);
+
+      expect(cache.getBreakdown({ ...CAUSES, organizationId: "org-b" })).toBeUndefined();
+      expect(cache.getBreakdown({ ...CAUSES, repo: "acme/helios" })).toBeUndefined();
+      expect(cache.getBreakdown({ ...CAUSES, stamp: "9 2026-09-01 11:00" })).toBeUndefined();
+      expect(cache.invalidate("org-a")).toBe(1);
+      expect(cache.getBreakdown(CAUSES)).toBeUndefined();
+    });
   });
 });

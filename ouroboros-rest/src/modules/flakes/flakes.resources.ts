@@ -11,6 +11,9 @@ import type { FlakeScorerRunStatus, FlakeState } from "../db/schema";
 import type {
   CaseFlakeRow,
   FlakeCandidateRow,
+  FlakeCardDay,
+  FlakeCardRow,
+  FlakeResolution,
   ScorerRunRow,
   StateCounts,
 } from "./flakes.repository";
@@ -175,5 +178,69 @@ export function summaryResource(
     quarantined: counts.quarantined,
     candidates: candidates.map(candidateResource),
     lastRun: lastRun === undefined ? null : scorerRunResource(lastRun),
+  };
+}
+
+/**
+ * A case's state on the Insights flaky card (BJ.2,
+ * [#438](https://github.com/NobuData/ouroboros/issues/438)): the two stored distrust states, and
+ * `fixed` — a case that returned to `healthy` inside the window. `fixed` is derived, never
+ * stored: V054's vocabulary stays `healthy | watching | quarantined`.
+ */
+export type FlakeCardState = "fixed" | "watching" | "quarantined";
+
+/** One case of the flaky card, as the facts stand — the page shapes the rate and the trend. */
+export interface FlakeCardCase {
+  readonly caseKey: string;
+  /** The repository's name. */
+  readonly repository: string;
+  readonly name: string | null;
+  readonly classname: string | null;
+  readonly suite: string | null;
+  readonly state: FlakeCardState;
+  /** The stored score, in [0, 1]. */
+  readonly score: number;
+  readonly stateChangedAt: string;
+  /** The window's non-skipped occurrences. */
+  readonly observed: number;
+  /** How many of them passed only on retry. */
+  readonly flaky: number;
+  /** Occurrences per UTC day, oldest first; a day the case did not run is absent. */
+  readonly history: readonly FlakeCardDay[];
+  /**
+   * The one platform every flaky occurrence in the window ran on — `rig:hil-rig-02` — or null
+   * when there were none or they ran on several. Never guessed.
+   */
+  readonly platform: string | null;
+  /**
+   * The loop whose test run first passed cleanly after the case's last flaky occurrence — only
+   * on a `fixed` case, and null when no such occurrence names a loop.
+   */
+  readonly resolvedBy: FlakeResolution | null;
+}
+
+/**
+ * A card row as the card's case.
+ *
+ * @param row - The row; a healthy one is a case that came back inside the window.
+ * @returns The case.
+ */
+export function flakeCardCase(row: FlakeCardRow): FlakeCardCase {
+  const fixed = row.state === "healthy";
+
+  return {
+    caseKey: row.caseKey,
+    repository: row.repository,
+    name: row.name,
+    classname: row.classname,
+    suite: row.suite,
+    state: fixed ? "fixed" : row.state,
+    score: row.score,
+    stateChangedAt: row.stateChangedAt.toISOString(),
+    observed: row.history.reduce((total, day) => total + day.observed, 0),
+    flaky: row.history.reduce((total, day) => total + day.flaky, 0),
+    history: row.history,
+    platform: row.flakyPlatforms.length === 1 ? row.flakyPlatforms[0] : null,
+    resolvedBy: fixed ? row.resolvedBy : null,
   };
 }

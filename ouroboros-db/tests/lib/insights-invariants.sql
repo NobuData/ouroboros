@@ -108,8 +108,9 @@ select pg_temp.must_hold(
 
 -- --- the dimension vocabularies ---------------------------------------------------------------
 --
--- Two of the four kinds are closed: the cause taxonomy (V079) and the estimator's efforts (V026).
--- Stages are workflow node ids and suites are report names, so neither has a list to check.
+-- Two of the five kinds are closed: the cause taxonomy (V079) and the estimator's efforts (V026).
+-- Stages are workflow node ids, suites are report names and task kinds (V083) are whatever the
+-- usage ledger recorded, so none of the three has a list to check.
 select pg_temp.must_hold(
   not exists (select 1
                 from ouroboros.metric_daily d

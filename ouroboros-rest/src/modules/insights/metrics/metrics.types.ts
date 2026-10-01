@@ -96,3 +96,29 @@ export interface DailyRow {
   /** Numeric tooltip figures. */
   readonly meta: Readonly<Record<string, number>>;
 }
+
+/** One label of a dimensioned metric, and its window. */
+export interface MetricBreakdownEntry {
+  /** The label — a cause, stage, suite, effort or task kind. */
+  readonly dimension: string;
+  readonly window: MetricWindow;
+}
+
+/**
+ * A dimensioned metric over a range, one window per label (BJ.2,
+ * [#438](https://github.com/NobuData/ouroboros/issues/438)) — what a bar card is drawn from.
+ */
+export interface MetricBreakdown {
+  readonly metricId: string;
+  /** What the labels are. */
+  readonly dimensionKind: NonNullable<MetricDefinitionsTable["dimension_kind"]>;
+  readonly range: MetricRange;
+  readonly from: Day;
+  readonly to: Day;
+  /**
+   * One entry per label with a row in the window **or its prior** — a label that went quiet this
+   * window still shows its drop — labels ascending.
+   */
+  readonly entries: readonly MetricBreakdownEntry[];
+  readonly methodology: MetricMethodology;
+}

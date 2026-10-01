@@ -140,20 +140,33 @@ describe("the extractors", () => {
     expect(database.statements[0].sql).toContain("r.status = 'merged'");
   });
 
-  it("cost: tokens and unpriced tokens always, cost only when something was priced", async () => {
+  it("cost: tokens, unpriced and local tokens always, cost only when something was priced", async () => {
     database.answers({
       rows: [
         {
           repo_ref: HELIOS,
-          tokens: "1900",
-          unpriced_tokens: "400",
+          task_kind: "implement",
+          tokens: "1500",
+          unpriced_tokens: "0",
+          local_tokens: "0",
           priced_events: "1",
           cost_cents: "912.5000",
         },
         {
+          repo_ref: HELIOS,
+          task_kind: null,
+          tokens: "400",
+          unpriced_tokens: "400",
+          local_tokens: "0",
+          priced_events: "0",
+          cost_cents: null,
+        },
+        {
           repo_ref: "acme/zephyr",
+          task_kind: "docs",
           tokens: "3000",
           unpriced_tokens: "3000",
+          local_tokens: "3000",
           priced_events: "0",
           cost_cents: null,
         },
@@ -163,12 +176,20 @@ describe("the extractors", () => {
     expect(await costExtractor.extract(database.service.db, ORG, DAY)).toEqual([
       { repoRef: HELIOS, metricId: "tokens", dimension: "", value: 1900 },
       { repoRef: HELIOS, metricId: "unpriced_tokens", dimension: "", value: 400 },
+      { repoRef: HELIOS, metricId: "local_tokens", dimension: "", value: 0 },
       { repoRef: HELIOS, metricId: "cost_cents", dimension: "", value: 912.5 },
+      // The usage that named no task kind is in the total above and in no bar.
+      { repoRef: HELIOS, metricId: "tokens_by_task_kind", dimension: "implement", value: 1500 },
       { repoRef: "acme/zephyr", metricId: "tokens", dimension: "", value: 3000 },
       { repoRef: "acme/zephyr", metricId: "unpriced_tokens", dimension: "", value: 3000 },
+      { repoRef: "acme/zephyr", metricId: "local_tokens", dimension: "", value: 3000 },
+      { repoRef: "acme/zephyr", metricId: "tokens_by_task_kind", dimension: "docs", value: 3000 },
     ]);
     expectScoped();
     expect(database.statements[0].sql).toContain("filter (where tu.cost_cents is null)");
+    // Local is the control plane's own list of kinds, passed in — never spelled in the SQL.
+    expect(database.statements[0].sql).toContain("tu.provider = any(");
+    expect(database.statements[0].parameters).toContainEqual(["ollama", "openai_compatible"]);
   });
 
   it("builds: totals, failures and the success rate", async () => {

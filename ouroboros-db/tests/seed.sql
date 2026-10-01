@@ -5541,27 +5541,28 @@ $$;
 -- Ninety days, every family, one workspace — and the grain once each, which is also the
 -- idempotency test: a second application that wrote anything would collide or add.
 select pg_temp.must_hold(
-  (select count(distinct metric_id) = 20
+  (select count(distinct metric_id) = 22
           and min(day) = (now() at time zone 'UTC')::date - 89
           and count(distinct day) = 90
           and count(*) = count(distinct (repo_ref, metric_id, dimension, day))
      from ouroboros.metric_daily
     where organization_id = '5eed0001-0000-4000-8000-000000000001'),
-  'the insights seed fills ninety days of all twenty daily metrics for acme-robotics, each grain once');
+  'the insights seed fills ninety days of all twenty-two daily metrics for acme-robotics, each grain once');
 
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.metric_daily
     where organization_id <> '5eed0001-0000-4000-8000-000000000001'),
   'and no other workspace has a metric row — the personal one stays the zero state');
 
--- The registry rows not stored per day: cost per merged PR is computed for a window (V078), and
--- calibration is read from estimate_outcomes (#435).
+-- The registry rows not stored per day: cost per merged PR is computed for a window (V078),
+-- calibration is read from estimate_outcomes (#435), and the scoreboard's three columns are
+-- computed from the source planes per request (V082, #439).
 select pg_temp.must_hold(
   (select array_agg(metric_id order by metric_id)
-            = '{cost_per_merged_pr,estimate_band_bias,estimate_within_band_rate,estimate_within_band_rate_by_effort}'
+            = '{cost_per_merged_pr,estimate_band_bias,estimate_within_band_rate,estimate_within_band_rate_by_effort,scoreboard_cost_per_success,scoreboard_merged,scoreboard_trend}'
      from ouroboros.metric_definitions def
     where not exists (select 1 from ouroboros.metric_daily d where d.metric_id = def.metric_id)),
-  'every registered metric has rows except the four computed per window or from estimate_outcomes');
+  'every registered metric has rows except the seven computed per window, from estimate_outcomes or per request');
 
 -- --- components seeded, values computed ----------------------------------------------------------
 --
@@ -5663,6 +5664,40 @@ select pg_temp.must_hold(
   pg_temp.bi5_sum('tokens', 0, 29) = 126000000
     and pg_temp.bi5_sum('unpriced_tokens', 0, 29) < pg_temp.bi5_sum('tokens', 0, 29),
   'tokens total 126M over the window, the unpriced part inside them');
+
+-- --- tokens by stage (V083, #438) --------------------------------------------------------------------
+--
+-- The card's six bars, in millions, and its line's local share. The seed stores each day's tokens
+-- split by task kind and the part of each kind a local model served — never the bars themselves.
+select pg_temp.must_hold(
+  (select string_agg(dimension || '=' || round(tokens / 1000000)::text, ',' order by tokens desc)
+            = 'implement=71,review=18,plan=14,analyze=12,test-gen=8,docs=3'
+     from (select dimension, sum(value) as tokens
+             from ouroboros.metric_daily
+            where organization_id = '5eed0001-0000-4000-8000-000000000001'
+              and metric_id = 'tokens_by_task_kind'
+              and day >= (now() at time zone 'UTC')::date - 29
+            group by dimension) bars),
+  'tokens by stage reads implement 71M · review 18M · plan 14M · analyze 12M · test-gen 8M · docs 3M');
+
+select pg_temp.must_hold(
+  (select bool_and(kinds = tokens)
+     from (select sum(value) filter (where metric_id = 'tokens_by_task_kind') as kinds,
+                  sum(value) filter (where metric_id = 'tokens') as tokens
+             from ouroboros.metric_daily
+            where organization_id = '5eed0001-0000-4000-8000-000000000001'
+            group by day) per_day),
+  'every seeded day''s bars sum to that day''s tokens — the split invents and loses nothing');
+
+select pg_temp.must_hold(
+  round(100 * pg_temp.bi5_sum('local_tokens', 0, 29) / pg_temp.bi5_sum('tokens', 0, 29)) = 31
+    and (select bool_and(local.value <= total.value)
+           from ouroboros.metric_daily local
+           join ouroboros.metric_daily total
+             on total.organization_id = local.organization_id and total.day = local.day
+            and total.repo_ref = local.repo_ref and total.metric_id = 'tokens'
+          where local.metric_id = 'local_tokens'),
+  'local models served 31% of the window''s tokens, and never more than a day''s total');
 
 -- --- where loops still need humans ------------------------------------------------------------------
 select pg_temp.must_hold(

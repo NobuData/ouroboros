@@ -26978,9 +26978,9 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   (select array_agg(metric_id || ':' || dimension_kind order by metric_id)
-            = '{completion_time_by_effort:effort,human_interventions:cause,stage_duration:stage,test_failures_by_suite:suite}'
+            = '{completion_time_by_effort:effort,human_interventions:cause,stage_duration:stage,test_failures_by_suite:suite,tokens_by_task_kind:task_kind}'
      from ouroboros.metric_definitions where dimension_kind is not null),
-  'the shipped dimensioned metrics name their dimension (V079 added the cause)');
+  'the shipped dimensioned metrics name their dimension (V079 added the cause, V083 the task kind)');
 
 select pg_temp.must_hold(
   (select count(*) = 4 from ouroboros.metric_definitions
@@ -29018,6 +29018,61 @@ select pg_temp.must_hold(
                 join ouroboros.metric_definitions m on m.metric_id = d.metric_id
                where m.family = 'scoreboard'),
   'no rollup row exists for a scoreboard metric: the family is not on the daily grain');
+
+-- ===========================================================================
+-- V083 — tokens by task kind and the local share (#438, BJ.2)
+-- ===========================================================================
+--
+-- Mockup 15's TOKENS BY STAGE card needs two registry entries the cost family did not have: the
+-- breakdown by task kind, which needs a dimension kind of its own, and the tokens local models
+-- served, the numerator of the card's local share.
+
+select pg_temp.must_hold(
+  (select array_agg(metric_id || ':' || coalesce(dimension_kind, '-') order by metric_id)
+            = '{local_tokens:-,tokens_by_task_kind:task_kind}'
+          and bool_and(family = 'cost' and unit = 'tokens' and aggregation = 'sum'
+                       and version = 1 and not is_rate and not proxy
+                       and source_planes = '{usage}' and caveats <> '' and formula_text <> '')
+     from ouroboros.metric_definitions
+    where metric_id in ('tokens_by_task_kind', 'local_tokens')),
+  'tokens by task kind and local tokens are cost-family sums with formulas and caveats');
+
+select pg_temp.must_hold(
+  (select position('no task kind' in caveats) > 0
+     from ouroboros.metric_definitions where metric_id = 'tokens_by_task_kind'),
+  'the breakdown''s caveat says unattributed usage is in no bar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate, dimension_kind)
+    values ('v083_bad', 'probe', 'Bad', 'x', '{usage}', 'x', 'tokens', false, 'provider')$$,
+  'task_kind joined the dimension vocabulary; the vocabulary is still closed',
+  'metric_definitions_dimension_kind_known');
+
+-- The shape guard holds the new rows to their definitions like any other.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v083', 'V083 probe', 'v083-probe', now());
+
+insert into ouroboros.metric_daily
+  (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
+values ('org-v083', 'acme/v083', 'tokens_by_task_kind', false, 'implement', current_date, 1200),
+       ('org-v083', 'acme/v083', 'local_tokens', false, '', current_date, 400);
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.metric_daily where organization_id = 'org-v083'),
+  'a task-kind row carries its label and a local-tokens row carries none');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
+    values ('org-v083', 'acme/v083', 'tokens_by_task_kind', false, '', current_date, 1)$$,
+  'a task-kind row needs its task kind', 'metric_daily_shape_guard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
+    values ('org-v083', 'acme/v083', 'local_tokens', false, 'implement', current_date, 1)$$,
+  'local tokens are not broken out', 'metric_daily_shape_guard');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

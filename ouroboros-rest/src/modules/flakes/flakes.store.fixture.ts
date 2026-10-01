@@ -7,6 +7,8 @@
 import type {
   CaseFlakeRow,
   FlakeCandidateRow,
+  FlakeCardRow,
+  FlakeCardSpan,
   FlakesStore,
   ScorerRunRow,
   ScoringTotals,
@@ -23,6 +25,8 @@ export class ScriptedFlakesStore implements FlakesStore {
   totals: Record<string, ScoringTotals | Error> = {};
   /** The candidates, by workspace. */
   candidateRows: Record<string, FlakeCandidateRow[]> = {};
+  /** The card rows {@link card} answers, by workspace. */
+  cardRows: Record<string, FlakeCardRow[]> = {};
   /** The counts {@link stateCounts} answers. */
   counts: StateCounts = { watching: 0, quarantined: 0 };
   /** The run {@link lastRun} answers. */
@@ -86,6 +90,12 @@ export class ScriptedFlakesStore implements FlakesStore {
   candidates(organizationId: string, limit: number): Promise<FlakeCandidateRow[]> {
     this.calls.push(["candidates", organizationId, limit]);
     return Promise.resolve(this.candidateRows[organizationId] ?? []);
+  }
+
+  /** @inheritdoc */
+  card(organizationId: string, span: FlakeCardSpan, repo?: string): Promise<FlakeCardRow[]> {
+    this.calls.push(["card", organizationId, span, repo]);
+    return Promise.resolve(this.cardRows[organizationId] ?? []);
   }
 
   /** @inheritdoc */

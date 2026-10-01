@@ -11,8 +11,9 @@
  * ```
  *
  * It exports {@link FlakeScorerService} for `TestResultsModule`, whose parse writes each case's
- * occurrence and then asks the scorer to score what the attempt touched. `ScheduleModule.forRoot()`
- * is imported for `SchedulerRegistry`, as `ControlsModule` does.
+ * occurrence and then asks the scorer to score what the attempt touched, and
+ * {@link FlakeStateService} for `InsightsModule`, whose page reads the flaky card from it (#438).
+ * `ScheduleModule.forRoot()` is imported for `SchedulerRegistry`, as `ControlsModule` does.
  */
 
 import { Module } from "@nestjs/common";
@@ -29,6 +30,6 @@ import { FlakesRepository } from "./flakes.repository";
   imports: [DbModule, ScheduleModule.forRoot()],
   controllers: [FlakesController],
   providers: [FlakesRepository, FlakeScorerService, FlakeStateService, FlakeRescoreScheduler],
-  exports: [FlakeScorerService],
+  exports: [FlakeScorerService, FlakeStateService],
 })
 export class FlakesModule {}
