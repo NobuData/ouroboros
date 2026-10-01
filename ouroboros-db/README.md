@@ -1073,6 +1073,36 @@
 > `vote:blocking` are reserved signals whose source planes do not exist yet; #371's votes write
 > through `record_intervention_event()`.
 >
+> `V080` ([#506](https://github.com/NobuData/ouroboros/issues/506), BU.1) opens the Build Analyzer (mockup 18, decisions **A2/A3/A7**).
+> `analysis_runs` is one row per analysis and **the meta strip is its rendering**: `trigger`
+> (`manual|weekly|every_n_builds`), `status` (`running|complete|failed|budget_exceeded` —
+> budget-bound runs keep partial results and are not `failed`; terminal statuses never change),
+> `corpus_manifest`, `analyzer_set`, timing, `compute_seconds`, `confidence_note` and
+> `failure_reason`. `llm_cost_cents` is null unless the analyzer set contains an `llm` analyzer
+> (`analysis_runs_cost_needs_llm`), so a deterministic run never shows a `$`. The partial unique
+> index `analysis_runs_one_running` admits one `running` row per (workspace, repo), proven under
+> a race by [`tests/verify-analysis-run-guard.sh`](tests/verify-analysis-run-guard.sh).
+> `analysis_schedules` holds the head's *Schedule* control per (workspace, repo) — weekly ISO day
+> and UTC time, `every_n_builds` with a `build_counter` stored independently of it, and the
+> budgets (`max_builds`, `max_log_lines`, `compute_ceiling_seconds`) on the same row. Runs and
+> their findings belong to the settings retention plane's analysis class
+> ([#482](https://github.com/NobuData/ouroboros/issues/482)), eligible by `finished_at`.
+>
+> **The manifest contract** — what BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510))
+> writes and BW.1 renders, checked by `analysis_corpus_manifest_valid()`:
+>
+> ```json
+> { "window":  { "from": "2026-07-03", "to": "2026-10-01", "days": 90 },
+>   "counts":  { "builds": 1284, "loops": 312, "log_lines": 4100000, "hil_sessions": 62 },
+>   "sources": { "log_lines": { "sampled": true, "rate": 0.3, "cap": "max_log_lines" }, "…": {} },
+>   "budget":  { "max_builds": 2000, "max_log_lines": 1500000, "compute_ceiling_seconds": 3600 } }
+> ```
+>
+> Every `counts` key has a `sources` entry: a full read is `sampled: false, rate: 1, cap: null`;
+> a budget-bound read is `sampled: true` with `0 < rate < 1` and the budget key that bound it.
+> `analyzer_set` is `{label, analyzers: [{id, version, kind: deterministic|llm}]}`, and `label`
+> (`deterministic analyzers v1`) is what *Analyzed by* renders.
+>
 > [#436](https://github.com/NobuData/ouroboros/issues/436) (BI.5) seeds the page those four built
 > for: [`R__dev_seed_workspace_metrics.sql`](migrations/R__dev_seed_workspace_metrics.sql) is
 > ninety days of `metric_daily` in which **components are seeded and every value is computed**,
@@ -2076,6 +2106,20 @@ Same connection rules as the probes above — `run.sh --print-target`, `PGPASSWO
 environment — and its own database, dropped on the way out, because two sessions cannot see
 each other's uncommitted rows and this suite therefore has to commit while it runs.
 
+The Build Analyzer's one-running rule ([#506](https://github.com/NobuData/ouroboros/issues/506)) is the same kind of claim, and
+[`tests/verify-analysis-run-guard.sh`](tests/verify-analysis-run-guard.sh) proves it the same
+way, through the same harness ([`tests/lib/sessions.sh`](tests/lib/sessions.sh)):
+
+1. **The guard holds.** A inserts a running analysis and has not committed; B's insert for the
+   same repo *waits* on it, and is refused by `analysis_runs_one_running` when A commits.
+2. **A rolled-back start does not wedge the repo.** A rolls back instead, and B goes through.
+3. **The probe.** With the index dropped, the same race leaves two running analyses.
+4. **It is no wider than one repo.** Two repos of one workspace start at once without waiting.
+
+```bash
+PGPASSWORD=ouroboros ouroboros-db/tests/verify-analysis-run-guard.sh
+```
+
 ### The drift check
 
 Every table BetterAuth uses is hand-ported into a `V###__*.sql` migration here, because
@@ -2181,6 +2225,7 @@ misnamed migration is worth reporting before a database is waited on.
 | `tests/constraints.sql` | What the schema *enforces* — the half `validate` cannot see | yes |
 | `tests/verify-constraint-probes.sh` | That those assertions are load-bearing — each goes red when the rule it watches is dropped, routing ([#193](https://github.com/NobuData/ouroboros/issues/193)), the registry ([#583](https://github.com/NobuData/ouroboros/issues/583)), intake ([#104](https://github.com/NobuData/ouroboros/issues/104)), the workflow studio ([#137](https://github.com/NobuData/ouroboros/issues/137)) and planning ([#276](https://github.com/NobuData/ouroboros/issues/276)) included | yes (copies of its own) |
 | `tests/verify-alias-reference-guard.sh` | That the alias delete guard is a lock and not a count — the rule two concurrent writers make, which one session cannot assert | yes (one of its own) |
+| `tests/verify-analysis-run-guard.sh` | That two triggers racing to analyse one repo leave one running analysis — and that without `analysis_runs_one_running` they leave two ([#506](https://github.com/NobuData/ouroboros/issues/506)) | yes (one of its own) |
 | `scripts/betterauth-schema.mjs --applied` | The applied schema still holds everything BetterAuth expects | yes |
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
@@ -2478,6 +2523,7 @@ ouroboros-db/
 │   ├── V077__estimate_outcomes.sql          # estimate_outcomes (merged loop ↔ estimate in force at queue time, generated within_band/deviation_ms), lead_time_ms(), record_estimate_outcome(), calibration registry rows — #435
 │   ├── V078__metric_rollup_extractors.sql   # metric_daily.dimension in the grain key, registry aggregation (sum|ratio|median) + dimension_kind, metric_daily_shape_guard (median samples), the rollup families' registry rows — #433
 │   ├── V079__intervention_events.sql        # intervention_events / _cause_rules / _overrides, idempotent source-plane hooks, recategorize_intervention(), intervention_cause_daily, human_interventions v2 by cause — #434
+│   ├── V080__analysis_runs.sql              # analysis_runs (corpus manifest + sampling record, analyzer-set provenance, no cost without llm, one running per repo) + analysis_schedules (weekly, every-N + counter, budgets) — #506
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2500,6 +2546,7 @@ ouroboros-db/
     ├── lib/
     │   ├── fixture.sh                # the synthetic module and stub runners the shell suites share
     │   ├── assert.sql                # the assertion helpers the live-database suites share
+    │   ├── sessions.sh               # the two-session harness the concurrency scripts share — #581, #506
     │   ├── planning-invariants.sql   # the planning invariants, named — included twice — #276
     │   ├── insights-invariants.sql   # the rollup invariants mockup 15 trusts, named — #436
     │   ├── dependency-cycles.sql     # the recursive-CTE walk that finds a stored cycle — #276
@@ -2520,6 +2567,7 @@ ouroboros-db/
     ├── insights-invariants.test.sh   # the insights verifier's usage, and that its pieces agree — #436
     ├── insights-invariants.sql       # the rollup invariants against the seeded history — #436
     ├── verify-insights-invariants.sh # that they go red when a rule is removed, naming it — #436
+    ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
 ```
@@ -2644,6 +2692,8 @@ outside this module alters it.
 | `metric_rollup_state` | `V076` | Rollup bookkeeping per (workspace, metric family) ([#432](https://github.com/NobuData/ouroboros/issues/432)) — `last_filled_day`, `backfill_cursor`, `backfill_until`, `last_run_status`, `last_run_at`, `last_error` | cursor and end are set and cleared together and the cursor never passes the end; status is `running\|succeeded\|failed` and stamped; `last_error` only on a failed run; `ouroboros_app` may not delete |
 | `intervention_events` | `V079` | Every moment a person stepped into a loop ([#434](https://github.com/NobuData/ouroboros/issues/434), decision **I5**) — `run_id`, `source`, `source_ref`, `detected_at`, `signals`, `cause`, `cause_origin`, `rule_id`, `rule_version` | unique on `(source, source_ref)`; `source` is `needs_human_run\|classification\|waiver\|policy_gate\|guardrail\|vote_block`, `cause` is `infra_rig\|ambiguous_ticket\|policy_gate\|model_disagreement\|other`; a rule-origin cause is always recomputed from the signals by `intervention_events_apply_rules`, a human cause needs an override row from the same transaction and never returns to `rule`; source, ref and run are frozen; cascades with the run and the workspace |
 | `intervention_cause_rules` | `V079` | The declarative, versioned cause mapping ([#434](https://github.com/NobuData/ouroboros/issues/434)) — `rule_id`, `version`, `priority`, `source`, `signal`, `cause`, `description` | lowest matching priority wins; a catch-all rule must map to `other`; signals are a closed vocabulary; a change to priority, source, signal or cause must raise `version` (`intervention_cause_rules_version_guard`); `ouroboros_app` may only select |
+| `analysis_schedules` | `V080` | The Build Analyzer's schedule and budgets ([#506](https://github.com/NobuData/ouroboros/issues/506), BU.1, decision **A7**) — `repo_ref`, `enabled`, `weekly_enabled`, `weekly_day`, `weekly_time`, `every_n_builds`, `build_counter`, `max_builds`, `max_log_lines`, `compute_ceiling_seconds`, `updated_by` | unique on `(organization_id, repo_ref)`; weekly needs an ISO day (1–7) and a UTC time, kept when turned off; `every_n_builds` null = off, ≥ 1 otherwise; `build_counter` ≥ 0 and independent of the threshold; budgets ≥ 1 with defaults; `updated_by` sets null; cascades with the workspace |
+| `analysis_runs` | `V080` | One analysis — the meta strip's row ([#506](https://github.com/NobuData/ouroboros/issues/506), decisions **A2/A3**) — `repo_ref`, `trigger`, `schedule_id`, `status`, `corpus_manifest`, `analyzer_set`, `started_at`, `finished_at`, `compute_seconds`, `llm_cost_cents`, `confidence_note`, `failure_reason` | `trigger` is `manual\|weekly\|every_n_builds`, `status` `running\|complete\|failed\|budget_exceeded`; at most one `running` row per `(organization_id, repo_ref)` (`analysis_runs_one_running`, partial unique); `corpus_manifest` and `analyzer_set` checked against their contracts, the manifest required on `complete` and `budget_exceeded`; `finished_at` exactly on terminal rows; `failure_reason` exactly on `failed` and `budget_exceeded`; `confidence_note` required on `complete`; `llm_cost_cents` only with an `llm` analyzer; terminal statuses never change (`analysis_runs_status_guard`); the schedule is the run's own repo's (composite FK, set null); cascades with the workspace; `ouroboros_app` may not delete |
 | `intervention_overrides` | `V079` | The re-categorization audit ([#434](https://github.com/NobuData/ouroboros/issues/434)) — `event_id`, `actor_id`, `from_cause`, `to_cause`, `reason`, `created_at` | append-only; names its actor at insert (set null if the person is removed); starts from the event's current cause; changes it; requires a reason; cascades with the event |
 | `fact_anchors` | `V071` | Why a fact can expire ([#406](https://github.com/NobuData/ouroboros/issues/406), **K4**) — `kind`, `value`, `last_checked_at` | `kind` is `path_glob\|dependency\|platform_version`; `(fact_id, kind, value)` unique; a `path_glob` is relative with no `..`; indexed `(kind, value)` for the staleness sweep, with `path_glob_matches(glob, path)` for a changed path set; a fact with none is never flagged |
 | `context_injections` | `V071` | What context assembly actually injected ([#406](https://github.com/NobuData/ouroboros/issues/406)) — `consumer`, `estimate_id`, `run_stage_id`, `run_id`, `skill_version_ids`, `fact_ids`, `manifest_hash`, `injected_at` | `consumer` is `estimator` (estimate) \| `run_stage` (stage + its run) \| `playbook` (the launched run); arrays are sets; every fact is a confirmed fact and every skill version a published version of a non-draft skill of the workspace (`context_injections_resolves`); GIN-indexed arrays; append-only by trigger and grant — the sole source of every usage number |
@@ -2978,7 +3028,8 @@ criteria, evidence links & review thread [#354](https://github.com/NobuData/ouro
 merge plans & auto-merge intents [#355](https://github.com/NobuData/ouroboros/issues/355) *(done)* ·
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
-auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696).
+auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696) ·
+analysis runs & corpus snapshots [#506](https://github.com/NobuData/ouroboros/issues/506) *(done)*.
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
 follows and [`../README.md`](../README.md) for the module map.
