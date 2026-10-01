@@ -1028,6 +1028,18 @@
 > daily rates. `metric_rollup_state` keeps per-family `last_filled_day`, backfill cursor and
 > last-run status; a day's rows and the cursor move commit together, so a restart neither skips
 > nor double-counts.
+>
+> `V077` ([#435](https://github.com/NobuData/ouroboros/issues/435)) makes estimator calibration
+> real (decision **I7**). `estimate_outcomes` holds one row per merged loop PR: the governing
+> estimate — the newest `issue_estimates` row for the PR's ticket or the loop's mirrored issue
+> created no later than the **queue instant** (`queue_items.enqueued_at` when it precedes the
+> loop's start, else `runs.started_at`), never a later revision — its effort and cycle band as a
+> snapshot, the actual as `ouroboros.lead_time_ms(runs.started_at, merged_at)` (the DORA lead
+> time, one function so the two cannot disagree), and a **generated** grade: `within_band`
+> (inclusive) and a signed `deviation_ms` from the band's midpoint. Unestimated merges are rows
+> with a null prediction rather than omissions. `ouroboros.record_estimate_outcome(org, pr)` is
+> the idempotent fill (an upsert on `pr_id`), and the registry gains the three `calibration`
+> metrics.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -2343,6 +2355,7 @@ ouroboros-db/
 │   ├── V074__fact_proposers.sql             # fact provenance widened (classification, waiver, steer, run_stage, gate, person — resolved in-workspace); fact_suppressions (append-only dedupe record) — #412
 │   ├── V075__org_policies.sql               # org_policies (dry_run, lazy rows) + org_policies_effective (no row ⇒ off; onboarding writes true when unset) — #382
 │   ├── V076__metric_rollups.sql             # metric_definitions (versioned registry, proxy flags) + metric_daily (daily grain, rate components enforced) + metric_rollup_state — #432
+│   ├── V077__estimate_outcomes.sql          # estimate_outcomes (merged loop ↔ estimate in force at queue time, generated within_band/deviation_ms), lead_time_ms(), record_estimate_outcome(), calibration registry rows — #435
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)

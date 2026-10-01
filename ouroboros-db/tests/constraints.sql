@@ -26606,6 +26606,348 @@ select pg_temp.must_hold(
 delete from ouroboros.metric_definitions where metric_id = 'v076_probe';
 
 -- ===========================================================================
+-- V077 — estimate_outcomes: estimator calibration records (#435, BI.4)
+-- ===========================================================================
+--
+-- The fill is asked of a timeline built so the wrong join gives a different answer: every
+-- estimated ticket is re-estimated after its work was queued, and the revision would grade it
+-- the other way. PR #514 is the header's own example (12–18 min band, 14m20s actual, −40 s);
+-- #515 has a queue row stamped *after* its loop started, so the loop's start is the queue
+-- instant; #516 is unestimated; #517 has no ticket and is sized through its mirrored issue.
+-- Then the grade is checked against an oracle computed straight from its inputs, the actual
+-- against lead_time_ms(), the replay, the shape rules and the lifecycle.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v077',       'Calibration Works', 'calibration-works-v077', now()),
+  ('org-v077-other', 'Other Works',       'other-works-v077',       now());
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a7710000-0000-0000-0000-00000000000a', 'org-v077',       'calibration-v077', true),
+  ('a7710000-0000-0000-0000-00000000000b', 'org-v077-other', 'other-v077',       true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a771f000-0000-0000-0000-00000000000a', 'a7710000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a771f000-0000-0000-0000-00000000000b', 'a7710000-0000-0000-0000-00000000000b',
+   'other-firmware', true, 'main');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a7720000-0000-0000-0000-00000000000a', 'org-v077',       'github', 'GitHub · calibration'),
+  ('a7720000-0000-0000-0000-00000000000b', 'org-v077-other', 'github', 'GitHub · other');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a7730000-0000-0000-0000-000000000514', 'org-v077', 'a7720000-0000-0000-0000-00000000000a',
+     '514', '#514', 'https://github.com/calibration-v077/helios-firmware/issues/514',
+     'CAN-bus flake', 'open', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
+    ('a7730000-0000-0000-0000-000000000515', 'org-v077', 'a7720000-0000-0000-0000-00000000000a',
+     '515', '#515', 'https://github.com/calibration-v077/helios-firmware/issues/515',
+     'Bootloader rework', 'open', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z'),
+    ('a7730000-0000-0000-0000-000000000516', 'org-v077', 'a7720000-0000-0000-0000-00000000000a',
+     '516', '#516', 'https://github.com/calibration-v077/helios-firmware/issues/516',
+     'Never sized', 'open', '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z');
+
+insert into ouroboros.github_issues
+    (id, organization_id, github_repo_id, number, title, state, gh_created_at, gh_updated_at,
+     gh_url)
+  values ('a7740000-0000-0000-0000-000000000517', 'org-v077',
+          'a771f000-0000-0000-0000-00000000000a', 517, 'Typo in the README', 'open',
+          '2026-08-01T00:00:00Z', '2026-08-01T00:00:00Z',
+          'https://github.com/calibration-v077/helios-firmware/issues/517');
+
+-- Every estimate, its band and when it came into force. v2 of #514 and #515 arrive after the
+-- work was queued — the hindsight the join must not use.
+create function pg_temp.v077_estimate(
+  p_id uuid, p_ticket uuid, p_issue uuid, p_version integer, p_effort text,
+  p_min integer, p_max integer, p_created timestamptz)
+returns void language sql as $$
+  insert into ouroboros.issue_estimates
+      (id, ticket_id, github_issue_id, version, effort, confidence, suggested_workflow,
+       routed_model, breakdown, risk, risk_note, trace, created_at)
+    values (p_id, p_ticket, p_issue, p_version, p_effort, 80, 'standard-fix', 'claude-fable-5',
+            jsonb_build_object('files', '[]'::jsonb, 'est_tokens', 1000, 'cycle_min', p_min,
+                               'cycle_max', p_max, 'est_minutes', p_max),
+            'low', 'Isolated.',
+            jsonb_build_object('estimator', 'heuristic-v0',
+                               'sized_at', to_char(p_created at time zone 'UTC',
+                                                   'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+                               'tokens_used', 0, 'signals', '[]'::jsonb),
+            p_created)
+$$;
+
+select pg_temp.v077_estimate('a7750000-0000-0000-0000-000000514001',
+  'a7730000-0000-0000-0000-000000000514', null, 1, 's', 12, 18, '2026-09-01T09:00:00Z');
+select pg_temp.v077_estimate('a7750000-0000-0000-0000-000000514002',
+  'a7730000-0000-0000-0000-000000000514', null, 2, 'l', 30, 45, '2026-09-01T10:30:00Z');
+select pg_temp.v077_estimate('a7750000-0000-0000-0000-000000515001',
+  'a7730000-0000-0000-0000-000000000515', null, 1, 'l', 30, 40, '2026-09-01T11:00:00Z');
+select pg_temp.v077_estimate('a7750000-0000-0000-0000-000000515002',
+  'a7730000-0000-0000-0000-000000000515', null, 2, 'xl', 50, 70, '2026-09-01T12:15:00Z');
+select pg_temp.v077_estimate('a7750000-0000-0000-0000-000000517001',
+  null, 'a7740000-0000-0000-0000-000000000517', 1, 'xs', 5, 10, '2026-09-01T13:00:00Z');
+
+-- #514 queued at 10:00, before its revision. #515's row is stamped 12:30, after its loop
+-- started at 12:00 — a re-queue, not the queueing this loop ran from.
+insert into ouroboros.queue_items
+    (organization_id, github_repo_id, issue_number, issue_title, effort, workflow_tag, position,
+     enqueued_at)
+  values
+    ('org-v077', 'a771f000-0000-0000-0000-00000000000a', 514, 'CAN-bus flake', 's',
+     'standard-fix', 1, '2026-09-01T10:00:00Z'),
+    ('org-v077', 'a771f000-0000-0000-0000-00000000000a', 515, 'Bootloader rework', 'l',
+     'standard-fix', 2, '2026-09-01T12:30:00Z');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a7760000-0000-0000-0000-000000000514', 'org-v077', 'a771f000-0000-0000-0000-00000000000a',
+     514, 'CAN-bus flake', 'standard-fix', 'claude-fable-5', 'review', 'Review', 7, 8,
+     '2026-09-01T11:00:00Z'),
+    ('a7760000-0000-0000-0000-000000000515', 'org-v077', 'a771f000-0000-0000-0000-00000000000a',
+     515, 'Bootloader rework', 'standard-fix', 'claude-fable-5', 'review', 'Review', 7, 8,
+     '2026-09-01T12:00:00Z'),
+    ('a7760000-0000-0000-0000-000000000516', 'org-v077', 'a771f000-0000-0000-0000-00000000000a',
+     516, 'Never sized', 'standard-fix', 'claude-fable-5', 'review', 'Review', 7, 8,
+     '2026-09-01T13:00:00Z'),
+    ('a7760000-0000-0000-0000-000000000517', 'org-v077', 'a771f000-0000-0000-0000-00000000000a',
+     517, 'Typo in the README', 'standard-fix', 'claude-fable-5', 'review', 'Review', 7, 8,
+     '2026-09-01T14:00:00Z'),
+    ('a7760000-0000-0000-0000-000000000518', 'org-v077', 'a771f000-0000-0000-0000-00000000000a',
+     518, 'Still open', 'standard-fix', 'claude-fable-5', 'review', 'Review', 7, 8,
+     '2026-09-01T15:00:00Z');
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title, head_branch,
+     base_branch, run_id, ticket_id, state, merged_at)
+  values
+    ('a7770000-0000-0000-0000-000000000514', 'org-v077', 'a7720000-0000-0000-0000-00000000000a',
+     614, 'https://github.com/calibration-v077/helios-firmware/pull/614', 'can: fix flake',
+     'loop/514', 'main', 'a7760000-0000-0000-0000-000000000514',
+     'a7730000-0000-0000-0000-000000000514', 'merged', '2026-09-01T11:14:20Z'),
+    ('a7770000-0000-0000-0000-000000000515', 'org-v077', 'a7720000-0000-0000-0000-00000000000a',
+     615, 'https://github.com/calibration-v077/helios-firmware/pull/615', 'boot: rework',
+     'loop/515', 'main', 'a7760000-0000-0000-0000-000000000515',
+     'a7730000-0000-0000-0000-000000000515', 'merged', '2026-09-01T13:00:00Z'),
+    ('a7770000-0000-0000-0000-000000000516', 'org-v077', 'a7720000-0000-0000-0000-00000000000a',
+     616, 'https://github.com/calibration-v077/helios-firmware/pull/616', 'never sized',
+     'loop/516', 'main', 'a7760000-0000-0000-0000-000000000516',
+     'a7730000-0000-0000-0000-000000000516', 'merged', '2026-09-01T13:25:00Z'),
+    ('a7770000-0000-0000-0000-000000000517', 'org-v077', 'a7720000-0000-0000-0000-00000000000a',
+     617, 'https://github.com/calibration-v077/helios-firmware/pull/617', 'docs: typo',
+     'loop/517', 'main', 'a7760000-0000-0000-0000-000000000517', null, 'merged',
+     '2026-09-01T14:03:00Z'),
+    ('a7770000-0000-0000-0000-000000000518', 'org-v077', 'a7720000-0000-0000-0000-00000000000a',
+     618, 'https://github.com/calibration-v077/helios-firmware/pull/618', 'still open',
+     'loop/518', 'main', 'a7760000-0000-0000-0000-000000000518', null, 'open', null),
+    ('a7770000-0000-0000-0000-000000000519', 'org-v077', 'a7720000-0000-0000-0000-00000000000a',
+     619, 'https://github.com/calibration-v077/helios-firmware/pull/619', 'merged by hand',
+     'hand/519', 'main', null, null, 'merged', '2026-09-01T16:00:00Z');
+
+-- --- The fill ------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.record_estimate_outcome(
+     'org-v077', 'a7770000-0000-0000-0000-000000000514'))
+  and (select count(*) = 1 from ouroboros.record_estimate_outcome(
+     'org-v077', 'a7770000-0000-0000-0000-000000000515'))
+  and (select count(*) = 1 from ouroboros.record_estimate_outcome(
+     'org-v077', 'a7770000-0000-0000-0000-000000000516'))
+  and (select count(*) = 1 from ouroboros.record_estimate_outcome(
+     'org-v077', 'a7770000-0000-0000-0000-000000000517')),
+  'every merged loop PR gets a row');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.record_estimate_outcome(
+     'org-v077', 'a7770000-0000-0000-0000-000000000518'))
+  and not exists (select 1 from ouroboros.record_estimate_outcome(
+     'org-v077', 'a7770000-0000-0000-0000-000000000519'))
+  and not exists (select 1 from ouroboros.record_estimate_outcome(
+     'org-v077-other', 'a7770000-0000-0000-0000-000000000514')),
+  'an open PR, a PR no loop opened and another workspace''s PR get no row');
+
+select pg_temp.must_hold(
+  (select estimate_id = 'a7750000-0000-0000-0000-000000514001' and predicted_effort = 's'
+          and predicted_cycle_min = 12 and predicted_cycle_max = 18
+          and queued_at = '2026-09-01T10:00:00Z' and actual_duration_ms = 860000
+          and within_band and deviation_ms = -40000
+     from ouroboros.estimate_outcomes where pr_id = 'a7770000-0000-0000-0000-000000000514'),
+  '#514 is graded against the estimate in force at queue time (12–18 min): within band, −40 s');
+
+select pg_temp.must_hold(
+  (select (actual_duration_ms between 30 * 60000 and 45 * 60000) = false
+     from ouroboros.estimate_outcomes where pr_id = 'a7770000-0000-0000-0000-000000000514'),
+  '#514''s latest estimate (30–45 min) would have graded it out of band — the fixture discriminates');
+
+select pg_temp.must_hold(
+  (select estimate_id = 'a7750000-0000-0000-0000-000000515001' and predicted_effort = 'l'
+          and queued_at = '2026-09-01T12:00:00Z' and actual_duration_ms = 3600000
+          and not within_band and deviation_ms = 1500000
+     from ouroboros.estimate_outcomes where pr_id = 'a7770000-0000-0000-0000-000000000515'),
+  '#515''s re-queue after its loop started is ignored: the loop''s start is the queue instant, v1 governs, +25 min over');
+
+select pg_temp.must_hold(
+  (select (actual_duration_ms between 50 * 60000 and 70 * 60000)
+     from ouroboros.estimate_outcomes where pr_id = 'a7770000-0000-0000-0000-000000000515'),
+  '#515''s latest estimate (50–70 min) would have graded it within band — the fixture discriminates');
+
+select pg_temp.must_hold(
+  (select estimate_id is null and predicted_effort is null and predicted_cycle_min is null
+          and predicted_cycle_max is null and within_band is null and deviation_ms is null
+          and ticket_id = 'a7730000-0000-0000-0000-000000000516' and actual_duration_ms = 1500000
+     from ouroboros.estimate_outcomes where pr_id = 'a7770000-0000-0000-0000-000000000516'),
+  'a merged loop with no governing estimate is recorded as unestimated, not dropped');
+
+select pg_temp.must_hold(
+  (select estimate_id = 'a7750000-0000-0000-0000-000000517001' and ticket_id is null
+          and predicted_effort = 'xs' and not within_band and deviation_ms = -270000
+     from ouroboros.estimate_outcomes where pr_id = 'a7770000-0000-0000-0000-000000000517'),
+  'a PR with no ticket is sized through its loop''s mirrored issue; −4m30s is under');
+
+-- --- The oracle ----------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select bool_and(
+            o.within_band is not distinct from
+              (o.actual_duration_ms >= o.predicted_cycle_min * 60000
+               and o.actual_duration_ms <= o.predicted_cycle_max * 60000)
+            and o.deviation_ms is not distinct from
+              (o.actual_duration_ms - (o.predicted_cycle_min + o.predicted_cycle_max) * 30000))
+     from ouroboros.estimate_outcomes o where o.organization_id = 'org-v077'),
+  'within_band and deviation_ms equal the on-the-fly oracle on every row');
+
+select pg_temp.must_hold(
+  (select bool_and(o.actual_duration_ms
+                     = floor(extract(epoch from (pr.merged_at - r.started_at)) * 1000))
+     from ouroboros.estimate_outcomes o
+     join ouroboros.pull_requests pr on pr.id = o.pr_id
+     join ouroboros.runs r on r.id = pr.run_id
+    where o.organization_id = 'org-v077'),
+  'the actual is the lead time — loop start to merge — on every row');
+
+select pg_temp.must_hold(
+  ouroboros.lead_time_ms('2026-09-01T11:00:00Z', '2026-09-01T11:14:20.5009Z') = 860500,
+  'lead_time_ms is whole milliseconds, truncated');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where within_band) = 1
+          and count(*) filter (where within_band is not null) = 3
+          and count(*) filter (where within_band is null) = 1
+     from ouroboros.estimate_outcomes where organization_id = 'org-v077'),
+  'the window counts: 1 of 3 estimated within band, 1 unestimated beside them');
+
+-- --- Replay --------------------------------------------------------------
+
+create temporary table v077_before on commit drop as
+  select id, estimate_id, within_band, deviation_ms
+    from ouroboros.estimate_outcomes where organization_id = 'org-v077';
+
+select count(*) from ouroboros.record_estimate_outcome('org-v077', 'a7770000-0000-0000-0000-000000000514');
+select count(*) from ouroboros.record_estimate_outcome('org-v077', 'a7770000-0000-0000-0000-000000000514');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.estimate_outcomes where organization_id = 'org-v077')
+  and not exists (
+    (select id, estimate_id, within_band, deviation_ms
+       from ouroboros.estimate_outcomes where organization_id = 'org-v077')
+    except
+    (select * from v077_before)),
+  'a replayed merge event re-derives the same row — no second row, no new grade');
+
+-- --- Shape ---------------------------------------------------------------
+
+select pg_temp.must_raise(
+  $$update ouroboros.estimate_outcomes set within_band = false
+     where pr_id = 'a7770000-0000-0000-0000-000000000514'$$,
+  '428C9', 'within_band is generated — no statement may supply it');
+
+select pg_temp.must_raise(
+  $$update ouroboros.estimate_outcomes set deviation_ms = 0
+     where pr_id = 'a7770000-0000-0000-0000-000000000514'$$,
+  '428C9', 'deviation_ms is generated — no statement may supply it');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.estimate_outcomes
+      (organization_id, pr_id, queued_at, actual_duration_ms, merged_at)
+    values ('org-v077', 'a7770000-0000-0000-0000-000000000514', now(), 1, now())$$,
+  'one row per merged PR', 'estimate_outcomes_pr_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.estimate_outcomes
+      (organization_id, pr_id, queued_at, actual_duration_ms, merged_at)
+    values ('org-v077-other', 'a7770000-0000-0000-0000-000000000519', now(), 1, now())$$,
+  'a row cannot name another workspace''s PR', 'estimate_outcomes_pr_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.estimate_outcomes
+      (organization_id, pr_id, queued_at, predicted_effort, predicted_cycle_min,
+       actual_duration_ms, merged_at)
+    values ('org-v077', 'a7770000-0000-0000-0000-000000000519', now(), 's', 12, 1, now())$$,
+  'a prediction is whole or absent', 'estimate_outcomes_prediction_whole');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.estimate_outcomes
+      (organization_id, pr_id, estimate_id, queued_at, actual_duration_ms, merged_at)
+    values ('org-v077', 'a7770000-0000-0000-0000-000000000519',
+            'a7750000-0000-0000-0000-000000517001', now(), 1, now())$$,
+  'an estimate implies a prediction', 'estimate_outcomes_estimate_has_prediction');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.estimate_outcomes
+      (organization_id, pr_id, queued_at, predicted_effort, predicted_cycle_min,
+       predicted_cycle_max, actual_duration_ms, merged_at)
+    values ('org-v077', 'a7770000-0000-0000-0000-000000000519', now(), 's', 18, 12, 1, now())$$,
+  'a band runs forwards', 'estimate_outcomes_band_order');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.estimate_outcomes
+      (organization_id, pr_id, queued_at, actual_duration_ms, merged_at)
+    values ('org-v077', 'a7770000-0000-0000-0000-000000000519', now(), -1, now())$$,
+  'a lead time is never negative', 'estimate_outcomes_actual_nonnegative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.estimate_outcomes
+      (organization_id, pr_id, queued_at, predicted_effort, predicted_cycle_min,
+       predicted_cycle_max, actual_duration_ms, merged_at)
+    values ('org-v077', 'a7770000-0000-0000-0000-000000000519', now(), 'xxl', 1, 2, 1, now())$$,
+  'the effort vocabulary is the estimator''s', 'estimate_outcomes_predicted_effort');
+
+-- --- The registry --------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select array_agg(metric_id order by metric_id)
+            = '{estimate_band_bias,estimate_within_band_rate,estimate_within_band_rate_by_effort}'
+          and bool_and(unit = 'pct' and is_rate and not proxy
+                       and 'estimates' = any (source_planes))
+     from ouroboros.metric_definitions where family = 'calibration'),
+  'the calibration metrics are registered with formulas and caveats');
+
+-- --- Lifecycle -----------------------------------------------------------
+
+-- A ticket's estimates go with it; the grade they produced stays.
+delete from ouroboros.tickets where id = 'a7730000-0000-0000-0000-000000000514';
+
+select pg_temp.must_hold(
+  (select estimate_id is null and ticket_id is null and predicted_effort = 's'
+          and within_band and deviation_ms = -40000
+     from ouroboros.estimate_outcomes where pr_id = 'a7770000-0000-0000-0000-000000000514'),
+  'a deleted ticket and estimate leave the prediction snapshot and its grade');
+
+delete from ouroboros.pull_requests where id = 'a7770000-0000-0000-0000-000000000515';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.estimate_outcomes
+               where pr_id = 'a7770000-0000-0000-0000-000000000515'),
+  'a deleted PR takes its outcome with it');
+
+delete from ouroboros.organization where "id" in ('org-v077', 'org-v077-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.estimate_outcomes where organization_id = 'org-v077'),
+  'a deleted workspace takes its outcomes with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

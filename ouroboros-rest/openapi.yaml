@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.40"
+  version: "0.37.41"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -665,6 +665,13 @@ tags:
       designed reason `dry-run policy active`, and a workflow's auto-merge terminal is overridden
       at evaluation without its stored document being touched. One read every surface uses; an
       owner/admin flip, audited as `policy.dry_run_changed`.
+  - name: insights
+    description: |-
+      **The Insights metrics domain** (mockup 15, epic
+      [#428](https://github.com/NobuData/ouroboros/issues/428)) — today estimator calibration
+      ([#435](https://github.com/NobuData/ouroboros/issues/435), decision **I7**): every merged loop
+      graded against the estimate in force when its work was queued, reported as the headline
+      *"89% within band"* and per-effort slices with the direction of bias.
   - name: farm
     description: |-
       **The build farm's identity layer** (mockup 08, epic
@@ -6504,6 +6511,95 @@ paths:
         "422":
           description: |-
             `validation_failed` — `dryRun` is missing or not a boolean.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/insights/calibration:
+    get:
+      tags: [insights]
+      summary: Estimator calibration
+      description: |-
+        BI.4 ([#435](https://github.com/NobuData/ouroboros/issues/435), decision **I7**) — how well
+        the intake estimator's predicted cycle bands match what happened, over merged loops in the
+        window: mockup 15's *"Estimator calibration: 89% of issues land within their predicted
+        band"* and the effort card's per-effort slices.
+
+        **Each merge is graded against the estimate in force when its work was queued**, never a
+        later revision, so a re-estimate made after the work started cannot score well on
+        hindsight. The actual is the DORA **lead time** (loop start to merge) — the same definition
+        the lead-time metric uses, so the two cannot disagree. A merge is in band when its lead time
+        lies inside `[cycle_min, cycle_max]` minutes, inclusive; its deviation is signed, from the
+        band's midpoint.
+
+        **Rates are re-derived from counts**: the headline is in-band over estimated across all
+        efforts, not an average of the slices. A merged loop with no governing estimate is counted
+        in `unestimated` and left out of the rates. Every effort is present, smallest first; one
+        with no merges has zero counts and null rates.
+
+        **Open to every member.** The workspace is the session's: no workspace in this path, the
+        session's active organization or `X-Ouro-Tenant` decides.
+      operationId: getEstimatorCalibration
+      parameters:
+        - $ref: "#/components/parameters/CalibrationWindow"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The report.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CalibrationReport"
+              example:
+                window: 30d
+                from: "2026-09-01T12:00:00.000Z"
+                to: "2026-10-01T12:00:00.000Z"
+                merged: 49
+                estimated: 47
+                unestimated: 2
+                withinBand: 42
+                withinBandPct: 89.4
+                efforts:
+                  - { effort: xs, estimated: 9, withinBand: 9, withinBandPct: 100, over: 0, under: 0, biasPct: -8.3, bias: under }
+                  - { effort: s, estimated: 14, withinBand: 13, withinBandPct: 92.9, over: 1, under: 0, biasPct: 1.9, bias: over }
+                  - { effort: m, estimated: 12, withinBand: 11, withinBandPct: 91.7, over: 1, under: 0, biasPct: 3.4, bias: over }
+                  - { effort: l, estimated: 8, withinBand: 6, withinBandPct: 75, over: 2, under: 0, biasPct: 12, bias: over }
+                  - { effort: xl, estimated: 4, withinBand: 3, withinBandPct: 75, over: 0, under: 1, biasPct: -2.5, bias: under }
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `window` is not one of `7d`, `30d` or `90d`.
           content:
             application/json:
               schema:
@@ -25727,6 +25823,18 @@ components:
         type: string
       example: github
 
+    CalibrationWindow:
+      name: window
+      in: query
+      required: false
+      description: |-
+        The window ending now the report covers, over merge instants — mockup 15's range segment
+        ([#435](https://github.com/NobuData/ouroboros/issues/435)). `30d` when absent.
+      schema:
+        type: string
+        enum: [7d, 30d, 90d]
+        default: 30d
+      example: 30d
     OnboardingRepo:
       name: repo
       in: query
@@ -32461,6 +32569,94 @@ components:
         joined:
           type: boolean
           description: True when a scan was already running and this request joined it.
+
+    CalibrationReport:
+      type: object
+      title: CalibrationReport
+      additionalProperties: false
+      description: |-
+        Estimator calibration over a window (#435). Rates are percentages to one decimal, null when
+        nothing was estimated.
+      required: [window, from, to, merged, estimated, unestimated, withinBand, withinBandPct, efforts]
+      properties:
+        window:
+          type: string
+          enum: [7d, 30d, 90d]
+        from:
+          type: string
+          format: date-time
+          description: The window's first instant.
+        to:
+          type: string
+          format: date-time
+          description: The window's end, exclusive — now.
+        merged:
+          type: integer
+          minimum: 0
+          description: Merged loops in the window, estimated or not.
+        estimated:
+          type: integer
+          minimum: 0
+          description: Of those, how many had an estimate in force when their work was queued.
+        unestimated:
+          type: integer
+          minimum: 0
+          description: Of those, how many had none — counted, never dropped.
+        withinBand:
+          type: integer
+          minimum: 0
+          description: Estimated merges whose lead time fell inside their predicted band.
+        withinBandPct:
+          type: [number, "null"]
+          description: The headline — `withinBand / estimated × 100`.
+        efforts:
+          type: array
+          minItems: 5
+          maxItems: 5
+          description: Every effort, smallest first.
+          items:
+            $ref: "#/components/schemas/EffortCalibration"
+
+    EffortCalibration:
+      type: object
+      title: EffortCalibration
+      additionalProperties: false
+      description: One predicted effort's slice of the calibration report (#435).
+      required: [effort, estimated, withinBand, withinBandPct, over, under, biasPct, bias]
+      properties:
+        effort:
+          type: string
+          enum: [xs, s, m, l, xl]
+        estimated:
+          type: integer
+          minimum: 0
+          description: Merged loops estimated at this effort.
+        withinBand:
+          type: integer
+          minimum: 0
+        withinBandPct:
+          type: [number, "null"]
+          description: "`withinBand / estimated × 100`; null when nothing was estimated at this effort."
+        over:
+          type: integer
+          minimum: 0
+          description: Out of band, longer than the band's maximum.
+        under:
+          type: integer
+          minimum: 0
+          description: Out of band, shorter than the band's minimum.
+        biasPct:
+          type: [number, "null"]
+          description: |-
+            Signed bias: the summed deviations from each band's midpoint over the summed midpoints,
+            × 100 — `12` reads *"runs 12% over"*. Null when nothing was estimated, or every band was
+            `0–0`.
+        bias:
+          oneOf:
+            - type: string
+              enum: [over, under, even]
+            - type: "null"
+          description: The direction of `biasPct`; null when nothing was estimated at this effort.
 
     DryRunPolicy:
       type: object

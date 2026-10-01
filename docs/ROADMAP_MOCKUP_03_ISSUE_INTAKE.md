@@ -2397,6 +2397,14 @@ GitHub ── issues webhook (signed) ──▶ receiver ─▶ upsert (idempote
 - **Technical Stack:** FastAPI, provider clients, structured output.
 - **Epic:** O
 
+> **Amendment (#435, BI.4 — estimator calibration).** The estimator's own calibration is now
+> measured: every merged loop is graded against the estimate **in force when its work was
+> queued** (`ouroboros-db` `V077__estimate_outcomes.sql`), and
+> `GET /api/v1/insights/calibration?window=7d|30d|90d` reports the within-band rate and, per
+> effort, the bias direction (`over`/`under`) and size. An estimator issue — this one's "quality
+> benchmark vs. v0" among them — can cite that report rather than a fixture alone, and intake
+> surfaces can show it beside an estimate.
+
 ### Issue O.3 — ouroboros-rest: [O.3] Workflow entities in assign & suggestions
 
 > **GitHub issue:** #124 · **Status:** 🟡 Open · **Parent epic:** #98

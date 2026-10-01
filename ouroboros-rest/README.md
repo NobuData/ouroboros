@@ -108,6 +108,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/runs/{id}/transcript.jsonl`            | *Raw JSONL ↗* (#304): the `run_events_jsonl` projection, streamed, opening with `# simulated run` on a simulated run |
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
 | `GET PATCH /api/v1/policies/dry-run`                | [The dry-run policy](#the-dry-run-policy) (#382) — read by any member, flipped by `owner`/`admin`, audited `policy.dry_run_changed` |
+| `GET /api/v1/insights/calibration`                 | [Estimator calibration](#estimator-calibration) (#435) — `?window=7d\|30d\|90d`; within-band headline, unestimated count and per-effort bias direction; any member |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
@@ -5794,6 +5795,27 @@ PR plane enforces **below** every surface that could merge.
 **A workspace that never answered reads off**; completing the Get Started wizard (step 4) writes
 `dry_run = true` when unset and never overwrites an explicit `false`. Reads are cached per process
 for 30 s and every write busts the cache; the merge path never trusts the cache.
+
+### Estimator calibration
+
+BI.4 ([#435](https://github.com/NobuData/ouroboros/issues/435)), decision **I7**, in
+[`src/modules/insights/`](src/modules/insights) over V077's `estimate_outcomes`. Every merged loop
+is graded against the estimate **in force when its work was queued** — never a later revision — so
+*"89% within band"* measures the estimator rather than its hindsight.
+
+| piece | what |
+| ----- | ---- |
+| the fill | `PrSyncService` tells `CALIBRATION_MERGE_OBSERVER` about every merge it first sees; `ouroboros.record_estimate_outcome(org, pr)` upserts one row per PR (a replay re-derives it). A failure is logged and never fails the sync |
+| the join | newest `issue_estimates` row for the PR's ticket or the loop's mirrored issue created by the queue instant (`queue_items.enqueued_at` when it precedes the loop's start, else `runs.started_at`) |
+| the actual | `ouroboros.lead_time_ms(runs.started_at, merged_at)` — the DORA lead-time definition, one function so the two cannot disagree |
+| the grade | generated columns: `within_band` (inclusive) and signed `deviation_ms` from the band midpoint; an unestimated merge is a row with a null prediction |
+
+| route | what | who |
+| ----- | ---- | --- |
+| `GET /api/v1/insights/calibration?window=7d\|30d\|90d` | `{window, from, to, merged, estimated, unestimated, withinBand, withinBandPct, efforts[5]}` — each effort with `over`/`under` counts, `biasPct` and `bias` (`over\|under\|even`); `30d` when absent | every member |
+
+Rates are re-derived from counts (the headline is never an average of the slices) and are null
+over nothing.
 
 ### PR page reads & head actions
 
