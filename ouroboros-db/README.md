@@ -1173,7 +1173,7 @@ There is deliberately no `scripts/clean`.
 organizations and mockup 02's dashboard, number for number — so a UI has something to
 render and an e2e test has something to assert against by name.
 
-It is **fourteen migrations**, because they answer fourteen questions and change on different
+It is **fifteen migrations**, because they answer fifteen questions and change on different
 days:
 
 | File | Holds | Issue |
@@ -1192,18 +1192,21 @@ days:
 | [`R__dev_seed_test_results.sql`](migrations/R__dev_seed_test_results.sql) | *What the builds proved* — mockup 11 for the same `#482`: Build 1 `49/63 · 14 failed` at `a3f19c2`, Build 2 `61/63 · 2 failed`, Build 3 running the failed set at `f42b9a0` (61 passed, 1 failed, 1 flaky, `6m 12s · 4m sim · 2m 12s physical`); the five suites on their platforms; the HIL overshoot `2.4%` against a `2.0%` max and the frame-order `0 (was 37 in build 1)`; the telemetry case passed on retry 2/3 and scored `watching` by flake formula 1 over its history in `#479` and `#482`; a heuristic product-bug hint; both PR intents on; four artifacts plus Build 2's coverage report. **Every figure is computed** — totals by recount, `▲ 12` as a difference, the verdict by `hil_verdict()`, the comparative by V053's trigger, the flake state by `flake_state_next()`, `87.4% (+0.6%)` by `test_run_coverage` — and every instant, retention included, is an offset from `runs.started_at`. Where it and mockup 10 cannot both hold (the clocks, the shas, the farm) the header says which gave way | [#328](https://github.com/NobuData/ouroboros/issues/328) |
 | [`R__dev_seed_verification.sql`](migrations/R__dev_seed_verification.sql) | *What the PR has to show before it merges* — mockup 12's PR `#514`, the outcome of `#482`: revision 1 at `3f9c2ae` blocked (test suite and HIL red on Build 3's `2.4%`) and revision 2 at `b7e41d0` live at `5 / 7` green, with `model_review` `unavailable` and `human_approval` `not_required`; seven gates from the `standard-fix@v14` pin, each verdict's line composed from the row its `evidence_ref` cites; a fourth test attempt (Build 4, `63/63`, overshoot `1.7%`) and two finished `forge-01` builds for those citations; five criteria (four verified with typed evidence, one waived against the AS.4 thermal waiver it seeds); three thread entries, both model rows `simulated`; the unarmed squash plan with V058's template message; and two ledger rows that bring the loop to `284k · $1.52`, `41k · $0.19` of it tagged `verify`. **Every figure is computed** — the aggregate by `pr_gate_aggregate()`, `+68 −15 · 3 files` from the snapshot, which is the console's change-set — and the header records the six places the PR's later chapter moves mockups 02, 08, 10 and 11 | [#356](https://github.com/NobuData/ouroboros/issues/356) |
 | [`R__dev_seed_workspace_knowledge.sql`](migrations/R__dev_seed_workspace_knowledge.sql) | *What it has learned* — mockup 14's Knowledge page: six skills (the `hil-safety` lock is `required = true`, the tinted `power-budget-checks` is `draft = true`, `repo-map` is `origin = generated` with sixty nightly versions), five facts (two confirmed, two proposed from run `#482` and PR `#514`, one expired on the *Zephyr 4.1 migration* with its whole transition history), three playbooks and the helios-firmware environment recipe at v3. **No usage figure is stored**: 51 `context_injections` rows are written instead, and `used 48×`, `61% of runs`, `every run`, `every PR`, `physical tests`, `—` and `was used 31×` (a `count(*)` snapshot taken in the expiring statement) are counted from them; `run 9×` / `14×` / `3×` are 26 launches, five of them older `CVE bump` runs inserted here beyond every dashboard window. The header records the seven decisions taken on the issue | [#409](https://github.com/NobuData/ouroboros/issues/409) |
+| [`R__dev_seed_onboarding.sql`](migrations/R__dev_seed_onboarding.sql) | *Where a team starts* — mockup 13's mid-wizard moment, in a **fourth workspace of its own**, `acme-onboarding`: an active GitHub source and an enabled `helios-firmware` (steps 1–2 derive *done*), `quick-fixes` selected with no workflow instantiated (step 3 *active*), `#488` picked and not queued (step 4 *todo*) — no step status is stored anywhere; one 38 s detection scan with BB.1's six rows and their evidence; `boot/**` and `keys/**` suggested; three merged runs so *Deep refactor* computes as locked at `3 of 10`; the intake seed's nine issues and estimates mirrored by query; and `dry_run` on | [#383](https://github.com/NobuData/ouroboros/issues/383) |
 
 > **The names are load-bearing.** Flyway applies repeatable migrations in the order of
 > their *descriptions*, and every row the later seeds write finds its parent by natural key —
 > so `dev_seed_audit`, `dev_seed_dashboard`, `dev_seed_farm`, `dev_seed_intake`,
-> `dev_seed_providers`, `dev_seed_routing`, `dev_seed_run_console`, `dev_seed_sources`,
+> `dev_seed_onboarding`, `dev_seed_providers`, `dev_seed_routing`, `dev_seed_run_console`, `dev_seed_sources`,
 > `dev_seed_ticket_planning`, `dev_seed_verification`, `dev_seed_workflows` and
 > `dev_seed_workspace_knowledge` all have to sort after `dev_seed`, `dev_seed_routing` after `dev_seed_providers` besides,
 > since every alias binds to a connection by kind and name, and `dev_seed_ticket_planning`
 > after `dev_seed_sources`, since every ticket hangs off the GitHub source — which is why it
 > is not called `dev_seed_planning`. `dev_seed_workspace_knowledge` sorts last because its
 > playbooks pin the workflows seed's versions and its facts and injections cite nearly every
-> other seed's rows — which is why it is not called `dev_seed_knowledge`. They do. `tests/seed.test.sh`
+> other seed's rows — which is why it is not called `dev_seed_knowledge`. `dev_seed_onboarding`
+> must sort after `dev_seed_intake`, whose issues and estimates it copies into its own workspace
+> by query. They do. `tests/seed.test.sh`
 > asserts the whole order, because the failure mode is silent: applied in the wrong order,
 > every join finds nothing, every insert inserts nothing, and a second `migrate` does not put
 > it right (Flyway re-applies a repeatable migration only when its checksum changes).
@@ -1220,10 +1223,10 @@ days:
 
 | Row | Value |
 |---|---|
-| Organizations | `acme-robotics` — *Acme Robotics*, shared · `acme-labs` — *Acme Labs*, shared · `kensuenobu` — Ken's personal workspace (`metadata.personal = true`) |
+| Organizations | `acme-robotics` — *Acme Robotics*, shared · `acme-labs` — *Acme Labs*, shared · `kensuenobu` — Ken's personal workspace (`metadata.personal = true`) · and, from the onboarding seed, `acme-onboarding` — see [Where a team starts](#where-a-team-starts) |
 | Domain | `acme-robotics.dev`, primary — the address domain mockup 01 resolves acme-robotics from |
 | People | `ken@acme-robotics.dev` · `maya@acme-robotics.dev` · `jorge@acme-robotics.dev` |
-| Roles | acme-robotics: Ken owner, Maya admin, Jorge member · acme-labs: Maya owner, Ken member · kensuenobu: Ken owner |
+| Roles | acme-robotics: Ken owner, Maya admin, Jorge member · acme-labs: Maya owner, Ken member · kensuenobu: Ken owner · acme-onboarding: Ken owner |
 | Passwords | every person signs in with `ouroboros-dev-password` — a `credential` account holding a real scrypt hash BetterAuth's verifier accepts; the form only exists on a non-production stack |
 | GitHub | one GitHub-shaped account, Ken's, so "Continue with GitHub" has someone deterministic to resolve to |
 | Orgs | `acme-robotics` enabled · `acme-labs` disabled · `kensuenobu` enabled |
@@ -1523,6 +1526,60 @@ seed that re-creates what it can instead of failing.
 > configurations at the same database. `scripts/clean-dev` then a seeded `migrate` fixes
 > it, or `docker compose down -v && docker compose up` for the stack's own database.
 
+#### Where a team starts
+
+[`R__dev_seed_onboarding.sql`](migrations/R__dev_seed_onboarding.sql)
+([#383](https://github.com/NobuData/ouroboros/issues/383)) is mockup 13's mid-wizard moment, and
+the one seed that is **not** drawn in `acme-robotics`. It creates a fourth workspace,
+`acme-onboarding`, owned by Ken — so the dev stack's sign-in lists four — because the moment
+cannot be true of the workspace every other mockup uses: there the merged-loop count is 51, so
+*Deep refactor* is unlocked; `#488` is already in the queue, so the rail would derive `✓ ✓ ○ ✓`;
+and switching dry-run on would refuse the merges the PR verification seed arms. One database
+cannot be a team's first week and its third month for the same workspace, so the first week
+gets its own.
+
+**Nothing in it is a step status.** `onboarding_state` has no column for one (decision O1,
+V067), so the seed writes the subsystem rows and the rail is what they add up to:
+
+| Step | Seeded | Derives |
+|---|---|---|
+| 1 Connect GitHub | an `active` GitHub source naming the account `acme-robotics` and listing the repository | ✓ done — `acme-robotics · token` (no App installation is claimed) |
+| 2 Pick a repo | `helios-firmware`, enabled, under an enabled account — and a scan | ✓ done — `helios-firmware · auto-detected below` |
+| 3 Choose a starting workflow | `selected_template = quick-fixes`, and no workflow in the workspace | ● active |
+| 4 Run your first loop | `picked_ticket_id → #488`, and no queue item or run for it | ○ todo |
+
+`tests/seed.sql` recomputes that table from the rows by V070's derivation contract and requires
+`done, done, active, todo`; `tests/seed.test.sh` requires that the seed's text names no step.
+
+| Row | Value |
+|---|---|
+| Workspace | `acme-onboarding` — *Acme Onboarding*, shared; Ken is its owner and only member |
+| GitHub | the account `acme-robotics` again — one account connected to two workspaces — with `helios-firmware` (being onboarded) and `helios-console` enabled; one `active` source, sealed development credential |
+| Wizard | one `onboarding_state` row for `acme-robotics/helios-firmware`: `quick-fixes`, `#488`, not dismissed, completed or bypassed |
+| Scan | `scan_seq 1`, `duration_ms 38000` (the card's `scanned in 38s`), nine probes, six rule packs at `1.0.0` |
+| Card rows | `C 92% · Zephyr RTOS 4.1` · `west + twister (found west.yml)` · `found .devcontainer.json → image ghcr.io/zephyrproject-rtos/ci:v0.27.4` · `5 suites, 63 tests (detected)` · `boot/, keys/ suggested` · `No CONTRIBUTING.md — …` (`warn`) — all `detected`, each with its evidence |
+| Protected paths | `boot/**`, `keys/**`, both `suggested` |
+| Backlog | the intake seed's nine `helios-firmware` issues and the estimate in force on each, **copied by query** — `#488` is XS, `docs-loop`, no file touched, here because it is there |
+| Ticket | one canonical `tickets` row, `#488`, which the wizard's pick references |
+| Loops | three `merged` runs in `helios-console` — `merged_loop_count()` is 3, so `deep-refactor`'s shipped `{"merged_loops_gte": 10}` evaluates to locked and the tile can print `3 of 10` |
+| Policy | `org_policies.dry_run = true`, `updated_by` null — the onboarding default |
+
+> **The card rows are the detector's lines, not the static mockup's.** They are what BB.1's rule
+> packs ([#384](https://github.com/NobuData/ouroboros/issues/384)) store for this repository —
+> the output of `runScan(CORE_PACKS)` over `ouroboros-rest`'s Zephyr golden fixture — so a real
+> re-scan would write the same rows. The mockup's `env ready in 38s (snapshotted)` is a
+> measurement nothing takes yet (decision O2), so the Devcontainer row says what was detected and
+> every row is labelled `detected`. The `38s` that *is* data is the scan's duration.
+>
+> **The three loops are in the workspace's other repository**, which is what keeps *Run your
+> first loop* true of `helios-firmware`: the wizard is per repository (V067), and a team that
+> has merged three loops on its console and is now onboarding its firmware is the re-entry the
+> schema was built for. They are read-model rows, as the dashboard seed's are; no workflow,
+> route or provider is seeded behind them.
+>
+> **The four tiles are not seeded.** They ship with V068 as global rows and are in every
+> migrated database.
+
 ### The bundled price catalog
 
 The other repeatable migration is not a seed, and it is the one piece of data this module
@@ -1779,6 +1836,18 @@ it instead — which is the weaker rule and the whole reason the trigger exists,
 alone accepts 3 then 2 and *latest wins* then returns the estimate that was replaced. So that
 probe reads `must_reject`'s *wrong rule fired* message rather than its *statement was
 accepted* one, and both are the probe noticing.
+
+One mutation is an **addition**, and it is the onboarding wizard's
+([#383](https://github.com/NobuData/ouroboros/issues/383)). Decision O1 is the *absence* of
+something — `onboarding_state` has no step-status column, so every step is derived on read — and
+an absence can only be falsified by supplying it: the probe adds a `step_1_done` column and
+requires the column-list assertion to go red. Beside it, #383 probes the rest of what its seed's
+rows are written against and nothing re-validates: the detection `verdict` vocabulary, the
+protected-path glob grammar, the unlock rule's shape, that a template `definition` is a document,
+and the `(organization, repo_ref)` keys of the wizard and of a protected glob. The DSL grammar a
+template's definition must speak is not a CHECK, so that one's red case lives in
+[`tests/workflow-dsl-drift.test.sh`](tests/workflow-dsl-drift.test.sh) instead: a shipped
+template the schema refuses turns the drift check red, by name.
 
 Three mutations are *relaxations* rather than drops, and they are the ones worth
 understanding. `route_hops_alias_fk` and `model_aliases_provider_fk` are re-added as
@@ -2263,6 +2332,7 @@ ouroboros-db/
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
 │   ├── R__dev_seed_farm.sql          # mockup 08's fleet, builds and live log, dev only — #249 (sorts after the above)
 │   ├── R__dev_seed_intake.sql        # mockup 03's backlog and its estimates, dev only — #103 (sorts after the above)
+│   ├── R__dev_seed_onboarding.sql    # mockup 13 mid-wizard, in its own workspace acme-onboarding, dev only — #383 (sorts after intake)
 │   ├── R__dev_seed_providers.sql     # mockup 07's connections and meters, dev only — #221
 │   ├── R__dev_seed_routing.sql       # mockup 06 as rows, and mockup 21's registry over them, dev only — #192, #582 (sorts after the above)
 │   ├── R__dev_seed_run_console.sql   # mockup 10 — run #482 mid-flight, transcript and cards, dev only — #302 (sorts after dashboard and farm)

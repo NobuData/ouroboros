@@ -216,6 +216,24 @@ check_matches "$out" 'ok +fixture/minimal v1$' 'without hiding the documents tha
 check_matches "$out" '1 of 2 seeded definitions no longer validate' 'and counts what drifted'
 check_matches "$out" 'R__dev_seed_workflows\.sql' 'and names the file the fix goes in'
 
+# #383 (BA.4): a shipped workflow template is held to the same verdict, under the label the
+# query gives it. This is the probe for "a template's definition is a DSL document" — the one
+# onboarding rule that is not a CHECK (V068), so verify-constraint-probes.sh has nothing to drop
+# for it: a template version the schema refuses turns ci/db red and is named.
+documents "$work/template-invalid.json" \
+  'template/quick-fixes:1:valid/minimal.json' \
+  'template/deep-refactor:2:invalid/node-unknown-property.json'
+run_check "$work/template-invalid.json"
+check_equals 1 "$status" 'a shipped template whose definition the schema refuses turns the check red'
+check_matches "$out" 'FAIL +template/deep-refactor v2$' 'and names the template and the version that failed'
+check_matches "$out" 'ok +template/quick-fixes v1$' 'without hiding the templates that still pass'
+
+documents "$work/template-valid.json" \
+  'template/quick-fixes:1:valid/minimal.json' \
+  'template/deep-refactor:1:valid/standard-fix.json'
+run_check "$work/template-valid.json"
+check_equals 0 "$status" 'and is green again once every template definition validates'
+
 run_check "$work/empty.json"
 check_equals 1 "$status" 'no documents at all is red, because a drift check over nothing proves nothing'
 check_matches "$out" 'flyway\.seed\.toml' 'and names the overlay that would have written them'

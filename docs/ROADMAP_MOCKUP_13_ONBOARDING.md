@@ -236,7 +236,7 @@ v2`** created at filing; every issue assigned. Complexity chips: **XS · S · M 
 | BA.1 | #380 ✅ | 🟢 Done | ouroboros-db: [BA.1] Wizard state & detection storage | `onboarding_state`, detection results with evidence, protected paths | mvp, onboarding, db | N (after WF-Q.1) | Y | M | ouroboros-db |
 | BA.2 | #381 ✅ | 🟢 Done | ouroboros-db: [BA.2] Workflow template registry schema | Templates with definitions, tiers, unlock rules (delivers WF-T.5 data) | mvp, onboarding, workflow, db | N (after WF-P.1) | Y | S | ouroboros-db |
 | BA.3 | #382 ✅ | 🟢 Done | ouroboros-rest: [BA.3] Dry-run policy plane | `policy.dry_run` storage + PR-plane enforcement + audited flip | mvp, onboarding, pr, rest | N (after AX.4, AW.4) | Y | M | ouroboros-rest, ouroboros-db |
-| BA.4 | #383 | 🟡 Open | ouroboros-db: [BA.4] Onboarding seeds — mockup-13 parity + probes | Mid-wizard state, detection rows, four templates, safe pick | mvp, onboarding, db, ci | N (after BA.1–BA.3, #24) | Y | S | ouroboros-db, .github |
+| BA.4 | #383 ✅ | 🟢 Done | ouroboros-db: [BA.4] Onboarding seeds — mockup-13 parity + probes | Mid-wizard state, detection rows, four templates, safe pick | mvp, onboarding, db, ci | N (after BA.1–BA.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BA.1 — ouroboros-db: [BA.1] Wizard state & detection storage
 
@@ -368,7 +368,7 @@ Settings flip (owner, audited, confirm) ─▶ enforcement lifts everywhere at o
 
 ### Issue BA.4 — ouroboros-db: [BA.4] Onboarding seeds — mockup-13 parity + probes
 
-> **GitHub issue:** #383 · **Status:** 🟡 Open · **Parent epic:** #376
+> **GitHub issue:** #383 ✅ · **Status:** 🟢 Done · **Parent epic:** #376
 
 
 - **Problem Statement:** Design review needs the mockup's exact mid-wizard
@@ -387,6 +387,35 @@ Settings flip (owner, audited, confirm) ─▶ enforcement lifts everywhere at o
 - **Parallelism/Dependencies:** Needs BA.1–BA.3 (+INTAKE-K.5 coordination).
 - **Technical Stack:** Flyway repeatable migration, SQL.
 - **Epic:** BA
+- **Delivered** (`ouroboros-db/migrations/R__dev_seed_onboarding.sql`; `tests/seed.sql`,
+  `tests/seed.test.sh`, `tests/verify-constraint-probes.sh`, `tests/workflow-dsl-drift.test.sh`):
+  the mid-wizard moment, **in a fourth seeded workspace of its own, `acme-onboarding`** (Ken owner).
+  *Decided on the issue:* `acme-robotics` cannot hold it — it has 51 merged loops (the lock would
+  be open), `#488` is already queued there (the rail would derive `✓ ✓ ○ ✓`), and dry-run on would
+  refuse the merges the PR seed arms — and one database cannot be a team's first week and its
+  third month for one workspace. The seed writes **subsystem rows only**: an active GitHub source
+  for the account `acme-robotics`, `helios-firmware` enabled, `quick-fixes` selected with no
+  workflow in the workspace, `#488` picked and not queued — and BB.2's API derives `done, done,
+  active, todo` from them (verified against the running service; `tests/seed.sql` recomputes it by
+  V070's contract, `tests/seed.test.sh` refuses any `step` in the seed's text). Three merged runs in
+  the workspace's other repository make `merged_loop_count()` 3, so BB.3 answers *locked · 3 of 10
+  merged loops* from V068's shipped rule — the four tiles are not seeded, they ship. The intake
+  seed's nine issues and estimates are **mirrored by query**, so `#488` is XS / `docs-loop` / no
+  file touched here because it is there, and BB.4 picks it on score (99.4) over a real backlog.
+  One scan (`scan_seq 1`, 38 000 ms, nine probes) carries **the six rows BB.1's rule packs store
+  for this repository** — the Zephyr golden fixture's output — so three lines are the detector's
+  rather than the static mockup's: the Devcontainer row names the image instead of claiming `env
+  ready in 38s (snapshotted)` (decision O2: nothing measures a boot yet; every row is `detected`),
+  Tests carries `(detected)`, and step 1 reads `· token` because no App installation is claimed.
+  `boot/**` and `keys/**` are `suggested`; `org_policies.dry_run` is true with no person's name on
+  it. Consequence worth knowing: with three runs the workspace is not *fresh*, so the app does not
+  route it into `/get-started` on its own — the wizard is reached for the repository directly.
+  **Probes:** seven added and red/green verified — the `verdict` vocabulary, a planted
+  `step_1_done` column (O1 falsified on purpose), the template definition object, the unlock-rule
+  shape, the glob grammar and the two `(organization, repo_ref)` keys — beside BA.1/BA.2's existing
+  `row_key`, `label` and scan-number probes; the template DSL grammar's red case is in the drift
+  test. The base and intake seed assertions are now scoped to their own workspace and repository
+  id, since a second workspace mirrors a repository of the same name.
 
 ```
 seeds: steps 1–2 ✓ (derived) · scan(6 rows, 38s, detected) · quick-fixes selected ·

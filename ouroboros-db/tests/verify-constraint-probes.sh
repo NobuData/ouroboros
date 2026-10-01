@@ -415,6 +415,32 @@
 #   the next version is exactly max + 1          drop the workflow_templates_next_version trigger
 #   provenance is slug and version, or neither   drop workflows_template_provenance_pair
 #
+# #383 (BA.4) seeds mockup 13 from those two schemas and completes their probes: every
+# vocabulary and shape the onboarding seed's rows are written against, and decision O1 itself.
+# Their assertions were written with V067 and V068; what was missing is the proof each one bites.
+#
+#   BA.4 scope bullet                            mutation
+#   ------------------------------------------   ------------------------------------------
+#   the verdict vocabulary                       drop repo_detections_verdict
+#   no step-status column on onboarding_state    add a `step_1_done` column — the regression O1
+#     (decision O1)                                forbids, made on purpose
+#   a template definition is a DSL document      drop workflow_templates_definition_object
+#   the unlock rule's shape                      drop workflow_templates_unlock_rule_shape
+#   protected-path glob validity                 drop protected_path_policies_glob_format
+#   (organization, repo_ref) uniqueness          drop onboarding_state_organization_repo_key
+#     of the wizard, and of a protected glob     drop protected_path_policies_repo_glob_key
+#
+# The `row_key` and `label` vocabularies and the scan-number key are BA.1's rows above. The
+# step-column probe is the one **addition** in this file: every other mutation removes a rule,
+# and this one commits the regression the rule exists to refuse — a column a step status could
+# be cached in — because O1 is the absence of something, and an absence can only be falsified
+# by supplying it.
+#
+# The definition probe drops the CHECK that a template's `definition` is a jsonb object. The
+# grammar itself is not a CHECK (V068's header says why): it is validated by ci/db's drift
+# check over `tests/lib/seeded-definitions.sql`, and `tests/workflow-dsl-drift.test.sh` holds
+# the red case for a shipped template the schema refuses.
+#
 # V069 (#405, BE.1) adds the skills registry and its immutable versions:
 #
 #   BE.1 rule                                    mutation
@@ -664,7 +690,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console, #328 test results, #356 PR domain, #361 PR head actions, #409 knowledge seeds\n'
+printf '\nConstraint probes — #69 acceptance criterion 2, #221 provider rules, #193 routing, #583 registry, #104 intake, #137 workflows, #276 planning, #249 build farm, #302 run console, #328 test results, #356 PR domain, #361 PR head actions, #409 knowledge seeds, #383 onboarding seeds\n'
 printf -- '--- preparing %s on %s:%s\n' "$TEMPLATE_DB" "$DB_HOST" "$DB_PORT"
 
 maintenance "drop database if exists $TEMPLATE_DB with (force)" || true
@@ -1756,6 +1782,41 @@ expect_red 'a template version may skip or repeat' \
 expect_red 'a workflow may record half its template provenance' \
   'a template slug without its version is refused .*workflows_template_provenance_pair did not fire' \
   'alter table ouroboros.workflows drop constraint workflows_template_provenance_pair;'
+
+# ---------------------------------------------------------------------------
+# #383 (BA.4): the rest of what the onboarding seed's rows are written against.
+#
+# The seed stores a verdict, a glob, an unlock rule it reads and a wizard row per repository,
+# and every one of those is a CHECK or a key and nothing else — BB.1 and BB.2 do not re-validate
+# them. The step-column probe is decision O1 falsified on purpose: see the header.
+# ---------------------------------------------------------------------------
+expect_red 'a detection row may carry any verdict' \
+  'the verdict is ok, warn or missing .*repo_detections_verdict did not fire' \
+  'alter table ouroboros.repo_detections drop constraint repo_detections_verdict;'
+
+expect_red 'the wizard may cache a step status in a column' \
+  'onboarding_state has exactly its wizard-owned columns and no step-status column \(O1\)' \
+  'alter table ouroboros.onboarding_state add column step_1_done boolean not null default false;'
+
+expect_red 'a template definition may be something other than a document' \
+  'a definition is a jsonb object .*workflow_templates_definition_object did not fire' \
+  'alter table ouroboros.workflow_templates drop constraint workflow_templates_definition_object;'
+
+expect_red 'an unlock rule may take any shape' \
+  'an unlock rule is exactly \{merged_loops_gte: whole number >= 1\}.*workflow_templates_unlock_rule_shape did not fire' \
+  'alter table ouroboros.workflow_templates drop constraint workflow_templates_unlock_rule_shape;'
+
+expect_red 'a protected path may be any string' \
+  'a protected glob is relative to the repository root .*protected_path_policies_glob_format did not fire' \
+  'alter table ouroboros.protected_path_policies drop constraint protected_path_policies_glob_format;'
+
+expect_red 'a repository may have two wizards in one workspace' \
+  'one wizard state per repository per workspace .*onboarding_state_organization_repo_key did not fire' \
+  'alter table ouroboros.onboarding_state drop constraint onboarding_state_organization_repo_key;'
+
+expect_red 'a glob may be protected twice in one repository' \
+  'a glob is protected once per repository .*protected_path_policies_repo_glob_key did not fire' \
+  'alter table ouroboros.protected_path_policies drop constraint protected_path_policies_repo_glob_key;'
 
 expect_red 'a required skill may be switched off' \
   'a required skill cannot be switched off .*skills_required_enabled did not fire' \
