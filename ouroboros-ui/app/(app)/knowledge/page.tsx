@@ -28,6 +28,10 @@ import { REPO_PARAM } from "@/app/knowledge/profile";
  * [#420](https://github.com/NobuData/ouroboros/issues/420)); absent or not enabled, the card
  * draws the first enabled one.
  *
+ * The workspace's slug is handed down beside its id (BG.5,
+ * [#421](https://github.com/NobuData/ouroboros/issues/421)): it is the name of the scope ladder's
+ * Org step, the mockup's `acme-robotics`.
+ *
  * @param props.searchParams The address's query.
  * @returns The knowledge page, for the workspace this request is operating in.
  */
@@ -47,6 +51,7 @@ export default async function Page({
       readings={readings}
       role={primaryRole(roles)}
       workspaceId={access.membership.id}
+      workspaceSlug={access.membership.slug}
     />
   );
 }

@@ -1,3 +1,4 @@
+import type { ContextManifest } from "@/app/api/context";
 import type { RepoDetection, RepoDetectionRow } from "@/app/api/detection";
 import type { EnabledRepo } from "@/app/api/enablement";
 import type { EnvRecipe } from "@/app/api/env-recipes";
@@ -19,14 +20,16 @@ import type { RepoMapReport } from "@/app/api/repo-map";
 import type { SkillList, SkillStats, SkillSummary } from "@/app/api/skills";
 import type { KnowledgeReadings, ProfileReadings, TicketLink } from "@/app/knowledge/view";
 
+import manifests from "./context-manifests.json";
 import { queueItem } from "./dashboard";
 
 /**
- * Knowledge fixtures (#417, #418, #419, #420): the development seed's skills (mockup 14's six,
+ * Knowledge fixtures (#417, #418, #419, #420, #421): the development seed's skills (mockup 14's six,
  * with the ages, versions and Used-by figures the seed gives them), its five facts with their
  * stamps and refs, its three playbooks with their launch-derived counts, the environment recipe
  * at v3, a detection scan of the seeded repository, and an import preview of the fixture
- * `CLAUDE.md`, trimmed to what the frame reads and the cards draw.
+ * `CLAUDE.md`, trimmed to what the frame reads and the cards draw — and context assembly's own
+ * answers for that seed ({@link manifest}).
  */
 
 /** The `owner/name` of the first seeded repository. */
@@ -692,6 +695,69 @@ export function playbookDraft(over: Partial<PlaybookDraft> = {}): PlaybookDraft 
     suggestedDescription: "Learned from loop #1791 — Fix flaky CAN-bus telemetry test",
     ...over,
   };
+}
+
+/* ------------------------------------------------------------------ context manifests (#421) */
+
+/**
+ * The manifests `context-manifests.json` holds, by what each one shows:
+ *
+ * - `seeded` — the seed's skills and facts for a run stage in the seeded repository: nothing
+ *   trimmed, nothing overridden, the draft simply absent;
+ * - `workflowOverride` — the same with {@link workflowSkills} in scope under `standard-fix`: a
+ *   workflow skill overriding the org's, one failing to override the required `hil-safety`, and a
+ *   switched-off one taking its name out;
+ * - `trimmed` — the seed with a `commit-style` too large for the budget: dropped, and named;
+ * - `estimator` — the estimator's facts-only manifest;
+ * - `workspaceWide` — no repository in scope, so the repository's skills and facts are out;
+ * - `empty` — a workspace with nothing in it.
+ */
+export type ManifestName = keyof typeof manifests;
+
+/**
+ * One of BF.5's own answers (#414).
+ *
+ * **Not written by hand.** `context-manifests.json` is `resolveManifest`'s output
+ * (`ouroboros-rest/src/modules/context-assembly/context-assembly.resolve.ts`) over that module's
+ * fixture builders (`context-assembly.fixture.ts`: `skill`, `repoSkill`, `workflowSkill`, `fact`,
+ * `input`), given this file's seeded skills and facts by id. So a preview drawn from one of these
+ * is drawn from what the service answers, and the suites that assert it are asserting against the
+ * assembly rather than against this module's idea of it.
+ *
+ * @param name Which manifest.
+ * @returns The manifest.
+ */
+export function manifest(name: ManifestName): ContextManifest {
+  return manifests[name] as ContextManifest;
+}
+
+/**
+ * The three workflow-scoped skills the `workflowOverride` manifest was assembled with, as the
+ * registry would list them: one named as the org's `commit-style`, one as the required
+ * `hil-safety`, and a switched-off one named as the org's `pr-etiquette`.
+ *
+ * @returns The skills.
+ */
+export function workflowSkills(): SkillSummary[] {
+  const base = { scope: "workflow" as const, repoRef: null, workflow: { id: STANDARD_FIX.id, slug: STANDARD_FIX.slug }, currentVersion: 1 };
+
+  return [
+    skillSummary({ ...base, id: "5eed0410-0000-4000-8000-000000000007", slug: "commit-style-fix", name: "Commit style", path: "skills/commit-style-fix.skill.md" }),
+    skillSummary({ ...base, id: "5eed0410-0000-4000-8000-000000000008", slug: "hil-safety-off", name: "HIL safety", enabled: false, active: false, path: "skills/hil-safety-off.skill.md" }),
+    skillSummary({ ...base, id: "5eed0410-0000-4000-8000-000000000009", slug: "pr-etiquette-off", name: "PR etiquette", enabled: false, active: false, path: "skills/pr-etiquette-off.skill.md" }),
+  ];
+}
+
+/**
+ * The seeded list with {@link workflowSkills} in it — the registry behind the `workflowOverride`
+ * manifest.
+ *
+ * @returns The list, by slug.
+ */
+export function skillsWithOverrides(): SkillList {
+  const skills = [...seededSkills().skills, ...workflowSkills()].sort((a, b) => a.slug.localeCompare(b.slug));
+
+  return { skills, active: skills.filter((skill) => skill.active).length };
 }
 
 /* ------------------------------------------------------------------ the repo profile (#420) */

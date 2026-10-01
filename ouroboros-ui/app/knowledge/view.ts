@@ -109,6 +109,12 @@ export const PLAYBOOKS_REGION_ID = "playbooks";
 /** The repo-profile card's seat — the right column's second card, BG.4's as well. */
 export const PROFILE_REGION_ID = "repo-profile";
 
+/**
+ * The scope card's seat — the right column's third card, which BG.5
+ * ([#421](https://github.com/NobuData/ouroboros/issues/421)) fills with the ladder.
+ */
+export const SCOPE_REGION_ID = "scope";
+
 /** The skills region's title — the mockup's card head. */
 export const SKILLS_TITLE = "Skills";
 
@@ -117,6 +123,9 @@ export const FACTS_TITLE = "Learned by the loop";
 
 /** The playbooks region's title — the mockup's card head. */
 export const PLAYBOOKS_TITLE = "Playbooks";
+
+/** The scope region's title — the mockup's card head. */
+export const SCOPE_TITLE = "Scope";
 
 /**
  * What the repo-profile card reads, for the repository it draws — decision **K7**: detection's

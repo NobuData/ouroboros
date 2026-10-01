@@ -43,6 +43,7 @@ import {
   verbsFor,
 } from "./facts";
 import { decideFact } from "./facts-actions";
+import { type ScopeFilter, factInFilter, noFactsNote } from "./scope";
 import type { KnowledgeToast } from "./toast";
 import { FACTS_REGION_ID, FACTS_TITLE, type TicketLink } from "./view";
 
@@ -65,6 +66,8 @@ import "./knowledge.css";
  *   after each transition, so assistive technology hears what the eye sees move.
  * - **The page re-reads behind every write**, so the counts, the tickets and the stamps are the
  *   service's on the next paint.
+ * - **The scope ladder narrows it.** A pressed step of the scope card (#421) hands its filter
+ *   down, and the card draws only that scope's facts; the head's counts stay the workspace's.
  *
  * Read-only for a viewer: the actions keep their place, inert with the reason. The gates that
  * enforce are the service's.
@@ -84,6 +87,8 @@ export interface FactsCardProps {
   readonly mayDecide: boolean;
   /** Called with the toast a proposal leaves. */
   readonly onToast: (toast: KnowledgeToast) => void;
+  /** The scope the ladder has narrowed the page to (#421), or nothing for every scope. */
+  readonly filter?: ScopeFilter | null;
 }
 
 /** One row's transient state. */
@@ -104,7 +109,7 @@ interface RowState {
  * @param props See {@link FactsCardProps}.
  * @returns The card, with its rows — or, in their place, why there are none.
  */
-export function FactsCard({ facts, tickets, repos, readAt, mayDecide, onToast }: FactsCardProps) {
+export function FactsCard({ facts, tickets, repos, readAt, mayDecide, onToast, filter = null }: FactsCardProps) {
   const router = useRouter();
   const ids = useId();
   const now = new Date(readAt);
@@ -183,6 +188,8 @@ export function FactsCard({ facts, tickets, repos, readAt, mayDecide, onToast }:
       : [...added.filter((fact) => !list.items.some((one) => one.id === fact.id)), ...list.items].map(
           (fact) => rows[fact.id]?.fact ?? fact,
         );
+  // The rows the ladder's filter keeps; the counts above them stay every scope's.
+  const shown = filter === null ? drawn : drawn.filter((fact) => factInFilter(fact, filter));
   const counts = list === null ? null : countsOf(list, drawn);
   const awaiting = counts === null ? null : awaitingChip(counts);
   const stale = counts === null ? null : staleChip(counts);
@@ -212,9 +219,11 @@ export function FactsCard({ facts, tickets, repos, readAt, mayDecide, onToast }:
         <EmptyState note={facts.ok ? undefined : facts.reason} title={FACTS_UNREAD_TITLE} variant="flush" />
       ) : drawn.length === 0 ? (
         <EmptyState note={NO_FACTS_NOTE} title={NO_FACTS_TITLE} variant="flush" />
+      ) : filter !== null && shown.length === 0 ? (
+        <EmptyState title={noFactsNote(filter)} variant="flush" />
       ) : (
         <ul className="knowledge-facts__list">
-          {drawn.map((fact) => (
+          {shown.map((fact) => (
             <FactRow
               busy={busy === fact.id}
               fact={fact}

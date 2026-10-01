@@ -187,3 +187,38 @@ describe("the playbooks card and the repo profile (#420)", () => {
     expect(CODE).toMatch(/@media \(max-width: [\d.]+rem\)\s*\{[^@]*\.knowledge-profile__row\s*\{\s*flex-direction:\s*column;/);
   });
 });
+
+describe("the scope card and the manifest preview (#421)", () => {
+  it("draws a step as the mockup's well, and the current one in the accent triple", () => {
+    expect(rule("\\.knowledge-scope__step")).toMatch(/border:\s*1px solid var\(--line\)/);
+    expect(rule("\\.knowledge-scope__step")).toMatch(/background:\s*var\(--inset\)/);
+    expect(rule("\\.knowledge-scope__step--current")).toMatch(/border-color:\s*var\(--accent-line\)/);
+    expect(rule("\\.knowledge-scope__step--current")).toMatch(/background:\s*var\(--accent-tint\)/);
+    expect(rule("\\.knowledge-scope__step--current \\.knowledge-scope__level")).toMatch(/color:\s*var\(--accent\)/);
+  });
+
+  it("draws the pressed step apart from the current one — the accent solid", () => {
+    expect(rule('\\.knowledge-scope__step\\[aria-pressed="true"\\]')).toMatch(/border-color:\s*var\(--accent\)/);
+  });
+
+  it("sets the level's measure in rem — the mockup's 74px, scaled with the type", () => {
+    expect(rule("\\.knowledge-scope__level")).toMatch(/width:\s*4\.625rem/);
+    expect(rule("\\.knowledge-scope__level")).toMatch(/font-family:\s*var\(--f-mono\)/);
+  });
+
+  it("lets a step wrap rather than overflow, so a long repository name or the 125% scale cannot clip the count", () => {
+    expect(rule("\\.knowledge-scope__step")).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule("\\.knowledge-scope__name")).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it("tints the trims with the warn triple — the one tinted block in the dialog", () => {
+    expect(rule("\\.knowledge-preview__section--trimmed")).toMatch(/border:\s*1px solid var\(--warn-line\)/);
+    expect(rule("\\.knowledge-preview__section--trimmed")).toMatch(/background:\s*var\(--warn-tint\)/);
+  });
+
+  it("writes an absent skill in the faint ink, a refusal in the error ink and an over-budget note in the warn ink", () => {
+    expect(rule("\\.knowledge-preview__slug--absent")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.knowledge-preview__refusal")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.knowledge-preview__over")).toMatch(/color:\s*var\(--warn\)/);
+  });
+});

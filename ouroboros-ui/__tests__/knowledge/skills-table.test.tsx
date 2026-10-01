@@ -24,6 +24,7 @@ import {
   regenerateName,
   regenerateToast,
 } from "@/app/knowledge/skills";
+import { NO_SKILLS_AT_SCOPE, type ScopeFilter } from "@/app/knowledge/scope";
 
 import {
   READ_AT,
@@ -77,6 +78,7 @@ function draw(
     skills: Reading<SkillList>;
     stats: Reading<SkillStats>;
     mayAdminister: boolean;
+    filter: ScopeFilter | null;
   }> = {},
 ) {
   const onToast = vi.fn();
@@ -469,5 +471,39 @@ describe("what could not be read", () => {
 
     expect(screen.getByText(NO_SKILLS_TITLE)).toBeInTheDocument();
     expect(screen.getByText("0 active")).toBeInTheDocument();
+  });
+});
+
+describe("the scope ladder's filter (#421)", () => {
+  /** The slugs the table is drawing, in order. */
+  function drawnSlugs(): string[] {
+    return screen.getAllByRole("button", { name: /^Open .+ in the editor$/ }).map((door) => door.textContent ?? "");
+  }
+
+  it("draws every scope with no filter", () => {
+    draw({ filter: null });
+
+    expect(drawnSlugs()).toHaveLength(6);
+  });
+
+  it("draws only the pressed step's skills, and keeps the head's count the workspace's", () => {
+    draw({ filter: { scope: "org", repo: null } });
+
+    expect(drawnSlugs()).toEqual(["commit-style", "pr-etiquette"]);
+    expect(screen.getByText("5 active")).toBeInTheDocument();
+  });
+
+  it("keeps a repository's draft in its step — the table shows what the count leaves out", () => {
+    draw({ filter: { scope: "repo", repo: SEEDED_REPO } });
+
+    expect(drawnSlugs()).toEqual(["hil-safety", "power-budget-checks", "repo-map", "zephyr-conventions"]);
+  });
+
+  it("says a scope holds no skill rather than drawing an empty table", () => {
+    draw({ filter: { scope: "workflow", repo: null } });
+
+    expect(screen.getByText(NO_SKILLS_AT_SCOPE)).toBeInTheDocument();
+    expect(screen.queryByRole("table")).toBeNull();
+    expect(screen.queryByText(NO_SKILLS_TITLE)).toBeNull();
   });
 });

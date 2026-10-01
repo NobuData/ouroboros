@@ -45,6 +45,7 @@ import {
   updated,
   usedBy,
 } from "./skills";
+import { NO_SKILLS_AT_SCOPE, type ScopeFilter, skillInFilter } from "./scope";
 import { regenerateRepoMap, setSkillEnabled } from "./skills-actions";
 import type { KnowledgeToast } from "./toast";
 import { SKILLS_REGION_ID, SKILLS_TITLE } from "./view";
@@ -70,6 +71,9 @@ import "./knowledge.css";
  *   the door will lead with on the day it opens.
  * - **Sorting is the reader's**, by any column but the switches, through the table primitive's
  *   sortable headings.
+ * - **The scope ladder narrows it.** A pressed step of the scope card (#421) hands its filter
+ *   down, and the table draws only that scope's rows; the head's active count stays the
+ *   workspace's.
  *
  * Read-only for a member: the switches keep their real state, inert with the reason, and the
  * regenerate is inert likewise. The gates that enforce are the service's.
@@ -87,6 +91,8 @@ export interface SkillsTableProps {
   readonly mayAdminister: boolean;
   /** Called with the toast a regenerate leaves. */
   readonly onToast: (toast: KnowledgeToast) => void;
+  /** The scope the ladder has narrowed the page to (#421), or nothing for every scope. */
+  readonly filter?: ScopeFilter | null;
 }
 
 /** One row's transient state: the skill as last written, and the last refusal it was shown. */
@@ -105,7 +111,7 @@ interface RowState {
  * @param props See {@link SkillsTableProps}.
  * @returns The card, with the table in it — or, in its place, why there is none.
  */
-export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast }: SkillsTableProps) {
+export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast, filter = null }: SkillsTableProps) {
   const router = useRouter();
   const ids = useId();
   const now = new Date(readAt);
@@ -242,7 +248,8 @@ export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast }: S
   ];
 
   const list = skills.ok ? skills.value : null;
-  const drawn = list === null ? [] : sortSkills(list.skills.map((skill) => rows[skill.slug]?.skill ?? skill), sort, stats);
+  const inScope = list === null ? [] : list.skills.filter((skill) => filter === null || skillInFilter(skill, filter));
+  const drawn = sortSkills(inScope.map((skill) => rows[skill.slug]?.skill ?? skill), sort, stats);
 
   return (
     <Card aria-labelledby={`${SKILLS_REGION_ID}-title`} as="section">
@@ -261,6 +268,8 @@ export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast }: S
         <EmptyState note={skills.ok ? undefined : skills.reason} title={SKILLS_UNREAD_TITLE} variant="flush" />
       ) : list.skills.length === 0 ? (
         <EmptyState note={NO_SKILLS_NOTE} title={NO_SKILLS_TITLE} variant="flush" />
+      ) : drawn.length === 0 ? (
+        <EmptyState title={NO_SKILLS_AT_SCOPE} variant="flush" />
       ) : (
         <Table
           caption={SKILLS_TABLE_NAME}

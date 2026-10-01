@@ -22,6 +22,7 @@ import {
   VIEWER_REASON,
   actionName,
 } from "@/app/knowledge/facts";
+import { NO_FACTS_AT_SCOPE, NO_WORKFLOW_FACTS, type ScopeFilter } from "@/app/knowledge/scope";
 import type { TicketLink } from "@/app/knowledge/view";
 
 import {
@@ -71,6 +72,7 @@ function draw(
     facts: Reading<FactList>;
     tickets: Readonly<Record<string, TicketLink>>;
     mayDecide: boolean;
+    filter: ScopeFilter | null;
   }> = {},
 ) {
   const onToast = vi.fn();
@@ -457,5 +459,42 @@ describe("the keyboard", () => {
 
     expect(controls.length).toBeGreaterThan(8);
     for (const control of controls) expect(control).not.toHaveAttribute("tabindex", "-1");
+  });
+});
+
+describe("the scope ladder's filter (#421)", () => {
+  /** How many fact rows the card is drawing. */
+  function drawnFacts(): number {
+    return document.querySelectorAll(".knowledge-facts__row").length;
+  }
+
+  it("draws only the workspace-wide facts under the Org step, and keeps the head's counts every scope's", () => {
+    draw({ filter: { scope: "org", repo: null } });
+
+    expect(drawnFacts()).toBe(1);
+    expect(row("CI needs")).toBeInTheDocument();
+    expect(screen.getByText("2 awaiting review")).toBeInTheDocument();
+  });
+
+  it("draws only the repository's facts under the Repo step", () => {
+    draw({ filter: { scope: "repo", repo: SEEDED_REPO } });
+
+    expect(drawnFacts()).toBe(4);
+    expect(screen.queryByText(/CI needs/)).toBeNull();
+  });
+
+  it("says a repository holds no fact rather than drawing an empty list", () => {
+    draw({ filter: { scope: "repo", repo: "acme-robotics/helios-tools" } });
+
+    expect(screen.getByText(NO_FACTS_AT_SCOPE)).toBeInTheDocument();
+    expect(drawnFacts()).toBe(0);
+    expect(screen.queryByText(NO_FACTS_TITLE)).toBeNull();
+  });
+
+  it("says a fact has no workflow scope under the Workflow step", () => {
+    draw({ filter: { scope: "workflow", repo: null } });
+
+    expect(screen.getByText(NO_WORKFLOW_FACTS)).toBeInTheDocument();
+    expect(drawnFacts()).toBe(0);
   });
 });
