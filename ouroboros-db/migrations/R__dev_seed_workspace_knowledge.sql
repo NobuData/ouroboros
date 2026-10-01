@@ -111,6 +111,12 @@
 --      took a HIL measurement — rather than from a stage key.
 --   7. **The env recipe is the mockup's**, `git@github.com:acme-robotics/helios-firmware` as
 --      the manifest remote, at v3 after one detected draft and two edits by Ken.
+--   8. **One finished launch carries its pin** (#422). *+ New playbook from a past run…* captures
+--      a **terminal** run's workflow pin, and until #422 the only pinned run was the live `#482`
+--      — so the dialog could list fifty-five finished runs and capture none of them. `#471`, the
+--      newest finished `Flaky test hunt` launch, is given the pin a launch runs under: its
+--      playbook's own `standard-fix` v14. One run, because one is what the page needs; the
+--      others stay as #68 wrote them, and the dialog says of each that it has no pin.
 --
 -- ---------------------------------------------------------------------------
 -- **Ids, order, and the three properties every seed holds.**
@@ -534,6 +540,24 @@ update ouroboros.runs run
    and run.organization_id = org."id"
    and run.issue_number = seed.issue_number
    and run.playbook_id is distinct from playbook.id
+   and ${ouro_dev_seed};
+
+-- ---------------------------------------------------------------------------
+-- One finished launch under its pin — decision 8 in the header (#422).
+--
+-- `#471` ran through `Flaky test hunt`, so the version it ran is the playbook's pin: read from
+-- the playbook rather than typed, so the two cannot disagree. After the tagging above, which is
+-- what gives the run its playbook; guarded by `is distinct from`, so a second pass writes nothing.
+-- ---------------------------------------------------------------------------
+update ouroboros.runs run
+   set workflow_version_pin = playbook.workflow_version
+  from ouroboros.organization org,
+       ouroboros.playbooks playbook
+ where org."slug" = 'acme-robotics'
+   and run.organization_id = org."id"
+   and run.issue_number = 471
+   and playbook.id = run.playbook_id
+   and run.workflow_version_pin is distinct from playbook.workflow_version
    and ${ouro_dev_seed};
 
 -- ---------------------------------------------------------------------------

@@ -83,6 +83,18 @@
 #   stub      .spec.ts            trigger, run linking for a synced PR (#375) and a sandbox
 #             (the live chain)    host that serves pull requests; registered so that the day
 #                                 it runs, this script starts checking it (#370)
+#   db        knowledge.spec.ts   the knowledge page's cards, its empty states and its repo-map
+#                                 status are read out of the knowledge tables: with the database
+#                                 stopped nobody can sign in to read them (#422)
+#   tracker-  knowledge.spec.ts   the import really reads the repository on its host: with the
+#   stub      (the chain)         sandbox host stopped the preview finds no rules files, and the
+#                                 leg says which layer that is (#422)
+#   engine-   knowledge.spec.ts   the estimator assertion really reads the wire: with the tap
+#   tap       (the chain)         stopped there is nothing to read it from, and the leg says so
+#                                 rather than passing on an injection record (#422)
+#   engine    knowledge.spec.ts   the fact reaches the estimator *through the engine call*: with
+#             (the chain)         the engine stopped the sandbox issue is never sized, and the
+#                                 leg stops at that hop (#422)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -123,6 +135,34 @@
 #   the save writing nothing -> only the reorder leg and the floor leg
 #   health answering nothing -> the strip, the inspector's dots, both simulations, the
 #                               parity screenshots
+#
+# ## The knowledge pairs, and the four layers its ticket asks for
+#
+# #422 asks that each leg "fails meaningfully when its own layer is broken (verified by deliberate
+# breakage)", and its chain crosses five: the importer, the fact lifecycle, context assembly, the
+# estimator and the playbook launch. This script's lever is a container, so what is registered
+# here is the four containers the chain stands on:
+#
+#   * `db` — under every card and every hop at once; the leg stops at sign-in, before it writes
+#     anything.
+#   * `tracker-stub` — the host the import reads. Only the chain is run (`--grep`): it stops at
+#     the preview, which finds no rules files, with the assertion's own sentence naming the
+#     importer. Nothing has been imported, so the stack is as cold for the next pair as it was.
+#   * `engine-tap` — the wire the estimator assertion reads. This one is a claim about the *leg*
+#     rather than about the deployment, as the planning leg's tracker pair is: a leg that passed
+#     with the tap gone would be reading the estimator's context somewhere else — an injection
+#     record, a preview — and that is the assertion #422 exists to refuse. It stops at its first
+#     step, before any write.
+#   * `engine` — the estimator's other end. The chain imports, confirms and previews with the
+#     engine gone — none of that asks it anything — and stops where the sandbox issue must be
+#     `sized`: the orchestrator cannot reach the engine, the issue is not sized, and the message
+#     names the hop. **It runs last of all the pairs in this file, because it leaves the import
+#     behind**: the leg is green from a cold volume, and so is every pair before this one.
+#
+# The other breakages are code paths inside `rest` — the importer's reader, the estimator's
+# payload builder, the confirmed-facts filter in assembly, the launch's playbook — and were broken
+# by hand at the ticket, each against a cold database, with the results in tests/e2e/README.md
+# rather than automated here, for the routing pair's reason.
 #
 # ## A pair whose leg is parked
 #
@@ -634,6 +674,23 @@ expect_red farm-gateway test-results.spec.ts "the upload arrived" "live: failing
 # here, for the routing pair's reason.
 expect_red db pr-verification.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 expect_red tracker-stub pr-verification.spec.ts "the PR was mirrored" "live: sandbox PR"
+
+# The knowledge leg (#422) — see the header. `db` takes the whole leg down at sign-in, before a
+# single write, so it leaves the stack cold.
+expect_red db knowledge.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# …and against the host the import reads. Only the chain: it stops at the preview, naming the
+# importer, having imported nothing.
+expect_red tracker-stub knowledge.spec.ts "the import reads the repository on its host" "a rules file's fact reaches the estimator"
+
+# …and against the wire. The chain's first act beneath the browser is to ask the tap to forget
+# what it has seen, so with the tap stopped it stops there, before any write, saying which
+# fixture is missing rather than timing out on an estimate.
+expect_red engine-tap knowledge.spec.ts "the engine tap is not answering" "a rules file's fact reaches the estimator"
+
+# …and against the engine, last, because this one leaves the import behind. Everything up to the
+# estimate runs without the engine; the issue is then never sized, and the leg says which hop.
+expect_red engine knowledge.spec.ts "the estimator sizes it through the engine" "a rules file's fact reaches the estimator"
 
 printf '\n'
 if check_summary; then

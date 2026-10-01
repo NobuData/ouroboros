@@ -1,9 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { type ReactNode, useId, useState, useTransition } from "react";
 
 import type { Reading } from "@/app/api/reading";
+import type { RepoMapStatusList } from "@/app/api/repo-map";
 import type { SkillList, SkillStats, SkillSummary } from "@/app/api/skills";
 import { WORKFLOWS_PATH } from "@/app/paths";
 import { Button, Card, CardHead, Chip, type Column, EmptyState, Table, Tag, Toggle, cx } from "@/app/ui";
@@ -20,7 +21,6 @@ import {
   DRAFT_PILL,
   MEMBER_REGENERATE_REASON,
   NO_REPO_REASON,
-  NO_SKILLS_NOTE,
   NO_SKILLS_TITLE,
   OPEN_IN_EDITOR,
   REGENERATE_GLYPH,
@@ -45,8 +45,11 @@ import {
   updated,
   usedBy,
 } from "./skills";
+import { KnowledgeUnread } from "./knowledge-unread";
+import { RepoMaps } from "./repo-maps";
 import { NO_SKILLS_AT_SCOPE, type ScopeFilter, skillInFilter } from "./scope";
 import { regenerateRepoMap, setSkillEnabled } from "./skills-actions";
+import { NO_SKILLS_ACTIONS, noSkillsNote } from "./states";
 import type { KnowledgeToast } from "./toast";
 import { SKILLS_REGION_ID, SKILLS_TITLE } from "./view";
 
@@ -74,6 +77,12 @@ import "./knowledge.css";
  * - **The scope ladder narrows it.** A pressed step of the scope card (#421) hands its filter
  *   down, and the table draws only that scope's rows; the head's active count stays the
  *   workspace's.
+ * - **An empty table teaches** (#422): what a skill is, and — for the roles that have them — the
+ *   head's two actions again, handed down as `emptyActions` so the reader is not sent to find
+ *   them. An unread one says why and offers the re-read (`knowledge-unread.tsx`).
+ * - **A map with no row yet is still said** (#422): under the table, `repo-maps.tsx` draws each
+ *   enabled repository whose `repo-map` is pending its first generation or failed at it, with
+ *   the same regenerate.
  *
  * Read-only for a member: the switches keep their real state, inert with the reason, and the
  * regenerate is inert likewise. The gates that enforce are the service's.
@@ -93,6 +102,13 @@ export interface SkillsTableProps {
   readonly onToast: (toast: KnowledgeToast) => void;
   /** The scope the ladder has narrowed the page to (#421), or nothing for every scope. */
   readonly filter?: ScopeFilter | null;
+  /** Each enabled repository's map status, or why it could not be read (#422). */
+  readonly maps: Reading<RepoMapStatusList>;
+  /**
+   * The actions an empty table offers — the head's **+ New skill** and **Import** — or nothing
+   * for a reader the head draws neither for (#422).
+   */
+  readonly emptyActions?: ReactNode;
 }
 
 /** One row's transient state: the skill as last written, and the last refusal it was shown. */
@@ -111,7 +127,16 @@ interface RowState {
  * @param props See {@link SkillsTableProps}.
  * @returns The card, with the table in it — or, in its place, why there is none.
  */
-export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast, filter = null }: SkillsTableProps) {
+export function SkillsTable({
+  skills,
+  stats,
+  readAt,
+  mayAdminister,
+  onToast,
+  filter = null,
+  maps,
+  emptyActions,
+}: SkillsTableProps) {
   const router = useRouter();
   const ids = useId();
   const now = new Date(readAt);
@@ -119,8 +144,10 @@ export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast, fil
   const [sort, setSort] = useState<SortState | null>(null);
   const [rows, setRows] = useState<Readonly<Record<string, RowState>>>({});
   const [busy, setBusy] = useState<string | null>(null);
-  const [regenerating, setRegenerating] = useState(false);
-  const [regenerateRefusal, setRegenerateRefusal] = useState<string | null>(null);
+  // Which repository a generation is in flight for, and the last refusal with the repository it
+  // was for — several rows can regenerate since #422, and a refusal belongs to the one pressed.
+  const [regenerating, setRegenerating] = useState<string | null>(null);
+  const [regenerateRefusal, setRegenerateRefusal] = useState<Readonly<{ repo: string; message: string }> | null>(null);
   const [, startTransition] = useTransition();
 
   /**
@@ -165,9 +192,9 @@ export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast, fil
    * @param repo The repository, `owner/name`.
    */
   function regenerate(repo: string): void {
-    if (regenerating) return;
+    if (regenerating !== null) return;
 
-    setRegenerating(true);
+    setRegenerating(repo);
     setRegenerateRefusal(null);
 
     startTransition(async () => {
@@ -177,10 +204,10 @@ export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast, fil
         onToast(regenerateToast(outcome.value, new Date()));
         router.refresh();
       } else {
-        setRegenerateRefusal(regenerateFailure(outcome.refusal));
+        setRegenerateRefusal({ repo, message: regenerateFailure(outcome.refusal) });
       }
 
-      setRegenerating(false);
+      setRegenerating(null);
     });
   }
 
@@ -225,8 +252,8 @@ export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast, fil
           mayAdminister={mayAdminister}
           now={now}
           onRegenerate={regenerate}
-          refusal={regenerateRefusal}
-          regenerating={regenerating}
+          refusal={sameRepo(regenerateRefusal?.repo, skill.repoRef) ? (regenerateRefusal?.message ?? null) : null}
+          regenerating={regenerating !== null}
           skill={skill}
         />
       ),
@@ -265,9 +292,15 @@ export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast, fil
       />
 
       {list === null ? (
-        <EmptyState note={skills.ok ? undefined : skills.reason} title={SKILLS_UNREAD_TITLE} variant="flush" />
+        <KnowledgeUnread reason={skills.ok ? undefined : skills.reason} title={SKILLS_UNREAD_TITLE} />
       ) : list.skills.length === 0 ? (
-        <EmptyState note={NO_SKILLS_NOTE} title={NO_SKILLS_TITLE} variant="flush" />
+        <EmptyState note={noSkillsNote(mayAdminister)} title={NO_SKILLS_TITLE} variant="flush">
+          {mayAdminister && emptyActions !== undefined && (
+            <div aria-label={NO_SKILLS_ACTIONS} className="knowledge-empty__actions" role="group">
+              {emptyActions}
+            </div>
+          )}
+        </EmptyState>
       ) : drawn.length === 0 ? (
         <EmptyState title={NO_SKILLS_AT_SCOPE} variant="flush" />
       ) : (
@@ -281,6 +314,15 @@ export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast, fil
         />
       )}
 
+      <RepoMaps
+        maps={maps}
+        mayAdminister={mayAdminister}
+        now={now}
+        onRegenerate={regenerate}
+        refusal={regenerateRefusal}
+        regenerating={regenerating}
+      />
+
       <p className="knowledge-skills__caption">
         {CAPTION_LEAD}
         <a className="knowledge-skills__caption-link" href={WORKFLOWS_PATH} title={STUDIO_NOTE}>
@@ -290,6 +332,18 @@ export function SkillsTable({ skills, stats, readAt, mayAdminister, onToast, fil
       </p>
     </Card>
   );
+}
+
+/**
+ * Whether a refusal's repository is a row's — compared without case, since the generator names a
+ * repository lower-case and a skill keeps the case it was written with.
+ *
+ * @param refused The repository the refusal was for, or nothing.
+ * @param repoRef The row's repository, or `null`.
+ * @returns Whether they are the same repository.
+ */
+function sameRepo(refused: string | undefined, repoRef: string | null): boolean {
+  return refused !== undefined && repoRef !== null && refused.toLowerCase() === repoRef.toLowerCase();
 }
 
 /**

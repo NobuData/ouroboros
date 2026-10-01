@@ -3456,6 +3456,7 @@ POST   /api/v1/knowledge/playbooks/{id}/launch      queue the issue under the pi
 | The launch | the run that opens (`POST /internal/runs`) for a queued issue **under that row's pin** inherits its `playbook_id` — that run is the launch |
 | `run 9×` | `count(*)` of `runs.playbook_id` — **no counter column is written**; a queued item is not a launch until a run opens for it |
 | Receipt | the queued item in `GET /api/v1/queue`'s shape, its position, the attached context (the `playbook` manifest with the overrides applied, the steer notes, the fact ids) and links |
+| On the queue | a queue item names its recipe — `playbookId`, `null` for an issue queued any other way — since REST 0.37.39 ([#422](https://github.com/NobuData/ouroboros/issues/422)); `GET …/playbooks/{id}/context` is then the context its run will be given, before there is a run to ask |
 
 **The repo-map generator** (`src/modules/repo-map/`) keeps `repo-map` honest nightly at
 `OURO_REPO_MAP_HOUR_UTC` (05:00) plus a random minute in the hour after, for every enabled
@@ -3476,6 +3477,25 @@ POST /api/v1/knowledge/repo-map/regenerate {repo}   (admin+, debounced 60 s per 
 | The skill | the repository's `generated`, repo-scoped skill — `repo-map`, or `repo-map-<name>` when that slug is taken — created enabled on first generation; `published_at` is the generation time, `published_by` the person (null nightly); a newer map overwrites an unpublished hand edit |
 | Rate limits | a refusal skips the repository (`skipped`, nothing written); the nightly pass stops asking a workspace's host after its first `rate_limit` (#101) |
 | Recorded | every run — published, unchanged or skipped — is audited as `knowledge.repo_map_generated` |
+
+**Pending is not failed** (BG.6, [#422](https://github.com/NobuData/ouroboros/issues/422), since
+REST 0.37.39). A repository whose map has never generated and one whose generation is refused every
+night look the same in the skills registry — no `repo-map` row — so the page cannot tell them apart
+from the skills list. The status read answers it from where it is written, that audit trail:
+
+```
+GET /api/v1/knowledge/repo-map      (any member; reads only — no host request)
+  ─▶ { items: [{ repo, state, skill, version, lastReport }] }   one per enabled repository, by name
+```
+
+| `state` | |
+| --- | --- |
+| `generated` | a map skill has a version in force; a `skipped` `lastReport` says the last refresh did not happen |
+| `pending` | no map, and no generation on the record — the nightly job has not come round to it |
+| `failed` | no map, and the newest recorded generation was `skipped` — `lastReport.reason` says why |
+
+`repo-map.status.ts` decides it, pure; `lastReport` is the generation's own report rebuilt from the
+audit row (`generatedAt` is when it ran).
 
 ## Environment recipes
 

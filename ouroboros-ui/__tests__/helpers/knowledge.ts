@@ -16,7 +16,7 @@ import type {
   RuleImportResult,
   RuleImportTotals,
 } from "@/app/api/knowledge-import";
-import type { RepoMapReport } from "@/app/api/repo-map";
+import type { RepoMapReport, RepoMapStatus, RepoMapStatusList } from "@/app/api/repo-map";
 import type { SkillList, SkillStats, SkillSummary } from "@/app/api/skills";
 import type { KnowledgeReadings, ProfileReadings, TicketLink } from "@/app/knowledge/view";
 
@@ -24,7 +24,7 @@ import manifests from "./context-manifests.json";
 import { queueItem } from "./dashboard";
 
 /**
- * Knowledge fixtures (#417, #418, #419, #420, #421): the development seed's skills (mockup 14's six,
+ * Knowledge fixtures (#417, #418, #419, #420, #421, #422): the development seed's skills (mockup 14's six,
  * with the ages, versions and Used-by figures the seed gives them), its five facts with their
  * stamps and refs, its three playbooks with their launch-derived counts, the environment recipe
  * at v3, a detection scan of the seeded repository, and an import preview of the fixture
@@ -184,6 +184,64 @@ export function repoMapReport(over: Partial<RepoMapReport> = {}): RepoMapReport 
     truncated: false,
     ...over,
   };
+}
+
+/** The seed's other enabled repository names, as the status read spells them — lower-case. */
+export const CONSOLE_REPO = "acme-robotics/helios-console";
+export const TELEMETRY_REPO = "acme-robotics/helios-telemetry";
+
+/**
+ * One repository's map status — generated, with the seed's `repo-map` v60 in force.
+ *
+ * @param over Fields to replace.
+ * @returns The status.
+ */
+export function repoMapStatus(over: Partial<RepoMapStatus> = {}): RepoMapStatus {
+  return { repo: SEEDED_REPO, state: "generated", skill: "repo-map", version: 60, lastReport: null, ...over };
+}
+
+/** A map nobody has generated yet: no skill, and nothing on the record. */
+export function pendingMap(repo: string = CONSOLE_REPO): RepoMapStatus {
+  return repoMapStatus({ repo, state: "pending", skill: null, version: null });
+}
+
+/**
+ * A map whose first generation was refused — the nightly run, five hours before {@link READ_AT}.
+ *
+ * @param repo The repository.
+ * @param reason Why the generation was skipped.
+ * @returns The status, with the skipped report.
+ */
+export function failedMap(
+  repo: string = TELEMETRY_REPO,
+  reason: NonNullable<RepoMapReport["reason"]> = "host_error",
+): RepoMapStatus {
+  return repoMapStatus({
+    repo,
+    state: "failed",
+    skill: null,
+    version: null,
+    lastReport: repoMapReport({
+      repo,
+      outcome: "skipped",
+      skill: null,
+      version: null,
+      generatedAt: "2026-09-30T09:00:00.000Z",
+      trigger: "nightly",
+      reason,
+      modules: 0,
+    }),
+  });
+}
+
+/**
+ * The status read as the seeded page gets it: the one generated map, and nothing else to say.
+ *
+ * @param items The statuses. Defaults to the seeded repository's generated map alone.
+ * @returns The list.
+ */
+export function repoMapStatuses(items: readonly RepoMapStatus[] = [repoMapStatus()]): RepoMapStatusList {
+  return { items: [...items] };
 }
 
 /* ------------------------------------------------------------------ facts (#419) */
@@ -874,7 +932,35 @@ export function knowledgeReadings(over: Partial<KnowledgeReadings> = {}): Knowle
     repos: { ok: true, value: seededRepos() },
     playbooks: { ok: true, value: seededPlaybooks() },
     profile: seededProfile(),
+    maps: { ok: true, value: repoMapStatuses() },
     readAt: READ_AT,
     ...over,
   };
+}
+
+/**
+ * What a new org's page reads (#422): no skills, no facts, no playbooks, a repository nobody has
+ * scanned with no environment recipe, and a `repo-map` that has not generated for either enabled
+ * repository — every reading `ok`, because *nothing yet* is an answer and not a failure.
+ *
+ * @param over Readings to replace.
+ * @returns The readings.
+ */
+export function coldReadings(over: Partial<KnowledgeReadings> = {}): KnowledgeReadings {
+  return knowledgeReadings({
+    skills: { ok: true, value: { skills: [], active: 0 } },
+    stats: { ok: true, value: { ...seededStats(), skills: [] } },
+    facts: { ok: true, value: seededFacts([]) },
+    tickets: {},
+    playbooks: { ok: true, value: seededPlaybooks([]) },
+    profile: seededProfile({
+      detection: { ok: true, value: unscannedDetection() },
+      recipe: { ok: true, value: null },
+    }),
+    maps: {
+      ok: true,
+      value: repoMapStatuses(seededRepos().map((repo) => pendingMap(`${repo.login}/${repo.name}`))),
+    },
+    ...over,
+  });
 }

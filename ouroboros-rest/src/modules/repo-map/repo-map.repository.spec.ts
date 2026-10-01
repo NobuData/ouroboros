@@ -27,6 +27,59 @@ describe("the repo-map repository", () => {
     expect(sql).toContain("lower(go.login || '/' || gr.name)");
   });
 
+  it("narrows the repositories to one workspace for the status read (#422)", async () => {
+    await store.enabledRepos(WORKSPACE);
+
+    const [statement] = database.statements;
+
+    expect(statement.sql).toContain('"go"."organization_id" = $3');
+    expect(statement.parameters).toEqual([true, true, WORKSPACE]);
+  });
+
+  it("lists a workspace's map skills by slug, so the first for a repository is its map (#422)", async () => {
+    database.answers({ rows: [{ repo: "acme/helios", slug: "repo-map", currentVersion: 3 }] });
+
+    await expect(store.mapSkills(WORKSPACE)).resolves.toEqual([
+      { repo: "acme/helios", slug: "repo-map", currentVersion: 3 },
+    ]);
+
+    const [statement] = database.statements;
+
+    expect(statement.sql).toContain('"s"."organization_id" = $1');
+    expect(statement.sql).toContain("lower(s.repo_ref)");
+    expect(statement.sql).toContain('order by "s"."slug"');
+    expect(statement.parameters).toEqual([
+      WORKSPACE,
+      "generated",
+      "repo",
+      "repo-map",
+      "repo-map-%",
+    ]);
+  });
+
+  it("reads the newest recorded generation of each repository, scoped to the workspace (#422)", async () => {
+    const occurredAt = new Date("2026-09-30T05:12:00.000Z");
+
+    database.answers({
+      rows: [
+        { repo: "acme/helios", detail: { outcome: "skipped" }, occurredAt },
+        { repo: null, detail: {}, occurredAt },
+      ],
+    });
+
+    // A row with no subject names no repository, and is left out.
+    await expect(store.lastGenerations(WORKSPACE)).resolves.toEqual([
+      { repo: "acme/helios", detail: { outcome: "skipped" }, occurredAt },
+    ]);
+
+    const [statement] = database.statements;
+
+    expect(statement.sql).toContain('distinct on ("ae"."subject_id")');
+    expect(statement.sql).toContain('"ae"."organization_id" = $1');
+    expect(statement.sql).toContain('order by "ae"."subject_id", "ae"."occurred_at" desc');
+    expect(statement.parameters).toEqual([WORKSPACE, "knowledge.repo_map_generated", "repository"]);
+  });
+
   it("finds the map as the generated repo skill of this workspace and repository", async () => {
     database.answers({ rows: [{ id: "s", slug: "repo-map", currentVersion: 3, body: "# map" }] });
 

@@ -8,6 +8,7 @@ import type { Reading } from "@/app/api/reading";
 import type { SkillList } from "@/app/api/skills";
 import { Card, CardHead, Chip, EmptyState } from "@/app/ui";
 
+import { KnowledgeUnread } from "./knowledge-unread";
 import { NewPlaybook } from "./new-playbook";
 import {
   NO_PLAYBOOKS_NOTE,
@@ -125,7 +126,7 @@ export function PlaybooksCard({ playbooks, skills, readAt, mayLaunch, mayAdminis
       />
 
       {drawn === null ? (
-        <EmptyState note={playbooks.ok ? undefined : playbooks.reason} title={PLAYBOOKS_UNREAD_TITLE} variant="flush" />
+        <KnowledgeUnread reason={playbooks.ok ? undefined : playbooks.reason} title={PLAYBOOKS_UNREAD_TITLE} />
       ) : drawn.length === 0 ? (
         <EmptyState note={NO_PLAYBOOKS_NOTE} title={NO_PLAYBOOKS_TITLE} variant="flush">
           {tile(true)}

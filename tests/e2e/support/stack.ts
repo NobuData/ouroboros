@@ -1,8 +1,9 @@
 /**
  * Where the stack answers, and how long this suite is allowed to take.
  *
- * Three addresses, and two of them are the whole of what a browser and a script can reach of
- * the *product*; the third is a fixture the suite brought (see {@link TRACKER_URL}).
+ * Four addresses, and two of them are the whole of what a browser and a script can reach of
+ * the *product*; the other two are fixtures the suite brought (see {@link TRACKER_URL} and
+ * {@link TAP_URL}).
  * `ouroboros-engine` is deliberately absent: it publishes no port
  * (`docker-compose.yml`, and `docs/ARCHITECTURE.md` § 10's first invariant), so a constant
  * for it here would be a constant for an address that does not exist. The engine is
@@ -53,6 +54,18 @@ export const REST_URL = address("OURO_E2E_REST_URL", "http://localhost:4000");
  * than the UI**, and nothing in AE.7 had to ask a provider anything.
  */
 export const TRACKER_URL = address("OURO_E2E_TRACKER_URL", "http://localhost:4100");
+
+/**
+ * The engine tap's controls — the suite's own fixture, published on 4200
+ * ([#422](https://github.com/NobuData/ouroboros/issues/422)).
+ *
+ * **Not an address for the engine**, and the paragraph at the top of this file still holds:
+ * `ouroboros-engine` publishes no port. `fixtures/engine-tap` sits between `rest` and the engine
+ * inside the compose network and forwards on a port nothing publishes; what is published here is
+ * its *controls* — the estimate requests it has seen — and that listener forwards nothing. The
+ * knowledge leg reads it to assert the one thing no page can show: what the estimator was sent.
+ */
+export const TAP_URL = address("OURO_E2E_TAP_URL", "http://localhost:4200");
 
 /**
  * The suite's whole wall-clock budget, in milliseconds.

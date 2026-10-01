@@ -89,6 +89,12 @@ export function profileChip(detection: Reading<RepoDetection>): ChipSpec & { rea
 
 /* ------------------------------------------------------------------ the states */
 
+/**
+ * The card when the enabled repositories could not be read — which is not *none enabled*, and
+ * until #422 the card said the second for the first.
+ */
+export const REPOS_UNREAD_TITLE = "The repositories could not be read.";
+
 /** The card with no enabled repository. */
 export const NO_REPOS_TITLE = "No repository is enabled.";
 export const NO_REPOS_NOTE =

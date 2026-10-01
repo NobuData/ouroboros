@@ -100,6 +100,7 @@ describe("what a queue write answers with", () => {
           position: 4,
           estMinutes: 45,
           enqueuedAt: "2026-09-10T15:41:12.000Z",
+          playbookId: null,
         },
       ],
       estMinutes: 45,

@@ -747,7 +747,7 @@ tokens (both themes; the mockup is dark-only).
 | BG.3 | #419 ✅ | 🟢 Done | ouroboros-ui: [BG.3] Learned-facts card | Lifecycle rows, Confirm/Reject/Re-learn, provenance popovers | mvp, knowledge, ui, design | N (after BG.1, BF.2/BF.3) | Y | M | ouroboros-ui |
 | BG.4 | #420 ✅ | 🟢 Done | ouroboros-ui: [BG.4] Playbooks & repo-profile cards | Recipes + run-on-issue; profile + env recipe + honest snapshot | mvp, knowledge, ui, design | N (after BG.1, BF.6, BE.4) | Y | M | ouroboros-ui, ouroboros-rest |
 | BG.5 | #421 ✅ | 🟢 Done | ouroboros-ui: [BG.5] Scope ladder & manifest preview | The ladder with live counts; what-would-inject preview | mvp, knowledge, ui, design | N (after BG.1, BF.5) | Y | S | ouroboros-ui |
-| BG.6 | #422 | 🟡 Open | ouroboros-ui: [BG.6] Knowledge states & e2e leg | Empty/cold states, themes, full author→inject→launch e2e | mvp, knowledge, ui, ci | N (after BG.2–BG.5) | Y | M | ouroboros-ui, .github |
+| BG.6 | #422 ✅ | 🟢 Done | ouroboros-ui: [BG.6] Knowledge states & e2e leg | Empty/cold states, themes, full author→inject→launch e2e | mvp, knowledge, ui, ci | N (after BG.2–BG.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BG.1 — ouroboros-ui: [BG.1] Knowledge route, head & import flow
 
@@ -1008,7 +1008,7 @@ Org acme-robotics · 3 skills ↓ [Repo helios-firmware · 4 skills + 5 facts] �
 
 ### Issue BG.6 — ouroboros-ui: [BG.6] Knowledge states & e2e leg
 
-> **GitHub issue:** #422 · **Status:** 🟡 Open · **Parent epic:** #403
+> **GitHub issue:** #422 ✅ · **Status:** 🟢 Done · **Parent epic:** #403
 
 - **Problem Statement:** Cold orgs (no skills/facts), generator-pending
   states, and the full knowledge chain need certification.
@@ -1026,6 +1026,43 @@ Org acme-robotics · 3 skills ↓ [Repo helios-firmware · 4 skills + 5 facts] �
 - **Parallelism/Dependencies:** Needs BG.2–BG.5, BE.5; amends #56.
 - **Technical Stack:** React, Playwright.
 - **Epic:** BG
+- **Delivered** (`ouroboros-ui/app/knowledge/states.ts`, `repo-maps.tsx`, `knowledge-unread.tsx`,
+  `knowledge-skeleton.tsx`; `tests/e2e/specs/knowledge.spec.ts`, `fixtures/engine-tap`; UI 0.116.0,
+  REST 0.37.39, e2e 0.24.0): **the states** — an empty skills table says what a skill is and holds
+  the head's two actions (a member gets the explanation and who brings one); the facts card's and
+  the recipe's adds move into their empty states; every card's failed read is a designed error
+  with the service's reason and **Try again**, and unread repositories are no longer drawn as
+  *none enabled*; the skeleton draws each card at its own geometry. The page keeps one
+  accent-filled action — a state's own add is a raised control. **`repo-map` pending vs failed**
+  had no server state — a repository that never generated has no skill row, and a refused
+  generation was only an administrator-readable audit row — so REST gained
+  `GET /api/v1/knowledge/repo-map` (any member; `generated` / `pending` / `failed` per enabled
+  repository with the newest generation's report, read from the audit trail every generation
+  writes), and the skills card lists the maps with no row: a dashed neutral ring for pending, the
+  error triple with why and when for failed, one line a repository, *pending is not broken* said
+  once. **Decided on the issue:** *members hide write affordances* was read as #418–#420 shipped
+  it — the head's two actions are not drawn, every other administrator's write keeps its place
+  inert with its reason (a switch that vanished would take the skill's state with it), and the
+  service's `403` is asserted for each by hand-made call. **The e2e leg (21)** — also decided on
+  the issue, because no seeded workspace is both cold and able to run a loop (`acme-onboarding`
+  has no workflow, route or provider; no finished seeded run carried a workflow pin): what a new
+  org sees is asserted in `acme-onboarding`, both palettes, with a real refused generation turning
+  one map *failed* beside one still *pending*; the chain runs in `acme-robotics` — import the
+  fixture `CLAUDE.md` + `.cursorrules` from the sandbox host (which now serves GitHub's contents
+  and trees routes) → preview → apply → three drafts, five candidates → confirm one → the manifest
+  preview shows it → a sandbox issue is synced and sized → **the estimator's own request, read off
+  the wire by `fixtures/engine-tap`, carries the fact in `context.facts`** → `pr-etiquette`
+  switched off and the next preview drops it → a playbook from finished run `#471` (the seed now
+  pins it, decision 8 of `R__dev_seed_workspace_knowledge.sql`) → *Run on issue…* → the queue's
+  entry names the playbook (`playbookId`, new on `QueueItemSummary`) under `standard-fix` v14, and
+  the context that playbook attaches carries the fact. A member's page and refusals, the shell at
+  125 % (which found the repo-profile head pushing the pane sideways — fixed), parity of the seeded
+  page in both palettes. Six tests, ~15 s, green from a cold volume only (it imports, confirms and
+  queues for good). Failure modes: `db`, `tracker-stub`, `engine-tap` and `engine` pairs registered
+  and run red; the importer's reader, the confirmed-facts filter, the estimator's payload builder,
+  the enabled filter and the launch's playbook were each broken by hand and turned their own step
+  red with its own message (`tests/e2e/README.md`). `.github` needed no change: the workflow lists
+  no specs and runs the failure-mode script whole.
 
 ```
 e2e: import ✓ · confirm→inject ✓ · estimator carries fact ✓ · playbook launch ✓ · themes ✓
@@ -1222,7 +1259,7 @@ Amendments posted at filing:
 | AP.4 (#306) | steers gain an explicit remember-this flag |
 | DASH-J.2 (#90) | the needs-you feed gains fact reviews (contract for mockup 16) |
 | #49 | `/knowledge` stub retired by BG.1 (#417) ✅ |
-| #56 | knowledge e2e leg, including the estimator-context assertion (BG.6, #422) |
+| #56 | knowledge e2e leg, including the estimator-context assertion (BG.6, #422) ✅ |
 
 ## References
 
@@ -1266,7 +1303,7 @@ Issue-level impact:
 |---|---|
 | BG.1 | #417 ✅ | 🟢 Done | Mounts in the shell content pane; navigation via the sidebar **Knowledge** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
 | BG.2–BG.5 | ✅ | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| BG.6 | #422 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
+| BG.6 | #422 ✅ | 🟢 Done | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step
 

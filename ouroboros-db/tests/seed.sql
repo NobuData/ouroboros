@@ -4898,6 +4898,24 @@ select pg_temp.must_hold(
          where run.id = '5eed0009-0000-4000-8000-000000000482'),
   'each launch runs its playbook''s pinned workflow, and #482 runs under Flaky test hunt''s v14 pin');
 
+-- A playbook is learned from a **finished** run's pin (#422): exactly one terminal run carries
+-- one — `#471`, merged, under the same v14 its playbook pins — so *+ New playbook from a past
+-- run…* has a run it can capture, and every other finished run still says it has none.
+select pg_temp.must_hold(
+  (select count(*) = 1
+          and bool_and(run.issue_number = 471)
+          and bool_and(run.status = 'merged')
+          and bool_and(run.workflow_tag = 'standard-fix')
+          and bool_and(run.workflow_version_pin = playbook.workflow_version)
+          and bool_and(playbook.name = 'Flaky test hunt')
+     from ouroboros.runs run
+     join ouroboros.organization org on org."id" = run.organization_id
+     left join ouroboros.playbooks playbook on playbook.id = run.playbook_id
+    where org."slug" = 'acme-robotics'
+      and run.finished_at is not null
+      and run.workflow_version_pin is not null),
+  'one finished run carries a workflow pin — #471, on Flaky test hunt''s standard-fix v14');
+
 -- The five older CVE-bump launches sit outside every window another page counts over.
 select pg_temp.must_hold(
   (select count(*) = 5

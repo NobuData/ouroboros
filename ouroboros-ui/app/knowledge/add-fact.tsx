@@ -78,6 +78,13 @@ export interface AddFactProps {
   readonly mayDecide: boolean;
   /** Called with the new proposal and the toast to leave. */
   readonly onProposed: (fact: Fact, toast: KnowledgeToast) => void;
+  /**
+   * Whether the action stands on its own — in the empty card's state (#422), where it is the
+   * one thing the state offers and so is drawn as a control in its own right — rather than as
+   * the ghost beside a card head's count. Never the accent fill: the page has one primary
+   * action, and it is the head's.
+   */
+  readonly standalone?: boolean;
 }
 
 /**
@@ -86,7 +93,7 @@ export interface AddFactProps {
  * @param props See {@link AddFactProps}.
  * @returns The button, with the dialog beside it while it is open.
  */
-export function AddFact({ repos, mayDecide, onProposed }: AddFactProps) {
+export function AddFact({ repos, mayDecide, onProposed, standalone = false }: AddFactProps) {
   const fields = useId();
   const choices = repos.ok ? repos.value : [];
 
@@ -142,7 +149,7 @@ export function AddFact({ repos, mayDecide, onProposed }: AddFactProps) {
 
   return (
     <>
-      <Button onClick={openDialog} reason={mayDecide ? undefined : VIEWER_REASON} size="sm" tone="ghost">
+      <Button onClick={openDialog} reason={mayDecide ? undefined : VIEWER_REASON} size="sm" tone={standalone ? "default" : "ghost"}>
         {ADD_FACT_LABEL}
       </Button>
 

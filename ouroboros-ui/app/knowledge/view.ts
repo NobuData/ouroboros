@@ -27,6 +27,7 @@ import type { EnvRecipe } from "@/app/api/env-recipes";
 import type { Role } from "@/app/api/membership";
 import type { PlaybookList } from "@/app/api/playbooks";
 import type { Reading } from "@/app/api/reading";
+import type { RepoMapStatusList } from "@/app/api/repo-map";
 import type { FactList } from "@/app/api/facts";
 import type { SkillList, SkillStats } from "@/app/api/skills";
 
@@ -180,6 +181,11 @@ export interface KnowledgeReadings {
   readonly playbooks: Reading<PlaybookList>;
   /** What the repo-profile card composes, for the one repository it draws (BG.4, #420). */
   readonly profile: ProfileReadings;
+  /**
+   * Where each enabled repository's `repo-map` stands — generated, pending its first generation,
+   * or failed at it (BG.6, #422). The skills card draws the last two, which have no row.
+   */
+  readonly maps: Reading<RepoMapStatusList>;
   /**
    * The instant the page was read, ISO 8601 — what every relative age in the table is measured
    * from. Passed down rather than each row reading a clock, so a server render and its

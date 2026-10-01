@@ -92,6 +92,29 @@ class World {
           (slug) => this.taken.has(slug) || this.skills.some((skill) => skill.input.slug === slug),
         ),
       ),
+    mapSkills: () =>
+      Promise.resolve(
+        this.skills
+          .filter((skill) => skill.input.origin === "generated")
+          .map((skill) => ({
+            repo: skill.input.repoRef ?? "",
+            slug: skill.input.slug,
+            currentVersion: skill.currentVersion,
+          })),
+      ),
+    // The newest record of each repository — the audit trail's `distinct on`, in memory.
+    lastGenerations: () =>
+      Promise.resolve(
+        [...new Set(this.audit.map((record) => record.subjectId))].flatMap((repo) => {
+          const newest = this.audit
+            .filter((record) => record.subjectId === repo)
+            .sort((a, b) => b.at.getTime() - a.at.getTime())[0];
+
+          return repo === null
+            ? []
+            : [{ repo, detail: newest.detail ?? {}, occurredAt: newest.at }];
+        }),
+      ),
   } as unknown as RepoMapRepository;
 
   readonly writer: RepoMapSkillWriter = {
@@ -412,6 +435,58 @@ describe("the repo-map generator", () => {
 
     expect(second).toBe(first);
     expect(world.published()).toHaveLength(1);
+  });
+
+  describe("where a repository's map stands (#422)", () => {
+    it("is pending before any generation has run — no skill, and nothing on the record", async () => {
+      await expect(service.status(WORKSPACE)).resolves.toEqual({
+        items: [{ repo: REPO, state: "pending", skill: null, version: null, lastReport: null }],
+      });
+      // Asking is a read: the host was never called.
+      expect(world.requests).toEqual([]);
+    });
+
+    it("is failed once a first generation was refused, with the report that says why", async () => {
+      world.refuse = "upstream";
+      await service.generate(WORKSPACE, REPO, "nightly", null, NIGHT);
+
+      const { items } = await service.status(WORKSPACE);
+
+      expect(items).toHaveLength(1);
+      expect(items[0]).toMatchObject({
+        repo: REPO,
+        state: "failed",
+        skill: null,
+        version: null,
+        lastReport: {
+          outcome: "skipped",
+          reason: "host_error",
+          trigger: "nightly",
+          generatedAt: NIGHT.toISOString(),
+        },
+      });
+    });
+
+    it("is generated once one published — and stays so when a later refresh is refused", async () => {
+      await service.generate(WORKSPACE, REPO, "nightly", null, NIGHT);
+
+      expect((await service.status(WORKSPACE)).items[0]).toMatchObject({
+        state: "generated",
+        skill: "repo-map",
+        version: 1,
+        lastReport: { outcome: "published" },
+      });
+
+      world.refuse = "rate_limit";
+      await service.generate(WORKSPACE, REPO, "nightly", null, NEXT_NIGHT);
+
+      // The version in force stays in force; the newest report is what says the refresh failed.
+      expect((await service.status(WORKSPACE)).items[0]).toMatchObject({
+        state: "generated",
+        version: 1,
+        lastReport: { outcome: "skipped", reason: "rate_limit" },
+      });
+    });
   });
 
   describe("the manual regenerate", () => {

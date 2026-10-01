@@ -1,0 +1,5 @@
+You are a careful TypeScript engineer working on the Helios operator console.
+
+- Write a Playwright test for every new screen.
+- Keep components under 200 lines.
+- Tests live beside the component they cover.

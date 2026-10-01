@@ -10,6 +10,7 @@ import { KNOWLEDGE_PATH } from "@/app/paths";
 import { Button, Card, CardHead, Chip, EmptyState, SelectField, Tag, TextAreaField, cx } from "@/app/ui";
 
 import { repoRef } from "./create";
+import { KnowledgeUnread } from "./knowledge-unread";
 import {
   DETECTION_EDIT,
   DETECTION_EDIT_REASON,
@@ -34,6 +35,7 @@ import {
   PROTECTED_EDIT_REASON,
   PROTECTED_PATHS_LABEL,
   RECIPE_UNREAD_TITLE,
+  REPOS_UNREAD_TITLE,
   REPO_PARAM,
   REPO_SELECT_LABEL,
   SNAPSHOT_DETAIL,
@@ -74,6 +76,10 @@ import "./knowledge.css";
  *   The block takes the version the service answered, a live region says so, the toast is the
  *   page's, and the page re-reads behind it. A conflict re-reads too.
  * - **The snapshot row is honest**: one row, no number, until #426 measures one.
+ * - **Its states are designed** (#422): a repository with no recipe holds **Add environment
+ *   recipe** in the empty state itself; unread repositories, detection or recipe each say what
+ *   could not be read, why, and offer the re-read (`knowledge-unread.tsx`) — and unread
+ *   repositories are no longer drawn as *none enabled*.
  */
 
 /** What the card is told. */
@@ -107,6 +113,7 @@ export function ProfileCard({ profile, repos, readAt, mayAdminister, onToast }: 
     <Card aria-labelledby={`${PROFILE_REGION_ID}-title`} as="section">
       <CardHead
         beside={profile.repo !== null && <Chip dot={chip.dot} tone={chip.tone}>{chip.text}</Chip>}
+        className="knowledge-profile__head"
         title={profileTitle(profile.repo)}
         titleId={`${PROFILE_REGION_ID}-title`}
         trailing={
@@ -131,8 +138,10 @@ export function ProfileCard({ profile, repos, readAt, mayAdminister, onToast }: 
         }
       />
 
-      {profile.repo === null ? (
-        <EmptyState note={repos.ok ? NO_REPOS_NOTE : repos.reason} title={NO_REPOS_TITLE} variant="flush" />
+      {!repos.ok ? (
+        <KnowledgeUnread reason={repos.reason} title={REPOS_UNREAD_TITLE} />
+      ) : profile.repo === null ? (
+        <EmptyState note={NO_REPOS_NOTE} title={NO_REPOS_TITLE} variant="flush" />
       ) : (
         <>
           <DetectionRows detection={profile.detection} ids={ids} />
@@ -165,7 +174,7 @@ export function ProfileCard({ profile, repos, readAt, mayAdminister, onToast }: 
  * @returns The rows, or why there are none.
  */
 function DetectionRows({ detection, ids }: Readonly<{ detection: ProfileReadings["detection"]; ids: string }>) {
-  if (!detection.ok) return <EmptyState note={detection.reason} title={PROFILE_UNREAD_TITLE} variant="flush" />;
+  if (!detection.ok) return <KnowledgeUnread reason={detection.reason} title={PROFILE_UNREAD_TITLE} />;
 
   const rows = detection.value.scan === null ? null : profileRows(detection.value);
   const paths = detection.value.protectedPaths;
@@ -334,15 +343,16 @@ function Environment({
           {ENV_EYEBROW}
         </h3>
         {current !== null && <span className="knowledge-profile__env-version">{versionLine(current, now)}</span>}
-        {!editing && recipe.ok && (
+        {/* With no recipe the add is the empty state's own action (#422), below. */}
+        {!editing && recipe.ok && current !== null && (
           <Button className="knowledge-profile__env-action" onClick={edit} reason={editReason} size="sm" tone="ghost">
-            {current === null ? ENV_ADD : ENV_EDIT}
+            {ENV_EDIT}
           </Button>
         )}
       </div>
 
       {!recipe.ok ? (
-        <EmptyState note={recipe.reason} title={RECIPE_UNREAD_TITLE} variant="flush" />
+        <KnowledgeUnread reason={recipe.reason} title={RECIPE_UNREAD_TITLE} />
       ) : editing ? (
         <form className="knowledge-profile__editor" onSubmit={submit}>
           <TextAreaField
@@ -373,7 +383,13 @@ function Environment({
           </div>
         </form>
       ) : current === null ? (
-        <EmptyState note={NO_RECIPE_NOTE} title={NO_RECIPE_TITLE} variant="flush" />
+        <EmptyState note={NO_RECIPE_NOTE} title={NO_RECIPE_TITLE} variant="flush">
+          <div className="knowledge-empty__actions">
+            <Button onClick={edit} reason={editReason} size="sm">
+              {ENV_ADD}
+            </Button>
+          </div>
+        </EmptyState>
       ) : (
         <pre className="knowledge-profile__code">
           {current.commands.map((command, index) => (

@@ -380,6 +380,7 @@ export function queuedSelection(count = SELECTED_TRIO.length, estMinutes = 45 * 
       position: index + 4,
       estMinutes: 45,
       enqueuedAt: "2026-09-10T15:41:12.000Z",
+      playbookId: null,
     })),
     estMinutes,
   };

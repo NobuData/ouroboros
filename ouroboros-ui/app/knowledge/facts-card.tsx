@@ -43,6 +43,7 @@ import {
   verbsFor,
 } from "./facts";
 import { decideFact } from "./facts-actions";
+import { KnowledgeUnread } from "./knowledge-unread";
 import { type ScopeFilter, factInFilter, noFactsNote } from "./scope";
 import type { KnowledgeToast } from "./toast";
 import { FACTS_REGION_ID, FACTS_TITLE, type TicketLink } from "./view";
@@ -68,6 +69,9 @@ import "./knowledge.css";
  *   service's on the next paint.
  * - **The scope ladder narrows it.** A pressed step of the scope card (#421) hands its filter
  *   down, and the card draws only that scope's facts; the head's counts stay the workspace's.
+ * - **An empty card teaches** (#422): *the loop proposes facts as it works*, with **+ Add fact**
+ *   as the state's own action rather than a ghost in the head above it — one button, where the
+ *   reader is looking. An unread card says why and offers the re-read.
  *
  * Read-only for a viewer: the actions keep their place, inert with the reason. The gates that
  * enforce are the service's.
@@ -193,6 +197,8 @@ export function FactsCard({ facts, tickets, repos, readAt, mayDecide, onToast, f
   const counts = list === null ? null : countsOf(list, drawn);
   const awaiting = counts === null ? null : awaitingChip(counts);
   const stale = counts === null ? null : staleChip(counts);
+  // Nothing learned yet: the add is the empty state's action, so the head does not repeat it.
+  const empty = list !== null && drawn.length === 0;
 
   return (
     <Card aria-labelledby={`${FACTS_REGION_ID}-title`} as="section">
@@ -207,7 +213,7 @@ export function FactsCard({ facts, tickets, repos, readAt, mayDecide, onToast, f
         titleId={`${FACTS_REGION_ID}-title`}
         trailing={
           <span className="knowledge-facts__head-actions">
-            <AddFact mayDecide={mayDecide} onProposed={proposed} repos={repos} />
+            {!empty && <AddFact mayDecide={mayDecide} onProposed={proposed} repos={repos} />}
             <Button reason={REVIEW_ALL_REASON} size="sm" tone="ghost">
               {REVIEW_ALL}
             </Button>
@@ -216,9 +222,13 @@ export function FactsCard({ facts, tickets, repos, readAt, mayDecide, onToast, f
       />
 
       {list === null ? (
-        <EmptyState note={facts.ok ? undefined : facts.reason} title={FACTS_UNREAD_TITLE} variant="flush" />
-      ) : drawn.length === 0 ? (
-        <EmptyState note={NO_FACTS_NOTE} title={NO_FACTS_TITLE} variant="flush" />
+        <KnowledgeUnread reason={facts.ok ? undefined : facts.reason} title={FACTS_UNREAD_TITLE} />
+      ) : empty ? (
+        <EmptyState note={NO_FACTS_NOTE} title={NO_FACTS_TITLE} variant="flush">
+          <div className="knowledge-empty__actions">
+            <AddFact mayDecide={mayDecide} onProposed={proposed} repos={repos} standalone />
+          </div>
+        </EmptyState>
       ) : filter !== null && shown.length === 0 ? (
         <EmptyState title={noFactsNote(filter)} variant="flush" />
       ) : (

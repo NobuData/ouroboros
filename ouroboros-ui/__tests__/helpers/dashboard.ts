@@ -307,6 +307,8 @@ export function queueItem(over: Partial<QueueItemSummary> = {}): QueueItemSummar
     position: 1,
     estMinutes: 45,
     enqueuedAt: enqueuedHoursAgo(12),
+    // Queued from the issues page, not by a playbook (#422).
+    playbookId: null,
     ...over,
   };
 }

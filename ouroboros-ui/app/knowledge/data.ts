@@ -5,14 +5,17 @@ import "server-only";
  * (BG.1, [#417](https://github.com/NobuData/ouroboros/issues/417); the stats since BG.2,
  * [#418](https://github.com/NobuData/ouroboros/issues/418); the facts since BG.3,
  * [#419](https://github.com/NobuData/ouroboros/issues/419); the playbooks and the profile since
- * BG.4, [#420](https://github.com/NobuData/ouroboros/issues/420)).
+ * BG.4, [#420](https://github.com/NobuData/ouroboros/issues/420); the repo-map status since BG.6,
+ * [#422](https://github.com/NobuData/ouroboros/issues/422)).
  *
- * Five reads, in parallel, each kept as a `Reading` so a refusal degrades one concern and not the
+ * Six reads, in parallel, each kept as a `Reading` so a refusal degrades one concern and not the
  * page: the skills list, which is the table's rows and what **+ New skill** checks a typed slug
  * against before sending; the Used-by stats, which is the one column the list cannot supply; the
  * facts, which are the learned-facts card's rows; the playbooks, which are the playbooks card's
- * rows; and the enabled repositories, which is what **Import** offers to choose from, what a
- * repo-scoped skill or a manual fact names, and what the profile card draws one of.
+ * rows; the enabled repositories, which is what **Import** offers to choose from, what a
+ * repo-scoped skill or a manual fact names, and what the profile card draws one of; and where each
+ * repository's `repo-map` stands, which is what lets the skills card say *pending* rather than
+ * leave a map that never generated looking like one that failed.
  *
  * ### The profile card reads for one repository, chosen before the reads
  *
@@ -48,6 +51,7 @@ import type { FactList } from "@/app/api/facts";
 import { facts } from "@/app/api/facts";
 import { playbooks } from "@/app/api/playbooks";
 import { type Reading, attempt } from "@/app/api/reading";
+import { repoMap } from "@/app/api/repo-map";
 import { skills } from "@/app/api/skills";
 
 import { repoRef } from "./create";
@@ -72,12 +76,13 @@ export async function readKnowledge(
   now: Date = new Date(),
   requestedRepo?: string,
 ): Promise<KnowledgeReadings> {
-  const [list, stats, learned, recipes, repos] = await Promise.all([
+  const [list, stats, learned, recipes, repos, maps] = await Promise.all([
     attempt(() => skills.list()),
     attempt(() => skills.stats()),
     attempt(() => facts.list()),
     attempt(() => playbooks.list()),
     attempt(async () => enabledRepos(await readEnablement(access.membership.id))),
+    attempt(() => repoMap.status()),
   ]);
 
   const [tickets, profile] = await Promise.all([
@@ -85,7 +90,7 @@ export async function readKnowledge(
     readProfile(repos, requestedRepo),
   ]);
 
-  return { skills: list, stats, facts: learned, tickets, repos, playbooks: recipes, profile, readAt: now.toISOString() };
+  return { skills: list, stats, facts: learned, tickets, repos, playbooks: recipes, profile, maps, readAt: now.toISOString() };
 }
 
 /**

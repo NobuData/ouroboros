@@ -86,12 +86,11 @@ export const CAPTION_TAIL = ".";
 /** What stands in the card when the list could not be read. */
 export const SKILLS_UNREAD_TITLE = "The skills could not be read.";
 
-/** What stands in the card when the workspace has no skills at all. */
+/**
+ * What stands in the card when the workspace has no skills at all. The note under it — what a
+ * skill is, and the two ways one arrives — is `states.ts`'s `noSkillsNote` (#422).
+ */
 export const NO_SKILLS_TITLE = "No skills yet.";
-
-/** Under {@link NO_SKILLS_TITLE}: the two ways one arrives. */
-export const NO_SKILLS_NOTE =
-  "Write one with + New skill, or import a CLAUDE.md / .cursorrules — either lands here as a draft.";
 
 /* ------------------------------------------------------------------ scope */
 

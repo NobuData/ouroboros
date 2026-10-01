@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.38"
+  version: "0.37.39"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -1633,6 +1633,7 @@ paths:
                     position: 1
                     estMinutes: 45
                     enqueuedAt: "2026-08-13T01:37:41.000Z"
+                    playbookId: null
                   - id: 5eed000a-0000-4000-8000-000000000496
                     issueNumber: 496
                     issueTitle: "Telemetry: split ingest into a worker pool"
@@ -1643,6 +1644,7 @@ paths:
                     position: 12
                     estMinutes: null
                     enqueuedAt: "2026-08-13T13:37:41.000Z"
+                    playbookId: null
                 activity:
                   inFlight: 3
                   queued: 12
@@ -2667,6 +2669,7 @@ paths:
                     position: 1
                     estMinutes: 45
                     enqueuedAt: "2026-08-13T01:37:41.000Z"
+                    playbookId: null
                   - id: 5eed000a-0000-4000-8000-000000000486
                     issueNumber: 486
                     issueTitle: Expose battery health over BLE GATT
@@ -2677,6 +2680,7 @@ paths:
                     position: 2
                     estMinutes: 90
                     enqueuedAt: "2026-08-13T02:37:41.000Z"
+                    playbookId: null
                 total: 12
                 totalEstMinutes: 580
                 limit: 25
@@ -3223,6 +3227,7 @@ paths:
                     position: 4
                     estMinutes: 45
                     enqueuedAt: "2026-09-10T15:41:12.000Z"
+                    playbookId: null
                   - id: 7a1c0b90-0000-4000-8000-000000000002
                     issueNumber: 484
                     issueTitle: Motor PID integral windup on wheel stall
@@ -3233,6 +3238,7 @@ paths:
                     position: 5
                     estMinutes: 50
                     enqueuedAt: "2026-09-10T15:41:12.000Z"
+                    playbookId: null
                   - id: 7a1c0b90-0000-4000-8000-000000000003
                     issueNumber: 491
                     issueTitle: Add CRC32 to config persistence layer
@@ -3243,6 +3249,7 @@ paths:
                     position: 6
                     estMinutes: 30
                     enqueuedAt: "2026-09-10T15:41:12.000Z"
+                    playbookId: null
                 estMinutes: 125
         "400":
           description: |-
@@ -18954,6 +18961,100 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/knowledge/repo-map:
+    get:
+      tags: [knowledge]
+      summary: Where each repository's repo-map stands
+      description: |-
+        BG.6 ([#422](https://github.com/NobuData/ouroboros/issues/422)) — one status per enabled
+        repository, by name, so the skills card can tell a map that is **pending its first
+        generation** from one whose generation **failed**. Both look the same in the skills
+        registry — no `repo-map` row — so the difference is read from where it is written, the
+        `knowledge.repo_map_generated` audit rows every generation records, the skipped ones
+        included:
+
+        - `generated` — a map skill has a version in force. `lastReport` is the newest generation,
+          and `skipped` there means the last refresh did not happen and the version shown is older.
+        - `pending` — no map, and no generation on the record. The nightly job
+          (`OURO_REPO_MAP_HOUR_UTC`) has not come round to it yet.
+        - `failed` — no map, and the newest generation was `skipped`. `lastReport.reason` says why.
+
+        Reads only: no host request is made, so asking never spends a repository's rate limit.
+
+        **Open to every member.**
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and membership is checked before this
+        operation runs.
+      operationId: listRepoMapStatus
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The statuses, one per enabled repository.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RepoMapStatusList"
+              example:
+                items:
+                  - repo: acme-robotics/helios-console
+                    state: failed
+                    skill: null
+                    version: null
+                    lastReport:
+                      repo: acme-robotics/helios-console
+                      outcome: skipped
+                      skill: null
+                      version: null
+                      generatedAt: "2026-09-30T05:12:00.000Z"
+                      trigger: nightly
+                      reason: host_error
+                      modules: 0
+                      truncated: false
+                  - repo: acme-robotics/helios-firmware
+                    state: generated
+                    skill: repo-map
+                    version: 60
+                    lastReport: null
+                  - repo: acme-robotics/helios-telemetry
+                    state: pending
+                    skill: null
+                    version: null
+                    lastReport: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are
+            a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/v1/knowledge/repo-map/regenerate:
     post:
       tags: [knowledge]
@@ -30876,6 +30977,7 @@ components:
           position,
           estMinutes,
           enqueuedAt,
+          playbookId,
         ]
       properties:
         id:
@@ -30926,6 +31028,14 @@ components:
           type: string
           format: date-time
           description: When the issue joined the queue. Not when the row appeared.
+        playbookId:
+          type: [string, "null"]
+          format: uuid
+          description: |-
+            The playbook the issue was queued under — *Run on issue…* on a recipe — or `null` for
+            an issue queued any other way. The run that opens under the same pin inherits it;
+            `GET /api/v1/knowledge/playbooks/{playbookId}/context` is the context that run will
+            be given.
 
     LoopsLive:
       type: object
@@ -41457,6 +41567,55 @@ components:
         truncated:
           type: boolean
           description: Whether a bound cut the tree listing.
+
+    RepoMapStatus:
+      type: object
+      title: RepoMapStatus
+      description: |-
+        Where one enabled repository's repo-map stands (BG.6,
+        [#422](https://github.com/NobuData/ouroboros/issues/422)).
+      additionalProperties: false
+      required: [repo, state, skill, version, lastReport]
+      properties:
+        repo:
+          type: string
+          description: The repository, lower-case.
+          examples: [acme-robotics/helios-firmware]
+        state:
+          type: string
+          enum: [generated, pending, failed]
+          description: |-
+            `generated` — a map skill has a version in force; `pending` — none has, and no
+            generation is on the record, so the first one has not run; `failed` — none has, and
+            the newest recorded generation was `skipped`.
+        skill:
+          type: [string, "null"]
+          description: The map skill's slug; null until a generation publishes one.
+          examples: [repo-map]
+        version:
+          type: [integer, "null"]
+          minimum: 1
+          description: The version in force; null until a generation publishes one.
+          examples: [60]
+        lastReport:
+          description: |-
+            The newest recorded generation, whatever its outcome; null when none was recorded.
+          oneOf:
+            - $ref: "#/components/schemas/RepoMapReport"
+            - type: "null"
+
+    RepoMapStatusList:
+      type: object
+      title: RepoMapStatusList
+      description: The repo-map status of every enabled repository of the workspace.
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          description: One per enabled repository, by name.
+          items:
+            $ref: "#/components/schemas/RepoMapStatus"
 
     EnvRecipeCommand:
       type: object

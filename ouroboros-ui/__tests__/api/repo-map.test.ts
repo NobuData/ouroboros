@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 
 import { STUB_BASE_URL, clientAnswering } from "../helpers/api";
-import { SEEDED_REPO, repoMapReport } from "../helpers/knowledge";
+import { SEEDED_REPO, repoMapReport, repoMapStatuses } from "../helpers/knowledge";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these
 // three answers.
@@ -17,8 +17,27 @@ const { repoMap } = await import("@/app/api/repo-map");
 
 /**
  * The repo-map generator's facade (#418): one POST naming the repository, answered with the
- * report — or with the rate limit as the `ApiError` the table turns into a wait.
+ * report — or with the rate limit as the `ApiError` the table turns into a wait; and the status
+ * read (#422), which is what tells a map pending its first generation from one that failed at it.
  */
+
+describe("repoMap.status", () => {
+  it("reads every enabled repository's status in one request, naming no workspace", async () => {
+    const { client, requests } = clientAnswering(repoMapStatuses());
+
+    expect(await repoMap.status(client)).toEqual(repoMapStatuses());
+    expect(requests).toHaveLength(1);
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/knowledge/repo-map`);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.headers.get("x-ouro-tenant")).toBeNull();
+  });
+
+  it("answers a refusal as the service's error", async () => {
+    const { client } = clientAnswering({ code: "internal_error", message: "Something failed.", details: {} }, 500);
+
+    await expect(repoMap.status(client)).rejects.toBeInstanceOf(ApiError);
+  });
+});
 
 describe("repoMap.regenerate", () => {
   it("posts the repository and answers with the report, naming no workspace", async () => {

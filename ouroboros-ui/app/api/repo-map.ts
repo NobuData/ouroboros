@@ -8,6 +8,15 @@
  * action runs that job now, for one repository, and gets the same report the audit records —
  * `published` with the new version, `unchanged` with nothing written, or `skipped` with why.
  *
+ * ### Pending is not failed
+ *
+ * A repository whose map has never generated and one whose generation is refused every night look
+ * the same in the skills list — no `repo-map` row. {@link repoMap.status} is the read that tells
+ * them apart (BG.6, [#422](https://github.com/NobuData/ouroboros/issues/422)): one status per
+ * enabled repository — `generated`, `pending` its first generation, or `failed` at it — with the
+ * newest generation's report. Every member's; it reads the service's own record and asks the
+ * repository's host nothing.
+ *
  * ### The workspace is the session's
  *
  * No workspace in the path and no `X-Ouro-Tenant` sent (`app/api/server.ts` says why). Running
@@ -28,8 +37,26 @@ export type RepoMapReport = components["schemas"]["RepoMapReport"];
 /** What a regenerate names: the repository, as `owner/name`. */
 export type RegenerateRepoMapBody = components["schemas"]["RegenerateRepoMapBody"];
 
+/** Where one enabled repository's map stands — generated, pending its first generation, or failed at it. */
+export type RepoMapStatus = components["schemas"]["RepoMapStatus"];
+
+/** Every enabled repository's status, by name. */
+export type RepoMapStatusList = components["schemas"]["RepoMapStatusList"];
+
 /** The repo-map generator, as `ouroboros-rest` serves it. */
 export const repoMap = {
+  /**
+   * Where each enabled repository's map stands.
+   *
+   * @param client The client to call through. Defaults to the server-side one; tests pass one
+   *   over a stub `fetch`.
+   * @returns One status per enabled repository of the session's workspace, by name.
+   * @throws {ApiError} When the service refuses.
+   */
+  async status(client: ApiClient = api()): Promise<RepoMapStatusList> {
+    return unwrap(await client.GET("/api/v1/knowledge/repo-map"));
+  },
+
   /**
    * Regenerate one repository's `repo-map` now.
    *

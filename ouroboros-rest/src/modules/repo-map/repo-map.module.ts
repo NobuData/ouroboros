@@ -5,10 +5,12 @@
  *
  * ```
  * repo-map.render      tree + CODEOWNERS + detections ─▶ deterministic markdown (pure)
- * repo-map.repository  the repositories to map, each one's generated skill
- * repo-map.service     generate (diff-aware), generateAll (nightly), regenerate (debounced)
+ * repo-map.repository  the repositories to map, each one's generated skill, the newest recorded
+ *                      generation of each
+ * repo-map.status      generated / pending / failed, from the skill and that record (pure, #422)
+ * repo-map.service     generate (diff-aware), generateAll (nightly), regenerate (debounced), status
  * repo-map.scheduler   the nightly slot — OURO_REPO_MAP_HOUR_UTC
- * repo-map.controller  POST regenerate
+ * repo-map.controller  GET status · POST regenerate
  * ```
  *
  * It reads the repository through `DetectionModule`'s probe machinery (#384, over the provider SPI

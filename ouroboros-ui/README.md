@@ -3526,7 +3526,7 @@ them.
 
 **Loading** is [`knowledge-skeleton.tsx`](app/knowledge/knowledge-skeleton.tsx): the head drawn for
 real, since none of it is read, over the five seats — two in the left column, three in the right —
-at the grid's geometry.
+each at its own card's geometry since #422 (see [Knowledge states](#knowledge-states)).
 
 ### The skills table
 
@@ -3852,6 +3852,66 @@ fixture builders, given this module's seeded skills and facts by id — the seed
 required `hil-safety`, a switched-off one taking its name out), a **trim** case, the estimator's,
 a workspace-wide one and an empty one — so a preview test compares the dialog with what the
 service answers rather than with this module's idea of it.
+
+### Knowledge states
+
+Mockup 14 draws a mature org: six skills, five facts, three playbooks. Every real org starts with
+none of that, and BG.6 ([#422](https://github.com/NobuData/ouroboros/issues/422)) draws what it
+sees ([`states.ts`](app/knowledge/states.ts)), all in both palettes. **An empty state teaches
+rather than apologises**: it says what the thing is, how it arrives, and holds its own action
+rather than pointing at one elsewhere on the page.
+
+| State | What the card does |
+|---|---|
+| **No skills** | Says what a skill is — *a page of instructions in markdown … that the loop is handed at the start of every run in its scope* — and that either way in lands as a draft, then draws the head's two actions again, in the state: **+ New skill** and **Import CLAUDE.md / .cursorrules** (the screen hands a second pair down). A member gets the same explanation and who brings one, with no actions — in the head or in the state. |
+| **No facts** | *The loop proposes facts as it works*, with **+ Add fact** as the state's own action — once: the head does not repeat it while the card is empty. |
+| **No playbooks** | What a playbook keeps, with the create-from-a-past-run tile as the card's primary action (#420). |
+| **No environment recipe** | What runs before the first stage, with **Add environment recipe** in the state rather than in the block's head. |
+| **No repository** | *No repository is enabled*, pointing at Settings → Sources. Unread repositories are no longer drawn as this — they are a failed read, below. |
+| **`repo-map` pending / failed** | See below. |
+| **A failed read** | [`knowledge-unread.tsx`](app/knowledge/knowledge-unread.tsx): what could not be read, the service's own reason, and **Try again**, which re-reads the page and leaves the cards that could be read as they are. Each card's read is its own `Reading`, so one failing service degrades one card — five failed reads are five designed errors and still five cards. |
+| **Loading** | Each seat at its card's geometry: the table's six rows with a switch at the end of each, the facts' five two-line rows, the playbooks' three over the tile, the profile's five keyed rows over the environment block, the ladder's three steps. No bar pulses. |
+
+**The page keeps one accent-filled action.** The head's **+ New skill** is the page's primary; the
+empty table repeats it and the playbooks tile is #420's. A state's own add — a fact, a recipe — is
+a raised control, so a cold page does not open on five competing calls to action.
+
+**Pending is not failed.** `repo-map` is a skill a job owns, and a repository gets its row in the
+table on the first generation that publishes. Until then there is no row — and *no row* is what a
+map nobody has attempted and a map that is refused every night have in common. The service says
+which (`GET /api/v1/knowledge/repo-map`, REST 0.37.39: `generated`, `pending` or `failed` per
+enabled repository, from the generations it records), and
+[`repo-maps.tsx`](app/knowledge/repo-maps.tsx) draws the two that have no row, under the table:
+
+```
+repo-map  acme-robotics/helios-console                    (○ pending first generation)  [↻]
+┌ repo-map  acme-robotics/helios-firmware                   (● generation failed)         [↻] ┐
+│ The host refused the read on the nightly run, 5h ago. The nightly job retries; check the    │
+│ source's credential under Settings → Sources if it keeps failing.                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+Pending is not broken: the nightly job has not come round to that repository yet. It writes the
+first version, or generate it now with ↻.
+```
+
+A pending row is a dashed well in the neutral ink with a ring — nothing was reported, and nothing
+is wrong; a failed one is a solid outline in the error triple, with why, on whose request, when,
+and what happens next, per reason. The two differ in line, ground and hue, so the difference
+survives a palette that mutes one of them. A row is one line and what *pending* means is said
+once under the list, so a workspace with a dozen repositories reads a list rather than a wall;
+each row's **↻** runs the generator the table's own regenerate runs. Nothing is drawn when every
+map is generated, and one sentence — claiming neither state — when the status could not be read.
+
+**Members read; the service refuses.** #418–#420 drew a member's writes inert with their reason
+rather than hiding them — a switch that vanished would take the skill's state with it — and #422
+keeps that, decided on the issue: the two head actions are not drawn, the empty table offers
+none, and every other write an administrator alone may make (a switch, a regenerate or a
+generate, **+ New playbook**, the recipe's add and edit) keeps its place, inert, saying who can.
+Deciding a fact and running a playbook are a member's by the service's own rule; a viewer's are
+inert likewise. The gates are the service's, and e2e leg 21 makes each refused call by hand.
+
+**At the 125 % font scale** the repo profile's head wraps and its repository select shrinks: a
+head that could not wrap pushed the whole content pane sideways by the select's own width, which
+leg 21's shell assertion found.
 
 ## Run console
 
