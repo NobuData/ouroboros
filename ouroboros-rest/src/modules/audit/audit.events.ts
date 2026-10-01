@@ -354,6 +354,17 @@ export const KNOWLEDGE_IMPORTED_EVENT = "knowledge.imported";
 export const KNOWLEDGE_REPO_MAP_GENERATED_EVENT = "knowledge.repo_map_generated";
 
 /**
+ * A person saved a repository's environment recipe as its next version (BE.4's table, served for
+ * BG.4, [#420](https://github.com/NobuData/ouroboros/issues/420)) — mockup 14's Environment block,
+ * the ordered setup commands the farm's container pools, the prebuild tier and execution workspace
+ * prep run. Subject `repository` (`owner/name`); the detail carries the version written, the
+ * version it follows (`0` for a repository that had none) and the command count. A version is
+ * immutable once written (V073), so *what did the environment look like when the build broke* is
+ * the row, and *who moved the SDK* is this.
+ */
+export const KNOWLEDGE_ENV_RECIPE_SAVED_EVENT = "knowledge.env_recipe_saved";
+
+/**
  * A person flipped the workspace's dry-run policy (BA.3,
  * [#382](https://github.com/NobuData/ouroboros/issues/382)) — the switch between *"draft PRs,
  * never merges"* and letting the loop merge without a person. Subject `org_policy`, whose id is
@@ -412,6 +423,7 @@ export const AUDIT_ACTIONS = [
   PR_THREAD_RESOLVED_EVENT,
   KNOWLEDGE_IMPORTED_EVENT,
   KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
+  KNOWLEDGE_ENV_RECIPE_SAVED_EVENT,
   POLICY_DRY_RUN_CHANGED_EVENT,
 ] as const;
 

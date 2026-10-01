@@ -431,7 +431,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundred-and-second and third are V075's `org_policies` and the `org_policies_effective`
     // view, mirrored by BA.3 (#382) — the dry-run policy the PR plane enforces.
-    expect(TABLE_NAMES).toHaveLength(103);
+    //
+    // The hundred-and-fourth and fifth are V073's `env_recipes` and the `env_recipes_current`
+    // view, mirrored by BG.4 (#420) — the Repo Profile card's Environment block, read from the
+    // view and saved as the next version of the table.
+    expect(TABLE_NAMES).toHaveLength(105);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

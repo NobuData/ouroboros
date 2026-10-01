@@ -41,6 +41,7 @@ import {
   PR_APPROVAL_REQUESTED_EVENT,
   KNOWLEDGE_IMPORTED_EVENT,
   KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
+  KNOWLEDGE_ENV_RECIPE_SAVED_EVENT,
   POLICY_DRY_RUN_CHANGED_EVENT,
 } from "./audit.events";
 
@@ -128,6 +129,7 @@ describe("the vocabulary", () => {
       "pr_thread.resolved",
       "knowledge.imported",
       "knowledge.repo_map_generated",
+      "knowledge.env_recipe_saved",
       "policy.dry_run_changed",
     ]);
   });
@@ -216,6 +218,7 @@ describe("the vocabulary", () => {
       PR_THREAD_RESOLVED_EVENT,
       KNOWLEDGE_IMPORTED_EVENT,
       KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
+      KNOWLEDGE_ENV_RECIPE_SAVED_EVENT,
       POLICY_DRY_RUN_CHANGED_EVENT,
     ];
 

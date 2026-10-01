@@ -3438,11 +3438,13 @@ disabled would reasonably expect to draft and be refused on the first click.
 
 `/knowledge` ([#417](https://github.com/NobuData/ouroboros/issues/417)) is
 [`docs/mockups/14-knowledge.html`](../docs/mockups/14-knowledge.html)'s **frame**: the page head,
-its two actions, and the two cards the rest of the page grows around — the [skills table](#the-skills-table)
+its two actions, and the cards the rest of the page grows around — the [skills table](#the-skills-table)
 ([#418](https://github.com/NobuData/ouroboros/issues/418)) and the [learned-facts card](#the-learned-facts-card)
-([#419](https://github.com/NobuData/ouroboros/issues/419)). The sidebar's **Knowledge** entry is live
-and leads here, which retires the `/knowledge` placeholder #49 held; the mockup's topbar is
-superseded by the shell.
+([#419](https://github.com/NobuData/ouroboros/issues/419)) in the left column, the
+[playbooks card](#the-playbooks-card) and the [repo profile](#the-repo-profile-card)
+([#420](https://github.com/NobuData/ouroboros/issues/420)) in the right. The sidebar's **Knowledge**
+entry is live and leads here, which retires the `/knowledge` placeholder #49 held; the mockup's
+topbar is superseded by the shell.
 
 ```
 KNOWLEDGE
@@ -3625,6 +3627,134 @@ lands under the anchor it named.
 action in its place, inert with the reason, and a direct call gets the `403` back as a value.
 **Review all →** is inert with the reason that the needs-you inbox is mockup 16, not a dead end.
 Empty (*Nothing learned yet*, with how facts arrive), unread and *all reviewed* states are drawn.
+
+### The playbooks card
+
+The card ([#420](https://github.com/NobuData/ouroboros/issues/420);
+[`playbooks-card.tsx`](app/knowledge/playbooks-card.tsx), the picker in
+[`run-on-issue.tsx`](app/knowledge/run-on-issue.tsx), the create dialog in
+[`new-playbook.tsx`](app/knowledge/new-playbook.tsx), every sentence and decision in
+[`playbooks.ts`](app/knowledge/playbooks.ts), the server hops in
+[`playbooks-actions.ts`](app/knowledge/playbooks-actions.ts)) is mockup 14's `3 recipes`, and its
+one number is the whole argument:
+
+```
+┌ PLAYBOOKS  (3 recipes)                                           ┐   ← #playbooks
+│ CVE bump  run 14×                              [Run on issue… ▾] │
+│ Patch a vulnerable dep + prove no API break                      │
+│ deps-refresh v3 · Offers open issues labelled security or …      │
+│ Flaky test hunt  run 9× · #485 queued          [Run on issue… ▾] │
+│ ┌ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ┐  │
+│ │ + New playbook from a past run…                              │  │
+│ └ - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - ┘  │
+└──────────────────────────────────────────────────────────────────┘
+```
+
+**`run 9×` is counted, never incremented.** It is `GET /api/v1/knowledge/playbooks`'s `runCount` —
+the runs carrying the playbook's id (BF.6, #415, decision K6) — and a launch from this card is a
+**queue write**, which becomes a run when ingest opens one. So a launch never bumps the figure by
+hand: the row writes *#485 queued* beside it, with *counts once its run opens* in the tooltip and
+the accessibility tree, and the page re-reads behind the write so the count is the service's on the
+next paint.
+
+**Run on issue… ▾ is not a blind list.** The read starts in the press that opens the picker (the
+audit trail's rule): the service narrows the workspace's open issues to what the playbook's filter
+admits (`GET …/{id}/issues`), and `rankCandidates` orders them **safest first** — a sized issue the
+queue does not hold yet, then one being sized, one nobody has sized, one whose sizing needs a
+person, and last one already queued — each unlaunchable row carrying its reason in place of its
+button. The filter line under the title says what the playbook admits; the search box asks the
+service again. **Queue** is `POST …/{id}/launch`, and its answer is a **receipt** written out in
+the dialog — *Queued #485 — … — under Flaky test hunt (standard-fix v14), position 3 in the queue* —
+with links to the dashboard's queue card and the issues page, handed up as the page's toast. A
+refusal (`queue_issues_conflict`, `queue_issues_not_queueable`, `playbook_issue_filtered`,
+`queue_workflow_unknown`, `forbidden`) lands in the row as an alert the button is described by.
+
+**+ New playbook from a past run…** is two steps and shows its work before it writes: the terminal
+runs newest first (`GET /api/v1/runs?status=terminal`, each linking to its console with
+`?from=knowledge`), then what the chosen run **captured** (`GET …/from-run/{runId}`, writes
+nothing) — the workflow pin, the skill overrides named by the slugs the page read, the steer notes
+verbatim, and *derived against acme-robotics/helios-firmware from 3 injection records and 2 steers*
+— over the name, the description (the run's own suggested) and an optional label filter. A name
+already on the card is refused under the box before a round trip; the service's
+`409 playbook_name_taken` lands on the same box. The new row joins the card at once.
+
+**Who may act is the service's rule**: a launch is the queue write's gate — owner, admin **and
+member** — and creating a recipe is an administrator's, so a viewer's **Run on issue… ▾** and a
+member's tile are inert with the reason; a hand-made call to either Server Action gets the `403`
+back as a value. Empty (*No playbooks yet*, with the create tile as the primary action) and unread
+states are drawn.
+
+### The repo profile card
+
+The card ([#420](https://github.com/NobuData/ouroboros/issues/420);
+[`profile-card.tsx`](app/knowledge/profile-card.tsx), every sentence and decision in
+[`profile.ts`](app/knowledge/profile.ts), the one server hop in
+[`profile-actions.ts`](app/knowledge/profile-actions.ts)) **composes** rather than scans —
+decision K7, one detection truth rendered in two places — and holds the roadmap's sharpest
+honesty decision:
+
+```
+┌ REPO PROFILE — HELIOS-FIRMWARE            ● detected   [Repository ▾] ┐   ← #repo-profile
+│ LANGUAGE        C 92% · CMake  detected  edit                         │
+│ PLATFORM        not detected — no rule pack reports a platform yet    │
+│ BUILD           west + twister (found west.yml)  detected  edit       │
+│ DEVCONTAINER    ✓ .devcontainer.json  detected  edit                  │
+│ PROTECTED PATHS [boot/**] [keys/**]  edit                             │
+│ ENVIRONMENT     v3 · edited by Ken, 1w ago                    [Edit]  │
+│ ┌────────────────────────────────────────────────────────────────┐    │
+│ │ west init -m git@github.com:acme-robotics/helios-firmware # …  │    │
+│ │ west update --narrow -o=--depth=1 # shallow module fetch       │    │
+│ │ zephyr-sdk-install 0.17.2 --toolchains arm-zephyr-eabi # SDK … │    │
+│ │ ccache --set-config=max_size=8G # shared build cache           │    │
+│ └────────────────────────────────────────────────────────────────┘    │
+│ Run in this order by the build farm's container-pool setup, …         │
+│ ○ Warm snapshot — Prebuilds arrive with the build-farm tier (#399).   │
+│   No boot time has been measured for this install, so none is shown.  │
+└───────────────────────────────────────────────────────────────────────┘
+```
+
+**The rows are detection's, and the card edits none of them.** Language, Build and Devcontainer
+are BB.1's rows (`GET /api/v1/onboarding/detection?repo=`, #384) as the wizard's card prints them,
+each carrying its `detected` / `measured` label and its verdict in its ink; the protected paths are
+BA.1's policies (#380), drawn as tags whose tooltip says whether a scan suggested or a person
+edited each. The mockup's **Platform** row has no detection row behind it today — no rule pack
+reports one — and the row says exactly that rather than inventing `Zephyr RTOS 4.1`. Each **edit**
+affordance points at the surface that **owns** the data: the wizard's detection card (BC.2, #391)
+and the policies card's glob editor (BS.4, #494). Neither is built, so each is drawn inert with
+that reason — a labelled control, never a local editor that would be a second copy of the truth
+and never a door to nowhere (design system § 3.5). The pill is `detected` with a scan, `not
+scanned` without one, `not read` when the read failed, and the head's select moves the address
+to `?repo=owner/name` when more than one repository is enabled, so the reader in
+[`data.ts`](app/knowledge/data.ts) reads detection and the recipe for the one repository the card
+draws.
+
+**The Environment block is the card's new content, and it needed a service.** BE.4 (#408) shipped
+the `env_recipes` table and no API, so this ticket added a minimal one to `ouroboros-rest`
+(`EnvRecipesModule`: `GET /api/v1/knowledge/env-recipe?repo=` and `PUT …`, REST 0.37.37) — the
+precedent being AU.6's triage intents, a UI ticket that added the endpoint it needed. The block
+prints the version in force in run order, each comment in the faint ink after ` # `, with
+*v3 · edited by Ken, 1w ago* and the note naming its consumers — farm container-pool setup, the
+prebuild tier, execution workspace prep — which is what makes editing consequential. An
+administrator's **Edit** opens the block **as text** (one command per line, ` # ` before a comment;
+`parseRecipeText` refuses an empty block, a comment with no command, more than 64 lines or an
+overlong one before a round trip) and **Save as v4** makes one `PUT`, which the service stores as
+the repository's **next** version in the session's person's name; the block takes what it answered,
+a polite live region says *Saved as v4*, and the toast is the page's. `409 env_recipe_version_conflict`
+— another editor saved first — lands under the editor and the page re-reads. A repository with no
+recipe (`404 env_recipe_not_found`) is a **state** the reader keeps as `null`: the block draws *No
+environment recipe yet* with **Add environment recipe**, which saves `v1`.
+
+**No boot time is displayed before one is measured.** `boots in 38s (vs 6m cold)` is a measurement
+the prebuild tier (BD.4, #399) takes, and this install has not taken it; the roadmap's decision K7
+refuses to invent one, as the onboarding roadmap refused the identical claim. So the mockup's three
+snapshot rows are **one honest row** — a ringed dot rather than the filled ok one, and *prebuilds
+arrive with the build-farm tier (#399); no boot time has been measured for this install, so none is
+shown* — with no switch and no rebuild button; the suite asserts no `38s`, `vs 6m cold` or `boots
+in` renders. #426 replaces the row with the measured figure and the working controls.
+
+**A member** sees the block read-only with **Edit** inert and the reason; a hand-made call to the
+Server Action gets the service's `403` back as a value. No-repository, not-scanned, unread and
+no-recipe states are drawn. Both palettes, keyboard, rem type.
 
 ## Run console
 

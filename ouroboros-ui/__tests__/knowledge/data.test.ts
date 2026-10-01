@@ -3,14 +3,29 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Workspace } from "@/app/api/access";
 import { ApiError } from "@/app/api/errors";
 
-import { CITED_TICKET_552, CITED_TICKET_560, READ_AT, seededFacts, seededRepos, seededSkills, seededStats, seededTickets } from "../helpers/knowledge";
+import {
+  CITED_TICKET_552,
+  CITED_TICKET_560,
+  READ_AT,
+  SEEDED_REPO,
+  seededDetection,
+  seededFacts,
+  seededPlaybooks,
+  seededRecipe,
+  seededRepos,
+  seededSkills,
+  seededStats,
+  seededTickets,
+} from "../helpers/knowledge";
 import { TENANT_ID, enablement, membership, org, repo, sessionUser } from "../helpers/login";
 
 /**
  * The knowledge frame's reader (#417; the stats since #418; the facts and their cited tickets since
- * #419): four reads in parallel, each kept as a value, so a refused one degrades its own concern
- * and the redirect signal still travels — the tickets the facts cite resolved to their tracker
- * pages, one read each — and the instant of the read, which every age on the page is measured from.
+ * #419; the playbooks and the profile since #420): five reads in parallel, each kept as a value, so
+ * a refused one degrades its own concern and the redirect signal still travels — the tickets the
+ * facts cite resolved to their tracker pages, one read each; the profile card's detection and
+ * recipe read for the one repository it draws — and the instant of the read, which every age on
+ * the page is measured from.
  */
 
 // The module is server-only; the marker refuses to load under jsdom, and the test is the server.
@@ -21,10 +36,19 @@ const stats = vi.fn();
 const listFacts = vi.fn();
 const detail = vi.fn();
 const readEnablement = vi.fn();
+const listPlaybooks = vi.fn();
+const readDetection = vi.fn();
+const readRecipe = vi.fn();
 
 vi.mock("@/app/api/skills", () => ({ skills: { list: () => list(), stats: () => stats() } }));
 vi.mock("@/app/api/facts", () => ({ facts: { list: () => listFacts() } }));
 vi.mock("@/app/api/backlog", () => ({ backlog: { detail: (id: string) => detail(id) } }));
+vi.mock("@/app/api/playbooks", () => ({ playbooks: { list: () => listPlaybooks() } }));
+vi.mock("@/app/api/detection", () => ({ detection: { read: (repo: string) => readDetection(repo) } }));
+vi.mock("@/app/api/env-recipes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/app/api/env-recipes")>()),
+  envRecipes: { read: (repo: string) => readRecipe(repo) },
+}));
 vi.mock("@/app/api/enablement", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/app/api/enablement")>()),
   readEnablement: (tenantId: string) => readEnablement(tenantId),
@@ -64,6 +88,9 @@ beforeEach(() => {
     }),
   );
   readEnablement.mockReset().mockResolvedValue(ENABLEMENT);
+  listPlaybooks.mockReset().mockResolvedValue(seededPlaybooks());
+  readDetection.mockReset().mockResolvedValue(seededDetection());
+  readRecipe.mockReset().mockResolvedValue(seededRecipe());
 });
 
 describe("readKnowledge", () => {
@@ -75,7 +102,67 @@ describe("readKnowledge", () => {
     expect(readings.stats).toEqual({ ok: true, value: seededStats() });
     expect(readings.facts).toEqual({ ok: true, value: seededFacts() });
     expect(readings.repos).toEqual({ ok: true, value: seededRepos() });
+    expect(readings.playbooks).toEqual({ ok: true, value: seededPlaybooks() });
     expect(readings.readAt).toBe(READ_AT);
+  });
+
+  describe("the profile card's repository", () => {
+    it("is the first enabled one when the address names none, read for detection and its recipe", async () => {
+      const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+      expect(readings.profile.repo).toEqual(seededRepos()[0]);
+      expect(readDetection).toHaveBeenCalledExactlyOnceWith(SEEDED_REPO);
+      expect(readRecipe).toHaveBeenCalledExactlyOnceWith(SEEDED_REPO);
+      expect(readings.profile.detection).toEqual({ ok: true, value: seededDetection() });
+      expect(readings.profile.recipe).toEqual({ ok: true, value: seededRecipe() });
+    });
+
+    it("is the address's when it is enabled", async () => {
+      const readings = await readKnowledge(ACCESS, new Date(READ_AT), "acme-robotics/helios-tools");
+
+      expect(readings.profile.repo).toEqual(seededRepos()[1]);
+      expect(readDetection).toHaveBeenCalledExactlyOnceWith("acme-robotics/helios-tools");
+    });
+
+    it("keeps a repository with no recipe as a state, not a failed read", async () => {
+      readRecipe.mockRejectedValue(new ApiError(404, "env_recipe_not_found", "None yet.", { repo: SEEDED_REPO }));
+
+      const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+      expect(readings.profile.recipe).toEqual({ ok: true, value: null });
+    });
+
+    it("keeps any other refusal of the recipe as that reading's reason, leaving detection whole", async () => {
+      readRecipe.mockRejectedValue(new ApiError(500, "internal_error", "The service failed.", {}));
+
+      const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+      expect(readings.profile.recipe).toEqual({ ok: false, reason: "The service failed." });
+      expect(readings.profile.detection.ok).toBe(true);
+    });
+
+    it("reads nothing and says so when no repository is enabled", async () => {
+      readEnablement.mockResolvedValue(enablement([[org({ login: "acme-robotics", enabled: true }), []]]));
+
+      const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+      expect(readings.profile.repo).toBeNull();
+      expect(readings.profile.detection).toEqual({ ok: false, reason: "No repository is enabled." });
+      expect(readDetection).not.toHaveBeenCalled();
+      expect(readRecipe).not.toHaveBeenCalled();
+    });
+
+    it("carries the enablement's refusal when the repositories could not be read", async () => {
+      readEnablement.mockRejectedValue(new ApiError(500, "internal_error", "The service failed.", {}));
+
+      const readings = await readKnowledge(ACCESS, new Date(READ_AT));
+
+      expect(readings.profile).toEqual({
+        repo: null,
+        detection: { ok: false, reason: "The service failed." },
+        recipe: { ok: false, reason: "The service failed." },
+      });
+    });
   });
 
   it("resolves each cited ticket once, to its tracker page", async () => {

@@ -39,6 +39,7 @@ import { SettingsModule } from "../settings/settings.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { SkillsModule } from "../skills/skills.module";
 import { PlaybooksModule } from "../playbooks/playbooks.module";
+import { EnvRecipesModule } from "../env-recipes/env-recipes.module";
 import { RepoMapModule } from "../repo-map/repo-map.module";
 import { FactsModule } from "../facts/facts.module";
 import { FactProposersModule } from "../fact-proposers/proposers.module";
@@ -389,6 +390,10 @@ export class AppModule {
         // generator reads through `DetectionModule` and books its own nightly slot.
         PlaybooksModule,
         RepoMapModule,
+        // BG.4 ([#420](https://github.com/NobuData/ouroboros/issues/420)) — a repository's
+        // environment recipe (V073) under `/api/v1/knowledge/env-recipe`: the Repo Profile
+        // card's Environment block, read from the current view and saved as the next version.
+        EnvRecipesModule,
         // L.3 ([#107](https://github.com/NobuData/ouroboros/issues/107)) — the pipeline that
         // sizes what the sync mirrored. **After `BacklogSyncModule`, which imports it**, so
         // this entry is a statement rather than a requirement: Nest resolves the graph either

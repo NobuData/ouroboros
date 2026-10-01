@@ -9,6 +9,8 @@ import { FactsCard } from "./facts-card";
 import { ImportSheet } from "./import-sheet";
 import { KnowledgeToastSeat } from "./knowledge-toast";
 import { NewSkill } from "./new-skill";
+import { PlaybooksCard } from "./playbooks-card";
+import { ProfileCard } from "./profile-card";
 import { SkillsTable } from "./skills-table";
 import type { KnowledgeToast } from "./toast";
 import {
@@ -17,6 +19,8 @@ import {
   KNOWLEDGE_SUBLINE,
   KNOWLEDGE_TITLE,
   type KnowledgeReadings,
+  PLAYBOOKS_REGION_ID,
+  PROFILE_REGION_ID,
   SKILLS_REGION_ID,
   readOnlyNote,
 } from "./view";
@@ -48,14 +52,16 @@ import "./knowledge.css";
  *
  * The mockup's left column is the skills table (BG.2, #418, `skills-table.tsx`) and the
  * learned-facts card (BG.3, #419, `facts-card.tsx`), each mounted under the id the toast's
- * anchor for it names; the right is playbooks, the repo profile (BG.4, #420) and the scope
- * ladder (BG.5, #421), none of which is built, so the right column is not drawn at all.
+ * anchor for it names; the right is the playbooks card and the repo profile (BG.4, #420,
+ * `playbooks-card.tsx` and `profile-card.tsx`) over the scope ladder's seat (BG.5, #421), which
+ * is not built and so is not drawn.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles the two
  *   actions are for.
  * @param props.mayDecide Whether this reader is an `owner`, an `admin` or a `member` — the roles
- *   that decide a fact (BF.2's rule; a viewer reads).
+ *   that decide a fact (BF.2's rule; a viewer reads) and that run a playbook on an issue (the
+ *   queue write's rule).
  * @param props.role The reader's strongest role, for the read-only note.
  * @param props.workspaceId The workspace's id — what the focus-repo chip's choice is keyed by.
  * @returns The screen.
@@ -115,6 +121,27 @@ export function KnowledgeScreen({
               readAt={readings.readAt}
               repos={readings.repos}
               tickets={readings.tickets}
+            />
+          </div>
+        </div>
+        <div className="knowledge__aside">
+          <div className="knowledge__seat" id={PLAYBOOKS_REGION_ID}>
+            <PlaybooksCard
+              mayAdminister={mayAdminister}
+              mayLaunch={mayDecide}
+              onToast={setToast}
+              playbooks={readings.playbooks}
+              readAt={readings.readAt}
+              skills={readings.skills}
+            />
+          </div>
+          <div className="knowledge__seat" id={PROFILE_REGION_ID}>
+            <ProfileCard
+              mayAdminister={mayAdminister}
+              onToast={setToast}
+              profile={readings.profile}
+              readAt={readings.readAt}
+              repos={readings.repos}
             />
           </div>
         </div>

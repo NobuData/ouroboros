@@ -72,10 +72,11 @@ describe("scaling and theming", () => {
 });
 
 describe("the grid", () => {
-  it("is the mockup's twelve columns with the left column at 7, full width on a narrow pane", () => {
+  it("is the mockup's twelve columns with the left column at 7 and the right at 5, full width on a narrow pane", () => {
     expect(rule("\\.knowledge__grid")).toMatch(/grid-template-columns:\s*repeat\(12,\s*1fr\)/);
     expect(rule("\\.knowledge__main")).toMatch(/grid-column:\s*span 7/);
-    expect(CODE).toMatch(/@media \(max-width: [\d.]+rem\)\s*\{\s*\.knowledge__main\s*\{\s*grid-column:\s*span 12;/);
+    expect(rule("\\.knowledge__aside")).toMatch(/grid-column:\s*span 5/);
+    expect(CODE).toMatch(/@media \(max-width: [\d.]+rem\)\s*\{\s*\.knowledge__main,\s*\.knowledge__aside\s*\{\s*grid-column:\s*span 12;/);
   });
 
   it("gives a region's seat a scroll margin, so a toast's anchor lands under the shell's chrome", () => {
@@ -144,6 +145,45 @@ describe("the learned-facts card (#419)", () => {
   });
 
   it("stacks a row on a narrow pane", () => {
-    expect(CODE).toMatch(/@media \(max-width: [\d.]+rem\)\s*\{[^@]*\.knowledge-facts__row\s*\{\s*flex-direction:\s*column;/);
+    expect(CODE).toMatch(/@media \(max-width: [\d.]+rem\)\s*\{[^@]*\.knowledge-facts__row,[^{]*\{\s*flex-direction:\s*column;/);
+  });
+});
+
+describe("the playbooks card and the repo profile (#420)", () => {
+  it("draws the new-playbook tile with the mockup's dashed hairline in the muted ink", () => {
+    expect(rule("\\.knowledge-playbooks__tile")).toMatch(/border:\s*1px dashed var\(--line-strong\)/);
+    expect(rule("\\.knowledge-playbooks__tile")).toMatch(/color:\s*var\(--ink-mut\)/);
+  });
+
+  it("writes the run count and the queued note in the mono face at the faint size", () => {
+    const runs = rule("\\.knowledge-playbooks__runs,\\s*\\.knowledge-playbooks__queued");
+
+    expect(runs).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(runs).toMatch(/font-size:\s*var\(--t-2xs\)/);
+  });
+
+  it("sets the profile key's measure in rem — the mockup's 106px, scaled with the type", () => {
+    expect(CODE).toMatch(/\.knowledge-profile__key\s*\{\s*flex:\s*none;\s*width:\s*[\d.]+rem/);
+  });
+
+  it("draws the environment block on the raised ground in the mono face, comments in the faint ink", () => {
+    expect(rule("\\.knowledge-profile__code")).toMatch(/background:\s*var\(--raised\)/);
+    expect(rule("\\.knowledge-profile__code")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.knowledge-profile__code-comment")).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+
+  it("tints the receipt with the accent triple and a candidate's caveat with the warn ink", () => {
+    expect(rule("\\.knowledge-picker__receipt")).toMatch(/border:\s*1px solid var\(--accent-line\)/);
+    expect(rule("\\.knowledge-picker__receipt")).toMatch(/background:\s*var\(--accent-tint\)/);
+    expect(rule("\\.knowledge-picker__reason")).toMatch(/color:\s*var\(--warn\)/);
+  });
+
+  it("rings the snapshot dot rather than filling it — nothing was measured", () => {
+    expect(rule("\\.knowledge-profile__snapshot-dot")).toMatch(/border:\s*1px solid var\(--ink-faint\)/);
+    expect(rule("\\.knowledge-profile__snapshot-dot")).not.toMatch(/background/);
+  });
+
+  it("stacks the right column's rows on a narrow pane", () => {
+    expect(CODE).toMatch(/@media \(max-width: [\d.]+rem\)\s*\{[^@]*\.knowledge-profile__row\s*\{\s*flex-direction:\s*column;/);
   });
 });

@@ -5602,6 +5602,49 @@ export interface PlaybooksTable {
 }
 
 /**
+ * `ouroboros.env_recipes` — a repository's environment recipe, one immutable row per version
+ * (V073, [#408](https://github.com/NobuData/ouroboros/issues/408), decision **K7**); served for
+ * mockup 14's Repo Profile card by BG.4 ([#420](https://github.com/NobuData/ouroboros/issues/420)).
+ * `version` is dense from 1 per `(organization_id, repo_ref)` (`env_recipes_next_version`), a
+ * written row never changes (`env_recipes_no_update`), and a `detected` draft cannot follow an
+ * `edited` version (`env_recipes_provenance`). Read the newest through
+ * {@link EnvRecipesCurrentView}; write the table.
+ */
+export interface EnvRecipesTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** `acme-robotics/helios-firmware` — V067's `repo_ref` domain, a label rather than a key. */
+  repo_ref: string;
+  /** The version within the repository — exactly one above the highest, or the trigger refuses. */
+  version: number;
+  /** `[{"command": "west init …", "comment"?: "manifest repo"}, …]`, 1–64 in run order. Written through `JSON.stringify`. */
+  commands: ColumnType<unknown, string, never>;
+  /** `detected` (a rule pack seeded it, no person) or `edited` (a person saved it). */
+  source: EnvRecipeSource;
+  /** Who saved this version — null for a detected draft, or once the person is removed. */
+  updated_by: string | null;
+  updated_at: Generated<Date>;
+}
+
+/** `env_recipes.source` (V073) — who wrote the version. */
+export type EnvRecipeSource = "detected" | "edited";
+
+/**
+ * `ouroboros.env_recipes_current` — each repository's newest recipe version (V073): the card's
+ * and the consumers' read path. A repository with no row has no recipe, a valid state.
+ */
+export interface EnvRecipesCurrentView {
+  id: string;
+  organization_id: string;
+  repo_ref: string;
+  version: number;
+  commands: unknown;
+  source: EnvRecipeSource;
+  updated_by: string | null;
+  updated_at: Date;
+}
+
+/**
  * `ouroboros.build_job_artifact_uploads` — the job-scoped upload's token ledger while open, and its
  * receipt once closed (V060, [#330](https://github.com/NobuData/ouroboros/issues/330)): the attempt
  * it filled, the manifest of every collected file and the job warnings. `build_jobs`' result
@@ -5735,6 +5778,7 @@ export interface Database {
   fact_transitions: FactTransitionsTable;
   fact_suppressions: FactSuppressionsTable;
   playbooks: PlaybooksTable;
+  env_recipes: EnvRecipesTable;
   org_policies: OrgPoliciesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
@@ -5748,6 +5792,7 @@ export interface Database {
   test_run_coverage: TestRunCoverageView;
   pr_gate_results_latest: PrGateResultsLatestView;
   org_policies_effective: OrgPoliciesEffectiveView;
+  env_recipes_current: EnvRecipesCurrentView;
 }
 
 /**
@@ -6838,8 +6883,28 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
   ],
+  env_recipes: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "version",
+    "commands",
+    "source",
+    "updated_by",
+    "updated_at",
+  ],
   org_policies: ["organization_id", "dry_run", "updated_by", "created_at", "updated_at"],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
+  env_recipes_current: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "version",
+    "commands",
+    "source",
+    "updated_by",
+    "updated_at",
+  ],
   planning_epic_progress: [
     "epic_id",
     "organization_id",

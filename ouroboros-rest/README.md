@@ -3389,6 +3389,28 @@ POST /api/v1/knowledge/repo-map/regenerate {repo}   (admin+, debounced 60 s per 
 | Rate limits | a refusal skips the repository (`skipped`, nothing written); the nightly pass stops asking a workspace's host after its first `rate_limit` (#101) |
 | Recorded | every run — published, unchanged or skipped — is audited as `knowledge.repo_map_generated` |
 
+## Environment recipes
+
+Mockup 14's Repo Profile card has one block that is **new truth** rather than a composition of
+detection (#384) and protected paths (#380): the **Environment** block — the ordered setup commands
+that bring the repository's environment up (BE.4's `env_recipes`, V073, decision **K7**). BG.4
+([#420](https://github.com/NobuData/ouroboros/issues/420)) gives it a read and a save
+(`src/modules/env-recipes/`):
+
+```
+GET  /api/v1/knowledge/env-recipe?repo=owner/name   the version in force (any member); 404 = none yet
+PUT  /api/v1/knowledge/env-recipe {repo, commands}   the block, saved as the NEXT version (admin+) → 201
+```
+
+| Rule | |
+| --- | --- |
+| Versions | an edit is `max(version) + 1`, source `edited`, in the signed-in person's name; V073's trigger holds the number and a written row never changes — the recipe that was in force when a build broke stays readable |
+| A race | two editors compute the same next number; the unique key lets one commit and the other gets `409 env_recipe_version_conflict` naming the version taken — re-read, edit again. Nothing here updates a row |
+| The shape | 1–64 entries of `{command, comment?}`, each a non-blank single line (2 000 / 300 characters) — refused by the DTO before the database's `env_recipe_commands_typed` sees it; the check's own refusal still answers `422 env_recipe_commands_invalid` rather than a crash |
+| Consumers | V073's contract, not this module's: farm container-pool setup, the prebuild tier (BD.4, #399) and execution workspace prep (AR.1) read `env_recipes_current` and run the commands in array order, stopping at the first non-zero exit; a `comment` is never executed |
+| Not here | snapshot state, boot times, prebuild schedules — BD.4's, so the card says *prebuilds arrive with the build-farm tier* until #426 wires a measurement, and no `38s` is invented |
+| Recorded | every save is audited as `knowledge.env_recipe_saved` (subject `repository`) with the version written and the one it followed |
+
 ## Pluggable ticket sources
 
 **Ingestion is a plug-in decision** (roadmap decision **P5**), and

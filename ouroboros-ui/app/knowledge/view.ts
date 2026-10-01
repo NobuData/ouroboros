@@ -21,8 +21,11 @@
  * service's `403` is what enforces it; the note is presentation.
  */
 
+import type { RepoDetection } from "@/app/api/detection";
 import type { EnabledRepo } from "@/app/api/enablement";
+import type { EnvRecipe } from "@/app/api/env-recipes";
 import type { Role } from "@/app/api/membership";
+import type { PlaybookList } from "@/app/api/playbooks";
 import type { Reading } from "@/app/api/reading";
 import type { FactList } from "@/app/api/facts";
 import type { SkillList, SkillStats } from "@/app/api/skills";
@@ -97,11 +100,43 @@ export const SKILLS_REGION_ID = "skills-drafts";
  */
 export const FACTS_REGION_ID = "facts-awaiting";
 
+/**
+ * The playbooks card's seat — the right column's first card, which BG.4
+ * ([#420](https://github.com/NobuData/ouroboros/issues/420)) fills.
+ */
+export const PLAYBOOKS_REGION_ID = "playbooks";
+
+/** The repo-profile card's seat — the right column's second card, BG.4's as well. */
+export const PROFILE_REGION_ID = "repo-profile";
+
 /** The skills region's title — the mockup's card head. */
 export const SKILLS_TITLE = "Skills";
 
 /** The facts region's title — the mockup's card head. */
 export const FACTS_TITLE = "Learned by the loop";
+
+/** The playbooks region's title — the mockup's card head. */
+export const PLAYBOOKS_TITLE = "Playbooks";
+
+/**
+ * What the repo-profile card reads, for the repository it draws — decision **K7**: detection's
+ * rows and protected paths (#384, #380) composed, and the environment recipe (#408).
+ */
+export interface ProfileReadings {
+  /**
+   * The repository the card draws — the one `?repo=` names when it is enabled, else the first
+   * enabled one — or `null` when none is enabled, in which case the two readings below carry that
+   * reason and the card draws its no-repository state.
+   */
+  readonly repo: EnabledRepo | null;
+  /** The newest scan, its rows and the protected paths, or why they could not be read. */
+  readonly detection: Reading<RepoDetection>;
+  /**
+   * The environment recipe in force — `null` for a repository that has none, which is a state
+   * and not a failure — or why it could not be read.
+   */
+  readonly recipe: Reading<EnvRecipe | null>;
+}
 
 /** Where a ticket a fact cites is — its key and its tracker page. */
 export interface TicketLink {
@@ -132,6 +167,10 @@ export interface KnowledgeReadings {
   readonly tickets: Readonly<Record<string, TicketLink>>;
   /** The enabled repositories — what the import sheet offers, and a repo-scoped skill's referent. */
   readonly repos: Reading<readonly EnabledRepo[]>;
+  /** Every playbook of the workspace, each with its counted run count — the playbooks card's rows (BG.4, #420). */
+  readonly playbooks: Reading<PlaybookList>;
+  /** What the repo-profile card composes, for the one repository it draws (BG.4, #420). */
+  readonly profile: ProfileReadings;
   /**
    * The instant the page was read, ISO 8601 — what every relative age in the table is measured
    * from. Passed down rather than each row reading a clock, so a server render and its
