@@ -1,6 +1,7 @@
 import { Test } from "@nestjs/testing";
 
 import { ConfigurationModule } from "../config/config.module";
+import { FlakeStateService } from "../flakes/flake-state.service";
 import { testConfiguration } from "../config/configuration.fixture";
 import { CalibrationController } from "./calibration.controller";
 import { CALIBRATION_MERGE_OBSERVER } from "./calibration.observer";
@@ -13,6 +14,9 @@ import { InterventionsService } from "./interventions.service";
 import { MetricsCache } from "./metrics/metrics.cache";
 import { MetricsRepository } from "./metrics/metrics.repository";
 import { MetricsService } from "./metrics/metrics.service";
+import { InsightsPageController } from "./page/page.controller";
+import { InsightsPageRepository } from "./page/page.repository";
+import { InsightsPageService } from "./page/page.service";
 import { ROLLUP_EXTRACTORS } from "./rollup/rollup.extractors";
 import { RollupRepository } from "./rollup/rollup.repository";
 import { RollupScheduler } from "./rollup/rollup.scheduler";
@@ -86,11 +90,27 @@ describe("the insights module", () => {
     await moduleRef.close();
   });
 
-  it("exports the merge observer and the metrics and scoreboard services", () => {
+  it("exports the merge observer and the metrics, scoreboard and page services", () => {
     expect(Reflect.getMetadata("exports", InsightsModule)).toEqual([
       CALIBRATION_MERGE_OBSERVER,
       MetricsService,
       ScoreboardService,
+      // The email digest (#440) is assembled from the page's own payload.
+      InsightsPageService,
     ]);
+  });
+
+  it("resolves the Insights page's route, service and caps read, with the flakes plane behind it", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConfigurationModule.forRoot(testConfiguration()), InsightsModule],
+    }).compile();
+
+    expect(moduleRef.get(InsightsPageController)).toBeInstanceOf(InsightsPageController);
+    expect(moduleRef.get(InsightsPageService)).toBeInstanceOf(InsightsPageService);
+    expect(moduleRef.get(InsightsPageRepository)).toBeInstanceOf(InsightsPageRepository);
+    // Exported from FlakesModule for the flaky card; resolvable here because it is imported.
+    expect(moduleRef.get(FlakeStateService, { strict: false })).toBeInstanceOf(FlakeStateService);
+
+    await moduleRef.close();
   });
 });

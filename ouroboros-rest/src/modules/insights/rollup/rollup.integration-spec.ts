@@ -265,6 +265,8 @@ describe("the rollup extractors and their oracle twins", () => {
    * @param tokensOut - Output tokens.
    * @param costCents - The priced cost, or null for unpriced.
    * @param occurred - When.
+   * @param source - What the tokens were spent on and which provider served them; a hosted
+   *   provider and no task kind by default.
    */
   async function usage(
     run: string | null,
@@ -272,12 +274,23 @@ describe("the rollup extractors and their oracle twins", () => {
     tokensOut: number,
     costCents: number | null,
     occurred: string,
+    source: { readonly provider?: string; readonly taskKind?: string } = {},
   ): Promise<void> {
     await api.sql.query(
       `insert into ${SCHEMA_NAME}.token_usage
-         (organization_id, run_id, provider, model, tokens_in, tokens_out, cost_cents, occurred_at)
-       values ($1, $2, 'anthropic', 'claude-fable-5', $3, $4, $5, $6)`,
-      [ORG, run, tokensIn, tokensOut, costCents, occurred],
+         (organization_id, run_id, provider, model, tokens_in, tokens_out, cost_cents, occurred_at,
+          task_kind)
+       values ($1, $2, $7, 'claude-fable-5', $3, $4, $5, $6, $8)`,
+      [
+        ORG,
+        run,
+        tokensIn,
+        tokensOut,
+        costCents,
+        occurred,
+        source.provider ?? "anthropic",
+        source.taskKind ?? null,
+      ],
     );
   }
 
@@ -426,7 +439,8 @@ describe("the rollup extractors and their oracle twins", () => {
       finished: at(D1, "09:11"),
       ref: "refs/heads/main",
     });
-    await usage(r1.run, 1000, 500, 912.5, at(D1, "09:05"));
+    await usage(r1.run, 1000, 500, 912.5, at(D1, "09:05"), { taskKind: "implement" });
+    // No task kind: counted in `tokens`, drawn as no bar.
     await usage(r1.run, 300, 100, null, at(D1, "09:06"));
     await testRun(r1.run, "complete", at(D1, "09:08"), [
       ["telemetry integration", 10, 2, 1, 3],
@@ -518,7 +532,11 @@ describe("the rollup extractors and their oracle twins", () => {
       finished: at(D2, "08:20"),
       ref: "main",
     });
-    await usage(r4.run, 2000, 1000, null, at(D2, "08:10"));
+    // Served by a local model: unpriced, and the whole of zephyr's local share.
+    await usage(r4.run, 2000, 1000, null, at(D2, "08:10"), {
+      provider: "ollama",
+      taskKind: "plan",
+    });
     await testRun(r4.run, "error", at(D2, "08:15"), [["unit", 3, 1, 0, 0]]);
     await outcome(r4.pr ?? "", "m", [30, 45], 1_800_000, at(D2, "08:30"));
 
@@ -533,7 +551,7 @@ describe("the rollup extractors and their oracle twins", () => {
       stages: [{ key: "implement", attempt: 1, start: at(D2, "09:00"), finish: at(D2, "09:15") }],
     });
 
-    await usage(r5.run, 100, 100, 0, at(D2, "09:10"));
+    await usage(r5.run, 100, 100, 0, at(D2, "09:10"), { taskKind: "review" });
     // Usage with no loop belongs to no repository.
     await usage(null, 5000, 5000, 100, at(D2, "09:10"));
 
@@ -883,6 +901,29 @@ describe("the rollup extractors and their oracle twins", () => {
     );
     expect(await rolledUp("cost_cents", D1, D1)).toEqual(
       new Map([[windowKey(HELIOS, ""), { value: 912.5 }]]),
+    );
+  });
+
+  it("splits tokens by task kind and by where they were served, without inventing a kind", async () => {
+    await fillFixtureDays();
+
+    // Helios spent 1,900 tokens on D1; the 400 with no task kind are in the total and in no bar.
+    expect(await rolledUp("tokens", D1, D1)).toEqual(
+      new Map([[windowKey(HELIOS, ""), { value: 1900 }]]),
+    );
+    expect(await rolledUp("tokens_by_task_kind", D1, D3)).toEqual(
+      new Map([
+        [windowKey(HELIOS, "implement"), { value: 1500 }],
+        [windowKey(HELIOS, "review"), { value: 200 }],
+        [windowKey(ZEPHYR, "plan"), { value: 3000 }],
+      ]),
+    );
+    // Locality is the provider's kind, not the price: helios's real $0 is hosted, not local.
+    expect(await rolledUp("local_tokens", D2, D2)).toEqual(
+      new Map([
+        [windowKey(HELIOS, ""), { value: 0 }],
+        [windowKey(ZEPHYR, ""), { value: 3000 }],
+      ]),
     );
   });
 

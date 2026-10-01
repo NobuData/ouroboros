@@ -237,6 +237,33 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
       [org, from, to],
     ),
 
+  tokens_by_task_kind: (sql, org, from, to) =>
+    grouped(
+      sql,
+      `select ${REPO} as repo_ref, btrim(tu.task_kind) as dimension,
+              sum(tu.tokens_in + tu.tokens_out) as value
+         from ouroboros.token_usage tu
+         join ouroboros.runs r on r.id = tu.run_id
+         ${RUN_REPO}
+        where tu.organization_id = $1 and btrim(tu.task_kind) <> ''
+          and tu.occurred_at >= $2 and tu.occurred_at < $3
+        group by 1, 2`,
+      [org, from, to],
+    ),
+
+  local_tokens: (sql, org, from, to) =>
+    grouped(
+      sql,
+      `select ${REPO} as repo_ref, '' as dimension, sum(tu.tokens_in + tu.tokens_out) as value
+         from ouroboros.token_usage tu
+         join ouroboros.runs r on r.id = tu.run_id
+         ${RUN_REPO}
+        where tu.organization_id = $1 and tu.provider in ('ollama', 'openai_compatible')
+          and tu.occurred_at >= $2 and tu.occurred_at < $3
+        group by 1`,
+      [org, from, to],
+    ),
+
   unpriced_tokens: (sql, org, from, to) =>
     grouped(
       sql,

@@ -5,6 +5,7 @@ import { textFile } from "../test-results/test-results.fixture";
 import { TestResultIngestService } from "../test-results/test-results.service";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { FlakeScorerService } from "./flake-scorer.service";
+import { FlakeStateService } from "./flake-state.service";
 
 /**
  * The flake scorer against a migrated database (AT.3, [#331](https://github.com/NobuData/ouroboros/issues/331)).
@@ -612,5 +613,119 @@ describe("the flake scorer, against a migrated database", () => {
       .expect((response) =>
         expect(response.body).toMatchObject({ watching: 0, candidates: [], lastRun: null }),
       );
+  });
+
+  describe("the Insights flaky card (#438)", () => {
+    /** A window comfortably around everything the bench writes. */
+    const span = () => ({
+      from: new Date(Date.now() - 2 * 86_400_000),
+      to: new Date(Date.now() + 86_400_000),
+    });
+
+    it("lists a watching case with its real occurrences, per day, and the platform it flaked on", async () => {
+      const at = await bench();
+      const { caseKey } = await telemetryHistory(at);
+      const state = api.nest.get(FlakeStateService);
+
+      const [watching, ...rest] = await state.card(at.workspace.id, span());
+
+      expect(rest).toEqual([]);
+      expect(watching).toMatchObject({
+        caseKey,
+        repository: "helios-firmware",
+        name: CASE,
+        suite: SUITE,
+        state: "watching",
+        // Four builds: a pass on retry, two failures, a pass on its second retry.
+        observed: 4,
+        flaky: 2,
+        resolvedBy: null,
+      });
+      // Whatever days the four fell on, the history adds up to them and nothing else.
+      expect(watching.history.reduce((total, day) => total + day.observed, 0)).toBe(4);
+      expect(watching.history.reduce((total, day) => total + day.flaky, 0)).toBe(2);
+      expect(watching.history.map((day) => day.day)).toEqual(
+        [...watching.history.map((day) => day.day)].sort(),
+      );
+      // The report names one platform, so the flaky occurrences all ran on it.
+      expect(watching.platform).toEqual(expect.any(String));
+    });
+
+    it("calls a case that came back to healthy fixed, naming the loop whose build showed it", async () => {
+      const at = await bench();
+      const { caseKey } = await telemetryHistory(at);
+      const state = api.nest.get(FlakeStateService);
+
+      await cleanBuildsWithoutScoring(at, 10);
+      await at.scorer.rescoreAll();
+      expect(await scoreRow(at, caseKey)).toMatchObject({ state: "healthy" });
+
+      const [fixed] = await state.card(at.workspace.id, span());
+      const { rows } = await api.sql.query<{ id: string }>(
+        `select id from ouroboros.runs where organization_id = $1 and issue_number = 490`,
+        [at.workspace.id],
+      );
+
+      expect(fixed).toMatchObject({
+        caseKey,
+        state: "fixed",
+        observed: 14,
+        flaky: 2,
+        // The first clean pass after the last flaky occurrence was loop #490's.
+        resolvedBy: { runId: rows[0].id, issueNumber: 490 },
+      });
+    });
+
+    it("does not list a healthy case that was never flaky, or one fixed before the window", async () => {
+      const at = await bench();
+      const { caseKey } = await telemetryHistory(at);
+      const state = api.nest.get(FlakeStateService);
+
+      await cleanBuildsWithoutScoring(at, 10);
+      await at.scorer.rescoreAll();
+
+      // The steady neighbour has no score at all; the fixed case's change is outside this window.
+      const before = {
+        from: new Date(Date.now() - 10 * 86_400_000),
+        to: new Date(Date.now() - 5 * 86_400_000),
+      };
+
+      expect(await state.card(at.workspace.id, before)).toEqual([]);
+      expect((await state.card(at.workspace.id, span())).map((flaky) => flaky.caseKey)).toEqual([
+        caseKey,
+      ]);
+    });
+
+    it("does not call a case fixed that flaked but never left healthy", async () => {
+      const at = await bench();
+      const policy = parseFlakePolicy("retry-once");
+      const runId = await run(at, 482);
+
+      // Two flaky builds: scored, but under formula 1's three observations — healthy from birth.
+      await parse(at, await attempt(at, runId, 1, 20), "flaky", policy);
+      await parse(at, await attempt(at, runId, 2, 10), "flaky", policy);
+
+      expect(await scoreRow(at, await telemetryKey(at))).toMatchObject({ state: "healthy" });
+      // Nothing was ever wrong enough to fix, so "fixed" would be a claim with nothing behind it.
+      expect(await api.nest.get(FlakeStateService).card(at.workspace.id, span())).toEqual([]);
+    });
+
+    it("keeps to the workspace and to the repository asked for", async () => {
+      const at = await bench();
+      const neighbour = await bench();
+      const state = api.nest.get(FlakeStateService);
+
+      await telemetryHistory(at);
+
+      const mirror = `${at.workspace.slug}/helios-firmware`;
+
+      expect(await state.card(neighbour.workspace.id, span())).toEqual([]);
+      // The neighbour mirrors a repository of the same name: asking for this one's is still empty.
+      expect(await state.card(neighbour.workspace.id, span(), mirror)).toEqual([]);
+      expect(await state.card(at.workspace.id, span(), mirror.toUpperCase())).toHaveLength(1);
+      expect(
+        await state.card(at.workspace.id, span(), `${at.workspace.slug}/atlas-control`),
+      ).toEqual([]);
+    });
   });
 });

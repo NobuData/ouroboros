@@ -2125,6 +2125,53 @@ export interface paths {
         patch: operations["patchDryRunPolicy"];
         trace?: never;
     };
+    "/api/v1/insights": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The Insights page
+         * @description BJ.2 ([#438](https://github.com/NobuData/ouroboros/issues/438)) — mockup 15's whole page in
+         *     one payload: the head's numbers, the five KPI cards, the throughput, cost and builds series,
+         *     the five bar cards with their insight lines, the build & test performance strip, the flaky
+         *     card, the model scoreboard and the four delivery-health cells.
+         *
+         *     **Every number is the windowed metrics service's** (#437): a window is N whole UTC days
+         *     ending today, the prior window is the N days before, and each figure travels with the
+         *     methodology registry's entry for it — its formula, caveats, version and proxy flag — which
+         *     is everything its popover prints. The scoreboard is #439's and calibration #435's; nothing
+         *     is computed a second way here.
+         *
+         *     **Every insight line is computed.** *"Fix the top row and interventions drop ~40%"* is the
+         *     top cause over the total; *"the other five stages sum to 8m 20s"* is a sum; *"0.12% of
+         *     everything that ran"* is a ratio. A line is null when the window gives it nothing true to
+         *     say.
+         *
+         *     **Dollars only for priced usage** (decision I8). A figure carries `costCents` only when the
+         *     usage it covers was priced; otherwise the key is absent and the tokens beside it are the
+         *     whole answer — in the KPI row, each day's tooltip, the performance strip and the cost
+         *     chart alike. `usage.pricing` says which the window is. The budget guide is the workspace's
+         *     real provider caps; the projection is linear-to-date and says so.
+         *
+         *     **A gated claim has no key.** Cap alerts (#237), the scoreboard's routing suggestion (#209)
+         *     and the analyzer's failure-cluster note (mockup 18) are absent from the payload until their
+         *     sources exist — not `false`, not empty.
+         *
+         *     **Open to every member.** The workspace is the session's: no workspace in this path, the
+         *     session's active organization or `X-Ouro-Tenant` decides.
+         */
+        get: operations["getInsights"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/insights/calibration": {
         parameters: {
             query?: never;
@@ -12529,6 +12576,391 @@ export interface components {
             createdAt: string;
         };
         /**
+         * Insights
+         * @description Mockup 15's whole page (#438). Values are numbers and the client formats them; the bar
+         *     cards' insight lines are sentences computed on the server. A figure that needs priced usage
+         *     carries `costCents` only when the usage it covers was priced — otherwise the key is absent,
+         *     never `0`. Claims whose source does not exist yet (cap alerts, the routing suggestion, the
+         *     analyzer's cluster note) have no key at all.
+         */
+        Insights: {
+            /** @enum {string} */
+            range: "7d" | "30d" | "90d";
+            window: components["schemas"]["InsightsDaySpan"];
+            /** @description `owner/name`, lower-case, when one repository was asked for; null for the whole workspace. */
+            repo: string | null;
+            usage: components["schemas"]["InsightsMoney"];
+            head: components["schemas"]["InsightsHead"];
+            /** @description The KPI row, in card order. */
+            kpis: components["schemas"]["InsightsKpi"][];
+            series: components["schemas"]["InsightsSeries"];
+            hbars: components["schemas"]["InsightsBarCards"];
+            /** @description The build & test performance strip, in cell order. */
+            performance: components["schemas"]["InsightsPerformanceCell"][];
+            flaky: components["schemas"]["InsightsFlaky"];
+            scoreboard: components["schemas"]["Scoreboard"];
+            /** @description The delivery-health strip, in cell order. */
+            dora: components["schemas"]["InsightsDoraCell"][];
+        };
+        /**
+         * InsightsDaySpan
+         * @description A window's first and last UTC day, both inclusive.
+         */
+        InsightsDaySpan: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+        };
+        /**
+         * MetricMethodology
+         * @description The methodology registry's entry behind a number (#432, decision I1) — everything its
+         *     popover prints. `version` moves whenever the formula does.
+         */
+        MetricMethodology: {
+            metricId: string;
+            title: string;
+            /** @description How the number is computed, in words. */
+            formula: string;
+            /** @description The source planes it is read from. */
+            sources: string[];
+            caveats: string;
+            /** @enum {string} */
+            unit: "count" | "pct" | "duration_ms" | "cents" | "tokens";
+            version: number;
+            /** @description True when the metric is a stated stand-in for what it is named after. */
+            proxy: boolean;
+            /**
+             * @description How a window re-derives the metric from days — never an average of daily values.
+             * @enum {string}
+             */
+            aggregation: "sum" | "ratio" | "median";
+        };
+        /**
+         * InsightsMoney
+         * @description Tokens, and the dollars they cost when priced (decision I8). `priced` — some usage was
+         *     priced: `costCents` is the priced part and `unpricedTokens` says what it does not cover.
+         *     `unpriced` — none was: there is **no** `costCents`. `none` — there was no usage.
+         */
+        InsightsMoney: {
+            /** @enum {string} */
+            pricing: "priced" | "unpriced" | "none";
+            /** @description Every token, priced or not. */
+            tokens: number;
+            /** @description The part of `tokens` no price covers. */
+            unpricedTokens: number;
+            /** @description Priced spend in cents. Present only when `pricing` is `priced`. */
+            costCents?: number;
+        };
+        /**
+         * InsightsTrend
+         * @description Which way a figure moved against the prior window, and whether that is the good way.
+         */
+        InsightsTrend: {
+            /** @enum {string} */
+            direction: "up" | "down" | "flat";
+            /** @description True for an improvement, false otherwise; null when flat or not comparable. */
+            good: boolean | null;
+        };
+        /**
+         * InsightsHead
+         * @description The numbers behind the head's sentence — *"27 PRs merged this week. 2 needed a human."* —
+         *     always over the last seven days, whatever range the page shows. Composing and pluralizing
+         *     the sentence is the client's.
+         */
+        InsightsHead: {
+            /** @enum {string} */
+            range: "7d";
+            mergedPrs: number;
+            interventions: number;
+        };
+        /**
+         * InsightsKpi
+         * @description One KPI card. `cost_per_merged_pr` is in `cents` when the window's usage was priced and in
+         *     `tokens` (tokens per merged PR, under the `tokens` methodology) when it was not.
+         */
+        InsightsKpi: {
+            /** @enum {string} */
+            key: "autonomous_merge_rate" | "merged_untouched_rate" | "cycle_time" | "cost_per_merged_pr" | "human_interventions";
+            /** @enum {string} */
+            unit: "count" | "pct" | "duration_ms" | "cents" | "tokens";
+            /** @description The figure; null when the window has nothing to compute it from. */
+            value: number | null;
+            /** @description The prior window's figure. */
+            prior: number | null;
+            /** @description `value − prior`, in `unit` — points for a `pct`. */
+            delta: number | null;
+            trend: components["schemas"]["InsightsTrend"];
+            methodology: components["schemas"]["MetricMethodology"];
+        };
+        /**
+         * InsightsSeries
+         * @description The page's three time series, one point per UTC day of the window, oldest first.
+         */
+        InsightsSeries: {
+            throughput: {
+                points: components["schemas"]["InsightsThroughputPoint"][];
+                methodology: components["schemas"]["MetricMethodology"];
+            };
+            cost: components["schemas"]["InsightsCostSeries"];
+            /**
+             * @description Succeeded and failed builds per day. The analyzer's cluster note has no key here: it
+             *     needs a correlation source that does not exist yet (decision I10).
+             */
+            builds: {
+                points: components["schemas"]["InsightsBuildsPoint"][];
+                methodology: components["schemas"]["MetricMethodology"];
+            };
+        };
+        /**
+         * InsightsThroughputPoint
+         * @description One day of the throughput chart, with what its crosshair tooltip prints.
+         */
+        InsightsThroughputPoint: {
+            /** Format: date */
+            day: string;
+            mergedPrs: number;
+            interventions: number;
+            /** @description The day's priced spend. Absent on a day with no priced usage. */
+            costCents?: number;
+        };
+        /** InsightsCostPoint */
+        InsightsCostPoint: {
+            /** Format: date */
+            day: string;
+            /** @description Every token that day. */
+            tokens: number;
+            /** @description The day's priced spend. Absent on a day with no priced usage. */
+            costCents?: number;
+        };
+        /**
+         * InsightsCostSeries
+         * @description The cost chart (decision I8). `budget` is the workspace's real provider caps and is absent
+         *     when no enabled connection has one, or nothing was priced. `projection` states its method.
+         *     `spike` is a day and an amount — nothing attributes it to a cause, so none is written. The
+         *     *"alerts fire at 90%"* claim has no key: nothing fires an alert until cap alerts exist (#237).
+         */
+        InsightsCostSeries: {
+            points: components["schemas"]["InsightsCostPoint"][];
+            budget?: {
+                /** @description The monthly caps of every enabled provider connection that has one, summed. */
+                monthlyCapCents: number;
+                /** @description The cap over the days of the current UTC month — the guide's height. */
+                dailyCents: number;
+                /** @description How many connections the cap is the sum of. */
+                connections: number;
+            };
+            projection?: {
+                /**
+                 * @description Spend so far this UTC month, over the days elapsed, times the days in the month.
+                 * @enum {string}
+                 */
+                method: "linear_to_date";
+                monthToDateCents: number;
+                projectedCents: number;
+                daysElapsed: number;
+                daysInMonth: number;
+            };
+            /** @description The window's highest priced day, when it is at least twice the median priced day. */
+            spike?: {
+                /** Format: date */
+                day: string;
+                costCents: number;
+            };
+            methodology: components["schemas"]["MetricMethodology"];
+        };
+        /** InsightsBuildsPoint */
+        InsightsBuildsPoint: {
+            /** Format: date */
+            day: string;
+            succeeded: number;
+            failed: number;
+        };
+        /**
+         * InsightsBarCards
+         * @description The five horizontal-bar cards.
+         */
+        InsightsBarCards: {
+            interventions: components["schemas"]["InsightsBarCard"];
+            stages: components["schemas"]["InsightsBarCard"];
+            suites: components["schemas"]["InsightsBarCard"];
+            effort: components["schemas"]["InsightsBarCard"];
+            tokens: components["schemas"]["InsightsBarCard"];
+        };
+        /**
+         * InsightsBarCard
+         * @description One bar card. `line` is the card's insight sentence, **computed** from the bars it sits
+         *     under — *"Fix the top row and interventions drop ~40%."* is the top cause over the total —
+         *     and null when the window gives it nothing true to say.
+         */
+        InsightsBarCard: {
+            /** @enum {string} */
+            unit: "count" | "pct" | "duration_ms" | "cents" | "tokens";
+            /** @description The card's total where its bars add up to one; null for medians. */
+            total: number | null;
+            /** @description The bars, in the card's order. A label with nothing this window has no bar. */
+            bars: {
+                /** @description The stored label — a cause id, stage key, suite name, effort or task kind. */
+                key: string;
+                /** @description What the bar is called on the card. */
+                label: string;
+                /** @description In the card's `unit`. */
+                value: number;
+            }[];
+            line: string | null;
+            methodology: components["schemas"]["MetricMethodology"];
+        };
+        /**
+         * InsightsPerformanceCell
+         * @description One cell of the build & test strip. `total_cost` is null — not zero — when the window's usage was not priced.
+         */
+        InsightsPerformanceCell: {
+            /** @enum {string} */
+            key: "builds" | "build_success_rate" | "test_cases_run" | "test_pass_rate" | "tokens" | "total_cost";
+            /** @enum {string} */
+            unit: "count" | "pct" | "duration_ms" | "cents" | "tokens";
+            value: number | null;
+            /** @description A rate's parts — succeeded builds over all builds, passing cases over cases run. */
+            components?: {
+                numerator: number;
+                denominator: number;
+            };
+            methodology: components["schemas"]["MetricMethodology"];
+        };
+        /**
+         * InsightsFlaky
+         * @description The flaky card (#331's states): every case still distrusted, and every case that returned
+         *     to healthy inside the window — `fixed`, which is derived and never stored. Rates and
+         *     history are the case's real occurrences.
+         */
+        InsightsFlaky: {
+            /** @description Highest flake score first. */
+            cases: components["schemas"]["InsightsFlakyCase"][];
+        };
+        /** InsightsFlakyCase */
+        InsightsFlakyCase: {
+            caseKey: string;
+            name: string | null;
+            suite: string | null;
+            repository: string;
+            /** @enum {string} */
+            state: "fixed" | "watching" | "quarantined";
+            /** @description Flaky occurrences over observed ones in the window; null when the case did not run. */
+            ratePct: number | null;
+            /**
+             * @description The window's second half against its first.
+             * @enum {string}
+             */
+            trend: "rising" | "falling" | "flat";
+            /** @description One point per day of the window, oldest first. */
+            history: {
+                /** Format: date */
+                day: string;
+                /** @description Null on a day the case did not run. */
+                ratePct: number | null;
+            }[];
+            /** @description The one platform every flaky occurrence ran on. Absent when there were none, or several. */
+            platform?: string;
+            /**
+             * @description The loop whose test run first passed cleanly after the case's last flaky occurrence —
+             *     only on a `fixed` case, and absent when no occurrence names a loop.
+             */
+            resolvedBy?: {
+                /** Format: uuid */
+                runId: string;
+                issueNumber: number;
+            };
+        };
+        /**
+         * InsightsDoraCell
+         * @description One delivery-health cell. `proxy` is the registry's flag: change failure rate and MTTR are
+         *     stand-ins, and a client must not draw a proxy as though it were measured.
+         */
+        InsightsDoraCell: {
+            /** @enum {string} */
+            key: "deploy_frequency" | "lead_time" | "change_failure_rate" | "mttr";
+            /**
+             * @description `per_day` for deploy frequency — the window's deploys over its days.
+             * @enum {string}
+             */
+            unit: "count" | "pct" | "duration_ms" | "cents" | "tokens" | "per_day";
+            value: number | null;
+            prior: number | null;
+            delta: number | null;
+            trend: components["schemas"]["InsightsTrend"];
+            /** @description One value per day of the window, oldest first. */
+            sparkline: (number | null)[];
+            proxy: boolean;
+            methodology: components["schemas"]["MetricMethodology"];
+        };
+        /**
+         * Scoreboard
+         * @description Mockup 15's model scoreboard (#439): one row per task kind × the model of the hop that
+         *     served it. `suggestion` is the learned routing suggestion's payload (#209) and is
+         *     **absent** — not null, not empty — until that source exists.
+         */
+        Scoreboard: {
+            /** @enum {string} */
+            range: "7d" | "30d" | "90d";
+            window: components["schemas"]["InsightsDaySpan"];
+            prior: components["schemas"]["InsightsDaySpan"];
+            /** @description Rows backed by fewer merges than this carry `lowSample`. */
+            minSample: number;
+            rows: components["schemas"]["ScoreboardRow"][];
+            /** @description The registry entry behind each column. */
+            methodology: {
+                untouched: components["schemas"]["MetricMethodology"];
+                costPerSuccess: components["schemas"]["MetricMethodology"];
+                trend: components["schemas"]["MetricMethodology"];
+                sample: components["schemas"]["MetricMethodology"];
+            };
+            /** @description The routing suggestion's own payload, passed through untouched. */
+            suggestion?: {
+                [key: string]: unknown;
+            };
+        };
+        /** ScoreboardRow */
+        ScoreboardRow: {
+            taskKind: string;
+            /** @description The serving hop's model id, opaque. */
+            model: string;
+            /** @description The hop's place in the resolved chain. */
+            hop: number;
+            /** @enum {string} */
+            role: "primary" | "fallback";
+            /** @description The merges backing the row — the sample. */
+            merged: number;
+            untouched: number;
+            /** @description `untouched ÷ merged × 100`; null when nothing merged. */
+            untouchedRate: number | null;
+            /**
+             * @description The `$ / success` column. Dollars only when every token in the row was priced; with any
+             *     unpriced usage the row carries tokens per success and no dollar figure.
+             */
+            cost: {
+                /** @enum {string} */
+                pricing: "priced";
+                cents: number;
+                centsPerSuccess: number | null;
+            } | {
+                /** @enum {string} */
+                pricing: "unpriced";
+                tokens: number;
+                unpricedTokens: number;
+                tokensPerSuccess: number | null;
+            } | {
+                /** @enum {string} */
+                pricing: "none";
+            };
+            trend: {
+                /** @enum {string} */
+                direction: "up" | "down" | "flat";
+                prior: number | null;
+                delta: number | null;
+            };
+            lowSample: boolean;
+        };
+        /**
          * CalibrationReport
          * @description Estimator calibration over a window (#435). Rates are percentages to one decimal, null when
          *     nothing was estimated.
@@ -21285,6 +21717,19 @@ export interface components {
          */
         AuthProviderId: string;
         /**
+         * @description The window the page covers — N whole UTC days ending today — and mockup 15's range segment
+         *     ([#438](https://github.com/NobuData/ouroboros/issues/438)). `30d` when absent. The prior
+         *     window every delta compares against is the N days before it.
+         * @example 30d
+         */
+        InsightsRange: "7d" | "30d" | "90d";
+        /**
+         * @description One repository, as `owner/name` — `acme-robotics/helios-firmware`. The whole workspace when
+         *     absent. Compared case-insensitively.
+         * @example acme-robotics/helios-firmware
+         */
+        InsightsRepo: string;
+        /**
          * @description The window ending now the report covers, over merge instants — mockup 15's range segment
          *     ([#435](https://github.com/NobuData/ouroboros/issues/435)). `30d` when absent.
          * @example 30d
@@ -29118,6 +29563,1065 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — `dryRun` is missing or not a boolean. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getInsights: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The window the page covers — N whole UTC days ending today — and mockup 15's range segment
+                 *     ([#438](https://github.com/NobuData/ouroboros/issues/438)). `30d` when absent. The prior
+                 *     window every delta compares against is the N days before it.
+                 * @example 30d
+                 */
+                range?: components["parameters"]["InsightsRange"];
+                /**
+                 * @description One repository, as `owner/name` — `acme-robotics/helios-firmware`. The whole workspace when
+                 *     absent. Compared case-insensitively.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo?: components["parameters"]["InsightsRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "range": "7d",
+                     *       "window": {
+                     *         "from": "2026-09-25",
+                     *         "to": "2026-10-01"
+                     *       },
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "usage": {
+                     *         "pricing": "priced",
+                     *         "tokens": 27846076,
+                     *         "unpricedTokens": 1285000,
+                     *         "costCents": 4276
+                     *       },
+                     *       "head": {
+                     *         "range": "7d",
+                     *         "mergedPrs": 21,
+                     *         "interventions": 8
+                     *       },
+                     *       "kpis": [
+                     *         {
+                     *           "key": "autonomous_merge_rate",
+                     *           "unit": "pct",
+                     *           "value": 95.45454545454545,
+                     *           "prior": 92.5925925925926,
+                     *           "delta": 2.861952861952858,
+                     *           "trend": {
+                     *             "direction": "up",
+                     *             "good": true
+                     *           },
+                     *           "methodology": {
+                     *             "metricId": "merge_rate",
+                     *             "title": "Autonomous merge rate",
+                     *             "formula": "Loop PRs that merged without a human intervention, divided by all loop PRs that closed (merged or not) in the window.",
+                     *             "sources": [
+                     *               "pull_requests",
+                     *               "runs"
+                     *             ],
+                     *             "caveats": "A window's rate is total autonomous merges over total closed PRs, not an average of daily rates.",
+                     *             "unit": "pct",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "ratio"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "merged_untouched_rate",
+                     *           "unit": "pct",
+                     *           "value": 76.19047619047619,
+                     *           "prior": 80,
+                     *           "delta": -3.80952380952381,
+                     *           "trend": {
+                     *             "direction": "down",
+                     *             "good": false
+                     *           },
+                     *           "methodology": {
+                     *             "metricId": "merged_untouched_rate",
+                     *             "title": "Merged w/o human edits",
+                     *             "formula": "Merged PRs whose revisions contain no human-authored pushes and no human-edited files after the loop's last revision, divided by all merged PRs.",
+                     *             "sources": [
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "Authorship comes from host sync; a human edit made outside the host (a squash rewrite) is not seen.",
+                     *             "unit": "pct",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "ratio"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "cycle_time",
+                     *           "unit": "duration_ms",
+                     *           "value": 820000,
+                     *           "prior": 860000,
+                     *           "delta": -40000,
+                     *           "trend": {
+                     *             "direction": "down",
+                     *             "good": true
+                     *           },
+                     *           "methodology": {
+                     *             "metricId": "cycle_time",
+                     *             "title": "Median cycle",
+                     *             "formula": "The median time from a loop starting to the loop finishing merged, over loops that finished merged. A window's median is computed over every loop in the window — each day keeps its loops' times — never as an average or median of daily medians.",
+                     *             "sources": [
+                     *               "runs"
+                     *             ],
+                     *             "caveats": "Only merged loops are timed; a loop handed to a person or failed is not in the median. Time in the queue before the loop starts is not included.",
+                     *             "unit": "duration_ms",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "median"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "cost_per_merged_pr",
+                     *           "unit": "cents",
+                     *           "value": 203.61904761904762,
+                     *           "prior": 242.12,
+                     *           "delta": -38.500952380952384,
+                     *           "trend": {
+                     *             "direction": "down",
+                     *             "good": true
+                     *           },
+                     *           "methodology": {
+                     *             "metricId": "cost_per_merged_pr",
+                     *             "title": "Cost per merged PR",
+                     *             "formula": "Priced spend divided by merged PRs in the window.",
+                     *             "sources": [
+                     *               "usage",
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "Spend on loops that did not merge is included in the numerator — failure has a cost. Computed for the whole window as total priced cost over merged PRs, never per day: a day of spend with no merges has no per-day ratio.",
+                     *             "unit": "cents",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "ratio"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "human_interventions",
+                     *           "unit": "count",
+                     *           "value": 8,
+                     *           "prior": 2,
+                     *           "delta": 6,
+                     *           "trend": {
+                     *             "direction": "up",
+                     *             "good": false
+                     *           },
+                     *           "methodology": {
+                     *             "metricId": "human_interventions",
+                     *             "title": "Human interventions",
+                     *             "formula": "Intervention events detected on this day, by cause: a loop handed to a person (needs-human), a person's failure classification or waiver, the first failure of a guardrail or policy-gate check on a loop, and blocking review votes. Each event's cause is the one a versioned mapping rule assigned, or the one a person re-categorized it to.",
+                     *             "sources": [
+                     *               "runs",
+                     *               "tests",
+                     *               "interventions"
+                     *             ],
+                     *             "caveats": "One stop can be more than one event: a needs-human handoff and the classification that explains it are two moments a person was needed. Counts moments, not minutes spent. A re-categorized event counts under the person's cause.",
+                     *             "unit": "count",
+                     *             "version": 2,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         }
+                     *       ],
+                     *       "series": {
+                     *         "throughput": {
+                     *           "points": [
+                     *             {
+                     *               "day": "2026-09-25",
+                     *               "mergedPrs": 1,
+                     *               "interventions": 1,
+                     *               "costCents": 506
+                     *             },
+                     *             {
+                     *               "day": "2026-09-26",
+                     *               "mergedPrs": 3,
+                     *               "interventions": 1,
+                     *               "costCents": 512
+                     *             },
+                     *             {
+                     *               "day": "2026-09-27",
+                     *               "mergedPrs": 6,
+                     *               "interventions": 1,
+                     *               "costCents": 912
+                     *             },
+                     *             {
+                     *               "day": "2026-09-28",
+                     *               "mergedPrs": 4,
+                     *               "interventions": 0,
+                     *               "costCents": 518
+                     *             },
+                     *             {
+                     *               "day": "2026-09-29",
+                     *               "mergedPrs": 3,
+                     *               "interventions": 1,
+                     *               "costCents": 524
+                     *             },
+                     *             {
+                     *               "day": "2026-09-30",
+                     *               "mergedPrs": 4,
+                     *               "interventions": 1,
+                     *               "costCents": 530
+                     *             },
+                     *             {
+                     *               "day": "2026-10-01",
+                     *               "mergedPrs": 0,
+                     *               "interventions": 3,
+                     *               "costCents": 774
+                     *             }
+                     *           ],
+                     *           "methodology": {
+                     *             "metricId": "merged_prs",
+                     *             "title": "Merged PRs",
+                     *             "formula": "Pull requests opened by a loop that merged on this day.",
+                     *             "sources": [
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "Counts merges, not deploys. A PR merged by hand after the loop handed off still counts.",
+                     *             "unit": "count",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         },
+                     *         "cost": {
+                     *           "points": [
+                     *             {
+                     *               "day": "2026-09-25",
+                     *               "tokens": 3785908,
+                     *               "costCents": 506
+                     *             },
+                     *             {
+                     *               "day": "2026-09-26",
+                     *               "tokens": 3830800,
+                     *               "costCents": 512
+                     *             },
+                     *             {
+                     *               "day": "2026-09-27",
+                     *               "tokens": 6823613,
+                     *               "costCents": 912
+                     *             },
+                     *             {
+                     *               "day": "2026-09-28",
+                     *               "tokens": 3875693,
+                     *               "costCents": 518
+                     *             },
+                     *             {
+                     *               "day": "2026-09-29",
+                     *               "tokens": 3920585,
+                     *               "costCents": 524
+                     *             },
+                     *             {
+                     *               "day": "2026-09-30",
+                     *               "tokens": 3965477,
+                     *               "costCents": 530
+                     *             },
+                     *             {
+                     *               "day": "2026-10-01",
+                     *               "tokens": 1644000,
+                     *               "costCents": 774
+                     *             }
+                     *           ],
+                     *           "budget": {
+                     *             "monthlyCapCents": 81500,
+                     *             "dailyCents": 2629,
+                     *             "connections": 3
+                     *           },
+                     *           "projection": {
+                     *             "method": "linear_to_date",
+                     *             "monthToDateCents": 774,
+                     *             "projectedCents": 23994,
+                     *             "daysElapsed": 1,
+                     *             "daysInMonth": 31
+                     *           },
+                     *           "methodology": {
+                     *             "metricId": "cost_cents",
+                     *             "title": "Total cost",
+                     *             "formula": "Spend across all providers for priced usage on this day, in cents.",
+                     *             "sources": [
+                     *               "usage"
+                     *             ],
+                     *             "caveats": "Unpriced usage is excluded rather than counted as $0; token counts include it.",
+                     *             "unit": "cents",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         },
+                     *         "builds": {
+                     *           "points": [
+                     *             {
+                     *               "day": "2026-09-25",
+                     *               "succeeded": 21,
+                     *               "failed": 0
+                     *             },
+                     *             {
+                     *               "day": "2026-09-26",
+                     *               "succeeded": 17,
+                     *               "failed": 0
+                     *             },
+                     *             {
+                     *               "day": "2026-09-27",
+                     *               "succeeded": 15,
+                     *               "failed": 4
+                     *             },
+                     *             {
+                     *               "day": "2026-09-28",
+                     *               "succeeded": 6,
+                     *               "failed": 0
+                     *             },
+                     *             {
+                     *               "day": "2026-09-29",
+                     *               "succeeded": 8,
+                     *               "failed": 0
+                     *             },
+                     *             {
+                     *               "day": "2026-09-30",
+                     *               "succeeded": 18,
+                     *               "failed": 0
+                     *             },
+                     *             {
+                     *               "day": "2026-10-01",
+                     *               "succeeded": 18,
+                     *               "failed": 3
+                     *             }
+                     *           ],
+                     *           "methodology": {
+                     *             "metricId": "builds",
+                     *             "title": "Builds",
+                     *             "formula": "Build-farm jobs that finished succeeded or failed on this day; a job that failed and was retried counts as a failed build.",
+                     *             "sources": [
+                     *               "builds"
+                     *             ],
+                     *             "caveats": "Canceled jobs are not counted. Every pool and ref is included, not only the default branch.",
+                     *             "unit": "count",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         }
+                     *       },
+                     *       "hbars": {
+                     *         "interventions": {
+                     *           "unit": "count",
+                     *           "total": 8,
+                     *           "bars": [
+                     *             {
+                     *               "key": "infra_rig",
+                     *               "label": "Flaky env / rig",
+                     *               "value": 6
+                     *             },
+                     *             {
+                     *               "key": "other",
+                     *               "label": "Other",
+                     *               "value": 1
+                     *             },
+                     *             {
+                     *               "key": "policy_gate",
+                     *               "label": "Policy gate",
+                     *               "value": 1
+                     *             }
+                     *           ],
+                     *           "line": "Fix the top row and interventions drop ~75%.",
+                     *           "methodology": {
+                     *             "metricId": "human_interventions",
+                     *             "title": "Human interventions",
+                     *             "formula": "Intervention events detected on this day, by cause: a loop handed to a person (needs-human), a person's failure classification or waiver, the first failure of a guardrail or policy-gate check on a loop, and blocking review votes. Each event's cause is the one a versioned mapping rule assigned, or the one a person re-categorized it to.",
+                     *             "sources": [
+                     *               "runs",
+                     *               "tests",
+                     *               "interventions"
+                     *             ],
+                     *             "caveats": "One stop can be more than one event: a needs-human handoff and the classification that explains it are two moments a person was needed. Counts moments, not minutes spent. A re-categorized event counts under the person's cause.",
+                     *             "unit": "count",
+                     *             "version": 2,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         },
+                     *         "stages": {
+                     *           "unit": "duration_ms",
+                     *           "total": null,
+                     *           "bars": [
+                     *             {
+                     *               "key": "analyze",
+                     *               "label": "Analyze",
+                     *               "value": 60000
+                     *             },
+                     *             {
+                     *               "key": "plan",
+                     *               "label": "Plan",
+                     *               "value": 120000
+                     *             },
+                     *             {
+                     *               "key": "implement",
+                     *               "label": "Implement",
+                     *               "value": 364000
+                     *             },
+                     *             {
+                     *               "key": "build",
+                     *               "label": "Build",
+                     *               "value": 120000
+                     *             },
+                     *             {
+                     *               "key": "test",
+                     *               "label": "Test",
+                     *               "value": 160000
+                     *             },
+                     *             {
+                     *               "key": "review",
+                     *               "label": "Verify",
+                     *               "value": 40000
+                     *             }
+                     *           ],
+                     *           "line": "Implement dominates the loop — the other five stages sum to 8m 20s.",
+                     *           "methodology": {
+                     *             "metricId": "stage_duration",
+                     *             "title": "Cycle time by stage",
+                     *             "formula": "For each stage, the median time a merged loop spent in it — the sum of every attempt's start-to-finish time for that stage — dated by the day the loop finished. A window's median pools every loop's time in the window, never averaging daily medians.",
+                     *             "sources": [
+                     *               "runs"
+                     *             ],
+                     *             "caveats": "Retried attempts are summed into their stage, so a stage that often retries looks slow rather than hidden. An attempt with no finish time is not counted.",
+                     *             "unit": "duration_ms",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "median"
+                     *           }
+                     *         },
+                     *         "suites": {
+                     *           "unit": "count",
+                     *           "total": 21,
+                     *           "bars": [
+                     *             {
+                     *               "key": "telemetry integration",
+                     *               "label": "telemetry integration",
+                     *               "value": 10
+                     *             },
+                     *             {
+                     *               "key": "PHYSICAL · HIL rig",
+                     *               "label": "PHYSICAL · HIL rig",
+                     *               "value": 8
+                     *             },
+                     *             {
+                     *               "key": "motor control",
+                     *               "label": "motor control",
+                     *               "value": 2
+                     *             },
+                     *             {
+                     *               "key": "unit · drivers",
+                     *               "label": "unit · drivers",
+                     *               "value": 1
+                     *             }
+                     *           ],
+                     *           "line": "21 failing cases total — 0.37% of everything that ran.",
+                     *           "methodology": {
+                     *             "metricId": "test_failures_by_suite",
+                     *             "title": "Test failures by suite",
+                     *             "formula": "Failed test cases per suite across every finished test run started on this day. The suite is the suite name the report gave; the same name on two platforms is one suite here.",
+                     *             "sources": [
+                     *               "tests"
+                     *             ],
+                     *             "caveats": "Counts failing case runs, not distinct failing cases — a case failing in three runs is three.",
+                     *             "unit": "count",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         },
+                     *         "effort": {
+                     *           "unit": "duration_ms",
+                     *           "total": null,
+                     *           "bars": [
+                     *             {
+                     *               "key": "xs",
+                     *               "label": "XS",
+                     *               "value": 360000
+                     *             },
+                     *             {
+                     *               "key": "s",
+                     *               "label": "S",
+                     *               "value": 660000
+                     *             },
+                     *             {
+                     *               "key": "m",
+                     *               "label": "M",
+                     *               "value": 1140000
+                     *             },
+                     *             {
+                     *               "key": "l",
+                     *               "label": "L",
+                     *               "value": 2880000
+                     *             },
+                     *             {
+                     *               "key": "xl",
+                     *               "label": "XL",
+                     *               "value": 7800000
+                     *             }
+                     *           ],
+                     *           "line": null,
+                     *           "methodology": {
+                     *             "metricId": "completion_time_by_effort",
+                     *             "title": "Time to completion by effort",
+                     *             "formula": "For each predicted effort (XS–XL), the median lead time — loop start to merge — of merged loops estimated at that effort when they were queued. A window's median pools every merge in the window.",
+                     *             "sources": [
+                     *               "estimates",
+                     *               "runs",
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "Sliced by the effort predicted at queue time, not the effort the work turned out to need. Unestimated merges are in no slice.",
+                     *             "unit": "duration_ms",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "median"
+                     *           }
+                     *         },
+                     *         "tokens": {
+                     *           "unit": "tokens",
+                     *           "total": 27846076,
+                     *           "bars": [
+                     *             {
+                     *               "key": "implement",
+                     *               "label": "implement",
+                     *               "value": 14764675
+                     *             },
+                     *             {
+                     *               "key": "review",
+                     *               "label": "review",
+                     *               "value": 3743151
+                     *             },
+                     *             {
+                     *               "key": "plan",
+                     *               "label": "plan",
+                     *               "value": 2911339
+                     *             },
+                     *             {
+                     *               "key": "analyze",
+                     *               "label": "analyze",
+                     *               "value": 2495433
+                     *             },
+                     *             {
+                     *               "key": "test-gen",
+                     *               "label": "test-gen",
+                     *               "value": 1663622
+                     *             },
+                     *             {
+                     *               "key": "docs",
+                     *               "label": "docs",
+                     *               "value": 623856
+                     *             },
+                     *             {
+                     *               "key": "verify",
+                     *               "label": "verify",
+                     *               "value": 41000
+                     *             }
+                     *           ],
+                     *           "line": "≈ 1.3M tokens per merged PR · 30% served by local models.",
+                     *           "methodology": {
+                     *             "metricId": "tokens_by_task_kind",
+                     *             "title": "Tokens by stage",
+                     *             "formula": "Input plus output tokens on this day, by the task kind the usage was recorded for — implement, review, plan and so on, as the routing matrix names them.",
+                     *             "sources": [
+                     *               "usage"
+                     *             ],
+                     *             "caveats": "Usage recorded with no task kind is counted in Tokens and in no bar here, so the bars can sum to less than the total. A task kind is what a model was asked for, not the loop stage it ran in: one stage can ask for several.",
+                     *             "unit": "tokens",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         }
+                     *       },
+                     *       "performance": [
+                     *         {
+                     *           "key": "builds",
+                     *           "unit": "count",
+                     *           "value": 110,
+                     *           "methodology": {
+                     *             "metricId": "builds",
+                     *             "title": "Builds",
+                     *             "formula": "Build-farm jobs that finished succeeded or failed on this day; a job that failed and was retried counts as a failed build.",
+                     *             "sources": [
+                     *               "builds"
+                     *             ],
+                     *             "caveats": "Canceled jobs are not counted. Every pool and ref is included, not only the default branch.",
+                     *             "unit": "count",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "build_success_rate",
+                     *           "unit": "pct",
+                     *           "value": 93.63636363636364,
+                     *           "components": {
+                     *             "numerator": 103,
+                     *             "denominator": 110
+                     *           },
+                     *           "methodology": {
+                     *             "metricId": "build_success_rate",
+                     *             "title": "Build success",
+                     *             "formula": "Succeeded builds divided by succeeded plus failed builds (retried failures included).",
+                     *             "sources": [
+                     *               "builds"
+                     *             ],
+                     *             "caveats": "A window's rate is total successes over total finished builds, not an average of daily rates. Canceled jobs are in neither side.",
+                     *             "unit": "pct",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "ratio"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "test_cases_run",
+                     *           "unit": "count",
+                     *           "value": 5622,
+                     *           "methodology": {
+                     *             "metricId": "test_cases_run",
+                     *             "title": "Test cases run",
+                     *             "formula": "Test cases that ran — passed, failed or flaky — across every finished test run started on this day. Skipped cases did not run.",
+                     *             "sources": [
+                     *               "tests"
+                     *             ],
+                     *             "caveats": "A case re-run in a second test run counts each time it ran.",
+                     *             "unit": "count",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "test_pass_rate",
+                     *           "unit": "pct",
+                     *           "value": 99.62646744930629,
+                     *           "components": {
+                     *             "numerator": 5601,
+                     *             "denominator": 5622
+                     *           },
+                     *           "methodology": {
+                     *             "metricId": "test_pass_rate",
+                     *             "title": "Test pass rate",
+                     *             "formula": "Cases that passed — first time or on retry (flaky) — divided by cases that ran.",
+                     *             "sources": [
+                     *               "tests"
+                     *             ],
+                     *             "caveats": "A flaky case counts as passed because it passed in the end; the flaky-tests card is where flakiness is measured.",
+                     *             "unit": "pct",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "ratio"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "tokens",
+                     *           "unit": "tokens",
+                     *           "value": 27846076,
+                     *           "methodology": {
+                     *             "metricId": "tokens",
+                     *             "title": "Tokens",
+                     *             "formula": "Input plus output tokens across all providers on this day, priced or not.",
+                     *             "sources": [
+                     *               "usage"
+                     *             ],
+                     *             "caveats": "Includes local models served at $0.",
+                     *             "unit": "tokens",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "total_cost",
+                     *           "unit": "cents",
+                     *           "value": 4276,
+                     *           "methodology": {
+                     *             "metricId": "cost_cents",
+                     *             "title": "Total cost",
+                     *             "formula": "Spend across all providers for priced usage on this day, in cents.",
+                     *             "sources": [
+                     *               "usage"
+                     *             ],
+                     *             "caveats": "Unpriced usage is excluded rather than counted as $0; token counts include it.",
+                     *             "unit": "cents",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         }
+                     *       ],
+                     *       "flaky": {
+                     *         "cases": [
+                     *           {
+                     *             "caseKey": "79275912bb600b59a37eeb9af39ccef4db60dc3f3843ce53f5c80add49ac583c",
+                     *             "name": "ring buffer drains under burst",
+                     *             "suite": "telemetry integration",
+                     *             "repository": "helios-firmware",
+                     *             "state": "watching",
+                     *             "ratePct": 40,
+                     *             "trend": "flat",
+                     *             "history": [
+                     *               {
+                     *                 "day": "2026-09-25",
+                     *                 "ratePct": null
+                     *               },
+                     *               {
+                     *                 "day": "2026-09-26",
+                     *                 "ratePct": null
+                     *               },
+                     *               {
+                     *                 "day": "2026-09-27",
+                     *                 "ratePct": null
+                     *               },
+                     *               {
+                     *                 "day": "2026-09-28",
+                     *                 "ratePct": null
+                     *               },
+                     *               {
+                     *                 "day": "2026-09-29",
+                     *                 "ratePct": null
+                     *               },
+                     *               {
+                     *                 "day": "2026-09-30",
+                     *                 "ratePct": null
+                     *               },
+                     *               {
+                     *                 "day": "2026-10-01",
+                     *                 "ratePct": 40
+                     *               }
+                     *             ],
+                     *             "platform": "qemu_cortex_m3"
+                     *           }
+                     *         ]
+                     *       },
+                     *       "scoreboard": {
+                     *         "range": "7d",
+                     *         "window": {
+                     *           "from": "2026-09-25",
+                     *           "to": "2026-10-01"
+                     *         },
+                     *         "prior": {
+                     *           "from": "2026-09-18",
+                     *           "to": "2026-09-24"
+                     *         },
+                     *         "minSample": 10,
+                     *         "rows": [],
+                     *         "methodology": {
+                     *           "untouched": {
+                     *             "metricId": "merged_untouched_rate",
+                     *             "title": "Merged w/o human edits",
+                     *             "formula": "Merged PRs whose revisions contain no human-authored pushes and no human-edited files after the loop's last revision, divided by all merged PRs.",
+                     *             "sources": [
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "Authorship comes from host sync; a human edit made outside the host (a squash rewrite) is not seen.",
+                     *             "unit": "pct",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "ratio"
+                     *           },
+                     *           "costPerSuccess": {
+                     *             "metricId": "scoreboard_cost_per_success",
+                     *             "title": "Cost per success",
+                     *             "formula": "Priced usage the row's runs spent on its task kind inside the window, divided by the row's merges in the window. Spend on loops that never merged is counted, so failure has a price.",
+                     *             "sources": [
+                     *               "token_usage",
+                     *               "resolution_snapshots",
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "Shown in dollars only when every token in the row was priced; with any unpriced usage the row shows tokens per success instead, never a partial dollar figure. A local model priced at zero shows $0.00, which is true. Usage no task kind was recorded for is in no row.",
+                     *             "unit": "cents",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           },
+                     *           "trend": {
+                     *             "metricId": "scoreboard_trend",
+                     *             "title": "Scoreboard trend",
+                     *             "formula": "The row's merge-untouched rate in this window minus the same row's rate in the prior window of equal length (the N UTC days before): up when higher, down when lower, flat when equal.",
+                     *             "sources": [
+                     *               "resolution_snapshots",
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "Flat with no arrow when the prior window has no merges for the row, as well as when the rate did not move. The arrow says which way, not whether the move is significant; read it beside the sample.",
+                     *             "unit": "pct",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "ratio"
+                     *           },
+                     *           "sample": {
+                     *             "metricId": "scoreboard_merged",
+                     *             "title": "Scoreboard sample",
+                     *             "formula": "Merged loop PRs backing a scoreboard row. A merge belongs to a row for every task kind its run resolved: the row is the task kind, the model of the hop that served it (the last kept hop the executor tried, else the first kept hop) and that hop's place in the resolved chain. Hop 1 is the primary; any later hop is a fallback.",
+                     *             "sources": [
+                     *               "resolution_snapshots",
+                     *               "runs",
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "A fallback row describes the work its primary could not do, so a lower untouched rate there is expected rather than damning. A row backed by fewer than 10 merges is shown with a low-sample badge: its rate is noise, not a ranking. One run that resolved implement and review counts in both rows.",
+                     *             "unit": "count",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         }
+                     *       },
+                     *       "dora": [
+                     *         {
+                     *           "key": "deploy_frequency",
+                     *           "unit": "per_day",
+                     *           "value": 7.285714285714286,
+                     *           "prior": 4.428571428571429,
+                     *           "delta": 2.8571428571428568,
+                     *           "trend": {
+                     *             "direction": "up",
+                     *             "good": true
+                     *           },
+                     *           "sparkline": [
+                     *             8,
+                     *             7,
+                     *             6,
+                     *             3,
+                     *             3,
+                     *             8,
+                     *             16
+                     *           ],
+                     *           "proxy": false,
+                     *           "methodology": {
+                     *             "metricId": "deploy_frequency",
+                     *             "title": "Deploy frequency",
+                     *             "formula": "Successful default-branch builds on the build farm per day.",
+                     *             "sources": [
+                     *               "builds"
+                     *             ],
+                     *             "caveats": "A green default-branch build stands in for a deploy; pipelines that deploy elsewhere are not seen.",
+                     *             "unit": "count",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "sum"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "lead_time",
+                     *           "unit": "duration_ms",
+                     *           "value": 1613333.3333333333,
+                     *           "prior": 1371200,
+                     *           "delta": 242133.33333333326,
+                     *           "trend": {
+                     *             "direction": "up",
+                     *             "good": false
+                     *           },
+                     *           "sparkline": [
+                     *             860000,
+                     *             2940000,
+                     *             1090000,
+                     *             1260000,
+                     *             3200000,
+                     *             755000,
+                     *             null
+                     *           ],
+                     *           "proxy": false,
+                     *           "methodology": {
+                     *             "metricId": "lead_time",
+                     *             "title": "Lead time",
+                     *             "formula": "Mean time from a loop starting on an issue to its pull request merging.",
+                     *             "sources": [
+                     *               "runs",
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "A mean of the window's merges, re-windowed from total time over count. Time before the loop picked the issue up is not included.",
+                     *             "unit": "duration_ms",
+                     *             "version": 1,
+                     *             "proxy": false,
+                     *             "aggregation": "ratio"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "change_failure_rate",
+                     *           "unit": "pct",
+                     *           "value": 4.761904761904762,
+                     *           "prior": 0,
+                     *           "delta": 4.761904761904762,
+                     *           "trend": {
+                     *             "direction": "up",
+                     *             "good": false
+                     *           },
+                     *           "sparkline": [
+                     *             0,
+                     *             33.333333333333336,
+                     *             0,
+                     *             0,
+                     *             0,
+                     *             0,
+                     *             null
+                     *           ],
+                     *           "proxy": true,
+                     *           "methodology": {
+                     *             "metricId": "change_failure_rate",
+                     *             "title": "Change failure rate",
+                     *             "formula": "Merged pull requests later reverted, divided by merged pull requests.",
+                     *             "sources": [
+                     *               "pull_requests"
+                     *             ],
+                     *             "caveats": "A proxy: revert detection only. A failure fixed forward rather than reverted is not counted.",
+                     *             "unit": "pct",
+                     *             "version": 1,
+                     *             "proxy": true,
+                     *             "aggregation": "ratio"
+                     *           }
+                     *         },
+                     *         {
+                     *           "key": "mttr",
+                     *           "unit": "duration_ms",
+                     *           "value": 1135500,
+                     *           "prior": 1247916.6666666667,
+                     *           "delta": -112416.66666666674,
+                     *           "trend": {
+                     *             "direction": "down",
+                     *             "good": true
+                     *           },
+                     *           "sparkline": [
+                     *             null,
+                     *             null,
+                     *             1135500,
+                     *             null,
+                     *             null,
+                     *             null,
+                     *             null
+                     *           ],
+                     *           "proxy": true,
+                     *           "methodology": {
+                     *             "metricId": "mttr",
+                     *             "title": "MTTR",
+                     *             "formula": "Mean time from a loop's build or test failure to the same loop's next green, over recoveries completed that day.",
+                     *             "sources": [
+                     *               "runs",
+                     *               "builds"
+                     *             ],
+                     *             "caveats": "A proxy: loop-scoped recovery, not production incidents. Re-windowed from total time over count.",
+                     *             "unit": "duration_ms",
+                     *             "version": 1,
+                     *             "proxy": true,
+                     *             "aggregation": "ratio"
+                     *           }
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Insights"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of. Another workspace's page is never a `403`.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `range` is not one of `7d`, `30d` or `90d` (custom ranges are not
+             *     offered yet), or `repo` is not `owner/name`. `details` names the field.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;

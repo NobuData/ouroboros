@@ -20,7 +20,7 @@
 
 import { Injectable } from "@nestjs/common";
 
-import type { MetricWindow } from "./metrics.types";
+import type { MetricBreakdown, MetricWindow } from "./metrics.types";
 
 /** How long a window is reused: thirty seconds, twice the shell's fifteen-second poll. */
 export const METRICS_CACHE_TTL_MS = 30_000;
@@ -39,10 +39,15 @@ export interface MetricsCacheKey {
   readonly today: string;
 }
 
-/** One remembered window. */
+/** What an entry holds: one window, or a dimensioned metric's window per label (#438). */
+type Cached =
+  | { readonly kind: "window"; readonly value: MetricWindow }
+  | { readonly kind: "breakdown"; readonly value: MetricBreakdown };
+
+/** One remembered answer. */
 interface CacheEntry {
   readonly organizationId: string;
-  readonly window: MetricWindow;
+  readonly cached: Cached;
   /** `Date.now()` after which the entry is not served. */
   readonly expiresAt: number;
 }
@@ -59,7 +64,54 @@ export class MetricsCache {
    * @returns The window, or undefined.
    */
   get(key: MetricsCacheKey): MetricWindow | undefined {
-    const id = keyOf(key);
+    const cached = this.read(keyOf("window", key));
+
+    return cached?.kind === "window" ? cached.value : undefined;
+  }
+
+  /**
+   * Remember a window.
+   *
+   * @param key - The key.
+   * @param window - The window.
+   */
+  set(key: MetricsCacheKey, window: MetricWindow): void {
+    this.write(keyOf("window", key), key.organizationId, { kind: "window", value: window });
+  }
+
+  /**
+   * The breakdown remembered for a key, if it is still fresh. Breakdowns and windows never answer
+   * for each other: the kind is part of the key.
+   *
+   * @param key - The key; its `dimension` is ignored — a breakdown is every label.
+   * @returns The breakdown, or undefined.
+   */
+  getBreakdown(key: MetricsCacheKey): MetricBreakdown | undefined {
+    const cached = this.read(keyOf("breakdown", key));
+
+    return cached?.kind === "breakdown" ? cached.value : undefined;
+  }
+
+  /**
+   * Remember a breakdown.
+   *
+   * @param key - The key.
+   * @param breakdown - The breakdown.
+   */
+  setBreakdown(key: MetricsCacheKey, breakdown: MetricBreakdown): void {
+    this.write(keyOf("breakdown", key), key.organizationId, {
+      kind: "breakdown",
+      value: breakdown,
+    });
+  }
+
+  /**
+   * A fresh entry's contents.
+   *
+   * @param id - The key's string form.
+   * @returns What is held, or undefined when nothing is or it has expired.
+   */
+  private read(id: string): Cached | undefined {
     const entry = this.entries.get(id);
 
     if (entry === undefined) {
@@ -71,25 +123,20 @@ export class MetricsCache {
       return undefined;
     }
 
-    return entry.window;
+    return entry.cached;
   }
 
   /**
-   * Remember a window.
+   * Hold an entry for the TTL.
    *
-   * @param key - The key.
-   * @param window - The window.
+   * @param id - The key's string form.
+   * @param organizationId - Whose it is, for {@link invalidate}.
+   * @param cached - What to hold.
    */
-  set(key: MetricsCacheKey, window: MetricWindow): void {
-    const id = keyOf(key);
-
+  private write(id: string, organizationId: string, cached: Cached): void {
     // Deleted first so a rewrite moves the key to the back of the eviction order.
     this.entries.delete(id);
-    this.entries.set(id, {
-      organizationId: key.organizationId,
-      window,
-      expiresAt: Date.now() + METRICS_CACHE_TTL_MS,
-    });
+    this.entries.set(id, { organizationId, cached, expiresAt: Date.now() + METRICS_CACHE_TTL_MS });
 
     this.evict();
   }
@@ -146,16 +193,18 @@ export class MetricsCache {
 /**
  * A key as one string. JSON rather than a separator, so no part can collide with another.
  *
+ * @param kind - What the entry holds; a breakdown's key carries no dimension.
  * @param key - The key.
  * @returns Its string form.
  */
-function keyOf(key: MetricsCacheKey): string {
+function keyOf(kind: Cached["kind"], key: MetricsCacheKey): string {
   return JSON.stringify([
+    kind,
     key.organizationId,
     key.stamp,
     key.metricId,
     key.repo ?? null,
-    key.dimension ?? null,
+    kind === "breakdown" ? null : (key.dimension ?? null),
     key.range,
     key.today,
   ]);

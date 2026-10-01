@@ -67,6 +67,56 @@ export interface FlakeCandidateRow {
   readonly stateChangedAt: Date;
 }
 
+/** A day of one case's occurrences. */
+export interface FlakeCardDay {
+  /** The UTC day, `YYYY-MM-DD`. */
+  readonly day: string;
+  /** Non-skipped occurrences that day. */
+  readonly observed: number;
+  /** How many of them were sanctioned passes on retry. */
+  readonly flaky: number;
+}
+
+/** The loop behind the occurrence that showed a case had stopped flaking. */
+export interface FlakeResolution {
+  readonly runId: string;
+  readonly issueNumber: number;
+}
+
+/**
+ * One case of the Insights flaky card (BJ.2, [#438](https://github.com/NobuData/ouroboros/issues/438)):
+ * a case that is not healthy, or one that came back to healthy inside the window.
+ */
+export interface FlakeCardRow {
+  readonly caseKey: string;
+  readonly githubRepoId: string;
+  /** The repository's name. */
+  readonly repository: string;
+  /** The case's name, classname and suite as its latest occurrence recorded them. */
+  readonly name: string | null;
+  readonly classname: string | null;
+  readonly suite: string | null;
+  readonly state: FlakeState;
+  /** In [0, 1], four decimals. */
+  readonly score: number;
+  readonly windowRuns: number;
+  readonly stateChangedAt: Date;
+  /** Whether the state ever changed — a healthy row that never did was never flaky. */
+  readonly stateEverChanged: boolean;
+  /** The window's occurrences per UTC day, oldest first; days with none are absent. */
+  readonly history: readonly FlakeCardDay[];
+  /** Every platform a flaky occurrence in the window ran on. */
+  readonly flakyPlatforms: readonly string[];
+  /** The first clean pass after the case's last flaky occurrence, when its loop is known. */
+  readonly resolvedBy: FlakeResolution | null;
+}
+
+/** The instants a card's window covers: `[from, to)`. */
+export interface FlakeCardSpan {
+  readonly from: Date;
+  readonly to: Date;
+}
+
 /** One case's flake state, as the state API returns it. */
 export interface CaseFlakeRow {
   readonly caseKey: string;
@@ -180,6 +230,16 @@ export interface FlakesStore {
    * @returns The candidates.
    */
   candidates(organizationId: string, limit: number): Promise<FlakeCandidateRow[]>;
+  /**
+   * The cases the Insights flaky card draws for a window (#438): every case that is not healthy,
+   * and every case that returned to healthy inside the window, each with its occurrences per day.
+   *
+   * @param organizationId - The workspace.
+   * @param span - The window, `[from, to)`.
+   * @param repo - One repository's `owner/name`, lower-case, or undefined for the workspace.
+   * @returns The cases, highest score first.
+   */
+  card(organizationId: string, span: FlakeCardSpan, repo?: string): Promise<FlakeCardRow[]>;
   /**
    * How many of the workspace's scored cases are watching and quarantined.
    *
@@ -361,6 +421,113 @@ export class FlakesRepository implements FlakesStore {
       formulaVersion: row.formula_version,
       lastScoredAt: row.last_scored_at,
       stateChangedAt: row.state_changed_at,
+    }));
+  }
+
+  /** @inheritdoc */
+  async card(organizationId: string, span: FlakeCardSpan, repo?: string): Promise<FlakeCardRow[]> {
+    const { rows } = await sql<{
+      case_key: string;
+      github_repo_id: string;
+      repository: string;
+      name: string | null;
+      classname: string | null;
+      suite: string | null;
+      state: FlakeState;
+      score: string;
+      window_runs: number;
+      state_changed_at: Date;
+      state_ever_changed: boolean;
+      history: { day: string; observed: number; flaky: number }[];
+      flaky_platforms: string[];
+      resolved_run_id: string | null;
+      resolved_issue_number: number | null;
+    }>`
+      select s.case_key, s.github_repo_id, r.name as repository,
+             c.name, c.classname, su.name as suite,
+             s.state, s.score::text as score, s.window_runs, s.state_changed_at,
+             s.state_changed_at > s.created_at as state_ever_changed,
+             coalesce(days.history, '[]'::jsonb) as history,
+             coalesce(rigs.flaky_platforms, '{}') as flaky_platforms,
+             fix.run_id as resolved_run_id, fix.issue_number as resolved_issue_number
+        from ouroboros.flake_scores s
+        join ouroboros.github_repos r on r.id = s.github_repo_id
+        join ouroboros.github_orgs gh on gh.id = r.org_id
+        left join lateral (
+          select h.test_case_id
+            from ouroboros.test_case_history h
+           where h.organization_id = s.organization_id
+             and h.case_key = s.case_key
+           order by h.observed_at desc, h.test_case_id
+           limit 1
+        ) latest on true
+        left join ouroboros.test_cases c   on c.id = latest.test_case_id
+        left join ouroboros.test_suites su on su.id = c.test_suite_id
+        left join lateral (
+          select jsonb_agg(jsonb_build_object('day', d.day, 'observed', d.observed,
+                                              'flaky', d.flaky) order by d.day) as history
+            from (select to_char(h.observed_at at time zone 'UTC', 'YYYY-MM-DD') as day,
+                         count(*) filter (where h.status <> 'skipped')::int as observed,
+                         count(*) filter (where h.pass_on_retry)::int as flaky
+                    from ouroboros.test_case_history h
+                   where h.organization_id = s.organization_id
+                     and h.case_key = s.case_key
+                     and h.observed_at >= ${span.from} and h.observed_at < ${span.to}
+                   group by 1) d
+        ) days on true
+        left join lateral (
+          select array_agg(distinct hs.platform order by hs.platform) as flaky_platforms
+            from ouroboros.test_case_history h
+            join ouroboros.test_cases hc  on hc.id = h.test_case_id
+            join ouroboros.test_suites hs on hs.id = hc.test_suite_id
+           where h.organization_id = s.organization_id
+             and h.case_key = s.case_key
+             and h.pass_on_retry
+             and h.observed_at >= ${span.from} and h.observed_at < ${span.to}
+        ) rigs on true
+        left join lateral (
+          select tr.run_id, rn.issue_number
+            from ouroboros.test_case_history h
+            join ouroboros.test_runs tr
+              on tr.id = h.test_run_id and tr.organization_id = h.organization_id
+            join ouroboros.runs rn
+              on rn.id = tr.run_id and rn.organization_id = h.organization_id
+           where h.organization_id = s.organization_id
+             and h.case_key = s.case_key
+             and h.status = 'passed'
+             and h.observed_at > (select max(f.observed_at)
+                                    from ouroboros.test_case_history f
+                                   where f.organization_id = s.organization_id
+                                     and f.case_key = s.case_key
+                                     and f.pass_on_retry)
+           order by h.observed_at, h.test_case_id
+           limit 1
+        ) fix on s.state = 'healthy'
+       where s.organization_id = ${organizationId}
+         and (${repo ?? null}::text is null or lower(gh.login || '/' || r.name) = ${repo ?? null})
+         and (s.state <> 'healthy'
+              or (s.state_changed_at > s.created_at
+                  and s.state_changed_at >= ${span.from} and s.state_changed_at < ${span.to}))
+       order by s.score desc, s.case_key`.execute(this.database.db);
+
+    return rows.map((row) => ({
+      caseKey: row.case_key,
+      githubRepoId: row.github_repo_id,
+      repository: row.repository,
+      name: row.name,
+      classname: row.classname,
+      suite: row.suite,
+      state: row.state,
+      score: Number(row.score),
+      windowRuns: row.window_runs,
+      stateChangedAt: row.state_changed_at,
+      stateEverChanged: row.state_ever_changed,
+      history: row.history,
+      flakyPlatforms: row.flaky_platforms,
+      resolvedBy:
+        row.resolved_run_id === null || row.resolved_issue_number === null
+          ? null
+          : { runId: row.resolved_run_id, issueNumber: row.resolved_issue_number },
     }));
   }
 

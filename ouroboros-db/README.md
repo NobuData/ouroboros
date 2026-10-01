@@ -1155,6 +1155,13 @@
 > against the prior window. The untouched column reuses `merged_untouched_rate`, because I6 allows
 > one definition. Like `calibration`, the family is read from the source planes, so no extractor
 > fills it and it has no `metric_daily` rows.
+>
+> `V083` ([#438](https://github.com/NobuData/ouroboros/issues/438), BJ.2) registers what mockup
+> 15's *Tokens by stage* card needs: `tokens_by_task_kind` — `tokens` broken out by the task kind
+> the usage was recorded for, which adds `task_kind` to the closed dimension vocabulary — and
+> `local_tokens`, the tokens a provider on the workspace's own hardware served (the numerator of
+> the card's local share). Both are cost-family sums on the daily grain. Usage with no task kind
+> is in `tokens` and in no bar, and the caveat says so.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -1709,9 +1716,14 @@ overrule the mockup. The 30-day intervention count is 20, not `2/wk`. The suites
 14 / 10 / 5 / 3 / 1, because the test plane already holds ten HIL failures. The month costs about
 $181 at $1.87 a merge.
 
-Four visuals have no storage yet and are not seeded: the model scoreboard (BJ.3, #439), tokens by
-task kind and the local-model share (an unregistered metric), the budget guide and cap (AF.4),
-and — by design — the flaky card, which reads the test-results seed's `flake_scores`.
+Tokens by stage is seeded since `V083` (#438): each day's tokens are split across six task kinds
+by weight, with the rounding left to the heaviest so a day's bars sum to its tokens exactly, and
+`local_tokens` is the part of each kind a local model served — **71M / 18M / 14M / 12M / 8M /
+3M** and **31% local** over the 30 days, neither figure typed.
+
+Three visuals are not seeded here: the model scoreboard (BJ.3, #439, computed per request from
+the source planes), the budget guide and cap (AF.4), and — by design — the flaky card, which
+reads the test-results seed's `flake_scores`.
 
 Calibration is real: nine closed tickets `#520`–`#528` each get a loop, a merged PR and the
 estimate in force when it started, and #435's `record_estimate_outcome()` grades them — eight in
@@ -2568,6 +2580,7 @@ ouroboros-db/
 │   ├── V080__analysis_runs.sql              # analysis_runs (corpus manifest + sampling record, analyzer-set provenance, no cost without llm, one running per repo) + analysis_schedules (weekly, every-N + counter, budgets) — #506
 │   ├── V081__analysis_findings_suggestions.sql # analysis_findings (typed data, resolvable evidence, bounded confidence + basis) + analysis_suggestions (stable identity, A4 lifecycle, impact basis / needs_spike) + their many-to-many citations, record_analysis_suggestion() — #507
 │   ├── V082__scoreboard_registry.sql        # the model scoreboard's registry rows (scoreboard_merged, scoreboard_cost_per_success, scoreboard_trend; untouched stays merged_untouched_rate) — #439
+│   ├── V083__token_metrics_by_task_kind.sql # the task_kind dimension kind + tokens_by_task_kind and local_tokens (cost family, sums) — #438
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)

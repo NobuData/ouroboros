@@ -22,7 +22,7 @@ import { Inject, Injectable, Optional } from "@nestjs/common";
 
 import { ROLLUP_FAMILIES } from "../rollup/rollup.service";
 import type { FamilyExtractor } from "../rollup/rollup.types";
-import { MetricsCache } from "./metrics.cache";
+import { MetricsCache, type MetricsCacheKey } from "./metrics.cache";
 import {
   compose,
   deltaOf,
@@ -33,7 +33,13 @@ import {
   type MetricPlan,
 } from "./metrics.compose";
 import { MetricsRepository, type MetricDefinition, type RowFilter } from "./metrics.repository";
-import type { DailyRow, MetricMethodology, MetricScope, MetricWindow } from "./metrics.types";
+import type {
+  DailyRow,
+  MetricBreakdown,
+  MetricMethodology,
+  MetricScope,
+  MetricWindow,
+} from "./metrics.types";
 import { daysOf, resolveWindow, type ResolvedWindow } from "./metrics.window";
 
 /** The clock's injection token — bound only by the suites; production reads `Date.now`. */
@@ -52,6 +58,12 @@ export class MetricWindowError extends Error {
     super(`${metricId}: ${reason}`);
     this.name = "MetricWindowError";
   }
+}
+
+/** A metric as a request reads it: its registry entry, and how its figure is composed. */
+interface Planned {
+  readonly definition: MetricDefinition;
+  readonly plan: MetricPlan;
 }
 
 @Injectable()
@@ -80,9 +92,32 @@ export class MetricsService {
    *   dimension.
    */
   async window(metricId: string, scope: MetricScope): Promise<MetricWindow> {
+    const windows = await this.windows([metricId], scope);
+
+    return windows.get(metricId) as MetricWindow;
+  }
+
+  /**
+   * Several metrics over one range and scope, read together (BJ.2,
+   * [#438](https://github.com/NobuData/ouroboros/issues/438)) — the Insights page's KPI row,
+   * series, performance strip and DORA cells in **one** scan of the grain and one live tail per
+   * family, instead of a scan and a tail per number.
+   *
+   * Each window is exactly what {@link window} answers for that metric, and is cached under the
+   * same key, so asking singly afterwards is a cache hit and the two can never disagree.
+   *
+   * @param metricIds - The registry ids; a repeated id is read once.
+   * @param scope - The workspace, optional repository and dimension, range and instant.
+   * @returns Each metric's window, by id, in the order asked.
+   * @throws {MetricWindowError} For the first metric {@link window} would refuse.
+   */
+  async windows(
+    metricIds: readonly string[],
+    scope: MetricScope,
+  ): Promise<Map<string, MetricWindow>> {
     const resolved = resolveWindow(scope.range, scope.now ?? new Date(this.clock()));
     const stamp = await this.repository.stamp(scope.organizationId);
-    const key = {
+    const keyFor = (metricId: string): MetricsCacheKey => ({
       organizationId: scope.organizationId,
       stamp,
       metricId,
@@ -90,34 +125,121 @@ export class MetricsService {
       dimension: scope.dimension,
       range: scope.range,
       today: resolved.today,
+    });
+    const ids = [...new Set(metricIds)];
+    const found = new Map<string, MetricWindow>();
+
+    for (const metricId of ids) {
+      const cached = this.cache.get(keyFor(metricId));
+
+      if (cached !== undefined) {
+        found.set(metricId, cached);
+      }
+    }
+
+    const missing = ids.filter((metricId) => !found.has(metricId));
+
+    if (missing.length > 0) {
+      const definitions = await this.repository.definitions();
+      const planned = missing.map((metricId) => this.planned(metricId, definitions, scope));
+      const rows = await this.rows(planned, scope, resolved);
+
+      for (const { definition, plan } of planned) {
+        const computed = windowFrom(definition, plan, rows, resolved);
+
+        this.cache.set(keyFor(definition.metricId), computed);
+        found.set(definition.metricId, computed);
+      }
+    }
+
+    return new Map(ids.map((metricId) => [metricId, found.get(metricId) as MetricWindow]));
+  }
+
+  /**
+   * A dimensioned metric over a range, one window per label (BJ.2, #438): the causes behind
+   * *where loops still need humans*, the stages, suites, efforts and task kinds of the bar cards.
+   *
+   * The labels are whatever the grain holds for the window or its prior — nothing is listed that
+   * has no row, and nothing with a row is left out — read in one scan and one live tail. Each
+   * entry's window is what {@link window} answers for that label.
+   *
+   * @param metricId - A registry id with a dimension, e.g. `human_interventions`.
+   * @param scope - The workspace, optional repository, range and instant. No dimension: a
+   *   breakdown is all of them.
+   * @returns The entries, labels ascending, and the methodology.
+   * @throws {MetricWindowError} When the metric is not in the registry, has no dimension, or no
+   *   rollup family fills it.
+   */
+  async breakdown(
+    metricId: string,
+    scope: Omit<MetricScope, "dimension">,
+  ): Promise<MetricBreakdown> {
+    const resolved = resolveWindow(scope.range, scope.now ?? new Date(this.clock()));
+    const stamp = await this.repository.stamp(scope.organizationId);
+    const key: MetricsCacheKey = {
+      organizationId: scope.organizationId,
+      stamp,
+      metricId,
+      repo: scope.repo,
+      range: scope.range,
+      today: resolved.today,
     };
-    const cached = this.cache.get(key);
+    const cached = this.cache.getBreakdown(key);
 
     if (cached !== undefined) {
       return cached;
     }
 
-    const computed = await this.compute(metricId, scope, resolved);
+    const definition = (await this.repository.definitions()).get(metricId);
 
-    this.cache.set(key, computed);
+    if (definition === undefined) {
+      throw new MetricWindowError(metricId, "not in the metric registry");
+    }
 
-    return computed;
+    if (definition.dimensionKind === null) {
+      throw new MetricWindowError(metricId, "has no dimension to break out by");
+    }
+
+    const plan = this.planFor(definition);
+    const rows = await this.rows([{ definition, plan }], scope, resolved);
+    const labels = [...new Set(rows.map((row) => row.dimension))].sort();
+    const breakdown: MetricBreakdown = {
+      metricId,
+      dimensionKind: definition.dimensionKind,
+      range: resolved.range,
+      from: resolved.current.from,
+      to: resolved.current.to,
+      entries: labels.map((dimension) => ({
+        dimension,
+        window: windowFrom(
+          definition,
+          plan,
+          rows.filter((row) => row.dimension === dimension),
+          resolved,
+        ),
+      })),
+      methodology: methodologyOf(definition),
+    };
+
+    this.cache.setBreakdown(key, breakdown);
+
+    return breakdown;
   }
 
   /**
-   * Compute a window: scan and tail, recompose, compare with the prior window.
+   * A metric's registry entry and plan, or the refusal {@link window} documents.
    *
    * @param metricId - The metric.
-   * @param scope - The request.
-   * @param resolved - Its boundaries.
-   * @returns The window.
+   * @param definitions - The registry.
+   * @param scope - The request, for the dimension rule.
+   * @returns The entry and how it is computed.
+   * @throws {MetricWindowError} See {@link window}.
    */
-  private async compute(
+  private planned(
     metricId: string,
+    definitions: ReadonlyMap<string, MetricDefinition>,
     scope: MetricScope,
-    resolved: ResolvedWindow,
-  ): Promise<MetricWindow> {
-    const definitions = await this.repository.definitions();
+  ): Planned {
     const definition = definitions.get(metricId);
 
     if (definition === undefined) {
@@ -135,40 +257,42 @@ export class MetricsService {
       );
     }
 
-    const plan = this.planFor(definition);
+    return { definition, plan: this.planFor(definition) };
+  }
+
+  /**
+   * Every daily row the plans read: the rollup scan over both windows, and today from each
+   * family's extractor — once per family, however many of its metrics were asked for.
+   *
+   * @param planned - The metrics and their plans.
+   * @param scope - The request.
+   * @param resolved - Its boundaries.
+   * @returns The rows, stored first.
+   */
+  private async rows(
+    planned: readonly Planned[],
+    scope: MetricScope,
+    resolved: ResolvedWindow,
+  ): Promise<DailyRow[]> {
     const filter: RowFilter = {
-      metricIds: planMetrics(plan),
+      metricIds: [...new Set(planned.flatMap(({ plan }) => planMetrics(plan)))],
       repo: scope.repo,
       dimension: scope.dimension,
     };
-    const families = this.tailFamilies(metricId, filter.metricIds);
+    const families = new Set(
+      planned.flatMap(({ definition, plan }) =>
+        this.tailFamilies(definition.metricId, planMetrics(plan)),
+      ),
+    );
 
     const [stored, ...tails] = await Promise.all([
       this.repository.scan(scope.organizationId, filter, resolved.scan),
-      ...families.map((extractor) =>
+      ...[...families].map((extractor) =>
         this.repository.tail(scope.organizationId, extractor, resolved.today, filter),
       ),
     ]);
-    const rows: DailyRow[] = [...stored, ...tails.flat()];
 
-    const inCurrent = rows.filter((row) => row.day >= resolved.current.from);
-    const inPrior = rows.filter((row) => row.day <= resolved.prior.to);
-    const current = compose(plan, inCurrent);
-    const prior = compose(plan, inPrior);
-
-    return {
-      metricId,
-      range: resolved.range,
-      from: resolved.current.from,
-      to: resolved.current.to,
-      value: current.value,
-      ...(current.components ? { components: current.components } : {}),
-      prior: prior.value,
-      ...(prior.components ? { priorComponents: prior.components } : {}),
-      delta: deltaOf(current.value, prior.value),
-      series: seriesOf(plan, daysOf(resolved.current), inCurrent),
-      methodology: methodologyOf(definition),
-    };
+    return [...stored, ...tails.flat()];
   }
 
   /**
@@ -232,6 +356,46 @@ export class MetricsService {
   private extractorOf(metricId: string): FamilyExtractor | undefined {
     return this.extractors.find((extractor) => metricId in extractor.metrics);
   }
+}
+
+/**
+ * One metric's window from the rows a request read: the figure, the prior window's, their
+ * difference, the daily series and the methodology.
+ *
+ * @param definition - The registry entry.
+ * @param plan - How the figure is composed.
+ * @param rows - The request's rows — any metric, both windows; the plan takes its own.
+ * @param resolved - The window's boundaries.
+ * @returns The window.
+ */
+function windowFrom(
+  definition: MetricDefinition,
+  plan: MetricPlan,
+  rows: readonly DailyRow[],
+  resolved: ResolvedWindow,
+): MetricWindow {
+  // Its own rows only: a batch read holds other metrics' rows too, and a day's tooltip figures
+  // (`meta`) are summed over whatever rows the series is handed.
+  const metricIds = planMetrics(plan);
+  const own = rows.filter((row) => metricIds.includes(row.metricId));
+  const inCurrent = own.filter((row) => row.day >= resolved.current.from);
+  const inPrior = own.filter((row) => row.day <= resolved.prior.to);
+  const current = compose(plan, inCurrent);
+  const prior = compose(plan, inPrior);
+
+  return {
+    metricId: definition.metricId,
+    range: resolved.range,
+    from: resolved.current.from,
+    to: resolved.current.to,
+    value: current.value,
+    ...(current.components ? { components: current.components } : {}),
+    prior: prior.value,
+    ...(prior.components ? { priorComponents: prior.components } : {}),
+    delta: deltaOf(current.value, prior.value),
+    series: seriesOf(plan, daysOf(resolved.current), inCurrent),
+    methodology: methodologyOf(definition),
+  };
 }
 
 /**
