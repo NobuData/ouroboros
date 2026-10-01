@@ -537,6 +537,50 @@ export const DEFAULT_FACT_SWEEP_HOUR_UTC = 4;
 export const DEFAULT_REPO_MAP_HOUR_UTC = 5;
 
 /**
+ * Seconds between Insights rollup ticks when `OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS` is not set —
+ * an hour (BI.2, #433). Each tick re-fills today for every workspace and metric family, steps any
+ * backfill, and — on the first tick of a new UTC day — consolidates the trailing window.
+ */
+export const DEFAULT_INSIGHTS_ROLLUP_INTERVAL_SECONDS = 3600;
+
+/** Fastest rollup tick — a minute. Each tick is a few indexed reads per family per workspace. */
+export const MIN_INSIGHTS_ROLLUP_INTERVAL_SECONDS = 60;
+
+/** Slowest rollup tick — a day, at which point today's numbers are only as fresh as the night. */
+export const MAX_INSIGHTS_ROLLUP_INTERVAL_SECONDS = 86400;
+
+/**
+ * Days the nightly consolidation re-fills, ending yesterday, when
+ * `OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS` is not set — three (BI.2, #433). Late data — a sync that
+ * ran late, a revert that landed after its merge's day — reaches its day within this window.
+ */
+export const DEFAULT_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS = 3;
+
+/** Largest consolidation window — a month of re-fills a night. */
+export const MAX_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS = 31;
+
+/**
+ * How far back a family's first fill reaches, in days, when `OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS` is
+ * not set — ninety, the page's longest range (BI.2, #433). Also the furthest any consolidation
+ * after an outage reaches.
+ */
+export const DEFAULT_INSIGHTS_ROLLUP_BACKFILL_DAYS = 90;
+
+/** Furthest backfill horizon — two years. */
+export const MAX_INSIGHTS_ROLLUP_BACKFILL_DAYS = 730;
+
+/**
+ * Most days one tick fills from a family's backfill cursor, when
+ * `OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK` is not set — thirty-one (BI.2, #433). The bound that keeps a
+ * ninety-day first fill from being one long burst; what it leaves, the next tick resumes at the
+ * cursor.
+ */
+export const DEFAULT_INSIGHTS_ROLLUP_DAYS_PER_TICK = 31;
+
+/** Most days per tick — a year. */
+export const MAX_INSIGHTS_ROLLUP_DAYS_PER_TICK = 366;
+
+/**
  * The largest merged-loop threshold an operator may configure for the onboarding tiles' unlock
  * rule (BB.3, #386) — ten thousand merged loops, far past any tier worth gating.
  */
@@ -960,6 +1004,26 @@ export interface Configuration {
    */
   readonly repoMapHourUtc: number;
   /**
+   * Seconds between Insights rollup ticks. From `OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS`,
+   * {@link DEFAULT_INSIGHTS_ROLLUP_INTERVAL_SECONDS} when unset.
+   */
+  readonly insightsRollupIntervalSeconds: number;
+  /**
+   * Days the nightly consolidation re-fills. From `OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS`,
+   * {@link DEFAULT_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS} when unset.
+   */
+  readonly insightsRollupConsolidateDays: number;
+  /**
+   * How far back a first fill reaches, in days. From `OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS`,
+   * {@link DEFAULT_INSIGHTS_ROLLUP_BACKFILL_DAYS} when unset.
+   */
+  readonly insightsRollupBackfillDays: number;
+  /**
+   * Most backfill days one tick fills per family. From `OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK`,
+   * {@link DEFAULT_INSIGHTS_ROLLUP_DAYS_PER_TICK} when unset.
+   */
+  readonly insightsRollupDaysPerTick: number;
+  /**
    * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
    *
    * A map of provider kind to base URL, from a comma-separated list of `kind=url` pairs, and
@@ -1073,6 +1137,10 @@ export const VARIABLES = {
   flakeRescoreCap: "OURO_FLAKE_RESCORE_CAP",
   factSweepHourUtc: "OURO_FACT_SWEEP_HOUR_UTC",
   repoMapHourUtc: "OURO_REPO_MAP_HOUR_UTC",
+  insightsRollupIntervalSeconds: "OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS",
+  insightsRollupConsolidateDays: "OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS",
+  insightsRollupBackfillDays: "OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS",
+  insightsRollupDaysPerTick: "OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
   onboardingUnlockThreshold: "OURO_ONBOARDING_UNLOCK_THRESHOLD",
   managedKeyPool: "OURO_MANAGED_KEY_POOL",
@@ -1657,6 +1725,35 @@ const environmentShape = z.object({
 
   OURO_REPO_MAP_HOUR_UTC: boundedWhole(0, DEFAULT_REPO_MAP_HOUR_UTC, 23),
 
+  // BI.2's (#433) four: the rollup tick, the nightly consolidation window, the first-fill horizon
+  // and the per-tick backfill bound.
+  OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS: cadenceSeconds(
+    MIN_INSIGHTS_ROLLUP_INTERVAL_SECONDS,
+    DEFAULT_INSIGHTS_ROLLUP_INTERVAL_SECONDS,
+    MAX_INSIGHTS_ROLLUP_INTERVAL_SECONDS,
+  ),
+
+  OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS: boundedWhole(
+    1,
+    DEFAULT_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS,
+    MAX_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS,
+    "days",
+  ),
+
+  OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS: boundedWhole(
+    1,
+    DEFAULT_INSIGHTS_ROLLUP_BACKFILL_DAYS,
+    MAX_INSIGHTS_ROLLUP_BACKFILL_DAYS,
+    "days",
+  ),
+
+  OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK: boundedWhole(
+    1,
+    DEFAULT_INSIGHTS_ROLLUP_DAYS_PER_TICK,
+    MAX_INSIGHTS_ROLLUP_DAYS_PER_TICK,
+    "days",
+  ),
+
   // The onboarding tiles' unlock threshold override (BB.3, #386). Optional, and unset is the
   // normal posture: each advanced template's own `merged_loops_gte` is then the rule.
   OURO_ONBOARDING_UNLOCK_THRESHOLD: z
@@ -1894,6 +1991,10 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     flakeRescoreCap: values.OURO_FLAKE_RESCORE_CAP,
     factSweepHourUtc: values.OURO_FACT_SWEEP_HOUR_UTC,
     repoMapHourUtc: values.OURO_REPO_MAP_HOUR_UTC,
+    insightsRollupIntervalSeconds: values.OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS,
+    insightsRollupConsolidateDays: values.OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS,
+    insightsRollupBackfillDays: values.OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS,
+    insightsRollupDaysPerTick: values.OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
     onboardingUnlockThreshold: values.OURO_ONBOARDING_UNLOCK_THRESHOLD,
     managedKeyPool: values.OURO_MANAGED_KEY_POOL,

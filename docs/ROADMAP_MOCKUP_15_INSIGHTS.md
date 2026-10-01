@@ -245,7 +245,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BI.1 | #432 ✅ | 🟢 Done | ouroboros-db: [BI.1] Metric rollup schema & methodology registry | `metric_daily` grain + versioned formula registry (I1/I2) | mvp, insights, db | N (after DASH-F.1/F.3, AO/AW/AS) | Y | M | ouroboros-db |
-| BI.2 | #433 | 🟡 Open | ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors | Incremental daily fills per metric family; oracle parity | mvp, insights, rest | N (after BI.1) | Y | L | ouroboros-rest |
+| BI.2 | #433 ✅ | 🟢 Done | ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors | Incremental daily fills per metric family; oracle parity | mvp, insights, rest | N (after BI.1) | Y | L | ouroboros-rest |
 | BI.3 | #434 | 🟡 Open | ouroboros-db: [BI.3] Intervention-cause taxonomy | Cause mapping rules + override rows (I5); AT.4 subtype amendment | mvp, insights, db | N (after AT.4, AO.4) | Y | M | ouroboros-db, ouroboros-rest |
 | BI.4 | #435 ✅ | 🟢 Done | ouroboros-rest: [BI.4] Estimator calibration records | Estimate-band vs actual joins; within-band computation (I7) | mvp, insights, rest, intake | N (after INTAKE-K.2, AO.1) | Y | S | ouroboros-rest, ouroboros-db |
 | BI.5 | #436 | 🟡 Open | ouroboros-db: [BI.5] Insights seeds — mockup-15 parity + probes | 30d of rollup history shaping every visual; ci checks | mvp, insights, db, ci | N (after BI.1–BI.4, #24) | Y | M | ouroboros-db, .github |
@@ -303,7 +303,24 @@ erDiagram
 
 ### Issue BI.2 — ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors
 
-> **GitHub issue:** #433 · **Status:** 🟡 Open · **Parent epic:** #428
+> **GitHub issue:** #433 ✅ · **Status:** 🟢 Done · **Parent epic:** #428
+
+- **Delivered** (`ouroboros-db` `V078__metric_rollup_extractors.sql`, `ouroboros-rest`
+  `insights/rollup/`): one extractor per family — throughput (merged PRs, autonomous merge rate,
+  I6 untouched rate by run-commit sha match), interventions (needs-human handoffs + first guardrail
+  failure per check; the cause dimension waits for #434), cycle (median cycle + per-stage medians),
+  cost (priced `cost_cents`, `tokens`, new `unpriced_tokens`; `cost_per_merged_pr` derived per
+  window, never stored per day), builds, tests (suite-dimensioned failures), effort (completion
+  median by predicted effort from `estimate_outcomes`), DORA (deploys, `lead_time_ms()` lead time,
+  revert-detected change failure rate over merged PR titles and loop commits, loop-scoped MTTR).
+  V078 adds `metric_daily.dimension` to the grain key, `metric_definitions.aggregation`
+  (`sum|ratio|median`) and `dimension_kind`, and `metric_daily_shape_guard` (median rows keep
+  ascending `meta.samples` and their value must be their median — windows pool samples, never
+  average medians). Extractors declare the registry version they implement and refuse to fill on
+  a mismatch. One hourly jittered loop fills today, consolidates the trailing window on the first
+  tick of a UTC day, and steps a bounded, cursor-tracked backfill (each day + cursor move in one
+  transaction under an advisory lock). Every metric has an on-the-fly SQL twin in
+  `rollup.oracle.fixture.ts`, compared in `rollup.integration-spec.ts`.
 
 - **Problem Statement:** The daily grain must fill incrementally from every
   source plane — correctly, restartably, and provably equal to on-the-fly
@@ -928,7 +945,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#324, #331), farm (#249), DASH-F.1 (#64)/F.3 (#66)/J.4 (#92),
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
-2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → BI.2 (#433) ⊕ { BI.3 (#434) ⊕ **BI.4 (#435) ✅** } → BI.5 (#436)
+2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { BI.3 (#434) ⊕ **BI.4 (#435) ✅** } → BI.5 (#436)
 3. **Phase 2 — Services:** BJ.1 (#437) → { BJ.2 (#438) ⊕ BJ.3 (#439) ⊕ BJ.4 (#440) } → BJ.5 (#441)
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*

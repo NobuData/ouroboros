@@ -303,6 +303,10 @@ service never starts half-configured.
 | `OURO_FLAKE_RESCORE_HOUR_UTC` | The UTC hour the [nightly flake re-scorer](#flake-scorer) is scheduled at; each pass lands at a random minute in the hour after it ([#331](https://github.com/NobuData/ouroboros/issues/331)) |      no — 3       | a whole number, 0–23 |
 | `OURO_FLAKE_RESCORE_CAP` | The most cases one workspace's nightly flake re-score covers, least recently scored first — the job's bound |     no — 2000     | a whole number, 1–100000 |
 | `OURO_FACT_SWEEP_HOUR_UTC` | The UTC hour the [nightly fact staleness sweep](#fact-lifecycle-and-the-staleness-sweep) is scheduled at; each pass lands at a random minute in the hour after it ([#411](https://github.com/NobuData/ouroboros/issues/411)) |      no — 4       | a whole number, 0–23 |
+| `OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS` | Seconds between [Insights rollup](#insights-rollups) ticks — jittered ±25%; each re-fills today and steps any backfill ([#433](https://github.com/NobuData/ouroboros/issues/433)) | no — 3600 | a whole number of seconds, 60–86400 |
+| `OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS` | Days, ending yesterday, the first tick of a UTC day re-fills so late data reaches its day | no — 3 | a whole number of days, 1–31 |
+| `OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS` | How far back a family's first fill reaches; also the furthest any consolidation reaches | no — 90 | a whole number of days, 1–730 |
+| `OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK` | Most backfill days one tick fills per family; the next tick resumes at the cursor | no — 31 | a whole number of days, 1–366 |
 | `OURO_REPO_MAP_HOUR_UTC` | The UTC hour the [nightly repo-map generator](#playbooks-and-the-repo-map-generator) is scheduled at; each pass lands at a random minute in the hour after it ([#415](https://github.com/NobuData/ouroboros/issues/415)) |      no — 5       | a whole number, 0–23 |
 | `OURO_ONBOARDING_UNLOCK_THRESHOLD` | The merged-loop count that unlocks an advanced [onboarding template tile](#template-tiles-and-instantiation) ([#386](https://github.com/NobuData/ouroboros/issues/386)), replacing each template's own rule |     no — unset     | a whole number, 0–10000; `0` unlocks every tier |
 | `OURO_MANAGED_KEY_POOL` | Whether this deployment declares a managed key pool — selects the [Smart Defaults](#the-first-run-launcher-and-smart-defaults) models row ([#388](https://github.com/NobuData/ouroboros/issues/388)) |     no — false     | `true` or `false` |
@@ -5816,6 +5820,45 @@ is graded against the estimate **in force when its work was queued** — never a
 
 Rates are re-derived from counts (the headline is never an average of the slices) and are null
 over nothing.
+
+### Insights rollups
+
+BI.2 ([#433](https://github.com/NobuData/ouroboros/issues/433)), decisions **I1**/**I2**, in
+[`src/modules/insights/rollup/`](src/modules/insights/rollup) over V076/V078's `metric_daily`. One
+extractor per metric family fills the daily grain — per workspace, repository, metric, dimension
+and **UTC day** — from the source planes; nothing here is an endpoint yet (BJ.1, #437, reads it).
+
+| family | metrics | population |
+| ------ | ------- | ---------- |
+| `throughput` | `merged_prs`, `merge_rate`, `merged_untouched_rate` | loop PRs merged that day, or closed unmerged on the day their loop finished; *untouched* is I6: every revision's head sha is a commit the loop reported |
+| `interventions` | `human_interventions` | loops that finished `needs_human`, plus the first `fail` of each guardrail check per loop (`review_required` is the policy gate); causes arrive with #434 |
+| `cycle` | `cycle_time`, `stage_duration` (by stage) | loops that finished `merged`; medians |
+| `cost` | `cost_cents`, `tokens`, `unpriced_tokens` | run-attributed usage; no `cost_cents` row on a day with nothing priced (unpriced ≠ $0). `cost_per_merged_pr` is Σ`cost_cents` / Σ`merged_prs` per window, never stored per day |
+| `builds` | `builds`, `build_failures`, `build_success_rate` | farm jobs finished `succeeded`/`failed`/`retried` |
+| `tests` | `test_cases_run`, `test_pass_rate`, `test_failures_by_suite` (by suite) | finished test runs started that day, from suite counts |
+| `effort` | `completion_time_by_effort` (by effort) | `estimate_outcomes` merged that day; medians |
+| `dora` | `deploy_frequency`, `lead_time`, `change_failure_rate`, `mttr` | green default-branch builds; `lead_time_ms()`; revert detection (`Revert "…"`, `revert:`) over merged PR titles and loop commits, dated by the original merge; loop-scoped red→green recovery |
+
+**How a window reads it** is the registry's `aggregation`: `sum` sums values, `ratio` re-sums
+`numerator`/`denominator` and divides once, `median` pools every day's `meta.samples` — never an
+average of daily values or daily medians. Each extractor declares the registry `version` of every
+metric it fills and refuses to fill (`metric_rollup_state.last_error`) when the database disagrees.
+
+**Scheduling** is one jittered loop (`OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS`, an hour): every tick
+re-fills today; a family never filled backfills `OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS` (90); the
+first tick of a new UTC day consolidates the last `OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS` (3) plus
+any gap; a backfill moves at most `OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK` (31) days a tick. Each day is
+one transaction under a per-(workspace, family) advisory lock that replaces the day's rows and moves
+the cursor, so re-runs are idempotent and an interrupted backfill resumes without gaps or
+double-counting.
+
+**The oracle.** Every metric has an on-the-fly SQL twin in `rollup.oracle.fixture.ts`;
+`rollup.integration-spec.ts` fills a fixture through the extractors and requires every window,
+per repository and dimension, to equal the twin — the build fails if a rollup drifts.
+
+```bash
+yarn test:integration src/modules/insights/rollup
+```
 
 ### PR page reads & head actions
 

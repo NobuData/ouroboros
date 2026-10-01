@@ -13,6 +13,10 @@ import {
   DEFAULT_REESTIMATION_BATCH,
   DEFAULT_FACT_SWEEP_HOUR_UTC,
   DEFAULT_REPO_MAP_HOUR_UTC,
+  DEFAULT_INSIGHTS_ROLLUP_BACKFILL_DAYS,
+  DEFAULT_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS,
+  DEFAULT_INSIGHTS_ROLLUP_DAYS_PER_TICK,
+  DEFAULT_INSIGHTS_ROLLUP_INTERVAL_SECONDS,
   DEFAULT_FLAKE_RESCORE_CAP,
   DEFAULT_FLAKE_RESCORE_HOUR_UTC,
   DEFAULT_REESTIMATION_HOUR_UTC,
@@ -146,6 +150,11 @@ describe("the development defaults", () => {
       flakeRescoreCap: DEFAULT_FLAKE_RESCORE_CAP,
       factSweepHourUtc: DEFAULT_FACT_SWEEP_HOUR_UTC,
       repoMapHourUtc: DEFAULT_REPO_MAP_HOUR_UTC,
+      // BI.2's (#433) four, written out in the template at their defaults for the same reason.
+      insightsRollupIntervalSeconds: DEFAULT_INSIGHTS_ROLLUP_INTERVAL_SECONDS,
+      insightsRollupConsolidateDays: DEFAULT_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS,
+      insightsRollupBackfillDays: DEFAULT_INSIGHTS_ROLLUP_BACKFILL_DAYS,
+      insightsRollupDaysPerTick: DEFAULT_INSIGHTS_ROLLUP_DAYS_PER_TICK,
       // BB.5's (#388) two capability flags: a deployment that declares nothing has neither pool.
       managedKeyPool: false,
       hostedRunnerPool: false,
@@ -1093,6 +1102,38 @@ describe("the nightly flake re-scorer variables (AT.3, #331)", () => {
     ["OURO_FACT_SWEEP_HOUR_UTC", "24", "expected between 0 and 23"],
     ["OURO_FACT_SWEEP_HOUR_UTC", "-1", "expected between 0 and 23"],
     ["OURO_REPO_MAP_HOUR_UTC", "24", "expected between 0 and 23"],
+  ])("rejects %s=%s", (variable, value, message) => {
+    expect(failureFor(testEnvironment({ [variable]: value }))).toContain(`${variable}: ${message}`);
+  });
+});
+
+describe("the Insights rollup variables (BI.2, #433)", () => {
+  it.each([
+    [
+      "OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS",
+      "insightsRollupIntervalSeconds",
+      ["60", "3600", "86400"],
+    ],
+    ["OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS", "insightsRollupConsolidateDays", ["1", "3", "31"]],
+    ["OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS", "insightsRollupBackfillDays", ["1", "90", "730"]],
+    ["OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK", "insightsRollupDaysPerTick", ["1", "31", "366"]],
+  ] as const)("reads %s inside its range", (variable, field, values) => {
+    for (const value of values) {
+      expect(loadConfiguration(testEnvironment({ [variable]: value }))[field]).toBe(Number(value));
+    }
+  });
+
+  it.each([
+    ["OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS", "59", "expected between 60 and 86400 seconds"],
+    ["OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS", "86401", "expected between 60 and 86400 seconds"],
+    // A zero window is a consolidation that re-fills nothing — late data would never land.
+    ["OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS", "0", "expected between 1 and 31 days"],
+    ["OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS", "32", "expected between 1 and 31 days"],
+    ["OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS", "0", "expected between 1 and 730 days"],
+    ["OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS", "731", "expected between 1 and 730 days"],
+    // A zero bound is a backfill that never moves; an unbounded one is the burst the bound prevents.
+    ["OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK", "0", "expected between 1 and 366 days"],
+    ["OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK", "367", "expected between 1 and 366 days"],
   ])("rejects %s=%s", (variable, value, message) => {
     expect(failureFor(testEnvironment({ [variable]: value }))).toContain(`${variable}: ${message}`);
   });

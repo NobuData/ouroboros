@@ -26519,7 +26519,7 @@ returns void language plpgsql as $$
 begin
   insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
   values ('org-v076', 'acme/zephyr', 'merged_prs', false, d, extract(day from d))
-  on conflict (organization_id, repo_ref, metric_id, day) do update
+  on conflict (organization_id, repo_ref, metric_id, dimension, day) do update
     set value = excluded.value, computed_at = now();
 
   if crash then
@@ -26946,6 +26946,208 @@ delete from ouroboros.organization where "id" in ('org-v077', 'org-v077-other');
 select pg_temp.must_hold(
   not exists (select 1 from ouroboros.estimate_outcomes where organization_id = 'org-v077'),
   'a deleted workspace takes its outcomes with it');
+
+-- ===========================================================================
+-- V078 — metric_daily.dimension, registry aggregation and the median rule (#433, BI.2)
+-- ===========================================================================
+--
+-- The dimension joins the grain; every registry entry states how a window re-derives it; a
+-- median row keeps its day's samples and its value must be their median — so the pooled
+-- window median equals an oracle over the raw observations, and differs from the average of the
+-- daily medians on a fixture built to make them disagree.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v078', 'Rollup Works', 'rollup-works-v078', now());
+
+-- --- The registry --------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select bool_and((aggregation = 'ratio') = is_rate) from ouroboros.metric_definitions),
+  'every rate is a ratio and every ratio a rate');
+
+select pg_temp.must_hold(
+  (select array_agg(metric_id order by metric_id)
+            = '{completion_time_by_effort,cycle_time,stage_duration}'
+     from ouroboros.metric_definitions where aggregation = 'median'),
+  'the shipped medians are cycle time, stage duration and completion time by effort');
+
+select pg_temp.must_hold(
+  (select array_agg(metric_id || ':' || dimension_kind order by metric_id)
+            = '{completion_time_by_effort:effort,stage_duration:stage,test_failures_by_suite:suite}'
+     from ouroboros.metric_definitions where dimension_kind is not null),
+  'the shipped dimensioned metrics name their dimension');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.metric_definitions
+    where metric_id in ('builds', 'build_failures', 'test_cases_run', 'unpriced_tokens')
+      and aggregation = 'sum'),
+  'the new counts re-window by sum');
+
+insert into ouroboros.metric_definitions
+  (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate)
+values ('v078_rate', 'probe', 'Probe rate', 'x', '{runs}', 'A fixture.', 'pct', true);
+
+select pg_temp.must_hold(
+  (select aggregation = 'ratio' from ouroboros.metric_definitions where metric_id = 'v078_rate'),
+  'an insert that omits aggregation gets ratio for a rate');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate, aggregation)
+    values ('v078_bad', 'probe', 'Bad', 'x', '{runs}', 'x', 'count', false, 'ratio')$$,
+  'only a rate is a ratio', 'metric_definitions_ratio_is_rate');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate, aggregation)
+    values ('v078_bad', 'probe', 'Bad', 'x', '{runs}', 'x', 'count', false, 'mean')$$,
+  'the aggregation vocabulary is closed — there is no mean of means',
+  'metric_definitions_aggregation_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate, dimension_kind)
+    values ('v078_bad', 'probe', 'Bad', 'x', '{runs}', 'x', 'count', false, 'colour')$$,
+  'the dimension vocabulary is closed', 'metric_definitions_dimension_kind_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.metric_definitions set dimension_kind = 'cause'
+     where metric_id = 'human_interventions'$$,
+  'adding a dimension is a formula change', 'metric_definitions_version_guard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.metric_definitions set aggregation = 'median', is_rate = false
+     where metric_id = 'v078_rate'$$,
+  'changing the aggregation is a formula change', 'metric_definitions_version_guard');
+
+-- --- The dimension -------------------------------------------------------
+
+insert into ouroboros.metric_daily
+  (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
+values ('org-v078', 'acme/helios', 'test_failures_by_suite', false, 'telemetry integration', '2026-08-01', 14),
+       ('org-v078', 'acme/helios', 'test_failures_by_suite', false, 'unit · drivers', '2026-08-01', 1);
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.metric_daily
+    where organization_id = 'org-v078' and metric_id = 'test_failures_by_suite'),
+  'two suites are two rows of one metric on one day');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
+    values ('org-v078', 'acme/helios', 'test_failures_by_suite', false, 'unit · drivers', '2026-08-01', 2)$$,
+  'one row per (org, repo, metric, dimension, day)', 'metric_daily_grain_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+    values ('org-v078', 'acme/helios', 'test_failures_by_suite', false, '2026-08-02', 3)$$,
+  'a dimensioned metric''s row names its dimension', 'metric_daily_shape_guard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
+    values ('org-v078', 'acme/helios', 'merged_prs', false, 'unit', '2026-08-02', 3)$$,
+  'an undimensioned metric''s row carries no dimension', 'metric_daily_shape_guard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
+    values ('org-v078', 'acme/helios', 'test_failures_by_suite', false, ' unit ', '2026-08-02', 3)$$,
+  'a dimension is trimmed', 'metric_daily_dimension_format');
+
+-- --- The median rule -----------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+    values ('org-v078', 'acme/helios', 'cycle_time', false, '2026-08-02', 860000)$$,
+  'a median row keeps its samples', 'metric_daily_shape_guard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, meta)
+    values ('org-v078', 'acme/helios', 'cycle_time', false, '2026-08-02', 2, '{"samples": [3, 1, 2]}')$$,
+  'samples are stored ascending', 'metric_daily_shape_guard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, meta)
+    values ('org-v078', 'acme/helios', 'cycle_time', false, '2026-08-02', 0, '{"samples": [-1, 1]}')$$,
+  'a sample is never negative', 'metric_daily_shape_guard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, meta)
+    values ('org-v078', 'acme/helios', 'cycle_time', false, '2026-08-02', 2, '{"samples": []}')$$,
+  'a median row has at least one sample', 'metric_daily_shape_guard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, meta)
+    values ('org-v078', 'acme/helios', 'cycle_time', false, '2026-08-02', 2.33, '{"samples": [1, 2, 4]}')$$,
+  'a median row''s value is its samples'' median — the mean (2.33) or anything else is refused',
+  'metric_daily_shape_guard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, meta)
+    values ('org-v078', 'acme/helios', 'merged_prs', false, '2026-08-02', 2, '{"samples": [2]}')$$,
+  'a summed metric carries no samples', 'metric_daily_shape_guard');
+
+insert into ouroboros.metric_daily
+  (organization_id, repo_ref, metric_id, is_rate, day, value, meta)
+values ('org-v078', 'acme/helios', 'cycle_time', false, '2026-08-02', 2.5, '{"samples": [1, 2, 3, 4]}');
+
+select pg_temp.must_hold(
+  (select value = 2.5 from ouroboros.metric_daily
+    where organization_id = 'org-v078' and metric_id = 'cycle_time' and day = '2026-08-02'),
+  'an even count''s median interpolates between the middle two');
+
+select pg_temp.must_reject(
+  $$update ouroboros.metric_daily set value = 3
+     where organization_id = 'org-v078' and metric_id = 'cycle_time' and day = '2026-08-02'$$,
+  'an update is held to the median rule too', 'metric_daily_shape_guard');
+
+delete from ouroboros.metric_daily where organization_id = 'org-v078' and metric_id = 'cycle_time';
+
+-- The oracle. Ten days of loop cycle times: a busy day of forty slow loops (30 min) and nine quiet
+-- days of one fast loop each (10 min). The pooled 10-day median is 30 min; the average of the
+-- daily medians is 12 min and their median 10 min — both wrong, and both what averaging gives.
+create temp table v078_cycles (day date not null, ms numeric not null) on commit drop;
+
+insert into v078_cycles (day, ms)
+select date '2026-08-01' + (d - 1), case when d = 1 then 1800000 else 600000 end
+  from generate_series(1, 10) d,
+       lateral generate_series(1, case when d = 1 then 40 else 1 end) n;
+
+insert into ouroboros.metric_daily
+  (organization_id, repo_ref, metric_id, is_rate, day, value, meta)
+select 'org-v078', 'acme/helios', 'cycle_time', false, day,
+       percentile_cont(0.5) within group (order by ms)::numeric,
+       jsonb_build_object('samples', jsonb_agg(ms order by ms))
+  from v078_cycles
+ group by day;
+
+select pg_temp.must_hold(
+  (select percentile_cont(0.5) within group (order by s::numeric)
+     from ouroboros.metric_daily d, jsonb_array_elements_text(d.meta -> 'samples') s
+    where d.organization_id = 'org-v078' and d.metric_id = 'cycle_time'
+      and d.day between '2026-08-01' and '2026-08-10')
+  = (select percentile_cont(0.5) within group (order by ms) from v078_cycles),
+  'a 10-day median pooled from the daily samples equals the oracle over the observations');
+
+select pg_temp.must_hold(
+  (select avg(value) <> 1800000 and percentile_cont(0.5) within group (order by value) <> 1800000
+     from ouroboros.metric_daily
+    where organization_id = 'org-v078' and metric_id = 'cycle_time'),
+  'the fixture makes the average and the median of daily medians both differ from the true median');
+
+-- --- Lifecycle -----------------------------------------------------------
+
+delete from ouroboros.organization where "id" = 'org-v078';
+delete from ouroboros.metric_definitions where metric_id = 'v078_rate';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.metric_daily where organization_id = 'org-v078'),
+  'a deleted workspace takes its dimensioned and median rows with it');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
