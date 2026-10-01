@@ -28987,6 +28987,39 @@ select pg_temp.must_hold(
   'a deleted workspace takes its suggestions with it');
 
 -- ===========================================================================
+-- V082 — the model scoreboard's registry entries (#439, BJ.3)
+-- ===========================================================================
+--
+-- Every scoreboard column renders a popover, so every column needs a registry entry. Untouched
+-- reuses merged_untouched_rate, because I6 allows one definition. The other three are family
+-- scoreboard, which is read from the source planes and never on the daily grain.
+
+select pg_temp.must_hold(
+  (select array_agg(metric_id || ':' || unit || ':' || is_rate::text order by metric_id)
+            = '{scoreboard_cost_per_success:cents:false,scoreboard_merged:count:false,scoreboard_trend:pct:true}'
+          and bool_and(version = 1 and not proxy and dimension_kind is null
+                       and 'resolution_snapshots' = any (source_planes)
+                       and caveats <> '' and formula_text <> '')
+     from ouroboros.metric_definitions where family = 'scoreboard'),
+  'the scoreboard columns are registered with formulas, caveats and the resolution plane');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.metric_definitions
+    where metric_id = 'merged_untouched_rate' and family = 'throughput'),
+  'merge-untouched keeps its single definition: the scoreboard adds no second one (I6)');
+
+select pg_temp.must_hold(
+  (select position('fewer than 10 merges' in caveats) > 0
+     from ouroboros.metric_definitions where metric_id = 'scoreboard_merged'),
+  'the sample caveat states the low-sample threshold the service applies');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.metric_daily d
+                join ouroboros.metric_definitions m on m.metric_id = d.metric_id
+               where m.family = 'scoreboard'),
+  'no rollup row exists for a scoreboard metric: the family is not on the daily grain');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

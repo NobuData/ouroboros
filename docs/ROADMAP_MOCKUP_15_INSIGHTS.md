@@ -496,7 +496,7 @@ seeds: 30d × all families ─▶ every mockup number reproduced · Aug-4 toolti
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BJ.1 | #437 ✅ | 🟢 Done | ouroboros-rest: [BJ.1] Windowed metrics service | Range + prior-delta over rollups + live tail; registry-driven (I1–I3) | mvp, insights, rest | N (after BI.2) | Y | L | ouroboros-rest |
 | BJ.2 | #438 | 🟡 Open | ouroboros-rest: [BJ.2] Insights read APIs | KPIs, series, hbar sets, scoreboard, flaky, DORA payloads | mvp, insights, rest | N (after BJ.1, BI.3) | Y | M | ouroboros-rest |
-| BJ.3 | #439 | 🟡 Open | ouroboros-rest: [BJ.3] Model scoreboard aggregation | Task×model outcomes: untouched %, $/success, trends (I6) | mvp, insights, rest, routing | N (after BJ.1, AW) | Y | M | ouroboros-rest |
+| BJ.3 | #439 ✅ | 🟢 Done | ouroboros-rest: [BJ.3] Model scoreboard aggregation | Task×model outcomes: untouched %, $/success, trends (I6) | mvp, insights, rest, routing | N (after BJ.1, AW) | Y | M | ouroboros-rest |
 | BJ.4 | #440 | 🟡 Open | ouroboros-rest: [BJ.4] Email digest generation | Weekly registry-rendered digest per subscriber (I9) | mvp, insights, rest | N (after BJ.1, BA-E.3 mailer) | Y | M | ouroboros-rest |
 | BJ.5 | #441 | 🟡 Open | ouroboros-rest: [BJ.5] Insights integration tests | Parity, deltas, taxonomy, scoreboard, digest, isolation | mvp, insights, rest, ci | N (after BJ.2–BJ.4) | Y | M | ouroboros-rest |
 
@@ -582,7 +582,31 @@ GET /insights?range=30d ─▶ {kpis[5]+deltas, series{throughput, cost+guide},
 
 ### Issue BJ.3 — ouroboros-rest: [BJ.3] Model scoreboard aggregation
 
-> **GitHub issue:** #439 · **Status:** 🟡 Open · **Parent epic:** #429
+> **GitHub issue:** #439 ✅ · **Status:** 🟢 Done · **Parent epic:** #429
+
+- **Delivered** (`ouroboros-rest` `src/modules/insights/scoreboard/`, 0.38.1; `ouroboros-db`
+  `V082__scoreboard_registry.sql`): `ScoreboardService.scoreboard({organizationId, repo?, range,
+  now?})` returns `{window, prior, minSample, rows, methodology, suggestion?}`. The service is
+  exported for BJ.2. A row is a task kind × the model of the hop that served it. That hop comes
+  from each (run, task kind)'s latest resolved `resolution_snapshots` row: the last kept hop
+  that was tried, or the first kept hop if none was timed. Hop 1 is the `primary` and any later
+  hop is a `fallback`, so the fallback row carries its role and hop. **Untouched %** uses I6's
+  predicate, which now lives once in `insights/untouched.sql.ts`. The throughput extractor that
+  fills the KPI row reads the same fragment. **$ / success** is the usage the row's runs recorded
+  under its task kind in the window, divided by the row's merges. It shows dollars only when
+  every token was priced, tokens per success when any usage was unpriced, and `$0.00` for a
+  local model priced at zero. **Trend** compares with the same row in the prior window of equal
+  length (`metrics.window.ts`'s rules). A row with fewer than 10 merges keeps its rate and
+  carries `lowSample`. The **suggestion** is AB.3's payload, passed through only when
+  `SCOREBOARD_SUGGESTIONS` is bound and returns one; nothing binds it yet, so the key is absent.
+  Rows are ordered busiest task kind first, with a fallback under its primary. V082 registers
+  `scoreboard_merged`, `scoreboard_cost_per_success` and `scoreboard_trend` (family
+  `scoreboard`, not on the daily grain). The untouched popover is `merged_untouched_rate` itself.
+  Tests: mockup 15's four rows from a shared fixture (84% $0.87 ▲, the fallback's 61% $0.94 ▼,
+  the local 96% $0.00 —, 91% $0.22 ▲), the sparse badge, token display, trend, roles and the
+  slot both ways. An integration suite seeds real loops and checks the same rows, Σ untouched /
+  Σ merged against the KPI row's `MetricsService` window, a human push excluded by both, and
+  isolation.
 
 - **Problem Statement:** Task×model outcome quality — merge-untouched %,
   $/success, trend — is the routing feedback loop's read side (I6).
@@ -1008,7 +1032,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
 2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { **BI.3 (#434) ✅** ⊕ **BI.4 (#435) ✅** } → **BI.5 (#436) ✅**
-3. **Phase 2 — Services:** **BJ.1 (#437) ✅** → { BJ.2 (#438) ⊕ BJ.3 (#439) ⊕ BJ.4 (#440) } → BJ.5 (#441)
+3. **Phase 2 — Services:** **BJ.1 (#437) ✅** → { BJ.2 (#438) ⊕ **BJ.3 (#439) ✅** ⊕ BJ.4 (#440) } → BJ.5 (#441)
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*
 5. **v2:** BL.1 (#448) with mockup 19; BL.2 (#449) with AB.3 (#209);

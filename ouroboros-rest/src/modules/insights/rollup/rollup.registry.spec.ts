@@ -116,10 +116,11 @@ describe("the shipped extractors", () => {
     }
   });
 
-  it("cover every rolled-up registry family except calibration, whose report reads its own table", () => {
+  it("cover every rolled-up registry family except calibration and the scoreboard, which read the source planes", () => {
     const families = new Set(shipped.values());
 
     families.delete("calibration");
+    families.delete("scoreboard");
     expect([...families].sort()).toEqual(
       ROLLUP_EXTRACTORS.map((extractor) => extractor.family).sort(),
     );

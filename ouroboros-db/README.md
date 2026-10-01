@@ -1147,6 +1147,14 @@
 > vocabularies and the `meta` shapes over the stored rows, and
 > [`tests/verify-insights-invariants.sh`](tests/verify-insights-invariants.sh) proves each one goes
 > red when its rule is removed.
+>
+> `V082` ([#439](https://github.com/NobuData/ouroboros/issues/439), BJ.3) registers the popovers of
+> mockup 15's model scoreboard as family `scoreboard`. `scoreboard_merged` is the row: task kind
+> × serving hop, primary versus fallback, and the low-sample threshold. `scoreboard_cost_per_success`
+> covers `$ / success`, with tokens shown when any usage is unpriced. `scoreboard_trend` compares
+> against the prior window. The untouched column reuses `merged_untouched_rate`, because I6 allows
+> one definition. Like `calibration`, the family is read from the source planes, so no extractor
+> fills it and it has no `metric_daily` rows.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -2559,6 +2567,7 @@ ouroboros-db/
 │   ├── V079__intervention_events.sql        # intervention_events / _cause_rules / _overrides, idempotent source-plane hooks, recategorize_intervention(), intervention_cause_daily, human_interventions v2 by cause — #434
 │   ├── V080__analysis_runs.sql              # analysis_runs (corpus manifest + sampling record, analyzer-set provenance, no cost without llm, one running per repo) + analysis_schedules (weekly, every-N + counter, budgets) — #506
 │   ├── V081__analysis_findings_suggestions.sql # analysis_findings (typed data, resolvable evidence, bounded confidence + basis) + analysis_suggestions (stable identity, A4 lifecycle, impact basis / needs_spike) + their many-to-many citations, record_analysis_suggestion() — #507
+│   ├── V082__scoreboard_registry.sql        # the model scoreboard's registry rows (scoreboard_merged, scoreboard_cost_per_success, scoreboard_trend; untouched stays merged_untouched_rate) — #439
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)

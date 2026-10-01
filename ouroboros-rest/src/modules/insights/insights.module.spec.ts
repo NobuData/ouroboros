@@ -17,8 +17,10 @@ import { ROLLUP_EXTRACTORS } from "./rollup/rollup.extractors";
 import { RollupRepository } from "./rollup/rollup.repository";
 import { RollupScheduler } from "./rollup/rollup.scheduler";
 import { ROLLUP_FAMILIES, RollupService } from "./rollup/rollup.service";
+import { ScoreboardRepository } from "./scoreboard/scoreboard.repository";
+import { SCOREBOARD_SUGGESTIONS, ScoreboardService } from "./scoreboard/scoreboard.service";
 
-/** The wiring (BI.4, #435; BI.2, #433; BI.3, #434; BJ.1, #437). Nothing connects: `pg` connects lazily. */
+/** The wiring (BI.4, #435; BI.2, #433; BI.3, #434; BJ.1, #437; BJ.3, #439). Nothing connects: `pg` connects lazily. */
 
 describe("the insights module", () => {
   it("compiles, resolves every layer, and binds the merge observer to the service", async () => {
@@ -70,10 +72,25 @@ describe("the insights module", () => {
     await moduleRef.close();
   });
 
-  it("exports the merge observer and the metrics service — the PR sync and the dashboard", () => {
+  it("resolves the model scoreboard with no AB.3 suggestion source bound (BJ.3, #439)", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConfigurationModule.forRoot(testConfiguration()), InsightsModule],
+    }).compile();
+
+    expect(moduleRef.get(ScoreboardService)).toBeInstanceOf(ScoreboardService);
+    expect(moduleRef.get(ScoreboardRepository)).toBeInstanceOf(ScoreboardRepository);
+    expect(() => {
+      moduleRef.get(SCOREBOARD_SUGGESTIONS, { strict: false });
+    }).toThrow();
+
+    await moduleRef.close();
+  });
+
+  it("exports the merge observer and the metrics and scoreboard services", () => {
     expect(Reflect.getMetadata("exports", InsightsModule)).toEqual([
       CALIBRATION_MERGE_OBSERVER,
       MetricsService,
+      ScoreboardService,
     ]);
   });
 });

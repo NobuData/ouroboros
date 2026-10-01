@@ -17,6 +17,11 @@
  * BJ.1 ([#437](https://github.com/NobuData/ouroboros/issues/437)) adds {@link MetricsService}: every
  * metric over a 7/30/90-day window, with its prior window, daily series and methodology. It is
  * exported so the dashboard's pulse card reads the same numbers as the Insights page.
+ *
+ * BJ.3 ([#439](https://github.com/NobuData/ouroboros/issues/439)) adds {@link ScoreboardService}:
+ * mockup 15's model scoreboard — task kind × serving model, untouched %, $/success, trend, role and
+ * sample — exported for the Insights read APIs (#438). AB.3 (#209) binds `SCOREBOARD_SUGGESTIONS`
+ * when it exists; nothing here does.
  */
 
 import { Module } from "@nestjs/common";
@@ -37,6 +42,8 @@ import { ROLLUP_EXTRACTORS } from "./rollup/rollup.extractors";
 import { RollupRepository } from "./rollup/rollup.repository";
 import { RollupScheduler } from "./rollup/rollup.scheduler";
 import { ROLLUP_FAMILIES, RollupService } from "./rollup/rollup.service";
+import { ScoreboardRepository } from "./scoreboard/scoreboard.repository";
+import { ScoreboardService } from "./scoreboard/scoreboard.service";
 
 @Module({
   imports: [DbModule, ScheduleModule.forRoot()],
@@ -54,7 +61,9 @@ import { ROLLUP_FAMILIES, RollupService } from "./rollup/rollup.service";
     MetricsRepository,
     MetricsCache,
     MetricsService,
+    ScoreboardRepository,
+    ScoreboardService,
   ],
-  exports: [CALIBRATION_MERGE_OBSERVER, MetricsService],
+  exports: [CALIBRATION_MERGE_OBSERVER, MetricsService, ScoreboardService],
 })
 export class InsightsModule {}
