@@ -2818,15 +2818,18 @@ select pg_temp.must_hold(
      from rail),
   'the rail reads what P.4 computes from these rows — the mockup''s four captions exactly, and 12 stages where the mockup wrote 6');
 
+-- The insights seed's (#436) nine graded loops merged inside the same thirty days, four of them on
+-- `standard-fix`, so the share is 26 of 62 — the same 42%.
 select pg_temp.must_hold(
-  (select count(*) filter (where r.workflow_tag = 'standard-fix') = 22
-          and count(*) = 53
+  (select count(*) filter (where r.workflow_tag = 'standard-fix') = 26
+          and count(*) = 62
+          and count(*) filter (where r.id::text like '5eed0009%') = 53
           and round(count(*) filter (where r.workflow_tag = 'standard-fix') * 100.0 / count(*)) = 42
      from ouroboros.runs r
      join ouroboros.organization org on org."id" = r.organization_id
     where org."slug" = 'acme-robotics'
       and r.started_at >= now() - interval '30 days'),
-  'and the page head reads *used by 42% of runs* — 22 of the dashboard seed''s 53, which is the share these two seeds earn rather than the mockup''s unreachable 61%');
+  'and the page head reads *used by 42% of runs* — 26 of 62: the dashboard seed''s 53 and the insights seed''s nine, which is the share these seeds earn rather than the mockup''s unreachable 61%');
 
 
 -- ---------------------------------------------------------------------------
@@ -4306,6 +4309,9 @@ select pg_temp.must_hold(
 -- idempotency assertion, as above.
 
 -- --- one #482 universe --------------------------------------------------------------------------
+--
+-- The insights seed's (#436) nine merged PRs are its graded loops, asserted in its own section;
+-- every other PR in the database is this one.
 select pg_temp.must_hold(
   (select count(*) = 1
           and bool_and(pr.run_id = '5eed0009-0000-4000-8000-000000000482'
@@ -4315,7 +4321,8 @@ select pg_temp.must_hold(
                        and pr.title = 'can: fix flaky telemetry frame order under ISR load'
                        and pr.external_url like 'https://github.com/%/helios-firmware/pull/514')
      from ouroboros.pull_requests pr
-     join ouroboros.runs run on run.id = pr.run_id),
+     join ouroboros.runs run on run.id = pr.run_id
+    where pr.id::text not like '5eed0060-%'),
   'one PR, #514, verifying, from loop/482-canbus-flake into main — opened by #482 and closing the canonical #482');
 
 -- No sync has run against #514 — the seed wrote it — so its stamp claims none (V066, #370). The
@@ -5482,6 +5489,426 @@ select pg_temp.must_hold(
        where organization_id = '5eed0001-0000-4000-8000-000000000001')]
    = array[11, 11, 11, 11, 3, 1, 1, 20, 1]::bigint[]),
   'the interventions seed wrote its fixed-id rows, twenty events and one override — and, applied twice, nothing more');
+
+
+-- ===========================================================================
+-- R__dev_seed_workspace_metrics.sql — mockup 15's Insights page as rollup history (#436, BI.5)
+-- ===========================================================================
+--
+-- Every figure is re-derived here the way the registry says a window re-derives it (V076, V078):
+-- a sum sums values, a ratio sums its numerators and denominators and divides once, a median pools
+-- every sample in the window. None of these numbers is stored anywhere in the seed — what is
+-- stored is components — so each assertion below is the computation BJ.1 (#437) will run.
+--
+-- Days are UTC days before today: the page's 30d is d 0–29, its prior window d 30–59.
+
+-- The window helpers, in pg_temp so they leave with the session.
+create function pg_temp.bi5_sum(p_metric text, p_from int, p_to int, p_repo text default null,
+                                p_dimension text default null)
+returns numeric language sql stable as $$
+  select coalesce(sum(d.value), 0)
+    from ouroboros.metric_daily d
+   where d.organization_id = '5eed0001-0000-4000-8000-000000000001'
+     and d.metric_id = p_metric
+     and (p_repo is null or d.repo_ref = p_repo)
+     and (p_dimension is null or d.dimension = p_dimension)
+     and d.day between (now() at time zone 'UTC')::date - p_to
+                   and (now() at time zone 'UTC')::date - p_from
+$$;
+
+create function pg_temp.bi5_ratio(p_metric text, p_from int, p_to int)
+returns numeric language sql stable as $$
+  select sum(d.numerator) / sum(d.denominator)
+    from ouroboros.metric_daily d
+   where d.organization_id = '5eed0001-0000-4000-8000-000000000001'
+     and d.metric_id = p_metric
+     and d.day between (now() at time zone 'UTC')::date - p_to
+                   and (now() at time zone 'UTC')::date - p_from
+$$;
+
+create function pg_temp.bi5_median(p_metric text, p_dimension text, p_from int, p_to int)
+returns numeric language sql stable as $$
+  select (percentile_cont(0.5) within group (order by s::numeric))::numeric
+    from ouroboros.metric_daily d, jsonb_array_elements_text(d.meta -> 'samples') s
+   where d.organization_id = '5eed0001-0000-4000-8000-000000000001'
+     and d.metric_id = p_metric and d.dimension = p_dimension
+     and d.day between (now() at time zone 'UTC')::date - p_to
+                   and (now() at time zone 'UTC')::date - p_from
+$$;
+
+-- --- what was written, and where -----------------------------------------------------------------
+
+-- Ninety days, every family, one workspace — and the grain once each, which is also the
+-- idempotency test: a second application that wrote anything would collide or add.
+select pg_temp.must_hold(
+  (select count(distinct metric_id) = 20
+          and min(day) = (now() at time zone 'UTC')::date - 89
+          and count(distinct day) = 90
+          and count(*) = count(distinct (repo_ref, metric_id, dimension, day))
+     from ouroboros.metric_daily
+    where organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'the insights seed fills ninety days of all twenty daily metrics for acme-robotics, each grain once');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.metric_daily
+    where organization_id <> '5eed0001-0000-4000-8000-000000000001'),
+  'and no other workspace has a metric row — the personal one stays the zero state');
+
+-- The registry rows not stored per day: cost per merged PR is computed for a window (V078), and
+-- calibration is read from estimate_outcomes (#435).
+select pg_temp.must_hold(
+  (select array_agg(metric_id order by metric_id)
+            = '{cost_per_merged_pr,estimate_band_bias,estimate_within_band_rate,estimate_within_band_rate_by_effort}'
+     from ouroboros.metric_definitions def
+    where not exists (select 1 from ouroboros.metric_daily d where d.metric_id = def.metric_id)),
+  'every registered metric has rows except the four computed per window or from estimate_outcomes');
+
+-- --- components seeded, values computed ----------------------------------------------------------
+--
+-- No rate's value was typed: each is its own numerator over its denominator, × 100 for pct.
+select pg_temp.must_hold(
+  (select bool_and(abs(d.value - d.numerator / d.denominator
+                                   * case def.unit when 'pct' then 100 else 1 end) < 0.000001)
+     from ouroboros.metric_daily d
+     join ouroboros.metric_definitions def on def.metric_id = d.metric_id
+    where d.is_rate and d.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'every seeded rate row''s value is numerator / denominator — no rate is seeded directly');
+
+-- --- the KPI row, 30d against the prior 30d ------------------------------------------------------
+select pg_temp.must_hold(
+  round(100 * pg_temp.bi5_ratio('merge_rate', 0, 29)) = 92
+    and round(100 * pg_temp.bi5_ratio('merge_rate', 30, 59)) = 89
+    and round(100 * (pg_temp.bi5_ratio('merge_rate', 0, 29)
+                     - pg_temp.bi5_ratio('merge_rate', 30, 59))) = 3,
+  'Autonomous merge rate computes to 92%, from 89% — ▲ 3pts');
+
+select pg_temp.must_hold(
+  round(100 * pg_temp.bi5_ratio('merged_untouched_rate', 0, 29)) = 78
+    and pg_temp.bi5_sum('merged_prs', 0, 29)
+        = (select sum(denominator) from ouroboros.metric_daily
+            where metric_id = 'merged_untouched_rate'
+              and day >= (now() at time zone 'UTC')::date - 29),
+  'Merged w/o human edits computes to 78% of all merged PRs, over the same merges the chart counts');
+
+select pg_temp.must_hold(
+  pg_temp.bi5_median('cycle_time', '', 0, 29) = 860000
+    and pg_temp.bi5_median('cycle_time', '', 30, 59) = 980000,
+  'Median cycle pools to 14m 20s, from 16m 20s — ▼ 2m');
+
+select pg_temp.must_hold(
+  pg_temp.bi5_sum('cost_cents', 0, 29) / pg_temp.bi5_sum('merged_prs', 0, 29) = 187
+    and pg_temp.bi5_sum('cost_cents', 30, 59) / pg_temp.bi5_sum('merged_prs', 30, 59) = 228,
+  'Cost per merged PR is Σ cost / Σ merges: $1.87, from $2.28 — ▼ $0.41');
+
+-- The mockup's `2/wk` cannot stand beside its own twenty-event card; the count is what computes.
+select pg_temp.must_hold(
+  pg_temp.bi5_sum('human_interventions', 0, 29) = 20
+    and pg_temp.bi5_sum('human_interventions', 30, 59) = 25,
+  'Human interventions: 20 in the window against 25 before it — ▼ 5');
+
+-- --- throughput ------------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.bi5_sum('merged_prs', 0, 0) = 6
+    and pg_temp.bi5_sum('merged_prs', 0, 6)
+        = (select count(*) from ouroboros.runs run
+            where run.id::text like '5eed0009%' and run.status = 'merged'
+              and run.finished_at >= now() - interval '7 days'),
+  'the throughput line ends at 6, and its last seven days are the dashboard''s 27 — the head''s *27 PRs merged this week*');
+
+-- The tooltip is one read: the chart row's meta is that day's cost and interventions.
+select pg_temp.must_hold(
+  (select d.value = 6 and (d.meta ->> 'cost_cents')::numeric = 912
+          and (d.meta ->> 'cost_cents')::numeric
+              = pg_temp.bi5_sum('cost_cents', 4, 4, 'acme-robotics/helios-firmware')
+          and (d.meta ->> 'interventions')::numeric
+              = pg_temp.bi5_sum('human_interventions', 4, 4, 'acme-robotics/helios-firmware')
+     from ouroboros.metric_daily d
+    where d.metric_id = 'merged_prs'
+      and d.day = (now() at time zone 'UTC')::date - 4),
+  'four days ago is the Aug-4 tooltip — 6 merged, $9.12 and that day''s interventions, read from its siblings');
+
+select pg_temp.must_hold(
+  (select bool_and((d.meta ->> 'cost_cents')::numeric = cost.value
+                   and (d.meta ->> 'interventions')::numeric
+                       = coalesce((select sum(i.value) from ouroboros.metric_daily i
+                                    where i.metric_id = 'human_interventions'
+                                      and i.repo_ref = d.repo_ref and i.day = d.day), 0))
+     from ouroboros.metric_daily d
+     join ouroboros.metric_daily cost
+       on cost.metric_id = 'cost_cents' and cost.repo_ref = d.repo_ref and cost.day = d.day
+    where d.metric_id = 'merged_prs'),
+  'every day''s tooltip extras agree with that day''s cost and intervention rows');
+
+-- --- the cost curve --------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.bi5_sum('cost_cents', 0, 0) = 1860
+    and pg_temp.bi5_sum('cost_cents', 0, 0)
+        = (select sum(cost_cents) from ouroboros.token_usage_daily
+            where organization_id = '5eed0001-0000-4000-8000-000000000001'
+              and day = (now() at time zone 'UTC')::date)
+    and pg_temp.bi5_sum('tokens', 0, 0)
+        = (select sum(tokens_total) from ouroboros.token_usage_daily
+            where organization_id = '5eed0001-0000-4000-8000-000000000001'
+              and day = (now() at time zone 'UTC')::date),
+  'the cost curve ends at $18.60 — the dashboard''s *Token spend · today*, cents and tokens');
+
+select pg_temp.must_hold(
+  (select max(value) = 3140
+          and (array_agg(day order by value desc))[1] = (now() at time zone 'UTC')::date - 8
+     from ouroboros.metric_daily
+    where metric_id = 'cost_cents' and day >= (now() at time zone 'UTC')::date - 29),
+  'the curve''s one spike is $31.40, eight days ago');
+
+select pg_temp.must_hold(
+  pg_temp.bi5_sum('tokens', 0, 29) = 126000000
+    and pg_temp.bi5_sum('unpriced_tokens', 0, 29) < pg_temp.bi5_sum('tokens', 0, 29),
+  'tokens total 126M over the window, the unpriced part inside them');
+
+-- --- where loops still need humans ------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(dimension || '=' || n order by n desc, dimension)
+            = '{infra_rig=8,ambiguous_ticket=5,policy_gate=4,model_disagreement=2,other=1}'
+          and round(100.0 * max(n) / sum(n)) = 40
+     from (select dimension, sum(value) as n from ouroboros.metric_daily
+            where metric_id = 'human_interventions'
+              and day >= (now() at time zone 'UTC')::date - 29
+            group by dimension) causes),
+  'the cause bars land 8 / 5 / 4 / 2 / 1, and the top row is 40% of them');
+
+-- Derived, not summarised: the window is #434's events with the extractor's grouping, exactly.
+select pg_temp.must_hold(
+  (select count(*) = 0 from (
+     (select gh.login || '/' || repo.name, v.day, v.cause, v.events::numeric
+        from ouroboros.intervention_cause_daily v
+        join ouroboros.github_repos repo on repo.id = v.github_repo_id
+        join ouroboros.github_orgs gh on gh.id = repo.org_id
+       where v.organization_id = '5eed0001-0000-4000-8000-000000000001'
+         and v.day between (now() at time zone 'UTC')::date - 29 and (now() at time zone 'UTC')::date
+      except
+      select repo_ref, day, dimension, value from ouroboros.metric_daily
+       where metric_id = 'human_interventions' and day >= (now() at time zone 'UTC')::date - 29)
+     union all
+     (select repo_ref, day, dimension, value from ouroboros.metric_daily
+       where metric_id = 'human_interventions' and day >= (now() at time zone 'UTC')::date - 29
+         and day <= (now() at time zone 'UTC')::date
+      except
+      select gh.login || '/' || repo.name, v.day, v.cause, v.events::numeric
+        from ouroboros.intervention_cause_daily v
+        join ouroboros.github_repos repo on repo.id = v.github_repo_id
+        join ouroboros.github_orgs gh on gh.id = repo.org_id
+       where v.organization_id = '5eed0001-0000-4000-8000-000000000001')) diff),
+  'the window''s intervention rows are intervention_cause_daily over #434''s events, row for row');
+
+-- --- cycle time by stage --------------------------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.bi5_median('stage_duration', 'analyze', 0, 29) = 60000
+    and pg_temp.bi5_median('stage_duration', 'plan', 0, 29) = 120000
+    and pg_temp.bi5_median('stage_duration', 'implement', 0, 29) = 364000
+    and pg_temp.bi5_median('stage_duration', 'build', 0, 29) = 120000
+    and pg_temp.bi5_median('stage_duration', 'test', 0, 29) = 160000
+    and pg_temp.bi5_median('stage_duration', 'review', 0, 29) = 40000,
+  'the stage medians pool to 1m, 2m, 6m 04s, 2m, 2m 40s and 40s (Verify is the workflow''s review node)');
+
+select pg_temp.must_hold(
+  (select sum(pg_temp.bi5_median('stage_duration', stage, 0, 29)) = 500000
+     from unnest(array['analyze', 'plan', 'build', 'test', 'review']) stage),
+  'Implement dominates — the other five stages sum to 8m 20s');
+
+-- --- build & test performance, helios-firmware ------------------------------------------------------
+select pg_temp.must_hold(
+  pg_temp.bi5_sum('builds', 0, 29, 'acme-robotics/helios-firmware') = 412
+    and pg_temp.bi5_sum('build_failures', 0, 29, 'acme-robotics/helios-firmware') = 35
+    and (select sum(numerator) = 377 and round(100 * sum(numerator) / sum(denominator), 1) = 91.5
+           from ouroboros.metric_daily
+          where metric_id = 'build_success_rate' and repo_ref = 'acme-robotics/helios-firmware'
+            and day >= (now() at time zone 'UTC')::date - 29),
+  'helios-firmware built 412 times in the window — 377 ✓ / 35 ✗, 91.5%');
+
+-- The farm seed's jobs are inside the history: no day holds fewer than the farm finished, and
+-- today — with no extra — holds exactly the farm.
+with farm as (
+  select gh.login || '/' || repo.name as repo_ref,
+         (job.finished_at at time zone 'UTC')::date as day,
+         count(*) as builds, count(*) filter (where job.status <> 'succeeded') as failed
+    from ouroboros.build_jobs job
+    join ouroboros.github_repos repo on repo.id = job.github_repo_id
+    join ouroboros.github_orgs gh on gh.id = repo.org_id
+   where job.organization_id = '5eed0001-0000-4000-8000-000000000001'
+     and job.status in ('succeeded', 'failed', 'retried')
+   group by 1, 2
+)
+select pg_temp.must_hold(
+  (select bool_and(b.value >= farm.builds and f.value >= farm.failed)
+          and bool_and(b.value = farm.builds and f.value = farm.failed)
+                filter (where farm.day = (now() at time zone 'UTC')::date)
+          and count(*) = (select count(*) from farm)
+     from farm
+     join ouroboros.metric_daily b on b.metric_id = 'builds' and b.repo_ref = farm.repo_ref
+                                  and b.day = farm.day
+     join ouroboros.metric_daily f on f.metric_id = 'build_failures' and f.repo_ref = farm.repo_ref
+                                  and f.day = farm.day),
+  'every repository-day the farm seed finished a build is covered — never below it, and today exactly it');
+
+select pg_temp.must_hold(
+  pg_temp.bi5_sum('test_cases_run', 0, 29, 'acme-robotics/helios-firmware') = 26430
+    and (select array_agg(dimension || '=' || n order by n desc, dimension)
+                  = '{telemetry integration=14,PHYSICAL · HIL rig=10,OTA update=5,motor control=3,unit · drivers=1}'
+           from (select dimension, sum(value) as n from ouroboros.metric_daily
+                  where metric_id = 'test_failures_by_suite'
+                    and repo_ref = 'acme-robotics/helios-firmware'
+                    and day >= (now() at time zone 'UTC')::date - 29
+                  group by dimension) suites),
+  'helios-firmware ran 26.4k cases; the suites failed 14 / 10 / 5 / 3 / 1 — HIL holds the test plane''s ten');
+
+select pg_temp.must_hold(
+  round(100 * pg_temp.bi5_sum('test_failures_by_suite', 0, 29, 'acme-robotics/helios-firmware')
+            / pg_temp.bi5_sum('test_cases_run', 0, 29, 'acme-robotics/helios-firmware'), 2) = 0.12
+    and pg_temp.bi5_sum('test_failures_by_suite', 0, 29, 'acme-robotics/helios-firmware') = 33,
+  '33 failing cases total — 0.12% of everything that ran');
+
+with plane as (
+  select gh.login || '/' || repo.name as repo_ref,
+         (attempt.started_at at time zone 'UTC')::date as day,
+         btrim(left(btrim(suite.name), 200)) as suite,
+         sum(suite.passed + suite.failed + suite.flaky) as ran, sum(suite.failed) as failed
+    from ouroboros.test_runs attempt
+    join ouroboros.test_suites suite on suite.test_run_id = attempt.id
+    join ouroboros.runs run on run.id = attempt.run_id
+    join ouroboros.github_repos repo on repo.id = run.github_repo_id
+    join ouroboros.github_orgs gh on gh.id = repo.org_id
+   where attempt.status <> 'running'
+     and attempt.organization_id = '5eed0001-0000-4000-8000-000000000001'
+   group by 1, 2, 3
+)
+select pg_temp.must_hold(
+  (select bool_and(coalesce(f.value, 0) >= plane.failed)
+          and bool_and((select sum(c.value) from ouroboros.metric_daily c
+                         where c.metric_id = 'test_cases_run' and c.repo_ref = plane.repo_ref
+                           and c.day = plane.day)
+                       >= (select sum(p.ran) from plane p
+                            where p.repo_ref = plane.repo_ref and p.day = plane.day))
+     from plane
+     left join ouroboros.metric_daily f on f.metric_id = 'test_failures_by_suite'
+                                       and f.repo_ref = plane.repo_ref and f.day = plane.day
+                                       and f.dimension = plane.suite),
+  'every suite-day the test plane holds is covered — no seeded count is below it');
+
+-- --- time to completion by effort, and the calibration line -----------------------------------------
+select pg_temp.must_hold(
+  pg_temp.bi5_median('completion_time_by_effort', 'xs', 0, 29) = 360000
+    and pg_temp.bi5_median('completion_time_by_effort', 's', 0, 29) = 660000
+    and pg_temp.bi5_median('completion_time_by_effort', 'm', 0, 29) = 1140000
+    and pg_temp.bi5_median('completion_time_by_effort', 'l', 0, 29) = 2880000
+    and pg_temp.bi5_median('completion_time_by_effort', 'xl', 0, 29) = 7800000,
+  'the effort ladder pools to XS 6m, S 11m, M 19m, L 48m and XL 2h 10m');
+
+select pg_temp.must_hold(
+  (select sum(n) = 9 and sum(ok) = 8
+          and round(100.0 * sum(ok) / sum(n)) = 89
+          and array_agg(predicted_effort || '=' || ok || '/' || n order by predicted_effort)
+                = '{l=1/2,m=2/2,s=2/2,xl=1/1,xs=2/2}'
+     from (select predicted_effort, count(*) filter (where within_band) as ok, count(*) as n
+             from ouroboros.estimate_outcomes
+            where organization_id = '5eed0001-0000-4000-8000-000000000001'
+              and merged_at >= now() - interval '30 days'
+            group by predicted_effort) graded),
+  'Estimator calibration: 89% — eight of nine graded merges in band, sliced across all five efforts');
+
+select pg_temp.must_hold(
+  (select bool_and(exists (select 1 from ouroboros.metric_daily d,
+                                         jsonb_array_elements_text(d.meta -> 'samples') s
+                            where d.metric_id = 'completion_time_by_effort'
+                              and d.dimension = o.predicted_effort
+                              and d.day = (o.merged_at at time zone 'UTC')::date
+                              and s::bigint = o.actual_duration_ms))
+          and bool_and(exists (select 1 from ouroboros.metric_daily m
+                                where m.metric_id = 'merged_prs'
+                                  and m.day = (o.merged_at at time zone 'UTC')::date
+                                  and m.value >= 1))
+     from ouroboros.estimate_outcomes o
+    where o.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'each graded merge is a sample of its effort on its day, and a merge the chart counts');
+
+-- --- delivery health ------------------------------------------------------------------------------
+select pg_temp.must_hold(
+  round(pg_temp.bi5_sum('deploy_frequency', 0, 29) / 30, 1) = 4.2
+    and pg_temp.bi5_sum('deploy_frequency', 0, 29) > pg_temp.bi5_sum('deploy_frequency', 30, 59)
+    and pg_temp.bi5_sum('deploy_frequency', 0, 14) > pg_temp.bi5_sum('deploy_frequency', 15, 29),
+  'Deploy frequency is 4.2/day, up on the prior window and rising across this one');
+
+select pg_temp.must_hold(
+  pg_temp.bi5_ratio('lead_time', 0, 29) < pg_temp.bi5_ratio('lead_time', 30, 59)
+    and pg_temp.bi5_ratio('lead_time', 0, 14) < pg_temp.bi5_ratio('lead_time', 15, 29)
+    and (select sum(denominator) from ouroboros.metric_daily
+          where metric_id = 'lead_time' and day >= (now() at time zone 'UTC')::date - 29)
+        = pg_temp.bi5_sum('merged_prs', 0, 29),
+  'Lead time is a mean over every merge in the window, and it is shrinking');
+
+select pg_temp.must_hold(
+  round(100 * pg_temp.bi5_ratio('change_failure_rate', 0, 29), 1) = 3.1
+    and round(100 * pg_temp.bi5_ratio('change_failure_rate', 30, 59), 1) = 3.1,
+  'Change failure rate is 3.1%, flat against the prior window');
+
+select pg_temp.must_hold(
+  pg_temp.bi5_ratio('mttr', 0, 29) = 1320000
+    and pg_temp.bi5_ratio('mttr', 30, 59) = 1680000
+    and pg_temp.bi5_ratio('mttr', 0, 14) < pg_temp.bi5_ratio('mttr', 15, 29),
+  'MTTR is 22m, down from 28m, and falling across the window');
+
+-- --- the other ranges -----------------------------------------------------------------------------
+--
+-- 7d and 90d are not the mockup, so they are asserted for coherence: every KPI computes, inside
+-- the bounds the 30-day story sets, from the same rows.
+select pg_temp.must_hold(
+  (select bool_and(pg_temp.bi5_ratio('merge_rate', 0, w) between 0.85 and 1
+                   and pg_temp.bi5_ratio('merged_untouched_rate', 0, w) between 0.7 and 0.85
+                   and pg_temp.bi5_median('cycle_time', '', 0, w) between 660000 and 1140000
+                   and pg_temp.bi5_sum('cost_cents', 0, w) / pg_temp.bi5_sum('merged_prs', 0, w)
+                       between 150 and 250
+                   and pg_temp.bi5_sum('human_interventions', 0, w) > 0
+                   and pg_temp.bi5_sum('builds', 0, w) > pg_temp.bi5_sum('build_failures', 0, w)
+                   and pg_temp.bi5_sum('test_cases_run', 0, w) > 0
+                   and pg_temp.bi5_ratio('mttr', 0, w) > 0)
+     from unnest(array[6, 29, 89]) w),
+  '7d, 30d and 90d each compute every KPI, inside the same story');
+
+select pg_temp.must_hold(
+  pg_temp.bi5_ratio('merge_rate', 7, 13) is not null
+    and pg_temp.bi5_sum('merged_prs', 7, 13) > 0
+    and (select count(*) = 0 from ouroboros.metric_daily
+          where organization_id = '5eed0001-0000-4000-8000-000000000001'
+            and day < (now() at time zone 'UTC')::date - 89),
+  'the 7d range has a whole prior week to compare with; the 90d range has none, so it shows no delta rather than a wrong one');
+
+-- --- the rollup's bookkeeping, and what is not written ------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(family order by family)
+            = '{builds,cost,cycle,dora,effort,interventions,tests,throughput}'
+          and bool_and(last_filled_day = (now() at time zone 'UTC')::date - 1
+                       and last_run_status = 'succeeded' and backfill_cursor is null)
+     from ouroboros.metric_rollup_state
+    where organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'every extractor family is filled through yesterday, so the first rollup tick backfills nothing over the history');
+
+-- The flaky card reads the test plane's own scores; this seed adds none.
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(state = 'watching') from ouroboros.flake_scores
+    where organization_id = '5eed0001-0000-4000-8000-000000000001')
+    and (select count(*) = 0 from ouroboros.flake_scores where id::text not like '5eed0036-%'),
+  'the flaky card references the test-results seed''s one watching case, and nothing new');
+
+-- The id convention, and the idempotency test for the fixed-id rows.
+select pg_temp.must_hold(
+  (select array[
+     (select count(*) from ouroboros.tickets          where id::text like '5eed005e-%'),
+     (select count(*) from ouroboros.runs             where id::text like '5eed005f-%'),
+     (select count(*) from ouroboros.pull_requests    where id::text like '5eed0060-%'
+                                                         and state = 'merged'),
+     (select count(*) from ouroboros.issue_estimates  where id::text like '5eed0061-%'),
+     (select count(*) from ouroboros.estimate_outcomes
+       where organization_id = '5eed0001-0000-4000-8000-000000000001')]
+   = array[9, 9, 9, 9, 9]::bigint[]),
+  'the insights seed wrote nine tickets, loops, merged PRs, estimates and grades — and, applied twice, nothing more');
 
 \o
 \echo 'seed.sql: all assertions passed'

@@ -1072,6 +1072,17 @@
 > rows are deleted for the next tick to backfill). `check:rig_offline`, `gate:human` and
 > `vote:blocking` are reserved signals whose source planes do not exist yet; #371's votes write
 > through `record_intervention_event()`.
+>
+> [#436](https://github.com/NobuData/ouroboros/issues/436) (BI.5) seeds the page those four built
+> for: [`R__dev_seed_workspace_metrics.sql`](migrations/R__dev_seed_workspace_metrics.sql) is
+> ninety days of `metric_daily` in which **components are seeded and every value is computed**,
+> so mockup 15's KPIs, deltas and insight lines fall out of the registry's own arithmetic — see
+> [What it all added up to](#what-it-all-added-up-to). Its probes,
+> [`tests/insights-invariants.sql`](tests/insights-invariants.sql), assert grain uniqueness,
+> `value = numerator / denominator`, the registry behind every `metric_id`, the cause and effort
+> vocabularies and the `meta` shapes over the stored rows, and
+> [`tests/verify-insights-invariants.sh`](tests/verify-insights-invariants.sh) proves each one goes
+> red when its rule is removed.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -1600,6 +1611,44 @@ waiver (*rig at 22 °C only*) from `other` to `infra_rig`, written through an ov
 is added, and every timestamp is an offset into its run. It sorts after the dashboard and
 test-results seeds it reads.
 
+#### What it all added up to
+
+[`R__dev_seed_workspace_metrics.sql`](migrations/R__dev_seed_workspace_metrics.sql)
+([#436](https://github.com/NobuData/ouroboros/issues/436)) is mockup 15's Insights page as
+**rollup history**: ninety days of `metric_daily` for `acme-robotics` — the 30-day window, the
+window every delta compares against, and thirty more, so 7d, 30d and 90d each read a whole range.
+It writes a ledger of **components** — PRs closed, merged, merged autonomously and untouched,
+reverts, spend, tokens, builds, cases, recoveries, and each day's merges by predicted effort —
+and computes every `value` from them in the statement: a rate as numerator over denominator, a
+median as `percentile_cont` over the samples the row carries. Re-windowed the registry's way, the
+KPI row reads **92% (▲ 3pts from 89%) · 78% · 14m 20s (▼ 2m) · $1.87 (▼ $0.41) · 20 interventions
+(▼ 5)**, the throughput line ends at 6 with the Aug-4 tooltip four days back
+(`6 merged · $9.12 · 1 intervention`), the stage medians' other five sum to 8m 20s, helios-firmware
+built 412 times (377 ✓ / 35 ✗), 33 failing cases are 0.12% of 26.4k, and DORA's four cells
+trend the way the mockup's sparklines do. `tests/seed.sql` re-derives each of them.
+
+Where another seed already holds the source plane, the history is **reconciled** with it:
+the intervention bars for the last 30 days *are* `intervention_cause_daily` over #434's twenty
+events; builds and tests are the farm's and test plane's own rows **plus** the ledger's extras, so
+no seeded count is ever below what those seeds store and today is exactly theirs. The rest
+(throughput, cost, cycle, effort, DORA) are summaries, because their source planes hold days of
+history, not months. The seed's header tabulates each boundary, and the places the source planes
+overrule the mockup. The 30-day intervention count is 20, not `2/wk`. The suites are
+14 / 10 / 5 / 3 / 1, because the test plane already holds ten HIL failures. The month costs about
+$181 at $1.87 a merge.
+
+Four visuals have no storage yet and are not seeded: the model scoreboard (BJ.3, #439), tokens by
+task kind and the local-model share (an unregistered metric), the budget guide and cap (AF.4),
+and — by design — the flaky card, which reads the test-results seed's `flake_scores`.
+
+Calibration is real: nine closed tickets `#520`–`#528` each get a loop, a merged PR and the
+estimate in force when it started, and #435's `record_estimate_outcome()` grades them — eight in
+band, **89%**. Four of those loops are `standard-fix`, which keeps mockup 05's *used by 42% of
+runs* true at 26 of 62. `metric_rollup_state` is written through yesterday for every extractor
+family, so ouroboros-rest's first tick does not backfill over the history. Its hourly tail still
+re-fills today from the source planes, which replaces the summarised families' today until the
+seed is re-applied. It sorts last, after every seed it reads.
+
 #### Where a team starts
 
 [`R__dev_seed_onboarding.sql`](migrations/R__dev_seed_onboarding.sql)
@@ -1800,6 +1849,8 @@ PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
   -v ON_ERROR_STOP=1 -f ouroboros-db/tests/registry-invariants.sql
 PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
   -v ON_ERROR_STOP=1 -f ouroboros-db/tests/planning-invariants.sql
+PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
+  -v ON_ERROR_STOP=1 -f ouroboros-db/tests/insights-invariants.sql
 ```
 
 [`tests/planning-invariants.sql`](tests/planning-invariants.sql) is the same arrangement for
@@ -1807,7 +1858,10 @@ AK.5's ([#276](https://github.com/NobuData/ouroboros/issues/276)) planning invar
 [`tests/lib/planning-invariants.sql`](tests/lib/planning-invariants.sql). It writes nothing: it
 reads the rows the database holds and the catalogue, so it is green against AK.4's
 ([#275](https://github.com/NobuData/ouroboros/issues/275)) seed and against any database whose
-planning rows are sound.
+planning rows are sound. [`tests/insights-invariants.sql`](tests/insights-invariants.sql) does the
+same for BI.5's ([#436](https://github.com/NobuData/ouroboros/issues/436)) rollup probes, kept in
+[`tests/lib/insights-invariants.sql`](tests/lib/insights-invariants.sql), against the insights
+seed's ninety days.
 
 `constraints.sql` creates its own fixtures inside a transaction and rolls back, so it
 leaves no rows behind — including the seed's, which it clears and restores so its counts
@@ -1973,6 +2027,23 @@ It refuses a database without the planning seed rather than going red for the wr
 Every plant runs in a transaction that is never committed, so the seed is left as it was found —
 `ci/db` re-runs `seed.sql` afterwards to say so. The whole run is well under a second.
 
+### Proving the insights invariants read the rows
+
+[`tests/verify-insights-invariants.sh`](tests/verify-insights-invariants.sh) is
+[#436](https://github.com/NobuData/ouroboros/issues/436)'s *"every probe fails when its constraint
+is removed"*, the same shape against the same seeded database. It requires
+`insights-invariants.sql` to be green, then removes one rule at a time and writes the row that rule
+refused. That covers a duplicate grain row, a rate without its denominator, a metric with no
+registry entry, a median off its samples, a cost row with samples, a cause and a signal outside
+the taxonomy, and an array where `meta` must be an object. For the two rules no constraint can
+state, it makes an ordinary write instead: a merge rate typed as `92`, a cause bar relabelled
+`flaky_env`, an effort rung `xxl` and a tooltip cost formatted as `"$18.60"`. Each run must fail
+naming the invariant.
+
+```bash
+PGPASSWORD=ouroboros OURO_DB_NAME=ouroboros ouroboros-db/tests/verify-insights-invariants.sh
+```
+
 ### Proving the guard is a guard
 
 `constraints.sql` is one session inside one transaction, and CG.3's delete guard
@@ -2116,6 +2187,8 @@ misnamed migration is worth reporting before a database is waited on.
 | `tests/seed.sql` | The demo tenant is there, exactly once, with the ids the documentation publishes | yes (that one) |
 | `tests/planning-invariants.sql` | The planning invariants AL.3 and AL.4 rely on, against the *seeded* database — no stored dependency cycle among them ([#276](https://github.com/NobuData/ouroboros/issues/276)) | no |
 | `tests/verify-planning-invariants.sh` | That those go red on a planted cycle, reversed or half-null month range, duplicate local key, bad push state, tint, status or endpoint, naming the invariant ([#276](https://github.com/NobuData/ouroboros/issues/276)) | yes (rolled back) |
+| `tests/insights-invariants.sql` | The rollup invariants mockup 15 trusts, against the *seeded* history — grain, components, registry, vocabularies, meta shapes ([#436](https://github.com/NobuData/ouroboros/issues/436)) | no |
+| `tests/verify-insights-invariants.sh` | That each of those goes red when its rule is removed and the refused row written, naming the invariant ([#436](https://github.com/NobuData/ouroboros/issues/436)) | yes (rolled back) |
 | `tests/registry-invariants.sql` | The registry rules again, against the *seeded* database — and `tests/seed.sql` a second time to say it survived them ([#583](https://github.com/NobuData/ouroboros/issues/583)) | yes (that one) |
 
 The drift check is the one step that needs a Node toolchain, which is why the job installs
@@ -2420,13 +2493,15 @@ ouroboros-db/
 │   ├── R__dev_seed_verification.sql  # mockup 12 — PR #514's two revisions, gates, criteria, thread, plan, spend, dev only — #356 (sorts after test_results and ticket_planning)
 │   ├── R__dev_seed_workflows.sql     # mockup 04's studio — five workflows, standard-fix at v14, dev only — #136 (sorts after the above)
 │   ├── R__dev_seed_workspace_interventions.sql # mockup 15 — twenty intervention events, 8/5/4/2/1, from source records, dev only — #434 (sorts after test_results)
-│   ├── R__dev_seed_workspace_knowledge.sql # mockup 14 — skills, facts, playbooks, env recipe, injection records, dev only — #409 (sorts last)
+│   ├── R__dev_seed_workspace_knowledge.sql # mockup 14 — skills, facts, playbooks, env recipe, injection records, dev only — #409
+│   ├── R__dev_seed_workspace_metrics.sql # mockup 15 — ninety days of metric_daily from components, nine graded merges, dev only — #436 (sorts last)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
     │   ├── fixture.sh                # the synthetic module and stub runners the shell suites share
     │   ├── assert.sql                # the assertion helpers the live-database suites share
     │   ├── planning-invariants.sql   # the planning invariants, named — included twice — #276
+    │   ├── insights-invariants.sql   # the rollup invariants mockup 15 trusts, named — #436
     │   ├── dependency-cycles.sql     # the recursive-CTE walk that finds a stored cycle — #276
     │   └── run-events-jsonl.sql      # the JSONL export's bytes, for mockup 10's transcript — #299
     ├── rehearsal/
@@ -2442,6 +2517,9 @@ ouroboros-db/
     ├── planning-invariants.test.sh   # the planting verifier's usage, and that its pieces agree — #276
     ├── planning-invariants.sql       # the planning invariants against the seeded database — #276
     ├── verify-planning-invariants.sh # that they go red on planted rows, naming the invariant — #276
+    ├── insights-invariants.test.sh   # the insights verifier's usage, and that its pieces agree — #436
+    ├── insights-invariants.sql       # the rollup invariants against the seeded history — #436
+    ├── verify-insights-invariants.sh # that they go red when a rule is removed, naming it — #436
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
 ```

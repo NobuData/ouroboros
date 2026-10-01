@@ -7,7 +7,8 @@
 # migrations/R__dev_seed_providers.sql, migrations/R__dev_seed_routing.sql,
 # migrations/R__dev_seed_sources.sql, migrations/R__dev_seed_ticket_planning.sql,
 # migrations/R__dev_seed_workflows.sql, migrations/R__dev_seed_workspace_interventions.sql,
-# migrations/R__dev_seed_workspace_knowledge.sql, and the
+# migrations/R__dev_seed_workspace_knowledge.sql, migrations/R__dev_seed_workspace_metrics.sql,
+# and the
 # configuration that decides whether they do anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
@@ -28,7 +29,8 @@
 # merges*, R__dev_seed_workflows.sql (#136) is *what it does with it*,
 # R__dev_seed_workspace_knowledge.sql (#409) is *what it has learned*, and
 # R__dev_seed_onboarding.sql (#383) is *where a team starts*,
-# R__dev_seed_workspace_interventions.sql (#434) is *where people still had to step in* — and the
+# R__dev_seed_workspace_interventions.sql (#434) is *where people still had to step in*,
+# R__dev_seed_workspace_metrics.sql (#436) is *what it all added up to* — and the
 # structural rules below are asserted over all of them, in a loop, so that a tenth seed
 # inherits them by being added to the one list at the top.
 #
@@ -83,6 +85,7 @@ WORKFLOWS_SEED="$MODULE_DIR/migrations/R__dev_seed_workflows.sql"
 KNOWLEDGE_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_knowledge.sql"
 ONBOARDING_SEED="$MODULE_DIR/migrations/R__dev_seed_onboarding.sql"
 INTERVENTIONS_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_interventions.sql"
+METRICS_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_metrics.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -125,6 +128,7 @@ WORKFLOWS_BODY="$work/seed-body-workflows.sql"
 KNOWLEDGE_BODY="$work/seed-body-workspace-knowledge.sql"
 ONBOARDING_BODY="$work/seed-body-onboarding.sql"
 INTERVENTIONS_BODY="$work/seed-body-workspace-interventions.sql"
+METRICS_BODY="$work/seed-body-workspace-metrics.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$INTAKE_SEED" "$INTAKE_BODY"
@@ -141,6 +145,7 @@ seed_body "$WORKFLOWS_SEED" "$WORKFLOWS_BODY"
 seed_body "$KNOWLEDGE_SEED" "$KNOWLEDGE_BODY"
 seed_body "$ONBOARDING_SEED" "$ONBOARDING_BODY"
 seed_body "$INTERVENTIONS_SEED" "$INTERVENTIONS_BODY"
+seed_body "$METRICS_SEED" "$METRICS_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -173,13 +178,14 @@ check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
 check_exists "$KNOWLEDGE_SEED" 'migrations/R__dev_seed_workspace_knowledge.sql exists'
 check_exists "$ONBOARDING_SEED" 'migrations/R__dev_seed_onboarding.sql exists'
 check_exists "$INTERVENTIONS_SEED" 'migrations/R__dev_seed_workspace_interventions.sql exists'
+check_exists "$METRICS_SEED" 'migrations/R__dev_seed_workspace_metrics.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
-                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED"; do
+                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -227,6 +233,8 @@ onboarding_description=$(basename -- "$ONBOARDING_SEED" .sql)
 onboarding_description=${onboarding_description#R__}
 interventions_description=$(basename -- "$INTERVENTIONS_SEED" .sql)
 interventions_description=${interventions_description#R__}
+metrics_description=$(basename -- "$METRICS_SEED" .sql)
+metrics_description=${metrics_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
@@ -287,6 +295,13 @@ interventions_description=${interventions_description#R__}
 # from empty the waiver it corrects would not exist yet. It sorts straight before the knowledge
 # seed, which reads nothing of it.
 #
+# The insights seed (#436) **must** sort after every seed whose rows it reads or counts: the
+# farm's jobs, the test plane's attempts, the sources seed's GitHub source and #434's events — the
+# last of which the interventions seed writes only after the test-results seed. It is named
+# `workspace_metrics` for that, and sorts last: `dev_seed_workspace_insights` would sort before
+# `dev_seed_workspace_interventions`, and on a database migrated from empty its intervention
+# history would count no events.
+#
 # The onboarding seed (#383) **must** sort after two of them: the first, for Ken, and the intake
 # seed, whose nine issues and their estimates it copies into its own workspace by query — on a
 # database migrated from empty, sorting before `dev_seed_intake` would mirror nothing and leave
@@ -298,10 +313,10 @@ interventions_description=${interventions_description#R__}
 # the first of their domain. `dev_seed_farm` does that; `farm_dev_seed`, which reads better,
 # would sort before `dev_seed` and every join in it would find nothing on a database migrated
 # from empty.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description" "$metrics_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description" "$metrics_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the sixteen seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the seventeen seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -322,7 +337,7 @@ check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
-                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED"; do
+                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -340,10 +355,15 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$KNOWLEDGE_SEED" ] && body=$KNOWLEDGE_BODY
   [ "$seed_file" = "$ONBOARDING_SEED" ] && body=$ONBOARDING_BODY
   [ "$seed_file" = "$INTERVENTIONS_SEED" ] && body=$INTERVENTIONS_BODY
+  [ "$seed_file" = "$METRICS_SEED" ] && body=$METRICS_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   updates=$(count_lines '^update ouroboros\.' "$body")
-  statements=$((inserts + updates))
+  # A fill through the schema's own writer function — `select count(…) as <name>` over a lateral
+  # call — is a statement too, and needs the guard like any other. R__dev_seed_workspace_metrics.sql
+  # grades its merges through #435's record_estimate_outcome() this way rather than restating it.
+  fills=$(count_lines '^select count\([a-z_.]+\) as [a-z_]+$' "$body")
+  statements=$((inserts + updates + fills))
   guards=$(count_lines '^ *(where|and) \$\{ouro_dev_seed\};?$' "$body")
   conflicts=$(count_lines '^on conflict( \([a-z_]+\))? do nothing;$' "$body")
 
@@ -1418,6 +1438,58 @@ check_absent "$INTERVENTIONS_BODY" 'insert into ouroboros\.runs' \
   'the interventions seed adds no run'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_workspace_metrics.sql — mockup 15's Insights page as rollup history (#436)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_workspace_metrics.sql — the insights history\n'
+
+for prefix in '5eed005e' '5eed005f' '5eed0060' '5eed0061'; do
+  check_contains "$METRICS_BODY" "'$prefix-0000-4000-8000-" \
+    "the insights seed builds its ids from the $prefix… prefix"
+done
+
+# The graded loops' four tables, the rollup grain and its bookkeeping — and no update of anybody
+# else's row. In particular no flake score (the flaky card reads the test plane's) and no
+# intervention event (the cause bars count #434's).
+metrics_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$METRICS_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'issue_estimates metric_daily metric_rollup_state pull_requests runs tickets ' \
+  "$metrics_tables" \
+  'the insights seed writes the graded loops, the rollup history and its bookkeeping — and nothing else'
+check_equals 0 "$(count_lines '^update ' "$METRICS_BODY")" 'and updates nothing'
+
+# The grades are #435's fill, not rows typed here.
+check_contains "$METRICS_BODY" 'ouroboros\.record_estimate_outcome\(pr\.organization_id, pr\.id\)' \
+  'the calibration grades are written by record_estimate_outcome(), the fill #435 ships'
+
+# **Components are seeded, values computed** — #436's "no value is seeded directly". Every rate's
+# value is its numerator over its denominator in the statement, and every median's is
+# percentile_cont over the samples the row carries.
+check_contains "$METRICS_BODY" '100\.0 \* l\.autonomous / l\.closed, l\.autonomous, l\.closed' \
+  'the merge rate''s value is computed from its components'
+check_contains "$METRICS_BODY" '100\.0 \* l\.untouched / l\.merged, l\.untouched, l\.merged' \
+  'and so is the merged-untouched rate'
+check_contains "$METRICS_BODY" 'percentile_cont\(0\.5\) within group \(order by c\.ms\)' \
+  'and the cycle median is the median of the samples it carries'
+for figure in '\b92\b' '\b187\b' '\b228\b' '\b412\b' '\b377\b' '\b26430\b' '1\.87' '0\.41' \
+              '\b126000000\b' '0\.12' '91\.5'; do
+  check_absent "$METRICS_BODY" "$figure" \
+    "the insights seed stores no $figure — the page's figures are computed from components"
+done
+
+# The two registry entries a day cannot hold are not written per day (V078, #435).
+check_absent "$METRICS_BODY" "'cost_per_merged_pr'" 'cost per merged PR is left to the window'
+check_absent "$METRICS_BODY" "'estimate_within_band" 'calibration is read from the grades, not stored per day'
+
+# Every day is relative to the clock, for #68's reason.
+check_absent "$METRICS_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the insights seed carries no literal date — every day is relative to now()'
+
+# Parents by natural key, never by restating another seed's id.
+check_absent "$METRICS_BODY" '5eed0001-0000-4000-8000|5eed001a-0000-4000-8000|5eed0006-0000-4000-8000' \
+  'the workspace, the GitHub source and the repository are found by natural key'
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -1440,6 +1512,7 @@ check_contains "$README" 'R__dev_seed_verification\.sql' 'README.md documents th
 check_contains "$README" 'R__dev_seed_workspace_knowledge\.sql' 'README.md documents the knowledge seed'
 check_contains "$README" 'R__dev_seed_onboarding\.sql' 'README.md documents the onboarding seed'
 check_contains "$README" 'R__dev_seed_workspace_interventions\.sql' 'README.md documents the interventions seed'
+check_contains "$README" 'R__dev_seed_workspace_metrics\.sql' 'README.md documents the insights seed'
 check_contains "$README" 'acme-onboarding' 'README.md names the onboarding workspace a developer will find'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'
