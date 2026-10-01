@@ -12,6 +12,7 @@ import {
   bySafety,
   FRAGMENT_SEPARATOR,
   LINE_COMPONENTS,
+  loopMinutesOf,
   SAFETY_WEIGHTS,
   scoreCandidate,
   type SafetyWeights,
@@ -193,6 +194,15 @@ describe("the safe-first-issue score", () => {
 
       expect(result.loopMinutes).toBe(15);
       expect(result.line).toBe("no code paths touched · est. 15 min");
+    });
+
+    it.each([
+      [3, 6, 4],
+      [8, 14, 11],
+      [1, 2, 1],
+      [5, 5, 5],
+    ])("prints a %i–%i minute cycle as its midpoint, rounded down: %i", (min, max, minutes) => {
+      expect(loopMinutesOf(min, max)).toBe(minutes);
     });
 
     it("leaves cost out of the payload entirely when the model is unpriced", () => {

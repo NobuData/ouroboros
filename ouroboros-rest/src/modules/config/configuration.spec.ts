@@ -146,6 +146,9 @@ describe("the development defaults", () => {
       flakeRescoreCap: DEFAULT_FLAKE_RESCORE_CAP,
       factSweepHourUtc: DEFAULT_FACT_SWEEP_HOUR_UTC,
       repoMapHourUtc: DEFAULT_REPO_MAP_HOUR_UTC,
+      // BB.5's (#388) two capability flags: a deployment that declares nothing has neither pool.
+      managedKeyPool: false,
+      hostedRunnerPool: false,
     });
   });
 });
@@ -1112,4 +1115,68 @@ describe("OURO_ONBOARDING_UNLOCK_THRESHOLD (BB.3, #386)", () => {
       "OURO_ONBOARDING_UNLOCK_THRESHOLD: expected between 0 and 10000",
     );
   });
+});
+
+describe("the deployment capability flags (BB.5, #388, decision O6)", () => {
+  it("declares neither pool when unset — the self-hosted default", () => {
+    const configuration = loadConfiguration(testEnvironment());
+
+    expect(configuration.managedKeyPool).toBe(false);
+    expect(configuration.hostedRunnerPool).toBe(false);
+    expect(configuration.managedKeyTrialCents).toBeUndefined();
+  });
+
+  it.each([
+    ["OURO_MANAGED_KEY_POOL", "managedKeyPool"],
+    ["OURO_HOSTED_RUNNER_POOL", "hostedRunnerPool"],
+  ] as const)("reads %s as a boolean, each flag on its own", (variable, field) => {
+    const declared = loadConfiguration(testEnvironment({ [variable]: "true" }));
+    const refused = loadConfiguration(testEnvironment({ [variable]: "false" }));
+
+    expect(declared[field]).toBe(true);
+    expect(refused[field]).toBe(false);
+    // One flag never implies the other.
+    expect(declared.managedKeyPool && declared.hostedRunnerPool).toBe(false);
+  });
+
+  it.each([
+    ["OURO_MANAGED_KEY_POOL", "yes"],
+    ["OURO_MANAGED_KEY_POOL", "1"],
+    ["OURO_HOSTED_RUNNER_POOL", "TRUE"],
+    ["OURO_HOSTED_RUNNER_POOL", "on"],
+  ])("rejects %s=%s rather than reading it as false", (variable, value) => {
+    expect(failureFor(testEnvironment({ [variable]: value }))).toContain(
+      `${variable}: expected true or false`,
+    );
+  });
+
+  it.each(["1", "500", "1000000"])(
+    "reads a trial credit of %s cents on a declared pool",
+    (value) => {
+      expect(
+        loadConfiguration(
+          testEnvironment({ OURO_MANAGED_KEY_POOL: "true", OURO_MANAGED_KEY_TRIAL_CENTS: value }),
+        ).managedKeyTrialCents,
+      ).toBe(Number(value));
+    },
+  );
+
+  it.each(["0", "1000001", "-5", "5.00", "five"])("rejects a trial credit of %s", (value) => {
+    expect(
+      failureFor(
+        testEnvironment({ OURO_MANAGED_KEY_POOL: "true", OURO_MANAGED_KEY_TRIAL_CENTS: value }),
+      ),
+    ).toContain("OURO_MANAGED_KEY_TRIAL_CENTS: expected between 1 and 1000000 cents");
+  });
+
+  it.each([{}, { OURO_MANAGED_KEY_POOL: "false" }])(
+    "refuses a trial credit on a pool the deployment does not declare",
+    (flag) => {
+      expect(
+        failureFor(testEnvironment({ ...flag, OURO_MANAGED_KEY_TRIAL_CENTS: "500" })),
+      ).toContain(
+        "OURO_MANAGED_KEY_TRIAL_CENTS: is only meaningful when OURO_MANAGED_KEY_POOL is true",
+      );
+    },
+  );
 });

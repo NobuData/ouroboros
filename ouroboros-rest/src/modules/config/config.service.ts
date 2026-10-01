@@ -402,6 +402,30 @@ export class AppConfigService {
   }
 
   /**
+   * Whether the deployment declares a managed key pool — `OURO_MANAGED_KEY_POOL`. `false` when
+   * unset, the self-hosted default (BB.5, #388).
+   */
+  get managedKeyPool(): boolean {
+    return this.config.getOrThrow<boolean>("managedKeyPool");
+  }
+
+  /**
+   * The managed key pool's trial credit, in cents — `OURO_MANAGED_KEY_TRIAL_CENTS`. `undefined`
+   * when unset: the wizard's managed row then names no figure.
+   */
+  get managedKeyTrialCents(): number | undefined {
+    return this.config.get<number>("managedKeyTrialCents");
+  }
+
+  /**
+   * Whether the deployment declares a hosted runner pool — `OURO_HOSTED_RUNNER_POOL`. `false`
+   * when unset, the self-hosted default (BB.5, #388).
+   */
+  get hostedRunnerPool(): boolean {
+    return this.config.getOrThrow<boolean>("hostedRunnerPool");
+  }
+
+  /**
    * Is this a production deployment?
    *
    * The one derived flag worth naming, because it is asked in several places and asking
@@ -480,6 +504,9 @@ export class AppConfigService {
       repoMapHourUtc: this.repoMapHourUtc,
       localProviderUrls: this.localProviderUrls,
       onboardingUnlockThreshold: this.onboardingUnlockThreshold,
+      managedKeyPool: this.managedKeyPool,
+      managedKeyTrialCents: this.managedKeyTrialCents,
+      hostedRunnerPool: this.hostedRunnerPool,
     };
   }
 

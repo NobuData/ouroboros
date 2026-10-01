@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.37"
+  version: "0.37.38"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -5112,6 +5112,12 @@ paths:
 
         Picking a template does not complete step 3 — only a real workflow instantiated from
         it does.
+
+        **A pick may be named two ways** ([#388](https://github.com/NobuData/ouroboros/issues/388)).
+        `pickedTicketId` is a canonical ticket. `pickedIssueId` is the `issueId` the first-issue
+        picker answers (`GET /api/v1/onboarding/first-issue`): it is resolved to the canonical
+        ticket of the same issue — this repository, the same number — and stored as
+        `choices.pickedTicketId`, so the wizard keeps one kind of pick. Send one or the other.
       operationId: patchOnboarding
       parameters:
         - $ref: "#/components/parameters/OnboardingRepo"
@@ -5162,6 +5168,9 @@ paths:
             `onboarding_ticket_not_found` — `pickedTicketId` names no ticket of this workspace;
             another workspace's ticket is the same answer.
 
+            `onboarding_issue_not_found` — `pickedIssueId` names no issue of this repository's
+            mirrored backlog; another repository's or another workspace's issue is the same answer.
+
             `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
             are a member of. The two are deliberately one answer.
           content:
@@ -5170,10 +5179,15 @@ paths:
                 $ref: "#/components/schemas/Error"
         "422":
           description: |-
-            `validation_failed` — `repo`, `selectedTemplate`, `pickedTicketId` or `dismissed` is
-            malformed; `details` is keyed by the field. `onboarding_template_unknown` —
+            `validation_failed` — `repo`, `selectedTemplate`, `pickedTicketId`, `pickedIssueId` or
+            `dismissed` is malformed; `details` is keyed by the field. `onboarding_template_unknown` —
             `selectedTemplate` is not a template this workspace is offered; `details.offered` lists
             the ones that are.
+
+            `onboarding_pick_ambiguous` — both `pickedTicketId` and `pickedIssueId` were sent.
+            `onboarding_issue_ticket_missing` — the issue is in the backlog but no GitHub source
+            has read it into a ticket yet, so there is nothing for the wizard to point at;
+            `details.issueNumber` names it.
           content:
             application/json:
               schema:
@@ -5704,6 +5718,215 @@ paths:
           description: |-
             `validation_failed` — `repo` is missing or is not `owner/name`, or `limit` is not a
             whole number from 1 to 50. `details` carries the entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/defaults:
+    get:
+      tags: [onboarding]
+      summary: The wizard's right column — smart defaults, the projection and the reassure strip
+      description: |-
+        Mockup 13's *Smart Defaults* card, *What Happens Next* card and reassure strip
+        ([#388](https://github.com/NobuData/ouroboros/issues/388), BB.5), each telling this
+        deployment its own truth.
+
+        **Rows are selected by declared deployment capability, never greyed out** (decision O6).
+        `capabilities` is what the deployment's configuration declares — a managed key pool
+        (`OURO_MANAGED_KEY_POOL`) and a hosted runner pool (`OURO_HOSTED_RUNNER_POOL`), both
+        absent unless declared. A deployment that declares neither is `self_hosted` and its
+        payload contains **no** managed-key or hosted-runner row — it gets different rows,
+        *bring your own keys → Providers* and *enroll a runner → Build Farm*. The managed row
+        prints a trial credit only when the deployment declares one
+        (`OURO_MANAGED_KEY_TRIAL_CENTS`); no figure is built in.
+
+        **The estimator row is the real nightly job** (AL.5,
+        [#281](https://github.com/NobuData/ouroboros/issues/281)) — its schedule and last run.
+        The Slack row is `optional` and unlinked, because there is no Slack surface yet.
+
+        **Every reassure claim names its mechanism, and a claim whose mechanism this workspace
+        does not have is left out** (decision O9). `draft_only` holds while the dry-run policy is
+        on, or was never answered — launching turns it on — and is dropped when the workspace
+        turned dry-run off. `uninstall` reads *the app can be uninstalled* only where a GitHub App
+        installation is recorded, *the GitHub connection can be paused* for a token source, and is
+        dropped when no source covers the repository. `vault` always holds.
+
+        **The timeline is a projection, labelled as one on every row** (decision O7). Its only
+        number is the picked issue's own estimate.
+
+        **No aggregate statistic appears anywhere** (decision O8) — nothing here is measured
+        across teams, so nothing says so.
+
+        Any member.
+      operationId: readOnboardingDefaults
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The rows, the claims and the projection.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingDefaults"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
+            entry keyed by the field.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/onboarding/launch:
+    post:
+      tags: [onboarding]
+      summary: Run my first loop — the guarded launch
+      description: |-
+        The action bar's **Run my first loop →** ([#388](https://github.com/NobuData/ouroboros/issues/388),
+        BB.5, decision O7). It does everything it says and nothing it cannot.
+
+        **Guards.** Steps 1–3 must be done in reality — a source connected, the repository
+        enabled, a workflow instantiated — and a pick must be an issue of this repository that
+        its mirrored backlog holds. A refusal carries the stated reason the action bar renders.
+
+        **Queue write.** The picked issue is queued through the intake queue write (M.3,
+        [#112](https://github.com/NobuData/ouroboros/issues/112)) naming the instantiated
+        workflow, so the trigger service (R.1, [#143](https://github.com/NobuData/ouroboros/issues/143))
+        pins its version in force — `workflow.pinReason` is `explicit`. The item is the dashboard
+        queue's own: `queue` is byte-identical to the same row read from `GET /api/v1/queue`.
+
+        **Completion.** The wizard is marked complete and the dry-run policy is set **on** when the
+        workspace never answered; an explicit *off* is left alone.
+
+        **Dry-run confirmation.** `dryRun` is read back after completion. When it is off the
+        receipt says so in `dryRun.note` rather than implying draft-only.
+
+        **It launches what exists.** No loop is started here — autonomous execution (AR.1,
+        [#315](https://github.com/NobuData/ouroboros/issues/315)) does not exist yet — so `run` is
+        `null` until a run of the issue does, and `timeline` is a projection labelled as one.
+
+        **A repeat is not a second launch.** An issue the queue already holds answers
+        `already_queued`; one that already has a run answers `already_started` with `run` filled.
+        Nothing is written twice, and the wizard is completed all the same.
+
+        The queue write's own refusals pass through unchanged, and nothing is completed.
+
+        `owner`, `admin` or `member`.
+      operationId: launchOnboarding
+      parameters:
+        - $ref: "#/components/parameters/OnboardingRepo"
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The receipt — what was queued, where, pinned to what, and dry-run's state.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OnboardingLaunchReceipt"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none. Choose one through `/api/auth/organization/set-active`, or
+            name one per request with `X-Ouro-Tenant`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. Sign in through `/api/auth/sign-in/social`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — a `viewer` cannot launch a loop. `details.role` is what you hold and `details.required` is what
+            would have been enough.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+            are a member of. The two are deliberately one answer.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `onboarding_step_incomplete` — a step 1–3 is not done. `message` is the blocking step's
+            stated reason; `details.step` is `4`, `details.blockingStep` the first step not done.
+
+            `onboarding_pick_required` — there is no issue to queue: nothing is picked, the pick is
+            not an issue of this repository, or the repository's backlog does not hold it yet.
+            `message` and `details.reason` are the stated reason.
+
+            `queue_issues_conflict` — the queue write's own refusal: the workspace's queue already
+            holds this issue number for another repository.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: onboarding_pick_required
+                message: No first issue has been picked yet.
+                details:
+                  step: 4
+                  reason: No first issue has been picked yet.
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or is not `owner/name`.
+
+            `queue_issues_not_queueable` — the picked issue is not sized, so there is no estimate
+            to queue it with. `queue_workflow_unknown` — the instantiated workflow is no longer
+            one of this workspace's active workflows. Both are the queue write's own refusals.
           content:
             application/json:
               schema:
@@ -31174,6 +31397,13 @@ components:
           type: [string, "null"]
           format: uuid
           description: A canonical ticket of this workspace.
+        pickedIssueId:
+          type: [string, "null"]
+          format: uuid
+          description: |-
+            The same pick, named by the `issueId` the first-issue picker answers — resolved to
+            that issue's canonical ticket and stored as `pickedTicketId`. Not together with
+            `pickedTicketId`.
         dismissed:
           type: boolean
           description: Stop (or resume) showing the wizard. Open to every member.
@@ -31583,6 +31813,333 @@ components:
             $ref: "#/components/schemas/OnboardingFirstIssueCandidate"
         excluded:
           $ref: "#/components/schemas/OnboardingFirstIssueExclusions"
+
+    OnboardingTimelineRow:
+      type: object
+      title: OnboardingTimelineRow
+      description: One row of *What Happens Next* — always a projection.
+      additionalProperties: false
+      required: [key, actor, text, kind, atMinutes]
+      properties:
+        key:
+          type: string
+          enum: [loop_starts, plan_posted, draft_pr_opens, you_review, merge]
+        actor:
+          type: string
+          enum: [loop, you]
+          description: Who acts.
+        text:
+          type: string
+          examples: ["loop starts on #488"]
+        kind:
+          type: string
+          enum: [projected]
+          description: The label the card must draw. Nothing here is measured.
+        atMinutes:
+          type: [number, "null"]
+          minimum: 0
+          description: |-
+            Minutes after the loop starts, where the picked issue's own estimate gives one — `0`
+            for the origin, the estimate's cycle midpoint for the draft PR — and `null` otherwise.
+            Never a measured or cross-team figure.
+
+    OnboardingTimeline:
+      type: object
+      title: OnboardingTimeline
+      description: |-
+        The *What Happens Next* card's data ([#388](https://github.com/NobuData/ouroboros/issues/388),
+        decision O7) — a projection, labelled as one on the card and on every row.
+      additionalProperties: false
+      required: [kind, basis, dryRun, rows]
+      properties:
+        kind:
+          type: string
+          enum: [projected]
+        basis:
+          type: string
+          enum: [issue_estimate, none]
+          description: Where the one number comes from; `none` when the issue carries no estimate.
+        dryRun:
+          type: boolean
+          description: Whether the review and merge rows were written for an active dry-run policy.
+        rows:
+          type: array
+          items:
+            $ref: "#/components/schemas/OnboardingTimelineRow"
+
+    OnboardingDefaultRow:
+      type: object
+      title: OnboardingDefaultRow
+      description: One row of the *Smart Defaults* card.
+      additionalProperties: false
+      required: [key, variant, status, text, link]
+      properties:
+        key:
+          type: string
+          enum: [models, build, estimator, slack]
+        variant:
+          type: string
+          enum:
+            - managed_keys
+            - bring_your_own_keys
+            - hosted_runner
+            - enroll_runner
+            - nightly_estimator
+            - slack_future
+          description: |-
+            Which of the row's variants this deployment gets. `managed_keys` and `hosted_runner`
+            appear only where the deployment declares the pool.
+        status:
+          type: string
+          enum: [ready, optional]
+          description: "`ready` draws the tick; `optional` draws the dim one."
+        text:
+          type: string
+          description: The row's sentence, without its link.
+          examples: ["Models: bring your own keys"]
+        link:
+          description: Where the row leads, or `null` when its destination does not exist yet.
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [label, path]
+              properties:
+                label:
+                  type: string
+                  examples: [Providers]
+                path:
+                  type: string
+                  examples: [/models/providers]
+            - type: "null"
+        trialCredit:
+          type: object
+          description: |-
+            The managed pool's trial credit — only on `managed_keys`, and only when the deployment
+            declares one.
+          additionalProperties: false
+          required: [cents, display]
+          properties:
+            cents:
+              type: integer
+              minimum: 1
+            display:
+              type: string
+              examples: ["$5"]
+        estimator:
+          $ref: "#/components/schemas/PlanningReestimationStatus"
+          description: The nightly job's schedule and last run — only on `nightly_estimator`.
+        arrivesWith:
+          type: string
+          description: What the row waits for — only on `slack_future`.
+          examples: [ChatOps]
+
+    OnboardingReassureClaim:
+      type: object
+      title: OnboardingReassureClaim
+      description: One claim of the reassure strip, with the mechanism that makes it true (decision O9).
+      additionalProperties: false
+      required: [key, text, mechanism]
+      properties:
+        key:
+          type: string
+          enum: [draft_only, uninstall, vault]
+        text:
+          type: string
+          examples: [Nothing is written to main.]
+        mechanism:
+          type: object
+          additionalProperties: false
+          required: [key, description, issue, path]
+          properties:
+            key:
+              type: string
+              enum:
+                [dry_run_policy, github_app_uninstall, source_pause, vault_envelope_encryption]
+            description:
+              type: string
+              description: What the mechanism does, in a sentence.
+            issue:
+              type: integer
+              description: The issue that delivered it.
+              examples: [382]
+            path:
+              type: [string, "null"]
+              description: Where a person operates or inspects it.
+              examples: [/settings/policies]
+
+    OnboardingDefaults:
+      type: object
+      title: OnboardingDefaults
+      description: |-
+        The wizard's right column ([#388](https://github.com/NobuData/ouroboros/issues/388)).
+      additionalProperties: false
+      required: [repo, deployment, capabilities, rows, reassure, timeline]
+      properties:
+        repo:
+          type: string
+          description: "`owner/name`, lower-case."
+          examples: [acme-robotics/helios-firmware]
+        deployment:
+          type: string
+          enum: [self_hosted, saas]
+          description: "`saas` when either pool is declared, else `self_hosted`."
+        capabilities:
+          type: object
+          description: What the deployment's configuration declares. Both `false` by default.
+          additionalProperties: false
+          required: [managedKeyPool, hostedRunnerPool]
+          properties:
+            managedKeyPool:
+              type: boolean
+            hostedRunnerPool:
+              type: boolean
+        rows:
+          type: array
+          description: The card's rows in card order — models, build, estimator, Slack.
+          items:
+            $ref: "#/components/schemas/OnboardingDefaultRow"
+        reassure:
+          type: object
+          additionalProperties: false
+          required: [claims, line]
+          properties:
+            claims:
+              type: array
+              description: The claims true of this workspace, in strip order.
+              items:
+                $ref: "#/components/schemas/OnboardingReassureClaim"
+            line:
+              type: string
+              description: The claims' sentences joined. Empty when no claim holds.
+        timeline:
+          $ref: "#/components/schemas/OnboardingTimeline"
+
+    OnboardingLaunchReceipt:
+      type: object
+      title: OnboardingLaunchReceipt
+      description: |-
+        What *Run my first loop* did ([#388](https://github.com/NobuData/ouroboros/issues/388)):
+        the issue queued, its position, the workflow version it is pinned to, dry-run as confirmed
+        after completion, and the wizard afterwards.
+      additionalProperties: false
+      required:
+        - repo
+        - outcome
+        - issue
+        - queue
+        - workflow
+        - dryRun
+        - completedAt
+        - links
+        - run
+        - timeline
+        - onboarding
+      properties:
+        repo:
+          type: string
+          examples: [acme-robotics/helios-firmware]
+        outcome:
+          type: string
+          enum: [queued, already_queued, already_started]
+          description: |-
+            `queued` — this request wrote the queue item. `already_queued` — the queue already
+            held the issue. `already_started` — a run of the issue exists.
+        issue:
+          type: object
+          additionalProperties: false
+          required: [id, number, title]
+          properties:
+            id:
+              type: string
+              format: uuid
+              description: The mirrored issue — the picker's `issueId`.
+            number:
+              type: integer
+              minimum: 1
+            title:
+              type: string
+        queue:
+          description: The queue item, in the dashboard queue's own shape; `null` once a run has claimed it.
+          oneOf:
+            - $ref: "#/components/schemas/QueueItemSummary"
+            - type: "null"
+        workflow:
+          type: object
+          description: The workflow the issue is pinned to — the queue item's own pin.
+          additionalProperties: false
+          required: [slug, version, pinReason, path]
+          properties:
+            slug:
+              type: string
+              examples: [quick-fixes]
+            version:
+              type: [integer, "null"]
+              minimum: 1
+              description: The pinned published version; `null` when read off a run.
+            pinReason:
+              type: [string, "null"]
+              enum: [explicit, predicate, most_specific, alphabetical, suggested, null]
+              description: "`explicit` for a launch; `null` when read off a run."
+            path:
+              type: string
+              description: The workflow in the Studio.
+              examples: [/workflows/quick-fixes]
+        dryRun:
+          type: object
+          description: The dry-run policy, read from the database after completion.
+          additionalProperties: false
+          required: [active, reason, note, path]
+          properties:
+            active:
+              type: boolean
+            reason:
+              type: [string, "null"]
+              description: The policy's designed reason while active.
+              examples: [dry-run policy active]
+            note:
+              type: string
+              description: What that means for this loop. Says so when dry-run is off.
+            path:
+              type: string
+              examples: [/settings/policies]
+        completedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the wizard was completed.
+        links:
+          type: object
+          additionalProperties: false
+          required: [dashboard, queue, console]
+          properties:
+            dashboard:
+              type: string
+              examples: [/dashboard]
+            queue:
+              type: string
+              description: The dashboard's queue card.
+              examples: ["/dashboard#dash-up-next-title"]
+            console:
+              type: [string, "null"]
+              description: The run console, once there is a run to open.
+        run:
+          description: |-
+            The live run reference — `null` until a run of the issue exists
+            (BD.1, [#396](https://github.com/NobuData/ouroboros/issues/396)).
+          oneOf:
+            - type: object
+              additionalProperties: false
+              required: [id, path]
+              properties:
+                id:
+                  type: string
+                  format: uuid
+                path:
+                  type: string
+            - type: "null"
+        timeline:
+          $ref: "#/components/schemas/OnboardingTimeline"
+        onboarding:
+          $ref: "#/components/schemas/Onboarding"
 
     OnboardingTemplateTiles:
       type: object

@@ -60,6 +60,15 @@ export class PatchOnboardingDto {
   @IsUUID()
   pickedTicketId?: string | null;
 
+  /**
+   * The same pick, named by the id the first-issue picker answers (`issueId`, BB.4) — resolved to
+   * the issue's canonical ticket and stored as `pickedTicketId` (BB.5, #388). `null` clears the
+   * pick. Not together with `pickedTicketId`.
+   */
+  @ValidateIf((body: PatchOnboardingDto) => body.pickedIssueId != null)
+  @IsUUID()
+  pickedIssueId?: string | null;
+
   /** Stop showing the wizard for this repository (or show it again). Never `null`. */
   @ValidateIf((body: PatchOnboardingDto) => body.dismissed !== undefined)
   @IsBoolean()

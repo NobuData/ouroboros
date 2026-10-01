@@ -11,11 +11,14 @@
  * POST  /api/v1/onboarding/select-template?repo=owner/name administrators — instantiate (#386)
  * GET   /api/v1/onboarding/first-issue?repo=owner/name     any member — step 4's safe pick (#387)
  * GET   /api/v1/onboarding/first-issue/alternatives?repo=  any member — "or pick your own" (#387)
+ * GET   /api/v1/onboarding/defaults?repo=owner/name        any member — the right column (#388)
+ * POST  /api/v1/onboarding/launch?repo=owner/name          contributors — run my first loop (#388)
  * ```
  *
  * `select-template` publishes a workflow, so it carries the studio's publish rule —
  * `@Roles(...ADMINISTRATORS)` — rather than the contributor rule a pick carries: the wizard is
- * not a way round who may publish.
+ * not a way round who may publish. `launch` writes the queue, so it carries the queue write's
+ * rule — contributors — which is also completion's.
  *
  * The repository is a query parameter on every route, so each repository's wizard is its own and
  * re-entering for a second repository is naming it. The `PATCH` role rule is the service's rather
@@ -38,6 +41,10 @@ import {
 } from "./onboarding.dto";
 import type { FirstIssueAlternativesResource, FirstIssueResource } from "./first-issue.resources";
 import { FirstIssueService } from "./first-issue.service";
+import type { SmartDefaultsResource } from "./defaults.resources";
+import { SmartDefaultsService } from "./defaults.service";
+import type { LaunchReceiptResource } from "./launch.resources";
+import { FirstRunLauncherService } from "./launch.service";
 import { OnboardingService } from "./onboarding.service";
 import type { OnboardingResource, OnboardingSkipResource } from "./resources";
 import type { TemplateSelectionResource, TemplateTilesResource } from "./templates.resources";
@@ -49,6 +56,8 @@ export class OnboardingController {
     private readonly onboarding: OnboardingService,
     private readonly templates: TemplateInstantiationService,
     private readonly picker: FirstIssueService,
+    private readonly defaults: SmartDefaultsService,
+    private readonly launcher: FirstRunLauncherService,
   ) {}
 
   /**
@@ -186,5 +195,40 @@ export class OnboardingController {
     @Query() query: FirstIssueAlternativesQuery,
   ): Promise<FirstIssueAlternativesResource> {
     return this.picker.alternatives(tenant.id, query.repo, query.limit);
+  }
+
+  /**
+   * The wizard's right column — Smart Defaults rows selected by the deployment's declared
+   * capabilities, the reassure claims this workspace's mechanisms back, and the projected
+   * timeline (BB.5, #388).
+   *
+   * @param tenant - The workspace.
+   * @param query - `?repo=owner/name`.
+   * @returns The rows, the claims and the projection.
+   */
+  @Get("defaults")
+  smartDefaults(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: OnboardingRepoQuery,
+  ): Promise<SmartDefaultsResource> {
+    return this.defaults.read(tenant.id, query.repo);
+  }
+
+  /**
+   * *Run my first loop* — queue the picked issue under the instantiated workflow, complete the
+   * wizard and answer the receipt (BB.5, #388).
+   *
+   * @param tenant - The workspace.
+   * @param query - `?repo=owner/name`.
+   * @returns The receipt; `409` with a stated reason when a guard refuses.
+   */
+  @Post("launch")
+  @HttpCode(HttpStatus.OK)
+  @Roles(...CONTRIBUTORS)
+  launch(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: OnboardingRepoQuery,
+  ): Promise<LaunchReceiptResource> {
+    return this.launcher.launch(tenant.id, query.repo);
   }
 }

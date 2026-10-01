@@ -4,160 +4,27 @@
  * "no step status is persisted" is asserted across a full traversal.
  */
 
-import { FIXTURE_USER } from "../auth/principal.fixture";
-import type { OnboardingState, Organization, OrganizationRole } from "../db/schema";
-import { runWithTenantContext, setTenantContext } from "../tenancy/tenant.context";
-import type {
-  GithubSourceRow,
-  InstantiatedWorkflowRow,
-  OnboardingChoices,
-  OnboardingRepository,
-  RepositoryRow,
-  TemplateRow,
-  TicketRow,
-} from "./onboarding.repository";
-import { covers, normaliseRepo, OnboardingService, ticketRepository } from "./onboarding.service";
-
-const ORG = "org-1";
-const REPO = "acme-robotics/helios-firmware";
-const TICKET_ID = "7c1e2d3f-4a5b-4c6d-8e9f-0a1b2c3d4e5f";
-
-/** The choice columns a write may carry — and nothing else. */
-const CHOICE_COLUMNS = ["selected_template", "picked_ticket_id", "dismissed"];
-
-/** A write the fake saw. */
-interface Write {
-  method: "saveChoices" | "markCompleted" | "markBypassed";
-  repo: string;
-  columns: string[];
-}
-
-/** The subsystems' state, and the wizard's rows, in memory. */
-class FakeOnboarding {
-  sources: GithubSourceRow[] = [];
-  appInstalledFlag = false;
-  repositoryRow: RepositoryRow | undefined;
-  workflows: InstantiatedWorkflowRow[] = [];
-  tickets: TicketRow[] = [];
-  queued = new Set<number>();
-  runs = new Set<number>();
-  scanned = false;
-  runsInOrganization = false;
-  templateRows: TemplateRow[] = [
-    { slug: "quick-fixes", version: 1, tier: "starter", organization_id: null },
-    { slug: "deep-refactor", version: 1, tier: "advanced", organization_id: null },
-  ];
-  rows = new Map<string, OnboardingState>();
-  writes: Write[] = [];
-
-  private row(repo: string): OnboardingState {
-    const existing = this.rows.get(repo);
-
-    if (existing !== undefined) {
-      return existing;
-    }
-
-    const created: OnboardingState = {
-      id: `row-${this.rows.size + 1}`,
-      organization_id: ORG,
-      repo_ref: repo,
-      selected_template: null,
-      picked_ticket_id: null,
-      dismissed: false,
-      completed_at: null,
-      created_at: new Date(),
-      updated_at: new Date(),
-      bypassed_at: null,
-    };
-
-    this.rows.set(repo, created);
-
-    return created;
-  }
-
-  asRepository(): OnboardingRepository {
-    return {
-      state: (_org: string, repo: string) => Promise.resolve(this.rows.get(repo)),
-      saveChoices: (_org: string, repo: string, choices: OnboardingChoices) => {
-        this.writes.push({ method: "saveChoices", repo, columns: Object.keys(choices) });
-        Object.assign(this.row(repo), choices);
-
-        return Promise.resolve(this.row(repo));
-      },
-      markCompleted: (_org: string, repo: string) => {
-        this.writes.push({ method: "markCompleted", repo, columns: ["completed_at"] });
-        this.row(repo).completed_at ??= new Date();
-
-        return Promise.resolve(this.row(repo));
-      },
-      markBypassed: (_org: string, repo: string) => {
-        this.writes.push({ method: "markBypassed", repo, columns: ["bypassed_at"] });
-        this.row(repo).bypassed_at ??= new Date();
-
-        return Promise.resolve(this.row(repo));
-      },
-      anyWizardFinished: () =>
-        Promise.resolve(
-          [...this.rows.values()].some(
-            (row) => row.completed_at !== null || row.dismissed || row.bypassed_at !== null,
-          ),
-        ),
-      githubSources: () => Promise.resolve(this.sources),
-      appInstalled: () => Promise.resolve(this.appInstalledFlag),
-      repository: () => Promise.resolve(this.repositoryRow),
-      instantiatedWorkflow: (_org: string, slug: string) =>
-        Promise.resolve(this.workflows.find((workflow) => workflow.template_slug === slug)),
-      ticket: (_org: string, id: string) =>
-        Promise.resolve(this.tickets.find((ticket) => ticket.id === id)),
-      reachedLoop: (_org: string, _repo: string, issue: number) =>
-        Promise.resolve({ queued: this.queued.has(issue), run: this.runs.has(issue) }),
-      hasRuns: () => Promise.resolve(this.runsInOrganization),
-      latestScan: () =>
-        Promise.resolve(
-          this.scanned
-            ? { scan_seq: 1, scanned_at: new Date("2026-09-29T09:00:00Z"), duration_ms: 38000 }
-            : undefined,
-        ),
-      templates: () => Promise.resolve(this.templateRows),
-    } as unknown as OnboardingRepository;
-  }
-}
-
-/** A healthy GitHub source covering the repository. */
-const SOURCE: GithubSourceRow = {
-  display_name: "GitHub · acme-robotics",
-  status: "active",
-  status_reason: null,
-  config: { login: "acme-robotics", repos: ["helios-firmware"] },
-};
-
-/** The mockup's first pick — #488, an issue of the repository. */
-const TICKET: TicketRow = {
-  id: TICKET_ID,
-  external_id: "488",
-  external_key: "#488",
-  title: "docs: fix typo in README",
-  meta: { github: { owner: "acme-robotics", repo: "helios-firmware" } },
-  kind: "github",
-};
-
-/**
- * Run as a member holding `role` in the workspace.
- *
- * @param role - The role.
- * @param work - What to run.
- * @returns What it returned.
- */
-function as<T>(role: OrganizationRole, work: () => Promise<T>): Promise<T> {
-  return runWithTenantContext(() => {
-    setTenantContext({
-      user: FIXTURE_USER,
-      membership: { tenant: { id: ORG } as Organization, roles: [role] },
-    });
-
-    return work();
-  });
-}
+import type { GithubSourceRow, TicketRow } from "./onboarding.repository";
+import {
+  as,
+  CHOICE_COLUMNS,
+  emptyRow,
+  FakeOnboarding,
+  ISSUE_ID,
+  ORG,
+  REPO,
+  SOURCE,
+  TICKET,
+  TICKET_ID,
+} from "./onboarding.fixture";
+import {
+  covers,
+  coveringSource,
+  issueNumberIn,
+  normaliseRepo,
+  OnboardingService,
+  ticketRepository,
+} from "./onboarding.service";
 
 describe("the onboarding service", () => {
   let fake: FakeOnboarding;
@@ -387,6 +254,127 @@ describe("the onboarding service", () => {
     });
   });
 
+  describe("a pick named by the picker's issue id (BB.5, #388)", () => {
+    beforeEach(() => {
+      fake.repositoryRow = { id: "repo-1", enabled: true, account_enabled: true };
+      fake.mirrored.set(ISSUE_ID, 488);
+      fake.tickets = [TICKET];
+    });
+
+    it("stores the issue's canonical ticket as the pick", async () => {
+      const resource = await as("member", () =>
+        service.update(ORG, REPO, { pickedIssueId: ISSUE_ID }),
+      );
+
+      expect(resource.choices.pickedTicketId).toBe(TICKET_ID);
+      expect(resource.refs.pickedTicket).toMatchObject({ externalKey: "#488", source: "github" });
+      // Still one kind of pick: the write is the ticket column, and nothing else.
+      expect(fake.writes).toEqual([
+        { method: "saveChoices", repo: REPO, columns: ["picked_ticket_id"] },
+      ]);
+    });
+
+    it("clears the pick with null", async () => {
+      fake.rows.set(REPO, { ...emptyRow(), picked_ticket_id: TICKET_ID });
+
+      const resource = await as("member", () => service.update(ORG, REPO, { pickedIssueId: null }));
+
+      expect(resource.choices.pickedTicketId).toBeNull();
+    });
+
+    it("answers 404 for an issue the repository's backlog does not hold", async () => {
+      const unknown = "00000000-0000-4000-8000-000000000001";
+
+      await expect(
+        as("member", () => service.update(ORG, REPO, { pickedIssueId: unknown })),
+      ).rejects.toMatchObject({
+        response: { code: "onboarding_issue_not_found", details: { issueId: unknown } },
+      });
+      expect(fake.writes).toEqual([]);
+    });
+
+    it("answers 404 when the workspace does not mirror the repository at all", async () => {
+      fake.repositoryRow = undefined;
+
+      await expect(
+        as("member", () => service.update(ORG, REPO, { pickedIssueId: ISSUE_ID })),
+      ).rejects.toMatchObject({ response: { code: "onboarding_issue_not_found" } });
+    });
+
+    it("answers 422 when no GitHub source has read the issue into a ticket yet", async () => {
+      fake.tickets = [];
+
+      await expect(
+        as("member", () => service.update(ORG, REPO, { pickedIssueId: ISSUE_ID })),
+      ).rejects.toMatchObject({
+        status: 422,
+        response: {
+          code: "onboarding_issue_ticket_missing",
+          details: { issueId: ISSUE_ID, issueNumber: 488, repo: REPO },
+        },
+      });
+      expect(fake.writes).toEqual([]);
+    });
+
+    it("refuses a pick named twice, whichever values the two carry", async () => {
+      await expect(
+        as("member", () =>
+          service.update(ORG, REPO, { pickedTicketId: TICKET_ID, pickedIssueId: ISSUE_ID }),
+        ),
+      ).rejects.toMatchObject({ status: 422, response: { code: "onboarding_pick_ambiguous" } });
+      await expect(
+        as("member", () =>
+          service.update(ORG, REPO, { pickedTicketId: null, pickedIssueId: null }),
+        ),
+      ).rejects.toMatchObject({ response: { code: "onboarding_pick_ambiguous" } });
+      expect(fake.writes).toEqual([]);
+    });
+
+    it("refuses a viewer's pick by issue id", async () => {
+      await expect(
+        as("viewer", () => service.update(ORG, REPO, { pickedIssueId: ISSUE_ID })),
+      ).rejects.toMatchObject({ response: { code: "forbidden" } });
+      expect(fake.writes).toEqual([]);
+    });
+  });
+
+  describe("the snapshot the launcher composes (BB.5, #388)", () => {
+    it("carries the rows the rail was derived from", async () => {
+      fake.readyToLaunch();
+
+      const snapshot = await service.snapshot(ORG, "Acme-Robotics/Helios-Firmware");
+
+      expect(snapshot.resource).toEqual(await service.read(ORG, REPO));
+      expect(snapshot.source).toMatchObject({ login: "acme-robotics", appInstalled: false });
+      expect(snapshot.repository).toEqual({ id: "repo-1", enabled: true, account_enabled: true });
+      expect(snapshot.workflow).toMatchObject({ slug: "quick-fixes" });
+      expect(snapshot.ticket).toEqual(TICKET);
+      expect(snapshot.issueNumber).toBe(488);
+    });
+
+    it("carries no issue number for a pick that is another repository's", async () => {
+      fake.readyToLaunch();
+      fake.tickets = [{ ...TICKET, meta: { github: { owner: "acme-robotics", repo: "other" } } }];
+
+      const snapshot = await service.snapshot(ORG, REPO);
+
+      expect(snapshot.ticket).toBeDefined();
+      expect(snapshot.issueNumber).toBeUndefined();
+    });
+
+    it("is empty-handed for a repository nobody has onboarded", async () => {
+      const snapshot = await service.snapshot(ORG, REPO);
+
+      expect(snapshot).toMatchObject({
+        source: null,
+        repository: undefined,
+        workflow: undefined,
+        ticket: undefined,
+        issueNumber: undefined,
+      });
+    });
+  });
+
   describe("the import-skip", () => {
     it("marks the wizard bypassed and does not claim to have imported anything", async () => {
       const result = await service.skip(ORG, REPO);
@@ -419,6 +407,29 @@ describe("the helpers", () => {
     expect(normaliseRepo("Acme/Helios")).toBe("acme/helios");
   });
 
+  it("chooses the healthiest source covering a repository, and none when nothing covers it", () => {
+    const paused: GithubSourceRow = { ...SOURCE, display_name: "paused", status: "paused" };
+    const failing: GithubSourceRow = { ...SOURCE, display_name: "failing", status: "error" };
+    const elsewhere: GithubSourceRow = { ...SOURCE, config: { login: "acme-robotics", repos: [] } };
+
+    expect(coveringSource([paused, failing, SOURCE], "acme-robotics", "helios-firmware")).toBe(
+      SOURCE,
+    );
+    expect(coveringSource([paused, failing], "acme-robotics", "helios-firmware")).toBe(failing);
+    expect(coveringSource([elsewhere], "acme-robotics", "helios-firmware")).toBeUndefined();
+  });
+
+  it("reads a ticket's issue number only when it is a GitHub issue of the repository", () => {
+    const jira: TicketRow = { ...TICKET, kind: "jira" };
+    const elsewhere: TicketRow = { ...TICKET, meta: { github: { owner: "acme", repo: "x" } } };
+    const keyed: TicketRow = { ...TICKET, external_id: "HEL-142" };
+
+    expect(issueNumberIn(TICKET, REPO)).toBe(488);
+    expect(issueNumberIn(jira, REPO)).toBeUndefined();
+    expect(issueNumberIn(elsewhere, REPO)).toBeUndefined();
+    expect(issueNumberIn(keyed, REPO)).toBeUndefined();
+  });
+
   it("reads coverage from a GitHub source's config, and none from an unreadable one", () => {
     const config = { login: "Acme-Robotics", repos: ["Helios-Firmware"] };
 
@@ -443,19 +454,3 @@ describe("the helpers", () => {
     expect(ticketRepository({ github: { owner: 1, repo: "x" } })).toBeNull();
   });
 });
-
-/** An onboarding row with no choices. */
-function emptyRow(): OnboardingState {
-  return {
-    id: "row-x",
-    organization_id: ORG,
-    repo_ref: REPO,
-    selected_template: null,
-    picked_ticket_id: null,
-    dismissed: false,
-    completed_at: null,
-    created_at: new Date(),
-    updated_at: new Date(),
-    bypassed_at: null,
-  };
-}

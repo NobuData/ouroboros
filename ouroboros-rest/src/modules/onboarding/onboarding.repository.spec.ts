@@ -119,6 +119,47 @@ describe("the onboarding repository", () => {
     ]);
   });
 
+  it("finds a mirrored issue only inside the workspace and the repository (#388)", async () => {
+    database.answers({ rows: [{ number: 488 }] });
+
+    await expect(repository.mirroredIssue(ORG, "repo-1", "issue-488")).resolves.toEqual({
+      number: 488,
+    });
+
+    const [statement] = database.statements;
+
+    expect(statement.sql).toContain('from "ouroboros"."github_issues"');
+    expect(statement.sql).toContain('"organization_id" = $1');
+    expect(statement.sql).toContain('"github_repo_id" = $2');
+    expect(statement.sql).toContain('"id" = $3');
+    expect(statement.parameters).toEqual([ORG, "repo-1", "issue-488"]);
+  });
+
+  it("finds an issue's canonical ticket by GitHub kind, number and repository (#388)", async () => {
+    await repository.ticketOfIssue(ORG, "acme-robotics", "helios-firmware", 488);
+
+    const [statement] = database.statements;
+
+    expect(statement.sql).toContain('inner join "ouroboros"."ticket_sources"');
+    expect(statement.sql).toContain('"tickets"."organization_id" = $1');
+    expect(statement.sql).toContain('"ticket_sources"."kind" = $2');
+    expect(statement.sql).toContain('"tickets"."external_id" = $3');
+    expect(statement.sql).toContain(`lower("ouroboros"."tickets"."meta"->'github'->>'owner') = $4`);
+    expect(statement.sql).toContain(`lower("ouroboros"."tickets"."meta"->'github'->>'repo') = $5`);
+    // One stable answer when two sources both read the issue: the oldest ticket.
+    expect(statement.sql).toContain(
+      'order by "ouroboros"."tickets"."created_at", "ouroboros"."tickets"."id"',
+    );
+    expect(statement.parameters).toEqual([
+      ORG,
+      "github",
+      "488",
+      "acme-robotics",
+      "helios-firmware",
+      1,
+    ]);
+  });
+
   it("asks the queue and the runs whether an issue reached the loop", async () => {
     database.answers({ rows: [{ id: "q" }] }, { rows: [] });
 

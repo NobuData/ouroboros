@@ -432,7 +432,7 @@ seeds: steps 1–2 ✓ (derived) · scan(6 rows, 38s, detected) · quick-fixes s
 | BB.2 | #385 ✅ | 🟢 Done | ouroboros-rest: [BB.2] Wizard orchestration API | Derived steps, resume, choices, completion; import-skip hook | mvp, onboarding, rest | N (after BA.1) | Y | M | ouroboros-rest |
 | BB.3 | #386 ✅ | 🟢 Done | ouroboros-rest: [BB.3] Template instantiation service | Tiles payload, unlock evaluation, create-from-template (WF-T.5) | mvp, onboarding, workflow, rest | N (after BA.2, WF-P.3) | Y | M | ouroboros-rest |
 | BB.4 | #387 ✅ | 🟢 Done | ouroboros-rest: [BB.4] Safe-first-issue picker | Deterministic scoring with rendered reasoning (O5) | mvp, onboarding, intake, rest | N (after INTAKE-L.3) | Y | M | ouroboros-rest |
-| BB.5 | #388 | 🟡 Open | ouroboros-rest: [BB.5] First-run launcher & smart defaults | Queue+pin+dry-run launch; deployment-aware defaults payload | mvp, onboarding, rest | N (after BB.2–BB.4, BA.3) | Y | M | ouroboros-rest |
+| BB.5 | #388 ✅ | 🟢 Done | ouroboros-rest: [BB.5] First-run launcher & smart defaults | Queue+pin+dry-run launch; deployment-aware defaults payload | mvp, onboarding, rest | N (after BB.2–BB.4, BA.3) | Y | M | ouroboros-rest |
 | BB.6 | #389 | 🟡 Open | ouroboros-rest: [BB.6] Onboarding integration tests | State derivation, rule packs, instantiation, picker, launch | mvp, onboarding, rest, ci | N (after BB.1–BB.5) | Y | M | ouroboros-rest |
 
 ### Issue BB.1 — ouroboros-rest: [BB.1] Repo detection service (rule packs)
@@ -563,7 +563,7 @@ reason: "no code paths touched · est. 4 min" (+ "$0.03" only when priced)
 
 ### Issue BB.5 — ouroboros-rest: [BB.5] First-run launcher & smart defaults
 
-> **GitHub issue:** #388 · **Status:** 🟡 Open · **Parent epic:** #377
+> **GitHub issue:** #388 ✅ · **Status:** 🟢 Done · **Parent epic:** #377
 
 
 - **Problem Statement:** "Run my first loop" must do everything real
@@ -587,6 +587,31 @@ reason: "no code paths touched · est. 4 min" (+ "$0.03" only when priced)
 - **Parallelism/Dependencies:** Needs BB.2–BB.4, BA.3. Feeds BC.5.
 - **Technical Stack:** NestJS, INTAKE/R.1 composition.
 - **Epic:** BB
+- **Delivered** (`ouroboros-rest/src/modules/onboarding/launch.*`, `defaults.*`, REST 0.37.38):
+  `POST /api/v1/onboarding/launch` (contributors) guards steps 1–3 and the pick, queues it through
+  M.3's write naming the instantiated workflow — so R.1 pins its version, reason `explicit` —
+  completes the wizard through its own guarded step 4 (dry-run defaulted on when unset) and
+  answers a receipt: the dashboard queue's own item, the pin, dry-run **read back after
+  completion** (an explicit *off* is stated, never implied draft-only), dashboard and queue links,
+  a `run` slot that stays `null` until a run exists (BD.1), and the timeline. A repeat is not a
+  second launch (`already_queued` / `already_started`); the queue's refusals pass through.
+  `GET /api/v1/onboarding/defaults` (any member) is the right column: rows selected by declared
+  capability, the reassure claims and the same projection before launch. *Decided on the issue:*
+  **the pick link** — the wizard stores a canonical ticket while the queue and BB.4's picker speak
+  `github_issues` ids, so the launcher resolves ticket → mirrored issue by repository and number
+  (BB.2's own step-4 join) and `PATCH /onboarding` gains `pickedIssueId`, resolved to the ticket
+  and stored as `pickedTicketId`; **the flags** — `OURO_MANAGED_KEY_POOL` and
+  `OURO_HOSTED_RUNNER_POOL` (`false` unless declared) plus optional
+  `OURO_MANAGED_KEY_TRIAL_CENTS`: the managed row prints a trial credit only when the deployment
+  declares one, and no `$5` is built in; **the uninstall claim** — the codebase has no source
+  delete and no GitHub App install (O.1 is v2), so the claim varies by connection: an App
+  installation → *the app can be uninstalled in one click*, a token source → *the GitHub
+  connection can be paused in one click* (Settings → Sources), nothing connected → omitted.
+  `draft_only` holds while dry-run is on or was never answered (launching turns it on) and is
+  dropped on an explicit *off*; the vault claim reads *sealed in the tenant vault and never leave
+  the control plane*, the sentence `docs/SECURITY_MODEL.md` verifies. The timeline's only number
+  is the picked issue's own estimate (the first-issue card's `est. 4 min`), every row is
+  `projected`, and no aggregate (`4m 10s`, `92%`) is in either payload — asserted.
 
 ```
 launch ─▶ guards ✓ ─▶ queue(#488, pin: quick-fixes@v1) · dry-run ✓ ─▶ receipt {q:1, links}
