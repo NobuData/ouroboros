@@ -4049,9 +4049,10 @@ select pg_temp.must_hold(
    and (select count(*) = 0 from ouroboros.run_files file
           join ouroboros.runs run on run.id = file.run_id
          where run.issue_number <> 482)
+   -- The interventions seed's (#434) review-required failures are policy gates, not a console.
    and (select count(*) = 0 from ouroboros.guardrail_evaluations guard
           join ouroboros.runs run on run.id = guard.run_id
-         where run.issue_number <> 482)
+         where run.issue_number <> 482 and guard.id::text not like '5eed005a-%')
    and (select count(*) = 0 from ouroboros.run_controls),
   'only #482 has a console, and nothing has been asked of any loop — the control queue is empty');
 
@@ -5394,6 +5395,93 @@ select pg_temp.must_hold(
   and (select count(*) = 0 from ouroboros.protected_path_policies
         where organization_id <> '5eed0049-0000-4000-8000-000000000001' and organization_id like '5eed%'),
   'the wizard''s rows live in the onboarding workspace and in no other seeded one');
+
+-- ===========================================================================
+-- R__dev_seed_workspace_interventions.sql — mockup 15's "where loops still need humans" (#434)
+-- ===========================================================================
+
+-- The card, from the rows: 20 in the 30-day window, 8 / 5 / 4 / 2 / 1.
+select pg_temp.must_hold(
+  (select array_agg(cause || '=' || n order by n desc, cause)
+            = '{infra_rig=8,ambiguous_ticket=5,policy_gate=4,model_disagreement=2,other=1}'
+     from (select e.cause, count(*) as n
+             from ouroboros.intervention_events e
+             join ouroboros.organization org on org."id" = e.organization_id
+            where org."slug" = 'acme-robotics'
+              and e.detected_at > now() - interval '30 days'
+            group by e.cause) counted),
+  'the seeded 30-day window lands 8 / 5 / 4 / 2 / 1 across the five causes');
+
+-- "Fix the top row and interventions drop ~40%" is arithmetic over those rows.
+select pg_temp.must_hold(
+  (select round(100.0 * count(*) filter (where cause = 'infra_rig') / count(*)) = 40
+     from ouroboros.intervention_events e
+     join ouroboros.organization org on org."id" = e.organization_id
+    where org."slug" = 'acme-robotics' and e.detected_at > now() - interval '30 days'),
+  'the top row is 8 of 20 — 40%');
+
+-- Every event traces to its source record, and only one cause was typed by a person.
+select pg_temp.must_hold(
+  (select bool_and(case e.source
+                     when 'needs_human_run' then exists (select 1 from ouroboros.runs r
+                                                          where r.id::text = e.source_ref
+                                                            and r.status = 'needs_human')
+                     when 'classification'  then exists (select 1 from ouroboros.failure_classifications c
+                                                          where c.id::text = e.source_ref
+                                                            and c.actor = 'human')
+                     when 'waiver'          then exists (select 1 from ouroboros.pr_waivers w
+                                                          where w.id::text = e.source_ref)
+                     when 'vote_block'      then e.source_ref = '5eed005b-0000-4000-8000-000000000333'
+                     else exists (select 1 from ouroboros.guardrail_evaluations g
+                                   where g.run_id = e.run_id and g.verdict = 'fail'
+                                     and e.source_ref = g.run_id::text || '/' || g."check")
+                   end)
+          and count(*) filter (where e.cause_origin = 'human') = 1
+     from ouroboros.intervention_events e
+    where e.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'every seeded intervention names a real source record, and only the #482 waiver''s cause is a person''s');
+
+select pg_temp.must_hold(
+  (select o.from_cause = 'other' and o.to_cause = 'infra_rig' and ken.email = 'ken@acme-robotics.dev'
+          and e.cause = 'infra_rig' and e.cause_origin = 'human'
+     from ouroboros.intervention_overrides o
+     join ouroboros.intervention_events e on e.id = o.event_id
+     join ouroboros."user" ken on ken."id" = o.actor_id
+    where o.id = '5eed005d-0000-4000-8000-000000000482'),
+  'Ken re-categorized the #482 waiver from other to infra_rig, and the audit row says so');
+
+select pg_temp.must_hold(
+  (select array_agg(r.issue_number || '=' || e.cause order by r.issue_number)
+            = '{311=ambiguous_ticket,333=model_disagreement,465=policy_gate}'
+     from ouroboros.intervention_events e
+     join ouroboros.runs r on r.id = e.run_id
+    where e.source = 'needs_human_run'
+      and e.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'each needs-human handoff is explained by its run''s records');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.test_results_count_drift d
+                join ouroboros.test_runs t on t.id = d.test_run_id
+               where t.id::text like '5eed0056-%'),
+  'the interventions seed''s attempts are recounted from their cases');
+
+-- The id convention, and the idempotency test: exact counts, so a second application that
+-- wrote anything fails here.
+select pg_temp.must_hold(
+  (select array[
+     (select count(*) from ouroboros.test_runs               where id::text like '5eed0056-%'),
+     (select count(*) from ouroboros.test_suites             where id::text like '5eed0057-%'),
+     (select count(*) from ouroboros.test_cases              where id::text like '5eed0058-%'),
+     (select count(*) from ouroboros.failure_classifications where id::text like '5eed0059-%'),
+     (select count(*) from ouroboros.guardrail_evaluations   where id::text like '5eed005a-%'),
+     (select count(*) from ouroboros.intervention_events     where id::text like '5eed005c-%'),
+     (select count(*) from ouroboros.intervention_overrides  where id::text like '5eed005d-%'),
+     (select count(*) from ouroboros.intervention_events
+       where organization_id = '5eed0001-0000-4000-8000-000000000001'),
+     (select count(*) from ouroboros.intervention_overrides
+       where organization_id = '5eed0001-0000-4000-8000-000000000001')]
+   = array[11, 11, 11, 11, 3, 1, 1, 20, 1]::bigint[]),
+  'the interventions seed wrote its fixed-id rows, twenty events and one override — and, applied twice, nothing more');
 
 \o
 \echo 'seed.sql: all assertions passed'

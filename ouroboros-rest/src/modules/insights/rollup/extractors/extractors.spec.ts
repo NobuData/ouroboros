@@ -82,15 +82,33 @@ describe("the extractors", () => {
     ]);
   });
 
-  it("interventions: one sum row per repository, from handoffs and first guardrail failures", async () => {
-    database.answers({ rows: [{ repo_ref: HELIOS, stops: "2" }] });
+  it("interventions: one sum row per repository and cause, read from V079's daily shape", async () => {
+    database.answers({
+      rows: [
+        { repo_ref: HELIOS, cause: "infra_rig", events: "2" },
+        { repo_ref: HELIOS, cause: "other", events: "1" },
+      ],
+    });
 
     expect(await interventionsExtractor.extract(database.service.db, ORG, DAY)).toEqual([
-      { repoRef: HELIOS, metricId: "human_interventions", dimension: "", value: 2 },
+      { repoRef: HELIOS, metricId: "human_interventions", dimension: "infra_rig", value: 2 },
+      { repoRef: HELIOS, metricId: "human_interventions", dimension: "other", value: 1 },
     ]);
-    expectScoped();
-    expect(database.statements[0].sql).toContain("r.status = 'needs_human'");
-    expect(database.statements[0].sql).toContain("min(g.evaluated_at)");
+    // Scoped to the workspace and the UTC day — the view buckets by day, so the day is the bound.
+    expect(database.statements).toHaveLength(1);
+    expect(database.statements[0].parameters).toEqual([ORG, DAY]);
+    expect(database.statements[0].sql).toContain("ouroboros.intervention_cause_daily");
+    expect(database.statements[0].sql).toContain("r.day = $2::date");
+  });
+
+  it("interventions: a day with no events writes no rows", async () => {
+    database.answers({ rows: [] });
+
+    expect(await interventionsExtractor.extract(database.service.db, ORG, DAY)).toEqual([]);
+  });
+
+  it("interventions: implements human_interventions version 2, the cause-dimensioned entry", () => {
+    expect(interventionsExtractor.metrics).toEqual({ human_interventions: 2 });
   });
 
   it("cycle: median rows per repository and per stage, samples kept", async () => {

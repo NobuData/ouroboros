@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.37.42"
+  version: "0.37.43"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -6600,6 +6600,129 @@ paths:
         "422":
           description: |-
             `validation_failed` — `window` is not one of `7d`, `30d` or `90d`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/insights/interventions/{id}/recategorize:
+    post:
+      tags: [insights]
+      summary: Re-categorize an intervention's cause
+      description: |-
+        BI.3 ([#434](https://github.com/NobuData/ouroboros/issues/434), decision **I5**) — a person's
+        correction of why a loop needed a human, for mockup 15's *"Where loops still need humans"*
+        card.
+
+        Every intervention event — a needs-human handoff, a human failure classification, a waiver,
+        the first failure of a guardrail or policy-gate check on a loop, a blocking review vote — is
+        recorded by the database from its source record and mapped to a cause (`infra_rig`,
+        `ambiguous_ticket`, `policy_gate`, `model_disagreement`, `other`) by a versioned rule. The
+        rules will sometimes be wrong; this sets the cause a person says it was.
+
+        **Audited, and never undone by a rule.** The correction writes an override row — actor,
+        from-cause, to-cause, reason — in the same transaction as the change, and answers it in
+        `override`. The event's `causeOrigin` becomes `human`, and no later rule run or replay of the
+        run's records overwrites it.
+
+        **`owner`, `admin` or `member`** — a `viewer` is refused, on a direct call exactly as in the
+        UI.
+
+        **The workspace is the session's**: no workspace in this path, the session's active
+        organization or `X-Ouro-Tenant` decides, and another workspace's event is a `404`.
+      operationId: recategorizeIntervention
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The intervention event's id.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RecategorizeInterventionBody"
+            example:
+              cause: infra_rig
+              reason: "The waiver is for the bench, not the policy: the rig has no thermal chamber."
+      responses:
+        "200":
+          description: The event, with the person's cause and the override that set it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Intervention"
+              example:
+                id: 5eed005c-0000-4000-8000-000000000482
+                runId: 5eed0009-0000-4000-8000-000000000482
+                source: waiver
+                sourceRef: 5eed0039-0000-4000-8000-000000000482
+                detectedAt: "2026-10-01T17:49:30.897Z"
+                signals: []
+                cause: infra_rig
+                causeOrigin: human
+                ruleId: null
+                ruleVersion: null
+                override:
+                  actorId: 5eed0003-0000-4000-8000-000000000001
+                  fromCause: other
+                  toCause: infra_rig
+                  reason: "The waiver is for the bench, not the policy: the rig has no thermal chamber."
+                  createdAt: "2026-10-01T18:02:11.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner`, `admin` or `member`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `intervention_not_found` — no such intervention event in this workspace.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `intervention_cause_unchanged` — the event already has that cause; nothing is written.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `cause` is not one of the five causes, `reason` is missing, blank
+            or over 2 000 characters, or `id` is not a uuid.
           content:
             application/json:
               schema:
@@ -32570,6 +32693,93 @@ components:
           type: boolean
           description: True when a scan was already running and this request joined it.
 
+    InterventionCause:
+      type: string
+      title: InterventionCause
+      enum: [infra_rig, ambiguous_ticket, policy_gate, model_disagreement, other]
+      description: |-
+        Why a loop needed a person (#434, decision I5) — the five bars of mockup 15's card.
+    RecategorizeInterventionBody:
+      type: object
+      title: RecategorizeInterventionBody
+      additionalProperties: false
+      required: [cause, reason]
+      properties:
+        cause:
+          $ref: "#/components/schemas/InterventionCause"
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+          description: Why — required and never blank; it is the audit row's reason.
+    Intervention:
+      type: object
+      title: Intervention
+      additionalProperties: false
+      description: |-
+        One moment a person had to step into a loop (#434), with the cause a rule assigned or a
+        person re-categorized it to.
+      required: [id, runId, source, sourceRef, detectedAt, signals, cause, causeOrigin, ruleId, ruleVersion, override]
+      properties:
+        id:
+          type: string
+          format: uuid
+        runId:
+          type: string
+          format: uuid
+        source:
+          type: string
+          enum: [needs_human_run, classification, waiver, policy_gate, guardrail, vote_block]
+          description: The plane the moment was recorded on.
+        sourceRef:
+          type: string
+          description: |-
+            The source record — the run, classification, waiver or vote id, or `<run id>/<check>`
+            for a guardrail or policy-gate stop.
+        detectedAt:
+          type: string
+          format: date-time
+        signals:
+          type: array
+          items:
+            type: string
+          description: What the cause rules read — `class:infra_rig`, `check:review_required`, …
+        cause:
+          $ref: "#/components/schemas/InterventionCause"
+        causeOrigin:
+          type: string
+          enum: [rule, human]
+          description: "`human` once a person re-categorized it — never overwritten by a rule run."
+        ruleId:
+          type: [string, "null"]
+          description: The rule that assigned the cause; null when a person set it.
+        ruleVersion:
+          type: [integer, "null"]
+          minimum: 1
+        override:
+          oneOf:
+            - $ref: "#/components/schemas/InterventionOverride"
+            - type: "null"
+          description: The re-categorization that set a human cause; null for a rule's.
+    InterventionOverride:
+      type: object
+      title: InterventionOverride
+      additionalProperties: false
+      description: One re-categorization, as its audit row records it (#434).
+      required: [actorId, fromCause, toCause, reason, createdAt]
+      properties:
+        actorId:
+          type: [string, "null"]
+          description: Who — null once the person is removed.
+        fromCause:
+          $ref: "#/components/schemas/InterventionCause"
+        toCause:
+          $ref: "#/components/schemas/InterventionCause"
+        reason:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
     CalibrationReport:
       type: object
       title: CalibrationReport

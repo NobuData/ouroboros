@@ -855,8 +855,10 @@ describe("the rollup extractors and their oracle twins", () => {
     expect(await rolledUp("merge_rate", D1, D1)).toEqual(
       new Map([[windowKey(HELIOS, ""), { numerator: 1, denominator: 3 }]]),
     );
+    // R2's secrets stop (failed twice — one stop) and R3's handoff: neither has a record the cause
+    // rules map, so both are `other` (#434) — recorded, not dropped.
     expect(await rolledUp("human_interventions", D1, D1)).toEqual(
-      new Map([[windowKey(HELIOS, ""), { value: 2 }]]),
+      new Map([[windowKey(HELIOS, "other"), { value: 2 }]]),
     );
   });
 

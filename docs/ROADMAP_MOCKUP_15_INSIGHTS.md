@@ -246,7 +246,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BI.1 | #432 ✅ | 🟢 Done | ouroboros-db: [BI.1] Metric rollup schema & methodology registry | `metric_daily` grain + versioned formula registry (I1/I2) | mvp, insights, db | N (after DASH-F.1/F.3, AO/AW/AS) | Y | M | ouroboros-db |
 | BI.2 | #433 ✅ | 🟢 Done | ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors | Incremental daily fills per metric family; oracle parity | mvp, insights, rest | N (after BI.1) | Y | L | ouroboros-rest |
-| BI.3 | #434 | 🟡 Open | ouroboros-db: [BI.3] Intervention-cause taxonomy | Cause mapping rules + override rows (I5); AT.4 subtype amendment | mvp, insights, db | N (after AT.4, AO.4) | Y | M | ouroboros-db, ouroboros-rest |
+| BI.3 | #434 ✅ | 🟢 Done | ouroboros-db: [BI.3] Intervention-cause taxonomy | Cause mapping rules + override rows (I5); AT.4 subtype amendment | mvp, insights, db | N (after AT.4, AO.4) | Y | M | ouroboros-db, ouroboros-rest |
 | BI.4 | #435 ✅ | 🟢 Done | ouroboros-rest: [BI.4] Estimator calibration records | Estimate-band vs actual joins; within-band computation (I7) | mvp, insights, rest, intake | N (after INTAKE-K.2, AO.1) | Y | S | ouroboros-rest, ouroboros-db |
 | BI.5 | #436 | 🟡 Open | ouroboros-db: [BI.5] Insights seeds — mockup-15 parity + probes | 30d of rollup history shaping every visual; ci checks | mvp, insights, db, ci | N (after BI.1–BI.4, #24) | Y | M | ouroboros-db, .github |
 
@@ -354,7 +354,24 @@ nightly: consolidate + backfill cursor ─▶ parity(CI): rollup ≡ oracle ✓
 
 ### Issue BI.3 — ouroboros-db: [BI.3] Intervention-cause taxonomy
 
-> **GitHub issue:** #434 · **Status:** 🟡 Open · **Parent epic:** #428
+> **GitHub issue:** #434 ✅ · **Status:** 🟢 Done · **Parent epic:** #428
+
+- **Delivered** (`ouroboros-db` `V079__intervention_events.sql` +
+  `R__dev_seed_workspace_interventions.sql`, `ouroboros-rest` `insights/interventions.*`):
+  `intervention_events` (unique on `(source, source_ref)`; written only by
+  `sync_intervention_events(run)`, which hooks on runs, failure classifications, waivers and
+  guardrail evaluations call, so a replay creates nothing), declarative versioned
+  `intervention_cause_rules` over a closed signal vocabulary (first match by priority; the residue
+  rule lands anything unmatched in `other`; a needs-human handoff is explained by its run's
+  context), `intervention_overrides` (append-only audit). A rule-origin cause is recomputed by
+  trigger on every write; a human cause needs an override row from the same transaction and no rule
+  run (`apply_intervention_rules()`) or replay overwrites it. `intervention_cause_daily` is the
+  per-day, per-cause shape; `human_interventions` is registry version 2 with the `cause` dimension
+  and the interventions extractor reads it. `POST /api/v1/insights/interventions/{id}/recategorize`
+  (owner/admin/member; viewer 403). `check:rig_offline`, `gate:human` and `vote:blocking` are
+  reserved signals whose planes do not exist yet (#371 writes through
+  `record_intervention_event()`). The AT.4 `unclear_requirements` subtype shipped in V061 and the
+  amendment is posted on #332. The dev seed's 30-day window lands 8 / 5 / 4 / 2 / 1.
 
 - **Problem Statement:** The "where loops still need humans" bars need
   every intervention mapped to a cause deterministically, with human
@@ -945,7 +962,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#324, #331), farm (#249), DASH-F.1 (#64)/F.3 (#66)/J.4 (#92),
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
-2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { BI.3 (#434) ⊕ **BI.4 (#435) ✅** } → BI.5 (#436)
+2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { **BI.3 (#434) ✅** ⊕ **BI.4 (#435) ✅** } → BI.5 (#436)
 3. **Phase 2 — Services:** BJ.1 (#437) → { BJ.2 (#438) ⊕ BJ.3 (#439) ⊕ BJ.4 (#440) } → BJ.5 (#441)
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*

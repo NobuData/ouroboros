@@ -14471,14 +14471,20 @@ select pg_temp.must_hold(
    -- `pr_gate_evidence_ref_resolves()` for the same reason — a Build gate's evidence names a
    -- farm job — asserted in V056's section. #406 added `fact_transitions_record()`, so a fact's
    -- audit can be written by a transition and by nothing else — asserted in V071's section.
+   -- #434 added `sync_intervention_events()`, `record_intervention_event()` and
+   -- `intervention_hook_classification()`, so a hook can draw a run's context from planes the
+   -- writer cannot read — asserted in V079's section.
    and (select array_agg(proname::text order by proname) = array['fact_transitions_record',
                                                                  'failure_classifications_routed_valid',
+                                                                 'intervention_hook_classification',
                                                                  'pr_gate_evidence_ref_resolves',
+                                                                 'record_intervention_event',
                                                                  'run_controls_audit',
-                                                                 'run_events_append']
+                                                                 'run_events_append',
+                                                                 'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver and #406''s fact audit are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit and #434''s three intervention hooks are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -26972,9 +26978,9 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   (select array_agg(metric_id || ':' || dimension_kind order by metric_id)
-            = '{completion_time_by_effort:effort,stage_duration:stage,test_failures_by_suite:suite}'
+            = '{completion_time_by_effort:effort,human_interventions:cause,stage_duration:stage,test_failures_by_suite:suite}'
      from ouroboros.metric_definitions where dimension_kind is not null),
-  'the shipped dimensioned metrics name their dimension');
+  'the shipped dimensioned metrics name their dimension (V079 added the cause)');
 
 select pg_temp.must_hold(
   (select count(*) = 4 from ouroboros.metric_definitions
@@ -27009,9 +27015,10 @@ select pg_temp.must_reject(
     values ('v078_bad', 'probe', 'Bad', 'x', '{runs}', 'x', 'count', false, 'colour')$$,
   'the dimension vocabulary is closed', 'metric_definitions_dimension_kind_known');
 
+-- merged_prs rather than human_interventions, which V079 gave the cause dimension (version 2).
 select pg_temp.must_reject(
-  $$update ouroboros.metric_definitions set dimension_kind = 'cause'
-     where metric_id = 'human_interventions'$$,
+  $$update ouroboros.metric_definitions set dimension_kind = 'suite'
+     where metric_id = 'merged_prs'$$,
   'adding a dimension is a formula change', 'metric_definitions_version_guard');
 
 select pg_temp.must_reject(
@@ -27148,6 +27155,495 @@ delete from ouroboros.metric_definitions where metric_id = 'v078_rate';
 select pg_temp.must_hold(
   not exists (select 1 from ouroboros.metric_daily where organization_id = 'org-v078'),
   'a deleted workspace takes its dimensioned and median rows with it');
+
+-- ===========================================================================
+-- V079 — intervention_events: the intervention-cause taxonomy (#434, BI.3)
+-- ===========================================================================
+--
+-- The rules first, as a matrix: every source against every cause, then the precedence between
+-- them. Then the hooks, through the source tables themselves — a needs-human loop, a human
+-- classification, a waiver, a guardrail stop, a policy gate, a blocking vote — and a replay that
+-- must create nothing. Then a person's correction, which a rule run must not undo, and the audit
+-- rows behind it. Then the registry's version 2, and the lifecycle.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v079',       'Intervention Works', 'intervention-works-v079', now()),
+  ('org-v079-other', 'Other Works',        'other-works-v079',        now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v079', 'Ken V079', 'ken@interventions-v079.example', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a7910000-0000-0000-0000-00000000000a', 'org-v079', 'interventions-v079', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a791f000-0000-0000-0000-00000000000a', 'a7910000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+-- --- The rules: every source × every cause -----------------------------------
+--
+-- The rules are source-agnostic today, so each cause is reachable from every source by the
+-- signal its rule reads — and a source carrying nothing lands in `other`. Thirty combinations,
+-- each asked of intervention_cause() and each stamped with the rule that answered.
+select pg_temp.must_hold(
+  (select bool_and(assigned.cause = matrix.cause and assigned.rule_id = matrix.rule_id
+                   and assigned.rule_version = 1)
+          and count(*) = 30
+     from (values ('needs_human_run'), ('classification'), ('waiver'), ('policy_gate'),
+                  ('guardrail'), ('vote_block')) as source (name)
+    cross join (values
+           ('{class:infra_rig}'::text[],              'infra_rig',          'infra-rig-classification'),
+           ('{subtype:unclear_requirements}',         'ambiguous_ticket',   'unclear-requirements'),
+           ('{check:review_required}',                'policy_gate',        'review-required'),
+           ('{vote:blocking}',                        'model_disagreement', 'blocking-vote'),
+           ('{}',                                     'other',              'residue')
+         ) as matrix (signals, cause, rule_id)
+    cross join lateral ouroboros.intervention_cause(source.name, matrix.signals) assigned),
+  'every source × cause: the matching rule assigns it, and an event with nothing lands in other');
+
+select pg_temp.must_hold(
+  (select array_agg(assigned.cause || '/' || assigned.rule_id order by t.n)
+            = '{infra_rig/rig-offline-guardrail,policy_gate/workflow-human-gate,other/residue,other/residue,other/residue,other/residue}'
+     from (values (1, '{check:rig_offline}'::text[]), (2, '{gate:human}'),
+                  (3, '{class:product_bug}'), (4, '{class:flake_retry}'),
+                  (5, '{check:allowed_paths}'), (6, '{check:secrets}')) as t (n, signals)
+    cross join lateral ouroboros.intervention_cause('guardrail', t.signals) assigned),
+  'the reserved signals map, and a product bug, a flake retry or a path or secrets stop is other');
+
+select pg_temp.must_hold(
+  (select cause = 'infra_rig'
+     from ouroboros.intervention_cause('needs_human_run',
+            '{class:product_bug,subtype:unclear_requirements,class:infra_rig,vote:blocking}')),
+  'the first rule by priority wins — infra before ambiguous before disagreement');
+
+-- --- The rules' own constraints ------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.intervention_cause_rules set cause = 'other' where rule_id = 'review-required'$$,
+  'changing what a rule maps to bumps its version', 'intervention_cause_rules_version_guard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.intervention_cause_rules set version = 0 where rule_id = 'residue'$$,
+  'a rule version never goes backwards', 'intervention_cause_rules_version_guard');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_cause_rules (rule_id, priority, cause, description)
+    values ('v079-catch-all', 2000, 'infra_rig', 'x')$$,
+  'a rule that matches everything is the residue, and the residue is other',
+  'intervention_cause_rules_catch_all_is_other');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_cause_rules (rule_id, priority, signal, cause, description)
+    values ('v079-free-text', 2000, 'note:requirements', 'ambiguous_ticket', 'x')$$,
+  'a rule reads a signal from the closed vocabulary, never free text',
+  'intervention_cause_rules_signal_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_cause_rules (rule_id, priority, signal, cause, description)
+    values ('v079-tie', 50, 'class:test_update', 'other', 'x')$$,
+  'two rules never share a priority', 'intervention_cause_rules_priority_key');
+
+update ouroboros.intervention_cause_rules set description = 'Copy, edited in place.'
+ where rule_id = 'residue';
+
+select pg_temp.must_hold(
+  (select version = 1 from ouroboros.intervention_cause_rules where rule_id = 'residue'),
+  'a rule''s description is copy and changes at the same version');
+
+-- --- The hooks, through the source tables ------------------------------------
+--
+-- #900 handed off; its attempt failed on the rig, which a person classified infra_rig, and the
+-- rest of its records are a waiver, an allowed-paths stop (twice — one stop), a review-required
+-- stop and, through record_intervention_event, a blocking vote. #901 merged with nothing.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag,
+     model, status, stage_label, stage_index, stage_total, started_at)
+  values
+    ('a7920000-0000-0000-0000-000000000900', 'org-v079', 'a791f000-0000-0000-0000-00000000000a',
+     900, 'Rig-bound loop', 'standard-fix', 'claude-fable-5', 'coding', 'Implement', 3, 8,
+     '2026-09-01T10:00:00Z'),
+    ('a7920000-0000-0000-0000-000000000901', 'org-v079', 'a791f000-0000-0000-0000-00000000000a',
+     901, 'Quiet loop', 'standard-fix', 'claude-fable-5', 'coding', 'Implement', 3, 8,
+     '2026-09-01T11:00:00Z'),
+    ('a7920000-0000-0000-0000-000000000902', 'org-v079', 'a791f000-0000-0000-0000-00000000000a',
+     902, 'Spec gap', 'standard-fix', 'claude-fable-5', 'coding', 'Implement', 3, 8,
+     '2026-09-02T23:30:00Z');
+
+insert into ouroboros.test_runs (id, organization_id, run_id, attempt_seq, status, started_at)
+values ('a7930000-0000-0000-0000-000000000900', 'org-v079',
+        'a7920000-0000-0000-0000-000000000900', 1, 'complete', '2026-09-01T10:04:00Z'),
+       ('a7930000-0000-0000-0000-000000000902', 'org-v079',
+        'a7920000-0000-0000-0000-000000000902', 1, 'complete', '2026-09-02T23:34:00Z');
+
+insert into ouroboros.test_suites (id, organization_id, test_run_id, name, platform, kind)
+values ('a7940000-0000-0000-0000-000000000900', 'org-v079',
+        'a7930000-0000-0000-0000-000000000900', 'HIL', 'rig:rig-01', 'physical'),
+       ('a7940000-0000-0000-0000-000000000902', 'org-v079',
+        'a7930000-0000-0000-0000-000000000902', 'unit', 'native_sim', 'sim');
+
+insert into ouroboros.test_cases
+    (id, organization_id, test_suite_id, name, classname, status, retries, retry_outcomes)
+values ('a7950000-0000-0000-0000-000000000900', 'org-v079',
+        'a7940000-0000-0000-0000-000000000900', 'boots', 'hil', 'failed', 0, '["failed"]'),
+       ('a7950000-0000-0000-0000-000000000901', 'org-v079',
+        'a7940000-0000-0000-0000-000000000900', 'flashes', 'hil', 'failed', 0, '["failed"]'),
+       ('a7950000-0000-0000-0000-000000000902', 'org-v079',
+        'a7940000-0000-0000-0000-000000000902', 'parses', 'unit', 'failed', 0, '["failed"]');
+
+-- A heuristic hint is not a person stepping in: no event of its own.
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, actor, rule_id, created_at)
+values ('a7960000-0000-0000-0000-000000000001', 'org-v079',
+        'a7950000-0000-0000-0000-000000000901', 'infra_rig', 'heuristic', 'rig.timeout',
+        '2026-09-01T10:06:00Z');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.intervention_events where organization_id = 'org-v079'),
+  'a heuristic classification of a loop that has not handed off records no intervention');
+
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, actor, created_by, created_at)
+values ('a7960000-0000-0000-0000-000000000002', 'org-v079',
+        'a7950000-0000-0000-0000-000000000900', 'infra_rig', 'human',
+        'user-v079', '2026-09-01T10:07:00Z');
+
+insert into ouroboros.pr_waivers (id, organization_id, run_id, author, reason, created_at)
+values ('a7970000-0000-0000-0000-000000000900', 'org-v079',
+        'a7920000-0000-0000-0000-000000000900', 'user-v079',
+        'Bench lacks the thermal chamber.', '2026-09-01T10:08:00Z');
+
+insert into ouroboros.guardrail_evaluations (id, run_id, "check", verdict, evaluated_at)
+values ('a7980000-0000-0000-0000-000000000001', 'a7920000-0000-0000-0000-000000000900',
+        'allowed_paths', 'fail', '2026-09-01T10:09:00Z'),
+       ('a7980000-0000-0000-0000-000000000002', 'a7920000-0000-0000-0000-000000000900',
+        'allowed_paths', 'fail', '2026-09-01T10:10:00Z'),
+       ('a7980000-0000-0000-0000-000000000003', 'a7920000-0000-0000-0000-000000000900',
+        'review_required', 'fail', '2026-09-01T10:11:00Z'),
+       ('a7980000-0000-0000-0000-000000000004', 'a7920000-0000-0000-0000-000000000900',
+        'secrets', 'pass', '2026-09-01T10:11:00Z');
+
+select pg_temp.must_hold(
+  (select ouroboros.record_intervention_event(
+            'a7920000-0000-0000-0000-000000000900', 'vote_block',
+            'a7990000-0000-0000-0000-000000000900', '2026-09-01T10:12:00Z', '{vote:blocking}')
+          is not null),
+  'record_intervention_event writes a table-less source''s event and returns its id');
+
+update ouroboros.runs
+   set status = 'needs_human', finished_at = '2026-09-01T10:15:00Z'
+ where id = 'a7920000-0000-0000-0000-000000000900';
+
+select pg_temp.must_hold(
+  (select array_agg(source || '=' || cause || '/' || cause_origin || '@' || rule_id
+                    order by source, source_ref)
+            = '{classification=infra_rig/rule@infra-rig-classification,guardrail=other/rule@residue,needs_human_run=infra_rig/rule@infra-rig-classification,policy_gate=policy_gate/rule@review-required,vote_block=model_disagreement/rule@blocking-vote,waiver=other/rule@residue}'
+     from ouroboros.intervention_events where run_id = 'a7920000-0000-0000-0000-000000000900'),
+  'each source plane records its event through its hook, and the rules assign the cause');
+
+select pg_temp.must_hold(
+  (select signals = '{check:allowed_paths}' and source_ref = 'a7920000-0000-0000-0000-000000000900/allowed_paths'
+          and detected_at = '2026-09-01T10:09:00Z'
+     from ouroboros.intervention_events where source = 'guardrail'
+      and run_id = 'a7920000-0000-0000-0000-000000000900'),
+  'a check that fails twice is one stop, detected at its first failure');
+
+select pg_temp.must_hold(
+  (select signals = '{check:allowed_paths,check:review_required,class:infra_rig,vote:blocking}'
+          and detected_at = '2026-09-01T10:15:00Z'
+     from ouroboros.intervention_events
+    where source = 'needs_human_run' and source_ref = 'a7920000-0000-0000-0000-000000000900'),
+  'a handoff carries its run''s context — current classifications (heuristic too), failed checks, votes');
+
+-- Replaying every record — the backfill's case — creates nothing and changes nothing.
+create temporary table v079_before as
+  select id, source, source_ref, cause, signals, detected_at, updated_at
+    from ouroboros.intervention_events where organization_id = 'org-v079';
+
+select ouroboros.sync_intervention_events('a7920000-0000-0000-0000-000000000900');
+select ouroboros.sync_intervention_events('a7920000-0000-0000-0000-000000000900');
+select ouroboros.sync_intervention_events('a7920000-0000-0000-0000-000000000901');
+select ouroboros.record_intervention_event(
+  'a7920000-0000-0000-0000-000000000900', 'vote_block', 'a7990000-0000-0000-0000-000000000900',
+  '2026-09-01T10:12:00Z', '{vote:blocking}');
+
+select pg_temp.must_hold(
+  (select count(*) = 6 from ouroboros.intervention_events where organization_id = 'org-v079')
+  and not exists (
+    (select id, source, source_ref, cause, signals, detected_at, updated_at
+       from ouroboros.intervention_events where organization_id = 'org-v079')
+    except
+    (select * from v079_before)),
+  'hook replay is idempotent — the same six events, unchanged, and none for the quiet loop');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_events
+      (organization_id, run_id, source, source_ref, detected_at, cause)
+    values ('org-v079', 'a7920000-0000-0000-0000-000000000900', 'waiver',
+            'a7970000-0000-0000-0000-000000000900', now(), 'other')$$,
+  'one event per source record', 'intervention_events_source_key');
+
+-- A classification that arrives after the handoff re-explains it.
+update ouroboros.runs
+   set status = 'needs_human', finished_at = '2026-09-02T23:50:00Z'
+ where id = 'a7920000-0000-0000-0000-000000000902';
+
+select pg_temp.must_hold(
+  (select cause = 'other' from ouroboros.intervention_events
+    where source = 'needs_human_run' and source_ref = 'a7920000-0000-0000-0000-000000000902'),
+  'a handoff with nothing to explain it is other — recorded, never dropped');
+
+insert into ouroboros.failure_classifications
+    (id, organization_id, test_case_id, class, subtype, actor, created_by, created_at)
+values ('a7960000-0000-0000-0000-000000000003', 'org-v079',
+        'a7950000-0000-0000-0000-000000000902', 'product_bug', 'unclear_requirements', 'human',
+        'user-v079', '2026-09-03T00:10:00Z');
+
+select pg_temp.must_hold(
+  (select array_agg(source || '=' || cause order by source)
+            = '{classification=ambiguous_ticket,needs_human_run=ambiguous_ticket}'
+     from ouroboros.intervention_events where run_id = 'a7920000-0000-0000-0000-000000000902'),
+  'an unclear-requirements call is an ambiguous ticket, and it re-explains the earlier handoff');
+
+-- --- The rules are structural ------------------------------------------------
+
+insert into ouroboros.intervention_events
+    (organization_id, run_id, source, source_ref, detected_at, cause, rule_id, rule_version)
+  values ('org-v079', 'a7920000-0000-0000-0000-000000000901', 'vote_block',
+          'a7990000-0000-0000-0000-000000000901', '2026-09-01T11:05:00Z',
+          'policy_gate', 'review-required', 7);
+
+select pg_temp.must_hold(
+  (select cause = 'other' and rule_id = 'residue' and rule_version = 1
+     from ouroboros.intervention_events
+    where source = 'vote_block' and source_ref = 'a7990000-0000-0000-0000-000000000901'),
+  'a writer cannot type a rule-origin cause — the rules recompute it');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_events
+      (organization_id, run_id, source, source_ref, detected_at, cause, cause_origin)
+    values ('org-v079', 'a7920000-0000-0000-0000-000000000901', 'vote_block', 'v079-human-born',
+            now(), 'other', 'human')$$,
+  'an event is born of a rule; a person re-categorizes it afterwards',
+  'intervention_events_born_of_rule');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_events
+      (organization_id, run_id, source, source_ref, detected_at, cause)
+    values ('org-v079', 'a7920000-0000-0000-0000-000000000901', 'run_note', 'x', now(), 'other')$$,
+  'the source vocabulary is closed', 'intervention_events_source_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_events
+      (organization_id, run_id, source, source_ref, detected_at, signals, cause)
+    values ('org-v079', 'a7920000-0000-0000-0000-000000000901', 'vote_block', 'v079-free',
+            now(), '{note:unclear}', 'other')$$,
+  'an event carries signals from the closed vocabulary only', 'intervention_events_signals_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_events
+      (organization_id, run_id, source, source_ref, detected_at, cause)
+    values ('org-v079-other', 'a7920000-0000-0000-0000-000000000901', 'vote_block', 'v079-cross',
+            now(), 'other')$$,
+  'an event cannot name another workspace''s run', 'intervention_events_run_fk');
+
+select pg_temp.must_reject(
+  $$update ouroboros.intervention_events set source_ref = 'elsewhere'
+     where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'$$,
+  'an event cannot change what it is about', 'intervention_events_identity_frozen');
+
+-- --- A person's correction, which a rule run never undoes --------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.intervention_events
+       set cause = 'infra_rig', cause_origin = 'human', rule_id = null, rule_version = null
+     where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'$$,
+  'a human cause without an override row is refused', 'intervention_events_override_required');
+
+select pg_temp.must_hold(
+  (select cause = 'infra_rig' and cause_origin = 'human' and rule_id is null
+          and rule_version is null
+     from ouroboros.recategorize_intervention(
+            'org-v079',
+            (select id from ouroboros.intervention_events
+              where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'),
+            'user-v079', 'infra_rig',
+            'A bench limit, not a policy call.')),
+  'recategorize_intervention sets the person''s cause with cause_origin = human');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(o.from_cause = 'other' and o.to_cause = 'infra_rig'
+                                    and o.actor_id = 'user-v079'
+                                    and o.reason = 'A bench limit, not a policy call.')
+     from ouroboros.intervention_overrides o
+     join ouroboros.intervention_events e on e.id = o.event_id
+    where e.source = 'waiver' and e.source_ref = 'a7970000-0000-0000-0000-000000000900'),
+  'and writes the audit row: actor, from-cause, to-cause, reason');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.recategorize_intervention(
+                'org-v079-other',
+                (select id from ouroboros.intervention_events
+                  where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'),
+                'user-v079', 'other', 'Not mine.')),
+  'another workspace cannot re-categorize the event — it is not found');
+
+-- A rule change and its rule run: the review-required rule now maps to other, version 2.
+update ouroboros.intervention_cause_rules set cause = 'other', version = 2
+ where rule_id = 'review-required';
+update ouroboros.intervention_cause_rules set signal = 'class:product_bug', version = 2
+ where rule_id = 'rig-offline-guardrail';
+
+select pg_temp.must_hold(
+  (select ouroboros.apply_intervention_rules('org-v079') = 3),
+  'the rule run re-derives exactly the rule-origin events the change moved — #900''s gate, and #902''s call and handoff');
+
+select pg_temp.must_hold(
+  (select ouroboros.apply_intervention_rules('org-v079') = 0),
+  'and a second rule run moves nothing');
+
+select pg_temp.must_hold(
+  (select array_agg(source || '=' || cause || '/' || cause_origin || coalesce('@v' || rule_version, '')
+                    order by source)
+            = '{classification=infra_rig/rule@v1,guardrail=other/rule@v1,needs_human_run=infra_rig/rule@v1,policy_gate=other/rule@v2,vote_block=model_disagreement/rule@v1,waiver=infra_rig/human}'
+     from ouroboros.intervention_events where run_id = 'a7920000-0000-0000-0000-000000000900'),
+  'a human-set cause survives the rule run; rule-origin rows record the version that assigned them');
+
+select pg_temp.must_hold(
+  (select cause = 'infra_rig' and rule_id = 'rig-offline-guardrail' and rule_version = 2
+     from ouroboros.intervention_events
+    where source = 'classification' and run_id = 'a7920000-0000-0000-0000-000000000902'),
+  'a product-bug call now meets the changed rule first, and records it');
+
+select ouroboros.sync_intervention_events('a7920000-0000-0000-0000-000000000900');
+
+select pg_temp.must_hold(
+  (select cause = 'infra_rig' and cause_origin = 'human'
+     from ouroboros.intervention_events
+    where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'),
+  'and survives a replay of the run''s records');
+
+select pg_temp.must_reject(
+  $$update ouroboros.intervention_events set cause_origin = 'rule'
+     where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'$$,
+  'a human cause never goes back to a rule', 'intervention_events_human_kept');
+
+-- --- The overrides audit -----------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.intervention_overrides set reason = 'Rewritten.'$$,
+  'overrides are append-only', 'intervention_overrides_append_only');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_overrides
+      (organization_id, event_id, actor_id, from_cause, to_cause, reason)
+    select organization_id, id, 'user-v079', 'other', 'policy_gate', 'x'
+      from ouroboros.intervention_events
+     where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'$$,
+  'an override starts from the event''s current cause', 'intervention_overrides_from_current');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.intervention_overrides
+      (organization_id, event_id, from_cause, to_cause, reason)
+    select organization_id, id, cause, 'policy_gate', 'x'
+      from ouroboros.intervention_events
+     where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'$$,
+  'an override names the person who made it', 'intervention_overrides_actor_required');
+
+select pg_temp.must_reject(
+  $$select ouroboros.recategorize_intervention(
+      'org-v079',
+      (select id from ouroboros.intervention_events
+        where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'),
+      'user-v079', 'infra_rig', 'Same again.')$$,
+  'a re-categorization changes the cause', 'intervention_overrides_changes_cause');
+
+select pg_temp.must_reject(
+  $$select ouroboros.recategorize_intervention(
+      'org-v079',
+      (select id from ouroboros.intervention_events
+        where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'),
+      'user-v079', 'other', '   ')$$,
+  'a re-categorization says why', 'intervention_overrides_reason_present');
+
+select pg_temp.must_reject(
+  $$select ouroboros.recategorize_intervention(
+      'org-v079',
+      (select id from ouroboros.intervention_events
+        where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000900'),
+      'user-v079', 'flaky', 'Not a cause.')$$,
+  'the cause vocabulary is closed', 'intervention_overrides_to_cause_known');
+
+-- --- The shape #433's extractor reads, and the registry ----------------------
+
+select pg_temp.must_hold(
+  (select array_agg(day || ' ' || cause || '=' || events order by day, cause)
+            = '{"2026-09-01 infra_rig=3","2026-09-01 model_disagreement=1","2026-09-01 other=3","2026-09-02 infra_rig=1","2026-09-03 infra_rig=1"}'
+     from ouroboros.intervention_cause_daily where organization_id = 'org-v079'),
+  'intervention_cause_daily counts events per UTC day and cause — #902''s handoff and its late call on their own days');
+
+select pg_temp.must_hold(
+  (select version = 2 and dimension_kind = 'cause' and aggregation = 'sum'
+          and source_planes = '{runs,tests,interventions}'
+     from ouroboros.metric_definitions where metric_id = 'human_interventions'),
+  'human_interventions is version 2, broken out by cause');
+
+insert into ouroboros.metric_daily
+  (organization_id, repo_ref, metric_id, is_rate, dimension, day, value)
+values ('org-v079', 'interventions-v079/helios-firmware', 'human_interventions', false,
+        'infra_rig', '2026-09-01', 3);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+    values ('org-v079', 'interventions-v079/helios-firmware', 'human_interventions', false,
+            '2026-09-02', 1)$$,
+  'an intervention total names its cause', 'metric_daily_shape_guard');
+
+-- --- The definer posture --------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select count(*) = 3
+          and bool_and(prosecdef
+                       and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+                       and not has_function_privilege('public', oid, 'execute')
+                       and has_function_privilege('ouroboros_app', oid, 'execute'))
+     from pg_proc
+    where pronamespace = 'ouroboros'::regnamespace
+      and proname in ('sync_intervention_events', 'record_intervention_event',
+                      'intervention_hook_classification')),
+  'the hooks that read across planes run as the owner, search_path pinned, executable by the service only');
+
+-- The service's path, as the service: a waiver and a guardrail stop written by the application
+-- role still record their events.
+set local role ouroboros_app;
+insert into ouroboros.pr_waivers (id, organization_id, run_id, author, reason, created_at)
+values ('a7970000-0000-0000-0000-000000000901', 'org-v079',
+        'a7920000-0000-0000-0000-000000000901', 'user-v079',
+        'Waived as the service.', '2026-09-01T11:06:00Z');
+reset role;
+
+select pg_temp.must_hold(
+  exists (select 1 from ouroboros.intervention_events
+           where source = 'waiver' and source_ref = 'a7970000-0000-0000-0000-000000000901'),
+  'a waiver written by the service role records its event');
+
+-- --- Lifecycle ---------------------------------------------------------------
+
+delete from ouroboros.runs where id = 'a7920000-0000-0000-0000-000000000900';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.intervention_events
+               where run_id = 'a7920000-0000-0000-0000-000000000900')
+  and not exists (select 1 from ouroboros.intervention_overrides o
+                   where o.organization_id = 'org-v079'),
+  'a deleted run takes its events and their overrides with it');
+
+delete from ouroboros.organization where "id" in ('org-v079', 'org-v079-other');
+delete from ouroboros."user" where "id" = 'user-v079';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.intervention_events where organization_id = 'org-v079'),
+  'a deleted workspace takes its intervention events with it');
+
+drop table v079_before;
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

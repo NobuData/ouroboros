@@ -1,66 +1,52 @@
 /**
- * The `interventions` family — human interventions per day (BI.2,
- * [#433](https://github.com/NobuData/ouroboros/issues/433)).
+ * The `interventions` family — human interventions per day, by cause (BI.2,
+ * [#433](https://github.com/NobuData/ouroboros/issues/433); causes: BI.3,
+ * [#434](https://github.com/NobuData/ouroboros/issues/434)).
  *
- * **Totals today, causes with #434.** The registry's formula is "times a loop stopped for a
- * person: needs-human handoffs, guardrail stops and policy gates", and those stops exist on the
- * run plane now:
+ * **The events are V079's, counted.** Every moment a person stepped into a loop is an
+ * `intervention_events` row — a needs-human handoff, a human failure classification, a waiver, the
+ * first failure of a guardrail or policy-gate check on a loop, a blocking vote — and its cause is the
+ * one the versioned mapping rules assigned or a person re-categorized it to. This family reads
+ * `intervention_cause_daily`, the migration's per-(workspace, repository, UTC day, cause) shape, and
+ * writes one `human_interventions` row per cause (`dimension_kind = 'cause'`, registry version 2).
  *
- *   * a **needs-human handoff** is a loop that finished `needs_human`, on the day it finished;
- *   * a **guardrail stop** — and a **policy gate**, which is the `review_required` check — is the
- *     first `fail` verdict of one check on one loop, on the day it was evaluated. A check that
- *     re-evaluates and fails again is the same stop, not a new one.
- *
- * #434 (BI.3) adds the cause taxonomy; when it lands, this family gains the `cause` dimension and
- * the registry entry its version bump.
+ * Which records are events, and which cause each gets, is decided in the database — once, by the
+ * hooks and the rules — so the card's bars and this total cannot disagree.
  */
 
 import { sql } from "kysely";
 
-import { dayBounds } from "../rollup.days";
 import { sumRow } from "../rollup.rows";
 import { joinRepo, num, REPO_REF } from "../rollup.sql";
 import type { FamilyExtractor, RollupRow } from "../rollup.types";
 
-/** One repository's day. */
+/** One repository's day for one cause. */
 interface InterventionGroup {
   repo_ref: string;
-  stops: string;
+  cause: string;
+  events: string;
 }
 
 export const interventionsExtractor: FamilyExtractor = {
   family: "interventions",
-  metrics: { human_interventions: 1 },
+  metrics: { human_interventions: 2 },
 
   async extract(db, organizationId, day): Promise<RollupRow[]> {
-    const { from, to } = dayBounds(day);
-
+    // `r` because each row of the view is a group of runs, and `joinRepo` joins a run's repository.
     const { rows } = await sql<InterventionGroup>`
-      with first_failures as (
-        select g.run_id, min(g.evaluated_at) as at
-          from ouroboros.guardrail_evaluations g
-          join ouroboros.runs r on r.id = g.run_id
-         where r.organization_id = ${organizationId} and g.verdict = 'fail'
-         group by g.run_id, g."check"
-      ),
-      stops as (
-        select r.github_repo_id
-          from ouroboros.runs r
-         where r.organization_id = ${organizationId} and r.status = 'needs_human'
-           and r.finished_at >= ${from} and r.finished_at < ${to}
-        union all
-        select r.github_repo_id
-          from first_failures f
-          join ouroboros.runs r on r.id = f.run_id
-         where f.at >= ${from} and f.at < ${to}
-      )
-      select ${REPO_REF} as repo_ref, count(*) as stops
-        from stops r
+      select ${REPO_REF} as repo_ref, r.cause, sum(r.events) as events
+        from ouroboros.intervention_cause_daily r
         ${joinRepo("r")}
-       group by 1`.execute(db);
+       where r.organization_id = ${organizationId}
+         and r.day = ${day}::date
+       group by 1, 2
+       order by 1, 2`.execute(db);
 
     return rows.map((group) =>
-      sumRow({ repoRef: group.repo_ref, metricId: "human_interventions" }, num(group.stops)),
+      sumRow(
+        { repoRef: group.repo_ref, metricId: "human_interventions", dimension: group.cause },
+        num(group.events),
+      ),
     );
   },
 };
