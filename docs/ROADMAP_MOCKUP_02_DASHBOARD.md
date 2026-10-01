@@ -825,6 +825,12 @@ aggregate.activeRuns (top10) ⊂ GET /runs?status=active (paged)  — same RunRo
 > depends on this ticket, and the amendment promises no contract change for the
 > dashboard's consumers — so it belongs to the service that will replace this computation,
 > not to the ticket that shipped it.
+>
+> **Amended by #437 ✅.** `runStatistics` now computes only the live split. The pulse meters,
+> *PRs merged · 7d* and *since this morning* read `MetricsService` over seven UTC days. The
+> payload shape is unchanged, but the definitions are now the Insights registry's: a PR-based
+> merge rate over 7 days instead of runs over 14, a median cycle over merged loops, and
+> intervention events. OpenAPI 0.38.0 records the change in meaning.
 
 - **Problem Statement:** The pulse card's three meters (92% merge rate, 14m 20s avg
   cycle, 2 interventions) and the stat row's ▲ delta are windowed aggregates that

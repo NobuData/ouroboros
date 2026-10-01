@@ -10,12 +10,15 @@ import { InsightsModule } from "./insights.module";
 import { InterventionsController } from "./interventions.controller";
 import { InterventionRepository } from "./interventions.repository";
 import { InterventionsService } from "./interventions.service";
+import { MetricsCache } from "./metrics/metrics.cache";
+import { MetricsRepository } from "./metrics/metrics.repository";
+import { MetricsService } from "./metrics/metrics.service";
 import { ROLLUP_EXTRACTORS } from "./rollup/rollup.extractors";
 import { RollupRepository } from "./rollup/rollup.repository";
 import { RollupScheduler } from "./rollup/rollup.scheduler";
 import { ROLLUP_FAMILIES, RollupService } from "./rollup/rollup.service";
 
-/** The wiring (BI.4, #435; BI.2, #433; BI.3, #434). Nothing connects: `pg` connects lazily. */
+/** The wiring (BI.4, #435; BI.2, #433; BI.3, #434; BJ.1, #437). Nothing connects: `pg` connects lazily. */
 
 describe("the insights module", () => {
   it("compiles, resolves every layer, and binds the merge observer to the service", async () => {
@@ -55,7 +58,22 @@ describe("the insights module", () => {
     await moduleRef.close();
   });
 
-  it("exports the merge observer — the PR sync reports merges through it", () => {
-    expect(Reflect.getMetadata("exports", InsightsModule)).toEqual([CALIBRATION_MERGE_OBSERVER]);
+  it("resolves the windowed metrics service over the rollup families (BJ.1, #437)", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConfigurationModule.forRoot(testConfiguration()), InsightsModule],
+    }).compile();
+
+    expect(moduleRef.get(MetricsService)).toBeInstanceOf(MetricsService);
+    expect(moduleRef.get(MetricsRepository)).toBeInstanceOf(MetricsRepository);
+    expect(moduleRef.get(MetricsCache)).toBeInstanceOf(MetricsCache);
+
+    await moduleRef.close();
+  });
+
+  it("exports the merge observer and the metrics service — the PR sync and the dashboard", () => {
+    expect(Reflect.getMetadata("exports", InsightsModule)).toEqual([
+      CALIBRATION_MERGE_OBSERVER,
+      MetricsService,
+    ]);
   });
 });

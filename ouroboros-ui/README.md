@@ -1128,7 +1128,7 @@ test can pin.
 that list is still unbuilt, so both stay labelled with what is missing rather than pointed at a
 `404` — #49's own first criterion is *no dead nav links*.
 
-### The loop pulse: three meters, two windows, and the page's one write
+### The loop pulse: three meters, one window, and the page's one write
 
 The `c-4` card ([#83](https://github.com/NobuData/ouroboros/issues/83)) is the qualitative
 read on the loop — how often it finishes without a person, how long a cycle takes, how often
@@ -1137,8 +1137,8 @@ it stops for one — over the aggregate's `pulse`, with every figure and every w
 
 | Meter | Figure | Bar | Window |
 |---|---|---|---|
-| Autonomous merge rate | `92%` | the rate itself | **14 days** |
-| Avg. cycle time | `14m 20s` | against a 30-minute target | 7 days |
+| Autonomous merge rate | `92%` | the rate itself | 7 days |
+| Median cycle time | `14m 20s` | against a 30-minute target | 7 days |
 | Human interventions | `2 this week` | against a budget of 25 | 7 days |
 
 **Two of the three bars needed a denominator the payload does not carry**, and both are
@@ -1149,12 +1149,13 @@ screenshot. Both round to a whole percent, because a ratio against a target some
 a gauge rather than a measurement — and because a bar drawn at 91.5% under a figure printed
 `92%` is a card disagreeing with itself.
 
-**Each row prints the window it was measured over.** The head keeps the mockup's `7 days`
-tag and the merge rate says `14 days`, which is the window the contract publishes it under:
-the mockup's own `27 merged`, `2 interventions` and `92%` cannot all be true of one
-seven-day window. The figure beside each bar is hidden from the accessibility tree and the
-bar carries it in words instead — `92% of runs merged without a person, over 14 days` — so
-the caption speaks for the eye and the bar for the reader, never both.
+**Each row prints the window it was measured over.** Since
+[#437](https://github.com/NobuData/ouroboros/issues/437) all three are the Insights page's
+windowed metrics (`merge_rate`, `cycle_time` — a median — and `human_interventions`) over the
+last seven UTC days, so the dashboard and the Insights page cannot disagree. The figure beside
+each bar is hidden from the accessibility tree and the bar carries it in words instead —
+`92% of loop PRs merged without a person, over 7 days` — so the caption speaks for the eye and
+the bar for the reader, never both.
 
 **The glyph is the [#14](https://github.com/NobuData/ouroboros/issues/14) asset, drawn and
 not painted over.** Both treatments are stacked in one grid cell with CSS choosing between

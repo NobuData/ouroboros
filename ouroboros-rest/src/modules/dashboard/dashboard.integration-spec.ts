@@ -5,6 +5,7 @@ import {
 } from "../../testing/dashboard.fixture";
 import { ApiHarness } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
+import { fillRollups, insertLoopPr, sharedFigures } from "../../testing/metrics.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import type { DashboardResource } from "./resources";
@@ -26,7 +27,13 @@ import type { DashboardResource } from "./resources";
  * arithmetic with the same construction and filler titles. Where a number here disagrees with
  * the mockup, one of the two is wrong, and that is the point.
  *
- * **Every figure below is a literal, and stays one.** The fixture publishes the same numbers
+ * **The shared metrics are the exception** (#437, amending #72). The pulse meters, *PRs merged ·
+ * 7d* and *merged since this morning* are `MetricsService` windows over whole UTC days, so what
+ * they read depends on the hour the suite runs at. They are asserted equal to what the service
+ * itself answers for the same workspace — the amendment, verified: the dashboard has no second
+ * implementation of any of them.
+ *
+ * **Every other figure below is a literal, and stays one.** The fixture publishes the same numbers
  * as `MOCKUP_02` for the suites whose subject is somewhere else
  * ([#76](https://github.com/NobuData/ouroboros/issues/76)); this suite is the one whose
  * subject *is* the arithmetic, so it restates them independently and is the oracle that keeps
@@ -39,9 +46,6 @@ import type { DashboardResource } from "./resources";
 
 /** The surface under test. */
 const DASHBOARD = "/api/v1/dashboard";
-
-/** What the mockup's *Avg. cycle time* reads, in seconds — `14m 20s`. */
-const MOCKUP_AVG_CYCLE_SECONDS = 860;
 
 describe("the dashboard endpoint", () => {
   let api: ApiHarness;
@@ -125,13 +129,13 @@ describe("the dashboard endpoint", () => {
       dashboard = bodyOf<DashboardResource>(await read(owner, workspace).expect(200));
     });
 
-    it("reproduces the stat row, number for number", () => {
+    it("reproduces the stat row, number for number", async () => {
       expect(dashboard.stats.loopsLive).toEqual({
         total: 3,
         byStatus: { coding: 1, building: 1, review: 1 },
       });
       expect(dashboard.stats.queued).toEqual({ count: 12, estMinutes: 580 });
-      expect(dashboard.stats.merged7d).toEqual({ count: 27, deltaVsPrior: 8 });
+      expect(dashboard.stats.merged7d).toEqual((await sharedFigures(api, workspace.id)).merged7d);
       expect(dashboard.stats.tokensToday).toEqual({
         tokens: 4_200_000,
         costCents: 1860,
@@ -140,14 +144,13 @@ describe("the dashboard endpoint", () => {
       });
     });
 
-    it("reproduces the pulse card, including the window the merge rate is measured over", () => {
-      // `92%` is exact over the fourteen days these rows span — 46 merged of 50 closed — and
-      // is *not* exact over seven: 27 of 29 is 93.1%. That choice is this endpoint's, it is
-      // published in the OpenAPI description, and this is what holds the code to it.
+    it("reads the pulse card from the shared metrics service — the #437 amendment", async () => {
+      const shared = await sharedFigures(api, workspace.id);
+
       expect(dashboard.pulse).toEqual({
-        mergeRate: 0.92,
-        avgCycleSeconds: MOCKUP_AVG_CYCLE_SECONDS,
-        interventions7d: 2,
+        mergeRate: shared.mergeRate,
+        avgCycleSeconds: shared.avgCycleSeconds,
+        interventions7d: shared.interventions7d,
         autoMerge: true,
       });
     });
@@ -223,19 +226,11 @@ describe("the dashboard endpoint", () => {
       expect(dashboard.activity.inFlight).toBe(dashboard.stats.loopsLive.total);
       expect(dashboard.activity.queued).toBe(dashboard.stats.queued.count);
 
-      // "Merged since this morning" is the one number measured from a calendar boundary, so
-      // what it should be depends on the hour this suite runs at. Asked of the database
-      // directly rather than hard-coded — an independent oracle for the same question.
-      const { rows } = await api.sql.query<{ merged: number }>(
-        `select count(*)::int as merged
-           from ouroboros.runs
-          where organization_id = $1
-            and status = 'merged'
-            and finished_at >= date_trunc('day', now() at time zone 'utc') at time zone 'utc'`,
-        [workspace.id],
-      );
+      // "Merged since this morning" is today's point of the merged_prs window the stat row
+      // counts, so it is asked of the same service rather than recounted.
+      const shared = await sharedFigures(api, workspace.id);
 
-      expect(dashboard.activity.mergedSinceMorning).toBe(rows[0].merged);
+      expect(dashboard.activity.mergedSinceMorning).toBe(shared.mergedSinceMorning);
       expect(dashboard.activity.mergedSinceMorning).toBeLessThanOrEqual(
         dashboard.stats.merged7d.count,
       );
@@ -299,21 +294,27 @@ describe("the dashboard endpoint", () => {
       expect(after.pulse.autoMerge).toBe(false);
     });
 
-    it("survives a run with no history around it — the window of exactly one", async () => {
-      // The single-run window: a rate of 1, a mean equal to that run's own cycle, and no
-      // division by a count of zero anywhere.
+    it("survives a loop with no history around it — the window of exactly one", async () => {
+      // The single-loop window, read through the live tail: a rate of 1, a median equal to
+      // that loop's own cycle, and no division by a count of zero anywhere.
       const founder = await api.signIn();
       const workspace = await workspaceWithRepo(api, founder);
 
-      await api.sql.query(
+      const { rows } = await api.sql.query<{ id: string; finished_at: Date }>(
         `insert into ouroboros.runs (organization_id, github_repo_id, issue_number, issue_title,
                                      workflow_tag, model, status, stage_label, stage_index,
                                      stage_total, started_at, finished_at, pr_number,
                                      checks_passed, checks_total)
          values ($1, $2, 1, 'The only run there has ever been', 'standard-fix', 'claude-fable-5',
-                 'merged', 'Merged', 6, 6, now() - interval '620 seconds', now(), 1, 3, 3)`,
+                 'merged', 'Merged', 6, 6, now() - interval '620 seconds', now(), 1, 3, 3)
+         returning id, finished_at`,
         [workspace.id, workspace.repoId],
       );
+      await insertLoopPr(api, workspace.id, rows[0].id, {
+        number: 1,
+        state: "merged",
+        mergedAt: rows[0].finished_at.toISOString(),
+      });
 
       const only = bodyOf<DashboardResource>(await read(founder, workspace).expect(200));
 
@@ -461,13 +462,26 @@ describe("the dashboard endpoint", () => {
 
       const neighbour = await workspaceWithRepo(api, owner);
       await seedMockup(api, neighbour, owner.id);
+      // The shared metrics read past days from the rollup, so fill it as the hourly job would.
+      await fillRollups(api, mine.id, 14);
+      await fillRollups(api, neighbour.id, 14);
 
       const dashboard = bodyOf<DashboardResource>(await read(owner, mine).expect(200));
 
       // Both workspaces hold the same fifty-three runs. Unscoped queries would double every
       // count on this page.
       expect(dashboard.stats.loopsLive.total).toBe(3);
-      expect(dashboard.stats.merged7d.count).toBe(27);
+      // The shared metrics, against an independent count of this workspace's own events over
+      // the same seven UTC days — a window that lost its scope would count both fixtures.
+      const { rows } = await api.sql.query<{ events: number }>(
+        `select count(*)::int as events from ouroboros.intervention_events
+          where organization_id = $1
+            and detected_at >= (date_trunc('day', now() at time zone 'utc') - interval '6 days')
+                               at time zone 'utc'`,
+        [mine.id],
+      );
+      expect(dashboard.pulse.interventions7d).toBe(rows[0].events);
+      expect(rows[0].events).toBeGreaterThan(0);
       expect(dashboard.stats.queued.count).toBe(12);
       expect(dashboard.stats.tokensToday.tokens).toBe(4_200_000);
       expect(dashboard.activeRuns).toHaveLength(3);

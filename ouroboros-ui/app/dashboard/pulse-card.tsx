@@ -33,13 +33,12 @@ import { NO_VALUE, PULSE_UNMEASURED, type Reading, pulseIsUnmeasured, pulseMeter
  * (`dashboard.css`), exactly as the shell's header mark and the login lockup do: the right
  * one is painted before any JavaScript runs, and neither can move the card.
  *
- * ### Three meters, two windows
+ * ### Three meters, one window
  *
- * The head's tag says `7 days`, as the mockup draws it, and the merge rate is **not**
- * measured over seven — the contract publishes it as fourteen, because the mockup's own
- * figures cannot all be true of one window. So every row prints the window it was measured
- * over beside its caption rather than inheriting the tag, which is what the roadmap asks
- * this card for by name.
+ * The head's tag says `7 days`, as the mockup draws it. Since #437 every meter is the Insights
+ * page's windowed metric over the same seven UTC days, so the dashboard and the Insights page
+ * cannot disagree. Every row still prints the window it was measured over beside its caption
+ * rather than inheriting the tag, which is what the roadmap asks this card for by name.
  *
  * @param props.aggregate The dashboard aggregate, or why it could not be read.
  * @param props.workspace The active workspace, for the roles that decide whether the switch

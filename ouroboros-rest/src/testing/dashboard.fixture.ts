@@ -88,21 +88,17 @@ export const MOCKUP_02 = {
   queueHeadIssues: [485, 486, 488, 490, 491],
   /** How many queue items the seed writes — the card draws five of them. */
   queueItems: 12,
-  /** The stat row, number for number. */
+  /**
+   * The stat row's own figures. *PRs merged · 7d* is not here: it, the pulse meters and *merged
+   * since this morning* are `MetricsService` windows over whole UTC days (#437), so they depend on
+   * the hour a suite runs at — `testing/metrics.fixture.ts`'s `sharedFigures` is what they are
+   * compared with.
+   */
   stats: {
     loopsLive: { total: 3, byStatus: { coding: 1, building: 1, review: 1 } },
     queued: { count: 12, estMinutes: 580 },
-    merged7d: { count: 27, deltaVsPrior: 8 },
     tokensToday: { tokens: 4_200_000, costCents: 1860, providers: 4, unpricedEvents: 3 },
   },
-  /**
-   * The pulse card.
-   *
-   * `mergeRate` is exact over the **fourteen** days these rows span — 46 merged of 50 closed —
-   * and is deliberately not exact over seven, where 27 of 29 is 93.1%. That window is the
-   * endpoint's published choice; see `resources.ts`.
-   */
-  pulse: { mergeRate: 0.92, avgCycleSeconds: 860, interventions7d: 2, autoMerge: true },
 } as const;
 
 /**

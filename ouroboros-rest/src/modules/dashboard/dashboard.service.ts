@@ -18,6 +18,12 @@
  *     representation must not survive midnight even if not a single row was written. Mixing
  *     the day into the tag is what expires it.
  *
+ * **Shared metrics are read, not computed.** The pulse card's merge rate, cycle time and
+ * interventions, and the stat row's PRs merged with its delta, are `MetricsService` windows (BJ.1,
+ * [#437](https://github.com/NobuData/ouroboros/issues/437), decision I1) over
+ * {@link PULSE_RANGE}, asked at this request's `now`. The Insights page and the weekly digest
+ * read the same service, so no two surfaces can show different numbers for one metric.
+ *
  * The queries themselves run concurrently. They are independent reads of one workspace's
  * rows, and issuing them in sequence would make the endpoint's latency the sum of eight
  * round trips rather than the slowest of them.
@@ -25,14 +31,29 @@
 
 import { Injectable } from "@nestjs/common";
 
+import { MetricsService } from "../insights/metrics/metrics.service";
+import type { MetricWindow } from "../insights/metrics/metrics.types";
 import { DashboardRepository } from "./dashboard.repository";
 import { strongEtag } from "./etag";
-import { loopsLive, queueItemSummary, rate, runSummary, type DashboardResource } from "./resources";
-import { dashboardWindows, type DashboardWindows } from "./windows";
+import { loopsLive, queueItemSummary, runSummary, type DashboardResource } from "./resources";
+import { dashboardWindows, PULSE_RANGE, type DashboardWindows } from "./windows";
+
+/** Milliseconds in a second — `cycle_time` is stored in milliseconds, the pulse speaks seconds. */
+const MS_PER_SECOND = 1000;
+
+/** A `pct` metric's scale — the registry stores 0–100, the pulse speaks a 0–1 fraction. */
+const PCT_SCALE = 100;
 
 @Injectable()
 export class DashboardService {
-  constructor(private readonly dashboard: DashboardRepository) {}
+  /**
+   * @param dashboard - The dashboard's own statements.
+   * @param metrics - The windowed metrics service the shared figures are read from.
+   */
+  constructor(
+    private readonly dashboard: DashboardRepository,
+    private readonly metrics: MetricsService,
+  ) {}
 
   /**
    * The boundaries this request's numbers are measured between.
@@ -49,7 +70,7 @@ export class DashboardService {
   /**
    * The entity tag for what this workspace's dashboard currently says.
    *
-   * Cheap by construction — four aggregate subqueries and no rows — because this is what a
+   * Cheap by construction — seven aggregate subqueries and no rows — because this is what a
    * poll that ends in `304` costs, and the dashboard is polled for as long as somebody is
    * looking at it.
    *
@@ -73,6 +94,9 @@ export class DashboardService {
       version.queueItems,
       version.tokenUsage,
       version.workspaceSettings,
+      version.pullRequests,
+      version.interventionEvents,
+      version.metricRollups,
     ]);
   }
 
@@ -87,14 +111,31 @@ export class DashboardService {
    *   acceptance criterion the empty-state work (#86) is built on.
    */
   async read(organizationId: string, windows: DashboardWindows): Promise<DashboardResource> {
-    const [runs, active, recent, queue, head, tokens, autoMerge] = await Promise.all([
-      this.dashboard.runStatistics(organizationId, windows),
+    const scope = { organizationId, range: PULSE_RANGE, now: windows.now };
+    const [
+      runs,
+      active,
+      recent,
+      queue,
+      head,
+      tokens,
+      autoMerge,
+      merged,
+      mergeRate,
+      cycleTime,
+      interventions,
+    ] = await Promise.all([
+      this.dashboard.runStatistics(organizationId),
       this.dashboard.activeRuns(organizationId),
       this.dashboard.recentRuns(organizationId),
       this.dashboard.queueTotals(organizationId),
       this.dashboard.queueHead(organizationId),
       this.dashboard.tokenTotals(organizationId, windows.day),
       this.dashboard.autoMerge(organizationId),
+      this.metrics.window("merged_prs", scope),
+      this.metrics.window("merge_rate", scope),
+      this.metrics.window("cycle_time", scope),
+      this.metrics.window("human_interventions", scope),
     ]);
 
     const live = loopsLive(runs.live);
@@ -104,8 +145,8 @@ export class DashboardService {
         loopsLive: live,
         queued: { count: queue.count, estMinutes: queue.estMinutes },
         merged7d: {
-          count: runs.mergedThisWeek,
-          deltaVsPrior: runs.mergedThisWeek - runs.mergedPriorWeek,
+          count: figure(merged),
+          deltaVsPrior: merged.delta ?? 0,
         },
         tokensToday: {
           // Converted here and exactly once: the repository casts in SQL so PostgreSQL has
@@ -119,9 +160,9 @@ export class DashboardService {
         },
       },
       pulse: {
-        mergeRate: rate(runs.mergedOverRateWindow, runs.closedOverRateWindow),
-        avgCycleSeconds: runs.avgCycleSeconds,
-        interventions7d: runs.interventionsThisWeek,
+        mergeRate: figure(mergeRate) / PCT_SCALE,
+        avgCycleSeconds: figure(cycleTime) / MS_PER_SECOND,
+        interventions7d: figure(interventions),
         autoMerge,
       },
       activeRuns: active.map(runSummary),
@@ -133,8 +174,20 @@ export class DashboardService {
         // this service disagreeing with itself in one payload.
         inFlight: live.total,
         queued: queue.count,
-        mergedSinceMorning: runs.mergedSinceMorning,
+        // Today's point of the same window the stat row's count is — one figure, not two.
+        mergedSinceMorning: merged.series.at(-1)?.value ?? 0,
       },
     };
   }
+}
+
+/**
+ * A window's figure as the dashboard draws it.
+ *
+ * @param window - The window.
+ * @returns Its value, or 0 when there was nothing to compute it from — the floor the pulse
+ *   documents, so an empty workspace reads as *no data* rather than an error.
+ */
+function figure(window: MetricWindow): number {
+  return window.value ?? 0;
 }

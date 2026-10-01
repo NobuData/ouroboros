@@ -1,11 +1,4 @@
-import {
-  DASHBOARD_TIME_ZONE,
-  MERGE_RATE_WINDOW_DAYS,
-  PULSE_WINDOW_DAYS,
-  dashboardWindows,
-  dayOf,
-  startOfDay,
-} from "./windows";
+import { DASHBOARD_TIME_ZONE, PULSE_RANGE, dashboardWindows, dayOf, startOfDay } from "./windows";
 
 /**
  * The boundaries, and the four ways a window goes wrong.
@@ -22,35 +15,12 @@ import {
 /** A moment with nothing round about it — mid-month, mid-hour, with milliseconds. */
 const NOW = new Date("2026-08-13T14:37:41.532Z");
 
-/** Milliseconds in a day, restated here so the assertions do not borrow the implementation's. */
-const DAY = 86_400_000;
-
 describe("the dashboard's windows", () => {
-  it("measures the rolling windows as durations back from the request instant", () => {
-    const windows = dashboardWindows(NOW);
-
-    expect(windows.now).toEqual(NOW);
-    expect(NOW.getTime() - windows.weekStart.getTime()).toBe(PULSE_WINDOW_DAYS * DAY);
-    expect(NOW.getTime() - windows.priorWeekStart.getTime()).toBe(MERGE_RATE_WINDOW_DAYS * DAY);
-  });
-
-  it("makes the prior week's start and the merge rate's window one instant", () => {
-    // Not a coincidence to be tidied away later: the rate is measured over exactly the span
-    // the merged delta already compares across, which is why one field serves both.
-    expect(MERGE_RATE_WINDOW_DAYS).toBe(PULSE_WINDOW_DAYS * 2);
-    expect(dashboardWindows(NOW).priorWeekStart.getTime()).toBe(
-      dashboardWindows(NOW).weekStart.getTime() - PULSE_WINDOW_DAYS * DAY,
-    );
-  });
-
-  it("leaves the two windows adjacent, so no run is in both and none is in neither", () => {
-    // `[priorWeekStart, weekStart)` and `[weekStart, now]`. The repository's predicates are
-    // half-open on the same instant, so a run that finished exactly at `weekStart` is counted
-    // once — in *this* week — and the delta is a comparison rather than a double count.
-    const { weekStart, priorWeekStart } = dashboardWindows(NOW);
-
-    expect(weekStart.getTime()).toBeGreaterThan(priorWeekStart.getTime());
-    expect(weekStart.getTime() - priorWeekStart.getTime()).toBe(PULSE_WINDOW_DAYS * DAY);
+  it("holds the request instant, and asks the metrics service for seven days", () => {
+    // The rolling windows moved to `MetricsService` (#437): the pulse and the merged stat are
+    // whole UTC days ending today, the Insights page's rule, so the two surfaces agree.
+    expect(dashboardWindows(NOW).now).toEqual(NOW);
+    expect(PULSE_RANGE).toBe("7d");
   });
 
   it("takes the day boundary in UTC, and says so", () => {
@@ -120,17 +90,6 @@ describe("a day boundary in a zone that observes daylight saving", () => {
 
     expect(dayOf(evening, DENVER)).toBe("2026-08-13");
     expect(dayOf(evening)).toBe("2026-08-14");
-  });
-
-  it("leaves the rolling windows untouched by any of it", () => {
-    // The property the header claims: a duration in milliseconds does not know what a clock
-    // did. Measured across the spring-forward transition, seven days is still seven days.
-    const acrossTheTransition = new Date("2026-03-09T12:00:00.000Z");
-    const windows = dashboardWindows(acrossTheTransition, DENVER);
-
-    expect(acrossTheTransition.getTime() - windows.weekStart.getTime()).toBe(
-      PULSE_WINDOW_DAYS * DAY,
-    );
   });
 
   it("finds the start of a day whose midnight never happened", () => {

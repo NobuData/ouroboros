@@ -838,13 +838,12 @@ export interface PulseMeter {
 /**
  * The window the merge rate is measured over, in words.
  *
- * **Fourteen days, where the two below are seven**, and the card prints it because the head's
- * `7 days` tag would otherwise speak for a figure it does not cover. The contract's own
- * description of `pulse.mergeRate` is where the reason lives: the mockup's `92%`, its `27
- * merged / 7d` and its `2 interventions` cannot all be true of one seven-day window, and over
- * fourteen the seeded rows give 46 merged of 50 closed — `0.92` exactly.
+ * **Seven days, like the other two** (#437). The pulse reads the Insights page's windowed
+ * metrics service, so the merge rate is the registry's `merge_rate` over the last seven UTC days
+ * — the same number the Insights page shows for `7d`. The card still prints it per row, so a
+ * figure never relies on the head's tag to say what it covers.
  */
-export const MERGE_RATE_WINDOW = "14 days";
+export const MERGE_RATE_WINDOW = "7 days";
 
 /** The window the cycle time and the intervention count are measured over. */
 export const PULSE_WINDOW = "7 days";
@@ -956,11 +955,12 @@ export function pulseMeters(pulse: LoopPulse): readonly PulseMeter[] {
       // denominator, and the one whose width nobody has to be told how to read.
       fill: barFill(rate, 100),
       tone: "ok",
-      valueText: `${rate}% of runs merged without a person, over ${MERGE_RATE_WINDOW}`,
+      valueText: `${rate}% of loop PRs merged without a person, over ${MERGE_RATE_WINDOW}`,
     },
     {
       id: "cycle-time",
-      label: "Avg. cycle time",
+      // The registry's `cycle_time`: a median over merged loops (#437), so the label says so.
+      label: "Median cycle time",
       window: PULSE_WINDOW,
       value: elapsedOfSeconds(pulse.avgCycleSeconds),
       fill: barFill(pulse.avgCycleSeconds, CYCLE_TIME_TARGET_SECONDS),
@@ -979,7 +979,7 @@ export function pulseMeters(pulse: LoopPulse): readonly PulseMeter[] {
       fill: barFill(interventions, INTERVENTION_BUDGET_7D),
       tone: "warn",
       valueText:
-        `${countOf(interventions, "run")} needed a person, of the ` +
+        `${countOf(interventions, "intervention")} by a person, of the ` +
         `${INTERVENTION_BUDGET_7D} this workspace allows for in ${PULSE_WINDOW}`,
     },
   ];

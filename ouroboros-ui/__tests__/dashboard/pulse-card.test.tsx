@@ -113,12 +113,12 @@ describe("the three meters", () => {
 
     expect(meter("Autonomous merge rate")).toHaveAttribute(
       "aria-valuetext",
-      "92% of runs merged without a person, over 14 days",
+      "92% of loop PRs merged without a person, over 7 days",
     );
-    expect(meter("Avg. cycle time")).toHaveAttribute("aria-valuenow", "48");
+    expect(meter("Median cycle time")).toHaveAttribute("aria-valuenow", "48");
     expect(meter("Human interventions")).toHaveAttribute(
       "aria-valuetext",
-      "2 runs needed a person, of the 25 this workspace allows for in 7 days",
+      "2 interventions by a person, of the 25 this workspace allows for in 7 days",
     );
   });
 
@@ -131,12 +131,12 @@ describe("the three meters", () => {
   });
 
   it("prints the window each row was measured over rather than inheriting the tag", () => {
-    // The roadmap asks this card for it by name: two of the three are the head tag's seven
-    // days and the merge rate is fourteen, and a reader must not have to know that.
+    // The roadmap asks this card for it by name. Since #437 all three rows are seven days, as
+    // the head's tag is — four labels, and none of them inherited.
     renderSeeded();
 
-    expect(within(card()).getByText("14 days")).toBeInTheDocument();
-    expect(within(card()).getAllByText("7 days")).toHaveLength(3);
+    expect(within(card()).queryByText("14 days")).not.toBeInTheDocument();
+    expect(within(card()).getAllByText("7 days")).toHaveLength(4);
   });
 });
 

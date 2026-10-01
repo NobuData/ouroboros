@@ -1604,7 +1604,7 @@ the blockquote above that records what it did and what it did differently.
 | 332 | **BI.2** | ✅ [#433](https://github.com/NobuData/ouroboros/issues/433) | Rollup jobs & source-plane extractors | ouroboros-rest | L | BI.1 |
 | 333 | **BI.5** | ✅ [#436](https://github.com/NobuData/ouroboros/issues/436) | Insights seeds — mockup-15 parity + probes | ouroboros-db, .github | M | 3.6, BI.1, BI.4 |
 | 334 | **BU.1** | ✅ [#506](https://github.com/NobuData/ouroboros/issues/506) | Analysis runs & corpus snapshots | ouroboros-db | M | AH.1, AO.1, AS.1, BI.1 |
-| 335 | **BJ.1** | [#437](https://github.com/NobuData/ouroboros/issues/437) | Windowed metrics service | ouroboros-rest | L | BI.2 |
+| 335 | **BJ.1** | ✅ [#437](https://github.com/NobuData/ouroboros/issues/437) | Windowed metrics service | ouroboros-rest | L | BI.2 |
 | 336 | **BU.2** | [#507](https://github.com/NobuData/ouroboros/issues/507) | Findings & suggestions schema | ouroboros-db | M | BU.1 |
 | 337 | **BV.1** | [#510](https://github.com/NobuData/ouroboros/issues/510) | Corpus assembly & run orchestration | ouroboros-rest | L | BU.1 |
 | 338 | **BI.3** | ✅ [#434](https://github.com/NobuData/ouroboros/issues/434) | Intervention-cause taxonomy | ouroboros-db, ouroboros-rest | M | AO.4, AT.4 |

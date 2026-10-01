@@ -7,6 +7,8 @@ import {
 } from "../../testing/dashboard.fixture";
 import { ApiHarness, type Person } from "../../testing/harness.fixture";
 import { bodyOf } from "../../testing/integration.fixture";
+import { insertLoopPr, insertMetricDays, sharedFigures } from "../../testing/metrics.fixture";
+import { addDays, utcDay } from "../insights/rollup/rollup.days";
 import type { OrganizationRole } from "../db/schema";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import type { QueuePage } from "../queue/queue.service";
@@ -25,10 +27,10 @@ import type { DashboardResource, RunSummary } from "./resources";
  * names are the four that no single-endpoint suite can see:
  *
  *   * **Window math.** A boundary is only wrong on one side of itself, so a suite whose
- *     fixture sits comfortably inside the window never meets it. Every case here is a pair of
- *     rows an hour either side of a boundary, read through the HTTP layer rather than through
- *     `windows.ts` — which `windows.spec.ts` already proves in isolation, and which proves
- *     nothing about whether the endpoint passes those instants to the statements that use them.
+ *     fixture sits comfortably inside the window never meets it. Since #437 the windowed
+ *     figures are `MetricsService`'s whole UTC days, proven in isolation by
+ *     `metrics.window.spec.ts`; the cases here put rows either side of those day boundaries and
+ *     read them through the HTTP layer.
  *   * **Org scoping.** The existing isolation tests are *asymmetric*: one workspace holds rows
  *     and the other holds few or none, so a query that lost its scope returns visibly too much.
  *     This one seeds **two identical populations** — which is the arrangement that also catches
@@ -57,10 +59,7 @@ const RUNS = "/api/v1/runs";
 const QUEUE = "/api/v1/queue";
 const SETTING = "/api/v1/settings/auto-merge";
 
-/** A day, in seconds — every window boundary below is stated as a multiple of it. */
-const DAY = 24 * 60 * 60;
-
-/** How far either side of a boundary the edge cases sit. Comfortably past any clock skew. */
+/** An hour, in seconds — a cycle long enough to tell apart from the default. */
 const NUDGE = 3600;
 
 /** What a run the window cases insert may vary in — everything else is a stable filler. */
@@ -86,6 +85,28 @@ describe("mission control, end to end", () => {
   /** Read a URL as somebody, in a named workspace. */
   function read(person: Person, workspace: SeededWorkspace, url: string) {
     return api.as(person)("get", url).set(TENANT_HEADER, workspace.slug);
+  }
+
+  /**
+   * Assert the aggregate's seeded figures: the stat row's own, and the shared metrics equal to
+   * what `MetricsService` answers for the same workspace (#437).
+   *
+   * @param dashboard - The aggregate.
+   * @param workspace - Whose.
+   */
+  async function expectSeededFigures(
+    dashboard: DashboardResource,
+    workspace: SeededWorkspace,
+  ): Promise<void> {
+    const shared = await sharedFigures(api, workspace.id);
+
+    expect(dashboard.stats).toEqual({ ...MOCKUP_02.stats, merged7d: shared.merged7d });
+    expect(dashboard.pulse).toEqual({
+      mergeRate: shared.mergeRate,
+      avgCycleSeconds: shared.avgCycleSeconds,
+      interventions7d: shared.interventions7d,
+      autoMerge: true,
+    });
   }
 
   /** The whole aggregate, as somebody sees it. */
@@ -196,13 +217,12 @@ describe("mission control, end to end", () => {
       dashboard = await dashboardOf(owner, workspace);
     });
 
-    it("reports the seeded arithmetic on every stat, the pulse and the delta", () => {
+    it("reports the seeded arithmetic on every stat, the pulse and the delta", async () => {
       // The ticket's first bullet in one assertion: the whole aggregate at once, so a payload
       // that got one number right by breaking another has nowhere to hide. `toEqual` on the
       // object rather than seven `toBe`s, because an extra key or a missing one is also a way
       // for this contract to be wrong.
-      expect(dashboard.stats).toEqual(MOCKUP_02.stats);
-      expect(dashboard.pulse).toEqual(MOCKUP_02.pulse);
+      await expectSeededFigures(dashboard, workspace);
       expect(dashboard.activeRuns.map((run) => run.issueNumber)).toEqual([
         ...MOCKUP_02.activeIssues,
       ]);
@@ -354,8 +374,7 @@ describe("mission control, end to end", () => {
 
       // Every count on the page, against a database holding exactly twice what it should
       // report. A query that lost its scope doubles each of these.
-      expect(dashboard.stats).toEqual(MOCKUP_02.stats);
-      expect(dashboard.pulse).toEqual(MOCKUP_02.pulse);
+      await expectSeededFigures(dashboard, ours);
       expect(dashboard.activeRuns).toHaveLength(MOCKUP_02.runs.active);
       expect(dashboard.queueHead).toHaveLength(MOCKUP_02.queueHeadIssues.length);
     });
@@ -506,7 +525,7 @@ describe("mission control, end to end", () => {
       // The same answer for every role: reading is not gated, and the two surfaces agree.
       expect(setting.enabled).toBe(true);
       expect(dashboard.pulse.autoMerge).toBe(true);
-      expect(dashboard.stats).toEqual(MOCKUP_02.stats);
+      await expectSeededFigures(dashboard, workspace);
     });
 
     it.each(MATRIX)("answers a $role's flip with $write", async ({ role, write }) => {
@@ -683,148 +702,129 @@ describe("mission control, end to end", () => {
   });
 
   describe("the metric windows, through the HTTP layer", () => {
+    // Since #437 the pulse and the merged stat are `MetricsService` windows: whole UTC days
+    // ending today, earlier days read from the rollup (`metric_daily`) and today computed live.
+    // Each case writes one side of that — rollup rows for past days, loops for today — and
+    // reads the result through the endpoint.
     let owner: Person;
     let workspace: SeededWorkspace;
+    let today: string;
 
     beforeEach(async () => {
       owner = await api.signIn();
       workspace = await workspaceWithRepo(api, owner);
+      today = utcDay(new Date());
     });
 
-    it("splits this week from last at seven days, an hour either side", async () => {
-      // The boundary itself. Both runs merged, both inside the rate window, and the only
-      // difference between them is which side of `now − 7d` they stopped on.
-      await insertRun(workspace, {
-        issue: 1,
-        status: "merged",
-        startedAgo: 7 * DAY,
-        finishedAgo: 7 * DAY - NUDGE,
+    /**
+     * A loop that merged its pull request, read by the live tail when it closed today.
+     *
+     * @param issue - Its issue number.
+     * @param startedAgo - Seconds ago it started.
+     * @param finishedAgo - Seconds ago it merged.
+     */
+    async function mergedLoop(issue: number, startedAgo: number, finishedAgo: number) {
+      const id = await insertRun(workspace, { issue, status: "merged", startedAgo, finishedAgo });
+      const { rows } = await api.sql.query<{ finished_at: Date }>(
+        `select finished_at from ouroboros.runs where id = $1`,
+        [id],
+      );
+
+      await insertLoopPr(api, workspace.id, id, {
+        number: issue,
+        state: "merged",
+        mergedAt: rows[0].finished_at.toISOString(),
       });
-      await insertRun(workspace, {
-        issue: 2,
-        status: "merged",
-        startedAgo: 8 * DAY,
-        finishedAgo: 7 * DAY + NUDGE,
-      });
+    }
+
+    /** The rollup's `repo_ref` for the workspace's repository. */
+    const repoRef = (): string => `${workspace.slug}/helios-firmware`;
+
+    it("counts a merge from this morning through the live tail, before any rollup", async () => {
+      await mergedLoop(1, 600, 0);
 
       const dashboard = await dashboardOf(owner, workspace);
 
-      expect(dashboard.stats.merged7d).toEqual({ count: 1, deltaVsPrior: 0 });
-      // Both are in the fourteen-day rate window, and both merged.
-      expect(dashboard.pulse.mergeRate).toBe(1);
-    });
-
-    it("stops comparing at fourteen days, and counts what falls past it nowhere", async () => {
-      // The far edge of the prior-week bucket, which is half-open: `>= 14d ago and < 7d ago`.
-      // A run an hour older than that is in no count on the page — and the merge rate does not
-      // quietly stretch to reach it.
-      await insertRun(workspace, {
-        issue: 1,
-        status: "merged",
-        startedAgo: 15 * DAY,
-        finishedAgo: 14 * DAY + NUDGE,
-      });
-
-      const dashboard = await dashboardOf(owner, workspace);
-
-      expect(dashboard.stats.merged7d).toEqual({ count: 0, deltaVsPrior: 0 });
-      expect(dashboard.pulse.mergeRate).toBe(0);
-      expect(dashboard.pulse.avgCycleSeconds).toBe(0);
-      // It is still a run, and the completions listing still carries it: aged out of the
-      // windows is not deleted.
-      expect(dashboard.recentRuns).toHaveLength(1);
-    });
-
-    it("counts every terminal status in the merge rate's denominator", async () => {
-      // The rate is *autonomy*, not success: a run that failed and one that stopped for a human
-      // are both runs the loop did not merge on its own, so both are in the denominator. A
-      // denominator of merges alone would read 100% on the worst week a workspace ever had.
-      await insertRun(workspace, {
-        issue: 1,
-        status: "merged",
-        startedAgo: 3 * DAY,
-        finishedAgo: 3 * DAY - 600,
-      });
-      await insertRun(workspace, {
-        issue: 2,
-        status: "failed",
-        startedAgo: 5 * DAY,
-        finishedAgo: 5 * DAY - 600,
-      });
-      await insertRun(workspace, {
-        issue: 3,
-        status: "needs_human",
-        startedAgo: 10 * DAY,
-        finishedAgo: 10 * DAY - 600,
-      });
-
-      const dashboard = await dashboardOf(owner, workspace);
-
-      expect(dashboard.pulse.mergeRate).toBeCloseTo(1 / 3, 10);
-      // The intervention count keeps the *seven*-day window while the rate keeps fourteen, so
-      // the ten-day-old row is in the denominator above and not in this one.
-      expect(dashboard.pulse.interventions7d).toBe(0);
-      // One merge this week against none last: the delta is the count itself, which is what a
-      // workspace's first week looks like.
       expect(dashboard.stats.merged7d).toEqual({ count: 1, deltaVsPrior: 1 });
+      expect(dashboard.pulse.mergeRate).toBe(1);
+      expect(dashboard.pulse.avgCycleSeconds).toBeCloseTo(600, 0);
+      expect(dashboard.activity.mergedSinceMorning).toBe(1);
     });
 
-    it("averages the cycle over runs that closed this week and no others", async () => {
-      // A long run that closed ten days ago is in the merge rate's window and not in the mean's.
-      // If the mean took the rate's boundary, this would read 3300 instead of 600.
-      await insertRun(workspace, {
-        issue: 1,
-        status: "merged",
-        startedAgo: DAY + 600,
-        finishedAgo: DAY,
-      });
-      await insertRun(workspace, {
-        issue: 2,
-        status: "merged",
-        startedAgo: 10 * DAY + 6000,
-        finishedAgo: 10 * DAY,
-      });
+    it("recomposes the merge rate from the rollup's components, never averaging days", async () => {
+      // 1/1 yesterday and 10/40 three days ago: the mean of the daily rates is 62.5%, the
+      // window's rate is 11/41.
+      await insertMetricDays(api, workspace.id, [
+        {
+          repoRef: repoRef(),
+          metricId: "merge_rate",
+          day: addDays(today, -1),
+          value: 100,
+          numerator: 1,
+          denominator: 1,
+        },
+        {
+          repoRef: repoRef(),
+          metricId: "merge_rate",
+          day: addDays(today, -3),
+          value: 25,
+          numerator: 10,
+          denominator: 40,
+        },
+        { repoRef: repoRef(), metricId: "merged_prs", day: addDays(today, -1), value: 1 },
+        { repoRef: repoRef(), metricId: "merged_prs", day: addDays(today, -3), value: 10 },
+      ]);
 
       const dashboard = await dashboardOf(owner, workspace);
 
-      expect(dashboard.pulse.avgCycleSeconds).toBeCloseTo(600, 0);
-      expect(dashboard.pulse.mergeRate).toBe(1);
+      expect(dashboard.pulse.mergeRate).toBeCloseTo(11 / 41, 10);
+      expect(dashboard.stats.merged7d).toEqual({ count: 11, deltaVsPrior: 11 });
     });
 
-    it("counts an intervention this week and not one an hour past the boundary", async () => {
+    it("splits this window from the prior one at whole UTC days", async () => {
+      // Six days back is the window's first day; seven days back is the prior window's last.
+      await insertMetricDays(api, workspace.id, [
+        { repoRef: repoRef(), metricId: "merged_prs", day: addDays(today, -6), value: 4 },
+        { repoRef: repoRef(), metricId: "merged_prs", day: addDays(today, -7), value: 9 },
+        { repoRef: repoRef(), metricId: "merged_prs", day: addDays(today, -14), value: 50 },
+      ]);
+
+      const dashboard = await dashboardOf(owner, workspace);
+
+      // Fourteen days back is in neither window.
+      expect(dashboard.stats.merged7d).toEqual({ count: 4, deltaVsPrior: -5 });
+    });
+
+    it("counts today's intervention and not one a day past the window", async () => {
       await insertRun(workspace, {
         issue: 1,
         status: "needs_human",
-        startedAgo: 7 * DAY,
-        finishedAgo: 7 * DAY - NUDGE,
+        startedAgo: 900,
+        finishedAgo: 0,
       });
-      await insertRun(workspace, {
-        issue: 2,
-        status: "needs_human",
-        startedAgo: 8 * DAY,
-        finishedAgo: 7 * DAY + NUDGE,
-      });
+      await insertMetricDays(api, workspace.id, [
+        {
+          repoRef: repoRef(),
+          metricId: "human_interventions",
+          dimension: "infra_rig",
+          day: addDays(today, -7),
+          value: 3,
+        },
+      ]);
 
       const dashboard = await dashboardOf(owner, workspace);
 
       expect(dashboard.pulse.interventions7d).toBe(1);
-      // Neither is a merge, so the rate over two closed runs is zero rather than undefined.
+      // No pull request closed, so there is no rate — drawn as the documented zero.
       expect(dashboard.pulse.mergeRate).toBe(0);
     });
 
-    it("measures 'since this morning' from midnight UTC, not from twenty-four hours ago", async () => {
-      // The one boundary on the page with a calendar. A run merged a minute before midnight is
-      // in the seven-day count and *not* in the subline — which is what makes the subline a
-      // statement about today rather than about the last day.
-      const elapsed = await secondsSinceMidnight();
-
-      await insertRun(workspace, { issue: 1, status: "merged", startedAgo: 600, finishedAgo: 0 });
-      await insertRun(workspace, {
-        issue: 2,
-        status: "merged",
-        startedAgo: elapsed + 1200,
-        finishedAgo: elapsed + 60,
-      });
+    it("measures 'since this morning' from midnight UTC, as today's point of the window", async () => {
+      // A merge yesterday is in the seven-day count and not in the subline.
+      await mergedLoop(1, 600, 0);
+      await insertMetricDays(api, workspace.id, [
+        { repoRef: repoRef(), metricId: "merged_prs", day: addDays(today, -1), value: 1 },
+      ]);
 
       const dashboard = await dashboardOf(owner, workspace);
 
@@ -847,26 +847,14 @@ describe("mission control, end to end", () => {
       expect(dashboard.stats.tokensToday.providers).toBe(1);
     });
 
-    it("holds every window to one instant, so two polls of one moment agree", async () => {
-      // `windows.ts`'s reason to exist, observed from outside: every statement in a request is
-      // answered about one `now`. A run that closed a second inside the boundary must be on the
-      // same side of it for the count, the delta, the rate and the mean — all four of which are
-      // separate aggregates over separate predicates.
-      await insertRun(workspace, {
-        issue: 1,
-        status: "merged",
-        startedAgo: 7 * DAY,
-        finishedAgo: 7 * DAY - NUDGE,
-      });
+    it("answers two polls of one moment alike", async () => {
+      await mergedLoop(1, NUDGE, 0);
 
       const first = await dashboardOf(owner, workspace);
       const second = await dashboardOf(owner, workspace);
 
       expect(first.stats.merged7d).toEqual(second.stats.merged7d);
-      expect(first.pulse.avgCycleSeconds).toBe(second.pulse.avgCycleSeconds);
-      // The mean is over the same single run the count is over — one row cannot be inside one
-      // aggregate's window and outside another's.
-      expect(first.stats.merged7d.count).toBe(1);
+      expect(first.pulse).toEqual(second.pulse);
       expect(first.pulse.avgCycleSeconds).toBeCloseTo(NUDGE, 0);
     });
 
