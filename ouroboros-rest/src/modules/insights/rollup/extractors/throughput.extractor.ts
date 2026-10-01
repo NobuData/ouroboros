@@ -17,10 +17,12 @@
  * did not author. A revision is the loop's when its `head_sha` is a commit its run reported in
  * `run_commits` — V052's match-by-sha, never an assertion — so a human push, a host-side edit
  * and anything pushed after the loop's last revision all leave a revision no run commit names.
+ * The predicate is `untouched.sql.ts`'s, which the model scoreboard (#439) reads too.
  */
 
 import { sql } from "kysely";
 
+import { untouchedPr } from "../../untouched.sql";
 import { dayBounds } from "../rollup.days";
 import { ratioRow, sumRow } from "../rollup.rows";
 import { joinRepo, num, REPO_REF } from "../rollup.sql";
@@ -61,12 +63,7 @@ export const throughputExtractor: FamilyExtractor = {
                                   where g.run_id = closed_prs.run_id and g.verdict = 'fail')
              ) as autonomous,
              count(*) filter (
-               where state = 'merged'
-                 and not exists (select 1 from ouroboros.pr_revisions v
-                                  where v.pr_id = closed_prs.id
-                                    and not exists (select 1 from ouroboros.run_commits c
-                                                     where c.run_id = closed_prs.run_id
-                                                       and c.sha = v.head_sha))
+               where state = 'merged' and ${untouchedPr("closed_prs")}
              ) as untouched
         from closed_prs
        group by repo_ref`.execute(db);

@@ -235,12 +235,12 @@ export class MetricsService {
 }
 
 /**
- * The methodology payload for a registry entry.
+ * The methodology payload for a registry entry — also the model scoreboard's (#439) per column.
  *
  * @param definition - The entry.
  * @returns What travels with the number.
  */
-function methodologyOf(definition: MetricDefinition): MetricMethodology {
+export function methodologyOf(definition: MetricDefinition): MetricMethodology {
   return {
     metricId: definition.metricId,
     title: definition.title,

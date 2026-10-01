@@ -5912,6 +5912,44 @@ yarn test src/modules/insights/metrics                 # window matrix vs an eve
 yarn test:integration src/modules/insights/metrics     # vs rewindow, live tail, isolation, KPI budget
 ```
 
+### Model scoreboard
+
+BJ.3 ([#439](https://github.com/NobuData/ouroboros/issues/439)), decisions **I1**, **I6** and
+**I10**, in [`src/modules/insights/scoreboard/`](src/modules/insights/scoreboard).
+`ScoreboardService` is exported by `InsightsModule` for the Insights read APIs (#438). It answers
+mockup 15's MODEL SCOREBOARD: how often each task kind × model's work merged untouched, what a
+success costs, and which way that is trending.
+
+```ts
+scoreboards.scoreboard({ organizationId, repo?, range: "30d", now? })
+// ⇒ { window, prior, minSample: 10, rows: [{ taskKind: "implement", model: "claude-fable-5",
+//       hop: 1, role: "primary", merged: 25, untouched: 21, untouchedRate: 84,
+//       cost: { pricing: "priced", cents: 2175, centsPerSuccess: 87 },
+//       trend: { direction: "up", prior: 80, delta: 4 }, lowSample: false }, …],
+//     methodology: { untouched, costPerSuccess, trend, sample }, suggestion? }
+```
+
+| Column | Rule |
+| ------ | ---- |
+| **Row** | Task kind × the model of the hop that served it. That is the latest resolved `resolution_snapshots` row for each (run, task kind), taking the last kept hop that was tried (it has `duration_ms`), or the first kept hop if none was timed. A merge counts in a row for every task kind its run resolved. |
+| **Role** | Hop 1 of the resolved chain is `primary`, and any later hop is a `fallback`. A fallback row covers the work its primary could not do. |
+| **Untouched %** | Decision I6. `untouched.sql.ts`'s predicate is the one the throughput extractor fills the KPI row's `merged_untouched_rate` with, applied to the row's merged loop PRs. |
+| **$ / success** | The usage the row's runs recorded under its task kind in the window, divided by the row's merges. It is `priced` (dollars) only when every token had a price. With any unpriced usage it is `unpriced` (tokens per success, never a partial dollar figure). With no usage it is `none`. A local model priced at zero shows `$0.00`. |
+| **Trend** | The row's rate minus the same row's rate in the prior window of equal length: `up`, `down` or `flat`. It is also `flat` when either window has no rate. |
+| **Sample** | `merged`. A row below `minSample` (10) has `lowSample: true`. It is shown with the badge, never dropped. |
+| **Suggestion** | AB.3's (#209) payload, passed through when a `SCOREBOARD_SUGGESTIONS` source is bound and answers. Nothing binds it yet, so the key is absent (I10). The service never writes advice of its own. |
+
+Windows follow the [windowed metrics](#windowed-metrics-service) rules: UTC days, N days ending
+today, and the prior N days before. Each column's popover is a registry entry: the KPI row's own
+`merged_untouched_rate`, plus V082's `scoreboard_cost_per_success`, `scoreboard_trend` and
+`scoreboard_merged`. A missing entry throws `ScoreboardRegistryError`. The scoreboard reads the
+source planes per request and is not on the daily grain.
+
+```bash
+yarn test src/modules/insights/scoreboard              # mockup rows, badge, pricing, trend, slot
+yarn test:integration src/modules/insights/scoreboard  # real loops, KPI parity, human push, isolation
+```
+
 ### PR page reads & head actions
 
 AX.5 ([#361](https://github.com/NobuData/ouroboros/issues/361)), decisions **V5** and **V8**, in
