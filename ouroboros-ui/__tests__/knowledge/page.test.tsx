@@ -36,6 +36,7 @@ vi.mock("@/app/knowledge/playbooks-actions", () => ({
   createPlaybookFromRun: vi.fn(),
 }));
 vi.mock("@/app/knowledge/profile-actions", () => ({ saveEnvRecipe: vi.fn() }));
+vi.mock("@/app/knowledge/preview-actions", () => ({ previewContext: vi.fn() }));
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
 }));
@@ -78,6 +79,13 @@ describe("the knowledge route", () => {
     render(await Page({ searchParams: Promise.resolve({ repo: ["a/b", "c/d"] }) }));
 
     expect(readKnowledge).toHaveBeenCalledExactlyOnceWith(access(), expect.any(Date), undefined);
+  });
+
+  it("names the scope ladder's Org step with the workspace's slug (#421)", async () => {
+    requireWorkspace.mockResolvedValue({ ...access(), membership: membership({ slug: "nobu-data" }) });
+    render(await Page());
+
+    expect(screen.getByRole("button", { name: /^Org nobu-data/ })).toBeInTheDocument();
   });
 
   it("draws both actions for an owner or an admin", async () => {

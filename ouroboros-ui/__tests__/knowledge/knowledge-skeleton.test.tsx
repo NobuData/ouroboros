@@ -28,4 +28,11 @@ describe("the skeleton", () => {
     expect(container.querySelector(".knowledge__actions")).toHaveAttribute("aria-hidden");
     expect(screen.queryByRole("button")).toBeNull();
   });
+
+  it("reserves a seat for every card the screen draws — two on the left, three on the right (#421)", () => {
+    const { container } = render(<KnowledgeSkeleton />);
+
+    expect(container.querySelectorAll(".knowledge__main > .ou-card")).toHaveLength(2);
+    expect(container.querySelectorAll(".knowledge__aside > .ou-card")).toHaveLength(3);
+  });
 });

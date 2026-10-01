@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**320 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
+**322 of 454 ordered issues are closed** — P0 through P10 are complete, and P11 and P12 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10 | **262** |
-| 🟡 **In progress** | P11, P12 | **58** of 66 |
+| 🟡 **In progress** | P11, P12 | **60** of 66 |
 | — **Not started** | P13–P17 | 0 of 126 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1541,7 +1541,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **28 issues** · 83 complexity points · order **#301–#328** · 8 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_14_KNOWLEDGE.md`, `ROADMAP_MOCKUP_13_ONBOARDING.md` (Epics BA, BB)
-> **Status:** 🟡 **In progress** — 19 of 28 issues closed
+> **Status:** 🟡 **In progress** — 24 of 28 issues closed
 
 **Goal.** Deliver the knowledge layer — authored and generated skills with versioning and scope, the fact store with its confirm/reject/re-learn lifecycle, playbooks that launch real queued runs, and the context-assembly contract the loop's consumers use — alongside onboarding's detection engine, template set and dry-run policy machinery.
 
@@ -1576,7 +1576,7 @@ the blockquote above that records what it did and what it did differently.
 | 321 | **BG.2** | ✅ [#418](https://github.com/NobuData/ouroboros/issues/418) | Skills table | ouroboros-ui | M | BF.1, BG.1 |
 | 322 | **BG.3** | ✅ [#419](https://github.com/NobuData/ouroboros/issues/419) | Learned-facts card | ouroboros-ui | M | BF.2, BF.3, BG.1 |
 | 323 | **BG.4** | ✅ [#420](https://github.com/NobuData/ouroboros/issues/420) | Playbooks & repo-profile cards | ouroboros-ui | M | BE.4, BF.6, BG.1 |
-| 324 | **BG.5** | [#421](https://github.com/NobuData/ouroboros/issues/421) | Scope ladder & manifest preview | ouroboros-ui | S | BF.5, BG.1 |
+| 324 | **BG.5** | ✅ [#421](https://github.com/NobuData/ouroboros/issues/421) | Scope ladder & manifest preview | ouroboros-ui | S | BF.5, BG.1 |
 | 325 | **BA.4** | [#383](https://github.com/NobuData/ouroboros/issues/383) | Onboarding seeds — mockup-13 parity + probes | ouroboros-db, .github | S | 3.6, BA.1, BA.3 |
 | 326 | **BB.5** | [#388](https://github.com/NobuData/ouroboros/issues/388) | First-run launcher & smart defaults | ouroboros-rest | M | BA.3, BB.2, BB.4 |
 | 327 | **BG.6** | [#422](https://github.com/NobuData/ouroboros/issues/422) | Knowledge states & e2e leg | ouroboros-ui, .github | M | BG.2, BG.5 |

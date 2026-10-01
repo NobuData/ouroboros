@@ -1,8 +1,13 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { Reading } from "@/app/api/reading";
+import type { SkillList } from "@/app/api/skills";
 
 import { CREATE_SUBMIT, DESCRIPTION_LABEL, NAME_LABEL, createdToast } from "@/app/knowledge/create";
 import { FACTS_FOOT } from "@/app/knowledge/facts";
+import { PREVIEW_ACTION, PREVIEW_TITLE } from "@/app/knowledge/preview";
+import { LADDER_NAME, NO_SKILLS_AT_SCOPE, NO_WORKFLOW_FACTS, SCOPE_CAPTION, SHOW_EVERY_SCOPE } from "@/app/knowledge/scope";
 import { SKILLS_TABLE_NAME } from "@/app/knowledge/skills";
 import { DISMISS_TOAST } from "@/app/knowledge/toast";
 import { NEW_PLAYBOOK, RUN_ON_ISSUE } from "@/app/knowledge/playbooks";
@@ -18,26 +23,37 @@ import {
   PLAYBOOKS_REGION_ID,
   PLAYBOOKS_TITLE,
   PROFILE_REGION_ID,
+  SCOPE_REGION_ID,
+  SCOPE_TITLE,
   SKILLS_REGION_ID,
   SKILLS_TITLE,
   readOnlyNote,
 } from "@/app/knowledge/view";
+import { resetFocusRepos, setFocusRepo } from "@/app/shell/focus-repo";
 
-import { knowledgeReadings } from "../helpers/knowledge";
+import { SEEDED_REPO, enabledRepo, knowledgeReadings, manifest, seededRepos, seededSkill, seededSkills } from "../helpers/knowledge";
 import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 
 /**
  * The knowledge frame as it is drawn (#417): the head copy verbatim in both palettes, the two
  * actions for an administrator and neither for anyone else, the toast a create leaves under the
  * head, the two cards under the anchors the toast names — the skills table (#418) and the
- * learned-facts card (#419) — and the right column's playbooks card and repo profile (#420).
+ * learned-facts card (#419) — and the right column's playbooks card and repo profile (#420) over
+ * the scope card (#421), whose ladder follows the tenant chip and the page's reads and whose steps
+ * narrow the two left-column cards.
  */
 
 const createSkill = vi.fn();
+const setSkillEnabled = vi.fn();
+const previewContext = vi.fn();
+const refresh = vi.fn();
 
 vi.mock("@/app/knowledge/create-actions", () => ({ createSkill: (body: unknown) => createSkill(body) }));
 vi.mock("@/app/knowledge/import-actions", () => ({ previewImport: vi.fn(), applyImport: vi.fn() }));
-vi.mock("@/app/knowledge/skills-actions", () => ({ setSkillEnabled: vi.fn(), regenerateRepoMap: vi.fn() }));
+vi.mock("@/app/knowledge/skills-actions", () => ({
+  setSkillEnabled: (slug: string, enabled: boolean) => setSkillEnabled(slug, enabled),
+  regenerateRepoMap: vi.fn(),
+}));
 vi.mock("@/app/knowledge/facts-actions", () => ({ decideFact: vi.fn(), proposeFact: vi.fn() }));
 vi.mock("@/app/knowledge/playbooks-actions", () => ({
   listPlaybookIssues: vi.fn(),
@@ -47,14 +63,38 @@ vi.mock("@/app/knowledge/playbooks-actions", () => ({
   createPlaybookFromRun: vi.fn(),
 }));
 vi.mock("@/app/knowledge/profile-actions", () => ({ saveEnvRecipe: vi.fn() }));
+vi.mock("@/app/knowledge/preview-actions", () => ({
+  previewContext: (consumer: string, repo: string | null, workflow: string | null) => previewContext(consumer, repo, workflow),
+}));
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh: vi.fn(), push: vi.fn(), replace: vi.fn() }),
+  useRouter: () => ({ refresh, push: vi.fn(), replace: vi.fn() }),
 }));
 
 const { KnowledgeScreen } = await import("@/app/knowledge/knowledge-screen");
 
 /** The seed workspace. */
 const WORKSPACE_ID = "5eed0001-0000-4000-8000-000000000001";
+const WORKSPACE_SLUG = "acme-robotics";
+
+/**
+ * The screen, over readings.
+ *
+ * @param mayAdminister Whether the reader is an owner or an admin.
+ * @param readings What the page read.
+ * @returns The element.
+ */
+function screenOver(mayAdminister = true, readings = knowledgeReadings()) {
+  return (
+    <KnowledgeScreen
+      mayAdminister={mayAdminister}
+      mayDecide
+      readings={readings}
+      role={mayAdminister ? "owner" : "member"}
+      workspaceId={WORKSPACE_ID}
+      workspaceSlug={WORKSPACE_SLUG}
+    />
+  );
+}
 
 /**
  * Render the screen.
@@ -62,16 +102,35 @@ const WORKSPACE_ID = "5eed0001-0000-4000-8000-000000000001";
  * @param mayAdminister Whether the reader is an owner or an admin.
  */
 function draw(mayAdminister = true) {
-  return render(
-    <KnowledgeScreen
-      mayAdminister={mayAdminister}
-      mayDecide
-      readings={knowledgeReadings()}
-      role={mayAdminister ? "owner" : "member"}
-      workspaceId={WORKSPACE_ID}
-    />,
-  );
+  return render(screenOver(mayAdminister));
 }
+
+/** Put the tenant chip on the seeded repository, as a reader who chose it would have. */
+function focusHelios(): void {
+  setFocusRepo(WORKSPACE_ID, { id: enabledRepo().id, name: enabledRepo().name });
+}
+
+/** The ladder's three steps, in order. */
+function steps(): HTMLElement[] {
+  return within(screen.getByRole("list", { name: LADDER_NAME })).getAllByRole("button");
+}
+
+/** The slugs the skills table is drawing. */
+function drawnSlugs(): string[] {
+  return screen.getAllByRole("button", { name: /^Open .+ in the editor$/ }).map((door) => door.textContent ?? "");
+}
+
+beforeEach(() => {
+  setSkillEnabled.mockReset();
+  previewContext.mockReset().mockResolvedValue({ ok: true, value: manifest("seeded") });
+  refresh.mockReset();
+});
+
+// The chip's choice is this browser's: each case starts and ends with none.
+afterEach(() => {
+  window.localStorage.clear();
+  resetFocusRepos();
+});
 
 describe("the head", () => {
   it("is mockup 14's eyebrow, heading and subline, verbatim", () => {
@@ -83,9 +142,7 @@ describe("the head", () => {
   });
 
   it("renders the same markup in both palettes — the sheet is what differs", () => {
-    const [light, dark] = renderInBothPalettes(
-      <KnowledgeScreen mayAdminister mayDecide readings={knowledgeReadings()} role="owner" workspaceId={WORKSPACE_ID} />,
-    );
+    const [light, dark] = renderInBothPalettes(screenOver());
 
     expect(maskIds(light!)).toBe(maskIds(dark!));
     expect(light).toContain(KNOWLEDGE_TITLE);
@@ -155,7 +212,7 @@ describe("the regions", () => {
     expect(facts).toHaveTextContent(FACTS_TITLE);
     expect(facts).toHaveTextContent("Zephyr 4.0 needs CONFIG_LEGACY_TIMER");
     expect(facts).toHaveTextContent(FACTS_FOOT);
-    expect(screen.getAllByRole("region")).toHaveLength(5);
+    expect(screen.getAllByRole("region")).toHaveLength(6);
   });
 
   it("mounts the playbooks card and the repo profile in the right column (#420)", () => {
@@ -190,5 +247,156 @@ describe("the regions", () => {
     draw(false);
 
     for (const toggle of screen.getAllByRole("switch")) expect(toggle).toHaveAttribute("aria-disabled", "true");
+  });
+});
+
+describe("the scope card (#421)", () => {
+  it("mounts the ladder in the right column, under its anchor, after the repo profile", () => {
+    const { container } = draw();
+
+    const scope = container.querySelector(`#${SCOPE_REGION_ID}`);
+    const aside = container.querySelector(".knowledge__aside");
+
+    expect(aside).toContainElement(scope as HTMLElement);
+    expect(aside?.lastElementChild).toBe(scope);
+    expect(scope).toContainElement(screen.getByRole("region", { name: SCOPE_TITLE }));
+    expect(scope).toHaveTextContent(SCOPE_CAPTION);
+  });
+
+  it("names the Org step for the workspace and makes it current while the chip says All repos", () => {
+    draw();
+
+    expect(steps().map((step) => step.textContent)).toEqual([
+      "Org acme-robotics 2 skills (current)",
+      "Repo All repos 3 skills + 1 fact",
+      "Workflow overrides 0",
+    ]);
+  });
+
+  it("highlights the Repo step, named for the repository the tenant chip is on", () => {
+    focusHelios();
+    draw();
+
+    expect(steps()[1]).toHaveTextContent("Repo helios-firmware 3 skills + 1 fact (current)");
+    expect(steps()[1]).toHaveAttribute("aria-current", "true");
+    expect(steps()[0]).not.toHaveAttribute("aria-current");
+  });
+
+  it("follows the chip when it moves, without a reload", () => {
+    draw();
+
+    act(() => {
+      setFocusRepo(WORKSPACE_ID, { id: seededRepos()[1]!.id, name: "helios-tools" });
+    });
+
+    expect(steps()[1]).toHaveTextContent("Repo helios-tools 0 skills + 0 facts (current)");
+  });
+
+  it("moves a count when a skill is switched off: the write re-reads the page, and the ladder takes the new read", async () => {
+    focusHelios();
+    const zephyr = seededSkill("zephyr-conventions");
+    setSkillEnabled.mockResolvedValue({ ok: true, value: { ...zephyr, enabled: false, active: false } });
+
+    const { rerender } = draw();
+
+    expect(steps()[1]).toHaveTextContent("3 skills + 1 fact");
+
+    fireEvent.click(screen.getByRole("switch", { name: /zephyr-conventions/ }));
+
+    await waitFor(() => {
+      expect(setSkillEnabled).toHaveBeenCalledExactlyOnceWith("zephyr-conventions", false);
+      expect(refresh).toHaveBeenCalledOnce();
+    });
+
+    // What the refresh brings: the same page, re-read — no remount, no reload.
+    const list = seededSkills();
+    const reread: Reading<SkillList> = {
+      ok: true,
+      value: {
+        skills: list.skills.map((skill) => (skill.slug === "zephyr-conventions" ? { ...skill, enabled: false, active: false } : skill)),
+        active: list.active - 1,
+      },
+    };
+    rerender(screenOver(true, knowledgeReadings({ skills: reread })));
+
+    expect(steps()[1]).toHaveTextContent("2 skills + 1 fact");
+    expect(steps()[0]).toHaveTextContent("2 skills");
+  });
+
+  it("moves a skill between steps when its scope moves", () => {
+    focusHelios();
+    const { rerender } = draw();
+    const list = seededSkills();
+    const moved: Reading<SkillList> = {
+      ok: true,
+      value: { ...list, skills: list.skills.map((skill) => (skill.slug === "zephyr-conventions" ? { ...skill, scope: "org", repoRef: null } : skill)) },
+    };
+
+    rerender(screenOver(true, knowledgeReadings({ skills: moved })));
+
+    expect(steps().map((step) => step.textContent)).toEqual([
+      "Org acme-robotics 3 skills",
+      "Repo helios-firmware 2 skills + 1 fact (current)",
+      "Workflow overrides 0",
+    ]);
+  });
+
+  it("narrows the skills table and the facts card to a pressed step, says so, and offers the way back", () => {
+    draw();
+
+    expect(drawnSlugs()).toHaveLength(6);
+    expect(screen.queryByRole("button", { name: SHOW_EVERY_SCOPE })).toBeNull();
+
+    fireEvent.click(steps()[0]!);
+
+    expect(steps()[0]).toHaveAttribute("aria-pressed", "true");
+    expect(drawnSlugs()).toEqual(["commit-style", "pr-etiquette"]);
+    expect(document.querySelectorAll(".knowledge-facts__row")).toHaveLength(1);
+    expect(screen.getByText("Showing only the Org scope — acme-robotics. Skills and facts at other scopes are hidden.")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: SHOW_EVERY_SCOPE }));
+
+    expect(steps()[0]).toHaveAttribute("aria-pressed", "false");
+    expect(drawnSlugs()).toHaveLength(6);
+    expect(document.querySelectorAll(".knowledge-facts__row")).toHaveLength(5);
+    expect(screen.queryByRole("button", { name: SHOW_EVERY_SCOPE })).toBeNull();
+  });
+
+  it("narrows to the chip's repository under the Repo step, and a second press shows every scope", () => {
+    focusHelios();
+    const elsewhere = { ...seededSkill("zephyr-conventions"), id: "5eed0410-0000-4000-8000-0000000000aa", slug: "tools-style", repoRef: "acme-robotics/helios-tools" };
+    const list = seededSkills();
+    render(screenOver(true, knowledgeReadings({ skills: { ok: true, value: { ...list, skills: [...list.skills, elsewhere] } } })));
+
+    fireEvent.click(steps()[1]!);
+
+    expect(drawnSlugs()).toEqual(["hil-safety", "power-budget-checks", "repo-map", "zephyr-conventions"]);
+
+    fireEvent.click(steps()[1]!);
+
+    expect(drawnSlugs()).toHaveLength(7);
+  });
+
+  it("says the Workflow step holds no skill and that a fact has no workflow scope", () => {
+    draw();
+
+    fireEvent.click(steps()[2]!);
+
+    expect(screen.getByText(NO_SKILLS_AT_SCOPE)).toBeInTheDocument();
+    expect(screen.getByText(NO_WORKFLOW_FACTS)).toBeInTheDocument();
+  });
+
+  it("opens the preview on the chip's repository, for a member as for an owner", async () => {
+    focusHelios();
+    draw(false);
+
+    fireEvent.click(screen.getByRole("button", { name: PREVIEW_ACTION }));
+
+    const dialog = await screen.findByRole("dialog", { name: PREVIEW_TITLE });
+
+    await waitFor(() => {
+      expect(dialog).toHaveTextContent("hil-safety@v3");
+    });
+    expect(previewContext).toHaveBeenCalledExactlyOnceWith("run_stage", SEEDED_REPO, null);
   });
 });

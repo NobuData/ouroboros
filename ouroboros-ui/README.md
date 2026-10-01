@@ -3442,7 +3442,9 @@ its two actions, and the cards the rest of the page grows around — the [skills
 ([#418](https://github.com/NobuData/ouroboros/issues/418)) and the [learned-facts card](#the-learned-facts-card)
 ([#419](https://github.com/NobuData/ouroboros/issues/419)) in the left column, the
 [playbooks card](#the-playbooks-card) and the [repo profile](#the-repo-profile-card)
-([#420](https://github.com/NobuData/ouroboros/issues/420)) in the right. The sidebar's **Knowledge**
+([#420](https://github.com/NobuData/ouroboros/issues/420)) over the
+[scope card](#the-scope-card-and-the-manifest-preview)
+([#421](https://github.com/NobuData/ouroboros/issues/421)) in the right. The sidebar's **Knowledge**
 entry is live and leads here, which retires the `/knowledge` placeholder #49 held; the mockup's
 topbar is superseded by the shell.
 
@@ -3523,7 +3525,8 @@ files found that parse to no section and no imperative bullet. **Apply** is not 
 them.
 
 **Loading** is [`knowledge-skeleton.tsx`](app/knowledge/knowledge-skeleton.tsx): the head drawn for
-real, since none of it is read, over the two seats at the grid's geometry.
+real, since none of it is read, over the five seats — two in the left column, three in the right —
+at the grid's geometry.
 
 ### The skills table
 
@@ -3755,6 +3758,100 @@ in` renders. #426 replaces the row with the measured figure and the working cont
 **A member** sees the block read-only with **Edit** inert and the reason; a hand-made call to the
 Server Action gets the service's `403` back as a value. No-repository, not-scanned, unread and
 no-recipe states are drawn. Both palettes, keyboard, rem type.
+
+### The scope card and the manifest preview
+
+The card ([#421](https://github.com/NobuData/ouroboros/issues/421);
+[`scope-card.tsx`](app/knowledge/scope-card.tsx), every sentence and decision of the ladder in
+[`scope.ts`](app/knowledge/scope.ts); the preview in
+[`manifest-preview.tsx`](app/knowledge/manifest-preview.tsx), its decisions in
+[`preview.ts`](app/knowledge/preview.ts), its one server hop in
+[`preview-actions.ts`](app/knowledge/preview-actions.ts) over
+[`app/api/context.ts`](app/api/context.ts)) is the resolution algorithm drawn as a diagram, and
+the door to the check on the page's central promise:
+
+```
+┌ SCOPE                                      [Preview injection ▾] ┐   ← #scope
+│ ORG        acme-robotics                               2 skills  │
+│                              ↓                                   │
+│ REPO       helios-firmware                   3 skills + 1 fact   │   ← current (the tenant chip's)
+│                              ↓                                   │
+│ WORKFLOW   overrides                                          0  │
+│ Closest scope wins on conflict.                                  │
+└──────────────────────────────────────────────────────────────────┘
+        [Preview injection ▾]  repository × workflow × consumer
+        ~355 tokens of the 32.0k budget  (1 trimmed)      manifest f14b916d571b
+        SKILLS (6)     hil-safety@v3 (required) [repo] · commit-style-wf@v1 [workflow] · …
+        CONFIRMED FACTS (2)   Tests under `tests/hil/` require rig reservation …  [repo]
+        TRIMMED (1)    engineering-handbook (org) — over the token budget   ~34.1k tokens
+        NOT IN THIS MANIFEST (2)
+                       commit-style [org-wide]  overridden by commit-style-wf — the closest scope wins
+                       power-budget-checks [repo]  a draft — drafts never inject
+```
+
+**The ladder counts what resolves.** Decision K8's caption is verbatim, and the three steps count
+**registry truth**: the skills the list calls `active` — enabled, published, not a draft, the
+service's own word for *context assembly could inject it* — at the scope the registry holds each
+at, plus, at the Repo step, that repository's **confirmed** facts. So a switch moves a count, a
+scope move carries a skill from one step to another, and a draft is in no count; each step's
+tooltip and description say how many it holds altogether (*3 of 4 skills of helios-firmware in
+force…*), so the difference from the table's rows is explained rather than discovered. The counts
+are the page's own reads: every write on the page already re-reads it (`router.refresh()`), so they
+move without a reload. A workspace with no skills counts zero at each step and says what the
+ladder will count; an unread list says `not read` with the service's reason, never a zero nobody
+counted.
+
+**The current step is the tenant chip's.** With a repository in focus
+([`focus-repo.ts`](app/shell/focus-repo.ts)) the **Repo** step names it, counts it and is
+highlighted (`aria-current`); with *All repos* the **Org** step is current and the Repo step
+counts every repository's. A focus that is no longer an enabled repository reads as none. The
+choice lives in this browser, so the server renders the Org step as current and the chip's
+repository takes over in the same pass — the way the chip itself paints.
+
+**Each step filters the page.** A step is a toggle button (`aria-pressed`): pressing it narrows the
+skills table and the facts card to that scope — the Repo step to the chip's repository — and a
+note above the grid says so and offers **Show every scope**. The cards' head counts stay the
+workspace's. Facts are workspace-wide or a repository's, so under the Workflow step the facts card
+says that none belongs to a workflow rather than drawing an empty list. The filter is the
+screen's state, not the address's: the profile card owns `?repo=`.
+
+**Preview injection ▾ is BF.5's manifest, arranged and never recomputed.** The dialog reads in the
+press that opens it (`POST /api/v1/knowledge/context/preview`, [#414](https://github.com/NobuData/ouroboros/issues/414)),
+for a **run stage** in the chip's repository with no workflow; changing the repository, the
+workflow or the consumer asks again, and a slower answer to an earlier choice is dropped rather
+than drawn over a newer one. Only the scope and the consumer travel — no overrides, no budget — so
+the answer is what a consumer with no delta would be handed. The workflow select lists the
+workflows a skill is scoped to, because no other changes what resolves. What it draws:
+
+- the **resolved skills** in the manifest's order as `slug@vN`, `required` ones badged with *no
+  closer scope and no override can switch it off, and a trim never drops it*, an `on_trigger`
+  skill tagged with its triggers;
+- the **confirmed facts**, their inline code as the facts card draws it;
+- the **token estimate** against the budget it was held to, and the manifest's identity;
+- **every trim, named** — what was dropped, from which tier, why (`over the token budget`, `over
+  the consumer's fact cap`) and what it cost — in the one warn-tinted block of the dialog, since a
+  context truncated in silence is the hardest problem to see from outside;
+- **what is not there, with the reason**: the service's `excluded` (switched off; overridden by a
+  closer skill, or by a required one that cannot be overridden) joined by the registry's skills
+  the manifest never considered — *a draft — drafts never inject*, *scoped to … — not the
+  repository in this scope*, *no published version yet*. That list is the only thing derived on
+  this side, and only as an explanation; a skill this page's list says should be there and is not
+  is said to be exactly that, not given an invented reason.
+
+The estimator's manifest carries facts only, and the dialog says so in place of an empty skills
+list; a scope nothing resolves in says *Nothing would be injected*. A refusal lands as an alert
+(`context_workflow_not_found` as advice to choose another workflow), and a polite live region says
+what each manifest holds once it lands. Every member may look — the preview writes and records
+nothing — so the action is never inert.
+
+**The suites assert against assembly's own answers.**
+[`__tests__/helpers/context-manifests.json`](__tests__/helpers/context-manifests.json) is
+`resolveManifest`'s output (`ouroboros-rest/src/modules/context-assembly/`) over that module's
+fixture builders, given this module's seeded skills and facts by id — the seeded scope, a
+**workflow-override** case (a workflow skill overriding the org's, one failing to override the
+required `hil-safety`, a switched-off one taking its name out), a **trim** case, the estimator's,
+a workspace-wide one and an empty one — so a preview test compares the dialog with what the
+service answers rather than with this module's idea of it.
 
 ## Run console
 

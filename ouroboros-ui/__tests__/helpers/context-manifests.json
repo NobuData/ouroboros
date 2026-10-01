@@ -1,0 +1,412 @@
+{
+  "seeded": {
+    "consumer": "run_stage",
+    "scope": {
+      "repo": "acme-robotics/helios-firmware",
+      "workflow": null
+    },
+    "budgetTokens": 32000,
+    "estTokens": 84,
+    "skillVersions": [
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000004",
+        "slug": "hil-safety",
+        "name": "HIL safety",
+        "scope": "repo",
+        "tier": "required",
+        "required": true,
+        "versionId": "5eed0411-0000-4000-8000-000000000004",
+        "version": 3,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 10,
+        "body": "# hil-safety\n\nThe rules of hil-safety."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000002",
+        "slug": "repo-map",
+        "name": "Repo map",
+        "scope": "repo",
+        "tier": "repo",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000002",
+        "version": 60,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 9,
+        "body": "# repo-map\n\nThe rules of repo-map."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000001",
+        "slug": "zephyr-conventions",
+        "name": "Zephyr conventions",
+        "scope": "repo",
+        "tier": "repo",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000001",
+        "version": 12,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 14,
+        "body": "# zephyr-conventions\n\nThe rules of zephyr-conventions."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000005",
+        "slug": "commit-style",
+        "name": "Commit style",
+        "scope": "org",
+        "tier": "org",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000005",
+        "version": 2,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 11,
+        "body": "# commit-style\n\nThe rules of commit-style."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000003",
+        "slug": "pr-etiquette",
+        "name": "PR etiquette",
+        "scope": "org",
+        "tier": "org",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000003",
+        "version": 4,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 11,
+        "body": "# pr-etiquette\n\nThe rules of pr-etiquette."
+      }
+    ],
+    "facts": [
+      {
+        "id": "5eed0044-0000-4000-8000-000000000002",
+        "text": "Tests under `tests/hil/` require rig reservation via `rig claim`",
+        "repoRef": "acme-robotics/helios-firmware",
+        "tier": "repo",
+        "estTokens": 16
+      },
+      {
+        "id": "5eed0044-0000-4000-8000-000000000001",
+        "text": "CI needs `west update` before first build of the day",
+        "repoRef": null,
+        "tier": "org",
+        "estTokens": 13
+      }
+    ],
+    "trimmed": [],
+    "excluded": [],
+    "refusedOverrides": [],
+    "manifestHash": "529a6a637e3bbe2a42226cc67c19fa3d628608f2cb8e311f8b60c476a4603a9e"
+  },
+  "workflowOverride": {
+    "consumer": "run_stage",
+    "scope": {
+      "repo": "acme-robotics/helios-firmware",
+      "workflow": "standard-fix"
+    },
+    "budgetTokens": 32000,
+    "estTokens": 75,
+    "skillVersions": [
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000004",
+        "slug": "hil-safety",
+        "name": "HIL safety",
+        "scope": "repo",
+        "tier": "required",
+        "required": true,
+        "versionId": "5eed0411-0000-4000-8000-000000000004",
+        "version": 3,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 10,
+        "body": "# hil-safety\n\nThe rules of hil-safety."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000007",
+        "slug": "commit-style-fix",
+        "name": "Commit style",
+        "scope": "workflow",
+        "tier": "workflow",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000007",
+        "version": 1,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 13,
+        "body": "# commit-style-fix\n\nThe rules of commit-style-fix."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000002",
+        "slug": "repo-map",
+        "name": "Repo map",
+        "scope": "repo",
+        "tier": "repo",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000002",
+        "version": 60,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 9,
+        "body": "# repo-map\n\nThe rules of repo-map."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000001",
+        "slug": "zephyr-conventions",
+        "name": "Zephyr conventions",
+        "scope": "repo",
+        "tier": "repo",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000001",
+        "version": 12,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 14,
+        "body": "# zephyr-conventions\n\nThe rules of zephyr-conventions."
+      }
+    ],
+    "facts": [
+      {
+        "id": "5eed0044-0000-4000-8000-000000000002",
+        "text": "Tests under `tests/hil/` require rig reservation via `rig claim`",
+        "repoRef": "acme-robotics/helios-firmware",
+        "tier": "repo",
+        "estTokens": 16
+      },
+      {
+        "id": "5eed0044-0000-4000-8000-000000000001",
+        "text": "CI needs `west update` before first build of the day",
+        "repoRef": null,
+        "tier": "org",
+        "estTokens": 13
+      }
+    ],
+    "trimmed": [],
+    "excluded": [
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000005",
+        "slug": "commit-style",
+        "scope": "org",
+        "reason": "shadowed",
+        "by": "commit-style-fix"
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000008",
+        "slug": "hil-safety-off",
+        "scope": "workflow",
+        "reason": "shadowed",
+        "by": "hil-safety"
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000003",
+        "slug": "pr-etiquette",
+        "scope": "org",
+        "reason": "shadowed",
+        "by": "pr-etiquette-off"
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000009",
+        "slug": "pr-etiquette-off",
+        "scope": "workflow",
+        "reason": "disabled",
+        "by": null
+      }
+    ],
+    "refusedOverrides": [],
+    "manifestHash": "923b282c6e904737595aeb964654773c1ce1506ed90f0006526e4d889dda4a45"
+  },
+  "trimmed": {
+    "consumer": "run_stage",
+    "scope": {
+      "repo": "acme-robotics/helios-firmware",
+      "workflow": null
+    },
+    "budgetTokens": 32000,
+    "estTokens": 73,
+    "skillVersions": [
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000004",
+        "slug": "hil-safety",
+        "name": "HIL safety",
+        "scope": "repo",
+        "tier": "required",
+        "required": true,
+        "versionId": "5eed0411-0000-4000-8000-000000000004",
+        "version": 3,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 10,
+        "body": "# hil-safety\n\nThe rules of hil-safety."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000002",
+        "slug": "repo-map",
+        "name": "Repo map",
+        "scope": "repo",
+        "tier": "repo",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000002",
+        "version": 60,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 9,
+        "body": "# repo-map\n\nThe rules of repo-map."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000001",
+        "slug": "zephyr-conventions",
+        "name": "Zephyr conventions",
+        "scope": "repo",
+        "tier": "repo",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000001",
+        "version": 12,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 14,
+        "body": "# zephyr-conventions\n\nThe rules of zephyr-conventions."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000003",
+        "slug": "pr-etiquette",
+        "name": "PR etiquette",
+        "scope": "org",
+        "tier": "org",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000003",
+        "version": 4,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 11,
+        "body": "# pr-etiquette\n\nThe rules of pr-etiquette."
+      }
+    ],
+    "facts": [
+      {
+        "id": "5eed0044-0000-4000-8000-000000000002",
+        "text": "Tests under `tests/hil/` require rig reservation via `rig claim`",
+        "repoRef": "acme-robotics/helios-firmware",
+        "tier": "repo",
+        "estTokens": 16
+      },
+      {
+        "id": "5eed0044-0000-4000-8000-000000000001",
+        "text": "CI needs `west update` before first build of the day",
+        "repoRef": null,
+        "tier": "org",
+        "estTokens": 13
+      }
+    ],
+    "trimmed": [
+      {
+        "kind": "skill",
+        "id": "5eed0411-0000-4000-8000-000000000005",
+        "slug": "commit-style",
+        "tier": "org",
+        "estTokens": 32500,
+        "reason": "over_budget"
+      }
+    ],
+    "excluded": [],
+    "refusedOverrides": [],
+    "manifestHash": "12aa964986e18b6e9bf07ca7e67f59dc7d5948efdd949adfed47e7143f7fcb31"
+  },
+  "estimator": {
+    "consumer": "estimator",
+    "scope": {
+      "repo": "acme-robotics/helios-firmware",
+      "workflow": null
+    },
+    "budgetTokens": 8000,
+    "estTokens": 29,
+    "skillVersions": [],
+    "facts": [
+      {
+        "id": "5eed0044-0000-4000-8000-000000000002",
+        "text": "Tests under `tests/hil/` require rig reservation via `rig claim`",
+        "repoRef": "acme-robotics/helios-firmware",
+        "tier": "repo",
+        "estTokens": 16
+      },
+      {
+        "id": "5eed0044-0000-4000-8000-000000000001",
+        "text": "CI needs `west update` before first build of the day",
+        "repoRef": null,
+        "tier": "org",
+        "estTokens": 13
+      }
+    ],
+    "trimmed": [],
+    "excluded": [],
+    "refusedOverrides": [],
+    "manifestHash": "f0bee5fd0a41ff86393c35fd0e98aa4afdfe65fb45a1eb953b3c2d3694ef6a70"
+  },
+  "workspaceWide": {
+    "consumer": "run_stage",
+    "scope": {
+      "repo": null,
+      "workflow": null
+    },
+    "budgetTokens": 32000,
+    "estTokens": 35,
+    "skillVersions": [
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000005",
+        "slug": "commit-style",
+        "name": "Commit style",
+        "scope": "org",
+        "tier": "org",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000005",
+        "version": 2,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 11,
+        "body": "# commit-style\n\nThe rules of commit-style."
+      },
+      {
+        "skillId": "5eed0410-0000-4000-8000-000000000003",
+        "slug": "pr-etiquette",
+        "name": "PR etiquette",
+        "scope": "org",
+        "tier": "org",
+        "required": false,
+        "versionId": "5eed0411-0000-4000-8000-000000000003",
+        "version": 4,
+        "load": "always",
+        "triggers": [],
+        "estTokens": 11,
+        "body": "# pr-etiquette\n\nThe rules of pr-etiquette."
+      }
+    ],
+    "facts": [
+      {
+        "id": "5eed0044-0000-4000-8000-000000000001",
+        "text": "CI needs `west update` before first build of the day",
+        "repoRef": null,
+        "tier": "org",
+        "estTokens": 13
+      }
+    ],
+    "trimmed": [],
+    "excluded": [],
+    "refusedOverrides": [],
+    "manifestHash": "aaf7f1b7e55fedd768ad60af4004d27bb659cbaa345931889a4666e11ccad74f"
+  },
+  "empty": {
+    "consumer": "run_stage",
+    "scope": {
+      "repo": null,
+      "workflow": null
+    },
+    "budgetTokens": 32000,
+    "estTokens": 0,
+    "skillVersions": [],
+    "facts": [],
+    "trimmed": [],
+    "excluded": [],
+    "refusedOverrides": [],
+    "manifestHash": "1b7a5abb46be6480fe5bcc8252059dee63e59a145788e810c424ed8de37822de"
+  }
+}

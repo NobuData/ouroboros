@@ -746,7 +746,7 @@ tokens (both themes; the mockup is dark-only).
 | BG.2 | #418 ✅ | 🟢 Done | ouroboros-ui: [BG.2] Skills table | All row states, locked/draft treatments, editor links, stats | mvp, knowledge, ui, design | N (after BG.1, BF.1) | Y | M | ouroboros-ui |
 | BG.3 | #419 ✅ | 🟢 Done | ouroboros-ui: [BG.3] Learned-facts card | Lifecycle rows, Confirm/Reject/Re-learn, provenance popovers | mvp, knowledge, ui, design | N (after BG.1, BF.2/BF.3) | Y | M | ouroboros-ui |
 | BG.4 | #420 ✅ | 🟢 Done | ouroboros-ui: [BG.4] Playbooks & repo-profile cards | Recipes + run-on-issue; profile + env recipe + honest snapshot | mvp, knowledge, ui, design | N (after BG.1, BF.6, BE.4) | Y | M | ouroboros-ui, ouroboros-rest |
-| BG.5 | #421 | 🟡 Open | ouroboros-ui: [BG.5] Scope ladder & manifest preview | The ladder with live counts; what-would-inject preview | mvp, knowledge, ui, design | N (after BG.1, BF.5) | Y | S | ouroboros-ui |
+| BG.5 | #421 ✅ | 🟢 Done | ouroboros-ui: [BG.5] Scope ladder & manifest preview | The ladder with live counts; what-would-inject preview | mvp, knowledge, ui, design | N (after BG.1, BF.5) | Y | S | ouroboros-ui |
 | BG.6 | #422 | 🟡 Open | ouroboros-ui: [BG.6] Knowledge states & e2e leg | Empty/cold states, themes, full author→inject→launch e2e | mvp, knowledge, ui, ci | N (after BG.2–BG.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BG.1 — ouroboros-ui: [BG.1] Knowledge route, head & import flow
@@ -961,7 +961,7 @@ ENV: west init… · ccache… [edit v3]   snapshot: "prebuilds arrive with BD.4
 
 ### Issue BG.5 — ouroboros-ui: [BG.5] Scope ladder & manifest preview
 
-> **GitHub issue:** #421 · **Status:** 🟡 Open · **Parent epic:** #403
+> **GitHub issue:** #421 ✅ · **Status:** 🟢 Done · **Parent epic:** #403
 
 - **Problem Statement:** The ladder with live counts and the assembly's
   most valuable UI: what-would-inject.
@@ -977,6 +977,29 @@ ENV: west init… · ccache… [edit v3]   snapshot: "prebuilds arrive with BD.4
 - **Parallelism/Dependencies:** Needs BG.1, BF.5.
 - **Technical Stack:** React, #46 primitives.
 - **Epic:** BG
+- **Delivered** (`ouroboros-ui/app/knowledge/scope-card.tsx`, `manifest-preview.tsx`; decisions in
+  `scope.ts` and `preview.ts`; `app/api/context.ts`; UI 0.115.0): the right column's third card.
+  **Ladder** — Org ↓ Repo ↓ Workflow with the caption verbatim; each step counts **what is in
+  force** at its scope (the registry's `active` skills — enabled, published, not a draft — and, at
+  the Repo step, that repository's confirmed facts), so a switch, a scope move or a create moves a
+  count on the page's next re-read with no reload, and each count's footnote says how many the
+  step holds altogether. The mockup's own figures (3 / 4 + 5 / 1) were never self-consistent with
+  its six rows; the counts are the registry's. The **current** step is the tenant chip's — the
+  focused repository's, or Org under *All repos*, where the Repo step counts every repository's.
+  Each step is a toggle that **narrows the skills table and the facts card** to its scope, with a
+  note above the grid and **Show every scope**; a workflow has no facts, and the card says so.
+  Cold (no skills) and unread states are drawn, never a zero nobody counted. **Preview injection
+  ▾** — a dialog reading BF.5's `POST /api/v1/knowledge/context/preview` in the press that opens
+  it, for a run stage in the chip's repository; repository × workflow × consumer selects re-ask,
+  the newest answer winning. It lists the resolved skills (`slug@vN`, `required` badged as
+  un-overridable, `on_trigger` tagged), the confirmed facts, the estimate against the budget, the
+  manifest's identity, **every trim named** (what, tier, why, cost) in the one warn-tinted block,
+  and **what is absent with the reason** — overridden by a closer or a required skill, switched
+  off, a draft, scoped elsewhere, unpublished. The manifest is never recomputed on the client.
+  The suites assert against `resolveManifest`'s own output over #414's fixture builders
+  (`__tests__/helpers/context-manifests.json`), a workflow-override and a trim case included.
+  Open to every member — it writes nothing. Both palettes, keyboard, rem type; verified live at
+  the 125 % font scale.
 
 ```
 Org acme-robotics · 3 skills ↓ [Repo helios-firmware · 4 skills + 5 facts] ↓ Workflow · 1 override
@@ -1242,8 +1265,7 @@ Issue-level impact:
 | Issue | Amendment |
 |---|---|
 | BG.1 | #417 ✅ | 🟢 Done | Mounts in the shell content pane; navigation via the sidebar **Knowledge** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
-| BG.2–BG.4 | ✅ | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| BG.5 | #421 | 🟡 Open | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
+| BG.2–BG.5 | ✅ | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
 | BG.6 | #422 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step

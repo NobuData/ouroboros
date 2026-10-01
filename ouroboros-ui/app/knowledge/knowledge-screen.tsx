@@ -3,7 +3,9 @@
 import { useState } from "react";
 
 import type { Role } from "@/app/api/membership";
-import { Eyebrow } from "@/app/ui";
+import type { SkillScope } from "@/app/api/skills";
+import { useFocusRepo } from "@/app/shell/focus-repo";
+import { Button, Eyebrow } from "@/app/ui";
 
 import { FactsCard } from "./facts-card";
 import { ImportSheet } from "./import-sheet";
@@ -11,6 +13,8 @@ import { KnowledgeToastSeat } from "./knowledge-toast";
 import { NewSkill } from "./new-skill";
 import { PlaybooksCard } from "./playbooks-card";
 import { ProfileCard } from "./profile-card";
+import { SHOW_EVERY_SCOPE, filterNote, ladder } from "./scope";
+import { ScopeCard } from "./scope-card";
 import { SkillsTable } from "./skills-table";
 import type { KnowledgeToast } from "./toast";
 import {
@@ -21,6 +25,7 @@ import {
   type KnowledgeReadings,
   PLAYBOOKS_REGION_ID,
   PROFILE_REGION_ID,
+  SCOPE_REGION_ID,
   SKILLS_REGION_ID,
   readOnlyNote,
 } from "./view";
@@ -53,8 +58,16 @@ import "./knowledge.css";
  * The mockup's left column is the skills table (BG.2, #418, `skills-table.tsx`) and the
  * learned-facts card (BG.3, #419, `facts-card.tsx`), each mounted under the id the toast's
  * anchor for it names; the right is the playbooks card and the repo profile (BG.4, #420,
- * `playbooks-card.tsx` and `profile-card.tsx`) over the scope ladder's seat (BG.5, #421), which
- * is not built and so is not drawn.
+ * `playbooks-card.tsx` and `profile-card.tsx`) over the scope card (BG.5, #421, `scope-card.tsx`).
+ *
+ * ### The ladder's steps are decided here, because they narrow two other cards
+ *
+ * The scope card's steps are computed in this component (`ladder`, `app/knowledge/scope.ts`) from
+ * the page's reads and the tenant chip's focus repository, and the step a reader presses is this
+ * component's state: the skills table and the facts card are handed its filter, and a note above
+ * the grid says the page is narrowed and offers the way back. The chip's choice lives in this
+ * browser (`app/shell/focus-repo.ts`), so the server renders the Org step as current and the
+ * chip's repository takes over in the same pass, as the chip itself does.
  *
  * @param props.readings What the reader was able to read, and why not for the rest.
  * @param props.mayAdminister Whether this reader is an `owner` or an `admin` — the roles the two
@@ -64,6 +77,7 @@ import "./knowledge.css";
  *   queue write's rule).
  * @param props.role The reader's strongest role, for the read-only note.
  * @param props.workspaceId The workspace's id — what the focus-repo chip's choice is keyed by.
+ * @param props.workspaceSlug The workspace's slug — the scope ladder's Org step.
  * @returns The screen.
  */
 export function KnowledgeScreen({
@@ -72,14 +86,29 @@ export function KnowledgeScreen({
   mayDecide,
   role,
   workspaceId,
+  workspaceSlug,
 }: Readonly<{
   readings: KnowledgeReadings;
   mayAdminister: boolean;
   mayDecide: boolean;
   role: Role;
   workspaceId: string;
+  workspaceSlug: string;
 }>) {
   const [toast, setToast] = useState<KnowledgeToast | null>(null);
+  const [narrowed, setNarrowed] = useState<SkillScope | null>(null);
+  const focus = useFocusRepo(workspaceId);
+
+  const steps = ladder({
+    skills: readings.skills,
+    facts: readings.facts,
+    repos: readings.repos,
+    focus,
+    workspace: workspaceSlug,
+  });
+  // The step narrowing the page — re-derived each render, so its repository follows the chip.
+  const step = steps.find((one) => one.scope === narrowed) ?? null;
+  const filter = step?.filter ?? null;
 
   return (
     <main className="knowledge">
@@ -101,11 +130,21 @@ export function KnowledgeScreen({
 
       <KnowledgeToastSeat onDismiss={() => { setToast(null); }} toast={toast} />
 
+      {step !== null && (
+        <div className="knowledge-filter" role="status">
+          <span className="knowledge-filter__text">{filterNote(step)}</span>
+          <Button onClick={() => { setNarrowed(null); }} size="sm" tone="ghost">
+            {SHOW_EVERY_SCOPE}
+          </Button>
+        </div>
+      )}
+
       <div className="knowledge__grid">
         <div className="knowledge__main">
           {/* The seats carry the ids the toast's anchors name, so a link lands on the region. */}
           <div className="knowledge__seat" id={SKILLS_REGION_ID}>
             <SkillsTable
+              filter={filter}
               mayAdminister={mayAdminister}
               onToast={setToast}
               readAt={readings.readAt}
@@ -116,6 +155,7 @@ export function KnowledgeScreen({
           <div className="knowledge__seat" id={FACTS_REGION_ID}>
             <FactsCard
               facts={readings.facts}
+              filter={filter}
               mayDecide={mayDecide}
               onToast={setToast}
               readAt={readings.readAt}
@@ -142,6 +182,16 @@ export function KnowledgeScreen({
               profile={readings.profile}
               readAt={readings.readAt}
               repos={readings.repos}
+            />
+          </div>
+          <div className="knowledge__seat" id={SCOPE_REGION_ID}>
+            <ScopeCard
+              facts={readings.facts}
+              narrowed={narrowed}
+              onNarrow={setNarrowed}
+              repos={readings.repos}
+              skills={readings.skills}
+              steps={steps}
             />
           </div>
         </div>
