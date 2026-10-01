@@ -101,3 +101,40 @@
   min-height: 24rem;
   padding: var(--sp-8);
 }
+
+/*
+ * The chart story (#442): a two-column grid of cards, a wide card spanning both. Placement
+ * only — everything a chart draws is app/charts/charts.css's.
+ */
+.wk-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
+  gap: var(--sp-8);
+}
+
+.wk-chart {
+  min-width: 0;
+}
+
+.wk-chart--wide {
+  grid-column: 1 / -1;
+}
+
+.wk-sparks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.wk-spark-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}

@@ -11,6 +11,8 @@ import {
   ageOfSeconds,
   coarseAgo,
   relativeAgo,
+  percentOf,
+  tokenCount,
 } from "@/app/format";
 
 /**
@@ -352,5 +354,81 @@ describe("spanOfMs (#335)", () => {
     expect(spanOfMs(-5_000)).toBe("0s");
     expect(spanOfMs(Number.NaN)).toBe("0s");
     expect(spanOfMs(Number.POSITIVE_INFINITY)).toBe("0s");
+  });
+});
+
+describe("the Insights figures (#442)", () => {
+  // Mockup 15 spells four kinds of figure across every card. Durations and money were already
+  // here; these pin the spellings the chart cards draw, so a card cannot invent its own.
+  describe("durations", () => {
+    it("draws a stage median to the second, and a ladder rung without its zero seconds", () => {
+      expect(spanOfMs(860_000)).toBe("14m 20s");
+      expect(spanOfMs(364_000)).toBe("6m 04s");
+      expect(spanOfMs(7_800_000)).toBe("2h 10m");
+      expect(spanOfMs(40_000)).toBe("40s");
+    });
+  });
+
+  describe("money", () => {
+    it("draws a daily cost and a month's total to the cent", () => {
+      expect(moneyOfCents(56_320)).toBe("$563.20");
+      expect(moneyOfCents(912)).toBe("$9.12");
+      expect(moneyOfCents(3140)).toBe("$31.40");
+    });
+  });
+
+  describe("tokenCount", () => {
+    it("draws the mockup's token figures to three significant figures", () => {
+      expect(tokenCount(126_000_000)).toBe("126M");
+      expect(tokenCount(26_400)).toBe("26.4k");
+      expect(tokenCount(4_200_000_000)).toBe("4.2B");
+    });
+
+    it("keeps one decimal below a hundred of a unit and drops it from a hundred up", () => {
+      expect(tokenCount(99_940)).toBe("99.9k");
+      expect(tokenCount(99_960)).toBe("100k");
+      expect(tokenCount(100_000)).toBe("100k");
+    });
+
+    it("carries into the next unit rather than drawing a thousand of this one", () => {
+      expect(tokenCount(999_499)).toBe("999k");
+      expect(tokenCount(999_950)).toBe("1.0M");
+      expect(tokenCount(999_999_950)).toBe("1.0B");
+    });
+
+    it("draws a count under a thousand in full", () => {
+      expect(tokenCount(0)).toBe("0");
+      expect(tokenCount(850)).toBe("850");
+      expect(tokenCount(999.4)).toBe("999");
+    });
+
+    it("draws a negative or non-finite count as zero", () => {
+      expect(tokenCount(-5)).toBe("0");
+      expect(tokenCount(Number.NaN)).toBe("0");
+      expect(tokenCount(Number.POSITIVE_INFINITY)).toBe("0");
+    });
+  });
+
+  describe("percentOf", () => {
+    it("draws a fraction as a percentage to one decimal, always", () => {
+      expect(percentOf(0.989)).toBe("98.9%");
+      expect(percentOf(0.041)).toBe("4.1%");
+      expect(percentOf(0)).toBe("0.0%");
+      expect(percentOf(1)).toBe("100.0%");
+    });
+
+    it("rounds at the boundary a reader expects, not where a float lands", () => {
+      expect(percentOf(0.0415)).toBe("4.2%");
+      expect(percentOf(0.0005)).toBe("0.1%");
+      expect(percentOf(0.00049)).toBe("0.0%");
+    });
+
+    it("does not clamp an overrun, because it is the honest figure", () => {
+      expect(percentOf(1.12)).toBe("112.0%");
+    });
+
+    it("draws a non-finite fraction as zero rather than NaN%", () => {
+      expect(percentOf(Number.NaN)).toBe("0.0%");
+    });
   });
 });

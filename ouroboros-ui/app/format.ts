@@ -415,3 +415,61 @@ export function ageOfSeconds(seconds: number): string {
 
   return `${Math.floor(elapsed / DAY_S)}d`;
 }
+
+/**
+ * A token count as the Insights cards draw it — `126M`, `26.4k`, `4.2B`, `850`
+ * ([#442](https://github.com/NobuData/ouroboros/issues/442)).
+ *
+ * {@link compactNumber} always keeps one decimal so a stat row does not shuffle as a figure
+ * moves; token counts sit in bar rows and tooltips where the figure is read once, and mockup 15
+ * draws them to **three significant figures** instead: one decimal below a hundred of a unit
+ * (`26.4k`), none from a hundred up (`126M`). The same carry applies — `999,950` is `1.0M`,
+ * never `1000k`.
+ *
+ * @param value How many tokens. Rounded to a whole first; a negative or non-finite count is
+ *   drawn as `0`, since no source of a token count in this product can honestly produce one.
+ * @returns The count.
+ */
+export function tokenCount(value: number): string {
+  const size = Number.isFinite(value) ? Math.max(0, Math.round(value)) : 0;
+
+  for (const [index, [at, suffix]] of UNITS.entries()) {
+    if (size < at) continue;
+
+    const scaled = size / at;
+
+    // The carry, as compactNumber's: a value that rounds to a thousand of this unit is one
+    // of the next — unless this is already the largest unit there is.
+    if (Math.round(scaled) >= COMPACT_FROM && index > 0) {
+      const [bigger, biggerSuffix] = UNITS[index - 1]!;
+      return `${toTenth(size / bigger).toFixed(1)}${biggerSuffix}`;
+    }
+
+    return scaled < 99.95 ? `${toTenth(scaled).toFixed(1)}${suffix}` : `${Math.round(scaled)}${suffix}`;
+  }
+
+  return String(size);
+}
+
+/** Decimal places a percentage is drawn to — mockup 15's `98.9%`, `4.1%`, `0.0%`. */
+const PERCENT_DECIMALS = 1;
+
+/**
+ * A fraction as a percentage — `98.9%`, `4.1%`, `0.0%`
+ * ([#442](https://github.com/NobuData/ouroboros/issues/442)).
+ *
+ * **One decimal, always**, so a column of rates reads down its last digit and a flaky test at
+ * `0.0%` is visibly a measured zero rather than a missing figure. A rate nobody measured is
+ * `null` at the contract's boundary and is the caller's em-dash (decision **M7**), not this.
+ *
+ * @param fraction The fraction, where `1` is a hundred percent. Not clamped: a budget can be
+ *   overrun, and `112.0%` is the honest figure. A non-finite one is drawn as `0.0%`.
+ * @returns The percentage.
+ */
+export function percentOf(fraction: number): string {
+  const tenths = Number.isFinite(fraction) ? Math.round(fraction * 1000) : 0;
+
+  // Rounding in integers first, for latencyOfMs's reason: `0.0415 * 100` is a float a hair
+  // off, and `toFixed` would round it the surprising way.
+  return `${(tenths / 10).toFixed(PERCENT_DECIMALS)}%`;
+}
