@@ -5910,5 +5910,18 @@ select pg_temp.must_hold(
    = array[9, 9, 9, 9, 9]::bigint[]),
   'the insights seed wrote nine tickets, loops, merged PRs, estimates and grades — and, applied twice, nothing more');
 
+-- ===========================================================================
+-- V080 — the Build Analyzer's run records (#506, BU.1)
+-- ===========================================================================
+--
+-- No seed writes an analysis run yet — BU.4 (#509) does. The probe holds from today so that
+-- seed cannot be the first place a fabricated `$` appears: no LLM pass exists, so no seeded run
+-- carries an LLM cost, and none claims an LLM analyzer it did not run.
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.analysis_runs where llm_cost_cents is not null)
+  and not exists (select 1 from ouroboros.analysis_runs
+                   where jsonb_path_exists(analyzer_set, '$.analyzers[*] ? (@.kind == "llm")')),
+  'no seeded analysis run carries an LLM cost or names an LLM analyzer — deterministic runs show compute time only');
+
 \o
 \echo 'seed.sql: all assertions passed'

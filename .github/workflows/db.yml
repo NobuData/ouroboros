@@ -310,6 +310,14 @@ jobs:
       - name: Assert the alias reference guard holds under concurrency
         run: ouroboros-db/tests/verify-alias-reference-guard.sh --runner docker
 
+      # The Build Analyzer's one-running guard (#506) has the same shape: constraints.sql
+      # shows a second running analysis refused after the first commits, but the race is two
+      # triggers inserting before either has. Four interleavings against a database of its own;
+      # the third drops analysis_runs_one_running and must let both through, which is what
+      # proves the index — not something else — is doing the refusing.
+      - name: Assert one running analysis per repository under concurrency
+        run: ouroboros-db/tests/verify-analysis-run-guard.sh --runner docker
+
       # ---------------------------------------------------------------------------
       # The drift check (#710). Everything above asks what the applied schema enforces;
       # this asks whether it is still the schema BetterAuth expects. Decision A3 makes

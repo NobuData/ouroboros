@@ -27646,6 +27646,457 @@ select pg_temp.must_hold(
 drop table v079_before;
 
 -- ===========================================================================
+-- V080 — analysis_runs and analysis_schedules: the Build Analyzer's receipts (#506, BU.1)
+-- ===========================================================================
+--
+-- The meta strip first, as one row read back field by field. Then the manifest contract —
+-- the sampling record above all — the provenance rule that keeps a fabricated `$` out, the
+-- four statuses and the terminal guard, the one-running guard (the half one session can show;
+-- tests/verify-analysis-run-guard.sh shows the concurrent half), and the schedule round trip.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v080',       'Analyzer Works', 'analyzer-works-v080', now()),
+  ('org-v080-other', 'Other Works',    'other-works-v080',    now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v080', 'Ken V080', 'ken@analyzer-v080.example', true);
+
+-- The manifests below, named once. `full` reads every source; `bound` sampled the logs at 30 %
+-- because max_log_lines bound them.
+create temp table v080_manifest (name text primary key, m jsonb not null);
+insert into v080_manifest values
+  ('bound', '{"window":  {"from": "2026-07-03", "to": "2026-10-01", "days": 90},
+              "counts":  {"builds": 1284, "loops": 312, "log_lines": 4100000, "hil_sessions": 62},
+              "sources": {"builds":       {"sampled": false, "rate": 1,   "cap": null},
+                          "loops":        {"sampled": false, "rate": 1,   "cap": null},
+                          "log_lines":    {"sampled": true,  "rate": 0.3, "cap": "max_log_lines"},
+                          "hil_sessions": {"sampled": false, "rate": 1,   "cap": null}},
+              "budget":  {"max_builds": 2000, "max_log_lines": 1500000,
+                          "compute_ceiling_seconds": 3600}}'),
+  ('full',  '{"window":  {"from": "2026-09-24", "to": "2026-10-01", "days": 7},
+              "counts":  {"builds": 40, "loops": 9, "log_lines": 120000, "hil_sessions": 2},
+              "sources": {"builds":       {"sampled": false, "rate": 1, "cap": null},
+                          "loops":        {"sampled": false, "rate": 1, "cap": null},
+                          "log_lines":    {"sampled": false, "rate": 1, "cap": null},
+                          "hil_sessions": {"sampled": false, "rate": 1}},
+              "budget":  {"max_builds": 2000, "max_log_lines": 5000000,
+                          "compute_ceiling_seconds": 3600}}');
+
+-- --- The schedule: round trip, counter, budgets ------------------------------
+
+insert into ouroboros.analysis_schedules
+    (id, organization_id, repo_ref, weekly_enabled, weekly_day, weekly_time,
+     every_n_builds, build_counter, max_builds, max_log_lines, compute_ceiling_seconds,
+     updated_by)
+values ('a8000000-0000-4000-8000-000000000001', 'org-v080', 'acme/helios-firmware',
+        true, 1, '03:00', 50, 17, 2000, 1500000, 3600, 'user-v080');
+
+select pg_temp.must_hold(
+  (select (weekly_enabled, weekly_day, weekly_time, every_n_builds, build_counter,
+           max_builds, max_log_lines, compute_ceiling_seconds, enabled, updated_by)
+          = (true, 1::smallint, '03:00'::time, 50, 17, 2000, 1500000::bigint, 3600, true,
+             'user-v080'::text)
+     from ouroboros.analysis_schedules where id = 'a8000000-0000-4000-8000-000000000001'),
+  'Schedule: weekly + every 50 builds round-trips, with its counter and budgets on the same row');
+
+-- The counter is storable without a threshold, and survives the threshold going away and back.
+update ouroboros.analysis_schedules set every_n_builds = null
+ where id = 'a8000000-0000-4000-8000-000000000001';
+update ouroboros.analysis_schedules set build_counter = build_counter + 1
+ where id = 'a8000000-0000-4000-8000-000000000001';
+update ouroboros.analysis_schedules set every_n_builds = 10
+ where id = 'a8000000-0000-4000-8000-000000000001';
+
+select pg_temp.must_hold(
+  (select every_n_builds = 10 and build_counter = 18
+     from ouroboros.analysis_schedules where id = 'a8000000-0000-4000-8000-000000000001'),
+  'the every-N counter is stored independently of its threshold, and above it is allowed');
+
+with s as (
+  insert into ouroboros.analysis_schedules (organization_id, repo_ref)
+  values ('org-v080', 'acme/defaults') returning *
+)
+select pg_temp.must_hold(
+  (select every_n_builds is null and build_counter = 0 and not weekly_enabled and enabled
+          and max_builds >= 1 and max_log_lines >= 1 and compute_ceiling_seconds >= 1
+     from s),
+  'a schedule with nothing set has every trigger off and default budgets');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_schedules (organization_id, repo_ref)
+    values ('org-v080', 'acme/helios-firmware')$$,
+  'one schedule per (workspace, repo)', 'analysis_schedules_repo_key');
+
+with s as (
+  insert into ouroboros.analysis_schedules (organization_id, repo_ref)
+  values ('org-v080-other', 'acme/helios-firmware') returning 1
+)
+select pg_temp.must_hold(
+  (select count(*) = 1 from s),
+  'the same repo name in another workspace has its own schedule');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_schedules set weekly_time = null
+     where id = 'a8000000-0000-4000-8000-000000000001'$$,
+  'the weekly trigger needs a day and a time', 'analysis_schedules_weekly_slot');
+
+update ouroboros.analysis_schedules set weekly_enabled = false, weekly_day = null
+ where id = 'a8000000-0000-4000-8000-000000000001';
+update ouroboros.analysis_schedules set weekly_enabled = true, weekly_day = 3
+ where id = 'a8000000-0000-4000-8000-000000000001';
+
+select pg_temp.must_hold(
+  (select weekly_day = 3 and weekly_time = '03:00'
+     from ouroboros.analysis_schedules where id = 'a8000000-0000-4000-8000-000000000001'),
+  'turning weekly off keeps the remembered time');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_schedules set weekly_day = 8
+     where id = 'a8000000-0000-4000-8000-000000000001'$$,
+  'the weekly day is an ISO weekday', 'analysis_schedules_weekly_day_range');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_schedules set every_n_builds = 0
+     where id = 'a8000000-0000-4000-8000-000000000001'$$,
+  'every 0 builds is not a threshold', 'analysis_schedules_every_n_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_schedules set build_counter = -1
+     where id = 'a8000000-0000-4000-8000-000000000001'$$,
+  'the counter never goes negative', 'analysis_schedules_build_counter_nonnegative');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_schedules set compute_ceiling_seconds = 0
+     where id = 'a8000000-0000-4000-8000-000000000001'$$,
+  'a compute ceiling of zero is not a budget', 'analysis_schedules_compute_ceiling_positive');
+
+-- --- The meta strip as one row ------------------------------------------------
+
+insert into ouroboros.analysis_runs
+    (id, organization_id, repo_ref, trigger, schedule_id, status, corpus_manifest,
+     analyzer_set, started_at, finished_at, compute_seconds, confidence_note)
+select 'a8010000-0000-4000-8000-000000000001', 'org-v080', 'acme/helios-firmware', 'weekly',
+       'a8000000-0000-4000-8000-000000000001', 'complete', m,
+       '{"label": "deterministic analyzers v1",
+         "analyzers": [{"id": "change_point",  "version": 2, "kind": "deterministic"},
+                       {"id": "log_signature", "version": 1, "kind": "deterministic"}]}',
+       '2026-10-01T08:00:00Z', '2026-10-01T08:41:00Z', 2460,
+       'high — 90d of stable telemetry'
+  from v080_manifest where name = 'bound';
+
+select pg_temp.must_hold(
+  (select format('Corpus %s builds · %s loops · %s days · %s log lines · %s HIL sessions | Analyzed by %s | %s min · %s | Confidence: %s',
+                 corpus_manifest #>> '{counts,builds}', corpus_manifest #>> '{counts,loops}',
+                 corpus_manifest #>> '{window,days}', corpus_manifest #>> '{counts,log_lines}',
+                 corpus_manifest #>> '{counts,hil_sessions}', analyzer_set ->> 'label',
+                 compute_seconds / 60, coalesce(llm_cost_cents::text, 'no cost'),
+                 confidence_note)
+          = 'Corpus 1284 builds · 312 loops · 90 days · 4100000 log lines · 62 HIL sessions | Analyzed by deterministic analyzers v1 | 41 min · no cost | Confidence: high — 90d of stable telemetry'
+     from ouroboros.analysis_runs where id = 'a8010000-0000-4000-8000-000000000001'),
+  'the mockup''s meta strip is one run row — every count, the timing, the analyzer set and the confidence note');
+
+select pg_temp.must_hold(
+  (select corpus_manifest #> '{sources,log_lines}'
+          = '{"sampled": true, "rate": 0.3, "cap": "max_log_lines"}'
+          and corpus_manifest #>> '{budget,max_log_lines}' = '1500000'
+     from ouroboros.analysis_runs where id = 'a8010000-0000-4000-8000-000000000001'),
+  'a budget-bound source states its rate and the cap that bound it');
+
+-- --- The manifest contract -----------------------------------------------------
+
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.analysis_corpus_manifest_valid(m)) from v080_manifest)
+  and ouroboros.analysis_corpus_manifest_valid(null) is null,
+  'both fixture manifests satisfy the contract, and null is left to the column');
+
+select pg_temp.must_hold(
+  (select bool_and(not coalesce(ouroboros.analysis_corpus_manifest_valid(v080_manifest.m #- t.path
+                                  || coalesce(t.patch, '{}'::jsonb)), true))
+     from v080_manifest,
+          (values
+             ('{window}'::text[],               null::jsonb),
+             ('{counts,hil_sessions}',          null),
+             ('{sources,builds}',               null),
+             ('{budget}',                       null),
+             ('{window,days}',                  null)) as t (path, patch)
+    where v080_manifest.name = 'full'),
+  'a manifest missing its window, a count, a source''s sampling record or its budget is refused');
+
+select pg_temp.must_hold(
+  (select bool_and(not ouroboros.analysis_corpus_manifest_valid(jsonb_set(m, t.path, t.value)))
+     from v080_manifest,
+          (values
+             ('{sources,log_lines}'::text[], '{"sampled": true,  "rate": 0.3}'::jsonb),
+             ('{sources,log_lines}',         '{"sampled": true,  "rate": 1, "cap": "max_log_lines"}'),
+             ('{sources,log_lines}',         '{"sampled": true,  "rate": 0, "cap": "max_log_lines"}'),
+             ('{sources,log_lines}',         '{"sampled": true,  "rate": 0.3, "cap": "vibes"}'),
+             ('{sources,log_lines}',         '{"sampled": false, "rate": 0.3}'),
+             ('{sources,log_lines}',         '{"sampled": false, "rate": 1, "cap": "max_log_lines"}'),
+             ('{sources,log_lines}',         '{"sampled": "no",  "rate": 1}'),
+             ('{sources,log_lines}',         '{"sampled": false, "rate": "all"}'),
+             ('{counts,builds}',             '-1'),
+             ('{counts,builds}',             '12.5'),
+             ('{counts,builds}',             '"1,284"'),
+             ('{window,days}',               '0'),
+             ('{window,from}',               '"2026-10-02"'),
+             ('{window,to}',                 '"yesterday"')) as t (path, value)
+    where name = 'full'),
+  'sampling is stated honestly: a sampled source has 0 < rate < 1 and a known cap, a full read has rate 1 and no cap; counts are whole and the window is ordered');
+
+select pg_temp.must_hold(
+  (select ouroboros.analysis_corpus_manifest_valid(
+            jsonb_set(jsonb_set(m, '{counts,rig_telemetry}', '7'),
+                      '{sources,rig_telemetry}', '{"sampled": false, "rate": 1}'))
+          and not ouroboros.analysis_corpus_manifest_valid(
+            jsonb_set(m, '{counts,rig_telemetry}', '7'))
+     from v080_manifest where name = 'full'),
+  'a new source joins counts and sources together; a count without a sampling record is refused');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, corpus_manifest,
+                                         analyzer_set)
+    values ('org-v080', 'acme/other', 'manual', '{"counts": {}}',
+            '{"label": "deterministic analyzers v1",
+              "analyzers": [{"id": "change_point", "version": 1, "kind": "deterministic"}]}')$$,
+  'a run cannot store a manifest outside the contract', 'analysis_runs_manifest_shape');
+
+-- --- Provenance, and no fabricated cost ----------------------------------------
+
+select pg_temp.must_hold(
+  (select bool_and(not coalesce(ouroboros.analysis_analyzer_set_valid(t.s), true))
+     from (values
+       ('[]'::jsonb),
+       ('{"label": "deterministic analyzers v1", "analyzers": []}'),
+       ('{"label": " ", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}'),
+       ('{"label": "v1", "analyzers": [{"id": "Change Point", "version": 1, "kind": "deterministic"}]}'),
+       ('{"label": "v1", "analyzers": [{"id": "x", "version": 0, "kind": "deterministic"}]}'),
+       ('{"label": "v1", "analyzers": [{"id": "x", "version": "2", "kind": "deterministic"}]}'),
+       ('{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "magic"}]}'),
+       ('{"label": "v1", "analyzers": [{"id": "x", "version": 1}]}')) as t (s)),
+  'an analyzer set names a label and a non-empty list of versioned, kinded analyzers');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set llm_cost_cents = 286
+     where id = 'a8010000-0000-4000-8000-000000000001'$$,
+  'a deterministic run cannot carry an LLM cost — the strip never shows a fabricated $',
+  'analysis_runs_cost_needs_llm');
+
+with r as (
+  insert into ouroboros.analysis_runs
+      (organization_id, repo_ref, trigger, status, analyzer_set, llm_cost_cents)
+  values ('org-v080', 'acme/llm', 'manual', 'running',
+          '{"label": "deterministic analyzers v1 + synthesis v1",
+            "analyzers": [{"id": "change_point", "version": 2, "kind": "deterministic"},
+                          {"id": "synthesis",    "version": 1, "kind": "llm"}]}', 286)
+  returning 1
+)
+select pg_temp.must_hold(
+  (select count(*) = 1 from r),
+  'a run whose analyzer set contains an llm pass may record its cost');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set llm_cost_cents = -1 where repo_ref = 'acme/llm'$$,
+  'a cost is never negative', 'analysis_runs_llm_cost_nonnegative');
+
+-- The probe: no fixture run in this file pretends an LLM ran. seed.sql asks the same of the seed.
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.analysis_runs
+               where llm_cost_cents is not null
+                 and not jsonb_path_exists(analyzer_set, '$.analyzers[*] ? (@.kind == "llm")')),
+  'no run carries a cost without the llm analyzer that spent it');
+
+-- --- Statuses: four, three of them terminal, and none of them the same -------
+
+with r as (
+  insert into ouroboros.analysis_runs
+      (id, organization_id, repo_ref, trigger, status, corpus_manifest, analyzer_set,
+       started_at, finished_at, compute_seconds, confidence_note, failure_reason)
+  select v.id::uuid, 'org-v080', v.repo, 'manual', v.status, m,
+         '{"label": "deterministic analyzers v1",
+           "analyzers": [{"id": "change_point", "version": 2, "kind": "deterministic"}]}',
+         '2026-09-30T08:00:00Z', '2026-09-30T09:00:00Z', 3600, v.note, v.reason
+    from v080_manifest,
+         (values ('a8010000-0000-4000-8000-000000000002', 'acme/partial', 'budget_exceeded',
+                  'medium — log corpus sampled at 30%',
+                  'compute ceiling 3600s reached after 4 of 6 analyzers'),
+                 ('a8010000-0000-4000-8000-000000000003', 'acme/crashed', 'failed',
+                  null, 'corpus reader for log_lines raised')) as v (id, repo, status, note, reason)
+   where name = 'bound'
+  returning 1
+)
+select pg_temp.must_hold(
+  (select count(*) = 2 from r),
+  'a budget-bound run keeps its manifest and confidence; a failed run says why');
+
+select pg_temp.must_hold(
+  (select array_agg(status order by status)
+          = '{budget_exceeded,complete,failed}'
+     from ouroboros.analysis_runs
+    where organization_id = 'org-v080' and status <> 'running'),
+  'budget_exceeded, failed and complete are three distinct terminal statuses');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, status, finished_at,
+                                         analyzer_set)
+    values ('org-v080', 'acme/x', 'manual', 'cancelled', now(),
+            '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}')$$,
+  'there is no fifth status', 'analysis_runs_status_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, analyzer_set)
+    values ('org-v080', 'acme/x', 'nightly',
+            '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}')$$,
+  'a trigger is manual, weekly or every_n_builds', 'analysis_runs_trigger_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set failure_reason = null
+     where id = 'a8010000-0000-4000-8000-000000000002'$$,
+  'a budget-bound run says which ceiling stopped it', 'analysis_runs_failure_reason_when_stopped');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set failure_reason = 'nothing went wrong'
+     where id = 'a8010000-0000-4000-8000-000000000001'$$,
+  'a complete run carries no failure reason', 'analysis_runs_failure_reason_when_stopped');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set corpus_manifest = null
+     where id = 'a8010000-0000-4000-8000-000000000002'$$,
+  'partial results need the manifest they were computed from', 'analysis_runs_manifest_when_results');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set confidence_note = null
+     where id = 'a8010000-0000-4000-8000-000000000001'$$,
+  'a complete run states its confidence', 'analysis_runs_confidence_when_complete');
+
+with r as (
+  update ouroboros.analysis_runs set corpus_manifest = null
+   where id = 'a8010000-0000-4000-8000-000000000003' returning corpus_manifest
+)
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(corpus_manifest is null) from r),
+  'a run that failed during assembly may have no manifest');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set status = 'complete', failure_reason = null,
+                                       confidence_note = 'high'
+     where id = 'a8010000-0000-4000-8000-000000000002'$$,
+  'a terminal status never changes — budget_exceeded is not rewritten as complete',
+  'analysis_runs_status_guard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set status = 'running', finished_at = null
+     where id = 'a8010000-0000-4000-8000-000000000001'$$,
+  'a finished run is not restarted', 'analysis_runs_status_guard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set finished_at = started_at - interval '1 minute'
+     where id = 'a8010000-0000-4000-8000-000000000001'$$,
+  'a run cannot finish before it started', 'analysis_runs_finish_order');
+
+-- --- At most one running analysis per repo -------------------------------------
+
+insert into ouroboros.analysis_runs (id, organization_id, repo_ref, trigger, analyzer_set)
+values ('a8010000-0000-4000-8000-000000000010', 'org-v080', 'acme/helios-firmware', 'manual',
+        '{"label": "deterministic analyzers v1",
+          "analyzers": [{"id": "change_point", "version": 2, "kind": "deterministic"}]}');
+
+select pg_temp.must_hold(
+  (select status = 'running' and finished_at is null and corpus_manifest is null
+          and confidence_note is null
+     from ouroboros.analysis_runs where id = 'a8010000-0000-4000-8000-000000000010'),
+  'a run starts as running, unfinished and before its corpus is assembled');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, schedule_id,
+                                         analyzer_set)
+    values ('org-v080', 'acme/helios-firmware', 'every_n_builds',
+            'a8000000-0000-4000-8000-000000000001',
+            '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}')$$,
+  'a second running analysis of the same repo is refused', 'analysis_runs_one_running');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set status = 'running', finished_at = null,
+                                       failure_reason = null
+     where id = 'a8010000-0000-4000-8000-000000000003'$$,
+  'and a finished run cannot be revived alongside it', 'analysis_runs_status_guard');
+
+with r as (
+  insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, analyzer_set)
+  values ('org-v080',       'acme/helios-firmware-2', 'manual',
+          '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}'),
+         ('org-v080-other', 'acme/helios-firmware',   'manual',
+          '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}')
+  returning 1
+)
+select pg_temp.must_hold(
+  (select count(*) = 2 from r),
+  'another repo, or the same repo in another workspace, runs at the same time');
+
+update ouroboros.analysis_runs
+   set status = 'complete', finished_at = started_at, confidence_note = 'low — 7d of telemetry',
+       corpus_manifest = (select m from v080_manifest where name = 'full')
+ where id = 'a8010000-0000-4000-8000-000000000010';
+
+with r as (
+  insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, schedule_id,
+                                       analyzer_set)
+  values ('org-v080', 'acme/helios-firmware', 'every_n_builds',
+          'a8000000-0000-4000-8000-000000000001',
+          '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}')
+  returning 1
+)
+select pg_temp.must_hold(
+  (select count(*) = 1 from r),
+  'once the running analysis ends, the next one may start');
+
+select pg_temp.must_hold(
+  (select indisunique and pg_get_expr(indpred, indrelid) = '(status = ''running''::text)'
+     from pg_index where indexrelid = 'ouroboros.analysis_runs_one_running'::regclass),
+  'the guard is a partial unique index on running rows, so the database enforces it');
+
+-- --- A run's schedule is its own repo's -----------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_runs (organization_id, repo_ref, trigger, schedule_id,
+                                         analyzer_set)
+    values ('org-v080', 'acme/elsewhere', 'weekly', 'a8000000-0000-4000-8000-000000000001',
+            '{"label": "v1", "analyzers": [{"id": "x", "version": 1, "kind": "deterministic"}]}')$$,
+  'a run cannot name another repository''s schedule', 'analysis_runs_schedule_fkey');
+
+-- --- The service role ---------------------------------------------------------------
+
+set local role ouroboros_app;
+update ouroboros.analysis_schedules set build_counter = 0
+ where id = 'a8000000-0000-4000-8000-000000000001';
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.analysis_runs
+    where organization_id = 'org-v080' and status = 'running'
+      and repo_ref = 'acme/helios-firmware'),
+  'the service reads runs and resets the counter');
+reset role;
+
+-- --- Lifecycle ----------------------------------------------------------------
+
+delete from ouroboros.analysis_schedules where id = 'a8000000-0000-4000-8000-000000000001';
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and bool_and(schedule_id is null) and bool_and(trigger <> 'manual')
+     from ouroboros.analysis_runs
+    where organization_id = 'org-v080' and repo_ref = 'acme/helios-firmware'
+      and trigger <> 'manual'),
+  'a deleted schedule leaves its runs as records, trigger kept and schedule cleared');
+
+delete from ouroboros."user" where "id" = 'user-v080';
+delete from ouroboros.organization where "id" in ('org-v080', 'org-v080-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.analysis_runs where organization_id like 'org-v080%')
+  and not exists (select 1 from ouroboros.analysis_schedules
+                   where organization_id like 'org-v080%'),
+  'a deleted workspace takes its runs and schedules with it');
+
+drop table v080_manifest;
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

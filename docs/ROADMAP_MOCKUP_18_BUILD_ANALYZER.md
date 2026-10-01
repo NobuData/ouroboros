@@ -237,14 +237,27 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BU.1 | #506 | 🟡 Open | ouroboros-db: [BU.1] Analysis runs & corpus snapshots | Run records, schedules, budgets, the meta-strip manifest (A2/A7) | mvp, analyzer, db | N (after AH.1, AS.1, AO.1, BI.1) | Y | M | ouroboros-db |
+| BU.1 | #506 ✅ | 🟢 Done | ouroboros-db: [BU.1] Analysis runs & corpus snapshots | Run records, schedules, budgets, the meta-strip manifest (A2/A7) | mvp, analyzer, db | N (after AH.1, AS.1, AO.1, BI.1) | Y | M | ouroboros-db |
 | BU.2 | #507 | 🟡 Open | ouroboros-db: [BU.2] Findings & suggestions schema | Typed findings, evidence refs, suggestion lifecycle, confidence (A1/A4) | mvp, analyzer, db | N (after BU.1) | Y | M | ouroboros-db |
 | BU.3 | #508 | 🟡 Open | ouroboros-db: [BU.3] Application measurements & calibration | Predicted/measured windows, verdicts, confounds, factors (A6) | mvp, analyzer, db | N (after BU.2) | Y | S | ouroboros-db |
 | BU.4 | #509 | 🟡 Open | ouroboros-db: [BU.4] Analyzer seeds — mockup-18 parity + probes | 90d corpus stats, findings, suggestions, measurements; ci checks | mvp, analyzer, db, ci | N (after BU.3, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue BU.1 — ouroboros-db: [BU.1] Analysis runs & corpus snapshots
 
-> **GitHub issue:** #506 · **Status:** 🟡 Open · **Parent epic:** #502
+> **GitHub issue:** #506 ✅ · **Status:** 🟢 Done · **Parent epic:** #502
+
+- **Delivered** (`ouroboros-db` `V080__analysis_runs.sql`): `analysis_runs` — trigger
+  `manual|weekly|every_n_builds`, status `running|complete|failed|budget_exceeded` (terminal
+  statuses frozen by `analysis_runs_status_guard`; `budget_exceeded` keeps its manifest and partial
+  results), `corpus_manifest` held to `analysis_corpus_manifest_valid()` (window, counts, a
+  per-source sampling record `{sampled, rate, cap}` for every count, the budget it ran under),
+  `analyzer_set` `{label, analyzers:[{id, version, kind}]}` whose `label` is what *Analyzed by*
+  renders, `compute_seconds`, `llm_cost_cents` (only with an `llm` analyzer —
+  `analysis_runs_cost_needs_llm`), `confidence_note`, `failure_reason`. `analysis_schedules` —
+  one per (org, repo): weekly ISO day + UTC time, `every_n_builds` with an independent
+  `build_counter`, budgets as columns. `analysis_runs_one_running` (partial unique) is the
+  concurrent-run guard, proven by the two-session `tests/verify-analysis-run-guard.sh` (CI step in
+  `db.yml`). Retention: the settings plane's analysis class (#482), by `finished_at`.
 
 - **Problem Statement:** Every analysis needs a durable record of what it
   read, when, under what budget — the meta strip is a snapshot manifest
@@ -915,7 +928,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** AH, AS/AT.3, AO, AJ.4 shape, AG.5, AS.4,
    BI.1/BI.2, WF-P.3/S, AK/AL, farm config, BK.1, #41/#46.
-2. **Phase 1 — Domain:** BU.1 (#506) → BU.2 (#507) → BU.3 (#508) → BU.4 (#509)
+2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → BU.2 (#507) → BU.3 (#508) → BU.4 (#509)
 3. **Phase 2 — Pipeline:** BV.1 (#510) ⊕ (→) BV.2 (#511) → BV.3 (#512) →
    BV.4 (#513) → BV.5 (#514) → BV.6 (#515)
 4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
