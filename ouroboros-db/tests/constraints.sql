@@ -26238,6 +26238,374 @@ select pg_temp.must_hold(
   'a deleted workspace takes its policy with it');
 
 -- ===========================================================================
+-- V076 — metric_definitions, metric_daily, metric_rollup_state: the Insights grain (#432, BI.1)
+-- ===========================================================================
+--
+-- The migration's two rules are asked first: a rate re-windowed from its daily components equals
+-- an oracle computed straight from the events, and is not the average of the daily rates (the
+-- fixture is built so the two differ by ten points); and a change to what a metric means without
+-- a version bump is refused. Then the grain, the tooltip, and a backfill interrupted mid-way.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v076', 'Metric Works', 'metric-works-v076', now());
+
+-- --- The registry --------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select count(*) >= 11 from ouroboros.metric_definitions),
+  'the registry ships its first rows with the migration');
+
+select pg_temp.must_hold(
+  (select bool_and(btrim(formula_text) <> '' and btrim(caveats) <> ''
+                   and cardinality(source_planes) > 0 and unit is not null and version >= 1)
+     from ouroboros.metric_definitions),
+  'every registry entry carries formula text, sources, caveats, unit and version');
+
+select pg_temp.must_hold(
+  (select array_agg(metric_id order by metric_id) = '{change_failure_rate,mttr}'
+     from ouroboros.metric_definitions where proxy),
+  'proxy is set for DORA change failure rate and MTTR, and nothing else');
+
+select pg_temp.must_hold(
+  (select bool_and(is_rate) from ouroboros.metric_definitions where unit = 'pct'),
+  'every shipped pct metric is a rate');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate)
+    values ('v076_bad', 'probe', 'Bad', 'x', '{runs}', 'x', 'pct', false)$$,
+  'a pct metric must be a rate', 'metric_definitions_pct_is_rate');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate)
+    values ('v076_bad', 'probe', 'Bad', 'x', '{runs}', 'x', 'percent', true)$$,
+  'the unit vocabulary is closed', 'metric_definitions_unit_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate)
+    values ('v076_bad', 'probe', 'Bad', 'x', '{}', 'x', 'count', false)$$,
+  'a metric names at least one source plane', 'metric_definitions_source_planes_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate)
+    values ('v076_bad', 'probe', 'Bad', 'x', '{runs,null}', 'x', 'count', false)$$,
+  'a source plane is never null', 'metric_definitions_source_planes_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate)
+    values ('v076_bad', 'probe', 'Bad', 'x', '{runs}', '  ', 'count', false)$$,
+  'caveats are required — a metric with nothing to disclose says so', 'metric_definitions_caveats_present');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_definitions
+      (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate)
+    values ('v076_bad', 'probe', 'Bad', '', '{runs}', 'x', 'count', false)$$,
+  'formula text is required', 'metric_definitions_formula_present');
+
+-- The version rule, on a probe metric of this section's own.
+insert into ouroboros.metric_definitions
+  (metric_id, family, title, formula_text, source_planes, caveats, unit, is_rate)
+values ('v076_probe', 'probe', 'Probe', 'Probes per day.', '{runs}', 'None — a fixture.', 'count', false);
+
+select pg_temp.must_reject(
+  $$update ouroboros.metric_definitions set formula_text = 'Probes per hour.'
+     where metric_id = 'v076_probe'$$,
+  'a formula change without a version bump is refused', 'metric_definitions_version_guard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.metric_definitions set source_planes = '{runs,builds}'
+     where metric_id = 'v076_probe'$$,
+  'a source-plane change is a formula change', 'metric_definitions_version_guard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.metric_definitions set proxy = true where metric_id = 'v076_probe'$$,
+  'flagging a metric a proxy is a formula change', 'metric_definitions_version_guard');
+
+update ouroboros.metric_definitions
+   set formula_text = 'Probes per hour.', version = version + 1
+ where metric_id = 'v076_probe';
+
+select pg_temp.must_hold(
+  (select version = 2 and formula_text = 'Probes per hour.'
+     from ouroboros.metric_definitions where metric_id = 'v076_probe'),
+  'a formula change with a version bump is accepted');
+
+update ouroboros.metric_definitions
+   set caveats = 'Still a fixture.', title = 'Probe count'
+ where metric_id = 'v076_probe';
+
+select pg_temp.must_hold(
+  (select version = 2 from ouroboros.metric_definitions where metric_id = 'v076_probe'),
+  'copy — title and caveats — changes at the same version');
+
+select pg_temp.must_reject(
+  $$update ouroboros.metric_definitions set version = 1 where metric_id = 'v076_probe'$$,
+  'a version never goes backwards', 'metric_definitions_version_guard');
+
+-- --- The component rule --------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+    values ('org-v076', 'acme/helios', 'merge_rate', true, '2026-08-01', 90)$$,
+  'a rate row without components is refused', 'metric_daily_rate_components');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, numerator)
+    values ('org-v076', 'acme/helios', 'merge_rate', true, '2026-08-01', 90, 9)$$,
+  'a rate row needs both components', 'metric_daily_rate_components');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+    values ('org-v076', 'acme/helios', 'merge_rate', false, '2026-08-01', 90)$$,
+  'a row cannot claim a rate metric is not a rate', 'metric_daily_definition_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, numerator, denominator)
+    values ('org-v076', 'acme/helios', 'merge_rate', true, '2026-08-01', 0, 0, 0)$$,
+  'a rate row has a positive denominator', 'metric_daily_rate_components');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, numerator, denominator)
+    values ('org-v076', 'acme/helios', 'merged_prs', false, '2026-08-01', 6, 6, 6)$$,
+  'a non-rate row carries no components', 'metric_daily_rate_components');
+
+-- The oracle. Thirty days of closed PRs: every fifth day is busy (60 closed, 50 autonomous), the
+-- rest are quiet and perfect (2 of 2). The true 30-day rate is 348 / 408 = 85.3 %; the average of
+-- the daily rates is 96.7 %. One row per closed PR, as the PR plane would hold them.
+create temp table v076_closed_prs (day date not null, autonomous boolean not null) on commit drop;
+
+insert into v076_closed_prs (day, autonomous)
+select date '2026-08-01' + (d - 1),
+       n <= case when d % 5 = 0 then 50 else 2 end
+  from generate_series(1, 30) d,
+       lateral generate_series(1, case when d % 5 = 0 then 60 else 2 end) n;
+
+-- What the rollup job writes: one rate row per day, with its components.
+insert into ouroboros.metric_daily
+  (organization_id, repo_ref, metric_id, is_rate, day, value, numerator, denominator)
+select 'org-v076', 'acme/helios', 'merge_rate', true, day,
+       100.0 * count(*) filter (where autonomous) / count(*),
+       count(*) filter (where autonomous),
+       count(*)
+  from v076_closed_prs
+ group by day;
+
+select pg_temp.must_hold(
+  (select 100.0 * sum(numerator) / sum(denominator)
+     from ouroboros.metric_daily
+    where organization_id = 'org-v076' and repo_ref = 'acme/helios' and metric_id = 'merge_rate'
+      and day between '2026-08-01' and '2026-08-30')
+  = (select 100.0 * count(*) filter (where autonomous) / count(*) from v076_closed_prs),
+  'a 30-day rate re-windowed from daily components equals the oracle over the events');
+
+select pg_temp.must_hold(
+  (select abs(avg(value) - 100.0 * sum(numerator) / sum(denominator)) > 10
+     from ouroboros.metric_daily
+    where organization_id = 'org-v076' and metric_id = 'merge_rate'),
+  'the fixture makes the average of daily rates differ from the true rate by more than ten points');
+
+-- --- The grain -----------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, numerator, denominator)
+    values ('org-v076', 'acme/helios', 'merge_rate', true, '2026-08-01', 50, 1, 2)$$,
+  'one row per (org, repo, metric, day)', 'metric_daily_grain_key');
+
+-- An org-level row — repo_ref null — is storable today, and the grain holds for it too.
+insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+values ('org-v076', null, 'merged_prs', false, '2026-08-04', 9);
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.metric_daily
+    where organization_id = 'org-v076' and repo_ref is null),
+  'an org-level row is storable with repo_ref null');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+    values ('org-v076', null, 'merged_prs', false, '2026-08-04', 10)$$,
+  'two org-level rows for one metric and day collide — nulls not distinct',
+  'metric_daily_grain_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+    values ('org-v076', 'not-a-repo', 'merged_prs', false, '2026-08-04', 1)$$,
+  'repo_ref is V067''s owner/name domain', 'repo_ref_format');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+    values ('org-v076', 'acme/helios', 'no_such_metric', false, '2026-08-04', 1)$$,
+  'a row names a registered metric', 'metric_daily_definition_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+    values ('org-v076', 'acme/helios', 'merged_prs', false, '2026-08-04', -1)$$,
+  'a daily value is never negative', 'metric_daily_value_nonnegative');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_daily
+      (organization_id, repo_ref, metric_id, is_rate, day, value, meta)
+    values ('org-v076', 'acme/helios', 'merged_prs', false, '2026-08-04', 1, '[912]')$$,
+  'meta is an object', 'metric_daily_meta_object');
+
+select pg_temp.must_hold(
+  exists (select 1 from pg_indexes
+           where schemaname = 'ouroboros' and indexname = 'metric_daily_day_brin'
+             and indexdef like '%USING brin (day)%'),
+  'metric_daily has a BRIN index on day');
+
+-- --- The tooltip ---------------------------------------------------------
+
+-- Mockup 15's crosshair card, rendered from one row.
+insert into ouroboros.metric_daily
+  (organization_id, repo_ref, metric_id, is_rate, day, value, meta)
+values ('org-v076', 'acme/helios', 'merged_prs', false, '2026-08-04', 6,
+        '{"cost_cents": 912, "interventions": 1}');
+
+select pg_temp.must_hold(
+  (select to_char(day, 'Mon FMDD') || ' — ' || value || ' merged · $'
+          || to_char((meta ->> 'cost_cents')::numeric / 100, 'FM990.00') || ' · '
+          || (meta ->> 'interventions') || ' intervention'
+     from ouroboros.metric_daily
+    where organization_id = 'org-v076' and repo_ref = 'acme/helios'
+      and metric_id = 'merged_prs' and day = '2026-08-04')
+  = 'Aug 4 — 6 merged · $9.12 · 1 intervention',
+  'meta carries the throughput tooltip''s exact content in one read');
+
+-- --- Restartable backfill ------------------------------------------------
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_rollup_state (organization_id, family, backfill_cursor)
+    values ('org-v076', 'throughput', '2026-07-01')$$,
+  'a backfill cursor comes with its end', 'metric_rollup_state_backfill_pair');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_rollup_state (organization_id, family, backfill_cursor, backfill_until)
+    values ('org-v076', 'throughput', '2026-07-10', '2026-07-01')$$,
+  'a backfill cursor never passes its end', 'metric_rollup_state_backfill_order');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_rollup_state (organization_id, family, last_run_status)
+    values ('org-v076', 'throughput', 'succeeded')$$,
+  'a run status is stamped with its time', 'metric_rollup_state_run_stamped');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_rollup_state
+      (organization_id, family, last_run_status, last_run_at, last_error)
+    values ('org-v076', 'throughput', 'succeeded', now(), 'boom')$$,
+  'an error belongs to a failed run', 'metric_rollup_state_error_on_failure');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.metric_rollup_state (organization_id, family)
+    values ('org-v076', 'Throughput')$$,
+  'a family is a lowercase identifier', 'metric_rollup_state_family_format');
+
+-- A ten-day backfill of merged_prs on a second repository, July 1–10.
+insert into ouroboros.metric_rollup_state
+  (organization_id, family, backfill_cursor, backfill_until, last_run_status, last_run_at)
+values ('org-v076', 'throughput', '2026-07-01', '2026-07-10', 'running', now());
+
+-- One day of the job, as the migration header writes it: upsert the day's rows on the grain key,
+-- then move the cursor — or clear it once it passes the end — in the same transaction. `crash`
+-- raises between the two, the worst place an interruption can land.
+create function pg_temp.v076_fill_day(d date, crash boolean default false)
+returns void language plpgsql as $$
+begin
+  insert into ouroboros.metric_daily (organization_id, repo_ref, metric_id, is_rate, day, value)
+  values ('org-v076', 'acme/zephyr', 'merged_prs', false, d, extract(day from d))
+  on conflict (organization_id, repo_ref, metric_id, day) do update
+    set value = excluded.value, computed_at = now();
+
+  if crash then
+    raise exception 'interrupted';
+  end if;
+
+  update ouroboros.metric_rollup_state
+     set backfill_cursor = case when d < backfill_until then d + 1 end,
+         backfill_until  = case when d < backfill_until then backfill_until end
+   where organization_id = 'org-v076' and family = 'throughput';
+end;
+$$;
+
+-- Four days fill; the fifth is interrupted after its rows were written but before the cursor
+-- moved. Each fill is its own subtransaction here, as each would be its own transaction in the job.
+do $$
+declare
+  d date;
+begin
+  for d in select generate_series(date '2026-07-01', date '2026-07-04', interval '1 day')::date loop
+    perform pg_temp.v076_fill_day(d);
+  end loop;
+
+  begin
+    perform pg_temp.v076_fill_day('2026-07-05', crash => true);
+  exception when raise_exception then
+    null;  -- the job died; its transaction rolled back
+  end;
+end;
+$$;
+
+select pg_temp.must_hold(
+  (select backfill_cursor = '2026-07-05' from ouroboros.metric_rollup_state
+    where organization_id = 'org-v076' and family = 'throughput')
+  and (select count(*) = 4 from ouroboros.metric_daily
+        where organization_id = 'org-v076' and repo_ref = 'acme/zephyr'),
+  'an interrupted day leaves neither its rows nor a moved cursor behind');
+
+-- The restart: from the cursor to the end, plus a re-fill of a day already done (a retried job).
+do $$
+declare
+  d date;
+begin
+  perform pg_temp.v076_fill_day('2026-07-03');
+  update ouroboros.metric_rollup_state set backfill_cursor = '2026-07-05'
+   where organization_id = 'org-v076' and family = 'throughput';
+
+  loop
+    select backfill_cursor into d from ouroboros.metric_rollup_state
+     where organization_id = 'org-v076' and family = 'throughput';
+    exit when d is null;
+    perform pg_temp.v076_fill_day(d);
+  end loop;
+end;
+$$;
+
+select pg_temp.must_hold(
+  (select count(*) = 10 and count(distinct day) = 10
+          and min(day) = '2026-07-01' and max(day) = '2026-07-10'
+          and sum(value) = 55
+     from ouroboros.metric_daily
+    where organization_id = 'org-v076' and repo_ref = 'acme/zephyr' and metric_id = 'merged_prs'),
+  'a resumed backfill fills every day once — no gaps, no double-counting');
+
+select pg_temp.must_hold(
+  (select backfill_cursor is null and backfill_until is null
+     from ouroboros.metric_rollup_state
+    where organization_id = 'org-v076' and family = 'throughput'),
+  'a finished backfill clears its cursor and end together');
+
+-- --- Lifecycle -----------------------------------------------------------
+
+select pg_temp.must_reject(
+  $$delete from ouroboros.metric_definitions where metric_id = 'merged_prs'$$,
+  'a definition with history cannot be deleted from under it', 'metric_daily_definition_fkey');
+
+delete from ouroboros.organization where "id" = 'org-v076';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.metric_daily where organization_id = 'org-v076')
+  and not exists (select 1 from ouroboros.metric_rollup_state where organization_id = 'org-v076'),
+  'a deleted workspace takes its rollups and bookkeeping with it');
+
+delete from ouroboros.metric_definitions where metric_id = 'v076_probe';
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
