@@ -3,8 +3,8 @@
  * budget, deadline, rate limits, partial results, and a new pack with no orchestrator change.
  */
 
-import { CORE_ROW_KEYS, type ProbeResults, type RulePack } from "./detection.pack";
-import { EMPTY, NODE, ZEPHYR, fixtureProber } from "./detection.fixture";
+import { CORE_ROW_KEYS, type RulePack } from "./detection.pack";
+import { EMPTY, LICENSE_PACK, NODE, ZEPHYR, fixtureProber } from "./detection.fixture";
 import {
   DEFAULT_SCAN_BUDGET,
   UNDETERMINED_SENTENCES,
@@ -23,37 +23,6 @@ import { CORE_PACKS } from "./packs/core.packs";
 function budget(overrides: Partial<ScanBudget>): ScanBudget {
   return { ...DEFAULT_SCAN_BUDGET, ...overrides };
 }
-
-/** A pack emitting a custom row from the tree — the extensibility criterion's worked example. */
-const LICENSE_PACK: RulePack = {
-  key: "license",
-  version: "0.1.0",
-  rows: ["custom:license"],
-  probes: () => [{ kind: "tree" }, { kind: "file", path: "LICENSE" }],
-  conclude: (seen: ProbeResults) => {
-    const license = seen.file("LICENSE");
-
-    return {
-      rows: [
-        license == null
-          ? {
-              rowKey: "custom:license",
-              verdict: "missing",
-              value: "No LICENSE found",
-              evidence: {},
-              confidence: "high",
-            }
-          : {
-              rowKey: "custom:license",
-              verdict: "ok",
-              value: license.content.split("\n")[0] ?? "LICENSE",
-              evidence: { hit: "LICENSE" },
-              confidence: "high",
-            },
-      ],
-    };
-  },
-};
 
 describe("a new rule pack", () => {
   it("adds a custom:* row with no change to the orchestrator", async () => {

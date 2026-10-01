@@ -28,6 +28,7 @@ import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import type { WorkflowStats } from "../workflows/stats.resources";
 import type { WorkflowDetail } from "../workflows/workflows.resources";
 import type { WorkflowRail } from "../workflows/workflows.service";
+import { shipTemplates } from "./onboarding.integration.fixture";
 import type { OnboardingResource } from "./resources";
 import type { TemplateSelectionResource, TemplateTilesResource } from "./templates.resources";
 
@@ -41,32 +42,24 @@ const WORKFLOWS = "/api/v1/workflows";
 describe("template instantiation, against a migrated database", () => {
   let api: ApiHarness;
   let engine: EngineStub;
-  /** V068's shipped template rows, as the migration left them. */
-  let shippedTemplates: unknown;
 
   beforeAll(async () => {
     engine = await startEngineStub();
     api = await ApiHarness.start({ OURO_ENGINE_URL: engine.url });
-
-    const { rows } = await api.sql.query<{ templates: unknown }>(
-      `select json_agg(t) as templates from ouroboros.workflow_templates t
-        where t.organization_id is null`,
-    );
-
-    shippedTemplates = rows[0].templates;
   });
 
   // The last truncate emptied `workflow_templates`; later suites read V068's rows as shipped.
   afterAll(async () => {
-    await restoreTemplates(api, shippedTemplates);
+    await shipTemplates(api);
     await api.close();
     await engine.stop();
   });
 
-  // `truncate()` cascades into `workflow_templates`, so V068's shipped rows are put back first.
+  // `truncate()` empties `workflow_templates`, so V068's shipped rows are put back first —
+  // whatever suite ran before this one (#389).
   beforeEach(async () => {
     engine.reset();
-    await restoreTemplates(api, shippedTemplates);
+    await shipTemplates(api);
   });
 
   afterEach(async () => {
@@ -401,18 +394,3 @@ describe("template instantiation, against a migrated database", () => {
     }
   }
 });
-
-/**
- * Put V068's shipped rows back after a truncate emptied them.
- *
- * @param api - The harness.
- * @param shipped - The rows, as `json_agg` read them before the first test.
- */
-async function restoreTemplates(api: ApiHarness, shipped: unknown): Promise<void> {
-  await api.sql.query(
-    `insert into ouroboros.workflow_templates
-     select * from json_populate_recordset(null::ouroboros.workflow_templates, $1::json)
-      where not exists (select 1 from ouroboros.workflow_templates where organization_id is null)`,
-    [JSON.stringify(shipped)],
-  );
-}

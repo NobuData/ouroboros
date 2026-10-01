@@ -19,6 +19,7 @@ import { sql } from "kysely";
 import { DatabaseService } from "../db/db.service";
 import type { ProtectedPathSource, RepoDetection, RepoDetectionScan } from "../db/schema";
 import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
+import { CORE_ROW_KEYS } from "./detection.pack";
 import type { MeasuredTests } from "./detection.reconcile";
 import type { DetectionRow } from "./detection.scan";
 
@@ -179,7 +180,12 @@ export class DetectionRepository implements DetectionStore {
   }
 
   /**
-   * One scan and its rows.
+   * One scan and its rows, **in card order**: the six core rows as mockup 13 draws them
+   * (`CORE_ROW_KEYS`), then any pack's `custom:*` rows by key.
+   *
+   * The order is the row key's, not the insert's. A scan's rows are written in one statement and
+   * share its `created_at`, so ordering by it left the card's order to a random `id`
+   * ([#389](https://github.com/NobuData/ouroboros/issues/389)).
    *
    * @param organizationId - The workspace.
    * @param repo - `owner/name`, lower-case.
@@ -214,8 +220,9 @@ export class DetectionRepository implements DetectionStore {
       .where("organization_id", "=", organizationId)
       .where("repo_ref", "=", repo)
       .where("scan_seq", "=", scan.scan_seq)
-      .orderBy("created_at", "asc")
-      .orderBy("id", "asc")
+      // `array_position` is null for a custom row, and nulls sort last ascending.
+      .orderBy(sql`array_position(${sql.val([...CORE_ROW_KEYS])}::text[], row_key)`)
+      .orderBy("row_key", "asc")
       .execute();
 
     return { scan, rows };

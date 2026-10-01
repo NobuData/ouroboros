@@ -15,3 +15,8 @@ openapi.json
 # deliberately cut mid-document, which Prettier would refuse or "repair" — and the golden
 # file its suite writes.
 src/modules/test-results/fixtures/
+
+# The detection certification's golden file (#389), as `GoldenFile.save` writes it — one array
+# element per line, where Prettier would fill short arrays to its print width. Formatting it
+# would make every regeneration a diff of whitespace.
+src/modules/detection/detection.archetypes.golden.json

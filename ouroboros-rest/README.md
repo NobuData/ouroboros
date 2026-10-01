@@ -2737,6 +2737,12 @@ overwritten. When the test plane (#324) has a completed run, the tests row is re
 **A new pack is a file in `detection/packs/` and an entry in `CORE_PACKS`** — it may emit
 `custom:<name>` rows, and the orchestrator (`detection.scan.ts`) never names a pack.
 
+**Rows are served in card order** — the six core rows as mockup 13 draws them, then any
+`custom:*` rows by key. The order is the row key's rather than the insert's since REST 0.37.40
+([#389](https://github.com/NobuData/ouroboros/issues/389)): a scan writes its rows in one
+statement, so they share a `created_at`, and ordering by it had left the card's order to a random
+`id` for every scan but the seeded one.
+
 ## Template tiles and instantiation
 
 Step 3 of the wizard ([#386](https://github.com/NobuData/ouroboros/issues/386), BB.3 — the service
@@ -2901,6 +2907,43 @@ the same projection before launch (`defaults`) and after it (the receipt).
 
 **No aggregate statistic** (O8) appears in either payload: nothing is measured across teams, so
 the mockup's *"4m 10s"* and *"92%"* have no counterpart, and the suites assert their absence.
+
+### Onboarding suites & mutation checks
+
+BB.6 ([#389](https://github.com/NobuData/ouroboros/issues/389)) certifies the onboarding plane
+under `yarn test:integration`, beside BB.1–BB.5's own suites. Most of the plane's risk is in the
+joins — the rail reads four subsystems, the launcher composes three, and dry-run is enforced in
+the PR plane — so each suite writes the *other* plane's rows and reads the wizard back:
+
+| Suite | Holds |
+| ----- | ----- |
+| `onboarding/derivation.certification.integration-spec.ts` | every subsystem state × its step, written to `ticket_sources`, `github_orgs`/`github_repos`, `workflows`, `queue_items`/`runs` and read over HTTP, with the wizard's own row untouched; a forward traversal that tries every `complete-step` at every stage; `onboarding_state` has no column for a step status and no second table exists for one |
+| `detection/detection.certification.integration-spec.ts` | the four archetype trees scanned through `POST …/detection/scan` — registry, GitHub provider, rate guard, rule packs, V067 — and what the card serves held to `detection.archetypes.golden.json`; evidence names pack, version and probes really asked; join, debounce and `scan_seq`; detected → measured; a pack beside the core; budget exhaustion |
+| `onboarding/launch.certification.integration-spec.ts` | twelve guards, each taken away through its owning subsystem: the refusal's code and reason, and a zero write footprint (no queue item, no completion stamp, no policy row) — beside a control launch of the same bench |
+| `onboarding/onboarding.certification.integration-spec.ts` | the picker reordered by a weight change and answering `none_safe`; the caption statistic scan (O8), first run against the mockup's own two invented lines; one workspace read under three deployments (O6) |
+| `onboarding/dry-run.roundtrip.integration-spec.ts` | the wizard's launch turning dry-run on, then the PR plane on the in-memory git host: a PR forced to draft, arm and merge refused, the armed plan refused at execution, auto-merge overridden with every workflow document unchanged — and the flip restoring all of it |
+| `onboarding/onboarding.isolation.integration-spec.ts` | two workspaces mirroring the **same** repository, so every stored `repo_ref` is the same string; every onboarding route, enumerated from the route table, answers each from its own rows only |
+
+**The archetype host** (`detection/detection.archetypes.fixture.ts`) replaces one provider — the
+Octokit factory — and answers GitHub's three probe routes from the checked-in trees in
+`detection.fixture.ts`, in GitHub's own shapes (`blob`/`tree` items, base64 contents, `404`, the
+empty repository's `409`). Everything above Octokit is the application's own, and no request
+leaves the process. Regenerate the golden file with
+`OURO_UPDATE_GOLDENS=1 yarn test:integration src/modules/detection/detection.certification` and
+review the diff.
+
+**`onboarding.integration.fixture.ts`** is the shared bench, and `shipTemplates` in it is why
+these suites do not care what ran before them: `ApiHarness.truncate` empties `workflow_templates`,
+V068's shipped rows included, so a suite re-runs the migration's own `insert` rather than
+restoring a copy it read from a table an earlier suite may already have emptied.
+
+**Mutation checks.** Each suite's header names the production change that turns it red, and each
+was run: a launcher guard removed (one fixture each), a rule pack removed or a probe-table entry
+renamed (the goldens), the debounce or the relabel skipped, each of the four dry-run enforcement
+points deleted, the plan's auto-merge override dropped, completion no longer adopting dry-run,
+`pick` ignoring the safety bar, a statistic served in a caption, a capability flag ignored, a
+`step_status` column added to `onboarding_state`, and the workspace predicate taken off seven
+statements one at a time.
 
 ## The workflow lifecycle API
 

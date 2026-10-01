@@ -13,6 +13,7 @@ import { ApiHarness, type Person, type Workspace } from "../../testing/harness.f
 import { bodyOf } from "../../testing/integration.fixture";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
+import { shipTemplates } from "./onboarding.integration.fixture";
 import type { OnboardingResource, OnboardingSkipResource } from "./resources";
 
 const REPO = "acme-robotics/helios-firmware";
@@ -22,33 +23,22 @@ const SKIP = `/api/v1/onboarding/skip?repo=${encodeURIComponent(REPO)}`;
 
 describe("the onboarding wizard API", () => {
   let api: ApiHarness;
-  /** V068's shipped template rows, as the migration left them. */
-  let shippedTemplates: unknown;
 
   beforeAll(async () => {
     api = await ApiHarness.start();
-
-    const { rows } = await api.sql.query<{ templates: unknown }>(
-      `select json_agg(t) as templates from ouroboros.workflow_templates t
-        where t.organization_id is null`,
-    );
-
-    shippedTemplates = rows[0].templates;
   });
 
-  // `truncate()` cascades from `organization` to every table that references it, and
-  // `workflow_templates` is one — so V068's shipped rows go with the first truncate. They are
-  // product data the offered-template check reads, so each test starts with them put back.
-  beforeEach(async () => {
-    await api.sql.query(
-      `insert into ouroboros.workflow_templates
-       select * from json_populate_recordset(null::ouroboros.workflow_templates, $1::json)
-        where not exists (select 1 from ouroboros.workflow_templates where organization_id is null)`,
-      [JSON.stringify(shippedTemplates)],
-    );
+  // `truncate()` empties every table, and `workflow_templates` is one — so V068's shipped rows
+  // go with any suite's first truncate. They are product data the offered-template check reads,
+  // so each test starts with them put back, whatever ran before this suite (#389).
+  beforeEach(() => shipTemplates(api));
+
+  // The last truncate emptied `workflow_templates`; later suites read V068's rows as shipped.
+  afterAll(async () => {
+    await shipTemplates(api);
+    await api.close();
   });
 
-  afterAll(() => api.close());
   afterEach(() => api.truncate());
 
   /** The wizard's stored row for the repository — what a read must not change. */
