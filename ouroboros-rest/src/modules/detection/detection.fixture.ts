@@ -17,7 +17,13 @@
 
 import { TicketSourceError } from "../ticket-sources/ticket-source.errors";
 import type { RepoTree, RepoTreeEntry } from "../ticket-sources/ticket-source.probe";
-import { probeKey, type ProbeSpec, type ProbeValue } from "./detection.pack";
+import {
+  probeKey,
+  type ProbeResults,
+  type ProbeSpec,
+  type ProbeValue,
+  type RulePack,
+} from "./detection.pack";
 import type { Prober } from "./detection.scan";
 
 /** A repository, as a fixture. */
@@ -175,6 +181,40 @@ export const PYTHON: FixtureRepo = {
 
 /** A repository with no commits. */
 export const EMPTY: FixtureRepo = { languages: {}, files: {} };
+
+/**
+ * A pack emitting a custom row from the tree — the extensibility criterion's worked example. It
+ * is registered beside the core packs and nowhere inside them: a new row is a new pack.
+ */
+export const LICENSE_PACK: RulePack = {
+  key: "license",
+  version: "0.1.0",
+  rows: ["custom:license"],
+  probes: () => [{ kind: "tree" }, { kind: "file", path: "LICENSE" }],
+  conclude: (seen: ProbeResults) => {
+    const license = seen.file("LICENSE");
+
+    return {
+      rows: [
+        license == null
+          ? {
+              rowKey: "custom:license",
+              verdict: "missing",
+              value: "No LICENSE found",
+              evidence: {},
+              confidence: "high",
+            }
+          : {
+              rowKey: "custom:license",
+              verdict: "ok",
+              value: license.content.split("\n")[0] ?? "LICENSE",
+              evidence: { hit: "LICENSE" },
+              confidence: "high",
+            },
+      ],
+    };
+  },
+};
 
 /**
  * The tree GitHub would list for a fixture: every file, and every directory above one.

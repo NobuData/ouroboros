@@ -433,7 +433,7 @@ seeds: steps 1–2 ✓ (derived) · scan(6 rows, 38s, detected) · quick-fixes s
 | BB.3 | #386 ✅ | 🟢 Done | ouroboros-rest: [BB.3] Template instantiation service | Tiles payload, unlock evaluation, create-from-template (WF-T.5) | mvp, onboarding, workflow, rest | N (after BA.2, WF-P.3) | Y | M | ouroboros-rest |
 | BB.4 | #387 ✅ | 🟢 Done | ouroboros-rest: [BB.4] Safe-first-issue picker | Deterministic scoring with rendered reasoning (O5) | mvp, onboarding, intake, rest | N (after INTAKE-L.3) | Y | M | ouroboros-rest |
 | BB.5 | #388 ✅ | 🟢 Done | ouroboros-rest: [BB.5] First-run launcher & smart defaults | Queue+pin+dry-run launch; deployment-aware defaults payload | mvp, onboarding, rest | N (after BB.2–BB.4, BA.3) | Y | M | ouroboros-rest |
-| BB.6 | #389 | 🟡 Open | ouroboros-rest: [BB.6] Onboarding integration tests | State derivation, rule packs, instantiation, picker, launch | mvp, onboarding, rest, ci | N (after BB.1–BB.5) | Y | M | ouroboros-rest |
+| BB.6 | #389 ✅ | 🟢 Done | ouroboros-rest: [BB.6] Onboarding integration tests | State derivation, rule packs, instantiation, picker, launch | mvp, onboarding, rest, ci | N (after BB.1–BB.5) | Y | M | ouroboros-rest |
 
 ### Issue BB.1 — ouroboros-rest: [BB.1] Repo detection service (rule packs)
 
@@ -620,7 +620,7 @@ defaults(self-hosted): [BYOK → providers][enroll farm → build-farm][estimato
 
 ### Issue BB.6 — ouroboros-rest: [BB.6] Onboarding integration tests
 
-> **GitHub issue:** #389 · **Status:** 🟡 Open · **Parent epic:** #377
+> **GitHub issue:** #389 ✅ · **Status:** 🟢 Done · **Parent epic:** #377
 
 
 - **Problem Statement:** Truth-derivation, detection packs, and the launch
@@ -636,6 +636,28 @@ defaults(self-hosted): [BYOK → providers][enroll farm → build-farm][estimato
 - **Parallelism/Dependencies:** Needs BB.1–BB.5.
 - **Technical Stack:** Jest, Testcontainers.
 - **Epic:** BB
+- **Delivered** (`ouroboros-rest`, REST 0.37.40): six `ci/rest` suites, 107 tests, ~25 s, each
+  with the mutation that turns it red named in its header and run —
+  `derivation.certification` (every subsystem state × its step written to the subsystem's own
+  tables, the forward traversal with every `complete-step` guard tried at every stage, and the
+  wizard's table shown to have no column a step status could live in),
+  `detection.certification` (the four archetype trees scanned through the application's own
+  GitHub provider behind a stand-in Octokit, held to `detection.archetypes.golden.json`;
+  evidence shape, join / debounce / `scan_seq`, detected → measured, a test pack beside the
+  core, budget exhaustion), `launch.certification` (twelve guards, each refused with its reason
+  and a zero write footprint, beside a control launch), `onboarding.certification` (picker
+  weights and `none_safe`, the caption statistic scan, three deployments reading one
+  workspace), `dry-run.roundtrip` (the wizard's launch → the PR plane on the in-memory git
+  host: forced draft, arm and merge refused, the armed plan refused at execution, auto-merge
+  overridden with every workflow document byte-identical, and the flip restoring all of it) and
+  `onboarding.isolation` (two workspaces mirroring the same repository, every route enumerated
+  from the route table). *Found on the way, and fixed:* **the detection card's rows came back
+  in random order** for any real scan — one `insert` gives the six rows one `created_at`, so
+  the read fell through to a random `id`, which the dev seed's sequential ids had hidden;
+  `DetectionRepository.scan` now orders by card position, as `openapi.yaml` always said. And
+  **the three earlier onboarding suites depended on running first** — they copied V068's
+  shipped templates out of a table any earlier suite's truncate had already emptied; all now
+  re-ship them from the migration through `onboarding.integration.fixture.ts`.
 
 ```
 suites: steps ✓ · detection ✓ · templates ✓ · picker ✓ · launch+dry-run ✓ · variants ✓

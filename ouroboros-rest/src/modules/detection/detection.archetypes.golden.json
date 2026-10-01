@@ -1,0 +1,658 @@
+{
+  "about": "What GET /api/v1/onboarding/detection serves after a scan of each repository archetype (detection.fixture.ts) through the application's own GitHub provider and rule packs: the card's rows with their evidence, the suggested protected paths, the pack versions and the probes spent.",
+  "cases": {
+    "zephyr": {
+      "rows": [
+        {
+          "rowKey": "language",
+          "verdict": "ok",
+          "value": "C 92% · Zephyr RTOS 4.1",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "top": {
+              "percent": 92,
+              "language": "C"
+            },
+            "pack": "language",
+            "probes": [
+              "languages",
+              "tree",
+              "file:west.yml"
+            ],
+            "framework": {
+              "from": "west.yml",
+              "name": "Zephyr RTOS 4.1"
+            },
+            "languages": {
+              "C": 920000,
+              "CMake": 50000,
+              "Python": 30000
+            },
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "build",
+          "verdict": "ok",
+          "value": "west + twister (found west.yml)",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "hit": "west.yml",
+            "pack": "build",
+            "probes": [
+              "tree"
+            ],
+            "checked": [
+              "west.yml",
+              "Cargo.toml",
+              "go.mod",
+              "package.json",
+              "pyproject.toml",
+              "build.gradle.kts",
+              "build.gradle",
+              "pom.xml",
+              "BUILD.bazel",
+              "WORKSPACE",
+              "MODULE.bazel",
+              "CMakeLists.txt",
+              "Makefile"
+            ],
+            "alsoFound": [
+              "CMakeLists.txt"
+            ],
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "devcontainer",
+          "verdict": "ok",
+          "value": "found .devcontainer.json → image ghcr.io/zephyrproject-rtos/ci:v0.27.4",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "hit": ".devcontainer.json",
+            "pack": "devcontainer",
+            "parsed": true,
+            "probes": [
+              "tree",
+              "file:.devcontainer.json"
+            ],
+            "features": [],
+            "confidence": "high",
+            "environment": "image ghcr.io/zephyrproject-rtos/ci:v0.27.4",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "tests",
+          "verdict": "ok",
+          "value": "5 suites, 63 tests (detected)",
+          "label": "detected",
+          "confidence": "medium",
+          "determined": true,
+          "evidence": {
+            "pack": "tests",
+            "tests": 63,
+            "probes": [
+              "tree",
+              "file:tests/app/helios/src/main.c",
+              "file:tests/drivers/i2c/src/main.c",
+              "file:tests/drivers/spi/src/main.c",
+              "file:tests/kernel/timer/src/main.c",
+              "file:tests/lib/ring_buffer/src/main.c"
+            ],
+            "suites": 5,
+            "sampled": false,
+            "filesRead": 5,
+            "confidence": "medium",
+            "ecosystems": [
+              "zephyr"
+            ],
+            "filesTotal": 5,
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "protected_paths",
+          "verdict": "ok",
+          "value": "boot/, keys/ suggested",
+          "label": "detected",
+          "confidence": "medium",
+          "determined": true,
+          "evidence": {
+            "pack": "protected_paths",
+            "probes": [
+              "tree"
+            ],
+            "suggested": [
+              {
+                "why": "bootloader",
+                "glob": "boot/**"
+              },
+              {
+                "why": "key and secret material",
+                "glob": "keys/**"
+              }
+            ],
+            "confidence": "medium",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "conventions",
+          "verdict": "warn",
+          "value": "No CONTRIBUTING.md — we'll learn your conventions from merged PRs instead.",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "pack": "conventions",
+            "probes": [
+              "tree"
+            ],
+            "codeowners": null,
+            "confidence": "high",
+            "packVersion": "1.0.0",
+            "contributing": null,
+            "commitConvention": null
+          }
+        }
+      ],
+      "protectedPaths": [
+        {
+          "glob": "boot/**",
+          "source": "suggested"
+        },
+        {
+          "glob": "keys/**",
+          "source": "suggested"
+        }
+      ],
+      "packVersions": {
+        "build": "1.0.0",
+        "tests": "1.0.0",
+        "language": "1.0.0",
+        "conventions": "1.0.0",
+        "devcontainer": "1.0.0",
+        "protected_paths": "1.0.0"
+      },
+      "probeBudgetUsed": 9
+    },
+    "node": {
+      "rows": [
+        {
+          "rowKey": "language",
+          "verdict": "ok",
+          "value": "TypeScript 80% · Express",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "top": {
+              "percent": 80,
+              "language": "TypeScript"
+            },
+            "pack": "language",
+            "probes": [
+              "languages",
+              "tree",
+              "file:package.json"
+            ],
+            "framework": {
+              "from": "package.json",
+              "name": "Express"
+            },
+            "languages": {
+              "JavaScript": 20000,
+              "TypeScript": 80000
+            },
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "build",
+          "verdict": "ok",
+          "value": "yarn + jest (found package.json)",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "hit": "package.json",
+            "pack": "build",
+            "probes": [
+              "tree",
+              "file:package.json"
+            ],
+            "checked": [
+              "west.yml",
+              "Cargo.toml",
+              "go.mod",
+              "package.json",
+              "pyproject.toml",
+              "build.gradle.kts",
+              "build.gradle",
+              "pom.xml",
+              "BUILD.bazel",
+              "WORKSPACE",
+              "MODULE.bazel",
+              "CMakeLists.txt",
+              "Makefile"
+            ],
+            "alsoFound": [],
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "devcontainer",
+          "verdict": "ok",
+          "value": "found .devcontainer/devcontainer.json → Dockerfile Dockerfile · features: node",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "hit": ".devcontainer/devcontainer.json",
+            "pack": "devcontainer",
+            "parsed": true,
+            "probes": [
+              "tree",
+              "file:.devcontainer/devcontainer.json"
+            ],
+            "features": [
+              "node"
+            ],
+            "confidence": "high",
+            "environment": "Dockerfile Dockerfile",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "tests",
+          "verdict": "ok",
+          "value": "2 suites, 5 tests (detected)",
+          "label": "detected",
+          "confidence": "medium",
+          "determined": true,
+          "evidence": {
+            "pack": "tests",
+            "tests": 5,
+            "probes": [
+              "tree",
+              "file:src/__tests__/app.test.ts",
+              "file:src/util.spec.ts"
+            ],
+            "suites": 2,
+            "sampled": false,
+            "filesRead": 2,
+            "confidence": "medium",
+            "ecosystems": [
+              "node"
+            ],
+            "filesTotal": 2,
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "protected_paths",
+          "verdict": "ok",
+          "value": "infra/ suggested",
+          "label": "detected",
+          "confidence": "medium",
+          "determined": true,
+          "evidence": {
+            "pack": "protected_paths",
+            "probes": [
+              "tree"
+            ],
+            "suggested": [
+              {
+                "why": "infrastructure",
+                "glob": "infra/**"
+              }
+            ],
+            "confidence": "medium",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "conventions",
+          "verdict": "ok",
+          "value": "found CONTRIBUTING.md · .github/CODEOWNERS · commitlint.config.js",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "pack": "conventions",
+            "probes": [
+              "tree"
+            ],
+            "codeowners": ".github/CODEOWNERS",
+            "confidence": "high",
+            "packVersion": "1.0.0",
+            "contributing": "CONTRIBUTING.md",
+            "commitConvention": "commitlint.config.js"
+          }
+        }
+      ],
+      "protectedPaths": [
+        {
+          "glob": "infra/**",
+          "source": "suggested"
+        }
+      ],
+      "packVersions": {
+        "build": "1.0.0",
+        "tests": "1.0.0",
+        "language": "1.0.0",
+        "conventions": "1.0.0",
+        "devcontainer": "1.0.0",
+        "protected_paths": "1.0.0"
+      },
+      "probeBudgetUsed": 6
+    },
+    "python": {
+      "rows": [
+        {
+          "rowKey": "language",
+          "verdict": "ok",
+          "value": "Python 100% · FastAPI",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "top": {
+              "percent": 100,
+              "language": "Python"
+            },
+            "pack": "language",
+            "probes": [
+              "languages",
+              "tree",
+              "file:pyproject.toml"
+            ],
+            "framework": {
+              "from": "pyproject.toml",
+              "name": "FastAPI"
+            },
+            "languages": {
+              "Python": 100000
+            },
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "build",
+          "verdict": "ok",
+          "value": "uv + pytest (found pyproject.toml)",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "hit": "pyproject.toml",
+            "pack": "build",
+            "probes": [
+              "tree",
+              "file:pyproject.toml"
+            ],
+            "checked": [
+              "west.yml",
+              "Cargo.toml",
+              "go.mod",
+              "package.json",
+              "pyproject.toml",
+              "build.gradle.kts",
+              "build.gradle",
+              "pom.xml",
+              "BUILD.bazel",
+              "WORKSPACE",
+              "MODULE.bazel",
+              "CMakeLists.txt",
+              "Makefile"
+            ],
+            "alsoFound": [],
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "devcontainer",
+          "verdict": "missing",
+          "value": "No devcontainer found",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "pack": "devcontainer",
+            "probes": [
+              "tree"
+            ],
+            "checked": [
+              ".devcontainer.json",
+              ".devcontainer/devcontainer.json"
+            ],
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "tests",
+          "verdict": "ok",
+          "value": "2 suites, 5 tests (detected)",
+          "label": "detected",
+          "confidence": "medium",
+          "determined": true,
+          "evidence": {
+            "pack": "tests",
+            "tests": 5,
+            "probes": [
+              "tree",
+              "file:tests/test_api.py",
+              "file:tests/test_models.py"
+            ],
+            "suites": 2,
+            "sampled": false,
+            "filesRead": 2,
+            "confidence": "medium",
+            "ecosystems": [
+              "python"
+            ],
+            "filesTotal": 2,
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "protected_paths",
+          "verdict": "missing",
+          "value": "No protected paths suggested",
+          "label": "detected",
+          "confidence": "medium",
+          "determined": true,
+          "evidence": {
+            "pack": "protected_paths",
+            "probes": [
+              "tree"
+            ],
+            "suggested": [],
+            "confidence": "medium",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "conventions",
+          "verdict": "ok",
+          "value": "found .github/CONTRIBUTING.md",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "pack": "conventions",
+            "probes": [
+              "tree"
+            ],
+            "codeowners": null,
+            "confidence": "high",
+            "packVersion": "1.0.0",
+            "contributing": ".github/CONTRIBUTING.md",
+            "commitConvention": null
+          }
+        }
+      ],
+      "protectedPaths": [],
+      "packVersions": {
+        "build": "1.0.0",
+        "tests": "1.0.0",
+        "language": "1.0.0",
+        "conventions": "1.0.0",
+        "devcontainer": "1.0.0",
+        "protected_paths": "1.0.0"
+      },
+      "probeBudgetUsed": 5
+    },
+    "empty": {
+      "rows": [
+        {
+          "rowKey": "language",
+          "verdict": "missing",
+          "value": "No source code found",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "pack": "language",
+            "probes": [
+              "languages",
+              "tree"
+            ],
+            "languages": {},
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "build",
+          "verdict": "missing",
+          "value": "No build manifest found",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "pack": "build",
+            "probes": [
+              "tree"
+            ],
+            "checked": [
+              "west.yml",
+              "Cargo.toml",
+              "go.mod",
+              "package.json",
+              "pyproject.toml",
+              "build.gradle.kts",
+              "build.gradle",
+              "pom.xml",
+              "BUILD.bazel",
+              "WORKSPACE",
+              "MODULE.bazel",
+              "CMakeLists.txt",
+              "Makefile"
+            ],
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "devcontainer",
+          "verdict": "missing",
+          "value": "No devcontainer found",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "pack": "devcontainer",
+            "probes": [
+              "tree"
+            ],
+            "checked": [
+              ".devcontainer.json",
+              ".devcontainer/devcontainer.json"
+            ],
+            "confidence": "high",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "tests",
+          "verdict": "missing",
+          "value": "No tests found",
+          "label": "detected",
+          "confidence": "medium",
+          "determined": true,
+          "evidence": {
+            "pack": "tests",
+            "probes": [
+              "tree"
+            ],
+            "suites": 0,
+            "confidence": "medium",
+            "ecosystems": [],
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "protected_paths",
+          "verdict": "missing",
+          "value": "No protected paths suggested",
+          "label": "detected",
+          "confidence": "medium",
+          "determined": true,
+          "evidence": {
+            "pack": "protected_paths",
+            "probes": [
+              "tree"
+            ],
+            "suggested": [],
+            "confidence": "medium",
+            "packVersion": "1.0.0"
+          }
+        },
+        {
+          "rowKey": "conventions",
+          "verdict": "missing",
+          "value": "Empty repository — no conventions to read yet",
+          "label": "detected",
+          "confidence": "high",
+          "determined": true,
+          "evidence": {
+            "pack": "conventions",
+            "probes": [
+              "tree"
+            ],
+            "codeowners": null,
+            "confidence": "high",
+            "packVersion": "1.0.0",
+            "contributing": null,
+            "commitConvention": null
+          }
+        }
+      ],
+      "protectedPaths": [],
+      "packVersions": {
+        "build": "1.0.0",
+        "tests": "1.0.0",
+        "language": "1.0.0",
+        "conventions": "1.0.0",
+        "devcontainer": "1.0.0",
+        "protected_paths": "1.0.0"
+      },
+      "probeBudgetUsed": 2
+    }
+  }
+}

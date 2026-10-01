@@ -35,6 +35,7 @@ import type { DryRunPolicyResource } from "../policies/org-policy.service";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import type { SmartDefaultsResource } from "./defaults.resources";
 import type { LaunchReceiptResource } from "./launch.resources";
+import { shipTemplates } from "./onboarding.integration.fixture";
 import type { OnboardingResource } from "./resources";
 
 /** A workspace mid-wizard, and the people in it. */
@@ -50,8 +51,6 @@ interface Bench {
 describe("the first-run launcher, against a migrated database", () => {
   let api: ApiHarness;
   let engine: EngineStub;
-  /** V068's shipped template rows, as the migration left them. */
-  let shippedTemplates: unknown;
 
   beforeAll(async () => {
     engine = await startEngineStub();
@@ -60,39 +59,23 @@ describe("the first-run launcher, against a migrated database", () => {
       OURO_ENGINE_URL: engine.url,
       OURO_BACKLOG_SYNC_INTERVAL_SECONDS: "86400",
     });
-
-    const { rows } = await api.sql.query<{ templates: unknown }>(
-      `select json_agg(t) as templates from ${SCHEMA_NAME}.workflow_templates t
-        where t.organization_id is null`,
-    );
-
-    shippedTemplates = rows[0].templates;
   });
 
   // The last truncate emptied `workflow_templates`; later suites read V068's rows as shipped.
   afterAll(async () => {
-    await restoreTemplates();
+    await shipTemplates(api);
     await api.close();
     await engine.stop();
   });
 
-  // `truncate()` cascades into `workflow_templates`, so V068's shipped rows are put back first.
+  // `truncate()` empties `workflow_templates`, so V068's shipped rows are put back first —
+  // whatever suite ran before this one (#389).
   beforeEach(async () => {
     engine.reset();
-    await restoreTemplates();
+    await shipTemplates(api);
   });
 
   afterEach(() => api.truncate());
-
-  /** Put V068's shipped rows back after a truncate emptied them. */
-  async function restoreTemplates(): Promise<void> {
-    await api.sql.query(
-      `insert into ${SCHEMA_NAME}.workflow_templates
-       select * from json_populate_recordset(null::${SCHEMA_NAME}.workflow_templates, $1::json)
-        where not exists (select 1 from ${SCHEMA_NAME}.workflow_templates where organization_id is null)`,
-      [JSON.stringify(shippedTemplates)],
-    );
-  }
 
   /**
    * Steps 1 and 2 made true by their own subsystems, and the seeded backlog mirrored: a GitHub
