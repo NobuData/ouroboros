@@ -5602,6 +5602,49 @@ export interface PlaybooksTable {
 }
 
 /**
+ * `ouroboros.estimate_outcomes` — estimator calibration (V077,
+ * [#435](https://github.com/NobuData/ouroboros/issues/435), decision **I7**): one row per merged
+ * loop PR, joined to the estimate **in force when the work was queued** — never a later revision —
+ * with the lead-time actual and a grade the database computes.
+ *
+ * Written only by `ouroboros.record_estimate_outcome(org, pr)`, the idempotent fill; read by the
+ * calibration report. An unestimated merge is a row whose `predicted_*` columns are all null.
+ */
+export interface EstimateOutcomesTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** The merged PR. Unique — one outcome per merge — and held to the workspace by composite key. */
+  pr_id: string;
+  /** The canonical ticket the PR closed, or null when it named none (or the ticket is gone). */
+  ticket_id: string | null;
+  /** The governing estimate, or null for unestimated work (or once the estimate row is gone). */
+  estimate_id: string | null;
+  /** The instant the governing estimate was chosen at — the queue row's, else the loop's start. */
+  queued_at: Date;
+  /** The governing estimate's effort; null when unestimated. */
+  predicted_effort: EstimateEffort | null;
+  /** The governing estimate's `breakdown.cycle_min`, in minutes; null when unestimated. */
+  predicted_cycle_min: number | null;
+  /** The governing estimate's `breakdown.cycle_max`, in minutes; null when unestimated. */
+  predicted_cycle_max: number | null;
+  /** Lead time (`ouroboros.lead_time_ms`). A `bigint`, so a string. */
+  actual_duration_ms: string;
+  /**
+   * `ColumnType<boolean | null, never, never>` because the column is `generated always … stored`:
+   * the actual lies inside the band, inclusive. Null when unestimated.
+   */
+  within_band: ColumnType<boolean | null, never, never>;
+  /**
+   * Generated, signed: the actual minus the band's midpoint — positive ran over. A `bigint`, so a
+   * string. Null when unestimated.
+   */
+  deviation_ms: ColumnType<string | null, never, never>;
+  merged_at: Date;
+  /** When the fill last wrote the row. */
+  computed_at: Generated<Date>;
+}
+
+/**
  * `ouroboros.env_recipes` — a repository's environment recipe, one immutable row per version
  * (V073, [#408](https://github.com/NobuData/ouroboros/issues/408), decision **K7**); served for
  * mockup 14's Repo Profile card by BG.4 ([#420](https://github.com/NobuData/ouroboros/issues/420)).
@@ -5780,6 +5823,7 @@ export interface Database {
   playbooks: PlaybooksTable;
   env_recipes: EnvRecipesTable;
   org_policies: OrgPoliciesTable;
+  estimate_outcomes: EstimateOutcomesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6894,6 +6938,22 @@ export const TABLE_COLUMNS = {
     "updated_at",
   ],
   org_policies: ["organization_id", "dry_run", "updated_by", "created_at", "updated_at"],
+  estimate_outcomes: [
+    "id",
+    "organization_id",
+    "pr_id",
+    "ticket_id",
+    "estimate_id",
+    "queued_at",
+    "predicted_effort",
+    "predicted_cycle_min",
+    "predicted_cycle_max",
+    "actual_duration_ms",
+    "within_band",
+    "deviation_ms",
+    "merged_at",
+    "computed_at",
+  ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [
     "id",
@@ -7514,3 +7574,6 @@ export type OrgPolicies = Selectable<OrgPoliciesTable>;
 
 /** A row of `ouroboros.org_policies_effective`, as a `select` returns it. Write `org_policies`. */
 export type OrgPoliciesEffective = Selectable<OrgPoliciesEffectiveView>;
+
+/** A row of `ouroboros.estimate_outcomes`, as a `select` returns it. */
+export type EstimateOutcome = Selectable<EstimateOutcomesTable>;

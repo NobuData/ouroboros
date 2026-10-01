@@ -37,6 +37,7 @@ import { RegistryModule } from "../registry/registry.module";
 import { RoutingModule } from "../routing/routing.module";
 import { SettingsModule } from "../settings/settings.module";
 import { PoliciesModule } from "../policies/policies.module";
+import { InsightsModule } from "../insights/insights.module";
 import { SkillsModule } from "../skills/skills.module";
 import { PlaybooksModule } from "../playbooks/playbooks.module";
 import { EnvRecipesModule } from "../env-recipes/env-recipes.module";
@@ -368,6 +369,10 @@ export class AppModule {
         // under `/api/v1/policies/dry-run`. `PullRequestsModule` and `OnboardingModule` import it
         // for enforcement and the onboarding default; nothing else claims the prefix.
         PoliciesModule,
+        // BI.4 ([#435](https://github.com/NobuData/ouroboros/issues/435)) — estimator calibration
+        // under `/api/v1/insights/calibration`. `PullRequestsModule` imports it for the merge
+        // observer that grades each merged loop; nothing else claims the prefix.
+        InsightsModule,
         // BB.1 ([#384](https://github.com/NobuData/ouroboros/issues/384)) — the repository
         // detector under `/api/v1/onboarding/detection`. A distinct literal segment beneath
         // `OnboardingModule`'s prefix, so its position carries no routing rule; it probes through

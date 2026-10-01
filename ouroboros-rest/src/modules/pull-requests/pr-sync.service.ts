@@ -43,6 +43,10 @@ import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type { TicketSourceKind } from "../db/schema";
 import { describeForLog } from "../errors/failure";
 import { FACT_COMMIT_OBSERVER, type FactCommitObserver } from "../facts/facts.observer";
+import {
+  CALIBRATION_MERGE_OBSERVER,
+  type CalibrationMergeObserver,
+} from "../insights/calibration.observer";
 import { OrgPolicyService, type DryRunPolicyReader } from "../policies/org-policy.service";
 import { draftFor } from "../policies/org-policy.rules";
 import type {
@@ -94,6 +98,8 @@ export class PrSyncService {
    *   (BF.2, #411); absent in a context without it.
    * @param policy - The dry-run policy (BA.3, #382), read by {@link PrSyncService.create}; absent
    *   in a context without it, where every PR opens as a draft.
+   * @param calibration - The estimator calibration fill, told about every merge this sync is the
+   *   first to see (BI.4, #435); absent in a context without it.
    */
   constructor(
     @Inject(PrMirrorRepository) private readonly store: PrMirrorStore,
@@ -102,6 +108,9 @@ export class PrSyncService {
     @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
     @Optional() @Inject(FACT_COMMIT_OBSERVER) private readonly facts?: FactCommitObserver,
     @Optional() @Inject(OrgPolicyService) private readonly policy?: DryRunPolicyReader,
+    @Optional()
+    @Inject(CALIBRATION_MERGE_OBSERVER)
+    private readonly calibration?: CalibrationMergeObserver,
   ) {}
 
   /**
@@ -173,8 +182,9 @@ export class PrSyncService {
   }
 
   /**
-   * Tell the fact staleness sweep a PR merged. The sync has committed; a sweep that fails costs
-   * the sync hook's flags until the nightly pass, never the sync.
+   * Tell the fact staleness sweep and the estimator calibration fill a PR merged. The sync has
+   * committed; either one failing is logged and costs only its own record, never the sync or the
+   * other.
    *
    * @param organizationId - The workspace.
    * @param prId - The PR.
@@ -185,6 +195,15 @@ export class PrSyncService {
     } catch (error) {
       this.logger.error(
         `Fact staleness sweep for merged PR ${prId} failed; the nightly pass will catch it.`,
+        describeForLog(error),
+      );
+    }
+
+    try {
+      await this.calibration?.mergeObserved(organizationId, prId);
+    } catch (error) {
+      this.logger.error(
+        `Estimator calibration for merged PR ${prId} failed; a replay of the merge records it.`,
         describeForLog(error),
       );
     }

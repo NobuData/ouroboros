@@ -2122,6 +2122,44 @@ export interface paths {
         patch: operations["patchDryRunPolicy"];
         trace?: never;
     };
+    "/api/v1/insights/calibration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Estimator calibration
+         * @description BI.4 ([#435](https://github.com/NobuData/ouroboros/issues/435), decision **I7**) — how well
+         *     the intake estimator's predicted cycle bands match what happened, over merged loops in the
+         *     window: mockup 15's *"Estimator calibration: 89% of issues land within their predicted
+         *     band"* and the effort card's per-effort slices.
+         *
+         *     **Each merge is graded against the estimate in force when its work was queued**, never a
+         *     later revision, so a re-estimate made after the work started cannot score well on
+         *     hindsight. The actual is the DORA **lead time** (loop start to merge) — the same definition
+         *     the lead-time metric uses, so the two cannot disagree. A merge is in band when its lead time
+         *     lies inside `[cycle_min, cycle_max]` minutes, inclusive; its deviation is signed, from the
+         *     band's midpoint.
+         *
+         *     **Rates are re-derived from counts**: the headline is in-band over estimated across all
+         *     efforts, not an average of the slices. A merged loop with no governing estimate is counted
+         *     in `unestimated` and left out of the rates. Every effort is present, smallest first; one
+         *     with no merges has zero counts and null rates.
+         *
+         *     **Open to every member.** The workspace is the session's: no workspace in this path, the
+         *     session's active organization or `X-Ouro-Tenant` decides.
+         */
+        get: operations["getEstimatorCalibration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/github-token": {
         parameters: {
             query?: never;
@@ -12395,6 +12433,62 @@ export interface components {
             joined: boolean;
         };
         /**
+         * CalibrationReport
+         * @description Estimator calibration over a window (#435). Rates are percentages to one decimal, null when
+         *     nothing was estimated.
+         */
+        CalibrationReport: {
+            /** @enum {string} */
+            window: "7d" | "30d" | "90d";
+            /**
+             * Format: date-time
+             * @description The window's first instant.
+             */
+            from: string;
+            /**
+             * Format: date-time
+             * @description The window's end, exclusive — now.
+             */
+            to: string;
+            /** @description Merged loops in the window, estimated or not. */
+            merged: number;
+            /** @description Of those, how many had an estimate in force when their work was queued. */
+            estimated: number;
+            /** @description Of those, how many had none — counted, never dropped. */
+            unestimated: number;
+            /** @description Estimated merges whose lead time fell inside their predicted band. */
+            withinBand: number;
+            /** @description The headline — `withinBand / estimated × 100`. */
+            withinBandPct: number | null;
+            /** @description Every effort, smallest first. */
+            efforts: components["schemas"]["EffortCalibration"][];
+        };
+        /**
+         * EffortCalibration
+         * @description One predicted effort's slice of the calibration report (#435).
+         */
+        EffortCalibration: {
+            /** @enum {string} */
+            effort: "xs" | "s" | "m" | "l" | "xl";
+            /** @description Merged loops estimated at this effort. */
+            estimated: number;
+            withinBand: number;
+            /** @description `withinBand / estimated × 100`; null when nothing was estimated at this effort. */
+            withinBandPct: number | null;
+            /** @description Out of band, longer than the band's maximum. */
+            over: number;
+            /** @description Out of band, shorter than the band's minimum. */
+            under: number;
+            /**
+             * @description Signed bias: the summed deviations from each band's midpoint over the summed midpoints,
+             *     × 100 — `12` reads *"runs 12% over"*. Null when nothing was estimated, or every band was
+             *     `0–0`.
+             */
+            biasPct: number | null;
+            /** @description The direction of `biasPct`; null when nothing was estimated at this effort. */
+            bias: ("over" | "under" | "even") | null;
+        };
+        /**
          * DryRunPolicy
          * @description The workspace's dry-run policy (#382). `explicit: false` with null stamps is a workspace
          *     that never answered — it reads off; completing the Get Started wizard turns it on.
@@ -21095,6 +21189,12 @@ export interface components {
          */
         AuthProviderId: string;
         /**
+         * @description The window ending now the report covers, over merge instants — mockup 15's range segment
+         *     ([#435](https://github.com/NobuData/ouroboros/issues/435)). `30d` when absent.
+         * @example 30d
+         */
+        CalibrationWindow: "7d" | "30d" | "90d";
+        /**
          * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
          *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
          *     compared case-insensitively. Each repository has its own, independent wizard.
@@ -28922,6 +29022,190 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — `dryRun` is missing or not a boolean. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getEstimatorCalibration: {
+        parameters: {
+            query?: {
+                /**
+                 * @description The window ending now the report covers, over merge instants — mockup 15's range segment
+                 *     ([#435](https://github.com/NobuData/ouroboros/issues/435)). `30d` when absent.
+                 * @example 30d
+                 */
+                window?: components["parameters"]["CalibrationWindow"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The report. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "window": "30d",
+                     *       "from": "2026-09-01T12:00:00.000Z",
+                     *       "to": "2026-10-01T12:00:00.000Z",
+                     *       "merged": 49,
+                     *       "estimated": 47,
+                     *       "unestimated": 2,
+                     *       "withinBand": 42,
+                     *       "withinBandPct": 89.4,
+                     *       "efforts": [
+                     *         {
+                     *           "effort": "xs",
+                     *           "estimated": 9,
+                     *           "withinBand": 9,
+                     *           "withinBandPct": 100,
+                     *           "over": 0,
+                     *           "under": 0,
+                     *           "biasPct": -8.3,
+                     *           "bias": "under"
+                     *         },
+                     *         {
+                     *           "effort": "s",
+                     *           "estimated": 14,
+                     *           "withinBand": 13,
+                     *           "withinBandPct": 92.9,
+                     *           "over": 1,
+                     *           "under": 0,
+                     *           "biasPct": 1.9,
+                     *           "bias": "over"
+                     *         },
+                     *         {
+                     *           "effort": "m",
+                     *           "estimated": 12,
+                     *           "withinBand": 11,
+                     *           "withinBandPct": 91.7,
+                     *           "over": 1,
+                     *           "under": 0,
+                     *           "biasPct": 3.4,
+                     *           "bias": "over"
+                     *         },
+                     *         {
+                     *           "effort": "l",
+                     *           "estimated": 8,
+                     *           "withinBand": 6,
+                     *           "withinBandPct": 75,
+                     *           "over": 2,
+                     *           "under": 0,
+                     *           "biasPct": 12,
+                     *           "bias": "over"
+                     *         },
+                     *         {
+                     *           "effort": "xl",
+                     *           "estimated": 4,
+                     *           "withinBand": 3,
+                     *           "withinBandPct": 75,
+                     *           "over": 0,
+                     *           "under": 1,
+                     *           "biasPct": -2.5,
+                     *           "bias": "under"
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["CalibrationReport"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `window` is not one of `7d`, `30d` or `90d`. */
             422: {
                 headers: {
                     [name: string]: unknown;

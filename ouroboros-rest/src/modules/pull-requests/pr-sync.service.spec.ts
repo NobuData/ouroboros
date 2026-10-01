@@ -18,6 +18,7 @@ import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
 import { Logger } from "@nestjs/common";
 
 import type { FactCommitObserver } from "../facts/facts.observer";
+import type { CalibrationMergeObserver } from "../insights/calibration.observer";
 import type { GateEvidenceEvent, GateEvidenceSink } from "./gates/gate.evidence";
 import { PR_SYNC_ERRORS } from "./pr-sync.errors";
 import type { MirroredPr, PrMirrorStore, PrSyncOutcome, PrSyncWrite } from "./pr-sync.repository";
@@ -139,11 +140,13 @@ class RecordedFacts implements FactCommitObserver {
  *
  * @param gates - The gate engine's sink, when the case listens to it.
  * @param facts - The fact staleness sweep, when the case listens to it.
+ * @param calibration - The estimator calibration fill, when the case listens to it.
  * @returns The service, its collaborators and the PR's number.
  */
 function build(
   gates?: GateEvidenceSink,
   facts?: FactCommitObserver,
+  calibration?: CalibrationMergeObserver,
 ): {
   service: PrSyncService;
   store: RecordedStore;
@@ -168,7 +171,7 @@ function build(
   ]);
 
   return {
-    service: new PrSyncService(store, registry, opener, gates, facts),
+    service: new PrSyncService(store, registry, opener, gates, facts, undefined, calibration),
     store,
     opener,
     host,
@@ -244,6 +247,43 @@ describe("PrSyncService", () => {
       newlyMerged: true,
     });
     expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
+
+  it("tells the calibration fill about a merge once — the sync that first sees it merged", async () => {
+    const calibration = new RecordedFacts();
+    const { service, host, prNumber } = build(undefined, undefined, calibration);
+
+    await service.sync(ORG, SOURCE.sourceId, prNumber);
+    host.merge(IN_MEMORY_TOKEN, IN_MEMORY_PROJECT, prNumber, "squash", "can: fix frame order");
+    await service.sync(ORG, SOURCE.sourceId, prNumber);
+    await service.sync(ORG, SOURCE.sourceId, prNumber);
+
+    expect(calibration.merges).toEqual([[ORG, "pr-1"]]);
+  });
+
+  it("still grades the merge when the fact sweep fails, and keeps the sync when grading fails", async () => {
+    const error = jest.spyOn(Logger.prototype, "error").mockImplementation(() => undefined);
+    const calibration = new RecordedFacts();
+    const failingFacts: FactCommitObserver = {
+      mergeObserved: () => Promise.reject(new Error("sweep down")),
+    };
+    const failingCalibration: CalibrationMergeObserver = {
+      mergeObserved: () => Promise.reject(new Error("calibration down")),
+    };
+    const graded = build(undefined, failingFacts, calibration);
+    const ungraded = build(undefined, undefined, failingCalibration);
+
+    for (const { host, prNumber } of [graded, ungraded]) {
+      host.merge(IN_MEMORY_TOKEN, IN_MEMORY_PROJECT, prNumber, "squash", "can: fix frame order");
+    }
+
+    await graded.service.sync(ORG, SOURCE.sourceId, graded.prNumber);
+    await expect(
+      ungraded.service.sync(ORG, SOURCE.sourceId, ungraded.prNumber),
+    ).resolves.toMatchObject({ state: "merged", newlyMerged: true });
+    expect(calibration.merges).toEqual([[ORG, "pr-1"]]);
+    expect(error).toHaveBeenCalledTimes(2);
     error.mockRestore();
   });
 

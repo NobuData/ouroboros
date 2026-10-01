@@ -247,7 +247,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | BI.1 | #432 ✅ | 🟢 Done | ouroboros-db: [BI.1] Metric rollup schema & methodology registry | `metric_daily` grain + versioned formula registry (I1/I2) | mvp, insights, db | N (after DASH-F.1/F.3, AO/AW/AS) | Y | M | ouroboros-db |
 | BI.2 | #433 | 🟡 Open | ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors | Incremental daily fills per metric family; oracle parity | mvp, insights, rest | N (after BI.1) | Y | L | ouroboros-rest |
 | BI.3 | #434 | 🟡 Open | ouroboros-db: [BI.3] Intervention-cause taxonomy | Cause mapping rules + override rows (I5); AT.4 subtype amendment | mvp, insights, db | N (after AT.4, AO.4) | Y | M | ouroboros-db, ouroboros-rest |
-| BI.4 | #435 | 🟡 Open | ouroboros-rest: [BI.4] Estimator calibration records | Estimate-band vs actual joins; within-band computation (I7) | mvp, insights, rest, intake | N (after INTAKE-K.2, AO.1) | Y | S | ouroboros-rest, ouroboros-db |
+| BI.4 | #435 ✅ | 🟢 Done | ouroboros-rest: [BI.4] Estimator calibration records | Estimate-band vs actual joins; within-band computation (I7) | mvp, insights, rest, intake | N (after INTAKE-K.2, AO.1) | Y | S | ouroboros-rest, ouroboros-db |
 | BI.5 | #436 | 🟡 Open | ouroboros-db: [BI.5] Insights seeds — mockup-15 parity + probes | 30d of rollup history shaping every visual; ci checks | mvp, insights, db, ci | N (after BI.1–BI.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue BI.1 — ouroboros-db: [BI.1] Metric rollup schema & methodology registry
@@ -368,7 +368,17 @@ human re-categorize ─▶ cause: ambiguous_ticket (origin: human, audited)
 
 ### Issue BI.4 — ouroboros-rest: [BI.4] Estimator calibration records
 
-> **GitHub issue:** #435 · **Status:** 🟡 Open · **Parent epic:** #428
+> **GitHub issue:** #435 ✅ · **Status:** 🟢 Done · **Parent epic:** #428
+
+- **Delivered** (`ouroboros-db` `V077__estimate_outcomes.sql`, `ouroboros-rest` `insights/`):
+  `estimate_outcomes` (one row per merged loop PR; governing estimate = newest for the ticket or
+  mirrored issue created by the queue instant, never a later revision; generated `within_band`
+  and signed `deviation_ms` from the band midpoint; unestimated merges recorded with a null
+  prediction), `ouroboros.lead_time_ms()` as the single lead-time definition (loop start → merge,
+  which #433's DORA extractor must also call), the idempotent `record_estimate_outcome()` fill
+  called by the PR sync on every newly observed merge, three `calibration` registry rows, and
+  `GET /api/v1/insights/calibration?window=7d|30d|90d` (headline + five effort slices with bias
+  direction). The intake roadmap's O.2 carries the amendment note.
 
 - **Problem Statement:** `89% of issues land within their predicted band`
   must join predictions to outcomes (decision I7).
@@ -918,7 +928,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#324, #331), farm (#249), DASH-F.1 (#64)/F.3 (#66)/J.4 (#92),
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
-2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → BI.2 (#433) ⊕ { BI.3 (#434) ⊕ BI.4 (#435) } → BI.5 (#436)
+2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → BI.2 (#433) ⊕ { BI.3 (#434) ⊕ **BI.4 (#435) ✅** } → BI.5 (#436)
 3. **Phase 2 — Services:** BJ.1 (#437) → { BJ.2 (#438) ⊕ BJ.3 (#439) ⊕ BJ.4 (#440) } → BJ.5 (#441)
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*

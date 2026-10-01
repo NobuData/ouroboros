@@ -17,7 +17,8 @@
  * about every merge it is the first to see (BF.2, #411), and `FactProposersModule` for
  * `FACT_SOURCE_OBSERVER` — a criterion's waiver reason is a source BF.3's waiver proposer reads
  * (#412). It imports `PoliciesModule` for the dry-run policy (BA.3, #382) the executor and
- * `PrSyncService.create` enforce.
+ * `PrSyncService.create` enforce, and `InsightsModule` for `CALIBRATION_MERGE_OBSERVER` — every
+ * merge the sync first sees is graded against the estimate in force at queue time (BI.4, #435).
  */
 
 import { Module } from "@nestjs/common";
@@ -27,6 +28,7 @@ import { ControlsModule } from "../controls/controls.module";
 import { DbModule } from "../db/db.module";
 import { FactProposersModule } from "../fact-proposers/proposers.module";
 import { FactsModule } from "../facts/facts.module";
+import { InsightsModule } from "../insights/insights.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
 import { CriteriaController } from "./criteria/criteria.controller";
@@ -55,6 +57,7 @@ import { PrSyncService } from "./pr-sync.service";
     FactsModule,
     FactProposersModule,
     PoliciesModule,
+    InsightsModule,
   ],
   controllers: [CriteriaController, MergeController, PageController],
   providers: [

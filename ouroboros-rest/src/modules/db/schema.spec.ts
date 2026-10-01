@@ -435,7 +435,10 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-fourth and fifth are V073's `env_recipes` and the `env_recipes_current`
     // view, mirrored by BG.4 (#420) — the Repo Profile card's Environment block, read from the
     // view and saved as the next version of the table.
-    expect(TABLE_NAMES).toHaveLength(105);
+    //
+    // The hundred-and-sixth is V077's `estimate_outcomes`, mirrored by BI.4 (#435) — every merged
+    // loop graded against the estimate in force when it was queued.
+    expect(TABLE_NAMES).toHaveLength(106);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
