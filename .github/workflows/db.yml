@@ -441,6 +441,27 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tests/planning-invariants.sql
           OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-planning-invariants.sh --runner docker
 
+      # BI.5 (#436): the invariants mockup 15's read path trusts, asked of the seeded rollup
+      # history — grain uniqueness, rate components and value = numerator / denominator, the
+      # registry behind every metric_id, the shape guard's dimension and median rules, the cause
+      # and effort vocabularies, and the meta shapes the tooltip reads. Green against
+      # R__dev_seed_workspace_metrics.sql's ninety days is half of it.
+      #
+      # The other half is the acceptance criterion *"every probe fails when its constraint is
+      # removed"*: verify-insights-invariants.sh drops each rule, writes the row it refused —
+      # and, for the two rules no constraint can state, an ordinary write that breaks them — and
+      # requires red naming the invariant each time. Every plant is rolled back, and the next
+      # step re-runs seed.sql against this database to say so. Both take under a second.
+      - name: Assert the insights invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/insights-invariants.sql
+          OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-insights-invariants.sh --runner docker
+
       # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
       # from #582 without mutating it"*. The registry rules are asserted twice, and this is
       # the second time — the first is inside constraints.sql two steps up, which includes

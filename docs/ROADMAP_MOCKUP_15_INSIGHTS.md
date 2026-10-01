@@ -248,7 +248,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 | BI.2 | #433 ✅ | 🟢 Done | ouroboros-rest: [BI.2] Rollup jobs & source-plane extractors | Incremental daily fills per metric family; oracle parity | mvp, insights, rest | N (after BI.1) | Y | L | ouroboros-rest |
 | BI.3 | #434 ✅ | 🟢 Done | ouroboros-db: [BI.3] Intervention-cause taxonomy | Cause mapping rules + override rows (I5); AT.4 subtype amendment | mvp, insights, db | N (after AT.4, AO.4) | Y | M | ouroboros-db, ouroboros-rest |
 | BI.4 | #435 ✅ | 🟢 Done | ouroboros-rest: [BI.4] Estimator calibration records | Estimate-band vs actual joins; within-band computation (I7) | mvp, insights, rest, intake | N (after INTAKE-K.2, AO.1) | Y | S | ouroboros-rest, ouroboros-db |
-| BI.5 | #436 | 🟡 Open | ouroboros-db: [BI.5] Insights seeds — mockup-15 parity + probes | 30d of rollup history shaping every visual; ci checks | mvp, insights, db, ci | N (after BI.1–BI.4, #24) | Y | M | ouroboros-db, .github |
+| BI.5 | #436 ✅ | 🟢 Done | ouroboros-db: [BI.5] Insights seeds — mockup-15 parity + probes | 30d of rollup history shaping every visual; ci checks | mvp, insights, db, ci | N (after BI.1–BI.4, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue BI.1 — ouroboros-db: [BI.1] Metric rollup schema & methodology registry
 
@@ -437,7 +437,30 @@ window: 89% within band · L-effort bias: +12% over
 
 ### Issue BI.5 — ouroboros-db: [BI.5] Insights seeds — mockup-15 parity + probes
 
-> **GitHub issue:** #436 · **Status:** 🟡 Open · **Parent epic:** #428
+> **GitHub issue:** #436 ✅ · **Status:** 🟢 Done · **Parent epic:** #428
+
+- **Delivered** (`ouroboros-db` `R__dev_seed_workspace_metrics.sql`,
+  `tests/insights-invariants.sql` + `tests/lib/insights-invariants.sql`,
+  `tests/verify-insights-invariants.sh`, a `ci/db` step): ninety days of `metric_daily` for
+  `acme-robotics` in which **components are seeded and every value is computed**. Re-windowed the
+  registry's way, they give the KPI row 92% (▲ 3pts) · 78% · 14m 20s (▼ 2m) · $1.87 (▼ $0.41) ·
+  20 interventions (▼ 5). Throughput ends at 6, with the Aug-4 tooltip as that day's sibling rows.
+  The cost curve has its $31.40 spike and $18.60 endpoint, and the other five stages sum to
+  8m 20s. Builds are 412 / 377 / 35, and the suites' 33 cases are 0.12% of 26.4k. The effort
+  ladder runs XS 6m … XL 2h 10m, and the DORA cells trend like their sparklines. Calibration is
+  89%: nine closed tickets each get a loop, a merged PR and an estimate, graded by #435's
+  `record_estimate_outcome()`, eight of them in band. Interventions for the last 30 days *are*
+  `intervention_cause_daily` over #434's events. Builds and tests are the farm's and test plane's
+  rows plus extras, never below them. Every other family is a documented summary, and
+  `metric_rollup_state` stops the first rollup tick backfilling over the history. Where the
+  mockup contradicts the source planes, the source plane wins: interventions are counted, not
+  `2/wk`; the suites are 14/10/5/3/1, since the test plane holds ten HIL failures; and cost is
+  about $181 a month at $1.87 a merge. The scoreboard (BJ.3), tokens by task kind with the local
+  share, and the budget cap (AF.4) have no storage yet and are documented boundaries. The flaky
+  card reads the test-results seed's own `flake_scores`. The probes cover grain uniqueness,
+  `value = numerator / denominator`, the registry behind every `metric_id`, the shape guard, the
+  cause, signal and effort vocabularies, and `meta` shapes. The verifier turns each one red in
+  twelve plants.
 
 - **Problem Statement:** Eleven visuals need 30 days of coherent seeded
   history that also reconciles with every other roadmap's seeds.
@@ -962,7 +985,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    (#324, #331), farm (#249), DASH-F.1 (#64)/F.3 (#66)/J.4 (#92),
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
-2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { **BI.3 (#434) ✅** ⊕ **BI.4 (#435) ✅** } → BI.5 (#436)
+2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { **BI.3 (#434) ✅** ⊕ **BI.4 (#435) ✅** } → **BI.5 (#436) ✅**
 3. **Phase 2 — Services:** BJ.1 (#437) → { BJ.2 (#438) ⊕ BJ.3 (#439) ⊕ BJ.4 (#440) } → BJ.5 (#441)
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*
