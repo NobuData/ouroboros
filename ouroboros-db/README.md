@@ -1103,6 +1103,40 @@
 > `analyzer_set` is `{label, analyzers: [{id, version, kind: deterministic|llm}]}`, and `label`
 > (`deterministic analyzers v1`) is what *Analyzed by* renders.
 >
+> `V081` ([#507](https://github.com/NobuData/ouroboros/issues/507), BU.2, decisions **A1/A4**) is what a run *found* and what it *suggests*.
+> `analysis_findings` is one analyzer's output for one subject: `finding_type`
+> (`change_point|log_signature|config_usage|cache_window|queue_correlation|waiver_cite|workflow_outcome`,
+> or `custom:<name>` for BX.5) with `data` held to that type's schema by
+> `analysis_finding_data_valid()` — a change-point is `{date, metric, delta_seconds, candidates:
+> [{label, score, ref}]}` ranked best first, and the chart's `Jun 22 · ccache enabled −2m 10s` is
+> its date, first candidate and delta. `evidence_refs` is a list of `{kind, id}` —
+> `build|test_run|test_case|waiver|merge|workflow_version|runner_pool|runner` — each of which must
+> **resolve to a real row of that kind in the workspace when written**
+> (`analysis_findings_evidence_resolves`); any ref `data` cites must be in the list. `confidence`
+> is 0–100 beside `confidence_basis` `{method, sample_size, effect_size, stability}`. A finding is
+> written while its run is `running`, by an analyzer in its `analyzer_set`, and never revised.
+>
+> `analysis_suggestions` are the cards and ticket drafts: `kind`
+> (`build_process|workflow|ticket_draft`), composer-stored `title`, `evidence_line` and
+> `confidence`, `impact` `{estimate, unit, applies_to, share?, basis: {method, description,
+> sample_size?}}` with a **mandatory basis** — an `unquantified` basis has no estimate and must set
+> `needs_spike` — and `action_binding` `{plane, change}`. They cite findings many-to-many through
+> `analysis_suggestion_findings`. **Identity survives re-analysis:** a finding's `identity_key` is
+> `analyzer@v<version>/<subject_key>`, a suggestion's is its kind plus a sha256 of its findings'
+> distinct identities (`analysis_suggestion_identity()`, checked at commit), unique per (workspace,
+> repo), and `record_analysis_suggestion()` upserts on it — a re-run updates the row and links its
+> findings, and a dismissal sticks. The A4 lifecycle is enforced:
+>
+> ```
+> open ──▶ applied     applied_event_id: its analysis_suggestion.applied audit event; not a ticket draft or spike
+>      ──▶ dismissed   an actor at the transition, and a reason
+>      ──▶ drafted     draft_batch_id (#272): a ticket draft or a spike only
+> ```
+>
+> Born `open`; the three others are terminal and freeze what was resolved. Suggestions outlive
+> their findings' retention — the stored identity is what keeps a dismissal after the evidence ages
+> out.
+>
 > [#436](https://github.com/NobuData/ouroboros/issues/436) (BI.5) seeds the page those four built
 > for: [`R__dev_seed_workspace_metrics.sql`](migrations/R__dev_seed_workspace_metrics.sql) is
 > ninety days of `metric_daily` in which **components are seeded and every value is computed**,
@@ -2524,6 +2558,7 @@ ouroboros-db/
 │   ├── V078__metric_rollup_extractors.sql   # metric_daily.dimension in the grain key, registry aggregation (sum|ratio|median) + dimension_kind, metric_daily_shape_guard (median samples), the rollup families' registry rows — #433
 │   ├── V079__intervention_events.sql        # intervention_events / _cause_rules / _overrides, idempotent source-plane hooks, recategorize_intervention(), intervention_cause_daily, human_interventions v2 by cause — #434
 │   ├── V080__analysis_runs.sql              # analysis_runs (corpus manifest + sampling record, analyzer-set provenance, no cost without llm, one running per repo) + analysis_schedules (weekly, every-N + counter, budgets) — #506
+│   ├── V081__analysis_findings_suggestions.sql # analysis_findings (typed data, resolvable evidence, bounded confidence + basis) + analysis_suggestions (stable identity, A4 lifecycle, impact basis / needs_spike) + their many-to-many citations, record_analysis_suggestion() — #507
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2694,6 +2729,9 @@ outside this module alters it.
 | `intervention_cause_rules` | `V079` | The declarative, versioned cause mapping ([#434](https://github.com/NobuData/ouroboros/issues/434)) — `rule_id`, `version`, `priority`, `source`, `signal`, `cause`, `description` | lowest matching priority wins; a catch-all rule must map to `other`; signals are a closed vocabulary; a change to priority, source, signal or cause must raise `version` (`intervention_cause_rules_version_guard`); `ouroboros_app` may only select |
 | `analysis_schedules` | `V080` | The Build Analyzer's schedule and budgets ([#506](https://github.com/NobuData/ouroboros/issues/506), BU.1, decision **A7**) — `repo_ref`, `enabled`, `weekly_enabled`, `weekly_day`, `weekly_time`, `every_n_builds`, `build_counter`, `max_builds`, `max_log_lines`, `compute_ceiling_seconds`, `updated_by` | unique on `(organization_id, repo_ref)`; weekly needs an ISO day (1–7) and a UTC time, kept when turned off; `every_n_builds` null = off, ≥ 1 otherwise; `build_counter` ≥ 0 and independent of the threshold; budgets ≥ 1 with defaults; `updated_by` sets null; cascades with the workspace |
 | `analysis_runs` | `V080` | One analysis — the meta strip's row ([#506](https://github.com/NobuData/ouroboros/issues/506), decisions **A2/A3**) — `repo_ref`, `trigger`, `schedule_id`, `status`, `corpus_manifest`, `analyzer_set`, `started_at`, `finished_at`, `compute_seconds`, `llm_cost_cents`, `confidence_note`, `failure_reason` | `trigger` is `manual\|weekly\|every_n_builds`, `status` `running\|complete\|failed\|budget_exceeded`; at most one `running` row per `(organization_id, repo_ref)` (`analysis_runs_one_running`, partial unique); `corpus_manifest` and `analyzer_set` checked against their contracts, the manifest required on `complete` and `budget_exceeded`; `finished_at` exactly on terminal rows; `failure_reason` exactly on `failed` and `budget_exceeded`; `confidence_note` required on `complete`; `llm_cost_cents` only with an `llm` analyzer; terminal statuses never change (`analysis_runs_status_guard`); the schedule is the run's own repo's (composite FK, set null); cascades with the workspace; `ouroboros_app` may not delete |
+| `analysis_findings` | `V081` | One analyzer's output for one subject in one run ([#507](https://github.com/NobuData/ouroboros/issues/507), BU.2, decision **A1**) — `run_id`, `repo_ref`, `analyzer`, `analyzer_version`, `finding_type`, `subject_key`, `identity_key` (generated), `data`, `evidence_refs`, `confidence`, `confidence_basis` | `finding_type` is the seven families or `custom:*`; `data` held to its type (`analysis_finding_data_valid`); `evidence_refs` a non-empty list of distinct `{kind, id}` that resolve in the workspace when written, and every ref `data` cites is listed; `confidence` 0–100 with a `{method, sample_size, effect_size, stability}` basis; written only into a `running` run by an analyzer in its `analyzer_set`; unique on `(run_id, identity_key)`; never revised; cascades with the run; `ouroboros_app` may select and insert only |
+| `analysis_suggestions` | `V081` | A card or ticket draft ([#507](https://github.com/NobuData/ouroboros/issues/507), decision **A4**) — `repo_ref`, `kind`, `identity_key`, `last_run_id`, `title`, `evidence_line`, `confidence`, `impact`, `needs_spike`, `action_binding`, `status`, `resolved_by`, `resolved_at`, `resolution_reason`, `applied_event_id`, `draft_batch_id` | unique on `(organization_id, repo_ref, identity_key)`, the identity derived from the cited findings and checked at commit; `kind` `build_process\|workflow\|ticket_draft`; `impact` required except on ticket drafts, its `basis` mandatory, an `unquantified` basis needs `needs_spike`; planning is the plane of ticket drafts and spikes only, a workflow suggestion binds the workflow plane; born `open`; `applied` needs its `analysis_suggestion.applied` audit event (not a ticket draft or spike), `dismissed` an actor and a reason, `drafted` a same-workspace batch (ticket draft or spike); resolutions are terminal and frozen; `last_run_id` sets null; cascades with the workspace |
+| `analysis_suggestion_findings` | `V081` | Which findings a suggestion cites ([#507](https://github.com/NobuData/ouroboros/issues/507)) — `suggestion_id`, `finding_id`, `organization_id`, `repo_ref` | many-to-many; both sides share one `(organization_id, repo_ref)` by composite keys; cascades with either side; `ouroboros_app` may select and insert only |
 | `intervention_overrides` | `V079` | The re-categorization audit ([#434](https://github.com/NobuData/ouroboros/issues/434)) — `event_id`, `actor_id`, `from_cause`, `to_cause`, `reason`, `created_at` | append-only; names its actor at insert (set null if the person is removed); starts from the event's current cause; changes it; requires a reason; cascades with the event |
 | `fact_anchors` | `V071` | Why a fact can expire ([#406](https://github.com/NobuData/ouroboros/issues/406), **K4**) — `kind`, `value`, `last_checked_at` | `kind` is `path_glob\|dependency\|platform_version`; `(fact_id, kind, value)` unique; a `path_glob` is relative with no `..`; indexed `(kind, value)` for the staleness sweep, with `path_glob_matches(glob, path)` for a changed path set; a fact with none is never flagged |
 | `context_injections` | `V071` | What context assembly actually injected ([#406](https://github.com/NobuData/ouroboros/issues/406)) — `consumer`, `estimate_id`, `run_stage_id`, `run_id`, `skill_version_ids`, `fact_ids`, `manifest_hash`, `injected_at` | `consumer` is `estimator` (estimate) \| `run_stage` (stage + its run) \| `playbook` (the launched run); arrays are sets; every fact is a confirmed fact and every skill version a published version of a non-draft skill of the workspace (`context_injections_resolves`); GIN-indexed arrays; append-only by trigger and grant — the sole source of every usage number |
@@ -3029,7 +3067,8 @@ merge plans & auto-merge intents [#355](https://github.com/NobuData/ouroboros/is
 full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696) ·
-analysis runs & corpus snapshots [#506](https://github.com/NobuData/ouroboros/issues/506) *(done)*.
+analysis runs & corpus snapshots [#506](https://github.com/NobuData/ouroboros/issues/506) *(done)* ·
+findings & suggestions schema [#507](https://github.com/NobuData/ouroboros/issues/507) *(done)*.
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
 follows and [`../README.md`](../README.md) for the module map.
