@@ -220,8 +220,12 @@ const HISTORY_TABLE = "flyway_schema_history";
  * leave every later parse in the run scoring against no formula (AT.3, #331). Truncating the tables
  * that reference it is unaffected — `cascade` runs from a referenced table to its referrers, never
  * the other way.
+ *
+ * `metric_definitions` (V076, V078) is the Insights methodology registry, shipped in migrations and
+ * select-only for the app role, for the same reason: emptied, every later rollup fill would refuse
+ * for a missing registry entry (BI.2, #433). `metric_daily` references it and is still emptied.
  */
-const REFERENCE_TABLES = ["flake_score_formulas"];
+const REFERENCE_TABLES = ["flake_score_formulas", "metric_definitions"];
 
 export class ApiHarness {
   /** Every table {@link truncate} empties, discovered once and remembered. */

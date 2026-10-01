@@ -5645,6 +5645,78 @@ export interface EstimateOutcomesTable {
 }
 
 /**
+ * `ouroboros.metric_definitions` — the Insights methodology registry (V076,
+ * [#432](https://github.com/NobuData/ouroboros/issues/432); V078,
+ * [#433](https://github.com/NobuData/ouroboros/issues/433)). Rows ship in migrations and the service
+ * only reads them; the rollup extractors check their declared versions against `version`.
+ */
+export interface MetricDefinitionsTable {
+  metric_id: string;
+  family: string;
+  title: string;
+  formula_text: string;
+  source_planes: string[];
+  caveats: string;
+  unit: "count" | "pct" | "duration_ms" | "cents" | "tokens";
+  /** Whether daily rows carry numerator and denominator — exactly the `ratio` aggregation. */
+  is_rate: boolean;
+  version: Generated<number>;
+  proxy: Generated<boolean>;
+  /** How a window re-derives the metric (V078): never an average of daily values. */
+  aggregation: MetricAggregation;
+  /** What `metric_daily.dimension` names for the metric, or null when undimensioned (V078). */
+  dimension_kind: "stage" | "suite" | "effort" | "cause" | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/** `metric_definitions.aggregation` — V078's re-windowing rule per metric. */
+export type MetricAggregation = "sum" | "ratio" | "median";
+
+/**
+ * `ouroboros.metric_daily` — the Insights daily grain (V076, V078): one row per (workspace,
+ * repository, metric, dimension, UTC day), replaced day by day by the rollup extractors
+ * ([#433](https://github.com/NobuData/ouroboros/issues/433)). `metric_daily_shape_guard` holds a
+ * row to its definition's dimension and aggregation.
+ */
+export interface MetricDailyTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** `owner/name`, or null for an org-level row (#451). */
+  repo_ref: string | null;
+  metric_id: string;
+  /** The definition's `is_rate`, held to it by a composite foreign key. */
+  is_rate: boolean;
+  /** A suite, stage or effort label, or `""` for an undimensioned metric. */
+  dimension: Generated<string>;
+  /** `YYYY-MM-DD`; `pg` reads a `date` as a `Date` at local midnight unless parsed otherwise. */
+  day: ColumnType<Date, string, string>;
+  /** A `numeric`, so a string when read. */
+  value: ColumnType<string, number, number>;
+  numerator: ColumnType<string | null, number | null, number | null>;
+  denominator: ColumnType<string | null, number | null, number | null>;
+  /** Raw numbers for the tooltip; a median row's ascending `samples`. */
+  meta: ColumnType<Record<string, unknown>, string | undefined, string>;
+  computed_at: Generated<Date>;
+}
+
+/**
+ * `ouroboros.metric_rollup_state` — rollup bookkeeping per (workspace, family) (V076): the last
+ * day filled, the backfill cursor and its end, and the last run's outcome.
+ */
+export interface MetricRollupStateTable {
+  organization_id: string;
+  family: string;
+  last_filled_day: ColumnType<Date | null, string | null, string | null>;
+  backfill_cursor: ColumnType<Date | null, string | null, string | null>;
+  backfill_until: ColumnType<Date | null, string | null, string | null>;
+  last_run_status: "running" | "succeeded" | "failed" | null;
+  last_run_at: Date | null;
+  last_error: string | null;
+  updated_at: Stamped;
+}
+
+/**
  * `ouroboros.env_recipes` — a repository's environment recipe, one immutable row per version
  * (V073, [#408](https://github.com/NobuData/ouroboros/issues/408), decision **K7**); served for
  * mockup 14's Repo Profile card by BG.4 ([#420](https://github.com/NobuData/ouroboros/issues/420)).
@@ -5824,6 +5896,9 @@ export interface Database {
   env_recipes: EnvRecipesTable;
   org_policies: OrgPoliciesTable;
   estimate_outcomes: EstimateOutcomesTable;
+  metric_definitions: MetricDefinitionsTable;
+  metric_daily: MetricDailyTable;
+  metric_rollup_state: MetricRollupStateTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6953,6 +7028,47 @@ export const TABLE_COLUMNS = {
     "deviation_ms",
     "merged_at",
     "computed_at",
+  ],
+  metric_definitions: [
+    "metric_id",
+    "family",
+    "title",
+    "formula_text",
+    "source_planes",
+    "caveats",
+    "unit",
+    "is_rate",
+    "version",
+    "proxy",
+    "created_at",
+    "updated_at",
+    "aggregation",
+    "dimension_kind",
+  ],
+  metric_daily: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "metric_id",
+    "is_rate",
+    "day",
+    "value",
+    "numerator",
+    "denominator",
+    "meta",
+    "computed_at",
+    "dimension",
+  ],
+  metric_rollup_state: [
+    "organization_id",
+    "family",
+    "last_filled_day",
+    "backfill_cursor",
+    "backfill_until",
+    "last_run_status",
+    "last_run_at",
+    "last_error",
+    "updated_at",
   ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [

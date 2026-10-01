@@ -393,6 +393,26 @@ export class AppConfigService {
     return this.config.getOrThrow<number>("repoMapHourUtc");
   }
 
+  /** Seconds between Insights rollup ticks — `OURO_INSIGHTS_ROLLUP_INTERVAL_SECONDS` (#433). */
+  get insightsRollupIntervalSeconds(): number {
+    return this.config.getOrThrow<number>("insightsRollupIntervalSeconds");
+  }
+
+  /** Days the nightly rollup consolidation re-fills — `OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS`. */
+  get insightsRollupConsolidateDays(): number {
+    return this.config.getOrThrow<number>("insightsRollupConsolidateDays");
+  }
+
+  /** How far back a family's first rollup fill reaches — `OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS`. */
+  get insightsRollupBackfillDays(): number {
+    return this.config.getOrThrow<number>("insightsRollupBackfillDays");
+  }
+
+  /** Most backfill days one rollup tick fills per family — `OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK`. */
+  get insightsRollupDaysPerTick(): number {
+    return this.config.getOrThrow<number>("insightsRollupDaysPerTick");
+  }
+
   /**
    * The merged-loop threshold that unlocks an advanced onboarding template —
    * `OURO_ONBOARDING_UNLOCK_THRESHOLD`. `undefined` when unset: each template's own rule stands.
@@ -502,6 +522,10 @@ export class AppConfigService {
       flakeRescoreCap: this.flakeRescoreCap,
       factSweepHourUtc: this.factSweepHourUtc,
       repoMapHourUtc: this.repoMapHourUtc,
+      insightsRollupIntervalSeconds: this.insightsRollupIntervalSeconds,
+      insightsRollupConsolidateDays: this.insightsRollupConsolidateDays,
+      insightsRollupBackfillDays: this.insightsRollupBackfillDays,
+      insightsRollupDaysPerTick: this.insightsRollupDaysPerTick,
       localProviderUrls: this.localProviderUrls,
       onboardingUnlockThreshold: this.onboardingUnlockThreshold,
       managedKeyPool: this.managedKeyPool,

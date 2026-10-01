@@ -438,7 +438,11 @@ describe("TABLE_COLUMNS", () => {
     //
     // The hundred-and-sixth is V077's `estimate_outcomes`, mirrored by BI.4 (#435) — every merged
     // loop graded against the estimate in force when it was queued.
-    expect(TABLE_NAMES).toHaveLength(106);
+    //
+    // The hundred-and-seventh to ninth are V076's `metric_definitions`, `metric_daily` and
+    // `metric_rollup_state`, mirrored by BI.2 (#433) with V078's dimension and aggregation — the
+    // registry the rollup extractors are versioned against, the grain they fill and their cursors.
+    expect(TABLE_NAMES).toHaveLength(109);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
