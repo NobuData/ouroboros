@@ -5,8 +5,11 @@ import { Test } from "@nestjs/testing";
 import { ConfigurationModule } from "../config/config.module";
 import { testConfiguration } from "../config/configuration.fixture";
 import { BacklogHealthRepository } from "../planning/health.repository";
+import { SmartDefaultsService } from "./defaults.service";
 import { FirstIssueRepository } from "./first-issue.repository";
 import { FirstIssueService } from "./first-issue.service";
+import { LaunchRepository } from "./launch.repository";
+import { FirstRunLauncherService } from "./launch.service";
 import { OnboardingController } from "./onboarding.controller";
 import { OnboardingModule } from "./onboarding.module";
 import { OnboardingRepository } from "./onboarding.repository";
@@ -30,6 +33,10 @@ describe("the onboarding module", () => {
     expect(moduleRef.get(FirstIssueService)).toBeInstanceOf(FirstIssueService);
     expect(moduleRef.get(FirstIssueRepository)).toBeInstanceOf(FirstIssueRepository);
     expect(moduleRef.get(BacklogHealthRepository)).toBeInstanceOf(BacklogHealthRepository);
+    // BB.5 (#388): the launcher composes M.3's queue write, which `BacklogModule` exports.
+    expect(moduleRef.get(FirstRunLauncherService)).toBeInstanceOf(FirstRunLauncherService);
+    expect(moduleRef.get(LaunchRepository)).toBeInstanceOf(LaunchRepository);
+    expect(moduleRef.get(SmartDefaultsService)).toBeInstanceOf(SmartDefaultsService);
 
     await moduleRef.close();
   });

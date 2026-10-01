@@ -25,6 +25,14 @@ export const ONBOARDING_ERRORS = {
   templateLocked: "onboarding_template_locked",
   /** The template's definition did not pass the publish gate, so nothing was created (#386). */
   templateInvalid: "onboarding_template_invalid",
+  /** `pickedIssueId` names no issue of this repository's mirrored backlog (BB.5, #388). */
+  issueNotFound: "onboarding_issue_not_found",
+  /** The picked issue has no canonical ticket yet — no GitHub source has read it (#388). */
+  issueTicketMissing: "onboarding_issue_ticket_missing",
+  /** A `PATCH` named the pick twice — by ticket and by issue (#388). */
+  pickAmbiguous: "onboarding_pick_ambiguous",
+  /** The launch has no issue it can queue: none picked, or the pick is not this repository's (#388). */
+  pickRequired: "onboarding_pick_required",
 } as const;
 
 /**
@@ -114,4 +122,68 @@ export function templateInvalid(
     `The ${slug} template could not be turned into a workflow: its definition did not pass validation.`,
     { slug, version, findings: [...findings] },
   );
+}
+
+/**
+ * An issue id the repository's mirrored backlog does not hold — another repository's and another
+ * workspace's included, which is why this is a `404` and never a `403` (BB.5,
+ * [#388](https://github.com/NobuData/ouroboros/issues/388)).
+ *
+ * @param issueId - The `github_issues.id` the caller sent.
+ * @returns The error.
+ */
+export function issueNotFound(issueId: string): NotFoundError {
+  return new NotFoundError(
+    ONBOARDING_ERRORS.issueNotFound,
+    "No such issue in this repository's backlog.",
+    { issueId },
+  );
+}
+
+/**
+ * An issue the backlog mirrors but no GitHub ticket source has read, so there is no canonical
+ * ticket for the wizard to point at. A `422`: nothing about the request is malformed, and it will
+ * succeed once the source syncs the issue.
+ *
+ * @param issueId - The `github_issues.id` the caller sent.
+ * @param issueNumber - The issue's number.
+ * @param repo - `owner/name`, lower-case.
+ * @returns The error.
+ */
+export function issueTicketMissing(
+  issueId: string,
+  issueNumber: number,
+  repo: string,
+): InvalidRequestError {
+  return new InvalidRequestError(
+    ONBOARDING_ERRORS.issueTicketMissing,
+    `#${String(issueNumber)} has not been read by a GitHub source of ${repo} yet, so it cannot be picked.`,
+    { issueId, issueNumber, repo },
+  );
+}
+
+/**
+ * A `PATCH` carrying both `pickedTicketId` and `pickedIssueId` — two names for one pick, which
+ * may not agree. Refused rather than letting one silently win.
+ *
+ * @returns The error.
+ */
+export function pickAmbiguous(): InvalidRequestError {
+  return new InvalidRequestError(
+    ONBOARDING_ERRORS.pickAmbiguous,
+    "Send pickedTicketId or pickedIssueId, not both.",
+    { fields: ["pickedTicketId", "pickedIssueId"] },
+  );
+}
+
+/**
+ * The launch guard refused for want of an issue to queue: nothing is picked, the pick is not an
+ * issue of this repository, or the repository's backlog does not hold it. `message` is the stated
+ * reason the action bar renders.
+ *
+ * @param reason - Why there is nothing to queue.
+ * @returns The error.
+ */
+export function pickRequired(reason: string): ConflictError {
+  return new ConflictError(ONBOARDING_ERRORS.pickRequired, reason, { step: 4, reason });
 }

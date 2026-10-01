@@ -188,7 +188,7 @@ export function scoreCandidate(
     freshnessComponent(input.updatedAt, now, weights),
   ];
   const score = round1(components.reduce((sum, component) => sum + component.points, 0));
-  const loopMinutes = Math.floor((input.cycleMin + input.cycleMax) / 2);
+  const loopMinutes = loopMinutesOf(input.cycleMin, input.cycleMax);
   const cost = costOf(input.estTokens, input.price);
   const fragments: ReasoningFragment[] = [
     ...components
@@ -208,6 +208,18 @@ export function scoreCandidate(
     fragments,
     line: fragments.map((fragment) => fragment.text).join(FRAGMENT_SEPARATOR),
   };
+}
+
+/**
+ * An estimate's printed minutes — its cycle range's midpoint, rounded down. One function, so the
+ * first-issue card's `est. 4 min` and the launch timeline's projection are the same number.
+ *
+ * @param cycleMin - `breakdown.cycle_min`.
+ * @param cycleMax - `breakdown.cycle_max`.
+ * @returns Whole minutes.
+ */
+export function loopMinutesOf(cycleMin: number, cycleMax: number): number {
+  return Math.floor((cycleMin + cycleMax) / 2);
 }
 
 /**

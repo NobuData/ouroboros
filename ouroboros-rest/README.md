@@ -117,6 +117,8 @@ $ curl http://localhost:4000/api/v1
 | `POST /api/v1/onboarding/detection/scan`            | `202` — scan (or join the running scan); debounced 30 s, `409 detection_rescan_too_soon` |
 | `GET /api/v1/onboarding/first-issue`                | [The safe first issue](#the-safe-first-issue-picker) (#387) — a scored, explained pick; cold states answered honestly |
 | `GET /api/v1/onboarding/first-issue/alternatives`   | *Or pick your own* — the qualifying backlog, safest first, each with its own reasoning (`?limit=` 1–50) |
+| `GET /api/v1/onboarding/defaults`                   | [The right column](#the-first-run-launcher-and-smart-defaults) (#388) — Smart Defaults rows by declared deployment capability, reassure claims with their mechanisms, the projected timeline |
+| `POST /api/v1/onboarding/launch`                    | *Run my first loop* (#388) — guarded; queues the pick with the instantiated workflow pinned, completes the wizard, answers the receipt |
 | `GET POST /api/v1/workflows`                        | [The workflow lifecycle](#the-workflow-lifecycle-api) (#134) — the rail with P.4's captions; **+ New workflow** |
 | `GET PATCH /api/v1/workflows/{id}`                  | One workflow, its draft and one version (`?version=` for history); rename, pause or archive |
 | `PUT /api/v1/workflows/{id}/draft`                  | The canvas's autosave, guarded by an `If-Match` draft etag — a stale one is a `409`, never an overwrite |
@@ -302,6 +304,9 @@ service never starts half-configured.
 | `OURO_FACT_SWEEP_HOUR_UTC` | The UTC hour the [nightly fact staleness sweep](#fact-lifecycle-and-the-staleness-sweep) is scheduled at; each pass lands at a random minute in the hour after it ([#411](https://github.com/NobuData/ouroboros/issues/411)) |      no — 4       | a whole number, 0–23 |
 | `OURO_REPO_MAP_HOUR_UTC` | The UTC hour the [nightly repo-map generator](#playbooks-and-the-repo-map-generator) is scheduled at; each pass lands at a random minute in the hour after it ([#415](https://github.com/NobuData/ouroboros/issues/415)) |      no — 5       | a whole number, 0–23 |
 | `OURO_ONBOARDING_UNLOCK_THRESHOLD` | The merged-loop count that unlocks an advanced [onboarding template tile](#template-tiles-and-instantiation) ([#386](https://github.com/NobuData/ouroboros/issues/386)), replacing each template's own rule |     no — unset     | a whole number, 0–10000; `0` unlocks every tier |
+| `OURO_MANAGED_KEY_POOL` | Whether this deployment declares a managed key pool — selects the [Smart Defaults](#the-first-run-launcher-and-smart-defaults) models row ([#388](https://github.com/NobuData/ouroboros/issues/388)) |     no — false     | `true` or `false` |
+| `OURO_MANAGED_KEY_TRIAL_CENTS` | The trial credit the managed key pool gives a new workspace, printed on the managed row; unset, the row names no figure |     no — unset     | whole cents, 1–1000000; refused unless `OURO_MANAGED_KEY_POOL` is `true` |
+| `OURO_HOSTED_RUNNER_POOL` | Whether this deployment declares a hosted runner pool — selects the Smart Defaults build row ([#388](https://github.com/NobuData/ouroboros/issues/388)) |     no — false     | `true` or `false` |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -2667,7 +2672,7 @@ it validates one slug against the whole vocabulary.
 
 ```
 GET   /api/v1/onboarding                  any member — the rail, choices, card refs, surfacing
-PATCH /api/v1/onboarding                  template/ticket picks: owner, admin, member · dismiss: any member
+PATCH /api/v1/onboarding                  template/ticket/issue picks: owner, admin, member · dismiss: any member
 POST  /api/v1/onboarding/complete-step    owner, admin, member — guarded by the derived rail
 POST  /api/v1/onboarding/skip             owner, admin, member — the import-skip
 ```
@@ -2813,6 +2818,89 @@ reasoning.line      = fragments joined with " · "
   schedule and last run, AL.5 #281), `empty` (no open issues — `planning.path` is `/planning`),
   `none_safe` (sized issues, none clears the bar). `estimator` travels on any answer while issues
   still wait to be sized.
+
+## The first-run launcher and smart defaults
+
+**Run my first loop** and the wizard's right column
+([#388](https://github.com/NobuData/ouroboros/issues/388), BB.5, decisions **O6**–**O9**), since
+REST 0.37.38:
+
+```
+POST /api/v1/onboarding/launch?repo=owner/name    owner, admin, member — guard, queue, receipt
+GET  /api/v1/onboarding/defaults?repo=owner/name  any member — rows, reassure claims, timeline
+```
+
+### The launch
+
+```
+launch ─▶ guards: steps 1–3 done · a pick that is this repository's issue ──✗─▶ 409 + stated reason
+       ─▶ queue (M.3 #112), naming the instantiated workflow ─▶ R.1 (#143) pins its version, `explicit`
+       ─▶ complete-step 4: completed_at stamped · dry-run defaulted ON if unset
+       ─▶ dry-run read back ─▶ receipt {queue item, pin, dryRun, links, run: null, timeline [projected]}
+```
+
+- **It launches what exists.** The issue is queued; nothing here starts a loop, because autonomous
+  execution (AR.1, [#315](https://github.com/NobuData/ouroboros/issues/315)) does not exist. The
+  receipt's `run` is `null` until a run of the issue does (BD.1,
+  [#396](https://github.com/NobuData/ouroboros/issues/396), fills it live) and `links.console`
+  with it.
+- **The guards state their reason.** `409 onboarding_step_incomplete` carries the blocking step
+  (1–3) and its derived sentence; `409 onboarding_pick_required` says why there is nothing to
+  queue — nothing picked, a pick that is another repository's, or one the backlog does not mirror.
+  Nothing is written on a refusal.
+- **The queue item is the dashboard's own.** `queue` is `QueueItemSummary`, mapped by the same
+  function `GET /api/v1/queue` uses, and `workflow` is that item's pin — so the receipt names what
+  the queue holds, not what the launcher intended.
+- **Dry-run is confirmed, not assumed.** It is read from the database *after* completion. A
+  workspace that turned it off keeps it off, and `dryRun.note` says *"Dry-run is off … not
+  draft-only"*.
+- **A repeat is not a second launch.** `outcome` is `queued`, `already_queued` (the queue already
+  held the issue — a double press, or a race the queue's own key settles) or `already_started` (a
+  run exists). The queue write's own refusals (`queue_issues_not_queueable`,
+  `queue_workflow_unknown`, `queue_issues_conflict`) pass through and nothing is completed.
+
+**The pick link.** The wizard stores a canonical ticket (`picked_ticket_id`), while the queue write
+and BB.4's picker speak `github_issues` ids. The launcher resolves ticket → mirrored issue by
+repository and number — the join the rail's step 4 already uses — and `PATCH /api/v1/onboarding`
+accepts `pickedIssueId` (the picker's `issueId`), which it resolves to that issue's canonical
+ticket and stores: `404 onboarding_issue_not_found` outside this repository's backlog,
+`422 onboarding_issue_ticket_missing` when no GitHub source has read the issue yet,
+`422 onboarding_pick_ambiguous` when both pick fields are sent.
+
+### The smart defaults
+
+Rows are **selected by declared deployment capability, not greyed out** (O6). The flags are
+configuration — `OURO_MANAGED_KEY_POOL`, `OURO_HOSTED_RUNNER_POOL`, both `false` unless declared —
+and the pools themselves arrive with BD.2 ([#397](https://github.com/NobuData/ouroboros/issues/397)):
+
+| Row | Pool declared | Not declared — the self-hosted default |
+|---|---|---|
+| models | `managed_keys` — *managed keys* (+ *with $5 trial credit* only when `OURO_MANAGED_KEY_TRIAL_CENTS` is set) | `bring_your_own_keys` → `/models/providers` |
+| build | `hosted_runner` — *hosted runner for your first loops* | `enroll_runner` → `/build-farm` |
+| estimator | `nightly_estimator` — the real nightly job's schedule and last run (AL.5, #281) | the same |
+| slack | `slack_future` — `optional`, unlinked: there is no Slack surface yet | the same |
+
+A self-hosted payload therefore contains **no** managed-key or hosted-runner row and no trial
+copy — `defaults.resources.spec.ts` and `defaults.service.spec.ts` assert it from the environment
+variable down. No trial figure is built in.
+
+**The reassure strip** (O9) is assembled from claims whose mechanism the workspace has, each
+naming that mechanism (`key`, `description`, `issue`, `path`):
+
+| Claim | Holds when | Mechanism |
+|---|---|---|
+| `draft_only` — *Nothing is written to main.* | dry-run is on, or was never answered (launching turns it on); dropped on an explicit *off* | `dry_run_policy` (#382) |
+| `uninstall` — *The app can be uninstalled in one click.* | the account records a GitHub App installation | `github_app_uninstall` (#122) |
+| `uninstall` — *The GitHub connection can be paused in one click.* | a token source covers the repository | `source_pause` (#141) |
+| `vault` — *Your keys are sealed in the tenant vault and never leave the control plane.* | always — the service does not start without the vault's key | `vault_envelope_encryption` (#222) |
+
+**The timeline** (`launch.timeline.ts`) is a projection and says so: `kind: "projected"` on the
+card and on every row. Its only number is the picked issue's own estimate — the first-issue card's
+`est. 4 min`, on the draft-PR row — and the review and merge rows follow the dry-run state. It is
+the same projection before launch (`defaults`) and after it (the receipt).
+
+**No aggregate statistic** (O8) appears in either payload: nothing is measured across teams, so
+the mockup's *"4m 10s"* and *"92%"* have no counterpart, and the suites assert their absence.
 
 ## The workflow lifecycle API
 
@@ -5853,7 +5941,7 @@ ouroboros-rest/
 │       ├── auth/           # sign-out, the legacy cookie · #33 #703 · discovery #712
 │       ├── engine/         # typed internal client + /engine/status       · #35
 │       ├── preferences/    # the caller's own font scale                  · #649
-│       ├── onboarding/     # the Get Started wizard — derived rail, guards · #385; first-issue picker · #387
+│       ├── onboarding/     # the Get Started wizard — derived rail, guards · #385; first-issue picker · #387; launcher, smart defaults · #388
 │       ├── detection/      # repo detection — rule packs over the probe SPI · #384
 │       ├── dashboard/      # GET /dashboard — mockup 02 in one payload    · #70
 │       ├── pricing/        # what a model costs, with provenance          · #586

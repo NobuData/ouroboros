@@ -2,7 +2,11 @@
 
 import { deriveRail } from "./onboarding.derivation";
 import {
+  issueNotFound,
+  issueTicketMissing,
   ONBOARDING_ERRORS,
+  pickAmbiguous,
+  pickRequired,
   stepIncomplete,
   templateInvalid,
   templateLocked,
@@ -18,6 +22,10 @@ describe("the onboarding errors", () => {
       stepIncomplete: "onboarding_step_incomplete",
       templateLocked: "onboarding_template_locked",
       templateInvalid: "onboarding_template_invalid",
+      issueNotFound: "onboarding_issue_not_found",
+      issueTicketMissing: "onboarding_issue_ticket_missing",
+      pickAmbiguous: "onboarding_pick_ambiguous",
+      pickRequired: "onboarding_pick_required",
     });
   });
 
@@ -102,5 +110,53 @@ describe("the onboarding errors", () => {
       "details",
       "message",
     ]);
+  });
+
+  describe("the launch and pick refusals (BB.5, #388)", () => {
+    const ISSUE_ID = "5eed004e-0000-4000-8000-000000000488";
+
+    it("answers an issue outside the repository's backlog with a 404 naming only the id sent", () => {
+      const error = issueNotFound(ISSUE_ID);
+
+      expect(error.getStatus()).toBe(404);
+      expect(error.getResponse()).toEqual({
+        code: "onboarding_issue_not_found",
+        message: "No such issue in this repository's backlog.",
+        details: { issueId: ISSUE_ID },
+      });
+    });
+
+    it("answers an issue no source has read with a 422 naming the issue and the repository", () => {
+      const error = issueTicketMissing(ISSUE_ID, 488, "acme-robotics/helios-firmware");
+
+      expect(error.getStatus()).toBe(422);
+      expect(error.getResponse()).toEqual({
+        code: "onboarding_issue_ticket_missing",
+        message:
+          "#488 has not been read by a GitHub source of acme-robotics/helios-firmware yet, so it cannot be picked.",
+        details: { issueId: ISSUE_ID, issueNumber: 488, repo: "acme-robotics/helios-firmware" },
+      });
+    });
+
+    it("answers a pick named twice with a 422 naming both fields", () => {
+      const error = pickAmbiguous();
+
+      expect(error.getStatus()).toBe(422);
+      expect(error.getResponse()).toMatchObject({
+        code: "onboarding_pick_ambiguous",
+        details: { fields: ["pickedTicketId", "pickedIssueId"] },
+      });
+    });
+
+    it("answers a launch with nothing to queue with a 409 whose message is the stated reason", () => {
+      const error = pickRequired("No first issue has been picked yet.");
+
+      expect(error.getStatus()).toBe(409);
+      expect(error.getResponse()).toEqual({
+        code: "onboarding_pick_required",
+        message: "No first issue has been picked yet.",
+        details: { step: 4, reason: "No first issue has been picked yet." },
+      });
+    });
   });
 });

@@ -52,6 +52,13 @@ describe("the PATCH body", () => {
     ).resolves.toEqual([]);
   });
 
+  it("accepts a pick named by the picker's issue id, and a null that clears it (#388)", async () => {
+    await expect(
+      failing(PatchOnboardingDto, { pickedIssueId: "5eed004e-0000-4000-8000-000000000488" }),
+    ).resolves.toEqual([]);
+    await expect(failing(PatchOnboardingDto, { pickedIssueId: null })).resolves.toEqual([]);
+  });
+
   it("accepts a full pick", async () => {
     await expect(
       failing(PatchOnboardingDto, {
@@ -66,6 +73,8 @@ describe("the PATCH body", () => {
     [{ selectedTemplate: "Quick Fixes" }, "selectedTemplate"],
     [{ selectedTemplate: 3 }, "selectedTemplate"],
     [{ pickedTicketId: "488" }, "pickedTicketId"],
+    [{ pickedIssueId: "488" }, "pickedIssueId"],
+    [{ pickedIssueId: 488 }, "pickedIssueId"],
     [{ dismissed: null }, "dismissed"],
     [{ dismissed: "true" }, "dismissed"],
   ])("refuses %j", async (body, field) => {

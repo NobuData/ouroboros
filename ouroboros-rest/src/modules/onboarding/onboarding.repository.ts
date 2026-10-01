@@ -314,6 +314,70 @@ export class OnboardingRepository {
   }
 
   /**
+   * An issue of a repository's mirrored backlog, by the id the picker answers (BB.5, #388).
+   *
+   * Held to the repository as well as the workspace, so an id from another repository of the
+   * same workspace is not this wizard's issue.
+   *
+   * @param organizationId - The workspace.
+   * @param repositoryId - `github_repos.id`.
+   * @param issueId - `github_issues.id`.
+   * @returns Its number, or `undefined` when the repository's backlog holds no such issue.
+   */
+  async mirroredIssue(
+    organizationId: string,
+    repositoryId: string,
+    issueId: string,
+  ): Promise<{ number: number } | undefined> {
+    return this.database.db
+      .selectFrom("github_issues")
+      .select("number")
+      .where("organization_id", "=", organizationId)
+      .where("github_repo_id", "=", repositoryId)
+      .where("id", "=", issueId)
+      .executeTakeFirst();
+  }
+
+  /**
+   * The canonical ticket of a GitHub issue — the workspace's `github`-source ticket carrying the
+   * issue's number and, in the `meta.github` Q.3's mapper writes, its repository (BB.5, #388).
+   *
+   * @param organizationId - The workspace.
+   * @param owner - The account, lower-case.
+   * @param name - The repository, lower-case.
+   * @param issueNumber - The issue's number.
+   * @returns The ticket, or `undefined` when no GitHub source has read the issue. When two
+   *   sources both have, the oldest ticket — one stable answer.
+   */
+  async ticketOfIssue(
+    organizationId: string,
+    owner: string,
+    name: string,
+    issueNumber: number,
+  ): Promise<TicketRow | undefined> {
+    return this.database.db
+      .selectFrom("tickets")
+      .innerJoin("ticket_sources", "ticket_sources.id", "tickets.source_id")
+      .select([
+        "tickets.id as id",
+        "tickets.external_id as external_id",
+        "tickets.external_key as external_key",
+        "tickets.title as title",
+        "tickets.meta as meta",
+        "ticket_sources.kind as kind",
+      ])
+      .where("tickets.organization_id", "=", organizationId)
+      .where("ticket_sources.kind", "=", "github")
+      .where("tickets.external_id", "=", String(issueNumber))
+      .where(sql<boolean>`lower(${sql.ref("tickets.meta")}->'github'->>'owner') = ${owner}`)
+      .where(sql<boolean>`lower(${sql.ref("tickets.meta")}->'github'->>'repo') = ${name}`)
+      .orderBy("tickets.created_at")
+      .orderBy("tickets.id")
+      .limit(1)
+      .executeTakeFirst();
+  }
+
+  /**
    * Whether an issue of a repository has reached the loop — queued, and/or run.
    *
    * @param organizationId - The workspace.

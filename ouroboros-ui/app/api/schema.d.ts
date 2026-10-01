@@ -1616,6 +1616,12 @@ export interface paths {
          *
          *     Picking a template does not complete step 3 — only a real workflow instantiated from
          *     it does.
+         *
+         *     **A pick may be named two ways** ([#388](https://github.com/NobuData/ouroboros/issues/388)).
+         *     `pickedTicketId` is a canonical ticket. `pickedIssueId` is the `issueId` the first-issue
+         *     picker answers (`GET /api/v1/onboarding/first-issue`): it is resolved to the canonical
+         *     ticket of the same issue — this repository, the same number — and stored as
+         *     `choices.pickedTicketId`, so the wizard keeps one kind of pick. Send one or the other.
          */
         patch: operations["patchOnboarding"];
         trace?: never;
@@ -1812,6 +1818,105 @@ export interface paths {
         get: operations["listOnboardingFirstIssueAlternatives"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/defaults": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The wizard's right column — smart defaults, the projection and the reassure strip
+         * @description Mockup 13's *Smart Defaults* card, *What Happens Next* card and reassure strip
+         *     ([#388](https://github.com/NobuData/ouroboros/issues/388), BB.5), each telling this
+         *     deployment its own truth.
+         *
+         *     **Rows are selected by declared deployment capability, never greyed out** (decision O6).
+         *     `capabilities` is what the deployment's configuration declares — a managed key pool
+         *     (`OURO_MANAGED_KEY_POOL`) and a hosted runner pool (`OURO_HOSTED_RUNNER_POOL`), both
+         *     absent unless declared. A deployment that declares neither is `self_hosted` and its
+         *     payload contains **no** managed-key or hosted-runner row — it gets different rows,
+         *     *bring your own keys → Providers* and *enroll a runner → Build Farm*. The managed row
+         *     prints a trial credit only when the deployment declares one
+         *     (`OURO_MANAGED_KEY_TRIAL_CENTS`); no figure is built in.
+         *
+         *     **The estimator row is the real nightly job** (AL.5,
+         *     [#281](https://github.com/NobuData/ouroboros/issues/281)) — its schedule and last run.
+         *     The Slack row is `optional` and unlinked, because there is no Slack surface yet.
+         *
+         *     **Every reassure claim names its mechanism, and a claim whose mechanism this workspace
+         *     does not have is left out** (decision O9). `draft_only` holds while the dry-run policy is
+         *     on, or was never answered — launching turns it on — and is dropped when the workspace
+         *     turned dry-run off. `uninstall` reads *the app can be uninstalled* only where a GitHub App
+         *     installation is recorded, *the GitHub connection can be paused* for a token source, and is
+         *     dropped when no source covers the repository. `vault` always holds.
+         *
+         *     **The timeline is a projection, labelled as one on every row** (decision O7). Its only
+         *     number is the picked issue's own estimate.
+         *
+         *     **No aggregate statistic appears anywhere** (decision O8) — nothing here is measured
+         *     across teams, so nothing says so.
+         *
+         *     Any member.
+         */
+        get: operations["readOnboardingDefaults"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/onboarding/launch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run my first loop — the guarded launch
+         * @description The action bar's **Run my first loop →** ([#388](https://github.com/NobuData/ouroboros/issues/388),
+         *     BB.5, decision O7). It does everything it says and nothing it cannot.
+         *
+         *     **Guards.** Steps 1–3 must be done in reality — a source connected, the repository
+         *     enabled, a workflow instantiated — and a pick must be an issue of this repository that
+         *     its mirrored backlog holds. A refusal carries the stated reason the action bar renders.
+         *
+         *     **Queue write.** The picked issue is queued through the intake queue write (M.3,
+         *     [#112](https://github.com/NobuData/ouroboros/issues/112)) naming the instantiated
+         *     workflow, so the trigger service (R.1, [#143](https://github.com/NobuData/ouroboros/issues/143))
+         *     pins its version in force — `workflow.pinReason` is `explicit`. The item is the dashboard
+         *     queue's own: `queue` is byte-identical to the same row read from `GET /api/v1/queue`.
+         *
+         *     **Completion.** The wizard is marked complete and the dry-run policy is set **on** when the
+         *     workspace never answered; an explicit *off* is left alone.
+         *
+         *     **Dry-run confirmation.** `dryRun` is read back after completion. When it is off the
+         *     receipt says so in `dryRun.note` rather than implying draft-only.
+         *
+         *     **It launches what exists.** No loop is started here — autonomous execution (AR.1,
+         *     [#315](https://github.com/NobuData/ouroboros/issues/315)) does not exist yet — so `run` is
+         *     `null` until a run of the issue does, and `timeline` is a projection labelled as one.
+         *
+         *     **A repeat is not a second launch.** An issue the queue already holds answers
+         *     `already_queued`; one that already has a run answers `already_started` with `run` filled.
+         *     Nothing is written twice, and the wizard is completed all the same.
+         *
+         *     The queue write's own refusals pass through unchanged, and nothing is completed.
+         *
+         *     `owner`, `admin` or `member`.
+         */
+        post: operations["launchOnboarding"];
         delete?: never;
         options?: never;
         head?: never;
@@ -11591,6 +11696,13 @@ export interface components {
              * @description A canonical ticket of this workspace.
              */
             pickedTicketId?: string | null;
+            /**
+             * Format: uuid
+             * @description The same pick, named by the `issueId` the first-issue picker answers — resolved to
+             *     that issue's canonical ticket and stored as `pickedTicketId`. Not together with
+             *     `pickedTicketId`.
+             */
+            pickedIssueId?: string | null;
             /** @description Stop (or resume) showing the wizard. Open to every member. */
             dismissed?: boolean;
         };
@@ -11845,6 +11957,236 @@ export interface components {
             /** @description Candidates not disqualified, safest first. */
             candidates: components["schemas"]["OnboardingFirstIssueCandidate"][];
             excluded: components["schemas"]["OnboardingFirstIssueExclusions"];
+        };
+        /**
+         * OnboardingTimelineRow
+         * @description One row of *What Happens Next* — always a projection.
+         */
+        OnboardingTimelineRow: {
+            /** @enum {string} */
+            key: "loop_starts" | "plan_posted" | "draft_pr_opens" | "you_review" | "merge";
+            /**
+             * @description Who acts.
+             * @enum {string}
+             */
+            actor: "loop" | "you";
+            /** @example loop starts on #488 */
+            text: string;
+            /**
+             * @description The label the card must draw. Nothing here is measured.
+             * @enum {string}
+             */
+            kind: "projected";
+            /**
+             * @description Minutes after the loop starts, where the picked issue's own estimate gives one — `0`
+             *     for the origin, the estimate's cycle midpoint for the draft PR — and `null` otherwise.
+             *     Never a measured or cross-team figure.
+             */
+            atMinutes: number | null;
+        };
+        /**
+         * OnboardingTimeline
+         * @description The *What Happens Next* card's data ([#388](https://github.com/NobuData/ouroboros/issues/388),
+         *     decision O7) — a projection, labelled as one on the card and on every row.
+         */
+        OnboardingTimeline: {
+            /** @enum {string} */
+            kind: "projected";
+            /**
+             * @description Where the one number comes from; `none` when the issue carries no estimate.
+             * @enum {string}
+             */
+            basis: "issue_estimate" | "none";
+            /** @description Whether the review and merge rows were written for an active dry-run policy. */
+            dryRun: boolean;
+            rows: components["schemas"]["OnboardingTimelineRow"][];
+        };
+        /**
+         * OnboardingDefaultRow
+         * @description One row of the *Smart Defaults* card.
+         */
+        OnboardingDefaultRow: {
+            /** @enum {string} */
+            key: "models" | "build" | "estimator" | "slack";
+            /**
+             * @description Which of the row's variants this deployment gets. `managed_keys` and `hosted_runner`
+             *     appear only where the deployment declares the pool.
+             * @enum {string}
+             */
+            variant: "managed_keys" | "bring_your_own_keys" | "hosted_runner" | "enroll_runner" | "nightly_estimator" | "slack_future";
+            /**
+             * @description `ready` draws the tick; `optional` draws the dim one.
+             * @enum {string}
+             */
+            status: "ready" | "optional";
+            /**
+             * @description The row's sentence, without its link.
+             * @example Models: bring your own keys
+             */
+            text: string;
+            /** @description Where the row leads, or `null` when its destination does not exist yet. */
+            link: {
+                /** @example Providers */
+                label: string;
+                /** @example /models/providers */
+                path: string;
+            } | null;
+            /**
+             * @description The managed pool's trial credit — only on `managed_keys`, and only when the deployment
+             *     declares one.
+             */
+            trialCredit?: {
+                cents: number;
+                /** @example $5 */
+                display: string;
+            };
+            /** @description The nightly job's schedule and last run — only on `nightly_estimator`. */
+            estimator?: components["schemas"]["PlanningReestimationStatus"];
+            /**
+             * @description What the row waits for — only on `slack_future`.
+             * @example ChatOps
+             */
+            arrivesWith?: string;
+        };
+        /**
+         * OnboardingReassureClaim
+         * @description One claim of the reassure strip, with the mechanism that makes it true (decision O9).
+         */
+        OnboardingReassureClaim: {
+            /** @enum {string} */
+            key: "draft_only" | "uninstall" | "vault";
+            /** @example Nothing is written to main. */
+            text: string;
+            mechanism: {
+                /** @enum {string} */
+                key: "dry_run_policy" | "github_app_uninstall" | "source_pause" | "vault_envelope_encryption";
+                /** @description What the mechanism does, in a sentence. */
+                description: string;
+                /**
+                 * @description The issue that delivered it.
+                 * @example 382
+                 */
+                issue: number;
+                /**
+                 * @description Where a person operates or inspects it.
+                 * @example /settings/policies
+                 */
+                path: string | null;
+            };
+        };
+        /**
+         * OnboardingDefaults
+         * @description The wizard's right column ([#388](https://github.com/NobuData/ouroboros/issues/388)).
+         */
+        OnboardingDefaults: {
+            /**
+             * @description `owner/name`, lower-case.
+             * @example acme-robotics/helios-firmware
+             */
+            repo: string;
+            /**
+             * @description `saas` when either pool is declared, else `self_hosted`.
+             * @enum {string}
+             */
+            deployment: "self_hosted" | "saas";
+            /** @description What the deployment's configuration declares. Both `false` by default. */
+            capabilities: {
+                managedKeyPool: boolean;
+                hostedRunnerPool: boolean;
+            };
+            /** @description The card's rows in card order — models, build, estimator, Slack. */
+            rows: components["schemas"]["OnboardingDefaultRow"][];
+            reassure: {
+                /** @description The claims true of this workspace, in strip order. */
+                claims: components["schemas"]["OnboardingReassureClaim"][];
+                /** @description The claims' sentences joined. Empty when no claim holds. */
+                line: string;
+            };
+            timeline: components["schemas"]["OnboardingTimeline"];
+        };
+        /**
+         * OnboardingLaunchReceipt
+         * @description What *Run my first loop* did ([#388](https://github.com/NobuData/ouroboros/issues/388)):
+         *     the issue queued, its position, the workflow version it is pinned to, dry-run as confirmed
+         *     after completion, and the wizard afterwards.
+         */
+        OnboardingLaunchReceipt: {
+            /** @example acme-robotics/helios-firmware */
+            repo: string;
+            /**
+             * @description `queued` — this request wrote the queue item. `already_queued` — the queue already
+             *     held the issue. `already_started` — a run of the issue exists.
+             * @enum {string}
+             */
+            outcome: "queued" | "already_queued" | "already_started";
+            issue: {
+                /**
+                 * Format: uuid
+                 * @description The mirrored issue — the picker's `issueId`.
+                 */
+                id: string;
+                number: number;
+                title: string;
+            };
+            /** @description The queue item, in the dashboard queue's own shape; `null` once a run has claimed it. */
+            queue: components["schemas"]["QueueItemSummary"] | null;
+            /** @description The workflow the issue is pinned to — the queue item's own pin. */
+            workflow: {
+                /** @example quick-fixes */
+                slug: string;
+                /** @description The pinned published version; `null` when read off a run. */
+                version: number | null;
+                /**
+                 * @description `explicit` for a launch; `null` when read off a run.
+                 * @enum {string|null}
+                 */
+                pinReason: "explicit" | "predicate" | "most_specific" | "alphabetical" | "suggested" | null;
+                /**
+                 * @description The workflow in the Studio.
+                 * @example /workflows/quick-fixes
+                 */
+                path: string;
+            };
+            /** @description The dry-run policy, read from the database after completion. */
+            dryRun: {
+                active: boolean;
+                /**
+                 * @description The policy's designed reason while active.
+                 * @example dry-run policy active
+                 */
+                reason: string | null;
+                /** @description What that means for this loop. Says so when dry-run is off. */
+                note: string;
+                /** @example /settings/policies */
+                path: string;
+            };
+            /**
+             * Format: date-time
+             * @description When the wizard was completed.
+             */
+            completedAt: string | null;
+            links: {
+                /** @example /dashboard */
+                dashboard: string;
+                /**
+                 * @description The dashboard's queue card.
+                 * @example /dashboard#dash-up-next-title
+                 */
+                queue: string;
+                /** @description The run console, once there is a run to open. */
+                console: string | null;
+            };
+            /**
+             * @description The live run reference — `null` until a run of the issue exists
+             *     (BD.1, [#396](https://github.com/NobuData/ouroboros/issues/396)).
+             */
+            run: {
+                /** Format: uuid */
+                id: string;
+                path: string;
+            } | null;
+            timeline: components["schemas"]["OnboardingTimeline"];
+            onboarding: components["schemas"]["Onboarding"];
         };
         /**
          * OnboardingTemplateTiles
@@ -26367,6 +26709,9 @@ export interface operations {
              * @description `onboarding_ticket_not_found` — `pickedTicketId` names no ticket of this workspace;
              *     another workspace's ticket is the same answer.
              *
+             *     `onboarding_issue_not_found` — `pickedIssueId` names no issue of this repository's
+             *     mirrored backlog; another repository's or another workspace's issue is the same answer.
+             *
              *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
              *     are a member of. The two are deliberately one answer.
              */
@@ -26379,10 +26724,15 @@ export interface operations {
                 };
             };
             /**
-             * @description `validation_failed` — `repo`, `selectedTemplate`, `pickedTicketId` or `dismissed` is
-             *     malformed; `details` is keyed by the field. `onboarding_template_unknown` —
+             * @description `validation_failed` — `repo`, `selectedTemplate`, `pickedTicketId`, `pickedIssueId` or
+             *     `dismissed` is malformed; `details` is keyed by the field. `onboarding_template_unknown` —
              *     `selectedTemplate` is not a template this workspace is offered; `details.offered` lists
              *     the ones that are.
+             *
+             *     `onboarding_pick_ambiguous` — both `pickedTicketId` and `pickedIssueId` were sent.
+             *     `onboarding_issue_ticket_missing` — the issue is in the backlog but no GitHub source
+             *     has read it into a ticket yet, so there is nothing for the wizard to point at;
+             *     `details.issueNumber` names it.
              */
             422: {
                 headers: {
@@ -27256,6 +27606,300 @@ export interface operations {
             /**
              * @description `validation_failed` — `repo` is missing or is not `owner/name`, or `limit` is not a
              *     whole number from 1 to 50. `details` carries the entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readOnboardingDefaults: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rows, the claims and the projection. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingDefaults"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo` is missing or is not `owner/name`. `details` carries the
+             *     entry keyed by the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    launchOnboarding: {
+        parameters: {
+            query: {
+                /**
+                 * @description The repository whose wizard this is, as `owner/name` — `acme-robotics/helios-firmware`
+                 *     ([#385](https://github.com/NobuData/ouroboros/issues/385)). V067's `repo_ref` grammar;
+                 *     compared case-insensitively. Each repository has its own, independent wizard.
+                 * @example acme-robotics/helios-firmware
+                 */
+                repo: components["parameters"]["OnboardingRepo"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The receipt — what was queued, where, pinned to what, and dry-run's state. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingLaunchReceipt"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — a `viewer` cannot launch a loop. `details.role` is what you hold and `details.required` is what
+             *     would have been enough.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `onboarding_step_incomplete` — a step 1–3 is not done. `message` is the blocking step's
+             *     stated reason; `details.step` is `4`, `details.blockingStep` the first step not done.
+             *
+             *     `onboarding_pick_required` — there is no issue to queue: nothing is picked, the pick is
+             *     not an issue of this repository, or the repository's backlog does not hold it yet.
+             *     `message` and `details.reason` are the stated reason.
+             *
+             *     `queue_issues_conflict` — the queue write's own refusal: the workspace's queue already
+             *     holds this issue number for another repository.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "onboarding_pick_required",
+                     *       "message": "No first issue has been picked yet.",
+                     *       "details": {
+                     *         "step": 4,
+                     *         "reason": "No first issue has been picked yet."
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `repo` is missing or is not `owner/name`.
+             *
+             *     `queue_issues_not_queueable` — the picked issue is not sized, so there is no estimate
+             *     to queue it with. `queue_workflow_unknown` — the instantiated workflow is no longer
+             *     one of this workspace's active workflows. Both are the queue write's own refusals.
              */
             422: {
                 headers: {

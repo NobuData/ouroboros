@@ -13,6 +13,9 @@
  *     says `configurationImported: false`: the bundle import is BD.3 (#398).
  *   * **Anyone can dismiss.** A `PATCH` carrying only `dismissed` is open to every member; one
  *     that picks a template or a ticket needs a contributor (owner, admin or member).
+ *   * **A pick may be named by the picker's own id** (BB.5, #388). BB.4's picker answers
+ *     `github_issues.id`; `pickedIssueId` resolves it to the canonical ticket of the same issue —
+ *     same repository, same number — and stores that, so the wizard keeps one kind of pick.
  */
 
 import { Inject, Injectable } from "@nestjs/common";
@@ -31,11 +34,20 @@ import {
   type SourceFact,
 } from "./onboarding.derivation";
 import type { PatchOnboardingDto } from "./onboarding.dto";
-import { stepIncomplete, templateUnknown, ticketNotFound } from "./onboarding.errors";
+import {
+  issueNotFound,
+  issueTicketMissing,
+  pickAmbiguous,
+  stepIncomplete,
+  templateUnknown,
+  ticketNotFound,
+} from "./onboarding.errors";
 import {
   OnboardingRepository,
   type GithubSourceRow,
+  type InstantiatedWorkflowRow,
   type OnboardingChoices,
+  type RepositoryRow,
   type TicketRow,
 } from "./onboarding.repository";
 import { surfacing } from "./onboarding.surfacing";
@@ -46,10 +58,29 @@ import {
   type OnboardingSkipResource,
 } from "./resources";
 
-/** How a covering source is preferred when several list the repository: healthy first. */
 /** The dry-run policy, as completion reaches it (BA.3, #382). */
 export type OnboardingPolicies = Pick<OrgPolicyService, "adoptDefault">;
 
+/**
+ * The wizard and the rows it was derived from, read once — what the first-run launcher composes
+ * (BB.5, #388), so its guards and its queue write see the same facts the rail was drawn from.
+ */
+export interface OnboardingSnapshot {
+  /** The wizard as `GET /api/v1/onboarding` answers it. */
+  readonly resource: OnboardingResource;
+  /** The GitHub source covering the repository, or null when none does. */
+  readonly source: SourceFact | null;
+  /** The mirrored repository, or undefined when the workspace mirrors none by that name. */
+  readonly repository: RepositoryRow | undefined;
+  /** The workflow instantiated from the picked template, or undefined. */
+  readonly workflow: InstantiatedWorkflowRow | undefined;
+  /** The picked ticket, or undefined when none is picked (or it no longer exists). */
+  readonly ticket: TicketRow | undefined;
+  /** The picked ticket's issue number, when it is a GitHub issue of this repository. */
+  readonly issueNumber: number | undefined;
+}
+
+/** How a covering source is preferred when several list the repository: healthy first. */
 const SOURCE_PREFERENCE: Readonly<Record<GithubSourceRow["status"], number>> = {
   active: 0,
   error: 1,
@@ -78,6 +109,18 @@ export class OnboardingService {
    *   and a rail derived from whatever the subsystems hold.
    */
   async read(organizationId: string, repo: string): Promise<OnboardingResource> {
+    return (await this.compose(organizationId, normaliseRepo(repo))).resource;
+  }
+
+  /**
+   * The wizard for one repository together with the rows it was derived from.
+   *
+   * @param organizationId - The workspace.
+   * @param repo - `owner/name`; compared case-insensitively.
+   * @returns The snapshot — one read of every subsystem, so a caller that guards on the rail and
+   *   then acts on the rows cannot see two different moments.
+   */
+  async snapshot(organizationId: string, repo: string): Promise<OnboardingSnapshot> {
     return this.compose(organizationId, normaliseRepo(repo));
   }
 
@@ -90,9 +133,11 @@ export class OnboardingService {
    * @returns The resource after the write.
    * @throws {ForbiddenError} `forbidden` — a viewer picking a template or a ticket.
    * @throws {InvalidRequestError} `onboarding_template_unknown` — a slug the workspace is not
-   *   offered.
+   *   offered; `onboarding_pick_ambiguous` — both `pickedTicketId` and `pickedIssueId` sent;
+   *   `onboarding_issue_ticket_missing` — the issue has no canonical ticket yet.
    * @throws {NotFoundError} `onboarding_ticket_not_found` — a ticket the workspace does not
-   *   have, another workspace's included.
+   *   have, another workspace's included; `onboarding_issue_not_found` — `pickedIssueId` names no
+   *   issue of this repository's backlog.
    */
   async update(
     organizationId: string,
@@ -102,8 +147,16 @@ export class OnboardingService {
     const ref = normaliseRepo(repo);
     const choices: OnboardingChoices = {};
 
-    if (patch.selectedTemplate !== undefined || patch.pickedTicketId !== undefined) {
+    if (
+      patch.selectedTemplate !== undefined ||
+      patch.pickedTicketId !== undefined ||
+      patch.pickedIssueId !== undefined
+    ) {
       requireContributor();
+    }
+
+    if (patch.pickedTicketId !== undefined && patch.pickedIssueId !== undefined) {
+      throw pickAmbiguous();
     }
 
     if (patch.selectedTemplate !== undefined) {
@@ -126,6 +179,13 @@ export class OnboardingService {
       choices.picked_ticket_id = patch.pickedTicketId;
     }
 
+    if (patch.pickedIssueId !== undefined) {
+      choices.picked_ticket_id =
+        patch.pickedIssueId === null
+          ? null
+          : (await this.ticketOfIssue(organizationId, ref, patch.pickedIssueId)).id;
+    }
+
     if (patch.dismissed !== undefined) {
       choices.dismissed = patch.dismissed;
     }
@@ -134,7 +194,7 @@ export class OnboardingService {
       await this.onboarding.saveChoices(organizationId, ref, choices);
     }
 
-    return this.compose(organizationId, ref);
+    return (await this.compose(organizationId, ref)).resource;
   }
 
   /**
@@ -159,7 +219,7 @@ export class OnboardingService {
     step: OnboardingStepNumber,
   ): Promise<OnboardingResource> {
     const ref = normaliseRepo(repo);
-    const current = await this.compose(organizationId, ref);
+    const { resource: current } = await this.compose(organizationId, ref);
     const blocking = blockingStep(current, step);
 
     if (blocking !== undefined) {
@@ -173,7 +233,7 @@ export class OnboardingService {
     await this.onboarding.markCompleted(organizationId, ref);
     await this.policies.adoptDefault(organizationId);
 
-    return this.compose(organizationId, ref);
+    return (await this.compose(organizationId, ref)).resource;
   }
 
   /**
@@ -191,7 +251,7 @@ export class OnboardingService {
     await this.onboarding.markBypassed(organizationId, ref);
 
     return {
-      onboarding: await this.compose(organizationId, ref),
+      onboarding: (await this.compose(organizationId, ref)).resource,
       settingsPath: SETTINGS_PATH,
       configurationImported: false,
     };
@@ -202,9 +262,9 @@ export class OnboardingService {
    *
    * @param organizationId - The workspace.
    * @param repo - `owner/name`, lower-case.
-   * @returns The resource.
+   * @returns The resource, and the rows it was derived from.
    */
-  private async compose(organizationId: string, repo: string): Promise<OnboardingResource> {
+  private async compose(organizationId: string, repo: string): Promise<OnboardingSnapshot> {
     const [owner, name] = splitRepo(repo);
     const state = await this.onboarding.state(organizationId, repo);
     const source = await this.source(organizationId, owner, name);
@@ -243,7 +303,7 @@ export class OnboardingService {
       completed: state?.completed_at != null,
     });
 
-    return onboardingResource({
+    const resource = onboardingResource({
       repo,
       rail,
       state,
@@ -255,6 +315,16 @@ export class OnboardingService {
         hasRuns: await this.onboarding.hasRuns(organizationId),
       }),
     });
+
+    return {
+      resource,
+      source,
+      repository,
+      workflow,
+      ticket,
+      issueNumber:
+        ticket === undefined || repository === undefined ? undefined : issueNumberIn(ticket, repo),
+    };
   }
 
   /**
@@ -271,10 +341,7 @@ export class OnboardingService {
     owner: string,
     name: string,
   ): Promise<SourceFact | null> {
-    const covering = (await this.onboarding.githubSources(organizationId))
-      .filter((row) => covers(row.config, owner, name))
-      .sort((a, b) => SOURCE_PREFERENCE[a.status] - SOURCE_PREFERENCE[b.status]);
-    const chosen = covering[0];
+    const chosen = coveringSource(await this.onboarding.githubSources(organizationId), owner, name);
 
     if (chosen === undefined) {
       return null;
@@ -321,20 +388,52 @@ export class OnboardingService {
     repo: string,
     repositoryId: string | undefined,
   ): Promise<PickedTicketFact> {
-    const issueNumber = Number.parseInt(ticket.external_id, 10);
-    const inRepository =
-      ticket.kind === "github" &&
-      ticketRepository(ticket.meta) === repo &&
-      repositoryId !== undefined &&
-      Number.isSafeInteger(issueNumber);
+    const issueNumber = issueNumberIn(ticket, repo);
 
-    if (!inRepository || repositoryId === undefined) {
+    if (issueNumber === undefined || repositoryId === undefined) {
       return { externalKey: ticket.external_key, inRepository: false, queued: false, run: false };
     }
 
     const reached = await this.onboarding.reachedLoop(organizationId, repositoryId, issueNumber);
 
     return { externalKey: ticket.external_key, inRepository: true, ...reached };
+  }
+
+  /**
+   * The canonical ticket of an issue the picker answered (BB.4's `issueId`, a `github_issues`
+   * row): the repository's own issue of that id, then the GitHub ticket carrying its number.
+   *
+   * @param organizationId - The workspace.
+   * @param repo - `owner/name`, lower-case — the wizard's repository; another repository's issue
+   *   is not found here.
+   * @param issueId - `github_issues.id`.
+   * @returns The ticket to store as the pick.
+   * @throws {NotFoundError} `onboarding_issue_not_found`.
+   * @throws {InvalidRequestError} `onboarding_issue_ticket_missing`.
+   */
+  private async ticketOfIssue(
+    organizationId: string,
+    repo: string,
+    issueId: string,
+  ): Promise<TicketRow> {
+    const [owner, name] = splitRepo(repo);
+    const repository = await this.onboarding.repository(organizationId, owner, name);
+    const issue =
+      repository === undefined
+        ? undefined
+        : await this.onboarding.mirroredIssue(organizationId, repository.id, issueId);
+
+    if (issue === undefined) {
+      throw issueNotFound(issueId);
+    }
+
+    const ticket = await this.onboarding.ticketOfIssue(organizationId, owner, name, issue.number);
+
+    if (ticket === undefined) {
+      throw issueTicketMissing(issueId, issue.number, repo);
+    }
+
+    return ticket;
   }
 
   /**
@@ -362,6 +461,24 @@ export class OnboardingService {
  */
 export function normaliseRepo(repo: string): string {
   return repo.toLowerCase();
+}
+
+/**
+ * The GitHub source that covers `owner/name`, the healthiest first — one active source is enough.
+ *
+ * @param sources - The workspace's GitHub sources.
+ * @param owner - The account, lower-case.
+ * @param name - The repository, lower-case.
+ * @returns The chosen source, or undefined when none covers the repository.
+ */
+export function coveringSource(
+  sources: readonly GithubSourceRow[],
+  owner: string,
+  name: string,
+): GithubSourceRow | undefined {
+  return sources
+    .filter((row) => covers(row.config, owner, name))
+    .sort((a, b) => SOURCE_PREFERENCE[a.status] - SOURCE_PREFERENCE[b.status])[0];
 }
 
 /**
@@ -417,6 +534,24 @@ export function ticketRepository(meta: unknown): string | null {
   }
 
   return `${owner}/${repo}`.toLowerCase();
+}
+
+/**
+ * A ticket's issue number, when it is a GitHub issue of `repo` — the link between the wizard's
+ * pick (a canonical ticket) and the repository's mirrored backlog, which keys issues by number.
+ *
+ * @param ticket - The picked ticket.
+ * @param repo - `owner/name`, lower-case.
+ * @returns The number, or undefined when the ticket is another tracker's or another repository's.
+ */
+export function issueNumberIn(ticket: TicketRow, repo: string): number | undefined {
+  const issueNumber = Number.parseInt(ticket.external_id, 10);
+
+  return ticket.kind === "github" &&
+    ticketRepository(ticket.meta) === repo &&
+    Number.isSafeInteger(issueNumber)
+    ? issueNumber
+    : undefined;
 }
 
 /**

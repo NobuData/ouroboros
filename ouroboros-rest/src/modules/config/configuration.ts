@@ -543,6 +543,19 @@ export const DEFAULT_REPO_MAP_HOUR_UTC = 5;
 export const MAX_ONBOARDING_UNLOCK_THRESHOLD = 10000;
 
 /**
+ * The two words a deployment capability flag accepts (BB.5, #388). Words rather than `1`/`0` or
+ * `yes`/`no`, so an env file reads as what it declares and a typo is a boot failure, not `false`.
+ */
+export const FLAG_VALUES = ["true", "false"] as const;
+
+/**
+ * The largest trial credit a deployment may declare for its managed key pool, in cents (BB.5,
+ * #388) — ten thousand dollars, far past any trial, so a units mistake (dollars typed as cents
+ * is the likely one, and it errs small) cannot print a six-figure promise on the wizard.
+ */
+export const MAX_MANAGED_KEY_TRIAL_CENTS = 1_000_000;
+
+/**
  * The service's validated configuration.
  *
  * Every field is derived from exactly one environment variable — {@link VARIABLES} is the
@@ -976,6 +989,29 @@ export interface Configuration {
    * every tier. Between 0 and {@link MAX_ONBOARDING_UNLOCK_THRESHOLD}.
    */
   readonly onboardingUnlockThreshold?: number;
+  /**
+   * Whether this deployment declares a **managed key pool** — model keys the operator runs, so a
+   * new workspace needs none of its own (BB.5, #388, decision **O6**). From
+   * `OURO_MANAGED_KEY_POOL`; `false` when unset, which is the self-hosted default: the wizard's
+   * Smart Defaults card then says *bring your own keys* rather than promising a pool that does
+   * not exist. The pool itself is BD.2's ([#397](https://github.com/NobuData/ouroboros/issues/397));
+   * this only declares it.
+   */
+  readonly managedKeyPool: boolean;
+  /**
+   * The trial credit the managed key pool gives a new workspace, in cents. From
+   * `OURO_MANAGED_KEY_TRIAL_CENTS`; `undefined` when unset, and the managed row then names no
+   * figure — the service never invents one. Between 1 and {@link MAX_MANAGED_KEY_TRIAL_CENTS},
+   * and refused at boot without {@link Configuration.managedKeyPool}: a credit on a pool the
+   * deployment does not declare is a promise nothing backs.
+   */
+  readonly managedKeyTrialCents?: number;
+  /**
+   * Whether this deployment declares a **hosted runner pool** — build runners the operator runs
+   * for a workspace's first loops (BB.5, #388, decision **O6**). From `OURO_HOSTED_RUNNER_POOL`;
+   * `false` when unset, the self-hosted default: the card then says *enroll a runner*.
+   */
+  readonly hostedRunnerPool: boolean;
 }
 
 /**
@@ -1039,6 +1075,9 @@ export const VARIABLES = {
   repoMapHourUtc: "OURO_REPO_MAP_HOUR_UTC",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
   onboardingUnlockThreshold: "OURO_ONBOARDING_UNLOCK_THRESHOLD",
+  managedKeyPool: "OURO_MANAGED_KEY_POOL",
+  managedKeyTrialCents: "OURO_MANAGED_KEY_TRIAL_CENTS",
+  hostedRunnerPool: "OURO_HOSTED_RUNNER_POOL",
 } as const satisfies Record<keyof Configuration, string>;
 
 /**
@@ -1249,6 +1288,22 @@ function boundedWhole(minimum: number, fallback: number, maximum: number, unit =
     .transform(Number)
     .refine((value) => value >= minimum && value <= maximum, range)
     .default(fallback);
+}
+
+/**
+ * A deployment capability flag — `true` or `false`, `false` when unset.
+ *
+ * Unset is `false` because a capability is something a deployment has to *declare*: the default
+ * install has neither pool, and a flag that defaulted on would be this service promising
+ * infrastructure nobody stood up (decision **O6**).
+ *
+ * @returns The schema, parsed to a boolean.
+ */
+function capabilityFlag() {
+  return z
+    .enum(FLAG_VALUES, { error: `expected ${FLAG_VALUES.join(" or ")}` })
+    .default("false")
+    .transform((value) => value === "true");
 }
 
 /**
@@ -1614,6 +1669,21 @@ const environmentShape = z.object({
     )
     .optional(),
 
+  // The deployment's capability declarations (BB.5, #388, decision O6). Both pools are absent
+  // unless declared, so a self-hosted install is never told about infrastructure it lacks. The
+  // trial credit is optional even with the pool: undeclared, the wizard prints no figure.
+  OURO_MANAGED_KEY_POOL: capabilityFlag(),
+  OURO_MANAGED_KEY_TRIAL_CENTS: z
+    .string()
+    .regex(/^\d+$/, `expected between 1 and ${MAX_MANAGED_KEY_TRIAL_CENTS} cents`)
+    .transform(Number)
+    .refine(
+      (value) => value >= 1 && value <= MAX_MANAGED_KEY_TRIAL_CENTS,
+      `expected between 1 and ${MAX_MANAGED_KEY_TRIAL_CENTS} cents`,
+    )
+    .optional(),
+  OURO_HOSTED_RUNNER_POOL: capabilityFlag(),
+
   // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
   // pairs, comma-separated. Optional, and its default is *no local providers*: an
   // installation that runs none is the normal one, and a default address would be this
@@ -1689,6 +1759,16 @@ const environmentSchema = environmentShape
         code: "custom",
         path: [VARIABLES.artifactMaxJobBytes],
         message: "expected at least OURO_ARTIFACT_MAX_FILE_BYTES",
+      });
+    }
+
+    // A trial credit on a pool the deployment does not declare is a promise nothing backs
+    // (#388): refused here rather than silently dropped, so the operator who wrote it hears.
+    if (values.OURO_MANAGED_KEY_TRIAL_CENTS !== undefined && !values.OURO_MANAGED_KEY_POOL) {
+      context.addIssue({
+        code: "custom",
+        path: [VARIABLES.managedKeyTrialCents],
+        message: "is only meaningful when OURO_MANAGED_KEY_POOL is true",
       });
     }
   });
@@ -1816,6 +1896,9 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     repoMapHourUtc: values.OURO_REPO_MAP_HOUR_UTC,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
     onboardingUnlockThreshold: values.OURO_ONBOARDING_UNLOCK_THRESHOLD,
+    managedKeyPool: values.OURO_MANAGED_KEY_POOL,
+    managedKeyTrialCents: values.OURO_MANAGED_KEY_TRIAL_CENTS,
+    hostedRunnerPool: values.OURO_HOSTED_RUNNER_POOL,
   });
 }
 
