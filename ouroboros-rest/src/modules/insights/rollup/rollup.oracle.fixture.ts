@@ -172,22 +172,12 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
   human_interventions: (sql, org, from, to) =>
     grouped(
       sql,
-      `select ${REPO} as repo_ref, '' as dimension, count(*) as value
-         from (select r.github_repo_id
-                 from ouroboros.runs r
-                where r.organization_id = $1 and r.status = 'needs_human'
-                  and r.finished_at >= $2 and r.finished_at < $3
-               union all
-               select r.github_repo_id
-                 from (select distinct on (g.run_id, g."check") g.run_id, g.evaluated_at
-                         from ouroboros.guardrail_evaluations g
-                        where g.verdict = 'fail'
-                        order by g.run_id, g."check", g.evaluated_at) first_fail
-                 join ouroboros.runs r on r.id = first_fail.run_id
-                where r.organization_id = $1
-                  and first_fail.evaluated_at >= $2 and first_fail.evaluated_at < $3) r
+      `select ${REPO} as repo_ref, e.cause as dimension, count(*) as value
+         from ouroboros.intervention_events e
+         join ouroboros.runs r on r.id = e.run_id
          ${RUN_REPO}
-        group by 1`,
+        where e.organization_id = $1 and e.detected_at >= $2 and e.detected_at < $3
+        group by 1, 2`,
       [org, from, to],
     ),
 

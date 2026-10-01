@@ -5716,6 +5716,85 @@ export interface MetricRollupStateTable {
   updated_at: Stamped;
 }
 
+/** `intervention_events.source` — the plane a moment a person stepped in was recorded on (V079). */
+export type InterventionSource =
+  "needs_human_run" | "classification" | "waiver" | "policy_gate" | "guardrail" | "vote_block";
+
+/** The five causes of mockup 15's *"Where loops still need humans"* card (V079, decision I5). */
+export const INTERVENTION_CAUSES = [
+  "infra_rig",
+  "ambiguous_ticket",
+  "policy_gate",
+  "model_disagreement",
+  "other",
+] as const;
+
+/** One of {@link INTERVENTION_CAUSES}. */
+export type InterventionCause = (typeof INTERVENTION_CAUSES)[number];
+
+/**
+ * `ouroboros.intervention_cause_rules` — the declarative, versioned cause mapping (V079,
+ * [#434](https://github.com/NobuData/ouroboros/issues/434)). Ships in migrations; the service only
+ * reads it, and a rule change bumps its `version`.
+ */
+export interface InterventionCauseRulesTable {
+  rule_id: string;
+  version: Generated<number>;
+  /** Lowest matching priority wins. */
+  priority: number;
+  /** The source the rule applies to; null for any. */
+  source: InterventionSource | null;
+  /** The signal the event must carry; null for any. */
+  signal: string | null;
+  cause: InterventionCause;
+  description: string;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.intervention_events` — every moment a person stepped into a loop (V079,
+ * [#434](https://github.com/NobuData/ouroboros/issues/434)). Written by the database's hooks
+ * (`sync_intervention_events`), never by the service; a rule-origin cause is recomputed from
+ * `signals` on every write, and a person changes it only through `recategorize_intervention()`.
+ */
+export interface InterventionEventsTable {
+  id: Generated<string>;
+  organization_id: string;
+  run_id: string;
+  source: InterventionSource;
+  /** The source record: a run, classification or waiver id, `<run id>/<check>`, or a vote id. */
+  source_ref: string;
+  detected_at: Date;
+  /** What the rules read — `class:infra_rig`, `check:review_required`, … */
+  signals: Generated<string[]>;
+  cause: InterventionCause;
+  /** `rule` — the rules' answer; `human` — a person's, which no rule run overwrites. */
+  cause_origin: Generated<"rule" | "human">;
+  /** The rule and version that assigned the cause; null exactly when a person set it. */
+  rule_id: string | null;
+  rule_version: number | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.intervention_overrides` — the re-categorization audit (V079,
+ * [#434](https://github.com/NobuData/ouroboros/issues/434)). Append-only; written with the event's
+ * change by `recategorize_intervention()`.
+ */
+export interface InterventionOverridesTable {
+  id: Generated<string>;
+  organization_id: string;
+  event_id: string;
+  /** Who; null once the person is removed. */
+  actor_id: string | null;
+  from_cause: InterventionCause;
+  to_cause: InterventionCause;
+  reason: string;
+  created_at: Stamped;
+}
+
 /**
  * `ouroboros.env_recipes` — a repository's environment recipe, one immutable row per version
  * (V073, [#408](https://github.com/NobuData/ouroboros/issues/408), decision **K7**); served for
@@ -5899,6 +5978,9 @@ export interface Database {
   metric_definitions: MetricDefinitionsTable;
   metric_daily: MetricDailyTable;
   metric_rollup_state: MetricRollupStateTable;
+  intervention_cause_rules: InterventionCauseRulesTable;
+  intervention_events: InterventionEventsTable;
+  intervention_overrides: InterventionOverridesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -7070,6 +7152,42 @@ export const TABLE_COLUMNS = {
     "last_error",
     "updated_at",
   ],
+  intervention_cause_rules: [
+    "rule_id",
+    "version",
+    "priority",
+    "source",
+    "signal",
+    "cause",
+    "description",
+    "created_at",
+    "updated_at",
+  ],
+  intervention_events: [
+    "id",
+    "organization_id",
+    "run_id",
+    "source",
+    "source_ref",
+    "detected_at",
+    "signals",
+    "cause",
+    "cause_origin",
+    "rule_id",
+    "rule_version",
+    "created_at",
+    "updated_at",
+  ],
+  intervention_overrides: [
+    "id",
+    "organization_id",
+    "event_id",
+    "actor_id",
+    "from_cause",
+    "to_cause",
+    "reason",
+    "created_at",
+  ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [
     "id",
@@ -7693,3 +7811,7 @@ export type OrgPoliciesEffective = Selectable<OrgPoliciesEffectiveView>;
 
 /** A row of `ouroboros.estimate_outcomes`, as a `select` returns it. */
 export type EstimateOutcome = Selectable<EstimateOutcomesTable>;
+/** A row of `ouroboros.intervention_events`, as a `select` returns it. */
+export type InterventionEvent = Selectable<InterventionEventsTable>;
+/** A row of `ouroboros.intervention_overrides`, as a `select` returns it. */
+export type InterventionOverride = Selectable<InterventionOverridesTable>;

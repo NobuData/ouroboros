@@ -2160,6 +2160,45 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/insights/interventions/{id}/recategorize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Re-categorize an intervention's cause
+         * @description BI.3 ([#434](https://github.com/NobuData/ouroboros/issues/434), decision **I5**) — a person's
+         *     correction of why a loop needed a human, for mockup 15's *"Where loops still need humans"*
+         *     card.
+         *
+         *     Every intervention event — a needs-human handoff, a human failure classification, a waiver,
+         *     the first failure of a guardrail or policy-gate check on a loop, a blocking review vote — is
+         *     recorded by the database from its source record and mapped to a cause (`infra_rig`,
+         *     `ambiguous_ticket`, `policy_gate`, `model_disagreement`, `other`) by a versioned rule. The
+         *     rules will sometimes be wrong; this sets the cause a person says it was.
+         *
+         *     **Audited, and never undone by a rule.** The correction writes an override row — actor,
+         *     from-cause, to-cause, reason — in the same transaction as the change, and answers it in
+         *     `override`. The event's `causeOrigin` becomes `human`, and no later rule run or replay of the
+         *     run's records overwrites it.
+         *
+         *     **`owner`, `admin` or `member`** — a `viewer` is refused, on a direct call exactly as in the
+         *     UI.
+         *
+         *     **The workspace is the session's**: no workspace in this path, the session's active
+         *     organization or `X-Ouro-Tenant` decides, and another workspace's event is a `404`.
+         */
+        post: operations["recategorizeIntervention"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/github-token": {
         parameters: {
             query?: never;
@@ -12431,6 +12470,67 @@ export interface components {
             progress: components["schemas"]["RepoDetectionProgress"];
             /** @description True when a scan was already running and this request joined it. */
             joined: boolean;
+        };
+        /**
+         * InterventionCause
+         * @description Why a loop needed a person (#434, decision I5) — the five bars of mockup 15's card.
+         * @enum {string}
+         */
+        InterventionCause: "infra_rig" | "ambiguous_ticket" | "policy_gate" | "model_disagreement" | "other";
+        /** RecategorizeInterventionBody */
+        RecategorizeInterventionBody: {
+            cause: components["schemas"]["InterventionCause"];
+            /** @description Why — required and never blank; it is the audit row's reason. */
+            reason: string;
+        };
+        /**
+         * Intervention
+         * @description One moment a person had to step into a loop (#434), with the cause a rule assigned or a
+         *     person re-categorized it to.
+         */
+        Intervention: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            runId: string;
+            /**
+             * @description The plane the moment was recorded on.
+             * @enum {string}
+             */
+            source: "needs_human_run" | "classification" | "waiver" | "policy_gate" | "guardrail" | "vote_block";
+            /**
+             * @description The source record — the run, classification, waiver or vote id, or `<run id>/<check>`
+             *     for a guardrail or policy-gate stop.
+             */
+            sourceRef: string;
+            /** Format: date-time */
+            detectedAt: string;
+            /** @description What the cause rules read — `class:infra_rig`, `check:review_required`, … */
+            signals: string[];
+            cause: components["schemas"]["InterventionCause"];
+            /**
+             * @description `human` once a person re-categorized it — never overwritten by a rule run.
+             * @enum {string}
+             */
+            causeOrigin: "rule" | "human";
+            /** @description The rule that assigned the cause; null when a person set it. */
+            ruleId: string | null;
+            ruleVersion: number | null;
+            /** @description The re-categorization that set a human cause; null for a rule's. */
+            override: components["schemas"]["InterventionOverride"] | null;
+        };
+        /**
+         * InterventionOverride
+         * @description One re-categorization, as its audit row records it (#434).
+         */
+        InterventionOverride: {
+            /** @description Who — null once the person is removed. */
+            actorId: string | null;
+            fromCause: components["schemas"]["InterventionCause"];
+            toCause: components["schemas"]["InterventionCause"];
+            reason: string;
+            /** Format: date-time */
+            createdAt: string;
         };
         /**
          * CalibrationReport
@@ -29206,6 +29306,175 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — `window` is not one of `7d`, `30d` or `90d`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    recategorizeIntervention: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The intervention event's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "cause": "infra_rig",
+                 *       "reason": "The waiver is for the bench, not the policy: the rig has no thermal chamber."
+                 *     }
+                 */
+                "application/json": components["schemas"]["RecategorizeInterventionBody"];
+            };
+        };
+        responses: {
+            /** @description The event, with the person's cause and the override that set it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed005c-0000-4000-8000-000000000482",
+                     *       "runId": "5eed0009-0000-4000-8000-000000000482",
+                     *       "source": "waiver",
+                     *       "sourceRef": "5eed0039-0000-4000-8000-000000000482",
+                     *       "detectedAt": "2026-10-01T17:49:30.897Z",
+                     *       "signals": [],
+                     *       "cause": "infra_rig",
+                     *       "causeOrigin": "human",
+                     *       "ruleId": null,
+                     *       "ruleVersion": null,
+                     *       "override": {
+                     *         "actorId": "5eed0003-0000-4000-8000-000000000001",
+                     *         "fromCause": "other",
+                     *         "toCause": "infra_rig",
+                     *         "reason": "The waiver is for the bench, not the policy: the rig has no thermal chamber.",
+                     *         "createdAt": "2026-10-01T18:02:11.000Z"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Intervention"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner`, `admin` or `member`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `intervention_not_found` — no such intervention event in this workspace.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `intervention_cause_unchanged` — the event already has that cause; nothing is written. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `cause` is not one of the five causes, `reason` is missing, blank
+             *     or over 2 000 characters, or `id` is not a uuid.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;

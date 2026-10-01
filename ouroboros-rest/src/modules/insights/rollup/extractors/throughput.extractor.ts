@@ -11,7 +11,7 @@
  *     not yet in any day.
  *
  * **Autonomous** (merge rate's numerator) is a merged PR whose loop finished `merged` — not
- * handed to a person — and never had a guardrail fail: the same stops `interventions` counts.
+ * handed to a person — and never had a guardrail fail: stops `interventions` counts too.
  *
  * **Untouched** is decision **I6**, exactly: a merged PR whose revisions contain no push the loop
  * did not author. A revision is the loop's when its `head_sha` is a commit its run reported in

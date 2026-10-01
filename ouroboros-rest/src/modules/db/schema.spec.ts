@@ -442,7 +442,11 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-seventh to ninth are V076's `metric_definitions`, `metric_daily` and
     // `metric_rollup_state`, mirrored by BI.2 (#433) with V078's dimension and aggregation — the
     // registry the rollup extractors are versioned against, the grain they fill and their cursors.
-    expect(TABLE_NAMES).toHaveLength(109);
+    //
+    // The hundred-and-tenth to twelfth are V079's `intervention_cause_rules`, `intervention_events`
+    // and `intervention_overrides`, mirrored by BI.3 (#434) — the cause mapping, every moment a
+    // person stepped in, and the audit of each re-categorization.
+    expect(TABLE_NAMES).toHaveLength(112);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

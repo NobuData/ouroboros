@@ -224,8 +224,12 @@ const HISTORY_TABLE = "flyway_schema_history";
  * `metric_definitions` (V076, V078) is the Insights methodology registry, shipped in migrations and
  * select-only for the app role, for the same reason: emptied, every later rollup fill would refuse
  * for a missing registry entry (BI.2, #433). `metric_daily` references it and is still emptied.
+ *
+ * `intervention_cause_rules` (V079) is the intervention-cause mapping, likewise shipped and
+ * select-only: emptied, every later intervention hook would refuse for a missing residue rule
+ * (BI.3, #434). `intervention_events` references it and is still emptied.
  */
-const REFERENCE_TABLES = ["flake_score_formulas", "metric_definitions"];
+const REFERENCE_TABLES = ["flake_score_formulas", "metric_definitions", "intervention_cause_rules"];
 
 export class ApiHarness {
   /** Every table {@link truncate} empties, discovered once and remembered. */

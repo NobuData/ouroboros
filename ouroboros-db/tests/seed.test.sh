@@ -6,7 +6,8 @@
 # migrations/R__dev_seed_onboarding.sql,
 # migrations/R__dev_seed_providers.sql, migrations/R__dev_seed_routing.sql,
 # migrations/R__dev_seed_sources.sql, migrations/R__dev_seed_ticket_planning.sql,
-# migrations/R__dev_seed_workflows.sql, migrations/R__dev_seed_workspace_knowledge.sql, and the
+# migrations/R__dev_seed_workflows.sql, migrations/R__dev_seed_workspace_interventions.sql,
+# migrations/R__dev_seed_workspace_knowledge.sql, and the
 # configuration that decides whether they do anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
@@ -26,7 +27,8 @@
 # plan over it*, R__dev_seed_verification.sql (#356) is *what the PR has to show before it
 # merges*, R__dev_seed_workflows.sql (#136) is *what it does with it*,
 # R__dev_seed_workspace_knowledge.sql (#409) is *what it has learned*, and
-# R__dev_seed_onboarding.sql (#383) is *where a team starts* — and the
+# R__dev_seed_onboarding.sql (#383) is *where a team starts*,
+# R__dev_seed_workspace_interventions.sql (#434) is *where people still had to step in* — and the
 # structural rules below are asserted over all of them, in a loop, so that a tenth seed
 # inherits them by being added to the one list at the top.
 #
@@ -80,6 +82,7 @@ PLANNING_SEED="$MODULE_DIR/migrations/R__dev_seed_ticket_planning.sql"
 WORKFLOWS_SEED="$MODULE_DIR/migrations/R__dev_seed_workflows.sql"
 KNOWLEDGE_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_knowledge.sql"
 ONBOARDING_SEED="$MODULE_DIR/migrations/R__dev_seed_onboarding.sql"
+INTERVENTIONS_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_interventions.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -121,6 +124,7 @@ PLANNING_BODY="$work/seed-body-ticket-planning.sql"
 WORKFLOWS_BODY="$work/seed-body-workflows.sql"
 KNOWLEDGE_BODY="$work/seed-body-workspace-knowledge.sql"
 ONBOARDING_BODY="$work/seed-body-onboarding.sql"
+INTERVENTIONS_BODY="$work/seed-body-workspace-interventions.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$INTAKE_SEED" "$INTAKE_BODY"
@@ -136,6 +140,7 @@ seed_body "$PLANNING_SEED" "$PLANNING_BODY"
 seed_body "$WORKFLOWS_SEED" "$WORKFLOWS_BODY"
 seed_body "$KNOWLEDGE_SEED" "$KNOWLEDGE_BODY"
 seed_body "$ONBOARDING_SEED" "$ONBOARDING_BODY"
+seed_body "$INTERVENTIONS_SEED" "$INTERVENTIONS_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -167,13 +172,14 @@ check_exists "$PLANNING_SEED" 'migrations/R__dev_seed_ticket_planning.sql exists
 check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
 check_exists "$KNOWLEDGE_SEED" 'migrations/R__dev_seed_workspace_knowledge.sql exists'
 check_exists "$ONBOARDING_SEED" 'migrations/R__dev_seed_onboarding.sql exists'
+check_exists "$INTERVENTIONS_SEED" 'migrations/R__dev_seed_workspace_interventions.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
-                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED"; do
+                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -219,6 +225,8 @@ knowledge_description=$(basename -- "$KNOWLEDGE_SEED" .sql)
 knowledge_description=${knowledge_description#R__}
 onboarding_description=$(basename -- "$ONBOARDING_SEED" .sql)
 onboarding_description=${onboarding_description#R__}
+interventions_description=$(basename -- "$INTERVENTIONS_SEED" .sql)
+interventions_description=${interventions_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
@@ -266,11 +274,18 @@ onboarding_description=${onboarding_description#R__}
 # sort before `providers`, and every join in it would find nothing on a database migrated from
 # empty.
 #
-# The knowledge seed (#409) **must** sort last: its playbooks pin the workflows seed's versions,
+# The knowledge seed (#409) **must** sort after every seed it reads: its playbooks pin the workflows seed's versions,
 # its facts cite the planning seed's tickets and the verification seed's PR, and its injection
 # records hang off the dashboard, run-console and intake seeds' runs, stages and estimates. It is
 # named `workspace_knowledge` for exactly that — `dev_seed_knowledge` would sort before
 # `dev_seed_providers`, and every join in it would find nothing on a database migrated from empty.
+#
+# The interventions seed (#434) **must** sort after the dashboard seed, whose runs every record it
+# writes hangs off, and after the test-results seed, whose `#482` waiver it re-categorizes — and
+# after the base seed for its people. It is named `workspace_interventions` for that:
+# `dev_seed_interventions` would sort before `dev_seed_test_results`, and on a database migrated
+# from empty the waiver it corrects would not exist yet. It sorts straight before the knowledge
+# seed, which reads nothing of it.
 #
 # The onboarding seed (#383) **must** sort after two of them: the first, for Ken, and the intake
 # seed, whose nine issues and their estimates it copies into its own workspace by query — on a
@@ -283,10 +298,10 @@ onboarding_description=${onboarding_description#R__}
 # the first of their domain. `dev_seed_farm` does that; `farm_dev_seed`, which reads better,
 # would sort before `dev_seed` and every join in it would find nothing on a database migrated
 # from empty.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$knowledge_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$knowledge_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the fifteen seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the sixteen seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -307,7 +322,7 @@ check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_des
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
-                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED"; do
+                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -324,6 +339,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$WORKFLOWS_SEED" ] && body=$WORKFLOWS_BODY
   [ "$seed_file" = "$KNOWLEDGE_SEED" ] && body=$KNOWLEDGE_BODY
   [ "$seed_file" = "$ONBOARDING_SEED" ] && body=$ONBOARDING_BODY
+  [ "$seed_file" = "$INTERVENTIONS_SEED" ] && body=$INTERVENTIONS_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   updates=$(count_lines '^update ouroboros\.' "$body")
@@ -1371,6 +1387,37 @@ check_absent "$ONBOARDING_BODY" '5eed0001-0000-4000-8000|5eed0003-0000-4000-8000
   'the workspace is found by slug and Ken by email, not by the base seed'"'"'s ids'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_workspace_interventions.sql — mockup 15's "where loops still need humans" (#434)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_workspace_interventions.sql — the interventions\n'
+
+for prefix in '5eed0056' '5eed0057' '5eed0058' '5eed0059' '5eed005a' '5eed005b' '5eed005c' \
+              '5eed005d'; do
+  check_contains "$INTERVENTIONS_BODY" "'$prefix-0000-4000-8000-" \
+    "the interventions seed builds its ids from the $prefix… prefix"
+done
+
+# Source records, one vote, one override and the one event it corrects — never a run, and never
+# a metric row: the rollup computes those.
+interventions_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$INTERVENTIONS_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'failure_classifications guardrail_evaluations intervention_events intervention_overrides test_cases test_runs test_suites ' \
+  "$interventions_tables" \
+  'the interventions seed writes source records, the vote, the override and its event — and nothing else'
+
+# The causes are the rules': the only cause the file names as a value is the person's correction.
+check_equals 1 "$(grep -Ec "cause_origin = 'human'" "$INTERVENTIONS_BODY" || true)" \
+  'the interventions seed types one human cause, through the override, and leaves every other cause to the rules'
+check_absent "$INTERVENTIONS_BODY" 'cause_origin = .rule.,' \
+  'and never writes a rule-origin cause itself'
+
+check_absent "$INTERVENTIONS_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the interventions seed carries no literal date — every detection is relative to its run'
+check_absent "$INTERVENTIONS_BODY" 'insert into ouroboros\.runs' \
+  'the interventions seed adds no run'
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -1392,6 +1439,7 @@ check_contains "$README" 'R__dev_seed_test_results\.sql' 'README.md documents th
 check_contains "$README" 'R__dev_seed_verification\.sql' 'README.md documents the verification seed'
 check_contains "$README" 'R__dev_seed_workspace_knowledge\.sql' 'README.md documents the knowledge seed'
 check_contains "$README" 'R__dev_seed_onboarding\.sql' 'README.md documents the onboarding seed'
+check_contains "$README" 'R__dev_seed_workspace_interventions\.sql' 'README.md documents the interventions seed'
 check_contains "$README" 'acme-onboarding' 'README.md names the onboarding workspace a developer will find'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'

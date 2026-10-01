@@ -105,9 +105,14 @@ describe("the shipped extractors", () => {
     }
   });
 
-  it("declare version 1 — no registry row has been bumped since it shipped", () => {
+  it("declare the versions the migrations ship — 1, but human_interventions' cause bump to 2", () => {
+    // V079 (#434) gave human_interventions the cause dimension, a formula change with its bump.
+    const bumped: Record<string, number> = { human_interventions: 2 };
+
     for (const extractor of ROLLUP_EXTRACTORS) {
-      expect(Object.values(extractor.metrics).every((version) => version === 1)).toBe(true);
+      for (const [metricId, version] of Object.entries(extractor.metrics)) {
+        expect({ metricId, version }).toEqual({ metricId, version: bumped[metricId] ?? 1 });
+      }
     }
   });
 

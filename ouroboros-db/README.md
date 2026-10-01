@@ -1054,6 +1054,24 @@
 > `build_success_rate`, `test_cases_run`, `test_pass_rate`, `test_failures_by_suite`,
 > `completion_time_by_effort` and `unpriced_tokens`; `cost_per_merged_pr`'s caveat now says it is
 > computed per window, never stored per day.
+>
+> `V079` ([#434](https://github.com/NobuData/ouroboros/issues/434)) is the intervention-cause
+> taxonomy (decision **I5**). `intervention_events` is one row per moment a person stepped into a
+> loop — a needs-human handoff, a human failure classification, a waiver, the first failure of a
+> guardrail check (`review_required` is recorded as the `policy_gate` source) or a blocking vote —
+> unique on `(source, source_ref)`, so `sync_intervention_events(run)`, which every source-plane
+> hook calls, is idempotent under replay. `intervention_cause_rules` maps an event's `signals` to
+> `infra_rig|ambiguous_ticket|policy_gate|model_disagreement|other` (first match by priority; the
+> residue rule means nothing is dropped), versioned like the metric registry. A needs-human
+> handoff is explained by its run's context — current classifications, failed checks, votes.
+> `recategorize_intervention()` writes an `intervention_overrides` row and sets
+> `cause_origin = 'human'` together; the trigger refuses a human cause without that row and never
+> lets a rule (or `apply_intervention_rules()`, the rule run) overwrite one.
+> `intervention_cause_daily` is the per-day, per-cause shape the rollup reads, and
+> `human_interventions` moves to version 2 with `dimension_kind = 'cause'` (its old undimensioned
+> rows are deleted for the next tick to backfill). `check:rig_offline`, `gate:human` and
+> `vote:blocking` are reserved signals whose source planes do not exist yet; #371's votes write
+> through `record_intervention_event()`.
 
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
@@ -1566,6 +1584,21 @@ seed that re-creates what it can instead of failing.
 > by being migrated again with the overlay — reachable only by pointing both
 > configurations at the same database. `scripts/clean-dev` then a seeded `migrate` fixes
 > it, or `docker compose down -v && docker compose up` for the stack's own database.
+
+#### Where loops still needed a person
+
+[`R__dev_seed_workspace_interventions.sql`](migrations/R__dev_seed_workspace_interventions.sql)
+([#434](https://github.com/NobuData/ouroboros/issues/434)) is mockup 15's *"Where loops still
+need humans"* card: twenty intervention events in the last thirty days landing **8 / 5 / 4 / 2 /
+1** (`infra_rig`, `ambiguous_ticket`, `policy_gate`, `model_disagreement`, `other`). It writes
+**source records, not causes** — eleven attempts with one failing case each on existing runs,
+seven human `infra_rig` and four `unclear_requirements` classifications, three `review_required`
+failures, and #333's blocking vote — and V079's hooks and rules do the rest, together with the
+five events other seeds' records already produce (three needs-human handoffs, Ken's product-bug
+call and the waiver on `#482`). The one cause typed by hand is Ken's re-categorization of that
+waiver (*rig at 22 °C only*) from `other` to `infra_rig`, written through an override row. No run
+is added, and every timestamp is an offset into its run. It sorts after the dashboard and
+test-results seeds it reads.
 
 #### Where a team starts
 
@@ -2371,6 +2404,7 @@ ouroboros-db/
 │   ├── V076__metric_rollups.sql             # metric_definitions (versioned registry, proxy flags) + metric_daily (daily grain, rate components enforced) + metric_rollup_state — #432
 │   ├── V077__estimate_outcomes.sql          # estimate_outcomes (merged loop ↔ estimate in force at queue time, generated within_band/deviation_ms), lead_time_ms(), record_estimate_outcome(), calibration registry rows — #435
 │   ├── V078__metric_rollup_extractors.sql   # metric_daily.dimension in the grain key, registry aggregation (sum|ratio|median) + dimension_kind, metric_daily_shape_guard (median samples), the rollup families' registry rows — #433
+│   ├── V079__intervention_events.sql        # intervention_events / _cause_rules / _overrides, idempotent source-plane hooks, recategorize_intervention(), intervention_cause_daily, human_interventions v2 by cause — #434
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2385,6 +2419,7 @@ ouroboros-db/
 │   ├── R__dev_seed_ticket_planning.sql # mockup 09 — backlog, roadmap lanes, OTA batch, dev only — #275 (sorts after sources)
 │   ├── R__dev_seed_verification.sql  # mockup 12 — PR #514's two revisions, gates, criteria, thread, plan, spend, dev only — #356 (sorts after test_results and ticket_planning)
 │   ├── R__dev_seed_workflows.sql     # mockup 04's studio — five workflows, standard-fix at v14, dev only — #136 (sorts after the above)
+│   ├── R__dev_seed_workspace_interventions.sql # mockup 15 — twenty intervention events, 8/5/4/2/1, from source records, dev only — #434 (sorts after test_results)
 │   ├── R__dev_seed_workspace_knowledge.sql # mockup 14 — skills, facts, playbooks, env recipe, injection records, dev only — #409 (sorts last)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
@@ -2529,6 +2564,9 @@ outside this module alters it.
 | `metric_definitions` | `V076`, `V078` | The Insights methodology registry ([#432](https://github.com/NobuData/ouroboros/issues/432), BI.1, decision **I1**) — `metric_id`, `family`, `title`, `formula_text`, `source_planes`, `caveats`, `unit`, `is_rate`, `version`, `proxy`, `aggregation` (`sum\|ratio\|median`, #433), `dimension_kind` | ships its first 11 rows in the migration; `unit` is `count\|pct\|duration_ms\|cents\|tokens` and every `pct` is a rate; formula text, caveats and a non-empty `source_planes` are required; a change to `formula_text`, `source_planes`, `unit`, `is_rate` or `proxy` must raise `version`, which never decreases (`metric_definitions_version_guard`); `ouroboros_app` may only select |
 | `metric_daily` | `V076`, `V078` | The Insights daily grain ([#432](https://github.com/NobuData/ouroboros/issues/432), [#433](https://github.com/NobuData/ouroboros/issues/433), decision **I2**) — `repo_ref` (null = org-level), `metric_id`, `is_rate`, `dimension` (`''` = none), `day`, `value`, `numerator`, `denominator`, `meta`, `computed_at` | unique nulls not distinct on `(organization_id, repo_ref, metric_id, dimension, day)`; `metric_daily_shape_guard` holds the dimension to the definition's `dimension_kind`, and a median row to ascending `meta.samples` whose median is `value`; `(metric_id, is_rate)` is a foreign key to the registry, and `numerator`/`denominator` are required exactly on rate rows (`metric_daily_rate_components`); `value` ≥ 0; `meta` is an object; BRIN on `day`; cascades with the workspace |
 | `metric_rollup_state` | `V076` | Rollup bookkeeping per (workspace, metric family) ([#432](https://github.com/NobuData/ouroboros/issues/432)) — `last_filled_day`, `backfill_cursor`, `backfill_until`, `last_run_status`, `last_run_at`, `last_error` | cursor and end are set and cleared together and the cursor never passes the end; status is `running\|succeeded\|failed` and stamped; `last_error` only on a failed run; `ouroboros_app` may not delete |
+| `intervention_events` | `V079` | Every moment a person stepped into a loop ([#434](https://github.com/NobuData/ouroboros/issues/434), decision **I5**) — `run_id`, `source`, `source_ref`, `detected_at`, `signals`, `cause`, `cause_origin`, `rule_id`, `rule_version` | unique on `(source, source_ref)`; `source` is `needs_human_run\|classification\|waiver\|policy_gate\|guardrail\|vote_block`, `cause` is `infra_rig\|ambiguous_ticket\|policy_gate\|model_disagreement\|other`; a rule-origin cause is always recomputed from the signals by `intervention_events_apply_rules`, a human cause needs an override row from the same transaction and never returns to `rule`; source, ref and run are frozen; cascades with the run and the workspace |
+| `intervention_cause_rules` | `V079` | The declarative, versioned cause mapping ([#434](https://github.com/NobuData/ouroboros/issues/434)) — `rule_id`, `version`, `priority`, `source`, `signal`, `cause`, `description` | lowest matching priority wins; a catch-all rule must map to `other`; signals are a closed vocabulary; a change to priority, source, signal or cause must raise `version` (`intervention_cause_rules_version_guard`); `ouroboros_app` may only select |
+| `intervention_overrides` | `V079` | The re-categorization audit ([#434](https://github.com/NobuData/ouroboros/issues/434)) — `event_id`, `actor_id`, `from_cause`, `to_cause`, `reason`, `created_at` | append-only; names its actor at insert (set null if the person is removed); starts from the event's current cause; changes it; requires a reason; cascades with the event |
 | `fact_anchors` | `V071` | Why a fact can expire ([#406](https://github.com/NobuData/ouroboros/issues/406), **K4**) — `kind`, `value`, `last_checked_at` | `kind` is `path_glob\|dependency\|platform_version`; `(fact_id, kind, value)` unique; a `path_glob` is relative with no `..`; indexed `(kind, value)` for the staleness sweep, with `path_glob_matches(glob, path)` for a changed path set; a fact with none is never flagged |
 | `context_injections` | `V071` | What context assembly actually injected ([#406](https://github.com/NobuData/ouroboros/issues/406)) — `consumer`, `estimate_id`, `run_stage_id`, `run_id`, `skill_version_ids`, `fact_ids`, `manifest_hash`, `injected_at` | `consumer` is `estimator` (estimate) \| `run_stage` (stage + its run) \| `playbook` (the launched run); arrays are sets; every fact is a confirmed fact and every skill version a published version of a non-draft skill of the workspace (`context_injections_resolves`); GIN-indexed arrays; append-only by trigger and grant — the sole source of every usage number |
 | `playbooks` | `V072` | Mockup 14's playbooks card ([#407](https://github.com/NobuData/ouroboros/issues/407), BE.3, decision **K6**) — `name`, `description`, `workflow_id`, `workflow_version`, `skill_overrides`, `context_preset`, `source_run_id`, `issue_filter` | `name` unique per organization; `(workflow_id, workflow_version)` is a published version of a workflow of the same workspace (`playbooks_workflow_version_fk`, `playbooks_workflow_fk` cascading) — `not null`, so never head; `skill_overrides` `{enable?, disable?}` (disjoint uuid sets ≤ 64), `context_preset` `{steer_notes?, fact_ids?}` and `issue_filter` `{labels?, repos?}` are typed by `playbook_*_typed`; `playbooks_refs_resolve` holds skill and fact ids to the workspace and refuses disabling a required skill; `source_run_id` is a run of the workspace, `on delete set null (source_run_id)`; launches are `runs.playbook_id` / `queue_items.playbook_id` (same-workspace, set null) — **no count column**; `ouroboros_app` has full DML |

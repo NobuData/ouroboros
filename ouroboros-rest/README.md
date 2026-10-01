@@ -109,6 +109,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
 | `GET PATCH /api/v1/policies/dry-run`                | [The dry-run policy](#the-dry-run-policy) (#382) — read by any member, flipped by `owner`/`admin`, audited `policy.dry_run_changed` |
 | `GET /api/v1/insights/calibration`                 | [Estimator calibration](#estimator-calibration) (#435) — `?window=7d\|30d\|90d`; within-band headline, unestimated count and per-effort bias direction; any member |
+| `POST /api/v1/insights/interventions/{id}/recategorize` | [Intervention causes](#intervention-causes) (#434) — a person's cause with a reason, audited in `intervention_overrides`; never overwritten by a rule run; `owner`/`admin`/`member` |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
@@ -5821,6 +5822,22 @@ is graded against the estimate **in force when its work was queued** — never a
 Rates are re-derived from counts (the headline is never an average of the slices) and are null
 over nothing.
 
+### Intervention causes
+
+BI.3 ([#434](https://github.com/NobuData/ouroboros/issues/434)), decision **I5**, in
+[`src/modules/insights/`](src/modules/insights) over V079's `intervention_events`. The events and
+their rule causes are the database's: hooks on runs, failure classifications, waivers and guardrail
+evaluations call `sync_intervention_events(run)`, idempotently, and `intervention_cause_rules` maps
+each event's signals to `infra_rig | ambiguous_ticket | policy_gate | model_disagreement | other`.
+The service's one write is a person's correction.
+
+| route | what | who |
+| ----- | ---- | --- |
+| `POST /api/v1/insights/interventions/{id}/recategorize` | `{cause, reason}` → the event with `causeOrigin: "human"` and its `override` (actor, from, to, reason); `recategorize_intervention()` writes the audit row and the change in one transaction. `404 intervention_not_found` for another workspace's event, `409 intervention_cause_unchanged` for the cause it already has | `owner`, `admin`, `member` — a viewer is `403` |
+
+A human cause survives every later rule run (`apply_intervention_rules()`) and replay — the
+database refuses to turn it back into a rule's.
+
 ### Insights rollups
 
 BI.2 ([#433](https://github.com/NobuData/ouroboros/issues/433)), decisions **I1**/**I2**, in
@@ -5831,7 +5848,7 @@ and **UTC day** — from the source planes; nothing here is an endpoint yet (BJ.
 | family | metrics | population |
 | ------ | ------- | ---------- |
 | `throughput` | `merged_prs`, `merge_rate`, `merged_untouched_rate` | loop PRs merged that day, or closed unmerged on the day their loop finished; *untouched* is I6: every revision's head sha is a commit the loop reported |
-| `interventions` | `human_interventions` | loops that finished `needs_human`, plus the first `fail` of each guardrail check per loop (`review_required` is the policy gate); causes arrive with #434 |
+| `interventions` | `human_interventions` (v2, by `cause`) | V079's intervention events per cause, read from `intervention_cause_daily` — needs-human handoffs, human classifications, waivers, the first `fail` of each guardrail check per loop (`review_required` is the policy gate) and blocking votes (#434) |
 | `cycle` | `cycle_time`, `stage_duration` (by stage) | loops that finished `merged`; medians |
 | `cost` | `cost_cents`, `tokens`, `unpriced_tokens` | run-attributed usage; no `cost_cents` row on a day with nothing priced (unpriced ≠ $0). `cost_per_merged_pr` is Σ`cost_cents` / Σ`merged_prs` per window, never stored per day |
 | `builds` | `builds`, `build_failures`, `build_success_rate` | farm jobs finished `succeeded`/`failed`/`retried` |
