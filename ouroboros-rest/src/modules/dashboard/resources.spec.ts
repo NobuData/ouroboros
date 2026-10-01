@@ -1,5 +1,5 @@
 import { ACTIVE_RUN_STATUSES, type QueueItem, type Run } from "../db/schema";
-import { loopsLive, queueItemSummary, rate, runSummary } from "./resources";
+import { loopsLive, queueItemSummary, runSummary } from "./resources";
 
 /**
  * Row → resource, and the two claims the mapping makes that a card depends on: that a run in
@@ -200,24 +200,5 @@ describe("the live-loops split", () => {
 
     expect(live.total).toBe(3);
     expect(live.total).toBe(Object.values(live.byStatus).reduce((sum, one) => sum + one, 0));
-  });
-});
-
-describe("a rate over a window", () => {
-  it("is the fraction when the window holds something", () => {
-    // The seeded fourteen days: 46 merged of 50 closed, which is the mockup's 92% with no
-    // rounding at all — the reason the merge rate's window is what it is.
-    expect(rate(46, 50)).toBe(0.92);
-  });
-
-  it("is zero when the window holds nothing, and never NaN", () => {
-    // `NaN` is not representable in JSON: it would reach a card as `null` and a meter as a
-    // width of `NaN%`. The zero is a floor rather than a measurement — see `LoopPulse`.
-    expect(rate(0, 0)).toBe(0);
-    expect(Number.isNaN(rate(0, 0))).toBe(false);
-  });
-
-  it("is one for a window in which everything merged", () => {
-    expect(rate(3, 3)).toBe(1);
   });
 });

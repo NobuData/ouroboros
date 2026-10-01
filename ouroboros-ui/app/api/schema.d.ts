@@ -540,24 +540,27 @@ export interface paths {
          *     header also names a workspace in its path.
          *
          *     **Poll it conditionally.** Send back the `ETag` you were given in `If-None-Match`; a
-         *     dashboard nothing has changed answers `304` with no body, and costs four aggregate
+         *     dashboard nothing has changed answers `304` with no body, and costs seven aggregate
          *     subqueries rather than a payload. The tag is **strong** and it is derived from the
-         *     version of the four source tables plus the calendar day — so it also changes at
+         *     version of the seven source tables (runs, queue, token usage, settings, pull requests,
+         *     intervention events and the metrics rollup bookkeeping) plus the calendar day — so it also changes at
          *     midnight, when the day's spend and "since this morning" start counting again with no
          *     row having moved. Rows aging out of a rolling window are the one change it does not
          *     notice; on a dashboard whose numbers are moving, rows are being written.
          *
-         *     **What each aggregate means** is on the field that carries it, and the two window
-         *     lengths are the part worth reading before rendering a label: the merge rate is
-         *     measured over **fourteen** days and the other two meters over **seven**. `LoopPulse`
-         *     says why.
+         *     **What each aggregate means** is on the field that carries it. The pulse meters,
+         *     `stats.merged7d` and `activity.mergedSinceMorning` are the Insights metrics registry's
+         *     own figures — `merge_rate`, `cycle_time`, `human_interventions` and `merged_prs` — read
+         *     from the shared windowed metrics service over the last **seven UTC days**, today
+         *     included ([#437](https://github.com/NobuData/ouroboros/issues/437)). The dashboard and
+         *     the Insights page therefore cannot disagree about any of them.
          *
          *     **Durations that belong to one row are not sent.** *Elapsed* is `now − startedAt` and
          *     *Cycle* is `finishedAt − startedAt`; both are computed by the client from the instants
          *     below, because elapsed is a number that moves while nobody is asking and a value
          *     computed here would be stale before it was rendered. Aggregates over many rows — the
-         *     average cycle time — are computed here, because no client can derive them from what it
-         *     was sent.
+         *     median cycle time — are computed by the service, because no client can derive them from
+         *     what it was sent.
          */
         get: operations["readDashboard"];
         put?: never;
@@ -11510,10 +11513,14 @@ export interface components {
          * @description *PRs merged · 7d* — the count, and how it compares with the week before.
          */
         MergedSevenDays: {
-            /** @description Runs that reached `merged` in the trailing seven days. */
+            /**
+             * @description Loop PRs merged over the last seven UTC days, today included — the registry's
+             *     `merged_prs`, from the shared windowed metrics service.
+             */
             count: number;
             /**
-             * @description This week's count less the previous seven days' — rendered as `▲ 8 vs last week`.
+             * @description This window's count less the seven UTC days before it — rendered as
+             *     `▲ 8 vs last week`.
              *     **Signed**: a negative value is a week that merged less than the one before, and
              *     the direction is read from the sign rather than from a separate flag.
              */
@@ -11564,49 +11571,39 @@ export interface components {
          * LoopPulse
          * @description *Loop pulse* — three windowed meters, and the one switch this page can change.
          *
-         *     **The three meters are not all measured over the same window**, and the reason is
-         *     mockup 02's own arithmetic. See `mergeRate`.
+         *     **The meters are the Insights metrics registry's**, read from the shared windowed
+         *     metrics service over the last **seven UTC days**, today included
+         *     ([#437](https://github.com/NobuData/ouroboros/issues/437)), so the dashboard and the
+         *     Insights page cannot show two different numbers for one metric. Each field below names
+         *     the registry metric it carries.
          */
         LoopPulse: {
             /**
-             * @description **Autonomous merge rate**: merged runs ÷ every run that reached a terminal status,
-             *     over **fourteen days**, as a fraction between 0 and 1.
+             * @description **Autonomous merge rate** (`merge_rate`): loop PRs merged with no human handoff and
+             *     no failed guardrail ÷ every loop PR that closed, merged or not, over seven UTC days,
+             *     as a fraction between 0 and 1. Recomposed from the days' components — Σ autonomous
+             *     ÷ Σ closed — never an average of daily rates.
              *
-             *     Every terminal status is in the denominator — merged, stopped for a human, and
-             *     failed. The meter's question is *how often does the loop finish the job without
-             *     us*, and a run that stopped for a human is the clearest possible no; excluding it
-             *     would make the rate say "of the runs that went well, how many went well".
-             *
-             *     **Fourteen days, where the two meters below are seven.** The three figures the
-             *     mockup draws cannot all be true of one seven-day window: 27 merged against 2
-             *     interventions is 93.1%, and no integer count of closed runs makes 27 merged 92%.
-             *     Over fourteen days the same rows give 46 merged of 50 closed, which is 92% exactly.
-             *     A longer window is the better measurement on its own terms as well — a rate over a
-             *     denominator of twenty-nine moves four points when one run fails — and it reaches
-             *     over exactly the rows `stats.merged7d.deltaVsPrior` already compares across.
-             *
-             *     **`0` when nothing closed in the window.** That is a floor rather than a
-             *     measurement: an organization with no history reads `0` here with `0` merged and `0`
+             *     **`0` when no PR closed in the window.** That is a floor rather than a measurement:
+             *     an organization with no history reads `0` here with `0` merged and `0`
              *     interventions, and a meter should render *no data* rather than a bad week.
              * @example 0.92
              */
             mergeRate: number;
             /**
-             * @description **Average cycle time**: the mean of `finishedAt − startedAt` over every run that
-             *     reached a terminal status in the trailing **seven** days, in seconds.
+             * @description **Cycle time** (`cycle_time`): the **median** of `finishedAt − startedAt` over loops
+             *     that finished merged in the window, in seconds, pooled across the window's days. The
+             *     field keeps its name for compatibility; since 0.38.0 the figure is the registry's
+             *     median rather than a mean over every terminal run.
              *
-             *     Every terminal run, not only the merged ones — a run that stopped for a human took
-             *     the time it took, and a mean that dropped it would report the loop as faster than
-             *     it is.
-             *
-             *     `0` when nothing closed in the window, with the same reading as `mergeRate`'s zero.
+             *     `0` when nothing merged in the window, with the same reading as `mergeRate`'s zero.
              * @example 860
              */
             avgCycleSeconds: number;
             /**
-             * @description **Human interventions**: runs that reached `needs_human` in the trailing seven
-             *     days. A count of *runs*, not of interruptions — a run handed back twice is one row
-             *     and counts once, because the row is what the loop stopped on.
+             * @description **Human interventions** (`human_interventions`): every moment a person stepped into
+             *     a loop in the window — a needs-human handoff, a human failure classification, a
+             *     waiver, a failed gate, a blocking vote — across every cause.
              */
             interventions7d: number;
             /**
@@ -11637,10 +11634,9 @@ export interface components {
             /** @description Issues waiting — the same number as `stats.queued.count`. */
             queued: number;
             /**
-             * @description Runs merged since **midnight UTC**. The only figure on the page measured from a
-             *     calendar boundary rather than a rolling window, and therefore the only one that
-             *     needs a timezone to be well defined. It is the same day boundary
-             *     `stats.tokensToday` uses, so the sentence and the card cannot mean different
+             * @description Loop PRs merged since **midnight UTC** — today's point of the same `merged_prs`
+             *     window `stats.merged7d` counts, so the sentence and the card cannot disagree. It is
+             *     the same day boundary `stats.tokensToday` uses, so the two cannot mean different
              *     mornings.
              */
             mergedSinceMorning: number;

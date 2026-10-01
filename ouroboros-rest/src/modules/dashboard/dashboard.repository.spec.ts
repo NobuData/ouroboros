@@ -9,7 +9,7 @@ import {
 import { dashboardWindows } from "./windows";
 
 /**
- * The eight statements, and the properties a card's numbers rest on.
+ * The statements, and the properties a card's numbers rest on.
  *
  * This layer holds no rules — it holds statements — which is exactly why a mocked *method*
  * would prove nothing here: `expect(repository.runStatistics).toHaveBeenCalled()` says
@@ -47,7 +47,7 @@ describe("the dashboard repository", () => {
      */
     const everyRead: readonly [string, (repository: DashboardRepository) => Promise<unknown>][] = [
       ["version", (repository) => repository.version(WORKSPACE)],
-      ["runStatistics", (repository) => repository.runStatistics(WORKSPACE, WINDOWS)],
+      ["runStatistics", (repository) => repository.runStatistics(WORKSPACE)],
       ["activeRuns", (repository) => repository.activeRuns(WORKSPACE)],
       ["recentRuns", (repository) => repository.recentRuns(WORKSPACE)],
       ["queueTotals", (repository) => repository.queueTotals(WORKSPACE)],
@@ -74,7 +74,7 @@ describe("the dashboard repository", () => {
       await dashboard.version(WORKSPACE);
 
       const [statement] = database.statements;
-      expect(statement.parameters.filter((value) => value === WORKSPACE)).toHaveLength(4);
+      expect(statement.parameters.filter((value) => value === WORKSPACE)).toHaveLength(7);
     });
   });
 
@@ -104,115 +104,55 @@ describe("the dashboard repository", () => {
       expect(database.statements[0].sql).toContain("max(created_at)");
     });
 
-    it("reads all four sources in one statement", async () => {
+    it("reads all seven sources in one statement, the shared metrics' included", async () => {
+      // The pulse and the merged stat are `MetricsService` windows (#437) over the PR plane,
+      // the intervention events and the rollups, so each of those must move the tag.
       database.answers({ rows: [{}] });
 
       await dashboard.version(WORKSPACE);
 
       expect(database.statements).toHaveLength(1);
-      for (const table of ["runs", "queue_items", "token_usage", "workspace_settings"]) {
+      for (const table of [
+        "runs",
+        "queue_items",
+        "token_usage",
+        "workspace_settings",
+        "pull_requests",
+        "intervention_events",
+        "metric_rollup_state",
+      ]) {
         expect(database.statements[0].sql).toContain(`"ouroboros"."${table}"`);
       }
     });
   });
 
-  describe("the windowed numbers over runs", () => {
-    /** The seeded workspace's own figures, as the one-pass statement returns them. */
-    const SEEDED = {
-      live_coding: 1,
-      live_building: 1,
-      live_review: 1,
-      merged_this_week: 27,
-      merged_prior_week: 19,
-      interventions_this_week: 2,
-      merged_over_rate_window: 46,
-      closed_over_rate_window: 50,
-      avg_cycle_seconds: 860,
-      merged_since_morning: 6,
-    };
-
-    /** The same statement against a workspace with no history at all. */
-    const EMPTY = Object.fromEntries(Object.keys(SEEDED).map((column) => [column, 0]));
-
+  describe("the live split over runs", () => {
     beforeEach(() => {
-      database.answers({ rows: [SEEDED] });
+      database.answers({ rows: [{ live_coding: 1, live_building: 2, live_review: 3 }] });
     });
 
-    it("computes every one of them in a single pass", async () => {
-      // #72's criterion, and the reason it matters here: eleven statements would be eleven
-      // scans *and* eleven chances for the numbers to describe different snapshots.
-      await dashboard.runStatistics(WORKSPACE, WINDOWS);
+    it("counts every active status in a single pass", async () => {
+      await dashboard.runStatistics(WORKSPACE);
 
       expect(database.statements).toHaveLength(1);
-      // Ten filtered aggregates: three live counts, five windowed counts, the mean, and the
-      // day's merges. Counted rather than described, so a figure added by a second statement
-      // fails here rather than doubling the endpoint's reads unnoticed.
-      expect(database.statements[0].sql.match(/filter \(/g)).toHaveLength(10);
+      expect(database.statements[0].sql.match(/filter \(/g)).toHaveLength(3);
     });
 
-    it("takes every boundary from the windows it was given, never from the clock", async () => {
-      await dashboard.runStatistics(WORKSPACE, WINDOWS);
+    it("computes no shared metric — those are the metrics service's (#437)", async () => {
+      // A merged count, a mean cycle or a rate here would be a second implementation of a
+      // registry metric, which is exactly what the amendment removed.
+      await dashboard.runStatistics(WORKSPACE);
 
-      const { parameters } = database.statements[0];
-      expect(parameters).toContain(WINDOWS.weekStart);
-      expect(parameters).toContain(WINDOWS.priorWeekStart);
-      expect(parameters).toContain(WINDOWS.dayStart);
-      // `now()` in the SQL would be a second clock, and the boundary a run sat on would then
-      // depend on how long the statement waited for a connection.
-      expect(database.statements[0].sql).not.toContain("now()");
-    });
-
-    it("counts the prior week half-open, so no run is in both weeks", async () => {
-      await dashboard.runStatistics(WORKSPACE, WINDOWS);
-
-      // `>= priorWeekStart and < weekStart`: a run that finished exactly on the boundary is
-      // counted in this week and not in the one before, so the delta is a comparison rather
-      // than a double count.
-      expect(database.statements[0].sql).toMatch(/finished_at >= \$\d+\s+and finished_at < \$\d+/);
-    });
-
-    it("asks whether a run has stopped by asking whether it finished", async () => {
-      // `runs_terminal_finished_at` (V008) makes "has a `finished_at`" and "holds a terminal
-      // status" the same condition, and the shorter question is the one the
-      // `(organization_id, finished_at)` index can answer.
-      await dashboard.runStatistics(WORKSPACE, WINDOWS);
-
-      expect(database.statements[0].sql).toContain("count(*) filter (where finished_at >= $");
-    });
-
-    it("averages every run that closed this week, not only the merged ones", async () => {
-      // The two definitions are distinguishable against #68's seed — 14m 20s against
-      // 13m 19s — so the predicate is the definition and it is asserted rather than assumed.
-      await dashboard.runStatistics(WORKSPACE, WINDOWS);
-
-      const average = /avg\(([\s\S]*?)\) filter \(where finished_at >= \$\d+\)/.exec(
-        database.statements[0].sql,
-      );
-
-      expect(average).not.toBeNull();
-      expect(average?.[0]).not.toContain("status");
-    });
-
-    it("returns an empty window as zero rather than as the null an average of nothing is", async () => {
-      // The `beforeEach` queued the seeded row; this queues the empty one behind it, so the
-      // second call is the one being asserted about.
-      database.answers({ rows: [EMPTY] });
-      await dashboard.runStatistics(WORKSPACE, WINDOWS);
-
-      const statistics = await dashboard.runStatistics(WORKSPACE, WINDOWS);
-
-      expect(statistics.avgCycleSeconds).toBe(0);
-      expect(statistics.mergedThisWeek).toBe(0);
-      expect(database.sql().at(-1)).toContain("coalesce(avg(");
+      const { sql } = database.statements[0];
+      expect(sql).not.toContain("finished_at");
+      expect(sql).not.toContain("avg(");
     });
 
     it("maps the row onto a record with every active status in it", async () => {
-      const statistics = await dashboard.runStatistics(WORKSPACE, WINDOWS);
+      const statistics = await dashboard.runStatistics(WORKSPACE);
 
       expect(Object.keys(statistics.live).sort()).toEqual([...ACTIVE_RUN_STATUSES].sort());
-      expect(statistics.mergedThisWeek).toBe(27);
-      expect(statistics.mergedPriorWeek).toBe(19);
-      expect(statistics.closedOverRateWindow).toBe(50);
+      expect(statistics.live).toEqual({ coding: 1, building: 2, review: 3 });
     });
   });
 
@@ -344,7 +284,7 @@ describe("the dashboard repository", () => {
       await dashboard.autoMerge(WORKSPACE);
       await dashboard.queueHead(WORKSPACE);
       await dashboard.version(WORKSPACE);
-      await dashboard.runStatistics(WORKSPACE, WINDOWS);
+      await dashboard.runStatistics(WORKSPACE);
 
       for (const statement of database.sql()) {
         expect(statement).toMatch(/^select /);

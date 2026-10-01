@@ -1,26 +1,19 @@
 /**
  * The instants every number on the dashboard is measured between.
  *
- * The payload is six cards' worth of aggregates and four of them are *windowed* — merged
- * this week against last, the pulse meters, the day's token spend, and the page head's
- * *since this morning*. A window is two instants, and the whole class of bug this file
- * exists to prevent is those instants being computed twice: once in the SQL for the count
- * and once again in the SQL for the average, a few milliseconds apart, so that a run which
- * finished on the boundary is inside one number and outside the next.
+ * The payload is six cards' worth of aggregates. The windowed ones the dashboard shares with the
+ * Insights page — merged this week against last and the pulse meters — are **not** measured
+ * here: they are `MetricsService` windows (BJ.1,
+ * [#437](https://github.com/NobuData/ouroboros/issues/437), decision I1), so the two surfaces
+ * cannot disagree, and their boundaries are `insights/metrics/metrics.window.ts`'s: whole UTC days
+ * ending with today. {@link PULSE_RANGE} is the range they are asked for.
  *
- * So they are computed **once per request**, here, from one `now`, and handed to every
- * statement as parameters. One request sees one set of boundaries, and a payload's numbers
- * are consistent with each other whatever happened while it was being assembled.
+ * What remains here is the day boundary — what *Token spend · today* is measured from — computed
+ * **once per request** from one `now`, which is also the instant the metrics windows are asked
+ * about. One request sees one set of boundaries.
  *
- * ## Two kinds of boundary, and only one of them has a calendar
- *
- *   * **The rolling windows** — seven days and fourteen — are *durations subtracted from the
- *     request instant*, not calendar weeks. `now - 7 × 24h`. That is what "trailing seven
- *     days" means, it needs no timezone to be well defined, and it is immune to daylight
- *     saving by construction: a duration in milliseconds does not know what a clock did.
- *   * **The day boundary** — what *Token spend · today* and *merged since this morning* are
- *     measured from — is a *calendar* fact, and a calendar needs a zone. It is **UTC**, and
- *     {@link DASHBOARD_TIME_ZONE} is where that is written down.
+ * The day boundary is a *calendar* fact, and a calendar needs a zone. It is **UTC**, and
+ * {@link DASHBOARD_TIME_ZONE} is where that is written down.
  *
  * ## Why UTC, and what would change it
  *
@@ -37,6 +30,8 @@
  * milliseconds, even though the only zone it is ever passed today has no offset to apply.
  */
 
+import type { MetricRange } from "../insights/metrics/metrics.window";
+
 /**
  * The zone the dashboard's *calendar* boundaries are taken in.
  *
@@ -46,22 +41,8 @@
  */
 export const DASHBOARD_TIME_ZONE = "UTC";
 
-/** How many days the pulse meters and the *PRs merged* stat look back over. */
-export const PULSE_WINDOW_DAYS = 7;
-
-/**
- * How many days the autonomous merge rate looks back over.
- *
- * **Twice the others, and deliberately.** The reasoning is mockup 02's own arithmetic and is
- * set out in `resources.ts` beside the field it produces; what belongs here is only that the
- * longer window is not an extra reach into history — it is exactly the span the *merged
- * delta* already covers, this week plus the week it is compared against, so no number on the
- * page is measured over rows another number on the page does not already touch.
- */
-export const MERGE_RATE_WINDOW_DAYS = 14;
-
-/** Milliseconds in a day. A duration, not a calendar day — see this file's header. */
-const DAY_MS = 24 * 60 * 60 * 1000;
+/** The range the pulse meters and the *PRs merged* stat are asked for: seven UTC days. */
+export const PULSE_RANGE: MetricRange = "7d";
 
 /**
  * The boundaries one request's numbers are measured between.
@@ -72,14 +53,6 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 export interface DashboardWindows {
   /** The request instant. Every other field below is derived from it. */
   readonly now: Date;
-  /** Seven days before {@link DashboardWindows.now} — the start of *this* week. */
-  readonly weekStart: Date;
-  /**
-   * Fourteen days before now: the start of the week the delta compares against, and the
-   * start of the merge rate's own window. One instant serving two purposes because they are
-   * the same instant, not because either was made to fit the other.
-   */
-  readonly priorWeekStart: Date;
   /** Midnight in {@link DASHBOARD_TIME_ZONE} on the day `now` falls in — *this morning*. */
   readonly dayStart: Date;
   /** That same day as `YYYY-MM-DD`, which is how `token_usage_daily.day` is addressed. */
@@ -209,8 +182,6 @@ export function dashboardWindows(
 ): DashboardWindows {
   return {
     now,
-    weekStart: new Date(now.getTime() - PULSE_WINDOW_DAYS * DAY_MS),
-    priorWeekStart: new Date(now.getTime() - MERGE_RATE_WINDOW_DAYS * DAY_MS),
     dayStart: startOfDay(now, timeZone),
     day: dayOf(now, timeZone),
   };

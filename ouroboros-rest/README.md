@@ -772,8 +772,9 @@ not for the dashboard to build itself out of.
 
 **Polling is a header exchange.** The `ETag` is strong and is derived from a *version source*
 rather than from the payload: a row count and the newest change per source table, plus the
-calendar day, hashed. That is what a `304` costs — four aggregate subqueries returning no
-rows — and it is why the poll loop is cheap. The day is in the hash because two of the
+calendar day, hashed. That is what a `304` costs — seven aggregate subqueries returning no
+rows (runs, queue, token usage, settings, and since #437 the PR plane, intervention events and
+the rollup bookkeeping the shared metrics are read from) — and it is why the poll loop is cheap. The day is in the hash because two of the
 payload's numbers are calendar facts that change at midnight with no row having moved.
 The rest of the contract — the 15-second visible-tab interval, the `X-Ouro-Poll-After`
 backoff hint every answer carries, and the SSE upgrade path — is
@@ -781,13 +782,12 @@ backoff hint every answer carries, and the SSE upgrade path — is
 ([#75](https://github.com/NobuData/ouroboros/issues/75)).
 
 **Every window is published, because a number whose definition is not written down is a
-number a screen renders under the wrong label.** The rolling windows are durations back from
-the request instant, so no timezone and no daylight-saving transition can move them; the two
-calendar figures — the day's token spend and what has merged "since this morning" — are
-measured from **midnight UTC**, which is the day `token_usage_daily` is keyed by. The
-autonomous merge rate is measured over **fourteen** days and the other two meters over
-**seven**: `92%` is exact over the fourteen the seed spans and is not reachable over seven at
-all. `openapi.yaml`'s `LoopPulse` carries the full argument, and
+number a screen renders under the wrong label.** The pulse meters, *PRs merged · 7d* and *since
+this morning* are not computed here: they are [windowed metrics](#windowed-metrics-service)
+(#437, decision I1) — the registry's `merge_rate`, `cycle_time` (a median), `human_interventions`
+and `merged_prs` over the last seven **UTC days**, today included — so the dashboard and the
+Insights page cannot disagree. The day's token spend is measured from **midnight UTC**, the day
+`token_usage_daily` is keyed by. `openapi.yaml`'s `LoopPulse` carries each definition, and
 `src/modules/dashboard/resources.ts` carries it beside the code.
 
 **An empty organization answers zeros and empty arrays** — never a `null` a card would divide
@@ -5843,7 +5843,8 @@ database refuses to turn it back into a rule's.
 BI.2 ([#433](https://github.com/NobuData/ouroboros/issues/433)), decisions **I1**/**I2**, in
 [`src/modules/insights/rollup/`](src/modules/insights/rollup) over V076/V078's `metric_daily`. One
 extractor per metric family fills the daily grain — per workspace, repository, metric, dimension
-and **UTC day** — from the source planes; nothing here is an endpoint yet (BJ.1, #437, reads it).
+and **UTC day** — from the source planes; nothing here is an endpoint yet
+([windowed metrics](#windowed-metrics-service), #437, reads it).
 
 | family | metrics | population |
 | ------ | ------- | ---------- |
@@ -5875,6 +5876,40 @@ per repository and dimension, to equal the twin — the build fails if a rollup 
 
 ```bash
 yarn test:integration src/modules/insights/rollup
+```
+
+### Windowed metrics service
+
+BJ.1 ([#437](https://github.com/NobuData/ouroboros/issues/437)), decisions **I1–I3**, in
+[`src/modules/insights/metrics/`](src/modules/insights/metrics). `MetricsService` is exported by
+`InsightsModule`. It is the one place any surface asks what a number is, what it was, and how it
+was computed.
+
+```ts
+metrics.window("merge_rate", { organizationId, repo?, dimension?, range: "30d", now? })
+// ⇒ { value: 92, components: {numerator: 96, denominator: 104}, prior: 89, delta: 3,
+//     series: [{day, value, meta}, …30], methodology: {formula, sources, caveats, unit, version, proxy} }
+```
+
+| Rule | What it means |
+| ---- | ------------- |
+| **Days** | UTC calendar days, the grain's (V078). A caller's offset never moves a window. |
+| **Window** | `7d`/`30d`/`90d` = N days ending **today**, today included. |
+| **Prior** | The N days immediately before. Equal length, adjacent, no calendar snapping. |
+| **Rollup scan** | `metric_daily` over `[prior.from, yesterday]`. It never reads today's row. |
+| **Live tail** | Today, from each family's extractor run live for that **one** day. Never written. |
+| **Recomposition** | `ratio` = Σnumerator / Σdenominator; `median` pools samples; `sum` adds. `cost_per_merged_pr` = Σ`cost_cents` / Σ`merged_prs`. |
+| **Units** | As the registry stores them: a `pct` is 0–100 and `delta` is in points. A rate or median with nothing to compute from is `null`; a sum of nothing is `0`. |
+| **Methodology** | The `metric_definitions` entry, `version` included, travels with every answer. |
+| **Cache** | 30 s, keyed by workspace, metric, repo, dimension, range, today and a rollup stamp (`metric_rollup_state`). A refresh on any replica retires the cached windows. |
+
+It refuses (`MetricWindowError`) a metric not in the registry, one no rollup family fills
+(calibration reads its own table), and a dimensioned median asked for without a dimension.
+The dashboard's pulse card and merged stat read it (the DASH-G.3 amendment).
+
+```bash
+yarn test src/modules/insights/metrics                 # window matrix vs an event-level oracle
+yarn test:integration src/modules/insights/metrics     # vs rewindow, live tail, isolation, KPI budget
 ```
 
 ### PR page reads & head actions

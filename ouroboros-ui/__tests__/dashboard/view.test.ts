@@ -961,12 +961,11 @@ describe("pulseMeters", () => {
   });
 
   it("labels the merge rate for the window it is actually measured over", () => {
-    // The roadmap asks this card for it by name: the head's tag says `7 days` and the merge
-    // rate is fourteen, because the mockup's own figures cannot all be true of one window.
+    // Since #437 every meter is a seven-day metrics-service window; each row still prints it.
     const [rate, cycle, interventions] = pulseMeters(pulse());
 
     expect(rate?.window).toBe(MERGE_RATE_WINDOW);
-    expect(MERGE_RATE_WINDOW).toBe("14 days");
+    expect(MERGE_RATE_WINDOW).toBe("7 days");
     expect(cycle?.window).toBe(PULSE_WINDOW);
     expect(interventions?.window).toBe(PULSE_WINDOW);
   });
@@ -977,10 +976,10 @@ describe("pulseMeters", () => {
     // the window and the denominator that the sighted reader infers from the caption.
     const [rate, cycle, interventions] = pulseMeters(pulse());
 
-    expect(rate?.valueText).toBe("92% of runs merged without a person, over 14 days");
+    expect(rate?.valueText).toBe("92% of loop PRs merged without a person, over 7 days");
     expect(cycle?.valueText).toBe("14m 20s of the 30m 00s target, over 7 days");
     expect(interventions?.valueText).toBe(
-      "2 runs needed a person, of the 25 this workspace allows for in 7 days",
+      "2 interventions by a person, of the 25 this workspace allows for in 7 days",
     );
   });
 
@@ -1038,7 +1037,7 @@ describe("pulseMeters", () => {
     const [, , interventions] = pulseMeters(pulse({ interventions7d: 1 }));
 
     expect(interventions?.value).toBe("1 this week");
-    expect(interventions?.valueText).toContain("1 run needed a person");
+    expect(interventions?.valueText).toContain("1 intervention by a person");
   });
 });
 

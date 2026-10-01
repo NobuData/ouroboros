@@ -1,4 +1,6 @@
 import type { QueueItem, Run } from "../db/schema";
+import { metricsAnswering, type MetricsStub } from "../insights/metrics/metrics.fixture";
+import type { MetricWindow } from "../insights/metrics/metrics.types";
 import {
   DashboardRepository,
   type DashboardVersion,
@@ -19,28 +21,42 @@ import { dashboardWindows } from "./windows";
  * nothing in it produces zeros and empty lists rather than nulls a card would divide by.
  */
 
-/** The seeded workspace's figures, as the one-pass statement returns them. */
-const SEEDED: RunStatistics = {
-  live: { coding: 1, building: 1, review: 1 },
-  mergedThisWeek: 27,
-  mergedPriorWeek: 19,
-  interventionsThisWeek: 2,
-  mergedOverRateWindow: 46,
-  closedOverRateWindow: 50,
-  avgCycleSeconds: 860,
-  mergedSinceMorning: 6,
-};
+/** The seeded workspace's live split, as the one-pass statement returns it. */
+const SEEDED: RunStatistics = { live: { coding: 1, building: 1, review: 1 } };
 
 /** A workspace with no history at all. */
-const EMPTY: RunStatistics = {
-  live: { coding: 0, building: 0, review: 0 },
-  mergedThisWeek: 0,
-  mergedPriorWeek: 0,
-  interventionsThisWeek: 0,
-  mergedOverRateWindow: 0,
-  closedOverRateWindow: 0,
-  avgCycleSeconds: 0,
-  mergedSinceMorning: 0,
+const EMPTY: RunStatistics = { live: { coding: 0, building: 0, review: 0 } };
+
+/**
+ * The seeded workspace's shared metrics, as `MetricsService` answers them: 27 merged (8 more than
+ * the prior week, 6 of them today), a 92% merge rate, a 14m 20s median cycle, 2 interventions.
+ */
+const SEEDED_METRICS: Readonly<Record<string, Partial<MetricWindow>>> = {
+  merged_prs: {
+    value: 27,
+    prior: 19,
+    delta: 8,
+    series: [
+      { day: "2026-08-12", value: 21, meta: {} },
+      { day: "2026-08-13", value: 6, meta: {} },
+    ],
+  },
+  merge_rate: { value: 92, components: { numerator: 46, denominator: 50 } },
+  cycle_time: { value: 860_000 },
+  human_interventions: { value: 2 },
+};
+
+/** An empty workspace's metrics: no rate, no median, sums of nothing. */
+const EMPTY_METRICS: Readonly<Record<string, Partial<MetricWindow>>> = {
+  merged_prs: {
+    value: 0,
+    prior: 0,
+    delta: 0,
+    series: [{ day: "2026-08-13", value: 0, meta: {} }],
+  },
+  merge_rate: { value: null, prior: null, delta: null },
+  cycle_time: { value: null, prior: null, delta: null },
+  human_interventions: { value: 0 },
 };
 
 /** The seed's own day of token spend: 4.2M tokens, $18.60 priced, three unpriced events. */
@@ -65,6 +81,9 @@ const VERSION: DashboardVersion = {
   queueItems: "12 2026-08-13T09:00:00.000Z",
   tokenUsage: "12 2026-08-13T09:00:00.000Z",
   workspaceSettings: "1 2026-08-13T09:00:00.000Z",
+  pullRequests: "40 2026-08-13T09:00:00.000Z",
+  interventionEvents: "2 2026-08-13T09:00:00.000Z",
+  metricRollups: "8 2026-08-13T09:00:00.000Z",
 };
 
 const RUN: Run = {
@@ -161,37 +180,65 @@ function repositoryAnswering(
   } as unknown as DashboardRepository;
 }
 
+/**
+ * The service over a stated repository and metrics service.
+ *
+ * @param repository - The repository stand-in.
+ * @param metrics - The metrics stand-in; the seeded workspace's figures by default.
+ * @returns The service.
+ */
+function serviceOf(
+  repository: DashboardRepository,
+  metrics: MetricsStub = metricsAnswering(SEEDED_METRICS),
+): DashboardService {
+  return new DashboardService(repository, metrics);
+}
+
 describe("the dashboard service", () => {
   describe("the windows", () => {
     it("reads the clock once, and hands the same boundaries to everything", async () => {
       const repository = repositoryAnswering();
-      const service = new DashboardService(repository);
+      const metrics = metricsAnswering(SEEDED_METRICS);
+      const service = serviceOf(repository, metrics);
 
       const windows = service.windows();
       await service.etag(WORKSPACE, windows);
       await service.read(WORKSPACE, windows);
 
-      // The tag and the body describe one moment, and every statement in the body was
-      // answered about the same week — which is what keeps a stat row from disagreeing with
+      // The tag and the body describe one moment, and every metrics window in the body was
+      // asked about the same instant — which is what keeps a stat row from disagreeing with
       // the pulse card beside it under load.
-      expect(repository.runStatistics).toHaveBeenCalledWith(WORKSPACE, windows);
+      expect(repository.runStatistics).toHaveBeenCalledWith(WORKSPACE);
+      expect(metrics.window).toHaveBeenCalledTimes(4);
+      for (const [, scope] of metrics.window.mock.calls) {
+        expect(scope).toEqual({ organizationId: WORKSPACE, range: "7d", now: windows.now });
+      }
       expect(repository.tokenTotals).toHaveBeenCalledWith(WORKSPACE, windows.day);
     });
   });
 
   describe("the entity tag", () => {
     it("is the same for the same state and the same day", async () => {
-      const service = new DashboardService(repositoryAnswering());
+      const service = serviceOf(repositoryAnswering());
 
       expect(await service.etag(WORKSPACE, WINDOWS)).toBe(await service.etag(WORKSPACE, WINDOWS));
     });
 
     it("changes when any source table does", async () => {
-      const before = await new DashboardService(repositoryAnswering()).etag(WORKSPACE, WINDOWS);
+      const before = await serviceOf(repositoryAnswering()).etag(WORKSPACE, WINDOWS);
 
-      for (const source of ["runs", "queueItems", "tokenUsage", "workspaceSettings"] as const) {
+      for (const source of [
+        "runs",
+        "queueItems",
+        "tokenUsage",
+        "workspaceSettings",
+        "pullRequests",
+        "interventionEvents",
+        "metricRollups",
+      ] as const) {
         const changed = await new DashboardService(
           repositoryAnswering({ version: { ...VERSION, [source]: "changed" } }),
+          metricsAnswering(SEEDED_METRICS),
         ).etag(WORKSPACE, WINDOWS);
 
         expect(changed).not.toBe(before);
@@ -201,7 +248,7 @@ describe("the dashboard service", () => {
     it("changes at midnight even when nothing was written", async () => {
       // Two of the payload's numbers are day-boundary facts, so a representation cached
       // across midnight would be wrong with no row having moved. This is what expires it.
-      const service = new DashboardService(repositoryAnswering());
+      const service = serviceOf(repositoryAnswering());
       const tomorrow = dashboardWindows(new Date("2026-08-14T00:00:01.000Z"));
 
       expect(await service.etag(WORKSPACE, tomorrow)).not.toBe(
@@ -210,7 +257,7 @@ describe("the dashboard service", () => {
     });
 
     it("differs between two workspaces holding identical data", async () => {
-      const service = new DashboardService(repositoryAnswering());
+      const service = serviceOf(repositoryAnswering());
 
       expect(await service.etag("one", WINDOWS)).not.toBe(await service.etag("two", WINDOWS));
     });
@@ -219,7 +266,7 @@ describe("the dashboard service", () => {
       // The whole argument for a version source: this is what a poll that ends in `304` pays.
       const repository = repositoryAnswering();
 
-      await new DashboardService(repository).etag(WORKSPACE, WINDOWS);
+      await serviceOf(repository).etag(WORKSPACE, WINDOWS);
 
       expect(repository.version).toHaveBeenCalledTimes(1);
       expect(repository.runStatistics).not.toHaveBeenCalled();
@@ -228,8 +275,37 @@ describe("the dashboard service", () => {
   });
 
   describe("the payload", () => {
+    it("reads the pulse and the merged stat from the shared metrics service", async () => {
+      // The #437 amendment: no second implementation of a shared metric. Each figure is the
+      // registry metric of the same name, and nothing else.
+      const metrics = metricsAnswering(SEEDED_METRICS);
+
+      await serviceOf(repositoryAnswering(), metrics).read(WORKSPACE, WINDOWS);
+
+      expect(metrics.window.mock.calls.map(([metricId]) => metricId).sort()).toEqual([
+        "cycle_time",
+        "human_interventions",
+        "merge_rate",
+        "merged_prs",
+      ]);
+    });
+
+    it("converts the registry's units to the pulse's: pct to a fraction, ms to seconds", async () => {
+      const payload = await serviceOf(
+        repositoryAnswering(),
+        metricsAnswering({
+          ...SEEDED_METRICS,
+          merge_rate: { value: 87.5 },
+          cycle_time: { value: 90_500 },
+        }),
+      ).read(WORKSPACE, WINDOWS);
+
+      expect(payload.pulse.mergeRate).toBe(0.875);
+      expect(payload.pulse.avgCycleSeconds).toBe(90.5);
+    });
+
     it("reproduces the mockup's numbers from the seeded workspace's rows", async () => {
-      const payload = await new DashboardService(repositoryAnswering()).read(WORKSPACE, WINDOWS);
+      const payload = await serviceOf(repositoryAnswering()).read(WORKSPACE, WINDOWS);
 
       expect(payload.stats.loopsLive).toEqual({
         total: 3,
@@ -254,7 +330,7 @@ describe("the dashboard service", () => {
     it("converts the wide numbers exactly, rather than rounding them through a float", async () => {
       // `bigint` and `numeric` arrive as text because neither fits a JavaScript number in
       // general. The conversion happens once, here, on values PostgreSQL has already said fit.
-      const payload = await new DashboardService(
+      const payload = await serviceOf(
         repositoryAnswering({
           tokenTotals: { ...TOKENS, tokens: "4200000", costCents: "1860.0000" },
         }),
@@ -265,7 +341,7 @@ describe("the dashboard service", () => {
     });
 
     it("keeps a cost with fractions of a cent rather than truncating it", async () => {
-      const payload = await new DashboardService(
+      const payload = await serviceOf(
         repositoryAnswering({ tokenTotals: { ...TOKENS, costCents: "1860.2500" } }),
       ).read(WORKSPACE, WINDOWS);
 
@@ -275,15 +351,16 @@ describe("the dashboard service", () => {
     it("says the same thing twice rather than counting it twice", async () => {
       // The subline and the stat row are rendered side by side; two counts of one thing are
       // two things that can disagree in one payload.
-      const payload = await new DashboardService(repositoryAnswering()).read(WORKSPACE, WINDOWS);
+      const payload = await serviceOf(repositoryAnswering()).read(WORKSPACE, WINDOWS);
 
       expect(payload.activity.inFlight).toBe(payload.stats.loopsLive.total);
       expect(payload.activity.queued).toBe(payload.stats.queued.count);
+      // Today's point of the same merged_prs window the stat row counts.
       expect(payload.activity.mergedSinceMorning).toBe(6);
     });
 
     it("renders every row through the shared shapes", async () => {
-      const payload = await new DashboardService(repositoryAnswering()).read(WORKSPACE, WINDOWS);
+      const payload = await serviceOf(repositoryAnswering()).read(WORKSPACE, WINDOWS);
 
       expect(payload.activeRuns).toEqual([
         expect.objectContaining({ issueNumber: 482, status: "coding", finishedAt: null }),
@@ -296,7 +373,7 @@ describe("the dashboard service", () => {
     it("answers an empty organization with zeros and empty lists, never nulls", async () => {
       // The acceptance criterion, at the layer that decides it. A card is rendered from this
       // without a fallback branch, so a `null` here is a crash there.
-      const payload = await new DashboardService(
+      const payload = await serviceOf(
         repositoryAnswering({
           runStatistics: EMPTY,
           activeRuns: [],
@@ -306,6 +383,7 @@ describe("the dashboard service", () => {
           tokenTotals: NO_TOKENS,
           autoMerge: false,
         }),
+        metricsAnswering(EMPTY_METRICS),
       ).read(WORKSPACE, WINDOWS);
 
       expect(payload).toEqual({
@@ -328,9 +406,11 @@ describe("the dashboard service", () => {
     });
 
     it("reports a week that merged less than the one before as a negative delta", async () => {
-      const payload = await new DashboardService(
-        repositoryAnswering({
-          runStatistics: { ...SEEDED, mergedThisWeek: 11, mergedPriorWeek: 19 },
+      const payload = await serviceOf(
+        repositoryAnswering(),
+        metricsAnswering({
+          ...SEEDED_METRICS,
+          merged_prs: { value: 11, prior: 19, delta: -8 },
         }),
       ).read(WORKSPACE, WINDOWS);
 
@@ -346,11 +426,13 @@ describe("the dashboard service", () => {
         new Promise<RunStatistics>((resolve) => (resolveFirst = resolve)),
       );
 
-      const reading = new DashboardService(repository).read(WORKSPACE, WINDOWS);
+      const metrics = metricsAnswering(SEEDED_METRICS);
+      const reading = serviceOf(repository, metrics).read(WORKSPACE, WINDOWS);
       await Promise.resolve();
 
       expect(repository.activeRuns).toHaveBeenCalled();
       expect(repository.autoMerge).toHaveBeenCalled();
+      expect(metrics.window).toHaveBeenCalledTimes(4);
 
       resolveFirst(SEEDED);
       await reading;

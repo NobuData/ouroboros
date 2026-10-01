@@ -13,6 +13,10 @@
  * BI.3 ([#434](https://github.com/NobuData/ouroboros/issues/434)) adds the intervention-cause
  * taxonomy's one service-side write: `POST /api/v1/insights/interventions/{id}/recategorize`, member
  * and above, audited. The events and their rule causes are the database's (V079's hooks).
+ *
+ * BJ.1 ([#437](https://github.com/NobuData/ouroboros/issues/437)) adds {@link MetricsService}: every
+ * metric over a 7/30/90-day window, with its prior window, daily series and methodology. It is
+ * exported so the dashboard's pulse card reads the same numbers as the Insights page.
  */
 
 import { Module } from "@nestjs/common";
@@ -26,6 +30,9 @@ import { CalibrationService } from "./calibration.service";
 import { InterventionsController } from "./interventions.controller";
 import { InterventionRepository } from "./interventions.repository";
 import { InterventionsService } from "./interventions.service";
+import { MetricsCache } from "./metrics/metrics.cache";
+import { MetricsRepository } from "./metrics/metrics.repository";
+import { MetricsService } from "./metrics/metrics.service";
 import { ROLLUP_EXTRACTORS } from "./rollup/rollup.extractors";
 import { RollupRepository } from "./rollup/rollup.repository";
 import { RollupScheduler } from "./rollup/rollup.scheduler";
@@ -44,7 +51,10 @@ import { ROLLUP_FAMILIES, RollupService } from "./rollup/rollup.service";
     RollupScheduler,
     InterventionRepository,
     InterventionsService,
+    MetricsRepository,
+    MetricsCache,
+    MetricsService,
   ],
-  exports: [CALIBRATION_MERGE_OBSERVER],
+  exports: [CALIBRATION_MERGE_OBSERVER, MetricsService],
 })
 export class InsightsModule {}

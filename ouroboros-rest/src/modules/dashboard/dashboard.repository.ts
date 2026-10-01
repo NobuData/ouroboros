@@ -10,10 +10,12 @@
  * statements against indexed, org-scoped predicates cost less than the round trip that
  * carries them, and the service issues them concurrently.
  *
- * What *is* one statement is each **question**: every windowed number over `runs` is
- * computed in one pass with filtered aggregates, so the eleven figures the pulse card and
- * the stat row need are one index scan rather than eleven
- * ([#72](https://github.com/NobuData/ouroboros/issues/72)).
+ * What *is* one statement is each **question**: the live split over `runs` is computed in one
+ * pass with filtered aggregates. The windowed numbers the pulse card and the stat row share with
+ * the Insights page — merge rate, cycle time, interventions, PRs merged — are not computed here at
+ * all: `DashboardService` reads them from `MetricsService` (BJ.1,
+ * [#437](https://github.com/NobuData/ouroboros/issues/437), amending
+ * [#72](https://github.com/NobuData/ouroboros/issues/72)), so there is one implementation of each.
  *
  * ## Org scoping is not optional and is not the client's
  *
@@ -39,7 +41,6 @@ import { sql } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import { ACTIVE_RUN_STATUSES, type ActiveRunStatus, type QueueItem, type Run } from "../db/schema";
-import type { DashboardWindows } from "./windows";
 
 /** How many runs in flight the aggregate carries. The card draws what it has room for. */
 export const ACTIVE_RUNS_LIMIT = 10;
@@ -50,7 +51,7 @@ export const RECENT_RUNS_LIMIT = 8;
 /** How many queued issues it carries — exactly what the *Up next in queue* card draws. */
 export const QUEUE_HEAD_LIMIT = 5;
 
-/** The windowed numbers over `runs`, as one pass of filtered aggregates returns them. */
+/** The runs in flight, as one pass of filtered aggregates returns them. */
 export interface RunStatistics {
   /**
    * How many runs hold each active status.
@@ -60,20 +61,6 @@ export interface RunStatistics {
    * missing a column.
    */
   readonly live: Readonly<Record<ActiveRunStatus, number>>;
-  /** Runs merged in the trailing seven days. */
-  readonly mergedThisWeek: number;
-  /** Runs merged in the seven days before those — what the delta is measured against. */
-  readonly mergedPriorWeek: number;
-  /** Runs that reached `needs_human` in the trailing seven days. */
-  readonly interventionsThisWeek: number;
-  /** Runs merged over the merge rate's fourteen-day window. */
-  readonly mergedOverRateWindow: number;
-  /** Runs that reached any terminal status over the same fourteen days — the rate's denominator. */
-  readonly closedOverRateWindow: number;
-  /** Mean `finished_at − started_at` over runs closed this week, in seconds. `0` for an empty window. */
-  readonly avgCycleSeconds: number;
-  /** Runs merged since midnight — the page head's *since this morning*. */
-  readonly mergedSinceMorning: number;
 }
 
 /** The day's token ledger, rolled up across providers. */
@@ -111,6 +98,12 @@ export interface DashboardVersion {
   readonly queueItems: string | null;
   readonly tokenUsage: string | null;
   readonly workspaceSettings: string | null;
+  /** The PR plane — `merged_prs` and `merge_rate` read it through the metrics live tail (#437). */
+  readonly pullRequests: string | null;
+  /** V079's events — `human_interventions` reads them through the same tail. */
+  readonly interventionEvents: string | null;
+  /** The rollup bookkeeping — moves whenever a family refreshes `metric_daily`. */
+  readonly metricRollups: string | null;
 }
 
 @Injectable()
@@ -124,7 +117,7 @@ export class DashboardRepository {
   /**
    * What the workspace's dashboard is made of, cheaply enough to ask on every poll.
    *
-   * Four aggregate subqueries over indexed, org-scoped predicates, and no row is returned
+   * Seven aggregate subqueries over indexed, org-scoped predicates, and no row is returned
    * from any of them — this is the statement a `304` costs, and the whole reason the tag is
    * derived from a version source rather than from the rendered payload.
    *
@@ -143,6 +136,10 @@ export class DashboardRepository {
    * § 5.4 ([#75](https://github.com/NobuData/ouroboros/issues/75)).
    *
    * @param organizationId - The workspace, from the tenant context.
+   * **The shared metrics' sources are fingerprinted too** (#437). The pulse and the merged stat
+   * are `MetricsService` windows over the PR plane, the intervention events and the rollups, so a
+   * merge recorded without touching `runs` must still move the tag.
+   *
    * @returns One fingerprint per source table.
    */
   async version(organizationId: string): Promise<DashboardVersion> {
@@ -172,72 +169,43 @@ export class DashboardRepository {
           .select(fingerprint.as("v"))
           .where("organization_id", "=", organizationId)
           .as("workspaceSettings"),
+        eb
+          .selectFrom("pull_requests")
+          .select(fingerprint.as("v"))
+          .where("organization_id", "=", organizationId)
+          .as("pullRequests"),
+        eb
+          .selectFrom("intervention_events")
+          .select(fingerprint.as("v"))
+          .where("organization_id", "=", organizationId)
+          .as("interventionEvents"),
+        eb
+          .selectFrom("metric_rollup_state")
+          .select(fingerprint.as("v"))
+          .where("organization_id", "=", organizationId)
+          .as("metricRollups"),
       ])
       .executeTakeFirstOrThrow();
   }
 
   /**
-   * Every windowed number over `runs`, in one pass.
+   * How many runs hold each active status, in one pass.
    *
-   * Filtered aggregates rather than one statement per figure: PostgreSQL reads the
-   * workspace's rows once and evaluates eleven predicates as it goes, which is both faster
-   * than eleven scans and — the property that actually matters — *consistent*, because every
-   * figure is computed from the same snapshot of the same rows.
-   *
-   * Each window boundary arrives as a parameter from {@link DashboardWindows}, computed once
-   * per request, so the count and the mean cannot disagree about where the week starts.
+   * Three explicit aliases rather than a `group by`, so the shape is known to the compiler and a
+   * status with no runs is a zero rather than a missing row — see `resources.ts` on why every
+   * status has to be a key.
    *
    * @param organizationId - The workspace, from the tenant context.
-   * @param windows - The instants this request's numbers are measured between.
-   * @returns The statistics. Every field is a number: an empty workspace's row is zeros,
-   *   which the `coalesce` on the mean and the `::int` on every count guarantee.
+   * @returns The live split. An empty workspace's row is zeros.
    */
-  async runStatistics(organizationId: string, windows: DashboardWindows): Promise<RunStatistics> {
-    const { weekStart, priorWeekStart, dayStart } = windows;
-
+  async runStatistics(organizationId: string): Promise<RunStatistics> {
     const row = await this.database.db
       .selectFrom("runs")
       .where("organization_id", "=", organizationId)
       .select([
-        // The live split. Three explicit aliases rather than a `group by`, so the shape is
-        // known to the compiler and a status with no runs is a zero rather than a missing
-        // row — see `resources.ts` on why every status has to be a key.
         sql<number>`count(*) filter (where status = ${"coding"})::int`.as("live_coding"),
         sql<number>`count(*) filter (where status = ${"building"})::int`.as("live_building"),
         sql<number>`count(*) filter (where status = ${"review"})::int`.as("live_review"),
-
-        // `finished_at >= …` is what "in the window" means, and it doubles as "is terminal":
-        // `runs_terminal_finished_at` (V008) makes the two the same condition, so nothing
-        // here has to enumerate the terminal statuses to ask whether a run has stopped.
-        sql<number>`count(*) filter (
-          where status = ${"merged"} and finished_at >= ${weekStart}
-        )::int`.as("merged_this_week"),
-        sql<number>`count(*) filter (
-          where status = ${"merged"}
-            and finished_at >= ${priorWeekStart}
-            and finished_at < ${weekStart}
-        )::int`.as("merged_prior_week"),
-        sql<number>`count(*) filter (
-          where status = ${"needs_human"} and finished_at >= ${weekStart}
-        )::int`.as("interventions_this_week"),
-        sql<number>`count(*) filter (
-          where status = ${"merged"} and finished_at >= ${priorWeekStart}
-        )::int`.as("merged_over_rate_window"),
-        sql<number>`count(*) filter (where finished_at >= ${priorWeekStart})::int`.as(
-          "closed_over_rate_window",
-        ),
-
-        // The mean is over *every* run that closed this week, merged or not — see
-        // `LoopPulse.avgCycleSeconds`. `coalesce` is what makes an empty window `0` rather
-        // than the `null` an average over no rows is, and the cast is what makes it a number
-        // rather than the text `pg` returns a `numeric` as.
-        sql<number>`coalesce(avg(
-          extract(epoch from (finished_at - started_at))
-        ) filter (where finished_at >= ${weekStart}), 0)::float8`.as("avg_cycle_seconds"),
-
-        sql<number>`count(*) filter (
-          where status = ${"merged"} and finished_at >= ${dayStart}
-        )::int`.as("merged_since_morning"),
       ])
       .executeTakeFirstOrThrow();
 
@@ -249,13 +217,6 @@ export class DashboardRepository {
         building: row.live_building,
         review: row.live_review,
       },
-      mergedThisWeek: row.merged_this_week,
-      mergedPriorWeek: row.merged_prior_week,
-      interventionsThisWeek: row.interventions_this_week,
-      mergedOverRateWindow: row.merged_over_rate_window,
-      closedOverRateWindow: row.closed_over_rate_window,
-      avgCycleSeconds: row.avg_cycle_seconds,
-      mergedSinceMorning: row.merged_since_morning,
     };
   }
 

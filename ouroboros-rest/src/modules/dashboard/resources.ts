@@ -10,9 +10,9 @@
  *
  * ## Two rules the whole payload keeps
  *
- *   * **Aggregates are computed here; per-row durations are not.** *Avg. cycle time* is a
- *     mean over twenty-nine rows and no client can compute it from what it was sent, so it
- *     is a field. A single run's *Elapsed* and *Cycle* are `now − startedAt` and
+ *   * **Aggregates are computed by the service; per-row durations are not.** *Cycle time* is
+ *     a median over a window of loops (read from `MetricsService`, #437) and no client can
+ *     compute it from what it was sent, so it is a field. A single run's *Elapsed* and *Cycle* are `now − startedAt` and
  *     `finishedAt − startedAt`, which a client can compute from two timestamps it already
  *     has — and *must*, because elapsed is a number that moves while nobody is asking. So
  *     the rows carry instants and the payload carries no per-row duration.
@@ -148,10 +148,13 @@ export interface QueuedStat {
 
 /** *PRs merged · 7d* — the count, and how it compares with the week before. */
 export interface MergedSevenDaysStat {
-  /** Runs that reached `merged` in the trailing seven days. */
+  /**
+   * Loop PRs merged over the last seven UTC days, today included — the registry's `merged_prs`,
+   * read through `MetricsService` (#437).
+   */
   readonly count: number;
   /**
-   * This week's count less the previous seven days' — the card's `▲ 8 vs last week`.
+   * This window's count less the seven UTC days before it — the card's `▲ 8 vs last week`.
    *
    * Signed: negative is a week that merged less than the one before, and the card renders
    * the direction from the sign rather than from a separate flag.
@@ -195,54 +198,38 @@ export interface DashboardStats {
 /**
  * *Loop pulse* — three windowed meters and the one switch the dashboard can write.
  *
- * The definitions are the substance of this interface and each is stated on its field. The
- * one that is not obvious from its name is the merge rate's window: see
- * {@link LoopPulse.mergeRate}.
+ * **The meters are the registry's metrics, not the dashboard's own** (BJ.1,
+ * [#437](https://github.com/NobuData/ouroboros/issues/437), decision I1, amending #72). Each is a
+ * `MetricsService` window over the last seven UTC days, today included, so the dashboard and the
+ * Insights page cannot show two different numbers for one metric. The definitions below are the
+ * registry's (`metric_definitions`), restated so the field says what it carries.
  */
 export interface LoopPulse {
   /**
-   * The **autonomous merge rate**: merged runs ÷ every run that reached a terminal status,
-   * over **fourteen days**, as a fraction between 0 and 1.
+   * The **autonomous merge rate** (`merge_rate`): loop PRs merged with no human handoff and no
+   * failed guardrail ÷ every loop PR that closed, merged or not, over seven UTC days, as a
+   * fraction between 0 and 1. Recomposed from the days' components — Σ autonomous ÷ Σ closed —
+   * never an average of daily rates.
    *
-   * Every terminal status is in the denominator — `merged`, `needs_human` and `failed`. The
-   * meter's question is *how often does the loop finish the job without us*, and a run that
-   * stopped for a human is the clearest possible no; excluding it would make the rate say
-   * "of the runs that went well, how many went well".
-   *
-   * **Why fourteen days when the other two meters are seven.** Mockup 02 draws `92%` beside
-   * `27 merged · 7d` and `2 interventions this week`, and those three cannot all be true of
-   * one seven-day window: 27 merged with 2 interventions is 27/29 = 93.1%, and there is no
-   * integer count of closed runs for which 27 merged is 92% — 92% needs a denominator of
-   * 29.35. #68's seed says so in its header and leaves the choice here. It is resolved in
-   * favour of the *rate*: over the fourteen days the seed spans, 46 of 50 closed runs merged,
-   * which is 92% with no rounding at all. A longer window is also the better measurement on
-   * its own terms — a rate over a denominator of twenty-nine moves four points when one run
-   * fails — and it reaches over exactly the rows the merged delta already compares across.
-   *
-   * `0` when nothing closed in the window. That is a floor rather than a measurement, and it
-   * is why an empty organization's meter is drawn as *no data* rather than as a bad week:
+   * `0` when no PR closed in the window. That is a floor rather than a measurement, and it is
+   * why an empty organization's meter is drawn as *no data* rather than as a bad week:
    * `pulse.mergeRate === 0` with `merged7d.count === 0` and `interventions7d === 0` is an
    * organization with no history, not one that merged nothing.
    */
   readonly mergeRate: number;
   /**
-   * **Average cycle time**: the mean of `finishedAt − startedAt` over every run that reached
-   * a terminal status in the trailing **seven** days, in seconds.
+   * **Cycle time** (`cycle_time`): the **median** of `finishedAt − startedAt` over loops that
+   * finished `merged` in the window, in seconds. The field keeps its name for compatibility; the
+   * figure is the registry's median, pooled across the window's days.
    *
-   * Every terminal run, not only the merged ones — a run that stopped for a human took the
-   * time it took, and a mean that dropped it would report the loop as faster than it is. The
-   * two definitions are distinguishable against #68's seed and the choice is not free: over
-   * those rows this one is 14m 20s, which is the mockup's number, and merged-only is 13m 19s.
-   *
-   * `0` when nothing closed in the window — the same floor, and the same reading, as
+   * `0` when nothing merged in the window — the same floor, and the same reading, as
    * {@link LoopPulse.mergeRate}.
    */
   readonly avgCycleSeconds: number;
   /**
-   * **Human interventions**: runs that reached `needs_human` in the trailing seven days.
-   *
-   * A count of runs, not of interruptions: a run that was handed back twice is one row and
-   * counts once, because the row is what the loop stopped on.
+   * **Human interventions** (`human_interventions`): every moment a person stepped into a loop
+   * in the window — a needs-human handoff, a human failure classification, a waiver, a failed
+   * gate, a blocking vote (V079's events), across every cause.
    */
   readonly interventions7d: number;
   /**
@@ -269,12 +256,12 @@ export interface DashboardActivity {
   /** Issues waiting — the same number as `stats.queued.count`. */
   readonly queued: number;
   /**
-   * Runs merged since midnight — *"merged 6 pull requests since this morning"*.
+   * Loop PRs merged since midnight UTC — *"merged 6 pull requests since this morning"*.
    *
-   * The only number on the page measured from a **calendar** boundary rather than a rolling
-   * window, and therefore the only one that needs a timezone. It is UTC; `windows.ts` is
-   * where that is decided and the OpenAPI description is where it is published, because a
-   * reader in another zone is entitled to know whose morning is meant.
+   * Today's point of the same `merged_prs` window `stats.merged7d` counts, so the subline and the
+   * card cannot disagree. The morning is UTC's; `windows.ts` and `metrics.window.ts` are where
+   * that is decided and the OpenAPI description is where it is published, because a reader in
+   * another zone is entitled to know whose morning is meant.
    */
   readonly mergedSinceMorning: number;
 }
@@ -386,17 +373,4 @@ export function loopsLive(counts: Readonly<Record<ActiveRunStatus, number>>): Lo
     total: ACTIVE_RUN_STATUSES.reduce((sum, status) => sum + byStatus[status], 0),
     byStatus,
   };
-}
-
-/**
- * A rate, guarded against the window that holds nothing.
- *
- * @param numerator - Runs that merged.
- * @param denominator - Runs that closed at all.
- * @returns The fraction, or `0` when nothing closed — never `NaN`, which is not
- *   representable in JSON and would reach a card as `null`. See {@link LoopPulse.mergeRate}
- *   for how a caller is meant to read the zero.
- */
-export function rate(numerator: number, denominator: number): number {
-  return denominator === 0 ? 0 : numerator / denominator;
 }

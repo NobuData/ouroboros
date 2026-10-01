@@ -494,7 +494,7 @@ seeds: 30d × all families ─▶ every mockup number reproduced · Aug-4 toolti
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BJ.1 | #437 | 🟡 Open | ouroboros-rest: [BJ.1] Windowed metrics service | Range + prior-delta over rollups + live tail; registry-driven (I1–I3) | mvp, insights, rest | N (after BI.2) | Y | L | ouroboros-rest |
+| BJ.1 | #437 ✅ | 🟢 Done | ouroboros-rest: [BJ.1] Windowed metrics service | Range + prior-delta over rollups + live tail; registry-driven (I1–I3) | mvp, insights, rest | N (after BI.2) | Y | L | ouroboros-rest |
 | BJ.2 | #438 | 🟡 Open | ouroboros-rest: [BJ.2] Insights read APIs | KPIs, series, hbar sets, scoreboard, flaky, DORA payloads | mvp, insights, rest | N (after BJ.1, BI.3) | Y | M | ouroboros-rest |
 | BJ.3 | #439 | 🟡 Open | ouroboros-rest: [BJ.3] Model scoreboard aggregation | Task×model outcomes: untouched %, $/success, trends (I6) | mvp, insights, rest, routing | N (after BJ.1, AW) | Y | M | ouroboros-rest |
 | BJ.4 | #440 | 🟡 Open | ouroboros-rest: [BJ.4] Email digest generation | Weekly registry-rendered digest per subscriber (I9) | mvp, insights, rest | N (after BJ.1, BA-E.3 mailer) | Y | M | ouroboros-rest |
@@ -502,7 +502,29 @@ seeds: 30d × all families ─▶ every mockup number reproduced · Aug-4 toolti
 
 ### Issue BJ.1 — ouroboros-rest: [BJ.1] Windowed metrics service
 
-> **GitHub issue:** #437 · **Status:** 🟡 Open · **Parent epic:** #429
+> **GitHub issue:** #437 ✅ · **Status:** 🟢 Done · **Parent epic:** #429
+
+- **Delivered** (`ouroboros-rest` `src/modules/insights/metrics/`, 0.38.0):
+  `MetricsService.window(metricId, {organizationId, repo?, dimension?, range, now?})` returns
+  `{value, components?, prior, priorComponents?, delta, series, methodology}`. It scans the
+  rollup over `[prior.from, yesterday]`, and today comes from the family's extractor run live
+  for that one UTC day (bounded, never written). Rates recompose as Σnumerator / Σdenominator,
+  medians pool their samples, and `cost_per_merged_pr` is Σ`cost_cents` / Σ`merged_prs`. The
+  rules are written once in `metrics.window.ts`: days are UTC calendar days whatever the
+  caller's offset, a window is N days ending today, and the prior window is the N days before
+  it. The methodology payload is the registry entry, version included. A 30 s cache is keyed by
+  workspace, metric, scope, range, today and a rollup stamp from `metric_rollup_state`, so a
+  refresh on any replica retires it. **DASH-G.3 amendment:** the pulse's merge rate, cycle time
+  and interventions, *PRs merged · 7d* with its delta, and *since this morning* now read the
+  service over 7d. They are the registry's definitions: merge rate is PR-based over 7 UTC days,
+  not runs over 14; cycle time is the median over merged loops; interventions are V079's
+  events. The ETag fingerprints the PR plane, intervention events and the rollup bookkeeping.
+  OpenAPI goes to 0.38.0 for the change in meaning, and the UI labels now say *Median cycle
+  time* and `7 days`. Tests: a unit matrix of 7/30/90 × month/week/leap/year boundaries ×
+  caller offsets against an event-level oracle, exact recomposition (11/41, not 62.5%), the
+  tail bound, the cache across a refresh, and isolation. An integration suite compares against
+  `rewindow` over 180 days × 3 repositories, reads today through the real extractors, and
+  holds the KPI row's warm p95 under 150 ms.
 
 - **Problem Statement:** One service must answer "metric X over range R with
   prior-period delta" for every consumer — the page, the digest, and the
@@ -986,7 +1008,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
 2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { **BI.3 (#434) ✅** ⊕ **BI.4 (#435) ✅** } → **BI.5 (#436) ✅**
-3. **Phase 2 — Services:** BJ.1 (#437) → { BJ.2 (#438) ⊕ BJ.3 (#439) ⊕ BJ.4 (#440) } → BJ.5 (#441)
+3. **Phase 2 — Services:** **BJ.1 (#437) ✅** → { BJ.2 (#438) ⊕ BJ.3 (#439) ⊕ BJ.4 (#440) } → BJ.5 (#441)
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*
 5. **v2:** BL.1 (#448) with mockup 19; BL.2 (#449) with AB.3 (#209);
