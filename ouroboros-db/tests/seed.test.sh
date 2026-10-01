@@ -3,6 +3,7 @@
 # seed.test.sh — tests for the development seeds: migrations/R__dev_seed.sql,
 # migrations/R__dev_seed_audit.sql, migrations/R__dev_seed_dashboard.sql,
 # migrations/R__dev_seed_farm.sql, migrations/R__dev_seed_intake.sql,
+# migrations/R__dev_seed_onboarding.sql,
 # migrations/R__dev_seed_providers.sql, migrations/R__dev_seed_routing.sql,
 # migrations/R__dev_seed_sources.sql, migrations/R__dev_seed_ticket_planning.sql,
 # migrations/R__dev_seed_workflows.sql, migrations/R__dev_seed_workspace_knowledge.sql, and the
@@ -23,8 +24,9 @@
 # *where the work comes from*, R__dev_seed_test_results.sql (#328) is *what the builds proved*,
 # R__dev_seed_ticket_planning.sql (#275) is *the work and the
 # plan over it*, R__dev_seed_verification.sql (#356) is *what the PR has to show before it
-# merges*, R__dev_seed_workflows.sql (#136) is *what it does with it*, and
-# R__dev_seed_workspace_knowledge.sql (#409) is *what it has learned* — and the
+# merges*, R__dev_seed_workflows.sql (#136) is *what it does with it*,
+# R__dev_seed_workspace_knowledge.sql (#409) is *what it has learned*, and
+# R__dev_seed_onboarding.sql (#383) is *where a team starts* — and the
 # structural rules below are asserted over all of them, in a loop, so that a tenth seed
 # inherits them by being added to the one list at the top.
 #
@@ -77,6 +79,7 @@ VERIFICATION_SEED="$MODULE_DIR/migrations/R__dev_seed_verification.sql"
 PLANNING_SEED="$MODULE_DIR/migrations/R__dev_seed_ticket_planning.sql"
 WORKFLOWS_SEED="$MODULE_DIR/migrations/R__dev_seed_workflows.sql"
 KNOWLEDGE_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_knowledge.sql"
+ONBOARDING_SEED="$MODULE_DIR/migrations/R__dev_seed_onboarding.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -117,6 +120,7 @@ VERIFICATION_BODY="$work/seed-body-verification.sql"
 PLANNING_BODY="$work/seed-body-ticket-planning.sql"
 WORKFLOWS_BODY="$work/seed-body-workflows.sql"
 KNOWLEDGE_BODY="$work/seed-body-workspace-knowledge.sql"
+ONBOARDING_BODY="$work/seed-body-onboarding.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$INTAKE_SEED" "$INTAKE_BODY"
@@ -131,6 +135,7 @@ seed_body "$VERIFICATION_SEED" "$VERIFICATION_BODY"
 seed_body "$PLANNING_SEED" "$PLANNING_BODY"
 seed_body "$WORKFLOWS_SEED" "$WORKFLOWS_BODY"
 seed_body "$KNOWLEDGE_SEED" "$KNOWLEDGE_BODY"
+seed_body "$ONBOARDING_SEED" "$ONBOARDING_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -161,13 +166,14 @@ check_exists "$VERIFICATION_SEED" 'migrations/R__dev_seed_verification.sql exist
 check_exists "$PLANNING_SEED" 'migrations/R__dev_seed_ticket_planning.sql exists'
 check_exists "$WORKFLOWS_SEED" 'migrations/R__dev_seed_workflows.sql exists'
 check_exists "$KNOWLEDGE_SEED" 'migrations/R__dev_seed_workspace_knowledge.sql exists'
+check_exists "$ONBOARDING_SEED" 'migrations/R__dev_seed_onboarding.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
-                 "$KNOWLEDGE_SEED"; do
+                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -211,6 +217,8 @@ workflows_description=$(basename -- "$WORKFLOWS_SEED" .sql)
 workflows_description=${workflows_description#R__}
 knowledge_description=$(basename -- "$KNOWLEDGE_SEED" .sql)
 knowledge_description=${knowledge_description#R__}
+onboarding_description=$(basename -- "$ONBOARDING_SEED" .sql)
+onboarding_description=${onboarding_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
@@ -264,15 +272,21 @@ knowledge_description=${knowledge_description#R__}
 # named `workspace_knowledge` for exactly that — `dev_seed_knowledge` would sort before
 # `dev_seed_providers`, and every join in it would find nothing on a database migrated from empty.
 #
+# The onboarding seed (#383) **must** sort after two of them: the first, for Ken, and the intake
+# seed, whose nine issues and their estimates it copies into its own workspace by query — on a
+# database migrated from empty, sorting before `dev_seed_intake` would mirror nothing and leave
+# the wizard with no ticket to pick. `dev_seed_onboarding` sorts sixth, straight after it. It
+# reads no other seed: its workspace is its own.
+#
 # The farm seed (#249) sorts fourth and only needs to sort after the first: every row it writes
 # finds the workspace by slug, a person by email and a repository by name, and V040's tables are
 # the first of their domain. `dev_seed_farm` does that; `farm_dev_seed`, which reads better,
 # would sort before `dev_seed` and every join in it would find nothing on a database migrated
 # from empty.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$knowledge_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$knowledge_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$knowledge_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$knowledge_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the fourteen seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the fifteen seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -293,7 +307,7 @@ check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_descri
 for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_SEED" \
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
-                 "$KNOWLEDGE_SEED"; do
+                 "$KNOWLEDGE_SEED" "$ONBOARDING_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -309,6 +323,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$PLANNING_SEED" ] && body=$PLANNING_BODY
   [ "$seed_file" = "$WORKFLOWS_SEED" ] && body=$WORKFLOWS_BODY
   [ "$seed_file" = "$KNOWLEDGE_SEED" ] && body=$KNOWLEDGE_BODY
+  [ "$seed_file" = "$ONBOARDING_SEED" ] && body=$ONBOARDING_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   updates=$(count_lines '^update ouroboros\.' "$body")
@@ -356,6 +371,15 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
       check_equals "$(grep -Eo "'secrets'|'secrets_license'" "$body" | wc -l | tr -d ' ')" \
                    "$(grep -Eo 'secret' "$body" | wc -l | tr -d ' ')" \
                    "$name says secret only as the guardrail check 'secrets' and the gate 'secrets_license'"
+      continue
+    fi
+    # The onboarding seed (#383) is the third: the protected-paths rule pack says why it
+    # suggested `keys/**` — *key and secret material* — and the seeded row carries the pack's
+    # evidence as the pack wrote it. Every occurrence must be that reason.
+    if [ "$seed_file" = "$ONBOARDING_SEED" ] && [ "$secret" = secret ]; then
+      check_equals "$(grep -Eo '"why": "key and secret material"' "$body" | wc -l | tr -d ' ')" \
+                   "$(grep -Eo 'secret' "$body" | wc -l | tr -d ' ')" \
+                   "$name says secret only as the protected-paths pack's reason for keys/**"
       continue
     fi
     check_absent "$body" "$secret" "$name writes no $secret"
@@ -1257,6 +1281,96 @@ check_equals '2' "$(grep -Ec '^                      and prior\.version >= seed\
   'both version inserts are guarded by "a version at or above this one exists"'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_onboarding.sql — mockup 13's mid-wizard moment (#383)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_onboarding.sql — the onboarding workspace\n'
+
+# Thirteen prefixes of its own, one per table it writes — the workspace's census rows included,
+# so no count another seed's assertions make over its prefix is moved by this file.
+for prefix in '5eed0049' '5eed004a' '5eed004b' '5eed004c' '5eed004d' '5eed004e' '5eed004f' \
+              '5eed0050' '5eed0051' '5eed0052' '5eed0053' '5eed0054' '5eed0055'; do
+  check_contains "$ONBOARDING_BODY" "'$prefix-0000-4000-8000-" \
+    "the onboarding seed builds its ids from the $prefix… prefix"
+done
+
+# The tables a workspace mid-wizard is made of, and nothing else. No update: every row is this
+# seed's own, so there is nothing of another seed's to move.
+onboarding_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$ONBOARDING_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'github_issues github_orgs github_repos issue_estimates member onboarding_state org_policies organization protected_path_policies repo_detection_scans repo_detections runs ticket_sources tickets ' \
+  "$onboarding_tables" \
+  'the onboarding seed writes its workspace, the wizard, the scan, the policy and the three loops — and nothing else'
+check_equals 0 "$(count_lines '^update ' "$ONBOARDING_BODY")" \
+  'and updates nothing'
+
+# **No step status is seeded** (#383's second acceptance criterion, decision O1). The wizard row
+# is written with the five columns the wizard owns — its lifecycle flags are left to their
+# defaults — and the word `step` appears in no statement, as a column or as a value.
+check_contains "$ONBOARDING_BODY" '^    \(id, organization_id, repo_ref, selected_template, picked_ticket_id\)$' \
+  'the wizard row is written with exactly its id, workspace, repository, template and ticket'
+check_absent "$ONBOARDING_BODY" 'step' \
+  'the onboarding seed writes no step — the rail is derived from the subsystem rows'
+for lifecycle in dismissed completed_at bypassed_at; do
+  check_absent "$ONBOARDING_BODY" "$lifecycle" \
+    "the onboarding seed leaves $lifecycle at its default — not dismissed, completed or bypassed"
+done
+
+# Step 3 is *active* and step 4 *todo* because of what is absent, so the absences are asserted:
+# no workflow (instantiated or otherwise) and no queue item is written.
+check_absent "$ONBOARDING_BODY" 'ouroboros\.(workflows|workflow_versions|queue_items)' \
+  'the onboarding seed creates no workflow and queues nothing'
+
+# **The lock is counted, never flagged.** The tiles are V068's shipped rows — the seed writes no
+# template and no override — and what makes Deep refactor locked is three merged runs, not a
+# stored figure or a rule of the seed's own.
+check_absent "$ONBOARDING_BODY" 'workflow_templates' \
+  'the onboarding seed writes no template: the four tiles ship with V068'
+check_absent "$ONBOARDING_BODY" 'merged_loops|unlock|locked' \
+  'and no lock, unlock rule or merged-loop figure — the lock is merged_loop_count() over the runs'
+check_equals 3 "$(grep -Ec "^         \([123], [0-9]+, '[^']+', +[0-9]+, [0-9]+, [0-9]+\),?$" "$ONBOARDING_BODY" || true)" \
+  'three runs are seeded'
+check_contains "$ONBOARDING_BODY" "^       seed\.loop_seq, 'docs-loop', 'ollama/qwen3-coder', 'merged',$" \
+  'every one of them merged'
+
+# **#488 is copied from the intake seed, not restated** (the fifth criterion). The issues and
+# their estimates are read out of R__dev_seed_intake.sql's rows by its id prefix, so neither the
+# title nor the XS chip nor the docs-loop suggestion is a literal here.
+check_contains "$ONBOARDING_BODY" '^  from ouroboros\.github_issues source$' \
+  'the mirrored issues are read from the intake seed'"'"'s rows'
+check_equals 2 "$(grep -Ec "like '5eed0018-%'\$" "$ONBOARDING_BODY" || true)" \
+  'both copies are scoped to the intake seed'"'"'s own ids'
+for restated in 'Typo sweep' "'xs'" 'good-first-issue' 'est_tokens'; do
+  check_absent "$ONBOARDING_BODY" "$restated" \
+    "the onboarding seed does not restate #488's $restated — it is read from the intake seed"
+done
+check_contains "$ONBOARDING_BODY" '^                      and prior\.version >= source\.version\)$' \
+  'the estimate copy carries the intake seed'"'"'s guard, because the version trigger raises before a conflict'
+
+# The scan is thirty-eight seconds of data, its six rows are all `detected`, and nothing claims
+# a measurement the product has not taken (decision O2).
+check_equals 1 "$(grep -Ec '38000' "$ONBOARDING_BODY" || true)" \
+  'the scan duration is written once, as 38000 ms'
+check_equals 6 "$(grep -Ec "^         \([1-6], '(language|build|devcontainer|tests|protected_paths|conventions)', '(ok|warn)'," "$ONBOARDING_BODY" || true)" \
+  'six detection rows, one per card row'
+check_absent "$ONBOARDING_BODY" 'measured|env ready|snapshotted' \
+  'no row is labelled measured and none claims a boot time'
+check_absent "$ONBOARDING_BODY" 'installed_at' \
+  'no GitHub App installation is claimed'
+
+# The one credential is an envelope, as R__dev_seed_sources.sql's are.
+check_equals 1 "$(grep -Eoc "'ouro\.v1\.[0-9]+\." "$ONBOARDING_BODY" || true)" \
+  'the onboarding seed writes exactly one sealed credential, for its GitHub source'
+
+# Every instant is relative to the clock, for #68's reason.
+check_absent "$ONBOARDING_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" \
+  'the onboarding seed carries no literal date'
+
+# Parents are found by natural key, never by restating another seed's id.
+check_absent "$ONBOARDING_BODY" '5eed0001-0000-4000-8000|5eed0003-0000-4000-8000' \
+  'the workspace is found by slug and Ken by email, not by the base seed'"'"'s ids'
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -1277,6 +1391,8 @@ check_contains "$README" 'R__dev_seed_run_console\.sql' 'README.md documents the
 check_contains "$README" 'R__dev_seed_test_results\.sql' 'README.md documents the test-results seed'
 check_contains "$README" 'R__dev_seed_verification\.sql' 'README.md documents the verification seed'
 check_contains "$README" 'R__dev_seed_workspace_knowledge\.sql' 'README.md documents the knowledge seed'
+check_contains "$README" 'R__dev_seed_onboarding\.sql' 'README.md documents the onboarding seed'
+check_contains "$README" 'acme-onboarding' 'README.md names the onboarding workspace a developer will find'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'
 check_contains "$README" 'flyway\.seed\.toml' 'README.md documents the overlay that enables it'

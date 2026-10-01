@@ -52,7 +52,9 @@
 -- four cards — by #302, with mockup 11's test results by #328, and with mockup 12's PR
 -- verification — PR #514's two revisions, gates, criteria, thread, plan and spend — by #356,
 -- and with mockup 14's Knowledge page — six skills, five facts, three playbooks, the env
--- recipe and the injection records every usage figure is counted from — by #409.
+-- recipe and the injection records every usage figure is counted from — by #409, and with
+-- mockup 13's mid-wizard moment — a fourth workspace, `acme-onboarding`, whose rail, lock and
+-- first-issue pick are all recomputed here from subsystem rows — by #383.
 
 \set ON_ERROR_STOP on
 
@@ -97,11 +99,13 @@ select pg_temp.must_hold(
      and "metadata"::jsonb = '{"personal": true}'::jsonb),
   'kensuenobu is seeded, exactly once, and is the personal workspace');
 
--- …and no fourth: a stray organization would be a row Step 2 renders that no mockup
--- shows.
+-- …and no fourth of this seed's: a stray organization would be a row Step 2 renders that no
+-- mockup shows. Counted over `5eed0001…`, the base seed's own organization prefix: the
+-- fourth seeded workspace, `acme-onboarding`, is R__dev_seed_onboarding.sql's (#383) and is
+-- asserted in that seed's block, where the total of four is as well.
 select pg_temp.must_hold(
-  (select count(*) = 3 from ouroboros.organization where "id" like '5eed%'),
-  'the seed creates exactly three organizations');
+  (select count(*) = 3 from ouroboros.organization where "id" like '5eed0001-%'),
+  'the base seed creates exactly three organizations');
 
 select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.tenant_domains
@@ -228,15 +232,15 @@ select pg_temp.must_hold(
 -- application is at least satisfied by the data every developer starts from.
 select pg_temp.must_hold(
   (select count(*) = 3 from ouroboros.member
-   where "organizationId" like '5eed%' and "role" = 'owner'),
-  'each demo organization has exactly one owner');
+   where "organizationId" like '5eed0001-%' and "role" = 'owner'),
+  'each of the three demo organizations has exactly one owner');
 
 -- …and exactly the six memberships above — a seventh row would be invisible to the
 -- pair assertions and would put a stranger into every member list the mockups render.
 select pg_temp.must_hold(
   (select count(*) = 6 from ouroboros.member
-   where "organizationId" like '5eed%'),
-  'the demo organizations have exactly six memberships between them');
+   where "organizationId" like '5eed0001-%'),
+  'the three demo organizations have exactly six memberships between them');
 
 -- ---------------------------------------------------------------------------
 -- Where the loop may run.
@@ -303,9 +307,9 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select count(*) = 6 from ouroboros.github_repos repo
      join ouroboros.github_orgs org on org.id = repo.org_id
-    where org.organization_id like '5eed%'
+    where org.organization_id like '5eed0001-%'
       and repo.enabled and org.enabled),
-  'six repositories are in scope across the demo organizations: both flags true');
+  'six repositories are in scope across the three demo organizations: both flags true');
 
 -- ---------------------------------------------------------------------------
 -- The id convention.
@@ -327,21 +331,25 @@ select pg_temp.must_hold(
 -- assertion here would fail every developer whose database was migrated rather than
 -- recreated.
 -- ---------------------------------------------------------------------------
+-- Each table is counted over the prefix the base seed gives it (`5eed0001…` organizations
+-- through `5eed0008…` credential accounts), not over `5eed…` at large: R__dev_seed_onboarding.sql
+-- (#383) writes an organization, a GitHub account and two repositories of its own under
+-- `5eed0049…`–`5eed004c…`, and those are that seed's to count.
 select pg_temp.must_hold(
   (select count(*) = 20 from (
-     select "id" from ouroboros.organization where "id" like '5eed%'
+     select "id" from ouroboros.organization where "id" like '5eed0001-%'
      union all
-     select "id" from ouroboros."user" where "id" like '5eed%'
+     select "id" from ouroboros."user" where "id" like '5eed0003-%'
      union all
-     select "id" from ouroboros.account where "id" like '5eed%'
+     select "id" from ouroboros.account where "id" like '5eed0004-%' or "id" like '5eed0008-%'
      union all
-     select id::text from ouroboros.tenant_domains where id::text like '5eed%'
+     select id::text from ouroboros.tenant_domains where id::text like '5eed0002-%'
      union all
-     select id::text from ouroboros.github_orgs where id::text like '5eed%'
+     select id::text from ouroboros.github_orgs where id::text like '5eed0005-%'
      union all
-     select id::text from ouroboros.github_repos where id::text like '5eed%'
+     select id::text from ouroboros.github_repos where id::text like '5eed0006-%'
    ) as seeded),
-  'the seed created its twenty fixed-id rows and no twenty-first');
+  'the base seed created its twenty fixed-id rows and no twenty-first');
 
 -- ===========================================================================
 -- R__dev_seed_dashboard.sql — mockup 02, number for number.
@@ -1977,6 +1985,11 @@ select pg_temp.must_hold(
 -- other seed's assertions are scoped: a developer who mirrored a repository of their own
 -- must not fail this suite.
 --
+-- The repository is named **by its id**, `5eed0006…0001`, wherever the workspace is not already
+-- in the join. Since #383 a second seeded workspace, `acme-onboarding`, mirrors a repository
+-- that is also called `helios-firmware` — the same GitHub repository, connected twice — and a
+-- match on the name alone would count both mirrors.
+--
 -- The counts are exact, so this is the intake seed's idempotency test as well — and it is
 -- a sharper one than the others', because `issue_estimates` carries a BEFORE INSERT
 -- trigger that would *raise* on a second application rather than quietly duplicate. A
@@ -2007,14 +2020,14 @@ select pg_temp.must_hold(
   (select array_agg(issue.number order by issue.number) = array[483, 484, 485, 486, 487, 488, 489, 490, 491]
      from ouroboros.github_issues issue
      join ouroboros.github_repos repo on repo.id = issue.github_repo_id
-    where repo.name = 'helios-firmware'),
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'),
   'they are #483 through #491, with no tenth and no gap');
 
 select pg_temp.must_hold(
   (select count(*) = 9 and count(*) filter (where issue.sizing_status = 'sized') = 7
      from ouroboros.github_issues issue
      join ouroboros.github_repos repo on repo.id = issue.github_repo_id
-    where repo.name = 'helios-firmware'
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'
       and issue.state = 'open'),
   'the page head computes to "9 open issues. 7 already sized." over the seeded rows');
 
@@ -2024,7 +2037,7 @@ select pg_temp.must_hold(
   (select count(*) = 2
      from ouroboros.github_issues issue
      join ouroboros.github_repos repo on repo.id = issue.github_repo_id
-    where repo.name = 'helios-firmware'
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'
       and (issue.number, issue.sizing_status) in ((483, 'estimating'), (490, 'needs_human'))),
   '#483 is estimating and #490 needs a human — the two rows that are not sized');
 
@@ -2035,12 +2048,12 @@ select pg_temp.must_hold(
   (select count(distinct issue.synced_at) = 1
      from ouroboros.github_issues issue
      join ouroboros.github_repos repo on repo.id = issue.github_repo_id
-    where repo.name = 'helios-firmware'),
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'),
   'all nine carry the same synced_at, because one poll is what would have confirmed them');
 
 select pg_temp.must_hold(
   (select count(*) = 1 from ouroboros.github_repos
-    where name = 'helios-firmware'
+    where id = '5eed0006-0000-4000-8000-000000000001'
       and issues_synced_at is null
       and issues_sync_cursor is null),
   'the seed stamps no sync watermark on the repository — that is K.4''s to write, not a fixture''s');
@@ -2050,7 +2063,7 @@ select pg_temp.must_hold(
   (select count(*) = 9 and count(*) filter (where issue.author_login = 'renovate[bot]') = 1
      from ouroboros.github_issues issue
      join ouroboros.github_repos repo on repo.id = issue.github_repo_id
-    where repo.name = 'helios-firmware'
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'
       and issue.author_login is not null),
   'every mirrored issue has an author, and exactly one of them is a GitHub App (V028''s [bot] suffix)');
 
@@ -2060,7 +2073,7 @@ select pg_temp.must_hold(
   (select count(*) = 1
      from ouroboros.github_issues issue
      join ouroboros.github_repos repo on repo.id = issue.github_repo_id
-    where repo.name = 'helios-firmware'
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'
       and issue.body is null
       and issue.number = 488),
   '#488 alone has no body — the issue opened with a title and nothing else');
@@ -2080,7 +2093,7 @@ select pg_temp.must_hold(
   (select count(*) = 1
      from ouroboros.github_issues issue
      join ouroboros.github_repos repo on repo.id = issue.github_repo_id
-    where repo.name = 'helios-firmware'
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'
       and issue.id = '5eed0018-0000-4000-8000-000000000485'
       and issue.number = 485
       and issue.title = 'Watchdog reset on I²C bus lockup'
@@ -2137,7 +2150,7 @@ select pg_temp.must_hold(
                     where est.github_issue_id = issue.id
                     order by est.version desc
                     limit 1) latest on true
-    where repo.name = 'helios-firmware'
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'
       and (issue.number, latest.effort, latest.confidence,
            latest.suggested_workflow, latest.routed_model) in (
         (484, 'm',  88, 'standard-fix', 'cursor/composer-2'),
@@ -2170,7 +2183,7 @@ select pg_temp.must_hold(
                     where est.github_issue_id = issue.id
                     order by est.version desc
                     limit 1) latest on true
-    where repo.name = 'helios-firmware'),
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'),
   'no two issues share an effort and a confidence, so sort=effort is total over the fixture');
 
 -- All five effort chips and all three risk levels appear, which is what makes the CHECKs
@@ -2278,7 +2291,7 @@ select pg_temp.must_hold(
                     where est.github_issue_id = issue.id
                     order by est.version desc
                     limit 1) latest on true
-    where repo.name = 'helios-firmware'),
+    where repo.id = '5eed0006-0000-4000-8000-000000000001'),
   'where a seeded issue is already queued, its estimate and its queue row agree about est_minutes');
 
 -- ---------------------------------------------------------------------------
@@ -4920,6 +4933,449 @@ select pg_temp.must_hold(
       and c.column_name ~ '(count|uses|used|percent|share|launches)'
       and c.column_name <> 'previous_use_count'),
   'no knowledge table stores a usage figure — only the expiry snapshot');
+
+-- ===========================================================================
+-- R__dev_seed_onboarding.sql — mockup 13's mid-wizard moment (#383, BA.4)
+-- ===========================================================================
+--
+-- The fifteenth seed's rows, all in a workspace of its own, `acme-onboarding`. What is asserted
+-- here is the thing that seed exists to prove: **the rail, the lock and the pick are derived**.
+-- No step status, no `locked` flag and no figure is stored, so each is recomputed below from the
+-- subsystem rows — by the derivation contract V070's header states — and required to come out as
+-- the mockup draws it. tests/seed.test.sh pins the other half: that the seed's text writes no
+-- such thing.
+
+-- --- the workspace: a fourth, and Ken's --------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.organization
+    where "id" = '5eed0049-0000-4000-8000-000000000001'
+      and "slug" = 'acme-onboarding'
+      and "name" = 'Acme Onboarding'
+      and "metadata" is null),
+  'acme-onboarding is seeded, exactly once, and is not a personal workspace');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.organization where "id" like '5eed%'),
+  'four seeded organizations in all: mockup 01 Step 2''s three and the onboarding workspace');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(person."email" = 'ken@acme-robotics.dev' and m."role" = 'owner')
+     from ouroboros.member m
+     join ouroboros."user" person on person."id" = m."userId"
+    where m."organizationId" = '5eed0049-0000-4000-8000-000000000001'),
+  'Ken owns the onboarding workspace, and is its only member');
+
+-- --- the wizard owns four facts, and a step is none of them (decision O1) ------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+          and bool_and(state.id = '5eed0052-0000-4000-8000-000000000001'
+                       and state.repo_ref = 'acme-robotics/helios-firmware'
+                       and state.selected_template = 'quick-fixes'
+                       and state.picked_ticket_id = '5eed0050-0000-4000-8000-000000000488'
+                       and not state.dismissed
+                       and state.completed_at is null
+                       and state.bypassed_at is null)
+     from ouroboros.onboarding_state state
+    where state.organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'one wizard: helios-firmware, quick-fixes selected, #488 picked — not dismissed, completed or bypassed');
+
+-- --- the rail derives to ✓ ✓ ● ○ ----------------------------------------------------------------
+--
+-- V070's contract, a step at a time, over the rows the seed wrote. `done` is each subsystem's
+-- own answer; a step that is not done is `active` when it is the first such and nothing after
+-- it is done (and the wizard was never completed), otherwise `todo` — onboarding.derivation.ts's
+-- rule, restated so that this file fails if the seed stops adding up to the mockup.
+select pg_temp.must_hold(
+  (with wizard as (
+     select state.*, split_part(state.repo_ref, '/', 1) as owner,
+            split_part(state.repo_ref, '/', 2) as name
+       from ouroboros.onboarding_state state
+      where state.id = '5eed0052-0000-4000-8000-000000000001'
+   ), facts as (
+     select
+       -- 1: an active GitHub source naming the account and listing the repository.
+       exists (select 1 from ouroboros.ticket_sources_public source
+                where source.organization_id = wizard.organization_id
+                  and source.kind = 'github' and source.status = 'active'
+                  and source.config ->> 'login' = wizard.owner
+                  and source.config -> 'repos' ? wizard.name) as connected,
+       -- 2: the repository, enabled, under an enabled account.
+       exists (select 1 from ouroboros.github_repos repo
+                 join ouroboros.github_orgs gh on gh.id = repo.org_id
+                where gh.organization_id = wizard.organization_id
+                  and gh.login = wizard.owner and repo.name = wizard.name
+                  and repo.enabled and gh.enabled) as picked,
+       -- 3: a workflow of the workspace instantiated from the selected template.
+       exists (select 1 from ouroboros.workflows wf
+                where wf.organization_id = wizard.organization_id
+                  and wf.template_slug = wizard.selected_template) as instantiated,
+       -- 4: a queue item or a run for the picked ticket's issue, in that repository.
+       exists (select 1
+                 from ouroboros.tickets ticket
+                 join ouroboros.ticket_sources source on source.id = ticket.source_id
+                 join ouroboros.github_orgs gh
+                   on gh.organization_id = wizard.organization_id and gh.login = wizard.owner
+                 join ouroboros.github_repos repo on repo.org_id = gh.id and repo.name = wizard.name
+                where ticket.id = wizard.picked_ticket_id
+                  and source.kind = 'github'
+                  and ticket.meta -> 'github' ->> 'owner' = wizard.owner
+                  and ticket.meta -> 'github' ->> 'repo' = wizard.name
+                  and (exists (select 1 from ouroboros.queue_items item
+                                where item.organization_id = wizard.organization_id
+                                  and item.github_repo_id = repo.id
+                                  and item.issue_number = ticket.external_id::integer)
+                       or exists (select 1 from ouroboros.runs run
+                                   where run.organization_id = wizard.organization_id
+                                     and run.github_repo_id = repo.id
+                                     and run.issue_number = ticket.external_id::integer))) as launched,
+       wizard.completed_at is not null as completed
+       from wizard
+   )
+   select array[
+            case when connected then 'done'
+                 when not (picked or instantiated or launched or completed) then 'active'
+                 else 'todo' end,
+            case when picked then 'done'
+                 when connected and not (instantiated or launched or completed) then 'active'
+                 else 'todo' end,
+            case when instantiated then 'done'
+                 when connected and picked and not (launched or completed) then 'active'
+                 else 'todo' end,
+            case when launched then 'done'
+                 when connected and picked and instantiated and not completed then 'active'
+                 else 'todo' end]
+          = array['done', 'done', 'active', 'todo']
+     from facts),
+  'the rail derives to done, done, active, todo from the seeded subsystem rows — no step is stored');
+
+-- The two result lines the done steps print, each a fact of its subsystem: no GitHub App is
+-- installed, so step 1 says `token`; a scan exists, so step 2 says `auto-detected below`.
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(gh.installed_at is null)
+     from ouroboros.github_orgs gh
+    where gh.organization_id = '5eed0049-0000-4000-8000-000000000001' and gh.login = 'acme-robotics'),
+  'the account is connected by token: no installation is claimed that never happened');
+
+-- Step 3 is *active* rather than *done* because nothing was instantiated — from quick-fixes or
+-- from anything else: this workspace has no workflow at all.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflows
+    where organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'no workflow exists in the onboarding workspace, so step 3 cannot read as done');
+
+-- --- the lock is counted: 3 of 10 ---------------------------------------------------------------
+select pg_temp.must_hold(
+  (select ouroboros.merged_loop_count('5eed0049-0000-4000-8000-000000000001') = 3),
+  'three merged loops, counted off the runs read-model');
+
+select pg_temp.must_hold(
+  (select count(*) = 3
+          and bool_and(run.status = 'merged' and repo.name = 'helios-console'
+                       and run.issue_number <> 488 and run.pr_number is not null)
+          and array_agg(run.loop_seq order by run.loop_seq) = array[1, 2, 3]
+     from ouroboros.runs run
+     join ouroboros.github_repos repo on repo.id = run.github_repo_id
+    where run.organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'the three loops are merged, in helios-console, and none of them is #488 — helios-firmware has had no loop');
+
+select pg_temp.must_hold(
+  (select array_agg(tile.slug || ':' || tile.tier || ':' ||
+                    ouroboros.workflow_template_unlocked(
+                      tile.unlock_rule,
+                      ouroboros.merged_loop_count('5eed0049-0000-4000-8000-000000000001'))::text
+                    order by tile.sort_order)
+          = array['quick-fixes:starter:true', 'feature-builder:starter:true',
+                  'docs-chores:starter:true', 'deep-refactor:advanced:false']
+     from ouroboros.workflow_templates_for('5eed0049-0000-4000-8000-000000000001') tile),
+  'the four shipped tiles, in order: three starters open, deep-refactor locked — computed, not flagged');
+
+select pg_temp.must_hold(
+  (select ouroboros.merged_loop_count('5eed0049-0000-4000-8000-000000000001')
+            || ' of ' || ouroboros.workflow_template_unlock_threshold(tile.unlock_rule)
+          = '3 of 10'
+     from ouroboros.workflow_templates_for('5eed0049-0000-4000-8000-000000000001') tile
+    where tile.slug = 'deep-refactor'),
+  'the locked tile can print "3 of 10 merged loops" from the count and the shipped rule');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.workflow_templates
+    where organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'the seed overrides no template: the tiles are V068''s shipped rows');
+
+-- Why this is a workspace of its own, as two facts about the one it could not be. If either
+-- stops holding, R__dev_seed_onboarding.sql's header is out of date and worth re-reading.
+select pg_temp.must_hold(
+  (select ouroboros.merged_loop_count('5eed0001-0000-4000-8000-000000000001') >= 10
+          and exists (select 1 from ouroboros.queue_items item
+                       where item.organization_id = '5eed0001-0000-4000-8000-000000000001'
+                         and item.github_repo_id = '5eed0006-0000-4000-8000-000000000001'
+                         and item.issue_number = 488)),
+  'acme-robotics could not hold this moment: there deep-refactor is unlocked and #488 is already queued');
+
+-- --- the scan: 38 seconds, six rows, each with its evidence -----------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+          and bool_and(scan.id = '5eed0053-0000-4000-8000-000000000001'
+                       and scan.scan_seq = 1
+                       and scan.duration_ms = 38000
+                       and scan.probe_budget_used = 9
+                       and scan.scanned_at < now()
+                       and scan.pack_versions
+                           = '{"language": "1.0.0", "build": "1.0.0", "devcontainer": "1.0.0",
+                               "tests": "1.0.0", "protected_paths": "1.0.0",
+                               "conventions": "1.0.0"}'::jsonb)
+     from ouroboros.repo_detection_scans scan
+    where scan.organization_id = '5eed0049-0000-4000-8000-000000000001'
+      and scan.repo_ref = 'acme-robotics/helios-firmware'),
+  'one scan of helios-firmware: scan_seq 1, 38 000 ms — the card''s "scanned in 38s" — nine probes, six packs');
+
+select pg_temp.must_hold(
+  (select array_agg(row.row_key || '|' || row.verdict || '|' || row.label || '|' || row.value
+                    order by row.id)
+          = array[
+              'language|ok|detected|C 92% · Zephyr RTOS 4.1',
+              'build|ok|detected|west + twister (found west.yml)',
+              'devcontainer|ok|detected|found .devcontainer.json → image ghcr.io/zephyrproject-rtos/ci:v0.27.4',
+              'tests|ok|detected|5 suites, 63 tests (detected)',
+              'protected_paths|ok|detected|boot/, keys/ suggested',
+              'conventions|warn|detected|No CONTRIBUTING.md — we''ll learn your conventions from merged PRs instead.']
+          and bool_and(row.duration_ms = 38000 and row.scan_seq = 1)
+     from ouroboros.repo_detections_latest row
+    where row.organization_id = '5eed0049-0000-4000-8000-000000000001'
+      and row.repo_ref = 'acme-robotics/helios-firmware'),
+  'the card reads its six rows in order, all detected, conventions the one warn — BB.1''s lines for this repository');
+
+-- Nothing is `measured`, and no row claims a boot time: detection saw a devcontainer file, and
+-- nothing has timed one (decision O2).
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.repo_detections row
+    where row.organization_id = '5eed0049-0000-4000-8000-000000000001'
+      and (row.label <> 'detected' or row.value ~* '(env ready|snapshotted)')),
+  'no row is labelled measured and none claims an environment boot time');
+
+-- The evidence behind each conclusion — the probe that hit, the probe that missed, the counts.
+select pg_temp.must_hold(
+  (select bool_and(case row.row_key
+                     when 'language' then row.evidence -> 'top' = '{"language": "C", "percent": 92}'::jsonb
+                                          and row.evidence -> 'framework' ->> 'from' = 'west.yml'
+                     when 'build' then row.evidence ->> 'hit' = 'west.yml'
+                     when 'devcontainer' then row.evidence ->> 'hit' = '.devcontainer.json'
+                                              and (row.evidence ->> 'parsed')::boolean
+                     when 'tests' then (row.evidence ->> 'suites')::integer = 5
+                                       and (row.evidence ->> 'tests')::integer = 63
+                                       and (row.evidence ->> 'filesRead')::integer = 5
+                     when 'protected_paths' then jsonb_array_length(row.evidence -> 'suggested') = 2
+                     when 'conventions' then row.evidence -> 'contributing' = 'null'::jsonb
+                   end)
+     from ouroboros.repo_detections_latest row
+    where row.organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'each row carries its proof: the west.yml hit, the parsed devcontainer, the CONTRIBUTING.md miss, the test counts, C at 92%');
+
+-- Every row names the pack that concluded it, at the version the scan row says it ran.
+select pg_temp.must_hold(
+  (select count(*) = 6
+          and bool_and(row.evidence ->> 'pack' = row.row_key
+                       and row.evidence ->> 'packVersion' = row.pack_versions ->> row.row_key
+                       and jsonb_typeof(row.evidence -> 'probes') = 'array'
+                       and row.evidence ->> 'confidence' in ('high', 'medium', 'low'))
+     from ouroboros.repo_detections_latest row
+    where row.organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'each row''s evidence names its pack, that pack''s version as the scan recorded it, its probes and a confidence');
+
+-- --- the protected paths the scan suggested -------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(policy.path_glob order by policy.id) = array['boot/**', 'keys/**']
+          and bool_and(policy.source = 'suggested')
+     from ouroboros.protected_path_policies policy
+    where policy.organization_id = '5eed0049-0000-4000-8000-000000000001'
+      and policy.repo_ref = 'acme-robotics/helios-firmware'),
+  'boot/** and keys/** are protected, both still suggested — nobody has edited either');
+
+-- The policy rows and the card row agree: the globs enforced are the globs the scan's own
+-- evidence says it suggested.
+select pg_temp.must_hold(
+  (select array(select suggestion ->> 'glob'
+                  from jsonb_array_elements(row.evidence -> 'suggested') with ordinality as s (suggestion, n)
+                 order by n)
+          = array(select policy.path_glob
+                    from ouroboros.protected_path_policies policy
+                   where policy.organization_id = row.organization_id
+                     and policy.repo_ref = row.repo_ref
+                   order by policy.path_glob)
+     from ouroboros.repo_detections_latest row
+    where row.organization_id = '5eed0049-0000-4000-8000-000000000001'
+      and row.row_key = 'protected_paths'),
+  'the protected-path policies are exactly the globs the scan''s protected_paths row suggested');
+
+-- --- dry-run is on here, and only here ---------------------------------------------------------------
+select pg_temp.must_hold(
+  (select policy.dry_run and policy.is_explicit and policy.updated_by is null
+     from ouroboros.org_policies_effective policy
+    where policy.organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'dry-run is on in the onboarding workspace — the onboarding default, with nobody''s name on it');
+
+select pg_temp.must_hold(
+  (select count(*) = 1 from ouroboros.org_policies where organization_id like '5eed%')
+  and (select not policy.dry_run and not policy.is_explicit
+         from ouroboros.org_policies_effective policy
+        where policy.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'acme-robotics has no policy row and reads dry-run off, so the merges its PR seed arms are not refused');
+
+-- --- #488 is the intake seed's #488 ------------------------------------------------------------------
+--
+-- Both workspaces mirror the same GitHub repository, and this seed copies the intake seed's rows
+-- by query. So the two mirrors must agree column for column, and so must the estimate in force
+-- on each issue — that is what *coherent with the intake seeds* means, checked rather than hoped.
+select pg_temp.must_hold(
+  (select count(*) = 9
+     from ouroboros.github_issues mirrored
+     join ouroboros.github_issues source
+       on source.id = ('5eed0018-0000-4000-8000-' || lpad(mirrored.number::text, 12, '0'))::uuid
+    where mirrored.id::text like '5eed004e-%'
+      and mirrored.organization_id = '5eed0049-0000-4000-8000-000000000001'
+      and mirrored.github_repo_id = '5eed004c-0000-4000-8000-000000000001'
+      and (mirrored.number, mirrored.title, mirrored.state, mirrored.labels, mirrored.author_login,
+           mirrored.gh_created_at, mirrored.gh_updated_at, mirrored.gh_url, mirrored.sizing_status)
+          = (source.number, source.title, source.state, source.labels, source.author_login,
+             source.gh_created_at, source.gh_updated_at, source.gh_url, source.sizing_status)
+      and mirrored.body is not distinct from source.body),
+  'the nine helios-firmware issues are mirrored here field for field — the same issues on github.com');
+
+select pg_temp.must_hold(
+  (select count(*) = 8
+     from ouroboros.issue_estimates copied
+     join ouroboros.github_issues mirrored on mirrored.id = copied.github_issue_id
+     join lateral (select est.*
+                     from ouroboros.issue_estimates est
+                    where est.github_issue_id
+                          = ('5eed0018-0000-4000-8000-' || lpad(mirrored.number::text, 12, '0'))::uuid
+                    order by est.version desc
+                    limit 1) source on true
+    where copied.id::text like '5eed004f-%'
+      and (copied.version, copied.effort, copied.confidence, copied.suggested_workflow,
+           copied.routed_model, copied.breakdown, copied.risk, copied.risk_note, copied.trace,
+           copied.created_at)
+          = (source.version, source.effort, source.confidence, source.suggested_workflow,
+             source.routed_model, source.breakdown, source.risk, source.risk_note, source.trace,
+             source.created_at)),
+  'each of the eight sized issues carries the intake seed''s estimate in force, unchanged');
+
+select pg_temp.must_hold(
+  (select count(*) = 8 from ouroboros.issue_estimates est
+     join ouroboros.github_issues mirrored on mirrored.id = est.github_issue_id
+    where mirrored.organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'one estimate per sized issue — the superseded #487 v1 is not copied, and #483 has none');
+
+-- The pick itself, as the card prints it: XS, docs-loop, no file touched, a 3–6 minute cycle.
+select pg_temp.must_hold(
+  (select count(*) = 1
+     from ouroboros.github_issues issue
+     join ouroboros.issue_estimates est on est.github_issue_id = issue.id
+    where issue.id = '5eed004e-0000-4000-8000-000000000488'
+      and issue.title = 'Typo sweep in operator manual + pairing guide'
+      and issue.sizing_status = 'sized'
+      and est.effort = 'xs'
+      and est.suggested_workflow = 'docs-loop'
+      and est.breakdown -> 'files' = '[]'::jsonb
+      and (est.breakdown ->> 'cycle_min')::integer = 3
+      and (est.breakdown ->> 'cycle_max')::integer = 6),
+  '#488 is the typo sweep: XS, docs-loop, no code path touched, a 3–6 minute cycle');
+
+-- It is the only candidate of its kind, which is what makes "We picked a safe one" a pick: the
+-- one sized issue at XS on docs-loop with an empty file list, among eight.
+select pg_temp.must_hold(
+  (select array_agg(issue.number) = array[488]
+     from ouroboros.github_issues issue
+     join ouroboros.issue_estimates est on est.github_issue_id = issue.id
+    where issue.organization_id = '5eed0049-0000-4000-8000-000000000001'
+      and est.effort = 'xs' and est.suggested_workflow = 'docs-loop'
+      and est.breakdown -> 'files' = '[]'::jsonb),
+  '#488 is the one XS docs-loop issue touching no file, among the eight sized candidates');
+
+-- The canonical ticket the wizard references, built from the mirrored row.
+select pg_temp.must_hold(
+  (select count(*) = 1
+          and bool_and(ticket.id = '5eed0050-0000-4000-8000-000000000488'
+                       and ticket.source_id = '5eed004d-0000-4000-8000-000000000001'
+                       and source.kind = 'github'
+                       and ticket.external_id = '488'
+                       and ticket.external_key = '#488'
+                       and ticket.external_url = issue.gh_url
+                       and ticket.title = issue.title
+                       and ticket.body is not distinct from issue.body
+                       and ticket.state = 'open'
+                       and ticket.labels = issue.labels
+                       and ticket.sizing_status = 'sized'
+                       and ticket.meta = '{"github": {"owner": "acme-robotics", "repo": "helios-firmware"}}'::jsonb)
+     from ouroboros.tickets ticket
+     join ouroboros.ticket_sources source on source.id = ticket.source_id
+     join ouroboros.github_issues issue on issue.id = '5eed004e-0000-4000-8000-000000000488'
+    where ticket.organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'the workspace''s one canonical ticket is #488, in the GitHub mapper''s shape, matching its mirror');
+
+-- Nothing of this backlog has reached the loop — the difference between the two workspaces.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.queue_items
+    where organization_id = '5eed0049-0000-4000-8000-000000000001')
+  and (select count(*) = 0 from ouroboros.runs
+        where organization_id = '5eed0049-0000-4000-8000-000000000001'
+          and github_repo_id = '5eed004c-0000-4000-8000-000000000001'),
+  'nothing is queued in the onboarding workspace, and helios-firmware has no run: step 4 is still to do');
+
+-- --- the source the rail's first step reads ------------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 1
+          and bool_and(source.id = '5eed004d-0000-4000-8000-000000000001'
+                       and source.kind = 'github'
+                       and source.display_name = 'GitHub · acme-robotics'
+                       and source.status = 'active'
+                       and source.status_reason is null
+                       and source.config = '{"login": "acme-robotics", "repos": ["helios-firmware", "helios-console"]}'::jsonb
+                       and source.credentials_encrypted ~ '^ouro\.v1\.1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$'
+                       and source.sync_cursor is null and source.synced_at is null)
+     from ouroboros.ticket_sources source
+    where source.organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'one active GitHub source: the account, both repositories, a sealed envelope, and no sync it never ran');
+
+select pg_temp.must_hold(
+  (select array_agg(repo.name order by repo.id) = array['helios-firmware', 'helios-console']
+          and bool_and(repo.enabled and gh.enabled and gh.login = 'acme-robotics')
+     from ouroboros.github_repos repo
+     join ouroboros.github_orgs gh on gh.id = repo.org_id
+    where gh.organization_id = '5eed0049-0000-4000-8000-000000000001'),
+  'the workspace enables two repositories of the acme-robotics account: the one being onboarded and the one the loops ran in');
+
+-- --- the id convention, and the idempotency test ------------------------------------------------------
+-- Every row this seed writes carries one of its own prefixes, `5eed0049…`–`5eed0055…`, and the
+-- counts are exact — so a second application that wrote anything fails here.
+select pg_temp.must_hold(
+  (select array[
+     (select count(*) from ouroboros.organization            where "id" like '5eed0049-%'),
+     (select count(*) from ouroboros.member                  where "id" like '5eed004a-%'),
+     (select count(*) from ouroboros.github_orgs             where id::text like '5eed004b-%'),
+     (select count(*) from ouroboros.github_repos            where id::text like '5eed004c-%'),
+     (select count(*) from ouroboros.ticket_sources          where id::text like '5eed004d-%'),
+     (select count(*) from ouroboros.github_issues           where id::text like '5eed004e-%'),
+     (select count(*) from ouroboros.issue_estimates         where id::text like '5eed004f-%'),
+     (select count(*) from ouroboros.tickets                 where id::text like '5eed0050-%'),
+     (select count(*) from ouroboros.runs                    where id::text like '5eed0051-%'),
+     (select count(*) from ouroboros.onboarding_state        where id::text like '5eed0052-%'),
+     (select count(*) from ouroboros.repo_detection_scans    where id::text like '5eed0053-%'),
+     (select count(*) from ouroboros.repo_detections         where id::text like '5eed0054-%'),
+     (select count(*) from ouroboros.protected_path_policies where id::text like '5eed0055-%')]
+   = array[1, 1, 1, 2, 1, 9, 8, 1, 3, 1, 1, 6, 2]::bigint[]),
+  'the onboarding seed wrote its thirty-seven fixed-id rows — and, applied twice, no thirty-eighth');
+
+-- And nothing of the wizard's exists outside that workspace: the other three have no state, no
+-- scan and no protected path, so no other mockup's page gains a row from this seed.
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.onboarding_state
+    where organization_id <> '5eed0049-0000-4000-8000-000000000001' and organization_id like '5eed%')
+  and (select count(*) = 0 from ouroboros.repo_detection_scans
+        where organization_id <> '5eed0049-0000-4000-8000-000000000001' and organization_id like '5eed%')
+  and (select count(*) = 0 from ouroboros.protected_path_policies
+        where organization_id <> '5eed0049-0000-4000-8000-000000000001' and organization_id like '5eed%'),
+  'the wizard''s rows live in the onboarding workspace and in no other seeded one');
 
 \o
 \echo 'seed.sql: all assertions passed'

@@ -246,7 +246,9 @@ on conflict do nothing;
 -- has someone to refuse in each shared workspace: Jorge is only a member of
 -- acme-robotics, and Ken — owner elsewhere — is only a member of acme-labs. Ken
 -- belongs to all three, which is what makes Step 2 render three rows for the person
--- the dev stack signs in as. `viewer` — #704's custom access-control role — is
+-- the dev stack signs in as. (A fourth row joins them on a seeded stack since #383:
+-- `acme-onboarding`, which R__dev_seed_onboarding.sql creates and Ken owns — mockup
+-- 13's workspace, not this file's.) `viewer` — #704's custom access-control role — is
 -- deliberately unseeded: a sixth person carrying it would be a row no mockup shows,
 -- and the role's meaning is asserted where it is defined, in ouroboros-rest's
 -- organization.roles tests.
