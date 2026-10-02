@@ -184,6 +184,7 @@ image sets `NODE_ENV=production`, which makes it bind all interfaces. Health:
 |---|---|---|
 | `OURO_LOCAL_PROVIDER_URLS` | `ollama=http://ollama:11434` | Only with a local model host. Addresses must be reachable from the engine |
 | `OURO_GITHUB_API_BASE_URL` | `https://ghe.example.com/api/v3` | GitHub Enterprise Server only |
+| `OURO_SMTP_URL` · `OURO_MAIL_FROM` | `smtps://user:password@smtp.example.com:465` · `no-reply@example.com` | Only if you want the weekly Insights email digest ([#440](https://github.com/NobuData/ouroboros/issues/440)). Set both or neither. Unset, REST sends no mail and says so; the digest's unsubscribe links point at `OURO_REST_URL`, so that address must be reachable by whoever reads the mail |
 | `OURO_RUN_SIMULATOR_SECRET` | *(leave unset)* | Enables the simulated-run principal. Development and test only |
 
 Everything else (poll intervals, sweeps, TTLs, budgets) has a working default. See the

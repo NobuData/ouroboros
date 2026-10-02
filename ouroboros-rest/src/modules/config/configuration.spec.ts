@@ -15,6 +15,7 @@ import {
   DEFAULT_REPO_MAP_HOUR_UTC,
   DEFAULT_INSIGHTS_ROLLUP_BACKFILL_DAYS,
   DEFAULT_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS,
+  DEFAULT_INSIGHTS_DIGEST_INTERVAL_SECONDS,
   DEFAULT_INSIGHTS_ROLLUP_DAYS_PER_TICK,
   DEFAULT_INSIGHTS_ROLLUP_INTERVAL_SECONDS,
   DEFAULT_FLAKE_RESCORE_CAP,
@@ -155,6 +156,9 @@ describe("the development defaults", () => {
       insightsRollupConsolidateDays: DEFAULT_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS,
       insightsRollupBackfillDays: DEFAULT_INSIGHTS_ROLLUP_BACKFILL_DAYS,
       insightsRollupDaysPerTick: DEFAULT_INSIGHTS_ROLLUP_DAYS_PER_TICK,
+      // BJ.4's (#440) digest tick. The two mail settings are absent: a test environment sends
+      // no mail unless a suite says where.
+      insightsDigestIntervalSeconds: DEFAULT_INSIGHTS_DIGEST_INTERVAL_SECONDS,
       // BB.5's (#388) two capability flags: a deployment that declares nothing has neither pool.
       managedKeyPool: false,
       hostedRunnerPool: false,
@@ -1154,6 +1158,70 @@ describe("OURO_ONBOARDING_UNLOCK_THRESHOLD (BB.3, #386)", () => {
   it.each(["-1", "10001", "ten", "2.5"])("rejects %s", (value) => {
     expect(failureFor(testEnvironment({ OURO_ONBOARDING_UNLOCK_THRESHOLD: value }))).toContain(
       "OURO_ONBOARDING_UNLOCK_THRESHOLD: expected between 0 and 10000",
+    );
+  });
+});
+
+describe("the mail and digest variables (BJ.4, #440)", () => {
+  it("sends no mail when unset — the posture of a deployment nobody configured", () => {
+    const configuration = loadConfiguration(testEnvironment());
+
+    expect(configuration.smtpUrl).toBeUndefined();
+    expect(configuration.mailFrom).toBeUndefined();
+  });
+
+  it.each([
+    "smtp://localhost:1025",
+    "smtp://mailpit:1025",
+    "smtps://digest:swordfish@smtp.acme.dev:465",
+  ])("reads the mail server %s with its sender", (url) => {
+    const configuration = loadConfiguration(
+      testEnvironment({ OURO_SMTP_URL: url, OURO_MAIL_FROM: "no-reply@acme.dev" }),
+    );
+
+    expect(configuration.smtpUrl).toBe(url);
+    expect(configuration.mailFrom).toBe("no-reply@acme.dev");
+  });
+
+  it.each(["localhost:1025", "http://localhost:1025", "smtp://", "mailpit"])(
+    "rejects %s as a mail server",
+    (url) => {
+      expect(
+        failureFor(testEnvironment({ OURO_SMTP_URL: url, OURO_MAIL_FROM: "no-reply@acme.dev" })),
+      ).toContain("OURO_SMTP_URL: expected an SMTP server URL");
+    },
+  );
+
+  it.each(["Ouroboros <no-reply@acme.dev>", "no-reply", "a b@acme.dev", "a@b@acme.dev"])(
+    "rejects %s as a sender — a bare address only",
+    (from) => {
+      expect(
+        failureFor(
+          testEnvironment({ OURO_SMTP_URL: "smtp://localhost:1025", OURO_MAIL_FROM: from }),
+        ),
+      ).toContain("OURO_MAIL_FROM: expected a bare email address");
+    },
+  );
+
+  it("refuses a mail server with no sender, and a sender with no mail server", () => {
+    expect(failureFor(testEnvironment({ OURO_SMTP_URL: "smtp://localhost:1025" }))).toContain(
+      "OURO_MAIL_FROM: is required when OURO_SMTP_URL is set",
+    );
+    expect(failureFor(testEnvironment({ OURO_MAIL_FROM: "no-reply@acme.dev" }))).toContain(
+      "OURO_MAIL_FROM: is only meaningful when OURO_SMTP_URL is set",
+    );
+  });
+
+  it.each(["5", "300", "3600"])("reads a digest tick of %s seconds", (value) => {
+    expect(
+      loadConfiguration(testEnvironment({ OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: value }))
+        .insightsDigestIntervalSeconds,
+    ).toBe(Number(value));
+  });
+
+  it.each(["4", "3601", "five"])("rejects a digest tick of %s seconds", (value) => {
+    expect(failureFor(testEnvironment({ OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: value }))).toContain(
+      "OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: expected between 5 and 3600 seconds",
     );
   });
 });

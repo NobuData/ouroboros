@@ -34,6 +34,6 @@
   // what is wanted: they are checked as dependencies of the importer. Naming their
   // directory here instead would drag in that module's spec files and its Nest decorators,
   // neither of which this program has the types or the compiler options for.
-  "include": ["*.ts", "specs/**/*.ts", "support/**/*.ts"],
+  "include": ["*.ts", "specs/**/*.ts", "support/**/*.ts", "email/**/*.ts"],
   "exclude": ["node_modules", "playwright-report", "test-results"]
 }

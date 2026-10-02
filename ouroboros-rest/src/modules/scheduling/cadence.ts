@@ -136,3 +136,59 @@ export function nightlyDelay(
 
   return Math.max(1, slot.at.getTime() + offset - now.getTime());
 }
+
+/** A week. */
+const WEEK_MS = 7 * DAY_MS;
+
+/** Twenty-four-hour `HH:MM`. */
+const TIME_OF_DAY = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+/**
+ * The most recent weekly slot at or before `now` — the weekly Insights digest's
+ * ([#440](https://github.com/NobuData/ouroboros/issues/440)) question: *which slot is the one
+ * that may be due?*
+ *
+ * Unlike {@link nextNightlySlot}, a weekly job looks **back**: a process that was down across the
+ * slot runs it when it returns, because the alternative is a week with no digest. How late is too
+ * late is the caller's rule, not this function's.
+ *
+ * @param now - The current instant.
+ * @param isoDay - ISO day of week, 1 = Monday … 7 = Sunday.
+ * @param time - Time of day in UTC, `HH:MM`.
+ * @returns The slot's instant, never after `now`.
+ * @throws {RangeError} If `isoDay` or `time` is not one.
+ */
+export function latestWeeklySlot(now: Date, isoDay: number, time: string): Date {
+  const match = TIME_OF_DAY.exec(time);
+
+  if (!Number.isInteger(isoDay) || isoDay < 1 || isoDay > 7 || match === null) {
+    throw new RangeError(`Not a weekly slot: day ${String(isoDay)} at ${time}`);
+  }
+
+  // `getUTCDay` counts from Sunday = 0; ISO counts from Monday = 1 to Sunday = 7.
+  const today = now.getUTCDay() === 0 ? 7 : now.getUTCDay();
+  const thisWeek =
+    Date.UTC(
+      now.getUTCFullYear(),
+      now.getUTCMonth(),
+      now.getUTCDate(),
+      Number(match[1]),
+      Number(match[2]),
+    ) +
+    (isoDay - today) * DAY_MS;
+
+  return new Date(thisWeek > now.getTime() ? thisWeek - WEEK_MS : thisWeek);
+}
+
+/**
+ * The first weekly slot strictly after `now`.
+ *
+ * @param now - The current instant.
+ * @param isoDay - ISO day of week, 1 = Monday … 7 = Sunday.
+ * @param time - Time of day in UTC, `HH:MM`.
+ * @returns The slot's instant.
+ * @throws {RangeError} If `isoDay` or `time` is not one.
+ */
+export function nextWeeklySlot(now: Date, isoDay: number, time: string): Date {
+  return new Date(latestWeeklySlot(now, isoDay, time).getTime() + WEEK_MS);
+}

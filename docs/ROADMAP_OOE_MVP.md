@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**337 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
+**338 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12 | **290** |
-| 🟡 **In progress** | P11, P13 | **47** of 70 |
+| 🟡 **In progress** | P11, P13 | **48** of 70 |
 | — **Not started** | P14–P17 | 0 of 94 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -116,7 +116,7 @@ position is not forced by dependencies, one of these decided it.
 | **P10** | Run console & ingestion contract | ✅ 17/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | ✅ 28/28 | 28 | 83 | Mockups 14, 13 |
-| **P13** | Analytics — insights & build analyzer | 🟡 11/32 | 32 | 109 | Mockups 15, 18 |
+| **P13** | Analytics — insights & build analyzer | 🟡 12/32 | 32 | 109 | Mockups 15, 18 |
 | **P14** | Decisions & governance — inbox, settings | — 0/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
@@ -257,7 +257,7 @@ None of them blocks P0–P12, so the decision can be made during P11.
 | Blocked MVP issue | Phase | Requires | Flagged | Suggested resolution |
 |-------------------|:-----:|----------|:-------:|----------------------|
 | `BV.1` [`#510`](https://github.com/NobuData/ouroboros/issues/510) Analyzer corpus | P13 | `AJ.4` [`#266`](https://github.com/NobuData/ouroboros/issues/266) Health history & analyzer telemetry | v2 | **Promote `AJ.4`** — a corpus with no farm telemetry is a hollow analyzer |
-| `BJ.4` [`#440`](https://github.com/NobuData/ouroboros/issues/440) Analytics services | P13 | `E.3` Invitation flow with email delivery | v2 | **Narrow `BJ.4`** — drop the invitation-derived metric rather than pull email delivery into MVP |
+| ✅ `BJ.4` [`#440`](https://github.com/NobuData/ouroboros/issues/440) Email digest generation | P13 | `E.3` Invitation flow with email delivery | v2 | ~~**Narrow `BJ.4`**~~ **Resolved (2026-10-01):** the mailer was built inside `BJ.4` — a `Mailer` interface with an SMTP transport, mailpit in development — so the digest ships in MVP without `E.3`, and `E.3` reuses that mailer when it lands |
 | `CD.1` [`#559`](https://github.com/NobuData/ouroboros/issues/559) · `CD.2` [`#560`](https://github.com/NobuData/ouroboros/issues/560) Copilot dry-run | P16 | `AF.2` [`#235`](https://github.com/NobuData/ouroboros/issues/235) Chain executor implementation | v2 | **Promote `AF.2`** — it is the single prerequisite for all live model invocation |
 | `CM.1` [`#620`](https://github.com/NobuData/ouroboros/issues/620) Investigation engine | P16 | `AF.2` [`#235`](https://github.com/NobuData/ouroboros/issues/235) Chain executor implementation | v2 | as above |
 | `CL.4` [`#617`](https://github.com/NobuData/ouroboros/issues/617) Research tool execution | P16 | `6.5` [`#54`](https://github.com/NobuData/ouroboros/issues/54) Task execution skeleton | v2 | **Promote `6.5`** — the engine needs a queue/worker before any long-running research |
@@ -1586,7 +1586,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **32 issues** · 109 complexity points · order **#329–#360** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_15_INSIGHTS.md`, `ROADMAP_MOCKUP_18_BUILD_ANALYZER.md`
-> **Status:** 🟡 **In progress** — 11 of 32 issues closed
+> **Status:** 🟡 **In progress** — 12 of 32 issues closed
 
 **Goal.** Build the metrics service as the single computational truth over every plane — rollups plus live tail, a metric registry carrying formula, sources and caveats — and the deterministic analysis engine that snapshots a corpus, detects change points with ranked attribution, and drafts auditable suggestions.
 
@@ -1609,7 +1609,7 @@ the blockquote above that records what it did and what it did differently.
 | 337 | **BV.1** | [#510](https://github.com/NobuData/ouroboros/issues/510) | Corpus assembly & run orchestration | ouroboros-rest | L | BU.1 |
 | 338 | **BI.3** | ✅ [#434](https://github.com/NobuData/ouroboros/issues/434) | Intervention-cause taxonomy | ouroboros-db, ouroboros-rest | M | AO.4, AT.4 |
 | 339 | **BJ.3** | ✅ [#439](https://github.com/NobuData/ouroboros/issues/439) | Model scoreboard aggregation | ouroboros-rest | M | BJ.1 |
-| 340 | **BJ.4** | [#440](https://github.com/NobuData/ouroboros/issues/440) | Email digest generation | ouroboros-rest | M | BJ.1 |
+| 340 | **BJ.4** | ✅ [#440](https://github.com/NobuData/ouroboros/issues/440) | Email digest generation | ouroboros-rest | M | BJ.1 |
 | 341 | **BU.3** | [#508](https://github.com/NobuData/ouroboros/issues/508) | Application measurements & calibration | ouroboros-db | S | BU.2 |
 | 342 | **BV.2** | [#511](https://github.com/NobuData/ouroboros/issues/511) | Analyzer SPI & statistical core | ouroboros-engine | L | 6.3, BU.2 |
 | 343 | **BW.1** | [#516](https://github.com/NobuData/ouroboros/issues/516) | Analyzer route, head, schedule & meta strip | ouroboros-ui | M | 5.3, D.5, BV.1 |

@@ -1,4 +1,12 @@
-import { JITTER_SPREAD, chunked, jittered, nextNightlySlot, nightlyDelay } from "./cadence";
+import {
+  JITTER_SPREAD,
+  chunked,
+  jittered,
+  latestWeeklySlot,
+  nextNightlySlot,
+  nextWeeklySlot,
+  nightlyDelay,
+} from "./cadence";
 
 /**
  * The anti-thundering-herd rule, and the chunking that keeps a background loop from opening
@@ -134,5 +142,60 @@ describe("the nightly delay (AL.5, #281)", () => {
 
   it("never goes below one millisecond for a slot already reached", () => {
     expect(nightlyDelay(new Date("2026-09-17T03:00:00.000Z"), slot, 30, () => 0)).toBe(1);
+  });
+});
+
+describe("the weekly slot (BJ.4, #440)", () => {
+  // 2026-10-01 is a Thursday.
+  const THURSDAY_NOON = new Date("2026-10-01T12:00:00.000Z");
+
+  it.each([
+    // Monday 09:00 was three days ago.
+    [1, "09:00", "2026-09-28T09:00:00.000Z"],
+    // Earlier today.
+    [4, "09:00", "2026-10-01T09:00:00.000Z"],
+    // Later today has not happened, so the latest is last week's.
+    [4, "16:30", "2026-09-24T16:30:00.000Z"],
+    // Sunday is ISO day 7, and was four days ago.
+    [7, "23:59", "2026-09-27T23:59:00.000Z"],
+    // Friday is tomorrow; last Friday is the latest.
+    [5, "00:00", "2026-09-25T00:00:00.000Z"],
+  ])("looks back to day %i at %s", (day, time, expected) => {
+    expect(latestWeeklySlot(THURSDAY_NOON, day, time).toISOString()).toBe(expected);
+  });
+
+  it("counts a slot that is exactly now as reached", () => {
+    expect(latestWeeklySlot(THURSDAY_NOON, 4, "12:00")).toEqual(THURSDAY_NOON);
+  });
+
+  it("looks back correctly from a Sunday, the day the two numberings disagree about", () => {
+    const sunday = new Date("2026-10-04T10:00:00.000Z");
+
+    expect(latestWeeklySlot(sunday, 7, "09:00").toISOString()).toBe("2026-10-04T09:00:00.000Z");
+    expect(latestWeeklySlot(sunday, 1, "09:00").toISOString()).toBe("2026-09-28T09:00:00.000Z");
+  });
+
+  it("books the next slot strictly after now, a week past the latest", () => {
+    expect(nextWeeklySlot(THURSDAY_NOON, 1, "09:00").toISOString()).toBe(
+      "2026-10-05T09:00:00.000Z",
+    );
+    expect(nextWeeklySlot(THURSDAY_NOON, 4, "12:00").toISOString()).toBe(
+      "2026-10-08T12:00:00.000Z",
+    );
+    expect(nextWeeklySlot(THURSDAY_NOON, 4, "16:30").toISOString()).toBe(
+      "2026-10-01T16:30:00.000Z",
+    );
+  });
+
+  it.each([
+    [0, "09:00"],
+    [8, "09:00"],
+    [1.5, "09:00"],
+    [1, "9:00"],
+    [1, "24:00"],
+    [1, "09:60"],
+    [1, "09:00:00"],
+  ])("refuses day %s at %s", (day, time) => {
+    expect(() => latestWeeklySlot(THURSDAY_NOON, day, time)).toThrow(RangeError);
   });
 });

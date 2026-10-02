@@ -413,6 +413,24 @@ export class AppConfigService {
     return this.config.getOrThrow<number>("insightsRollupDaysPerTick");
   }
 
+  /** Seconds between weekly-digest ticks — `OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS` (#440). */
+  get insightsDigestIntervalSeconds(): number {
+    return this.config.getOrThrow<number>("insightsDigestIntervalSeconds");
+  }
+
+  /**
+   * The SMTP server mail is sent through — `OURO_SMTP_URL` (#440). `undefined` when unset: this
+   * deployment sends no mail. It may carry a password; never log it.
+   */
+  get smtpUrl(): string | undefined {
+    return this.config.get<string>("smtpUrl");
+  }
+
+  /** The address mail is sent from — `OURO_MAIL_FROM`. Set exactly when {@link smtpUrl} is. */
+  get mailFrom(): string | undefined {
+    return this.config.get<string>("mailFrom");
+  }
+
   /**
    * The merged-loop threshold that unlocks an advanced onboarding template —
    * `OURO_ONBOARDING_UNLOCK_THRESHOLD`. `undefined` when unset: each template's own rule stands.
@@ -526,6 +544,9 @@ export class AppConfigService {
       insightsRollupConsolidateDays: this.insightsRollupConsolidateDays,
       insightsRollupBackfillDays: this.insightsRollupBackfillDays,
       insightsRollupDaysPerTick: this.insightsRollupDaysPerTick,
+      insightsDigestIntervalSeconds: this.insightsDigestIntervalSeconds,
+      smtpUrl: this.smtpUrl,
+      mailFrom: this.mailFrom,
       localProviderUrls: this.localProviderUrls,
       onboardingUnlockThreshold: this.onboardingUnlockThreshold,
       managedKeyPool: this.managedKeyPool,

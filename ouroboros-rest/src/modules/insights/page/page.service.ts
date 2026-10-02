@@ -77,6 +77,12 @@ export interface InsightsRequest {
   readonly range: MetricRange;
   /** One repository's `owner/name`, or undefined for the whole workspace. */
   readonly repo?: string;
+  /**
+   * The instant to read as of, instead of the clock's. The weekly digest (#440) passes its
+   * scheduled slot, so a run that starts late still reports the week its slot names. No route
+   * exposes it.
+   */
+  readonly now?: Date;
 }
 
 @Injectable()
@@ -106,7 +112,7 @@ export class InsightsPageService {
    * @returns The payload.
    */
   async read(organizationId: string, request: InsightsRequest): Promise<InsightsResource> {
-    const now = new Date(this.clock());
+    const now = request.now ?? new Date(this.clock());
     // The mirror stores accounts and repositories lower-case, so the grain's `repo_ref` is too.
     const repo = request.repo?.toLowerCase();
     const scope = { organizationId, repo, range: request.range, now };

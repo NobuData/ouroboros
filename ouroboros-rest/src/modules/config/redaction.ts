@@ -122,7 +122,11 @@ export function redactedEnvironment(configuration: Configuration): Record<string
       redacted[variable] = "";
     } else if (SECRET_VARIABLES.has(variable)) {
       redacted[variable] = REDACTED;
-    } else if (variable === VARIABLES.databaseUrl && typeof value === "string") {
+    } else if (
+      (variable === VARIABLES.databaseUrl || variable === VARIABLES.smtpUrl) &&
+      typeof value === "string"
+    ) {
+      // Both are connection strings: the host is what a boot log needs, the password is not.
       redacted[variable] = redactDatabaseUrl(value);
     } else {
       redacted[variable] = renderValue(value);

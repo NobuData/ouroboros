@@ -15,7 +15,7 @@
 # minutes; every later one reuses the layer cache. `--build` is what picks up a source
 # change, because compose builds a missing image but never rebuilds a stale one.
 #
-# Four profiles, and one of them is the absence of a profile:
+# The profiles, and one of them is the absence of a profile:
 #
 #   (none) / --profile db   the data tier — `db` and `flyway`, the subset issue #10
 #                           established. They carry no `profiles:` key, so they are in
@@ -31,6 +31,13 @@
 #                           somebody actually working on that card should pay.
 #
 #   docker compose --profile ollama up -d ollama   # http://localhost:11434
+#
+#   --profile mail          mailpit alone (issue #440): the SMTP catcher the weekly Insights
+#                           digest is sent to in development, for a `rest` running on the host.
+#                           It is *also* in `full`, because a stack that sends mail to nowhere
+#                           would only record failures — so `--profile full` needs nothing more.
+#
+#   docker compose --profile mail up -d mailpit    # SMTP :1025 · inbox http://localhost:8025
 #
 #   --profile runner        a build machine to enrol from the Build Farm page (issue #262,
 #                           amending #55): a TLS gateway in front of `rest`, this checkout's
@@ -301,6 +308,12 @@ services:
       OURO_ARTIFACT_S3_BUCKET: ${OURO_ARTIFACT_S3_BUCKET:-ouroboros-artifacts}
       OURO_ARTIFACT_S3_ACCESS_KEY_ID: ${OURO_ARTIFACT_S3_ACCESS_KEY_ID:-ouroboros}
       OURO_ARTIFACT_S3_SECRET_ACCESS_KEY: ${OURO_ARTIFACT_S3_SECRET_ACCESS_KEY:-ouroboros-dev-minio-secret}
+      # Mail (issue #440): the weekly Insights digest goes to mailpit, below, which catches it —
+      # nothing leaves this stack. The address is a literal, a container's view, like every
+      # address here; the sender is interpolated. `rest` does not depend on mailpit: a send
+      # that cannot connect is recorded as failed and retried, and the API stays up.
+      OURO_SMTP_URL: smtp://mailpit:1025
+      OURO_MAIL_FROM: ${OURO_MAIL_FROM:-no-reply@ouroboros.localhost}
     volumes:
       # Read-only: `rest` serves a release, it never writes one.
       - ouroboros-runner-releases:/runner-releases:ro
@@ -464,6 +477,35 @@ services:
       - ouroboros
     profiles:
       - minio
+
+  # ---------------------------------------------------------------------------
+  # mailpit (issue #440) — where development mail goes. It accepts every message on SMTP and
+  # shows it in a browser; it relays nothing, so a digest sent here reaches nobody's inbox.
+  # In `full`, because `rest` above is configured to send to it, and in `mail` on its own for a
+  # `rest` running on the host with `.env.example`'s OURO_SMTP_URL=smtp://localhost:1025.
+  #
+  # Pinned to the minor release the REST integration suite sends through
+  # (src/modules/mail/mailpit.fixture.ts). Messages are kept in memory: restarting it empties
+  # the inbox, which is what a development catcher should do.
+  # ---------------------------------------------------------------------------
+  mailpit:
+    image: axllent/mailpit:v1.31
+    ports:
+      # Loopback only, like every published port here. SMTP, then the inbox and its API.
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    healthcheck:
+      test: ["CMD", "/mailpit", "readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+      start_interval: 1s
+    networks:
+      - ouroboros
+    profiles:
+      - full
+      - mail
 
   # ---------------------------------------------------------------------------
   # The `runner` profile (issue #262, amending #55) — three services that turn this stack

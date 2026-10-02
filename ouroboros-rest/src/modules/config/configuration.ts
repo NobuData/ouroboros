@@ -550,6 +550,19 @@ export const MIN_INSIGHTS_ROLLUP_INTERVAL_SECONDS = 60;
 export const MAX_INSIGHTS_ROLLUP_INTERVAL_SECONDS = 86400;
 
 /**
+ * Seconds between weekly-digest ticks when `OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS` is not set —
+ * five minutes (BJ.4, #440). A tick asks which workspaces' weekly slot has come due and sends
+ * those; it is how late after its slot a digest may leave, not how often one is sent.
+ */
+export const DEFAULT_INSIGHTS_DIGEST_INTERVAL_SECONDS = 300;
+
+/** Fastest digest tick — five seconds, for a suite that has to see a send without waiting. */
+export const MIN_INSIGHTS_DIGEST_INTERVAL_SECONDS = 5;
+
+/** Slowest digest tick — an hour: a digest still leaves within the hour its slot names. */
+export const MAX_INSIGHTS_DIGEST_INTERVAL_SECONDS = 3600;
+
+/**
  * Days the nightly consolidation re-fills, ending yesterday, when
  * `OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS` is not set — three (BI.2, #433). Late data — a sync that
  * ran late, a revert that landed after its merge's day — reaches its day within this window.
@@ -1024,6 +1037,25 @@ export interface Configuration {
    */
   readonly insightsRollupDaysPerTick: number;
   /**
+   * Seconds between weekly-digest ticks. From `OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS`,
+   * {@link DEFAULT_INSIGHTS_DIGEST_INTERVAL_SECONDS} when unset.
+   */
+  readonly insightsDigestIntervalSeconds: number;
+  /**
+   * The SMTP server this deployment sends mail through — `OURO_SMTP_URL`, such as
+   * `smtp://localhost:1025` (mailpit, in development) or `smtps://user:password@smtp.acme.dev`.
+   * `undefined` when unset, which means **this deployment sends no mail**: anything that would
+   * send says so instead (#440).
+   *
+   * It may carry a password, so `describe()` masks that part as it does the database URL's.
+   */
+  readonly smtpUrl?: string;
+  /**
+   * The address mail is sent from — `OURO_MAIL_FROM`. Required with {@link smtpUrl} and refused
+   * without it.
+   */
+  readonly mailFrom?: string;
+  /**
    * Where this deployment's local model providers are — `OURO_LOCAL_PROVIDER_URLS`.
    *
    * A map of provider kind to base URL, from a comma-separated list of `kind=url` pairs, and
@@ -1141,12 +1173,21 @@ export const VARIABLES = {
   insightsRollupConsolidateDays: "OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS",
   insightsRollupBackfillDays: "OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS",
   insightsRollupDaysPerTick: "OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK",
+  insightsDigestIntervalSeconds: "OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS",
+  smtpUrl: "OURO_SMTP_URL",
+  mailFrom: "OURO_MAIL_FROM",
   localProviderUrls: "OURO_LOCAL_PROVIDER_URLS",
   onboardingUnlockThreshold: "OURO_ONBOARDING_UNLOCK_THRESHOLD",
   managedKeyPool: "OURO_MANAGED_KEY_POOL",
   managedKeyTrialCents: "OURO_MANAGED_KEY_TRIAL_CENTS",
   hostedRunnerPool: "OURO_HOSTED_RUNNER_POOL",
 } as const satisfies Record<keyof Configuration, string>;
+
+/**
+ * A bare email address: one `@`, no spaces, no display name. `OURO_MAIL_FROM` is written into
+ * an env file that shells source, so the angle brackets a display name needs are kept out of it.
+ */
+const MAIL_ADDRESS = /^[^\s@<>]+@[^\s@<>]+$/;
 
 /**
  * Is this an absolute URL on one of the given schemes, with a host?
@@ -1754,6 +1795,29 @@ const environmentShape = z.object({
     "days",
   ),
 
+  // BJ.4's (#440) three: the digest tick, and the mail server with the address mail leaves
+  // from. Both mail settings are optional together — unset, this deployment sends no mail and
+  // says so — and the cross-check below refuses one without the other.
+  OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: cadenceSeconds(
+    MIN_INSIGHTS_DIGEST_INTERVAL_SECONDS,
+    DEFAULT_INSIGHTS_DIGEST_INTERVAL_SECONDS,
+    MAX_INSIGHTS_DIGEST_INTERVAL_SECONDS,
+  ),
+  OURO_SMTP_URL: z
+    .string()
+    .refine(
+      (value) => isAbsoluteUrl(value, ["smtp:", "smtps:"]),
+      "expected an SMTP server URL, such as smtp://localhost:1025 or smtps://user:password@smtp.acme.dev",
+    )
+    .optional(),
+  OURO_MAIL_FROM: z
+    .string()
+    .refine(
+      (value) => MAIL_ADDRESS.test(value),
+      "expected a bare email address, such as no-reply@acme.dev",
+    )
+    .optional(),
+
   // The onboarding tiles' unlock threshold override (BB.3, #386). Optional, and unset is the
   // normal posture: each advanced template's own `merged_loops_gte` is then the rule.
   OURO_ONBOARDING_UNLOCK_THRESHOLD: z
@@ -1866,6 +1930,24 @@ const environmentSchema = environmentShape
         code: "custom",
         path: [VARIABLES.managedKeyTrialCents],
         message: "is only meaningful when OURO_MANAGED_KEY_POOL is true",
+      });
+    }
+
+    // A mail server with no sender would boot and then fail its first send (#440); a sender
+    // with no server is a setting somebody believes is doing something.
+    if (values.OURO_SMTP_URL !== undefined && values.OURO_MAIL_FROM === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: [VARIABLES.mailFrom],
+        message: "is required when OURO_SMTP_URL is set",
+      });
+    }
+
+    if (values.OURO_MAIL_FROM !== undefined && values.OURO_SMTP_URL === undefined) {
+      context.addIssue({
+        code: "custom",
+        path: [VARIABLES.mailFrom],
+        message: "is only meaningful when OURO_SMTP_URL is set",
       });
     }
   });
@@ -1995,6 +2077,9 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     insightsRollupConsolidateDays: values.OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS,
     insightsRollupBackfillDays: values.OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS,
     insightsRollupDaysPerTick: values.OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK,
+    insightsDigestIntervalSeconds: values.OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS,
+    smtpUrl: values.OURO_SMTP_URL,
+    mailFrom: values.OURO_MAIL_FROM,
     localProviderUrls: Object.freeze(values.OURO_LOCAL_PROVIDER_URLS),
     onboardingUnlockThreshold: values.OURO_ONBOARDING_UNLOCK_THRESHOLD,
     managedKeyPool: values.OURO_MANAGED_KEY_POOL,

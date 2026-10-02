@@ -2172,6 +2172,173 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/insights/digest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The weekly email digest — your subscription and the workspace's schedule
+         * @description BJ.4 ([#440](https://github.com/NobuData/ouroboros/issues/440), decision I9) — the state
+         *     behind the Insights head's **Email weekly digest** action.
+         *
+         *     **The digest says what the page says.** Once a week, at the workspace's slot, the seven-day
+         *     Insights page (`GET /api/v1/insights?range=7d`) is assembled once and mailed to each
+         *     subscriber: the KPI row with its deltas, the top intervention cause, the flaky tests that
+         *     moved and the cost line. Nothing is computed for the email, so it inherits the page's
+         *     rules — dollars only for priced usage, proxy metrics marked, insight lines computed, and
+         *     a week with nothing in it says *"Nothing to report this week"* rather than printing zeroes.
+         *
+         *     **Subscription is yours, per workspace, and opt-in.** `subscribed` is false until you ask;
+         *     `recipient` is your account's address. Every mail carries an unsubscribe link that needs
+         *     no sign-in.
+         *
+         *     **`mail.transport` is `none` on a deployment with no mail server** (`OURO_SMTP_URL`
+         *     unset). The digest is then off, and subscribing is refused rather than accepted into
+         *     silence.
+         *
+         *     **Open to every member.** The workspace is the session's.
+         */
+        get: operations["getInsightsDigest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/insights/digest/subscription": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Subscribe to, or unsubscribe from, the weekly digest
+         * @description Opt **yourself** in or out of this workspace's weekly digest
+         *     ([#440](https://github.com/NobuData/ouroboros/issues/440)). The person is the session's —
+         *     nobody is subscribed on another's behalf — and the answer is the state as it now stands.
+         *     Asking twice is asking once.
+         *
+         *     A subscription starts with the **next** slot: subscribing never triggers a late copy of a
+         *     digest that already went out.
+         *
+         *     **Every member**, viewers included: whoever may read Insights may be mailed them.
+         */
+        put: operations["putInsightsDigestSubscription"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/insights/digest/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Move the workspace's weekly digest slot
+         * @description When this workspace's digest goes out ([#440](https://github.com/NobuData/ouroboros/issues/440)):
+         *     an ISO day of week and a time of day, **in UTC**. Send what changed; a field left out keeps
+         *     its value, and a body carrying nothing changes nothing. A workspace that has never chosen
+         *     uses Monday 09:00.
+         *
+         *     A digest leaves within a few minutes of its slot. Moving the slot never sends a second
+         *     digest in a week that already had one.
+         *
+         *     **`owner` or `admin`.** It changes when everybody's digest arrives.
+         */
+        patch: operations["patchInsightsDigestSchedule"];
+        trace?: never;
+    };
+    "/api/v1/insights/digest/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Preview the weekly digest as it would be sent now
+         * @description The digest for this workspace as of now ([#440](https://github.com/NobuData/ouroboros/issues/440)):
+         *     its subject, its HTML part and its plain-text part, rendered by the code that sends it —
+         *     what the subscribe sheet shows before anybody opts in.
+         *
+         *     The figures are `GET /api/v1/insights?range=7d`'s for the same instant. A preview is sent
+         *     to nobody, so it carries no unsubscribe link and says so in its footer.
+         *
+         *     `html` is a complete document with every style inline and nothing to fetch; show it in a
+         *     sandboxed frame.
+         *
+         *     **Open to every member.**
+         */
+        get: operations["getInsightsDigestPreview"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/insights/digest/unsubscribe/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The page a digest's unsubscribe link opens
+         * @description The link at the bottom of every weekly digest
+         *     ([#440](https://github.com/NobuData/ouroboros/issues/440)). It answers **an HTML page**, to
+         *     a person arriving from a mail.
+         *
+         *     **No session.** The token in the path is the whole credential: random, minted for one
+         *     send, kept by this service only as a hash. All it can do is stop that one person's digest
+         *     for that one workspace, and it does not expire — a mail read months later must still be
+         *     able to stop the next one.
+         *
+         *     **Opening the link changes nothing.** Mail scanners and link previewers open every link in
+         *     a message, so this page only asks; its one button sends the `POST` beside it.
+         */
+        get: operations["confirmInsightsDigestUnsubscribe"];
+        put?: never;
+        /**
+         * Unsubscribe from the weekly digest, from its link
+         * @description Stops the weekly digest for the person the token's mail was sent to
+         *     ([#440](https://github.com/NobuData/ouroboros/issues/440)), and answers an HTML page saying
+         *     so. **Idempotent**: a second request answers the same page.
+         *
+         *     **No session**, for the reason the `GET` gives. The request body is ignored — this is also
+         *     the request a mail client's own unsubscribe control sends (`List-Unsubscribe-Post:
+         *     List-Unsubscribe=One-Click`, RFC 8058), which the digest advertises when this API is
+         *     served over https.
+         *
+         *     Subscribing again is `PUT /api/v1/insights/digest/subscription`, signed in.
+         */
+        post: operations["unsubscribeInsightsDigest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/insights/calibration": {
         parameters: {
             query?: never;
@@ -12603,6 +12770,82 @@ export interface components {
             dora: components["schemas"]["InsightsDoraCell"][];
         };
         /**
+         * InsightsDigest
+         * @description The weekly email digest as one member sees it (#440): whether they receive it, where it
+         *     goes, when the workspace's is sent, and whether this deployment can send mail at all.
+         */
+        InsightsDigest: {
+            /** @description Whether the caller receives this workspace's digest. Opt-in: false until they ask. */
+            subscribed: boolean;
+            /** @description Where the caller's digest goes — their account's address. */
+            recipient: string;
+            schedule: components["schemas"]["InsightsDigestSchedule"];
+            mail: {
+                /**
+                 * @description How this deployment sends mail. `none` means it cannot — no mail server is
+                 *     configured — so the digest is off and subscribing is refused.
+                 * @enum {string}
+                 */
+                transport: "smtp" | "none";
+            };
+        };
+        /**
+         * InsightsDigestSchedule
+         * @description A workspace's weekly digest slot (#440).
+         */
+        InsightsDigestSchedule: {
+            /** @description ISO day of week — 1 is Monday, 7 is Sunday. */
+            weeklyDay: number;
+            /** @description Time of day, twenty-four-hour `HH:MM`, in `timezone`. */
+            weeklyTime: string;
+            /**
+             * @description Slots are stored and stated in UTC.
+             * @enum {string}
+             */
+            timezone: "UTC";
+            /**
+             * Format: date-time
+             * @description The next slot after now.
+             */
+            nextRunAt: string;
+        };
+        /**
+         * InsightsDigestSubscriptionPut
+         * @description The body of `PUT /api/v1/insights/digest/subscription` (#440).
+         */
+        InsightsDigestSubscriptionPut: {
+            /** @description True to receive this workspace's weekly digest, false to stop. */
+            subscribed: boolean;
+        };
+        /**
+         * InsightsDigestSchedulePatch
+         * @description The body of `PATCH /api/v1/insights/digest/schedule` (#440): send what changed. A field
+         *     left out keeps its value.
+         */
+        InsightsDigestSchedulePatch: {
+            /** @description ISO day of week — 1 is Monday, 7 is Sunday. */
+            weeklyDay?: number;
+            /** @description Time of day in UTC, twenty-four-hour `HH:MM`. */
+            weeklyTime?: string;
+        };
+        /**
+         * InsightsDigestPreview
+         * @description The weekly digest as it would be sent now (#440).
+         */
+        InsightsDigestPreview: {
+            subject: string;
+            /** @description The HTML part — a complete document, every style inline, nothing to fetch. */
+            html: string;
+            /** @description The plain-text part. It prints the same figures as `html`. */
+            text: string;
+            window: components["schemas"]["InsightsDaySpan"];
+            /**
+             * @description The version of the digest's content rules. It moves when the assembly's shape or
+             *     wording rules change, and the send audit records it with every run.
+             */
+            contentVersion: number;
+        };
+        /**
          * InsightsDaySpan
          * @description A window's first and last UTC day, both inclusive.
          */
@@ -21730,6 +21973,13 @@ export interface components {
          */
         InsightsRepo: string;
         /**
+         * @description The unsubscribe token from a digest mail ([#440](https://github.com/NobuData/ouroboros/issues/440)):
+         *     `ouro_unsub_` and 43 URL-safe characters. Anything else is answered as an invalid link
+         *     without a lookup.
+         * @example ouro_unsub_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+         */
+        InsightsDigestToken: string;
+        /**
          * @description The window ending now the report covers, over merge instants — mockup 15's range segment
          *     ([#435](https://github.com/NobuData/ouroboros/issues/435)). `30d` when absent.
          * @example 30d
@@ -30628,6 +30878,647 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getInsightsDigest: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The caller's subscription and the workspace's schedule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "subscribed": true,
+                     *       "recipient": "ken@acme-robotics.dev",
+                     *       "schedule": {
+                     *         "weeklyDay": 1,
+                     *         "weeklyTime": "09:00",
+                     *         "timezone": "UTC",
+                     *         "nextRunAt": "2026-10-05T09:00:00.000Z"
+                     *       },
+                     *       "mail": {
+                     *         "transport": "smtp"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InsightsDigest"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    putInsightsDigestSubscription: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "subscribed": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["InsightsDigestSubscriptionPut"];
+            };
+        };
+        responses: {
+            /** @description The state after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "subscribed": true,
+                     *       "recipient": "ken@acme-robotics.dev",
+                     *       "schedule": {
+                     *         "weeklyDay": 1,
+                     *         "weeklyTime": "09:00",
+                     *         "timezone": "UTC",
+                     *         "nextRunAt": "2026-10-05T09:00:00.000Z"
+                     *       },
+                     *       "mail": {
+                     *         "transport": "smtp"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InsightsDigest"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `insights_digest_mail_unconfigured` — this deployment has no mail server, so it cannot
+             *     send a digest and will not take a subscription to one. Unsubscribing is never refused.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `subscribed` was not a boolean. `details` names the field. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchInsightsDigestSchedule: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "weeklyDay": 5,
+                 *       "weeklyTime": "16:30"
+                 *     }
+                 */
+                "application/json": components["schemas"]["InsightsDigestSchedulePatch"];
+            };
+        };
+        responses: {
+            /** @description The state after the change. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "subscribed": false,
+                     *       "recipient": "ken@acme-robotics.dev",
+                     *       "schedule": {
+                     *         "weeklyDay": 5,
+                     *         "weeklyTime": "16:30",
+                     *         "timezone": "UTC",
+                     *         "nextRunAt": "2026-10-02T16:30:00.000Z"
+                     *       },
+                     *       "mail": {
+                     *         "transport": "smtp"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InsightsDigest"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit this.
+             *     Moving the workspace's digest schedule is `owner` or `admin`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `weeklyDay` is not a whole number from 1 (Monday) to 7 (Sunday), or
+             *     `weeklyTime` is not a twenty-four-hour `HH:MM`. `details` names the field.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getInsightsDigestPreview: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rendered digest. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "subject": "Weekly insights · Acme Robotics · Sep 26 – Oct 2, 2026",
+                     *       "html": "<!doctype html><html lang=\"en\"><head><title>Weekly insights</title></head><body>21 PRs merged this week. 14 needed a human.</body></html>",
+                     *       "text": "Weekly insights — Acme Robotics\n\n21 PRs merged this week. 14 needed a human.\n",
+                     *       "window": {
+                     *         "from": "2026-09-26",
+                     *         "to": "2026-10-02"
+                     *       },
+                     *       "contentVersion": 1
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InsightsDigestPreview"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    confirmInsightsDigestUnsubscribe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The unsubscribe token from a digest mail ([#440](https://github.com/NobuData/ouroboros/issues/440)):
+                 *     `ouro_unsub_` and 43 URL-safe characters. Anything else is answered as an invalid link
+                 *     without a lookup.
+                 * @example ouro_unsub_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+                 */
+                token: components["parameters"]["InsightsDigestToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The confirmation page, naming the workspace. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description A page saying the link is not valid: the token is malformed, or no digest ever
+             *     carried it.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    unsubscribeInsightsDigest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description The unsubscribe token from a digest mail ([#440](https://github.com/NobuData/ouroboros/issues/440)):
+                 *     `ouro_unsub_` and 43 URL-safe characters. Anything else is answered as an invalid link
+                 *     without a lookup.
+                 * @example ouro_unsub_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+                 */
+                token: components["parameters"]["InsightsDigestToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The page saying the digest has stopped. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description A page saying the link is not valid: the token is malformed, or no digest ever
+             *     carried it. Nothing was changed.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
             /**

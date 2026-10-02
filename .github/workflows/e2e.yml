@@ -101,6 +101,14 @@ jobs:
         working-directory: tests/e2e
         run: yarn browsers
 
+      # #440: the weekly Insights email under four client profiles (600 px, 360 px, dark colour
+      # scheme, `<style>` stripped) — Chromium emulations, compared with committed baselines. It
+      # renders ouroboros-rest's golden HTML and needs no stack, so it runs before one is built:
+      # a mail that no longer fits a phone should not cost ten minutes to hear about.
+      - name: Render the digest email under client profiles
+        working-directory: tests/e2e
+        run: yarn email
+
       # The run console legs (#310's leg 17, and #314's leg 18 — the Run Console MVP gate) drive
       # the simulated-run driver, which is not in the engine image and runs on the host through
       # uv (tests/e2e/support/simulator.ts). Synced here so the legs do not spend their own

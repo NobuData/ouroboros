@@ -5796,6 +5796,78 @@ export interface InterventionOverridesTable {
 }
 
 /**
+ * `ouroboros.insights_digest_subscriptions` — who asked for the weekly Insights email (V084,
+ * [#440](https://github.com/NobuData/ouroboros/issues/440), decision **I9**). One row per
+ * (workspace, person); the row is the consent, so there is no `enabled` column and no update.
+ */
+export interface InsightsDigestSubscriptionsTable {
+  id: Generated<string>;
+  organization_id: string;
+  user_id: string;
+  /** When they opted in. A run mails only people subscribed at or before its slot. */
+  created_at: Stamped;
+}
+
+/**
+ * `ouroboros.insights_digest_schedules` — a workspace's weekly slot in UTC (V084). A workspace
+ * with no row uses the default, which the service applies.
+ */
+export interface InsightsDigestSchedulesTable {
+  organization_id: string;
+  /** ISO day of week, 1 = Monday … 7 = Sunday. */
+  weekly_day: Generated<number>;
+  /** Time of day in UTC; `pg` answers a `time` as `HH:MM:SS`. */
+  weekly_time: Generated<string>;
+  /** Who last saved it; null once the person is removed. */
+  updated_by: string | null;
+  created_at: Stamped;
+  updated_at: Generated<Date>;
+}
+
+/**
+ * `ouroboros.insights_digest_runs` — one weekly digest run per (workspace, slot) (V084). The
+ * unique key is the claim across replicas; `content` is the assembly every send renders from,
+ * set once with its window and version (`insights_digest_runs_guard`).
+ */
+export interface InsightsDigestRunsTable {
+  id: Generated<string>;
+  organization_id: string;
+  slot_at: Date;
+  window_from: ColumnType<Date | null, string | null, string | null>;
+  window_to: ColumnType<Date | null, string | null, string | null>;
+  content_version: number | null;
+  /** The digest assembly. Written through `JSON.stringify`. */
+  content: ColumnType<unknown, string | null, string | null>;
+  started_at: Stamped;
+  completed_at: Date | null;
+}
+
+/** `insights_digest_sends.status` (V084) — a send is claimed, then settled once. */
+export type InsightsDigestSendStatus = "claimed" | "sent" | "failed";
+
+/**
+ * `ouroboros.insights_digest_sends` — the digest's send audit (V084): one row per
+ * (run, person, attempt), inserted `claimed` before the mail leaves and settled `sent` or
+ * `failed` (`insights_digest_sends_guard`). The recipient address outlives the person.
+ */
+export interface InsightsDigestSendsTable {
+  id: Generated<string>;
+  organization_id: string;
+  run_id: string;
+  /** The recipient; null once the person is removed. */
+  user_id: string | null;
+  recipient: string;
+  attempt: number;
+  status: Generated<InsightsDigestSendStatus>;
+  message_id: string;
+  /** SHA-256 (hex) of the unsubscribe token this attempt's mail carries. */
+  unsubscribe_token_hash: string;
+  error: string | null;
+  claimed_at: Generated<Date>;
+  settled_at: Date | null;
+}
+
+/**
  * `ouroboros.env_recipes` — a repository's environment recipe, one immutable row per version
  * (V073, [#408](https://github.com/NobuData/ouroboros/issues/408), decision **K7**); served for
  * mockup 14's Repo Profile card by BG.4 ([#420](https://github.com/NobuData/ouroboros/issues/420)).
@@ -5981,6 +6053,10 @@ export interface Database {
   intervention_cause_rules: InterventionCauseRulesTable;
   intervention_events: InterventionEventsTable;
   intervention_overrides: InterventionOverridesTable;
+  insights_digest_subscriptions: InsightsDigestSubscriptionsTable;
+  insights_digest_schedules: InsightsDigestSchedulesTable;
+  insights_digest_runs: InsightsDigestRunsTable;
+  insights_digest_sends: InsightsDigestSendsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -7187,6 +7263,40 @@ export const TABLE_COLUMNS = {
     "to_cause",
     "reason",
     "created_at",
+  ],
+  insights_digest_subscriptions: ["id", "organization_id", "user_id", "created_at"],
+  insights_digest_schedules: [
+    "organization_id",
+    "weekly_day",
+    "weekly_time",
+    "updated_by",
+    "created_at",
+    "updated_at",
+  ],
+  insights_digest_runs: [
+    "id",
+    "organization_id",
+    "slot_at",
+    "window_from",
+    "window_to",
+    "content_version",
+    "content",
+    "started_at",
+    "completed_at",
+  ],
+  insights_digest_sends: [
+    "id",
+    "organization_id",
+    "run_id",
+    "user_id",
+    "recipient",
+    "attempt",
+    "status",
+    "message_id",
+    "unsubscribe_token_hash",
+    "error",
+    "claimed_at",
+    "settled_at",
   ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [
