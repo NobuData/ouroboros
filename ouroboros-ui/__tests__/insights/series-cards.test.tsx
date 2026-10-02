@@ -23,6 +23,7 @@ vi.mock("@/app/insights/intervention-actions", () => ({
   listCauseEvents: vi.fn(),
   recategorizeEvent: vi.fn(),
 }));
+vi.mock("@/app/insights/digest-actions", () => ({ readDigestSheet: vi.fn(), setDigestSubscription: vi.fn() }));
 
 const { InsightsScreen } = await import("@/app/insights/insights-screen");
 

@@ -13,6 +13,7 @@ import type { FlakeCardCase } from "../../flakes/flakes.resources";
 import type { MetricWindow } from "../metrics/metrics.types";
 import { insightsResource, type PageFacts } from "../page/page.compose";
 import {
+  CURRENT_FRESHNESS,
   breakdownOf,
   daysEnding,
   emptyScoreboard,
@@ -185,6 +186,7 @@ export function weekFacts(overrides: Partial<PageFacts> = {}): PageFacts {
     caps: { monthlyCapCents: 60_000, connections: 2 },
     flaky: [fixedCase(), risingCase(), idleCase()],
     scoreboard: emptyScoreboard(),
+    freshness: CURRENT_FRESHNESS,
     ...overrides,
   };
 }

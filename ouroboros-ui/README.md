@@ -3920,15 +3920,15 @@ leg 21's shell assertion found.
 [`docs/mockups/15-insights.html`](../docs/mockups/15-insights.html)'s **frame**: the page head with
 its composed headline, the range segment, the three head actions and the five KPI cards, then the
 throughput and daily-cost charts (#444), the interventions and stage-medians cards and the model
-scoreboard (#445), and the flaky card, the build & test strip and the secondary charts (#446). The
-DORA strip and digest controls (#447) mount in its grid as they land. The
+scoreboard (#445), the flaky card, the build & test strip and the secondary charts (#446), and the
+DORA strip, the weekly-digest sheet and the states a working workspace never sees (#447). The
 sidebar's **Insights** entry is live and leads here, which retires the `/insights` placeholder #49
 held; the mockup's topbar is superseded by the shell, and the page adds no chrome of its own.
 
 ```
 INSIGHTS
 27 PRs merged this week. 2 needed a human.      [7d|●30d|90d|custom]  [✦ Build Analyzer SOON]
-Every loop measured: what merged untouched,      [Email weekly digest SOON]  [Send to Slack SOON]
+Every loop measured: what merged untouched,      [Email weekly digest]  [Send to Slack SOON]
 what it cost, where humans still step in.
 ┌ AUTONOMOUS MERGE ┐┌ MERGED W/O HUMAN ┐┌ MEDIAN CYCLE ┐┌ COST PER MERGED PR ┐┌ HUMAN INTERVENTIONS ┐
 │ 92%              ││ 78%              ││ 14m 20s      ││ $1.87              ││ 2/wk                │
@@ -3952,8 +3952,9 @@ what it cost, where humans still step in.
   polarity; `▼ 2m faster` is good news and draws as such.
 - **Every KPI label opens its methodology** — the BI.1 registry entry the payload carries — so
   *Merged w/o human edits* states the I6 definition rather than a copy of it.
-- **The head's actions are honest.** ✦ Build Analyzer (#516), Email weekly digest (#447) and
-  Send to Slack (#536) are inert buttons whose tooltips name the issue that builds them.
+- **The head's actions are honest.** ✦ Build Analyzer (#516) and Send to Slack (#536) are inert
+  buttons whose tooltips name the issue that builds them; **Email weekly digest** opens its
+  subscribe sheet (#447, below).
 
 Every judgement is a pure function in [`app/insights/view.ts`](app/insights/view.ts), so each
 acceptance criterion is a unit test on a small value.
@@ -4056,6 +4057,47 @@ completion by effort**, **Tokens by stage** and **Flaky tests**
   says so and links the playbooks card; with the playbooks unreadable, it says nothing.
 - **Empty is designed, and wide cards scroll in place.** Every card has an empty state rather than
   zero-height bars, and the strip and the charts scroll inside their own wrappers, never the pane.
+
+### DORA strip, digest sheet and states
+
+**DELIVERY HEALTH · DORA-ISH** ([#447](https://github.com/NobuData/ouroboros/issues/447)) closes the
+grid, under the caption *"Computed from your GitHub + build farm events, not self-reported."*
+
+```
+DELIVERY HEALTH · DORA-ISH            Computed from your GitHub + build farm events, not self-reported.
+DEPLOY FREQUENCY      LEAD TIME · ISSUE→MERGE   CHANGE FAILURE RATE [proxy]   MTTR [proxy]
+4.2/day  ▂▃▅▇         3h 10m  ▇▅▃▂            3.1%  ▂▂▂▂                     22m  ▇▅▃▂
+▲ 0.4/day vs prior    ▼ 20m faster              — flat vs prior 30d          ▼ 8m faster
+```
+
+- **Proxies say so.** A cell the registry flags `proxy` — change failure rate (revert detection)
+  and MTTR (loop-scoped recovery) — wears a `proxy` tag, and its caption opens the KPI row's
+  methodology popover with the formula, the caveat and the tag again. Deploy frequency's caveat
+  names what stands in for a deploy; all of it is the registry's text, verbatim.
+- **No invented curves.** A cell with nothing measured says *Not enough data to measure yet.*
+  and draws no sparkline; a sparkline with no positive day is not drawn. A long window is grouped
+  into at most fifteen bars, each the mean of its measured days.
+- **The digest sheet.** *Email weekly digest* reads the caller's digest and its preview through
+  Server Actions (`digest-actions.ts`) and opens the shell overlay on a weekly toggle (the
+  caller's own subscription — unsubscribing is always allowed, the opt-in is inert with the
+  operator's fix when the deployment has no mail server), the slot and recipient, the service's
+  own HTML render in a **sandboxed** `<iframe>` (what is shown is what is sent), and outside
+  production a note that mail goes to mailpit at `http://localhost:8025`. Either half failing
+  degrades the sheet, never the page.
+- **A cold workspace.** When nothing has merged, built or used a model in the window — or no
+  rollup has filled a day — every card's empty state is framed *Not enough data to measure yet ·
+  The loop hasn't run enough to measure this.*, decided once in `SeriesEmptyState`.
+- **Rollup lag.** When the payload's `freshness` says the rollups are behind (or their latest run
+  failed), a status banner above the head names the day the figures run through and when they
+  were last filled — the real time — rather than presenting old numbers as current.
+- **One failing card degrades itself.** Every card sits under a `CardBoundary` that draws a
+  designed error of the same width if the card cannot draw, while the rest of the page works.
+- **The viewer view.** A `viewer` gets no re-categorize control, and the service refuses their
+  direct call (#445).
+
+Every decision is pure, in [`app/insights/dora-view.ts`](app/insights/dora-view.ts),
+[`app/insights/digest-view.ts`](app/insights/digest-view.ts) and
+[`app/insights/states-view.ts`](app/insights/states-view.ts).
 
 ## Run console
 

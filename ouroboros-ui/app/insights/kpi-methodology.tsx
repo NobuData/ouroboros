@@ -3,10 +3,12 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { MetricMethodology } from "@/app/api/insights";
+import { Tag } from "@/app/ui";
 
 import {
   CAVEATS_HEADING,
   FORMULA_HEADING,
+  PROXY_BADGE,
   PROXY_NOTE,
   SOURCES_HEADING,
   methodologyVersion,
@@ -21,7 +23,9 @@ import {
  * produced it — straight from BI.1's registry entry
  * ([#432](https://github.com/NobuData/ouroboros/issues/432)), which BJ.2 sends beside the figure.
  * Nothing is written here: *Merged w/o human edits* states the I6 definition because the
- * registry's formula is the I6 definition, the one the scoreboard (#439) shares.
+ * registry's formula is the I6 definition, the one the scoreboard (#439) shares. A proxy metric's
+ * title wears the `proxy` tag (BK.6, [#447](https://github.com/NobuData/ouroboros/issues/447)),
+ * so the DORA strip's stand-ins cannot be read as measurements from inside the popover either.
  *
  * A disclosure rather than a modal, the PR page's waiver popover's shape
  * (`app/prs/gates-card.tsx`): the label is a button saying whether it is open (`aria-expanded`),
@@ -85,6 +89,7 @@ export function KpiMethodology({
           <span className="insights-kpi__popover-title" id={titleId}>
             {methodology.title}
           </span>
+          {methodology.proxy && <Tag className="insights-proxy">{PROXY_BADGE}</Tag>}
           <span className="insights-kpi__popover-heading">{FORMULA_HEADING}</span>
           <span className="insights-kpi__popover-text">{methodology.formula}</span>
           <span className="insights-kpi__popover-heading">{SOURCES_HEADING}</span>

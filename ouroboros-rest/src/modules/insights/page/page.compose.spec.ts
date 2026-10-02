@@ -14,7 +14,7 @@ import {
 } from "./page.fixture";
 
 describe("the insights payload", () => {
-  it("is mockup 15: head, five KPIs, three series, five bar cards, the strip, flaky, scoreboard, DORA", () => {
+  it("is mockup 15: head, five KPIs, three series, five bar cards, the strip, flaky, scoreboard, DORA, freshness", () => {
     const page = insightsResource(mockupFacts());
 
     expect(Object.keys(page)).toEqual([
@@ -30,6 +30,7 @@ describe("the insights payload", () => {
       "flaky",
       "scoreboard",
       "dora",
+      "freshness",
     ]);
     expect(page).toMatchObject({
       range: "30d",

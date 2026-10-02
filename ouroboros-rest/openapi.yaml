@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.4"
+  version: "0.38.5"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -7317,6 +7317,11 @@ paths:
                       version: 1
                       proxy: true
                       aggregation: "ratio"
+                freshness:
+                  filledThrough: "2026-08-08"
+                  lastFilledAt: "2026-08-09T11:00:00.000Z"
+                  behind: false
+                  failing: false
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -34186,7 +34191,7 @@ components:
         carries `costCents` only when the usage it covers was priced — otherwise the key is absent,
         never `0`. Claims whose source does not exist yet (cap alerts, the routing suggestion, the
         analyzer's cluster note) have no key at all.
-      required: [range, window, repo, usage, head, kpis, series, hbars, performance, flaky, scoreboard, dora]
+      required: [range, window, repo, usage, head, kpis, series, hbars, performance, flaky, scoreboard, dora, freshness]
       properties:
         range:
           type: string
@@ -34229,6 +34234,35 @@ components:
           description: The delivery-health strip, in cell order.
           items:
             $ref: "#/components/schemas/InsightsDoraCell"
+        freshness:
+          $ref: "#/components/schemas/InsightsFreshness"
+    InsightsFreshness:
+      type: object
+      title: InsightsFreshness
+      additionalProperties: false
+      description: |-
+        How current the rollups behind the page are (#447) — what the page's rollup-lag banner says.
+        The rollups fill hourly with a live tail for today; when a job has been failing, the page is
+        drawn from days that stopped moving, and says so rather than presenting them as current.
+        Both instants are null before anything was filled — a cold workspace, which is not behind.
+      required: [filledThrough, lastFilledAt, behind, failing]
+      properties:
+        filledThrough:
+          type: [string, "null"]
+          format: date
+          description: The stalest metric family's last complete UTC day — the page is only as current as its oldest figure.
+        lastFilledAt:
+          type: [string, "null"]
+          format: date-time
+          description: When a rollup run last succeeded.
+        behind:
+          type: boolean
+          description: |-
+            True when a day the hourly job should have closed is missing (`filledThrough` is before
+            yesterday, UTC), or when some families have filled and another never has.
+        failing:
+          type: boolean
+          description: True when some family's latest rollup run failed.
     InsightsDigest:
       type: object
       title: InsightsDigest

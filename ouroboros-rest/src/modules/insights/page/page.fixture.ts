@@ -24,7 +24,7 @@ import type { Day } from "../rollup/rollup.types";
 import type { Scoreboard } from "../scoreboard/scoreboard.types";
 import type { PageFacts } from "./page.compose";
 import type { BarBreakdowns } from "./page.hbars";
-import type { InsightsBarCard, InsightsBarCards } from "./page.resources";
+import type { InsightsBarCard, InsightsBarCards, InsightsFreshness } from "./page.resources";
 
 /**
  * The five bar cards as a list, in the page's order.
@@ -440,6 +440,14 @@ export function flakyCase(overrides: Partial<FlakeCardCase> = {}): FlakeCardCase
   };
 }
 
+/** Rollups filled through yesterday, an hour ago — a page that is current. */
+export const CURRENT_FRESHNESS: InsightsFreshness = Object.freeze({
+  filledThrough: "2026-08-08",
+  lastFilledAt: "2026-08-09T11:00:00.000Z",
+  behind: false,
+  failing: false,
+});
+
 /**
  * Everything the page is composed from, as mockup 15 draws it.
  *
@@ -459,6 +467,7 @@ export function mockupFacts(overrides: Partial<PageFacts> = {}): PageFacts {
     caps: { monthlyCapCents: 60_000, connections: 2 },
     flaky: [flakyCase()],
     scoreboard: emptyScoreboard(),
+    freshness: CURRENT_FRESHNESS,
     ...overrides,
   };
 }

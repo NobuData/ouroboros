@@ -108,7 +108,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/runs/{id}/transcript.jsonl`            | *Raw JSONL ↗* (#304): the `run_events_jsonl` projection, streamed, opening with `# simulated run` on a simulated run |
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
 | `GET PATCH /api/v1/policies/dry-run`                | [The dry-run policy](#the-dry-run-policy) (#382) — read by any member, flipped by `owner`/`admin`, audited `policy.dry_run_changed` |
-| `GET /api/v1/insights`                             | [The Insights page](#insights-page) (#438) — `?range=7d\|30d\|90d` (`30d` when absent), optional `?repo=owner/name`; head, KPIs, series, bar cards with computed lines, performance, flaky, scoreboard and DORA in one payload; any member |
+| `GET /api/v1/insights`                             | [The Insights page](#insights-page) (#438) — `?range=7d\|30d\|90d` (`30d` when absent), optional `?repo=owner/name`; head, KPIs, series, bar cards with computed lines, performance, flaky, scoreboard, DORA and the rollups' freshness (#447) in one payload; any member |
 | `GET /api/v1/insights/digest`                      | [The weekly email digest](#email-digest) (#440) — the caller's subscription, the workspace's weekly slot (UTC) with `nextRunAt`, and `mail.transport` (`smtp`, or `none` when no mail server is configured); any member |
 | `PUT /api/v1/insights/digest/subscription`         | Opt yourself in or out of this workspace's digest (#440) — `{subscribed}`; `409 insights_digest_mail_unconfigured` when subscribing on a deployment that sends no mail; any member |
 | `PATCH /api/v1/insights/digest/schedule`           | Move the workspace's weekly slot (#440) — `{weeklyDay?, weeklyTime?}`, ISO day 1–7 and `HH:MM` UTC; `owner`/`admin` |
@@ -5991,7 +5991,7 @@ same payload.
 
 | route | what | who |
 | ----- | ---- | --- |
-| `GET /api/v1/insights?range=7d\|30d\|90d&repo=owner/name` | `{range, window, repo, usage, head, kpis[5], series, hbars, performance[6], flaky, scoreboard, dora[4]}`; `30d` when `range` is absent, the whole workspace when `repo` is; a range outside the three (`custom` included) or a malformed `repo` is `422 validation_failed` | every member |
+| `GET /api/v1/insights?range=7d\|30d\|90d&repo=owner/name` | `{range, window, repo, usage, head, kpis[5], series, hbars, performance[6], flaky, scoreboard, dora[4], freshness}`; `30d` when `range` is absent, the whole workspace when `repo` is; a range outside the three (`custom` included) or a malformed `repo` is `422 validation_failed` | every member |
 
 The service computes nothing of its own. Every figure is a [windowed metric](#windowed-metrics-service)
 read with one `now`, and the composers (`page.cards.ts`, `page.series.ts`, `page.hbars.ts`,
@@ -6007,6 +6007,7 @@ read with one `now`, and the composers (`page.cards.ts`, `page.series.ts`, `page
 | `flaky` | `FlakeStateService.card` (AT.3) | Non-healthy cases, plus cases that came back to `healthy` inside the window (`fixed`). Rate and per-day history come from `test_case_history`. `platform` only when every flaky occurrence ran on one; `resolvedBy {runId, issueNumber}` only when a loop's build produced the first clean pass. |
 | `scoreboard` | [`ScoreboardService`](#model-scoreboard) | As it answers it. |
 | `dora` | `deploy_frequency` (as `per_day`), `lead_time`, `change_failure_rate`, `mttr` | `sparkline` per day; `proxy` is the registry's flag. |
+| `freshness` | `metric_rollup_state`, summarized over the workspace's families (#447) | `filledThrough` — the stalest family's last complete UTC day; `lastFilledAt` — the latest successful run; `behind` when that day is before yesterday or some families never filled; `failing` when a latest run failed. Both instants `null` before any fill — a cold workspace, not `behind`. The page's rollup-lag banner says this. |
 
 **Insight lines are computed** (I5). Each is arithmetic over the bars above it, and `null` when
 the window gives it nothing true to say:

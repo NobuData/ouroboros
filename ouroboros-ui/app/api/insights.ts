@@ -33,6 +33,16 @@
  * whatever the screen draws. The correction re-fills the day it was detected on, so the next read
  * of the page has the bars and the line computed from them already moved.
  *
+ * ### The weekly digest's three operations (BK.6, [#447](https://github.com/NobuData/ouroboros/issues/447))
+ *
+ * BJ.4's ([#440](https://github.com/NobuData/ouroboros/issues/440)) digest is the head's **Email
+ * weekly digest** action: `GET /api/v1/insights/digest` says whether the caller receives it, where
+ * it goes, when it is sent and whether this deployment can send mail at all;
+ * `PUT /api/v1/insights/digest/subscription` opts **the caller** in or out — any member, and a
+ * deployment with no mail server refuses the opt-in with `insights_digest_mail_unconfigured`; and
+ * `GET /api/v1/insights/digest/preview` renders the digest exactly as it would be sent now, so the
+ * sheet's preview is what lands in the inbox rather than a picture of it.
+ *
  * Server-side only, by way of `app/api/server.ts`.
  */
 
@@ -84,6 +94,12 @@ export type Intervention = components["schemas"]["Intervention"];
 
 /** The events behind the interventions card over one range. */
 export type InterventionList = components["schemas"]["InterventionList"];
+
+/** The weekly digest as the caller sees it — subscribed, recipient, schedule and mail transport. */
+export type InsightsDigest = components["schemas"]["InsightsDigest"];
+
+/** The weekly digest as it would be sent now — subject, HTML, text and window. */
+export type InsightsDigestPreview = components["schemas"]["InsightsDigestPreview"];
 
 /** The insights operations. */
 export const insights = {
@@ -150,5 +166,40 @@ export const insights = {
         body: { cause, reason },
       }),
     );
+  },
+
+  /**
+   * Read the caller's weekly digest — whether they receive it, and how it is sent.
+   *
+   * @param client The client to read through. Defaults to the server's own.
+   * @returns The subscription, the schedule and the mail transport.
+   * @throws {ApiError} When the service refuses.
+   */
+  async digest(client: ApiClient = api()): Promise<InsightsDigest> {
+    return unwrap(await client.GET("/api/v1/insights/digest"));
+  },
+
+  /**
+   * Opt the caller in to, or out of, the weekly digest.
+   *
+   * @param subscribed True to receive it, false to stop.
+   * @param client The client to write through. Defaults to the server's own.
+   * @returns The digest as it now stands.
+   * @throws {ApiError} `insights_digest_mail_unconfigured` when subscribing on a deployment with no
+   *   mail server, or `validation_failed`.
+   */
+  async subscribeDigest(subscribed: boolean, client: ApiClient = api()): Promise<InsightsDigest> {
+    return unwrap(await client.PUT("/api/v1/insights/digest/subscription", { body: { subscribed } }));
+  },
+
+  /**
+   * Render the weekly digest as it would be sent now.
+   *
+   * @param client The client to read through. Defaults to the server's own.
+   * @returns The subject, the HTML and text parts, and the window they cover.
+   * @throws {ApiError} When the service refuses.
+   */
+  async digestPreview(client: ApiClient = api()): Promise<InsightsDigestPreview> {
+    return unwrap(await client.GET("/api/v1/insights/digest/preview"));
   },
 };

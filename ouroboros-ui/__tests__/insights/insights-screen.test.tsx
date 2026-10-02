@@ -30,6 +30,7 @@ vi.mock("@/app/insights/intervention-actions", () => ({
   listCauseEvents: vi.fn(),
   recategorizeEvent: vi.fn(),
 }));
+vi.mock("@/app/insights/digest-actions", () => ({ readDigestSheet: vi.fn(), setDigestSubscription: vi.fn() }));
 
 const { InsightsScreen } = await import("@/app/insights/insights-screen");
 
@@ -94,13 +95,15 @@ describe("the head", () => {
 
     for (const [name, why] of [
       ["✦ Build Analyzer soon", /#516/],
-      ["Email weekly digest soon", /#447/],
       ["Send to Slack soon", /#536/],
     ] as const) {
       const button = screen.getByRole("button", { name });
       expect(button).toHaveAttribute("aria-disabled", "true");
       expect(button).toHaveAttribute("title", expect.stringMatching(why));
     }
+
+    // The digest's subscribe sheet is built (#447): its action works.
+    expect(screen.getByRole("button", { name: "Email weekly digest" })).not.toHaveAttribute("aria-disabled");
   });
 });
 
@@ -271,7 +274,11 @@ describe("the methodology popover", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Autonomous merge rate" }));
 
-    expect(screen.getByRole("group", { name: "Autonomous merge rate" })).toHaveTextContent(PROXY_NOTE);
+    const popover = screen.getByRole("group", { name: "Autonomous merge rate" });
+
+    expect(popover).toHaveTextContent(PROXY_NOTE);
+    // The tag a proxy wears on the DORA strip, over its popover too (#447).
+    expect(within(popover).getByText("proxy")).toBeInTheDocument();
   });
 
   it("closes on Escape, handing focus back to the label, and on a press outside", () => {

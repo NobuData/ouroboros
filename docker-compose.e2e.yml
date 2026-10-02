@@ -262,6 +262,27 @@
 # go red with the markers they had. `rest` waits for the tap to be healthy, and the tap for the
 # engine, so *healthy* still means the estimator can be reached.
 #
+# ---------------------------------------------------------------------------
+# The eighth line, and the digest it lets the suite watch leave (issue #447, the insights leg).
+# ---------------------------------------------------------------------------
+#
+#   * `OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: "5"` — how often the weekly digest's scheduler asks
+#     whether a workspace's slot has come due. The minimum the service accepts, rather than the
+#     default five minutes.
+#
+# **What it is for.** The insights leg (specs/insights.spec.ts) is the Insights roadmap's gate,
+# and its one assertion no other test can make is that a digest subscription made in the browser
+# **results in an email in mailpit with the page's numbers in it**. The leg moves the workspace's
+# slot to the current minute through the same `PATCH /api/v1/insights/digest/schedule` an
+# administrator uses, and the scheduler sends at its next tick. At the default cadence that tick
+# is up to six minutes away — twice the leg's whole allowance — and at this one it is seconds.
+#
+# **Why the cadence rather than a trigger.** The digest has no "send now" route, deliberately: a
+# weekly mail somebody can fire at will is a different feature. The cadence is an operator
+# setting with a validated range, and the tick is the real one, so the leg exercises the slot
+# arithmetic, the run claim and the send exactly as a deployment does. mailpit itself is the base
+# file's (`full` profile), and so is `rest`'s `OURO_SMTP_URL` pointing at it.
+#
 # Everything else — images, healthchecks, the shared ui/rest network namespace, the
 # loopback-only port publishing — is the base file's, unrepeated here so it cannot drift.
 services:
@@ -274,6 +295,7 @@ services:
       OURO_GITHUB_API_BASE_URL: "http://tracker-stub:8080"
       OURO_RUN_SIMULATOR_SECRET: "e2e-run-simulator-secret"
       OURO_ENGINE_URL: "http://engine-tap:8000"
+      OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS: "5"
     depends_on:
       # Appended to the base file's three. See the header: healthy must include *there is a
       # release to install*.
