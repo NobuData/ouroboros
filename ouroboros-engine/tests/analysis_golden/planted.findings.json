@@ -1,0 +1,268 @@
+[
+  {
+    "analyzer": "change_point",
+    "analyzer_version": 1,
+    "confidence": 100,
+    "confidence_basis": {
+      "effect_size": 12.141,
+      "method": "change_point v1: 100 * stability * (1 - e^(-effect/2)) * min(1, shorter segment days / (2 * min_segment_days))",
+      "sample_size": 585,
+      "stability": 1.0
+    },
+    "data": {
+      "after_median_seconds": 342.0,
+      "before_median_seconds": 252.0,
+      "candidates": [
+        {
+          "date": "2026-05-18",
+          "days_from_breakpoint": 0,
+          "event_kind": "merge",
+          "label": "Zephyr 4.1 migration",
+          "prior": 0.7,
+          "proximity": 1.0,
+          "ref": {
+            "id": "d96aeaf08f875abfbe9a0ba896a3211200000000",
+            "kind": "merge"
+          },
+          "score": 0.7
+        },
+        {
+          "date": "2026-05-18",
+          "days_from_breakpoint": 0,
+          "event_kind": "policy_version",
+          "label": "dry-run policy turned off",
+          "prior": 0.4,
+          "proximity": 1.0,
+          "ref": {
+            "id": "000000e0-0000-0000-0000-000000000001",
+            "kind": "workflow_version"
+          },
+          "score": 0.4
+        },
+        {
+          "date": "2026-05-16",
+          "days_from_breakpoint": -2,
+          "event_kind": "infra_event",
+          "label": "forge-03 re-imaged",
+          "prior": 0.6,
+          "proximity": 0.5,
+          "ref": {
+            "id": "000000e1-0000-0000-0000-000000000003",
+            "kind": "runner"
+          },
+          "score": 0.3
+        },
+        {
+          "date": "2026-05-21",
+          "days_from_breakpoint": 3,
+          "event_kind": "merge",
+          "label": "docs: README typo",
+          "prior": 0.7,
+          "proximity": 0.25,
+          "ref": {
+            "id": "a3d60c9f7ccb5abd8d0c8c515551a54e00000000",
+            "kind": "merge"
+          },
+          "score": 0.175
+        }
+      ],
+      "date": "2026-05-18",
+      "delta_seconds": 90,
+      "metric": "build.duration_median"
+    },
+    "evidence_refs": [
+      {
+        "id": "d96aeaf08f875abfbe9a0ba896a3211200000000",
+        "kind": "merge"
+      },
+      {
+        "id": "000000e0-0000-0000-0000-000000000001",
+        "kind": "workflow_version"
+      },
+      {
+        "id": "000000e1-0000-0000-0000-000000000003",
+        "kind": "runner"
+      },
+      {
+        "id": "a3d60c9f7ccb5abd8d0c8c515551a54e00000000",
+        "kind": "merge"
+      },
+      {
+        "id": "000000b0-0000-0000-0000-00000000038e",
+        "kind": "build"
+      },
+      {
+        "id": "000000b0-0000-0000-0000-0000000003e8",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "change_point",
+    "subject_key": "build.duration_median@2026-05-18"
+  },
+  {
+    "analyzer": "change_point",
+    "analyzer_version": 1,
+    "confidence": 100,
+    "confidence_basis": {
+      "effect_size": 17.537,
+      "method": "change_point v1: 100 * stability * (1 - e^(-effect/2)) * min(1, shorter segment days / (2 * min_segment_days))",
+      "sample_size": 949,
+      "stability": 1.0
+    },
+    "data": {
+      "after_median_seconds": 212.0,
+      "before_median_seconds": 342.0,
+      "candidates": [
+        {
+          "date": "2026-06-22",
+          "days_from_breakpoint": 0,
+          "event_kind": "config_version",
+          "label": "ccache enabled",
+          "prior": 0.8,
+          "proximity": 1.0,
+          "ref": {
+            "id": "c145da847fda50d3ac514f3805b21f4200000000",
+            "kind": "merge"
+          },
+          "score": 0.8
+        },
+        {
+          "date": "2026-06-22",
+          "days_from_breakpoint": 0,
+          "event_kind": "infra_event",
+          "label": "pool-a image bump",
+          "prior": 0.6,
+          "proximity": 1.0,
+          "ref": {
+            "id": "000000e2-0000-0000-0000-000000000001",
+            "kind": "runner_pool"
+          },
+          "score": 0.6
+        },
+        {
+          "date": "2026-06-21",
+          "days_from_breakpoint": -1,
+          "event_kind": "merge",
+          "label": "can: driver timeout tweak",
+          "prior": 0.7,
+          "proximity": 0.75,
+          "ref": {
+            "id": "b6e71b589edd54a0abbbc4eb18df07ec00000000",
+            "kind": "merge"
+          },
+          "score": 0.525
+        }
+      ],
+      "date": "2026-06-22",
+      "delta_seconds": -130,
+      "metric": "build.duration_median"
+    },
+    "evidence_refs": [
+      {
+        "id": "c145da847fda50d3ac514f3805b21f4200000000",
+        "kind": "merge"
+      },
+      {
+        "id": "000000e2-0000-0000-0000-000000000001",
+        "kind": "runner_pool"
+      },
+      {
+        "id": "b6e71b589edd54a0abbbc4eb18df07ec00000000",
+        "kind": "merge"
+      },
+      {
+        "id": "000000b0-0000-0000-0000-00000000113e",
+        "kind": "build"
+      },
+      {
+        "id": "000000b0-0000-0000-0000-000000001194",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "change_point",
+    "subject_key": "build.duration_median@2026-06-22"
+  },
+  {
+    "analyzer": "change_point",
+    "analyzer_version": 1,
+    "confidence": 65,
+    "confidence_basis": {
+      "effect_size": 5.396,
+      "method": "change_point v1: 100 * stability * (1 - e^(-effect/2)) * min(1, shorter segment days / (2 * min_segment_days))",
+      "sample_size": 585,
+      "stability": 1.0
+    },
+    "data": {
+      "after_median_seconds": 252.0,
+      "before_median_seconds": 212.0,
+      "candidates": [
+        {
+          "date": "2026-07-30",
+          "days_from_breakpoint": 0,
+          "event_kind": "merge",
+          "label": "twister suite growth",
+          "prior": 0.7,
+          "proximity": 1.0,
+          "ref": {
+            "id": "e235013a7e77592785ed58030848087900000000",
+            "kind": "merge"
+          },
+          "score": 0.7
+        },
+        {
+          "date": "2026-07-30",
+          "days_from_breakpoint": 0,
+          "event_kind": "policy_version",
+          "label": "merge policy: require HIL",
+          "prior": 0.4,
+          "proximity": 1.0,
+          "ref": {
+            "id": "000000e0-0000-0000-0000-000000000002",
+            "kind": "workflow_version"
+          },
+          "score": 0.4
+        },
+        {
+          "date": "2026-08-01",
+          "days_from_breakpoint": 2,
+          "event_kind": "env_recipe_version",
+          "label": "west env recipe v7",
+          "prior": 0.8,
+          "proximity": 0.5,
+          "ref": {
+            "id": "09f880b5a1f3554fa78e41e7c42562d100000000",
+            "kind": "merge"
+          },
+          "score": 0.4
+        }
+      ],
+      "date": "2026-07-30",
+      "delta_seconds": 40,
+      "metric": "build.duration_median"
+    },
+    "evidence_refs": [
+      {
+        "id": "e235013a7e77592785ed58030848087900000000",
+        "kind": "merge"
+      },
+      {
+        "id": "000000e0-0000-0000-0000-000000000002",
+        "kind": "workflow_version"
+      },
+      {
+        "id": "09f880b5a1f3554fa78e41e7c42562d100000000",
+        "kind": "merge"
+      },
+      {
+        "id": "000000b0-0000-0000-0000-000000002014",
+        "kind": "build"
+      },
+      {
+        "id": "000000b0-0000-0000-0000-00000000206c",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "change_point",
+    "subject_key": "build.duration_median@2026-07-30"
+  }
+]
