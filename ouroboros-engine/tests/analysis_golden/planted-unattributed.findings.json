@@ -1,0 +1,137 @@
+[
+  {
+    "analyzer": "change_point",
+    "analyzer_version": 1,
+    "confidence": 100,
+    "confidence_basis": {
+      "effect_size": 12.141,
+      "method": "change_point v1: 100 * stability * (1 - e^(-effect/2)) * min(1, shorter segment days / (2 * min_segment_days))",
+      "sample_size": 585,
+      "stability": 1.0
+    },
+    "data": {
+      "after_median_seconds": 342.0,
+      "before_median_seconds": 252.0,
+      "candidates": [
+        {
+          "date": "2026-05-18",
+          "days_from_breakpoint": 0,
+          "event_kind": null,
+          "label": "no recorded change within ±3 days",
+          "prior": 0.0,
+          "proximity": 0.0,
+          "ref": {
+            "id": "000000b0-0000-0000-0000-0000000003e8",
+            "kind": "build"
+          },
+          "score": 0.0
+        }
+      ],
+      "date": "2026-05-18",
+      "delta_seconds": 90,
+      "metric": "build.duration_median"
+    },
+    "evidence_refs": [
+      {
+        "id": "000000b0-0000-0000-0000-0000000003e8",
+        "kind": "build"
+      },
+      {
+        "id": "000000b0-0000-0000-0000-00000000038e",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "change_point",
+    "subject_key": "build.duration_median@2026-05-18"
+  },
+  {
+    "analyzer": "change_point",
+    "analyzer_version": 1,
+    "confidence": 100,
+    "confidence_basis": {
+      "effect_size": 17.537,
+      "method": "change_point v1: 100 * stability * (1 - e^(-effect/2)) * min(1, shorter segment days / (2 * min_segment_days))",
+      "sample_size": 949,
+      "stability": 1.0
+    },
+    "data": {
+      "after_median_seconds": 212.0,
+      "before_median_seconds": 342.0,
+      "candidates": [
+        {
+          "date": "2026-06-22",
+          "days_from_breakpoint": 0,
+          "event_kind": null,
+          "label": "no recorded change within ±3 days",
+          "prior": 0.0,
+          "proximity": 0.0,
+          "ref": {
+            "id": "000000b0-0000-0000-0000-000000001194",
+            "kind": "build"
+          },
+          "score": 0.0
+        }
+      ],
+      "date": "2026-06-22",
+      "delta_seconds": -130,
+      "metric": "build.duration_median"
+    },
+    "evidence_refs": [
+      {
+        "id": "000000b0-0000-0000-0000-000000001194",
+        "kind": "build"
+      },
+      {
+        "id": "000000b0-0000-0000-0000-00000000113e",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "change_point",
+    "subject_key": "build.duration_median@2026-06-22"
+  },
+  {
+    "analyzer": "change_point",
+    "analyzer_version": 1,
+    "confidence": 65,
+    "confidence_basis": {
+      "effect_size": 5.396,
+      "method": "change_point v1: 100 * stability * (1 - e^(-effect/2)) * min(1, shorter segment days / (2 * min_segment_days))",
+      "sample_size": 585,
+      "stability": 1.0
+    },
+    "data": {
+      "after_median_seconds": 252.0,
+      "before_median_seconds": 212.0,
+      "candidates": [
+        {
+          "date": "2026-07-30",
+          "days_from_breakpoint": 0,
+          "event_kind": null,
+          "label": "no recorded change within ±3 days",
+          "prior": 0.0,
+          "proximity": 0.0,
+          "ref": {
+            "id": "000000b0-0000-0000-0000-00000000206c",
+            "kind": "build"
+          },
+          "score": 0.0
+        }
+      ],
+      "date": "2026-07-30",
+      "delta_seconds": 40,
+      "metric": "build.duration_median"
+    },
+    "evidence_refs": [
+      {
+        "id": "000000b0-0000-0000-0000-00000000206c",
+        "kind": "build"
+      },
+      {
+        "id": "000000b0-0000-0000-0000-000000002014",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "change_point",
+    "subject_key": "build.duration_median@2026-07-30"
+  }
+]

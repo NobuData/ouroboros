@@ -429,7 +429,7 @@ seeds: 90d series w/ 3 planted shifts + attribution anchors · run manifest ·
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BV.1 | #510 | 🟡 Open | ouroboros-rest: [BV.1] Corpus assembly & run orchestration | Bounded readers, snapshots, budgets, schedule triggers (A2/A7) | mvp, analyzer, rest | N (after BU.1, AJ.4-shape) | Y | L | ouroboros-rest |
-| BV.2 | #511 | 🟡 Open | ouroboros-engine: [BV.2] Analyzer SPI & statistical core | The engine-side SPI + change-point (ruptures) + attribution | mvp, analyzer, engine | N (after BU.2, #52) | Y | L | ouroboros-engine |
+| BV.2 | #511 ✅ | 🟢 Done | ouroboros-engine: [BV.2] Analyzer SPI & statistical core | The engine-side SPI + change-point (ruptures) + attribution | mvp, analyzer, engine | N (after BU.2, #52) | Y | L | ouroboros-engine |
 | BV.3 | #512 | 🟡 Open | ouroboros-engine: [BV.3] Pattern analyzers | Signatures, config-usage, cache-window, queue, waiver-cites, workflow-outcome | mvp, analyzer, engine | N (after BV.2) | Y | L | ouroboros-engine |
 | BV.4 | #513 | 🟡 Open | ouroboros-rest: [BV.4] Suggestion composer | Templates, impact math, confidence scoring, `/v0/synthesize` contract | mvp, analyzer, rest | N (after BV.2/BV.3) | Y | M | ouroboros-rest |
 | BV.5 | #514 | 🟡 Open | ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push | Plane compositions with previews; planning-batch drafting (A4/A5) | mvp, analyzer, rest, workflow, planning | N (after BV.4, WF-P.3, AK/AL) | Y | L | ouroboros-rest |
@@ -467,7 +467,26 @@ trigger(every_50: counter=50) ─▶ assemble{1284 builds, 4.1M lines (sampled: 
 
 ### Issue BV.2 — ouroboros-engine: [BV.2] Analyzer SPI & statistical core
 
-> **GitHub issue:** #511 · **Status:** 🟡 Open · **Parent epic:** #503
+> **GitHub issue:** #511 ✅ · **Status:** 🟢 Done · **Parent epic:** #503
+
+- **Delivered** (`ouroboros-engine` 0.7.8, `src/ouroboros_engine/analysis/`): the `Analyzer` SPI
+  (`id`, `version`, `requires` — corpus sources at their grains — `parameters`, `budget`,
+  `analyze(corpus) -> list[Finding]`), with `Finding` mirroring BU.2's `analysis_findings` row
+  and no `cause` field anywhere. Determinism is enforced: parameters are fingerprinted and pinned
+  per version (`ledger.py`, a retune without a bump is refused at registration), registration
+  refuses clock and entropy reads in the analyzer's source, and every sandbox is seeded,
+  single-threaded and runs under a fixed `PYTHONHASHSEED`. The harness runs each analyzer in its
+  own `python -m ouroboros_engine.analysis.sandbox` process — allow-listed environment, a time
+  budget (`timed_out`), `RLIMIT_AS` (`memory_exceeded`), an optional run compute ceiling
+  (`not_run` / `budget_exceeded`), failures isolated with a logged `traceback_ref`, absent
+  inputs `skipped` — and an audit hook refuses every socket, name lookup and process start.
+  `change_point` v1: `ruptures` PELT over daily median durations, `pen = 4 * sigma-hat^2 * ln n`,
+  five-day minimum segment, per-segment-median deltas, candidates within ±3 days scored
+  `proximity * prior` and emitted ranked with every component; an unattributed shift is still
+  reported. Goldens: the planted May 18 +90 / Jun 22 −130 / Jul 30 +40 corpus with near misses,
+  and a noise-only guard; byte-identical findings under two hash seeds.
+  *Not here:* the HTTP dispatch route and corpus assembly (BV.1, #510); BU.4's seeded corpus as
+  a golden source (#509).
 
 - **Problem Statement:** The engine-side framework (A1) and the flagship
   analyzer: change-point detection with attribution (option 1-A).
@@ -964,7 +983,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 1. **Phase 0 — Prerequisites:** AH, AS/AT.3, AO, AJ.4 shape, AG.5, AS.4,
    BI.1/BI.2, WF-P.3/S, AK/AL, farm config, BK.1, #41/#46.
 2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
-3. **Phase 2 — Pipeline:** BV.1 (#510) ⊕ (→) BV.2 (#511) → BV.3 (#512) →
+3. **Phase 2 — Pipeline:** BV.1 (#510) ⊕ (→) **BV.2 (#511) ✅** → BV.3 (#512) →
    BV.4 (#513) → BV.5 (#514) → BV.6 (#515)
 4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
    BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*

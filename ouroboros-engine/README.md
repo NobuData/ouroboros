@@ -32,6 +32,7 @@ probe and nothing else.
 | Config | pydantic-settings, `OURO_*` validated at import |
 | API spec | **Spec-first**: [`openapi.yaml`](openapi.yaml) is authoritative and is served verbatim; [`openapi.json`](openapi.json) is rendered from it |
 | Lint & format | ruff |
+| Statistics | numpy, [`ruptures`](https://centre-borelli.github.io/ruptures-docs/) (PELT change-point detection, scipy beneath it) — the Build Analyzer, [#511](https://github.com/NobuData/ouroboros/issues/511) |
 | Tests | pytest + the FastAPI test client (httpx2) |
 | Container | Multi-stage `python:3.12-slim`, non-root, `HEALTHCHECK` on `/healthz` — [#53](https://github.com/NobuData/ouroboros/issues/53) |
 
@@ -403,6 +404,59 @@ extractor for PR review cycles and run observations, which REST plugs into that 
   a note saying why. An answer that looked like extraction with no model behind it would be the
   overclaiming K5 rules out. Installing BH.1's extractor is one line in `create_app`.
 
+## The Build Analyzer's analyzers
+
+`analysis/` is the engine side of mockup 18's Build Analyzer (BV.2,
+[#511](https://github.com/NobuData/ouroboros/issues/511), decisions **A1/A2**): a versioned
+analyzer SPI, the harness that runs it, and the first analyzer — change-point detection with
+ranked attribution behind the duration chart's chips. Nothing here is served over HTTP yet;
+corpus assembly and the run orchestration that calls the harness are BV.1
+([#510](https://github.com/NobuData/ouroboros/issues/510)).
+
+```python
+from ouroboros_engine.analysis.harness import run_analysis
+from ouroboros_engine.analysis.registry import default_registry
+
+report = run_analysis(default_registry(), corpus, compute_ceiling_seconds=3600)
+report.findings  # analysis_findings rows (BU.2), sorted by (analyzer, subject_key)
+report.failed  # the analyzers that failed, timed out or ran out of memory
+report.findings_json()  # the canonical bytes — identical corpus => identical text
+```
+
+- **The SPI** (`spi.py`) — subclass `Analyzer`, declare `id`, `version`, `requires` (corpus
+  sources at their grains), `parameters` and an optional `budget`, implement
+  `analyze(corpus) -> list[Finding]`. A `Finding` (`contract.py`) mirrors one
+  `analysis_findings` row and is refused here for anything the database would refuse. There is
+  **no `cause` field** anywhere: attribution is a ranked candidate list inside `data`.
+- **Determinism, enforced.** `parameters` are fingerprinted and pinned per version in
+  `ledger.py` — a retune without a version bump is refused at registration. Registration also
+  reads the analyzer's module and refuses clock and entropy reads (`time.time`,
+  `datetime.now`, `uuid4`, `os.urandom`, `secrets`, unseeded `default_rng()` —
+  `determinism.py`). Every sandbox is seeded, single-threaded, `LC_ALL=C.UTF-8`, and runs under
+  a fixed `PYTHONHASHSEED`; the reproducibility test varies that seed and compares bytes.
+- **Isolation and budgets** (`harness.py`, `sandbox.py`). Each analyzer runs in its own
+  `python -m ouroboros_engine.analysis.sandbox` process with an allow-listed environment (no
+  secret, no proxy), a time budget (killed when it runs out — `timed_out`), a memory budget
+  (`RLIMIT_AS` — `memory_exceeded`) and an optional run-wide compute ceiling (`not_run`,
+  `budget_exceeded`). An exception is that analyzer's `failed` outcome with a `traceback_ref`,
+  and the full traceback is logged under that ref; the run continues. An analyzer whose
+  required sources are absent is `skipped`.
+- **No network.** An audit hook installed before the analyzer is imported refuses every socket,
+  name lookup and process start. A swallowed refusal still voids that analyzer's findings. The
+  hook sees Python-level access; raw system calls from a C extension are the container's to
+  stop.
+- **`change_point` v1** (`changepoint.py`) — PELT (`l2`) over **daily median** build durations
+  under `pen = 4 * sigma-hat^2 * ln(n)`, minimum segment five days; per-segment medians give the
+  delta (`+90`, `-130`, `+40`); every event within ±3 days scores `proximity * prior` and is
+  emitted ranked, best first, with each component exposed. A shift with no event in reach is
+  still reported, with one `unattributed` candidate. Confidence is
+  `100 * stability * (1 - e^(-effect/2)) * coverage`; the module docstring has every term and
+  the simulation the penalty was chosen on.
+
+`tests/analysis_golden.py` builds the planted-shift and noise-only corpora; the expected
+findings are committed under `tests/analysis_golden/` and regenerated with
+`uv run python tests/analysis_golden.py` (after a version bump, if the change was intended).
+
 ## The simulated-run driver (development only)
 
 [#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by
@@ -721,6 +775,15 @@ ouroboros-engine/
 │   ├── learning/       # the /v0/learn contract and the extractor seam          · #412
 │   │   ├── contract.py #   the source bundle and the candidates — no status, ever
 │   │   └── extractor.py#   the seam; unavailable-v0 is installed until #423
+│   ├── analysis/       # the Build Analyzer's SPI and statistical core          · #511
+│   │   ├── contract.py #   the corpus in, BU.2's finding rows out, one canonical JSON
+│   │   ├── spi.py      #   the Analyzer base class and its determinism discipline
+│   │   ├── ledger.py   #   every analyzer version's parameters, pinned
+│   │   ├── determinism.py# the clock and entropy check registration runs
+│   │   ├── registry.py #   discovery and registration
+│   │   ├── harness.py  #   one sandbox per analyzer: budgets, isolation, the report
+│   │   ├── sandbox.py  #   the analyzer's process: no network, RLIMIT_AS, seeds
+│   │   └── changepoint.py# change_point v1: PELT over daily medians, ranked attribution
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON
@@ -827,6 +890,7 @@ heuristic estimator [#106](https://github.com/NobuData/ouroboros/issues/106) ·
 the workflow DSL and its shared validation [#133](https://github.com/NobuData/ouroboros/issues/133) ·
 workflow validation and the dry-run simulator [#144](https://github.com/NobuData/ouroboros/issues/144) ·
 the plan contract and its outline parser [#277](https://github.com/NobuData/ouroboros/issues/277) ·
+the Build Analyzer's analyzer SPI and change-point core [#511](https://github.com/NobuData/ouroboros/issues/511) ·
 the simulated-run driver [#307](https://github.com/NobuData/ouroboros/issues/307) ·
 the gateway that calls it [#35](https://github.com/NobuData/ouroboros/issues/35) ·
 full epic [#6](https://github.com/NobuData/ouroboros/issues/6).
