@@ -146,3 +146,28 @@ describe("the bar cards and the scoreboard (#445)", () => {
     expect(rule("\\.insights-board__suggestion")).toMatch(/background:\s*var\(--inset\)/);
   });
 });
+
+describe("the strip, the secondary charts and the flaky card (#446)", () => {
+  it("puts the strip at the mockup's c-12 and the tokens card at c-6", () => {
+    expect(rule("\\.insights-col--12")).toMatch(/grid-column:\s*span 12/);
+    expect(COMPONENT).toContain('"insights-perf insights-col--12"');
+    expect(COMPONENT).toMatch(/width: "half"/);
+  });
+
+  it("scrolls a wide card inside its own wrapper, never the content pane", () => {
+    expect(rule("\\.insights-scroll")).toMatch(/overflow-x:\s*auto/);
+    expect(rule("\\.insights-scroll")).toMatch(/min-width:\s*0/);
+    expect(rule("\\.insights-scroll__chart")).toMatch(/min-width:\s*[\d.]+rem/);
+    expect(rule("\\.insights-perf__cell")).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it("tones the build failures and a quarantined rate through the status tokens", () => {
+    expect(rule("\\.insights-perf__failed")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.insights-flaky__rate--warn")).toMatch(/color:\s*var\(--warn\)/);
+  });
+
+  it("draws the flaky paths in mono, truncated to the card", () => {
+    expect(rule("\\.insights-flaky__name")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.insights-flaky__name")).toMatch(/text-overflow:\s*ellipsis/);
+  });
+});

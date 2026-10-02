@@ -789,7 +789,7 @@ mockup is silent; the mockup remains binding where they differ.
 | BK.2 | #443 ✅ | 🟢 Done | ouroboros-ui: [BK.2] Insights route, head, range & KPI row | Frame, composed headline, range segment, five KPI cards | mvp, insights, ui, design | N (after #41, BJ.2, BA-D.5) | Y | M | ouroboros-ui |
 | BK.3 | #444 ✅ | 🟢 Done | ouroboros-ui: [BK.3] Time-series cards (throughput & cost) | Line/area charts with tooltip, guide, spike label, projections | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
 | BK.4 | #445 ✅ | 🟢 Done | ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards | Table + meters + suggestion slot; two hbar cards + insight lines | mvp, insights, ui, design | N (after BK.1, BJ.3) | Y | M | ouroboros-ui |
-| BK.5 | #446 | 🟡 Open | ouroboros-ui: [BK.5] Performance strip, secondary charts & flaky card | Strip, stacked vbars, suite/effort/token hbars, flaky sparklines | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
+| BK.5 | #446 ✅ | 🟢 Done | ouroboros-ui: [BK.5] Performance strip, secondary charts & flaky card | Strip, stacked vbars, suite/effort/token hbars, flaky sparklines | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
 | BK.6 | #447 | 🟡 Open | ouroboros-ui: [BK.6] DORA strip, digest controls, states & e2e | Methodology popovers, subscribe flow, cold states, themes, e2e | mvp, insights, ui, ci | N (after BK.3–BK.5, BJ.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue BK.1 — ouroboros-ui: [BK.1] Chart primitives (SVG)
@@ -923,7 +923,7 @@ Flaky env/rig ▓▓▓▓▓ 8 … "Fix the top row and interventions drop ~40%
 
 ### Issue BK.5 — ouroboros-ui: [BK.5] Performance strip, secondary charts & flaky card
 
-> **GitHub issue:** #446 · **Status:** 🟡 Open · **Parent epic:** #430
+> **GitHub issue:** #446 ✅ · **Status:** 🟢 Done · **Parent epic:** #430
 
 - **Problem Statement:** The wide stat strip, the stacked build bars, the
   three remaining hbar cards, and the flaky-tests card with its history
@@ -946,6 +946,12 @@ Flaky env/rig ▓▓▓▓▓ 8 … "Fix the top row and interventions drop ~40%
 - **Parallelism/Dependencies:** Needs BK.1, BK.2 (+AT.3, BF.6 links).
 - **Technical Stack:** React, chart primitives.
 - **Epic:** BK
+- **Amendment (as built):** the deps-refresh line stays absent — the `cache_window` finding (BV.3,
+  #512) is not in the payload yet, so the builds card draws no line rather than one computed here.
+  The flaky card's rig links to the build farm's runner list (`/build-farm#runners-card-title`;
+  the farm has no per-runner address), the fixing run opens with `?from=insights` (a new run
+  origin), and *Open playbook →* lands on the recipe's own row (`/knowledge#playbook-<id>`),
+  found by its name, *Flaky test hunt*.
 
 ```
 [412 builds · 91.5% (377✓/35✗) · 26.4k cases · 98.9% · 126M tok · $563.20]

@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12 | **290** |
-| 🟡 **In progress** | P11, P13 | **53** of 70 |
+| 🟡 **In progress** | P11, P13 | **54** of 70 |
 | — **Not started** | P14–P17 | 0 of 94 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1586,7 +1586,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **32 issues** · 109 complexity points · order **#329–#360** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_15_INSIGHTS.md`, `ROADMAP_MOCKUP_18_BUILD_ANALYZER.md`
-> **Status:** 🟡 **In progress** — 17 of 32 issues closed
+> **Status:** 🟡 **In progress** — 18 of 32 issues closed
 
 **Goal.** Build the metrics service as the single computational truth over every plane — rollups plus live tail, a metric registry carrying formula, sources and caveats — and the deterministic analysis engine that snapshots a corpus, detects change points with ranked attribution, and drafts auditable suggestions.
 
@@ -1622,7 +1622,7 @@ the blockquote above that records what it did and what it did differently.
 | 350 | **BK.2** | ✅ [#443](https://github.com/NobuData/ouroboros/issues/443) | Insights route, head, range & KPI row | ouroboros-ui | M | 5.3, D.5, BJ.2 |
 | 351 | **BV.4** | [#513](https://github.com/NobuData/ouroboros/issues/513) | Suggestion composer | ouroboros-rest | M | BV.2, BV.3 |
 | 352 | **BK.3** | ✅ [#444](https://github.com/NobuData/ouroboros/issues/444) | Time-series cards (throughput & cost) | ouroboros-ui | M | BK.1, BK.2 |
-| 353 | **BK.5** | [#446](https://github.com/NobuData/ouroboros/issues/446) | Performance strip, secondary charts & flaky card | ouroboros-ui | M | BK.1, BK.2 |
+| 353 | **BK.5** | ✅ [#446](https://github.com/NobuData/ouroboros/issues/446) | Performance strip, secondary charts & flaky card | ouroboros-ui | M | BK.1, BK.2 |
 | 354 | **BV.5** | [#514](https://github.com/NobuData/ouroboros/issues/514) | Actions — apply, dismiss, draft & push | ouroboros-rest | L | P.3, BV.4 |
 | 355 | **BK.6** | [#447](https://github.com/NobuData/ouroboros/issues/447) | DORA strip, digest controls, states & e2e | ouroboros-ui, .github | M | BJ.4, BK.3, BK.5 |
 | 356 | **BV.6** | [#515](https://github.com/NobuData/ouroboros/issues/515) | Measurement job & calibration | ouroboros-rest | M | BI.2, BU.3, BV.5 |

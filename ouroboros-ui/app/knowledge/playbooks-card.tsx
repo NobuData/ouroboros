@@ -6,6 +6,7 @@ import { useState } from "react";
 import type { Playbook, PlaybookLaunchReceipt, PlaybookList } from "@/app/api/playbooks";
 import type { Reading } from "@/app/api/reading";
 import type { SkillList } from "@/app/api/skills";
+import { playbookAnchor } from "@/app/paths";
 import { Card, CardHead, Chip, EmptyState } from "@/app/ui";
 
 import { KnowledgeUnread } from "./knowledge-unread";
@@ -138,7 +139,7 @@ export function PlaybooksCard({ playbooks, skills, readAt, mayLaunch, mayAdminis
               const queued = queuedNote(receipts[playbook.id] ?? []);
 
               return (
-                <li className="knowledge-playbooks__row" key={playbook.id}>
+                <li className="knowledge-playbooks__row" id={playbookAnchor(playbook.id)} key={playbook.id}>
                   <div className="knowledge-playbooks__body">
                     <p className="knowledge-playbooks__name">
                       {playbook.name}

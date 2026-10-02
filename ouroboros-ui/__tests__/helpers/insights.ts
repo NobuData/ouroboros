@@ -1,24 +1,27 @@
 import type {
   InsightsBarCard,
+  InsightsFlakyCase,
   InsightsKpi,
   InsightsPage,
+  InsightsPerformanceCell,
   InsightsRange,
   MetricMethodology,
   Scoreboard,
   ScoreboardRow,
 } from "@/app/api/insights";
 import type { InsightsReadings } from "@/app/insights/data";
+import type { FlakyPlaybook } from "@/app/insights/flaky-view";
 
 /**
  * The insights page as the frame (#443) reads it — mockup 15's head and KPI row.
  *
  * Only what is mounted is built: `range`, `window`, `repo`, `usage`, `head`, `kpis`, — for the
  * time-series cards (#444) — `series.throughput` and `series.cost`, and — for the scoreboard and
- * the two bar cards (#445) — `scoreboard`, `hbars.interventions` and `hbars.stages`. The cards
- * #446–#447 add read
- * the rest of the payload, so the remainder is left out and the object is cast — a later card's
- * suite extends this fixture with its own section rather than this one inventing data nobody
- * asserts on.
+ * the two bar cards (#445) — `scoreboard`, `hbars.interventions` and `hbars.stages`, and — for
+ * the strip, the secondary charts and the flaky card (#446) — `performance`, `series.builds`,
+ * `hbars.suites`, `hbars.effort`, `hbars.tokens` and `flaky`. The DORA strip #447 adds reads the
+ * rest of the payload, so the remainder is left out and the object is cast — a later card's suite
+ * extends this fixture with its own section rather than this one inventing data nobody asserts on.
  */
 
 /** When the seeded page was read, held still. */
@@ -193,9 +196,25 @@ export function seededSeries(): InsightsPage["series"] {
       spike: { day: SPIKE_DAY, costCents: 3140 },
       methodology: methodology({ metricId: "daily_cost", title: "Daily cost", unit: "cents", aggregation: "sum" }),
     },
-    builds: { points: [], methodology: methodology({ metricId: "builds", unit: "count", aggregation: "sum" }) },
+    builds: {
+      points: SEEDED_DAYS.map((day, index) => ({
+        day,
+        succeeded: SEEDED_BUILDS_OK[index]!,
+        failed: SEEDED_BUILDS_FAILED[index]!,
+      })),
+      methodology: methodology({ metricId: "builds", unit: "count", aggregation: "sum" }),
+    },
   };
 }
+
+/** Succeeded builds per day, read off mockup 15's stacked bars — a weekday rhythm. */
+const SEEDED_BUILDS_OK = [14, 5, 4, 12, 15, 14, 17, 16, 6, 4, 12, 15, 16, 11, 16, 5, 3, 12, 15, 17, 16, 14, 6, 4, 12, 16, 11, 17, 14, 6];
+
+/** Failed builds per day — the mockup's eight failure days, 35 in all. */
+const SEEDED_BUILDS_FAILED = [0, 0, 0, 4, 0, 0, 0, 2, 0, 0, 5, 0, 0, 3, 0, 0, 0, 6, 0, 0, 0, 0, 0, 0, 7, 0, 4, 0, 4, 0];
+
+/** The index of the seeded worst build day — Aug 3, `19 · 7 failed`. */
+export const WORST_BUILD_DAY = 24;
 
 /** The I6 untouched definition's `$ / success` sibling, as BJ.3 registers it. */
 export const COST_PER_SUCCESS_FORMULA =
@@ -255,6 +274,176 @@ export function seededStages(): InsightsBarCard {
     },
   );
 }
+
+/** Mockup 15's *Test failures by suite · 30d* — `33 cases`. */
+export function seededSuites(): InsightsBarCard {
+  return barCard(
+    [
+      ["telemetry integration", "telemetry integration", 14],
+      ["OTA update", "OTA update", 9],
+      ["physical · HIL", "physical · HIL", 6],
+      ["motor control", "motor control", 3],
+      ["unit · drivers", "unit · drivers", 1],
+    ],
+    {
+      line: "33 failing cases total — 0.12% of everything that ran.",
+      methodology: methodology({ metricId: "test_failures_by_suite", unit: "count", aggregation: "sum" }),
+    },
+  );
+}
+
+/** Mockup 15's *Time to completion by effort*, in milliseconds — XS `6m` to XL `2h 10m`. */
+export function seededEffort(): InsightsBarCard {
+  return barCard(
+    [
+      ["xs", "XS", 360_000],
+      ["s", "S", 660_000],
+      ["m", "M", 1_140_000],
+      ["l", "L", 2_880_000],
+      ["xl", "XL", 7_800_000],
+    ],
+    {
+      unit: "duration_ms",
+      total: null,
+      line: "Estimator calibration: 89% of issues land within their predicted band.",
+      methodology: methodology({ metricId: "completion_time_by_effort", unit: "duration_ms", aggregation: "median" }),
+    },
+  );
+}
+
+/** Mockup 15's *Tokens by stage · 30d* — `126M total`. */
+export function seededTokens(): InsightsBarCard {
+  return barCard(
+    [
+      ["implement", "implement", 71_000_000],
+      ["review", "review", 18_000_000],
+      ["plan", "plan", 14_000_000],
+      ["analyze", "analyze", 12_000_000],
+      ["test-gen", "test-gen", 8_000_000],
+      ["docs", "docs", 3_000_000],
+    ],
+    {
+      unit: "tokens",
+      total: 126_000_000,
+      line: "≈ 4.6M tokens per merged PR · 31% served by local models.",
+      methodology: methodology({ metricId: "tokens_by_task_kind", unit: "tokens", aggregation: "sum" }),
+    },
+  );
+}
+
+/**
+ * One performance cell.
+ *
+ * @param key Which cell.
+ * @param unit Its unit.
+ * @param value Its value.
+ * @param components A rate's parts.
+ * @returns The cell.
+ */
+export function perfCell(
+  key: InsightsPerformanceCell["key"],
+  unit: InsightsPerformanceCell["unit"],
+  value: number | null,
+  components?: InsightsPerformanceCell["components"],
+): InsightsPerformanceCell {
+  return {
+    key,
+    unit,
+    value,
+    ...(components === undefined ? {} : { components }),
+    methodology: methodology({ metricId: key, unit, aggregation: unit === "pct" ? "ratio" : "sum" }),
+  };
+}
+
+/** Mockup 15's build & test strip — `412 · 91.5% (377 ✓ / 35 ✗) · 26.4k · 98.9% · 126M · $563.20`. */
+export function seededPerformance(): InsightsPerformanceCell[] {
+  return [
+    perfCell("builds", "count", 412),
+    perfCell("build_success_rate", "pct", 91.5, { numerator: 377, denominator: 412 }),
+    perfCell("test_cases_run", "count", 26_400),
+    perfCell("test_pass_rate", "pct", 98.9, { numerator: 26_110, denominator: 26_400 }),
+    perfCell("tokens", "tokens", 126_000_000),
+    perfCell("total_cost", "cents", 56_320),
+  ];
+}
+
+/** The seeded flaky window's run id for the loop that fixed `test_frame_order`. */
+export const FIXING_RUN_ID = "0b6c5e1a-6a51-4d43-9b1e-7f1c1b0f1847";
+
+/**
+ * A flaky history from rates, one per day.
+ *
+ * @param rates Each day's rate, `null` for a day it did not run.
+ * @returns The history, over the last days of the seeded window.
+ */
+function history(rates: readonly (number | null)[]): InsightsFlakyCase["history"] {
+  return rates.map((ratePct, index) => ({ day: SEEDED_DAYS[SEEDED_DAYS.length - rates.length + index]!, ratePct }));
+}
+
+/**
+ * One flaky case.
+ *
+ * @param over What differs from the seeded fixed case.
+ * @returns The case.
+ */
+export function flakyCase(over: Partial<InsightsFlakyCase> = {}): InsightsFlakyCase {
+  return {
+    caseKey: "tests/telemetry/test_frame_order.c",
+    name: null,
+    suite: "telemetry integration",
+    repository: "acme/helios-firmware",
+    state: "fixed",
+    ratePct: 0,
+    trend: "falling",
+    history: history([7, 8, 6, 7.5, 5, 6.5, 4, 3, 2, 0, 0, 0]),
+    resolvedBy: { runId: FIXING_RUN_ID, issueNumber: 1847 },
+    ...over,
+  };
+}
+
+/** Mockup 15's three flaky rows — fixed, quarantined on a rig, and watching. */
+export function seededFlaky(): InsightsPage["flaky"] {
+  return {
+    cases: [
+      flakyCase(),
+      withoutResolved({
+        caseKey: "tests/hil/test_estop_release.py",
+        suite: "physical · HIL",
+        state: "quarantined",
+        ratePct: 4.1,
+        trend: "rising",
+        history: history([1, 1.5, 1, 2, 2, 3, 2.5, 3.5, 3, 4.5, 5, 6]),
+        platform: "rig:hil-rig-02",
+      }),
+      withoutResolved({
+        caseKey: "tests/ota/test_swap.c",
+        suite: "OTA update",
+        state: "watching",
+        ratePct: 1.2,
+        trend: "flat",
+        history: history([1, 1.5, 1, 1, 2, 1.5, 1, 2.5, 2, 2.5, null, 3]),
+      }),
+    ],
+  };
+}
+
+/**
+ * A case that is not `fixed` — the seeded case with `over` applied and no `resolvedBy` key, as the
+ * service omits it.
+ *
+ * @param over What differs from the seeded case.
+ * @returns The case.
+ */
+export function withoutResolved(over: Partial<InsightsFlakyCase>): InsightsFlakyCase {
+  const flaky = flakyCase(over);
+
+  delete flaky.resolvedBy;
+
+  return flaky;
+}
+
+/** The seeded workspace's *Flaky test hunt* recipe (mockup 14). */
+export const SEEDED_PLAYBOOK: FlakyPlaybook = { id: "5eed0000-0000-4000-8000-00000000f1a7", name: "Flaky test hunt" };
 
 /**
  * One scoreboard row.
@@ -351,7 +540,15 @@ export function seededInsights(over: Partial<InsightsPage> = {}): InsightsPage {
     head: { range: "7d", mergedPrs: 27, interventions: 2 },
     kpis: seededKpis(),
     series: seededSeries(),
-    hbars: { interventions: seededInterventions(), stages: seededStages() },
+    hbars: {
+      interventions: seededInterventions(),
+      stages: seededStages(),
+      suites: seededSuites(),
+      effort: seededEffort(),
+      tokens: seededTokens(),
+    },
+    performance: seededPerformance(),
+    flaky: seededFlaky(),
     scoreboard: seededScoreboard(),
     ...over,
   } as InsightsPage;
@@ -363,17 +560,20 @@ export function seededInsights(over: Partial<InsightsPage> = {}): InsightsPage {
  * @param page The page, or `null` for a read that failed.
  * @param range The range it was read for. Defaults to the page's own.
  * @param mayRecategorize Whether the reader is a member or above. Defaults to `true`.
+ * @param flakyPlaybook The flaky-test recipe reading (#446). Defaults to the seeded recipe.
  * @returns The readings.
  */
 export function insightsReadings(
   page: InsightsPage | null = seededInsights(),
   range: InsightsRange = page?.range ?? "30d",
   mayRecategorize = true,
+  flakyPlaybook: InsightsReadings["flakyPlaybook"] = { ok: true, value: SEEDED_PLAYBOOK },
 ): InsightsReadings {
   return {
     range,
     page: page === null ? { ok: false, reason: "Choose a workspace." } : { ok: true, value: page },
     readAt: INSIGHTS_READ_AT,
     mayRecategorize,
+    flakyPlaybook,
   };
 }

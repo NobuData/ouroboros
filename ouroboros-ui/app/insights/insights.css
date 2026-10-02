@@ -506,3 +506,182 @@
   border-radius: var(--r-md);
   background: var(--raised);
 }
+
+/* ---------- the strip, the secondary charts and the flaky card (#446) ---------- */
+
+/* The mockup's `c-12`: the build & test strip. */
+.insights-col--12 {
+  grid-column: span 12;
+  min-width: 0;
+}
+
+/*
+ * A wide card's own scroll wrapper (CP.4): narrower than its chart's floor, the card scrolls
+ * sideways and the content pane never does.
+ */
+.insights-scroll {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+/* The chart's floor inside the wrapper — below it, bars and labels would crush into each other. */
+.insights-scroll__chart {
+  min-width: 16rem;
+}
+
+/* The mockup's `padding:12px 18px` strip: title, cells and scope tag on one row. */
+.insights-perf {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-8);
+  padding: var(--sp-6) var(--sp-8);
+}
+
+.insights-perf__title {
+  flex: none;
+  white-space: nowrap;
+}
+
+.insights-perf__scroll {
+  flex: 1;
+}
+
+/* The mockup's `.bt-stats`: bordered cells, never wrapping — the wrapper scrolls instead. */
+.insights-perf__cells {
+  display: flex;
+  align-items: center;
+  margin: 0;
+}
+
+.insights-perf__cell {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: 0 var(--sp-7);
+  border-left: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+.insights-perf__cell:first-child {
+  padding-left: 0;
+  border-left: none;
+}
+
+.insights-perf__label {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.insights-perf__value {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The split's failures are error-toned, as the mockup's `35 ✗`. */
+.insights-perf__failed {
+  color: var(--err);
+}
+
+.insights-perf__scope {
+  flex: none;
+}
+
+/* Narrow, the title, the cells and the tag stack — each still one line, the cells scrolling. */
+@media (max-width: 52rem) {
+  .insights-perf {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .insights-perf__scroll {
+    width: 100%;
+  }
+}
+
+/* The mockup's `.flake` rows: a hairline between each. */
+.insights-flaky {
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.insights-flaky__row {
+  padding: var(--sp-5) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.insights-flaky__row:last-child {
+  border-bottom: none;
+}
+
+.insights-flaky__head,
+.insights-flaky__line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  min-width: 0;
+}
+
+.insights-flaky__line {
+  gap: var(--sp-6);
+  margin-top: var(--sp-3);
+}
+
+/* The mono path, truncated to the card — its tooltip carries the whole of it. */
+.insights-flaky__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.insights-flaky__rate {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.insights-flaky__rate--warn {
+  color: var(--warn);
+}
+
+.insights-flaky__context,
+.insights-flaky__more,
+.insights-flaky__absent {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.insights-flaky__context {
+  min-width: 0;
+}
+
+/* The mockup's `<hr class="divider">` above the playbook link. */
+.insights-flaky__playbook {
+  display: flex;
+  align-items: flex-start;
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+}
+
+/* A link inside a muted sentence — it keeps the sentence's size and says it is a link. */
+.insights-link {
+  color: var(--ink-mut);
+  text-decoration: underline;
+  text-underline-offset: 0.125rem;
+}
+
+.insights-link:hover {
+  color: var(--ink);
+}

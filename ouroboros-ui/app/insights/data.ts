@@ -8,7 +8,11 @@ import "server-only";
  * range the address names. From the first paint on, the browser keeps it fresh through
  * `app/insights/insights-store.tsx`; this is what it draws until the poll's first answer.
  *
- * The read is an {@link attempt}, so a refusal is a page that says what it could not read under
+ * Beside it, the workspace's playbooks — only so the flaky card can link the flaky-test recipe
+ * (BK.5, [#446](https://github.com/NobuData/ouroboros/issues/446)). The two reads are
+ * independent and made together.
+ *
+ * Each read is an {@link attempt}, so a refusal is a page that says what it could not read under
  * one banner rather than an error boundary: the head, the range and the actions still draw, and
  * the poll that starts on mount is the retry that mends it.
  */
@@ -16,7 +20,10 @@ import "server-only";
 import type { Workspace } from "@/app/api/access";
 import { type InsightsPage, type InsightsRange, insights } from "@/app/api/insights";
 import { mayContribute } from "@/app/api/membership";
+import { playbooks } from "@/app/api/playbooks";
 import { type Reading, attempt } from "@/app/api/reading";
+
+import { type FlakyPlaybook, flakyPlaybookOf } from "./flaky-view";
 
 /** Everything the insights page's first paint is drawn from. */
 export interface InsightsReadings {
@@ -35,6 +42,13 @@ export interface InsightsReadings {
    * draws the control; the service refuses a viewer's direct call whatever this says.
    */
   readonly mayRecategorize: boolean;
+  /**
+   * The workspace's flaky-test playbook (#415) — what the flaky card's *Open playbook →* links —
+   * `null` when the workspace has none, or why the playbooks could not be read (BK.5,
+   * [#446](https://github.com/NobuData/ouroboros/issues/446)). Read once for the first paint: a
+   * recipe is not a figure, and the poll does not re-read it.
+   */
+  readonly flakyPlaybook: Reading<FlakyPlaybook | null>;
 }
 
 /**
@@ -52,10 +66,13 @@ export async function readInsights(
   range: InsightsRange,
   now: () => number = Date.now,
 ): Promise<InsightsReadings> {
+  const [page, list] = await Promise.all([attempt(() => insights.page(range)), attempt(() => playbooks.list())]);
+
   return {
     range,
-    page: await attempt(() => insights.page(range)),
+    page,
     readAt: now(),
     mayRecategorize: mayContribute(access.membership.roles),
+    flakyPlaybook: list.ok ? { ok: true, value: flakyPlaybookOf(list.value.items) } : list,
   };
 }

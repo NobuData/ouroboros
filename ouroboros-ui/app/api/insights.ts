@@ -58,6 +58,18 @@ export type MetricMethodology = components["schemas"]["MetricMethodology"];
 /** One of the five horizontal-bar cards, its computed insight line included. */
 export type InsightsBarCard = components["schemas"]["InsightsBarCard"];
 
+/** Tokens, and the dollars they cost when priced (decision I8) — the page's `usage`. */
+export type InsightsMoney = components["schemas"]["InsightsMoney"];
+
+/** One cell of the build & test strip (BK.5, #446). `total_cost` is null when nothing was priced. */
+export type InsightsPerformanceCell = components["schemas"]["InsightsPerformanceCell"];
+
+/** The flaky card — AT.3's states over the window (BK.5, #446). */
+export type InsightsFlaky = components["schemas"]["InsightsFlaky"];
+
+/** One flaky case, with its real daily history and the context its occurrences name. */
+export type InsightsFlakyCase = components["schemas"]["InsightsFlakyCase"];
+
 /** The model scoreboard — task kind × serving model, with AB.3's suggestion when it exists. */
 export type Scoreboard = components["schemas"]["Scoreboard"];
 

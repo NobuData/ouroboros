@@ -156,6 +156,13 @@ describe("the three rows", () => {
     expect(screen.getByRole("button", { name: NEW_PLAYBOOK })).not.toHaveAttribute("aria-disabled");
   });
 
+  it("gives each row its anchor, so the insights flaky card can open it (#446)", () => {
+    draw();
+
+    expect(row("Flaky test hunt").id).toMatch(/^playbook-/);
+    expect(document.getElementById(row("CVE bump").id)).toBe(row("CVE bump"));
+  });
+
   it("renders the same markup in both palettes — the sheet is what differs", () => {
     const [light, dark] = renderInBothPalettes(
       <PlaybooksCard

@@ -3920,7 +3920,8 @@ leg 21's shell assertion found.
 [`docs/mockups/15-insights.html`](../docs/mockups/15-insights.html)'s **frame**: the page head with
 its composed headline, the range segment, the three head actions and the five KPI cards, then the
 throughput and daily-cost charts (#444), the interventions and stage-medians cards and the model
-scoreboard (#445). The remaining cards (#446–#447) mount in its grid as they land. The
+scoreboard (#445), and the flaky card, the build & test strip and the secondary charts (#446). The
+DORA strip and digest controls (#447) mount in its grid as they land. The
 sidebar's **Insights** entry is live and leads here, which retires the `/insights` placeholder #49
 held; the mockup's topbar is superseded by the shell, and the page adds no chrome of its own.
 
@@ -4020,6 +4021,42 @@ decisions are pure functions in [`app/insights/bars-view.ts`](app/insights/bars-
   `Apply in Models →` deep link (`/models?route=<task>`) — and draws nothing otherwise. No advice is
   composed on the page.
 
+### Strip, secondary charts and flaky card
+
+The **Build & test performance** strip, **Builds per day**, **Test failures by suite**, **Time to
+completion by effort**, **Tokens by stage** and **Flaky tests**
+([#446](https://github.com/NobuData/ouroboros/issues/446)) read the payload's `performance`,
+`series.builds`, `hbars.suites|effort|tokens` and `flaky`. Their decisions are pure functions in
+[`performance-view.ts`](app/insights/performance-view.ts),
+[`bars-view.ts`](app/insights/bars-view.ts) and [`flaky-view.ts`](app/insights/flaky-view.ts).
+
+```
+┌ BUILD & TEST PERFORMANCE · 30D  Builds 412 │ Build success 91.5% 377 ✓ / 35 ✗ │ … │ Total cost $563.20  [helios-firmware · all workflows] ┐
+┌ FLAKY TESTS ─────────── 30d window ┐
+│ tests/telemetry/test_frame_order.c [fixed]        ▆▇▅▆▄▅▃▂▁   0.0%  fixed by loop #1847 ↗ │
+│ tests/hil/test_estop_release.py    [quarantined]  ▁▂▁▃▃▄▃▅▄▆▇█ 4.1% rising on hil-rig-02 ↗ │
+│ tests/ota/test_swap.c              [watching]     ▁▂▁▁▃▂▁▄▃▄ ▅ 1.2%  under threshold      │
+│ [Open playbook: Flaky test hunt →]                                                       │
+```
+
+- **The cost cell inherits the money rules.** Dollars where the usage was priced (with the tokens
+  they do not cover named where only part was); where nothing was, the cell shows tokens and **no
+  dollars**.
+- **The ratio lines are the server's.** *"33 failing cases total — 0.12% of everything that
+  ran"*, the effort card's calibration line (#435) and *"≈ 4.6M tokens per merged PR · 31% served
+  by local models"* are computed by BJ.2 from real attribution and drawn verbatim — nothing when
+  `line` is `null`. Each card lifts its largest row and recedes the two smallest.
+- **No deps-refresh line.** *"Failures cluster on deps-refresh days"* is the build analyzer's
+  `cache_window` finding (BV.3, [#512](https://github.com/NobuData/ouroboros/issues/512)); until
+  the payload carries it, the builds card draws no line at all (decision I10).
+- **Flaky links resolve.** *fixed by loop #N* opens the fixing run's console (`?from=insights`) and
+  is plain words when no occurrence names a loop; a rig (`rig:hil-rig-02`) links to the build
+  farm's runner list, and only when every flaky occurrence ran on it. *Open playbook →* opens the
+  workspace's *Flaky test hunt* row on Knowledge (`/knowledge#playbook-<id>`); with none, the card
+  says so and links the playbooks card; with the playbooks unreadable, it says nothing.
+- **Empty is designed, and wide cards scroll in place.** Every card has an empty state rather than
+  zero-height bars, and the strip and the charts scroll inside their own wrappers, never the pane.
+
 ## Run console
 
 `/runs/:id` ([#309](https://github.com/NobuData/ouroboros/issues/309)) is
@@ -4042,8 +4079,8 @@ RUN CONSOLE · LOOP #1847
 **A contextual surface.** The route has no sidebar entry of its own
 (`docs/DESIGN_SYSTEM_APP_SHELL.md`). Links carry the module they came from in `?from=`
 (`runPath` in [`paths.ts`](app/paths.ts)); the page reads it against an allow-list
-([`origin.ts`](app/runs/origin.ts) — dashboard, build farm, issues, workflows; anything else is
-the dashboard), publishes it with `setNavOrigin`, and the sidebar lights that entry — with
+([`origin.ts`](app/runs/origin.ts) — dashboard, build farm, issues, workflows, knowledge,
+insights; anything else is the dashboard), publishes it with `setNavOrigin`, and the sidebar lights that entry — with
 `aria-current="true"` rather than `"page"` — **only while no entry's route matches**. A
 breadcrumb leads back to it. The page adds no chrome, so the header and sidebar stay put while
 the pane scrolls.
