@@ -32,7 +32,7 @@ import type { ErrorEnvelope } from "../../errors/error.envelope";
 import { TENANT_HEADER } from "../../tenancy/tenant.resolver";
 import { METRICS_CLOCK, MetricsService } from "../metrics/metrics.service";
 import { addDays, utcDay } from "../rollup/rollup.days";
-import { barCards } from "./page.fixture";
+import { barCards, keysOf, MONEY_KEY } from "./page.fixture";
 import type { InsightsResource } from "./page.resources";
 import { PAGE_METRICS } from "./page.service";
 
@@ -54,29 +54,6 @@ interface Bench {
   readonly slug: string;
   /** `github_repos.id` of helios-firmware. */
   readonly repoId: string;
-}
-
-/**
- * Keys that carry dollars: every `…Cents` figure and the cost chart's three money-only sections.
- */
-const MONEY_KEY = /cents$|^budget$|^projection$|^spike$/i;
-
-/**
- * Every key anywhere in a JSON value.
- *
- * @param value - The value.
- * @returns The keys, with repeats.
- */
-function keysOf(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap(keysOf);
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return [];
-  }
-
-  return Object.entries(value).flatMap(([key, inner]) => [key, ...keysOf(inner)]);
 }
 
 describe("the Insights page, against a migrated database", () => {

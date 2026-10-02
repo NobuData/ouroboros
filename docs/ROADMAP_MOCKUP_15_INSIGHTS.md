@@ -498,7 +498,7 @@ seeds: 30d × all families ─▶ every mockup number reproduced · Aug-4 toolti
 | BJ.2 | #438 ✅ | 🟢 Done | ouroboros-rest: [BJ.2] Insights read APIs | KPIs, series, hbar sets, scoreboard, flaky, DORA payloads | mvp, insights, rest | N (after BJ.1, BI.3) | Y | M | ouroboros-rest |
 | BJ.3 | #439 ✅ | 🟢 Done | ouroboros-rest: [BJ.3] Model scoreboard aggregation | Task×model outcomes: untouched %, $/success, trends (I6) | mvp, insights, rest, routing | N (after BJ.1, AW) | Y | M | ouroboros-rest |
 | BJ.4 | #440 ✅ | 🟢 Done | ouroboros-rest: [BJ.4] Email digest generation | Weekly registry-rendered digest per subscriber (I9) | mvp, insights, rest | N (after BJ.1, BA-E.3 mailer) | Y | M | ouroboros-rest |
-| BJ.5 | #441 | 🟡 Open | ouroboros-rest: [BJ.5] Insights integration tests | Parity, deltas, taxonomy, scoreboard, digest, isolation | mvp, insights, rest, ci | N (after BJ.2–BJ.4) | Y | M | ouroboros-rest |
+| BJ.5 | #441 ✅ | 🟢 Done | ouroboros-rest: [BJ.5] Insights integration tests | Parity, deltas, taxonomy, scoreboard, digest, isolation | mvp, insights, rest, ci | N (after BJ.2–BJ.4) | Y | M | ouroboros-rest |
 
 ### Issue BJ.1 — ouroboros-rest: [BJ.1] Windowed metrics service
 
@@ -728,7 +728,31 @@ weekly ─▶ assemble(range: 7d) ─▶ HTML+text digest ─▶ mailer ─▶ s
 
 ### Issue BJ.5 — ouroboros-rest: [BJ.5] Insights integration tests
 
-> **GitHub issue:** #441 · **Status:** 🟡 Open · **Parent epic:** #429
+> **GitHub issue:** #441 ✅ · **Status:** 🟢 Done · **Parent epic:** #429
+
+- **Delivered** (`ouroboros-rest` 0.38.4, tests only): **formula-version enforcement** —
+  `rollup/rollup.formula.lock.json` records a SHA-256 fingerprint of each family's formula
+  sources (its extractor, the insights modules it imports, the named declarations it imports from
+  elsewhere; comments and formatting ignored) beside the versions it implements, and
+  `rollup.formula.spec.ts` fails `ci/rest` when a fingerprint moves and no version rose with it;
+  its mutation cases edit a formula, I6's predicate and the local provider kinds in memory to
+  prove it would. `insights.integration-spec.ts` holds what sits between the module suites:
+  7 / 30 / 90-day windows at a month start, a week start, a year end and offsets whose local day
+  is not the UTC day (value, prior and delta against arithmetic in the spec, and a rate whose
+  averaged daily rates are ~29% against a recomposed ~6.5%); the source × signal → cause matrix,
+  a person's cause surviving a re-mapped rule's run, an idempotent hook replay, and a
+  re-categorization moving `human_interventions`; I6 and the honesty gates over HTTP on real
+  unpriced loops (KPI untouched ≡ scoreboard, human pushes excluded; no dollar, alerts, suggestion
+  or cluster-note key anywhere, scoreboard included); and series, KPI and scoreboard isolation
+  between two workspaces mirroring one repository. `digest.render.spec.ts` adds the digest's
+  absent cases (no gated claim in any state, none passed on from a page that carries a suggestion
+  and a budget; no money field when unpriced). Mutations of rate recomposition, the human-push
+  check, the suggestion gate and the scan's workspace filter each turn the new suite red. The
+  rest of the issue's table was already held by #433–#440's suites (rollup ≡ oracle for every
+  family, idempotent re-runs and resumed backfills, revert near-misses, queue-time calibration,
+  scoreboard thresholds, the digest golden and unsubscribe). **Decided at implementation**
+  (2026-10-01): *"× timezones"* is read as instants in any offset resolving to UTC days — no
+  route takes a timezone and the grain is UTC; the new suite adds ~5 s.
 
 - **Problem Statement:** Formula drift is this page's failure mode; the
   oracle discipline needs harness enforcement.
@@ -1100,7 +1124,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
 2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { **BI.3 (#434) ✅** ⊕ **BI.4 (#435) ✅** } → **BI.5 (#436) ✅**
-3. **Phase 2 — Services:** **BJ.1 (#437) ✅** → { **BJ.2 (#438) ✅** ⊕ **BJ.3 (#439) ✅** ⊕ **BJ.4 (#440) ✅** } → BJ.5 (#441)
+3. **Phase 2 — Services:** **BJ.1 (#437) ✅** → { **BJ.2 (#438) ✅** ⊕ **BJ.3 (#439) ✅** ⊕ **BJ.4 (#440) ✅** } → **BJ.5 (#441) ✅**
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*
 5. **v2:** BL.1 (#448) with mockup 19; BL.2 (#449) with AB.3 (#209);

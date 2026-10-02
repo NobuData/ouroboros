@@ -36,6 +36,31 @@ export function barCards(hbars: InsightsBarCards): InsightsBarCard[] {
   return [hbars.interventions, hbars.stages, hbars.suites, hbars.effort, hbars.tokens];
 }
 
+/**
+ * Every key anywhere in a JSON value — how a gate's absent case is asserted: a withheld claim is a
+ * missing key, so the scan must find none.
+ *
+ * @param value - The value.
+ * @returns The keys, with repeats.
+ */
+export function keysOf(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(keysOf);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return [];
+  }
+
+  return Object.entries(value).flatMap(([key, inner]) => [key, ...keysOf(inner)]);
+}
+
+/**
+ * Keys that carry dollars: every `…Cents` figure, and the three cost-chart sections that exist
+ * only to hold one. (`cost` itself is the chart's name, and holds tokens too.)
+ */
+export const MONEY_KEY = /cents$|^budget$|^projection$|^spike$/i;
+
 /** The fixture window's last day — the mockup's `Aug 8`. */
 export const TODAY: Day = "2026-08-08";
 

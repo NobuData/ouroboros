@@ -45,7 +45,8 @@ export interface RollupRow {
  * are versioned with their registry entries" that lives in code. The fill refuses to run when the
  * database's `metric_definitions.version` disagrees (`rollup.registry.ts`), so a formula change
  * that shipped without its extractor, or the reverse, fails loudly instead of writing numbers the
- * methodology popover no longer describes.
+ * methodology popover no longer describes. The other half is `rollup.formula.lock.json` (#441):
+ * changing what an extractor computes without raising a version here fails `rollup.formula.spec.ts`.
  */
 export interface FamilyExtractor {
   /** `metric_definitions.family` — the key `metric_rollup_state` is kept under. */
