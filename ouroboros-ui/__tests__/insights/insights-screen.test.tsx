@@ -15,7 +15,7 @@ import {
   seededInsights,
   seededKpis,
 } from "../helpers/insights";
-import { renderInBothPalettes } from "../helpers/palettes";
+import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 
 /**
  * The insights screen (#443) end to end, under its store: the composed head, the range segment
@@ -304,12 +304,13 @@ describe("the states", () => {
     const view = render(<InsightsScreen poll={POLL} readings={insightsReadings()} />);
 
     expect(view.container.querySelector("main.insights")).not.toBeNull();
-    expect(view.container.querySelector("header, nav, aside")).toBeNull();
+    // A card's own head is a `<header>` inside the grid; the page adds none above it.
+    expect(view.container.querySelector("main.insights > header, nav, aside")).toBeNull();
   });
 
   it("draws the same markup in both palettes — every hue is a token", () => {
     const [light, dark] = renderInBothPalettes(<InsightsScreen poll={POLL} readings={insightsReadings()} />);
 
-    expect(light).toBe(dark);
+    expect(maskIds(light!)).toBe(maskIds(dark!));
   });
 });

@@ -1,17 +1,19 @@
 import type { InsightsReadings } from "./data";
+import { CostCard } from "./cost-card";
 import { InsightsBanner } from "./insights-banner";
 import { InsightsGrid } from "./insights-grid";
 import { InsightsHead } from "./insights-head";
 import type { InsightsPollOptions } from "./insights-poll";
 import { InsightsProvider } from "./insights-store";
 import { KpiRow } from "./kpi-row";
+import { ThroughputCard } from "./throughput-card";
 
 import "./insights.css";
 
 /**
  * Insights (BK.2, [#443](https://github.com/NobuData/ouroboros/issues/443)) —
- * `docs/mockups/15-insights.html`'s page head and KPI row, and the frame the rest of the page
- * arrives in (#444–#447).
+ * `docs/mockups/15-insights.html`'s page head and KPI row, the throughput and daily-cost cards
+ * (#444), and the frame the rest of the page arrives in (#445–#447).
  *
  * It renders **inside the app shell**, so it starts at its page head and contributes no chrome
  * of its own (`docs/DESIGN_SYSTEM_APP_SHELL.md` § 2): the shell's content pane is the scroll
@@ -39,6 +41,8 @@ export function InsightsScreen({
         <InsightsHead />
         <InsightsGrid>
           <KpiRow />
+          <ThroughputCard />
+          <CostCard />
         </InsightsGrid>
       </main>
     </InsightsProvider>

@@ -3918,8 +3918,9 @@ leg 21's shell assertion found.
 
 `/insights` ([#443](https://github.com/NobuData/ouroboros/issues/443)) is
 [`docs/mockups/15-insights.html`](../docs/mockups/15-insights.html)'s **frame**: the page head with
-its composed headline, the range segment, the three head actions and the five KPI cards. The
-charts, the scoreboard and the remaining cards (#444–#447) mount in its grid as they land. The
+its composed headline, the range segment, the three head actions and the five KPI cards, then the
+throughput and daily-cost charts (#444). The scoreboard and the remaining cards (#445–#447) mount
+in its grid as they land. The
 sidebar's **Insights** entry is live and leads here, which retires the `/insights` placeholder #49
 held; the mockup's topbar is superseded by the shell, and the page adds no chrome of its own.
 
@@ -3955,6 +3956,39 @@ what it cost, where humans still step in.
 
 Every judgement is a pure function in [`app/insights/view.ts`](app/insights/view.ts), so each
 acceptance criterion is a unit test on a small value.
+
+### Time-series cards
+
+**Merged PRs per day** and **Daily cost · all providers**
+([#444](https://github.com/NobuData/ouroboros/issues/444)) are the `TimeSeries` primitive (#442)
+over the payload's `series.throughput` and `series.cost`, each tagged with the window it covers.
+Their four pieces of furniture each encode a claim, and each is built from served data only
+([`app/insights/series-view.ts`](app/insights/series-view.ts)):
+
+```
+┌ MERGED PRS PER DAY · 30D ──────────── Jul 10 – Aug 8 ┐┌ DAILY COST · ALL PROVIDERS ─ Jul 10 – Aug 8 ┐
+│        ┆ Aug 4 — 6 merged · $9.12 · 1 intervention  6 ││        $31.40                               │
+│  ╱╲╱╲╱─┆─╱╲─╱─────────────────────────────────────●   ││ $20 budget ╌╌╌╌╌╱╲╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌╌        │
+│ Jul 12          Jul 26                         Aug 8  ││ ─────────────╱  ╲───────────────● $18.60    │
+└───────────────────────────────────────────────────────┘│ Projected month: $571 of $600 cap.          │
+                                                         └─────────────────────────────────────────────┘
+```
+
+- **The tooltip composes the day's meta** — merges, priced spend, interventions — and **omits the
+  cost fragment** on an unpriced day rather than writing `$0.00`. Every day is a keyboard stop
+  named by that sentence.
+- **The budget guide is a real provider cap** (`budget.dailyCents`) or absent — never a plausible
+  invented line.
+- **The spike label is the bare value.** The contract's `spike` is a day and an amount; nothing
+  attributes it, so no cause is written (the mockup's *Zephyr migration* is illustrative).
+- **The projection names its method.** *Projected month* is a button whose tooltip says it is
+  linear-to-date and not a forecast; the cap is named only when there is one.
+- **No alerts claim.** *"alerts fire at 90%"* waits on cap alerts (AF.4,
+  [#237](https://github.com/NobuData/ouroboros/issues/237)); the guide and projection render
+  without it.
+- **Empty is not zero.** A range with no merges, or no priced usage, is a designed empty state
+  saying which — never a flat line at zero. Before anything is read, each card is a skeleton at
+  the chart's own aspect.
 
 ## Run console
 

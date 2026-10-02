@@ -5,6 +5,7 @@ import type { Role } from "@/app/api/membership";
 
 import { insightsReadings, seededInsights } from "../helpers/insights";
 import { membership, sessionUser } from "../helpers/login";
+import { maskIds } from "../helpers/palettes";
 
 /**
  * The insights route (#443): the gate is asked first, the address's range is read, and every
@@ -87,12 +88,12 @@ describe("the insights route", () => {
 
   it("draws the same page for a viewer as for an owner", async () => {
     const owner = render(await page());
-    const asOwner = owner.container.innerHTML;
+    const asOwner = maskIds(owner.container.innerHTML);
     owner.unmount();
 
     requireWorkspace.mockResolvedValue(access(["viewer"]));
     const viewer = render(await page());
 
-    expect(viewer.container.innerHTML).toBe(asOwner);
+    expect(maskIds(viewer.container.innerHTML)).toBe(asOwner);
   });
 });
