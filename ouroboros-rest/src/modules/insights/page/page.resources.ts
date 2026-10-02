@@ -11,6 +11,7 @@
  * flaky         states, rates and history from real occurrences
  * scoreboard    BJ.3's payload, as it answers it
  * dora[4]       value · delta · sparkline · proxy flag
+ * freshness     through which day the rollups run, and when they were last filled
  * ```
  *
  * Three rules shape every type here:
@@ -259,6 +260,21 @@ export interface InsightsDoraCell {
   readonly methodology: MetricMethodology;
 }
 
+/**
+ * How current the rollups behind the page are (BK.6, #447) — what the rollup-lag banner says.
+ * `filledThrough` is the stalest family's last complete day; `lastFilledAt` the latest successful
+ * fill. Both are null before anything was filled — a cold workspace, which is not `behind`.
+ */
+export interface InsightsFreshness {
+  readonly filledThrough: Day | null;
+  /** ISO 8601. */
+  readonly lastFilledAt: string | null;
+  /** A day the hourly job should have closed is missing, or a family has never filled. */
+  readonly behind: boolean;
+  /** Some family's latest run failed. */
+  readonly failing: boolean;
+}
+
 /** `GET /api/v1/insights`. */
 export interface InsightsResource {
   readonly range: MetricRange;
@@ -276,4 +292,5 @@ export interface InsightsResource {
   readonly flaky: InsightsFlaky;
   readonly scoreboard: Scoreboard;
   readonly dora: readonly InsightsDoraCell[];
+  readonly freshness: InsightsFreshness;
 }

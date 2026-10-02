@@ -1,8 +1,12 @@
+"use client";
+
 import { type ReactNode, useId } from "react";
 
 import { Card, CardHead, EmptyState, Tag, cx } from "@/app/ui";
 
+import { useInsights } from "./insights-store";
 import type { SeriesEmpty } from "./series-view";
+import { emptyFor, isColdWorkspace } from "./states-view";
 
 /**
  * The frame both time-series cards share (BK.3, [#444](https://github.com/NobuData/ouroboros/issues/444)):
@@ -82,9 +86,28 @@ export function SeriesSkeleton({ width }: Readonly<{ width: SeriesWidth }>) {
 /**
  * The chart's designed empty state, at the chart's own height — never a flat line at zero.
  *
- * @param props.empty What is not there and why.
+ * In a cold workspace (BK.6, [#447](https://github.com/NobuData/ouroboros/issues/447)) every
+ * card's empty state is framed the same way — *not enough data to measure yet* — because every
+ * card is empty for one reason: the loop has not run enough, not that it failed. Decided once,
+ * here, from the page in the store (`isColdWorkspace`), so no card can frame it differently.
+ *
+ * @param props.empty What is not there and why — the card's own empty state.
  * @returns The empty state.
  */
 export function SeriesEmptyState({ empty }: Readonly<{ empty: SeriesEmpty }>) {
-  return <EmptyState fill note={empty.note} title={empty.title} />;
+  const shown = useColdEmpty(empty);
+
+  return <EmptyState fill note={shown.note} title={shown.title} />;
+}
+
+/**
+ * A card's empty state as the page's coldness frames it.
+ *
+ * @param empty The card's own empty state.
+ * @returns It, or its cold framing when the workspace has not run enough to measure.
+ */
+export function useColdEmpty(empty: SeriesEmpty): SeriesEmpty {
+  const { page } = useInsights();
+
+  return emptyFor(empty, page !== null && isColdWorkspace(page));
 }

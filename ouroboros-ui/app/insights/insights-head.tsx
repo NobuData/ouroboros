@@ -2,6 +2,7 @@
 
 import { Button, Eyebrow } from "@/app/ui";
 
+import { DigestAction } from "./digest-sheet";
 import { useInsights } from "./insights-store";
 import { RangeSegment } from "./range-segment";
 import {
@@ -20,9 +21,10 @@ import {
  * head payload, read from the store like the cards under it; how it pluralizes and degrades is
  * `insightsHeadline`'s (`app/insights/view.ts`).
  *
- * **The actions are honest.** None of the three has anything to open yet, so each is an inert
- * button carrying a *soon* mark, and its tooltip names the issue that builds it
- * (`INSIGHTS_ACTIONS`).
+ * **The actions are honest.** *Email weekly digest* opens its subscribe sheet (BK.6,
+ * [#447](https://github.com/NobuData/ouroboros/issues/447), `app/insights/digest-sheet.tsx`); the
+ * two with nothing to open yet are inert buttons carrying a *soon* mark, and each tooltip names
+ * the issue that builds it (`INSIGHTS_ACTIONS`).
  *
  * @returns The head.
  */
@@ -38,13 +40,17 @@ export function InsightsHead() {
       </div>
       <RangeSegment />
       <div className="insights__actions">
-        {INSIGHTS_ACTIONS.map((action) => (
-          <Button key={action.id} reason={action.soonNote} tone="ghost">
-            {/* The space keeps the accessible name words apart — "Send to Slack soon". */}
-            {action.label}{" "}
-            <span className="insights__soon">{SOON_MARK}</span>
-          </Button>
-        ))}
+        {INSIGHTS_ACTIONS.map((action) =>
+          action.id === "digest" ? (
+            <DigestAction key={action.id} label={action.label} />
+          ) : (
+            <Button key={action.id} reason={action.soonNote ?? undefined} tone="ghost">
+              {/* The space keeps the accessible name words apart — "Send to Slack soon". */}
+              {action.label}{" "}
+              <span className="insights__soon">{SOON_MARK}</span>
+            </Button>
+          ),
+        )}
       </div>
     </div>
   );

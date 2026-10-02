@@ -525,6 +525,122 @@ export function seededScoreboard(over: Partial<Scoreboard> = {}): Scoreboard {
   };
 }
 
+/** One DORA cell, as served (#447). */
+export type DoraCellFixture = InsightsPage["dora"][number];
+
+/** The registry's change-failure-rate caveat — a proxy, and says so. */
+export const CFR_CAVEAT = "A proxy: revert detection only. A failure fixed forward rather than reverted is not counted.";
+
+/** The registry's MTTR caveat — a proxy, and says so. */
+export const MTTR_CAVEAT = "A proxy: loop-scoped recovery, not production incidents. Re-windowed from total time over count.";
+
+/** The registry's deploy-frequency caveat — what stands in for a deploy. */
+export const DEPLOY_CAVEAT =
+  "A green default-branch build stands in for a deploy; pipelines that deploy elsewhere are not seen.";
+
+/**
+ * One DORA cell.
+ *
+ * @param over What differs.
+ * @returns The cell.
+ */
+export function doraCell(over: Partial<DoraCellFixture> = {}): DoraCellFixture {
+  return {
+    key: "deploy_frequency",
+    unit: "per_day",
+    value: 4.2,
+    prior: 3.8,
+    delta: 0.4,
+    trend: { direction: "up", good: true },
+    sparkline: SEEDED_DAYS.map((_, index) => 2 + (index % 5)),
+    proxy: false,
+    methodology: methodology({
+      metricId: "deploy_frequency",
+      title: "Deploy frequency",
+      formula: "Successful default-branch builds on the build farm per day.",
+      sources: ["builds"],
+      caveats: DEPLOY_CAVEAT,
+      unit: "count",
+      aggregation: "sum",
+    }),
+    ...over,
+  };
+}
+
+/**
+ * The seeded DORA strip — mockup 15's `4.2/day ▲`, `3h 10m ▼`, `3.1% —`, `22m ▼`.
+ *
+ * @returns The four cells, in strip order.
+ */
+export function seededDora(): DoraCellFixture[] {
+  return [
+    doraCell(),
+    doraCell({
+      key: "lead_time",
+      unit: "duration_ms",
+      value: 11_400_000,
+      prior: 12_600_000,
+      delta: -1_200_000,
+      trend: { direction: "down", good: true },
+      methodology: methodology({
+        metricId: "lead_time",
+        title: "Lead time",
+        formula: "Mean time from a loop starting on an issue to its pull request merging.",
+        sources: ["runs", "pull_requests"],
+        caveats: "Time before the loop picked the issue up is not included.",
+        unit: "duration_ms",
+        aggregation: "ratio",
+      }),
+    }),
+    doraCell({
+      key: "change_failure_rate",
+      unit: "pct",
+      value: 3.1,
+      prior: 3.1,
+      delta: 0,
+      trend: { direction: "flat", good: null },
+      proxy: true,
+      methodology: methodology({
+        metricId: "change_failure_rate",
+        title: "Change failure rate",
+        formula: "Merged pull requests later reverted, divided by merged pull requests.",
+        sources: ["pull_requests"],
+        caveats: CFR_CAVEAT,
+        unit: "pct",
+        proxy: true,
+        aggregation: "ratio",
+      }),
+    }),
+    doraCell({
+      key: "mttr",
+      unit: "duration_ms",
+      value: 1_320_000,
+      prior: 1_800_000,
+      delta: -480_000,
+      trend: { direction: "down", good: true },
+      proxy: true,
+      methodology: methodology({
+        metricId: "mttr",
+        title: "MTTR",
+        formula: "Mean time from a loop's build or test failure to the same loop's next green.",
+        sources: ["runs", "builds"],
+        caveats: MTTR_CAVEAT,
+        unit: "duration_ms",
+        proxy: true,
+        aggregation: "ratio",
+      }),
+    }),
+  ];
+}
+
+/** Rollups filled through yesterday, two minutes before the read — a current page (#447). */
+export const CURRENT_FRESHNESS: InsightsPage["freshness"] = {
+  filledThrough: "2026-08-07",
+  lastFilledAt: "2026-08-08T14:00:00.000Z",
+  behind: false,
+  failing: false,
+};
+
 /**
  * The seeded page.
  *
@@ -550,6 +666,8 @@ export function seededInsights(over: Partial<InsightsPage> = {}): InsightsPage {
     performance: seededPerformance(),
     flaky: seededFlaky(),
     scoreboard: seededScoreboard(),
+    dora: seededDora(),
+    freshness: CURRENT_FRESHNESS,
     ...over,
   } as InsightsPage;
 }

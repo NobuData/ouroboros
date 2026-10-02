@@ -97,27 +97,31 @@ export interface InsightsAction {
   readonly id: "analyzer" | "digest" | "slack";
   /** The button's text, verbatim from the mockup. */
   readonly label: string;
-  /** Why it cannot be used yet — its tooltip — naming the issue that builds it. */
-  readonly soonNote: string;
+  /**
+   * Why it cannot be used yet — its tooltip — naming the issue that builds it; `null` for an
+   * action that works.
+   */
+  readonly soonNote: string | null;
 }
 
 /**
- * The head's three actions, in the mockup's order — **each honestly unavailable today**.
+ * The head's three actions, in the mockup's order — the two not built yet **honestly
+ * unavailable**.
  *
  * - **✦ Build Analyzer** is mockup 18, whose route is BW.1
  *   ([#516](https://github.com/NobuData/ouroboros/issues/516)); the amendment on #443 turns it
  *   into a link when that route lands.
- * - **Email weekly digest** opens BK.6's subscribe flow
- *   ([#447](https://github.com/NobuData/ouroboros/issues/447)), which is not built.
+ * - **Email weekly digest** opens BK.6's subscribe sheet
+ *   ([#447](https://github.com/NobuData/ouroboros/issues/447)) — it works, so it has no note.
  * - **Send to Slack** is chat-ops' card publisher, BZ.2
  *   ([#536](https://github.com/NobuData/ouroboros/issues/536)), per the amendment on #443.
  *
- * Each is an inert button with the reason as its tooltip rather than a control that does
- * nothing when pressed.
+ * An unbuilt one is an inert button with the reason as its tooltip rather than a control that
+ * does nothing when pressed.
  */
 export const INSIGHTS_ACTIONS: readonly InsightsAction[] = [
   { id: "analyzer", label: "✦ Build Analyzer", soonNote: "The Build Analyzer arrives with #516." },
-  { id: "digest", label: "Email weekly digest", soonNote: "Digest subscriptions arrive with #447." },
+  { id: "digest", label: "Email weekly digest", soonNote: null },
   { id: "slack", label: "Send to Slack", soonNote: "Slack sends arrive with #536." },
 ];
 
@@ -357,6 +361,9 @@ export const SOURCES_HEADING = "Sources";
 
 /** Its heading over the caveats. */
 export const CAVEATS_HEADING = "Caveats";
+
+/** The tag a proxy metric wears — on its DORA cell and over its popover (BK.6, #447). */
+export const PROXY_BADGE = "proxy";
 
 /** What a proxy metric adds: the figure stands in for something it does not measure directly. */
 export const PROXY_NOTE = "A proxy: this figure stands in for what it cannot measure directly.";

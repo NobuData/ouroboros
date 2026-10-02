@@ -790,7 +790,7 @@ mockup is silent; the mockup remains binding where they differ.
 | BK.3 | #444 ✅ | 🟢 Done | ouroboros-ui: [BK.3] Time-series cards (throughput & cost) | Line/area charts with tooltip, guide, spike label, projections | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
 | BK.4 | #445 ✅ | 🟢 Done | ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards | Table + meters + suggestion slot; two hbar cards + insight lines | mvp, insights, ui, design | N (after BK.1, BJ.3) | Y | M | ouroboros-ui |
 | BK.5 | #446 ✅ | 🟢 Done | ouroboros-ui: [BK.5] Performance strip, secondary charts & flaky card | Strip, stacked vbars, suite/effort/token hbars, flaky sparklines | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
-| BK.6 | #447 | 🟡 Open | ouroboros-ui: [BK.6] DORA strip, digest controls, states & e2e | Methodology popovers, subscribe flow, cold states, themes, e2e | mvp, insights, ui, ci | N (after BK.3–BK.5, BJ.4) | Y | M | ouroboros-ui, .github |
+| BK.6 | #447 ✅ | 🟢 Done | ouroboros-ui: [BK.6] DORA strip, digest controls, states & e2e | Methodology popovers, subscribe flow, cold states, themes, e2e | mvp, insights, ui, ci | N (after BK.3–BK.5, BJ.4) | Y | M | ouroboros-ui, .github |
 
 ### Issue BK.1 — ouroboros-ui: [BK.1] Chart primitives (SVG)
 
@@ -961,7 +961,7 @@ flaky: test_estop_release.py (quarantined) ▂▃▅▇ 4.1% rising on hil-rig-0
 
 ### Issue BK.6 — ouroboros-ui: [BK.6] DORA strip, digest controls, states & e2e
 
-> **GitHub issue:** #447 · **Status:** 🟡 Open · **Parent epic:** #430
+> **GitHub issue:** #447 ✅ · **Status:** 🟢 Done · **Parent epic:** #430
 
 - **Problem Statement:** The DORA cells with proxy-honest popovers, the
   digest subscribe flow, cold-workspace states, and the page's e2e
@@ -985,6 +985,14 @@ flaky: test_estop_release.py (quarantined) ▂▃▅▇ 4.1% rising on hil-rig-0
 - **Parallelism/Dependencies:** Needs BK.3–BK.5, BJ.4, BI.5; amends #56.
 - **Technical Stack:** React, Playwright.
 - **Epic:** BK
+- **Amendment (as built):** the rollup-lag banner needed a source, so `GET /api/v1/insights` gains
+  `freshness` (ouroboros-rest 0.38.5, additive) — the stalest family's last filled day, the last
+  successful run, `behind` and `failing`, from `metric_rollup_state`. "Member view" is read as the
+  read-only role: #445 lets owners, admins and members re-categorize and refuses a viewer, and that
+  stands. Deploy frequency's popover prints the registry's caveat as-is — a green default-branch
+  build stands in for a deploy (V076), not a merge. The e2e leg is `tests/e2e/specs/insights.spec.ts`
+  (leg 22); it moves the digest slot to the current minute and runs the scheduler at its 5 s
+  minimum (`docker-compose.e2e.yml`), and forces rollup lag by moving `metric_rollup_state` back.
 
 ```
 [4.2/day ▲ ▂▃▅] [3h10m ▼] [3.1% — (proxy ⓘ)] [22m ▼ (proxy ⓘ)]
@@ -1208,7 +1216,7 @@ Issue-level impact:
 |---|---|
 | BK.2 | #443 ✅ | 🟢 Done | Mounts in the shell content pane; navigation via the sidebar **Insights** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
 | BK.1, BK.3–BK.5, BL.2 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
-| BK.6 | #447 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
+| BK.6 | #447 ✅ | 🟢 Done | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 
 ## Next Step
 

@@ -685,3 +685,187 @@
 .insights-link:hover {
   color: var(--ink);
 }
+
+/* ---------- the DORA strip (#447) ---------- */
+
+/* The mockup's `.dora`: four cells, two by two once the pane is narrow. */
+.insights-dora__caption {
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.insights-dora__cells {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--sp-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The cell is the methodology popover's positioning context, as a KPI card is. */
+.insights-dora__cell {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  min-width: 0;
+  padding-right: var(--sp-8);
+  border-right: 1px solid var(--line);
+}
+
+.insights-dora__cell:last-child {
+  padding-right: 0;
+  border-right: none;
+}
+
+/* A cell's place before the first read: the figure's height, so nothing moves on arrival. */
+.insights-dora__cell--skeleton {
+  min-height: 4.5rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+.insights-dora__stat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+/* The caption is the stat tile's: uppercase mono, faint. */
+.insights-dora__label {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.insights-dora__value {
+  color: var(--ink);
+  font-size: var(--t-2xl);
+  font-weight: 600;
+  line-height: var(--lh-tight);
+  font-variant-numeric: tabular-nums;
+}
+
+.insights-dora__suffix {
+  color: var(--ink-mut);
+  font-size: var(--t-md);
+}
+
+@media (max-width: 52rem) {
+  .insights-dora__cells {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .insights-dora__cell:nth-child(2) {
+    padding-right: 0;
+    border-right: none;
+  }
+}
+
+/* The `proxy` tag: a stand-in, said in the warn hue so it is never read as a measurement. */
+.insights-proxy {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+/* In the popover the tag sits under the title, at its own width rather than the column's. */
+.insights-kpi__popover .insights-proxy {
+  align-self: flex-start;
+}
+
+/* ---------- the rollup-lag banner (#447) ---------- */
+
+/* A status, not an alert: the warn tint, one line, above the head. */
+.insights-lag {
+  margin-bottom: var(--sp-8);
+  padding: var(--sp-5) var(--sp-7);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.insights-lag__headline {
+  color: var(--warn);
+  font-weight: 600;
+}
+
+/* ---------- the weekly-digest sheet (#447) ---------- */
+
+.insights-digest {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.insights-digest__lead,
+.insights-digest__schedule,
+.insights-digest__subject {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.insights-digest__subscription {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  padding: var(--sp-6) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.insights-digest__note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.insights-digest__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+.insights-digest__preview {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+.insights-digest__heading {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/*
+ * The digest is its own document with every style inline — it is drawn on white whatever this
+ * page's theme is, because that is how an inbox shows it. The frame scrolls inside itself.
+ */
+.insights-digest__frame {
+  width: 100%;
+  height: 24rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}

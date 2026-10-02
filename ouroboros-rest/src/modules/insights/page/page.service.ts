@@ -8,7 +8,8 @@
  * ScoreboardService           BJ.3's scoreboard
  * CalibrationService          #435's report — the effort card's line
  * FlakeStateService.card      AT.3's states and occurrences
- * InsightsPageRepository      the provider caps — configuration, not a metric
+ * InsightsPageRepository      the provider caps — configuration, not a metric — and the
+ *                             rollups' freshness (BK.6, #447)
  * ```
  *
  * **One instant for the whole page.** Every read is given the same `now`, so a request that
@@ -29,6 +30,7 @@ import { dayBounds } from "../rollup/rollup.days";
 import { ScoreboardService } from "../scoreboard/scoreboard.service";
 import { windowOf } from "./page.cards";
 import { insightsResource } from "./page.compose";
+import { freshnessOf } from "./page.freshness";
 import { InsightsPageRepository } from "./page.repository";
 import type { InsightsResource } from "./page.resources";
 
@@ -92,7 +94,7 @@ export class InsightsPageService {
    * @param scoreboard - The model scoreboard.
    * @param calibration - The estimator's calibration.
    * @param flakes - The flakes plane's card read.
-   * @param repository - The provider caps.
+   * @param repository - The provider caps and the rollups' freshness.
    * @param clock - The current instant; `Date.now` unless a suite binds one.
    */
   constructor(
@@ -129,6 +131,7 @@ export class InsightsPageService {
       scoreboard,
       calibration,
       caps,
+      freshness,
     ] = await Promise.all([
       this.metrics.windows(HEAD_METRICS, { ...scope, range: HEAD_RANGE }),
       this.metrics.windows(PAGE_METRICS, scope),
@@ -141,6 +144,7 @@ export class InsightsPageService {
       this.scoreboard.scoreboard(scope),
       this.calibration.report(organizationId, request.range),
       this.repository.caps(organizationId),
+      this.repository.freshness(organizationId),
     ]);
 
     // The flaky card covers the same UTC days the charts do.
@@ -162,6 +166,7 @@ export class InsightsPageService {
       caps,
       flaky,
       scoreboard,
+      freshness: freshnessOf(freshness, now),
     });
   }
 }

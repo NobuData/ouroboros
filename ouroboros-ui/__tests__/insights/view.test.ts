@@ -62,7 +62,7 @@ describe("insightsHeadline", () => {
 });
 
 describe("the head's actions", () => {
-  it("are the mockup's three, in its order, each saying which issue builds it", () => {
+  it("are the mockup's three, in its order, each unbuilt one saying which issue builds it", () => {
     expect(INSIGHTS_ACTIONS.map((action) => action.label)).toEqual([
       "✦ Build Analyzer",
       "Email weekly digest",
@@ -70,7 +70,8 @@ describe("the head's actions", () => {
     ]);
     expect(INSIGHTS_ACTIONS.map((action) => action.soonNote)).toEqual([
       expect.stringMatching(/arrives? with #516/),
-      expect.stringMatching(/arrives? with #447/),
+      // The digest's subscribe sheet is built (#447): it works, so it has no note.
+      null,
       expect.stringMatching(/arrives? with #536/),
     ]);
   });

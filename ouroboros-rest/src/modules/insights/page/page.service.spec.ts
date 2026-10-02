@@ -52,16 +52,23 @@ function build() {
     Promise.resolve([flakyCase()]),
   );
   const caps = jest.fn().mockResolvedValue({ monthlyCapCents: 60_000, connections: 2 });
+  const freshness = jest.fn().mockResolvedValue({
+    families: 3,
+    filledFamilies: 3,
+    earliestFilledDay: "2026-08-05",
+    lastSucceededAt: new Date("2026-08-05T23:10:00.000Z"),
+    failing: true,
+  });
   const service = new InsightsPageService(
     { windows, breakdown } as unknown as MetricsService,
     { scoreboard } as unknown as ScoreboardService,
     { report } as unknown as CalibrationService,
     { card } as unknown as FlakeStateService,
-    { caps } as unknown as InsightsPageRepository,
+    { caps, freshness } as unknown as InsightsPageRepository,
     () => NOW,
   );
 
-  return { service, windows, breakdown, scoreboard, report, card, caps };
+  return { service, windows, breakdown, scoreboard, report, card, caps, freshness };
 }
 
 describe("the insights page service", () => {
@@ -180,14 +187,29 @@ describe("the insights page service", () => {
     });
   });
 
+  it("reads the workspace's rollup freshness and judges it at the page's instant (#447)", async () => {
+    const { service, freshness } = build();
+
+    const page = await service.read(ORG, { range: "30d" });
+
+    expect(freshness).toHaveBeenCalledWith(ORG);
+    // Filled through Aug 5 on Aug 8: two closed days are missing, and the last run failed.
+    expect(page.freshness).toEqual({
+      filledThrough: "2026-08-05",
+      lastFilledAt: "2026-08-05T23:10:00.000Z",
+      behind: true,
+      failing: true,
+    });
+  });
+
   it("uses the wall clock when no clock is bound", async () => {
-    const { windows, breakdown, scoreboard, report, card, caps } = build();
+    const { windows, breakdown, scoreboard, report, card, caps, freshness } = build();
     const service = new InsightsPageService(
       { windows, breakdown } as unknown as MetricsService,
       { scoreboard } as unknown as ScoreboardService,
       { report } as unknown as CalibrationService,
       { card } as unknown as FlakeStateService,
-      { caps } as unknown as InsightsPageRepository,
+      { caps, freshness } as unknown as InsightsPageRepository,
     );
     const before = Date.now();
 

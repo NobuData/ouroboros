@@ -3,10 +3,11 @@
 import { useId } from "react";
 
 import { MODELS_PATH } from "@/app/paths";
-import { Button, Card, CardHead, Chip, type Column, EmptyState, Meter, Table, cx } from "@/app/ui";
+import { Button, Card, CardHead, Chip, type Column, Meter, Table, cx } from "@/app/ui";
 
 import { useInsights } from "./insights-store";
 import { MethodTip } from "./method-tip";
+import { SeriesEmptyState } from "./series-card";
 import {
   APPLY_LABEL,
   COLUMN,
@@ -153,7 +154,7 @@ export function ScoreboardCard() {
     <Card aria-labelledby={titleId} as="section" className="insights-board insights-col--8" fill>
       {head}
       {rows.length === 0 ? (
-        <EmptyState fill note={NO_SCOREBOARD.note} title={NO_SCOREBOARD.title} />
+        <SeriesEmptyState empty={NO_SCOREBOARD} />
       ) : (
         <Table
           caption={SCOREBOARD_CAPTION}

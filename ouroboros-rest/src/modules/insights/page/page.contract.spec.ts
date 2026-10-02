@@ -133,6 +133,7 @@ describe("the insights payload against its published schema", () => {
       calibration: { withinBandPct: null },
       caps: { monthlyCapCents: null, connections: 0 },
       flaky: [],
+      freshness: { filledThrough: null, lastFilledAt: null, behind: false, failing: false },
     });
 
     expect(violations(wire(empty))).toBeUndefined();
@@ -177,5 +178,21 @@ describe("the schema is closed where the honesty gates need it", () => {
 
     expect(violations(short)).toMatch(/must NOT have fewer than 5 items/);
     expect(violations(unflagged)).toMatch(/must have required property 'proxy'/);
+  });
+
+  it("admits rollups that are behind, and refuses a page that does not say how fresh it is (#447)", () => {
+    const behind = {
+      ...page,
+      freshness: {
+        filledThrough: "2026-08-05",
+        lastFilledAt: "2026-08-05T23:10:00.000Z",
+        behind: true,
+        failing: true,
+      },
+    };
+    const { freshness: _freshness, ...silent } = page;
+
+    expect(violations(behind)).toBeUndefined();
+    expect(violations(silent)).toMatch(/must have required property 'freshness'/);
   });
 });

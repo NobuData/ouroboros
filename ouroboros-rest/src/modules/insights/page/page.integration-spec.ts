@@ -480,6 +480,56 @@ describe("the Insights page, against a migrated database", () => {
       expect(payload.flaky.cases).toEqual([]);
       expect(payload.scoreboard.rows).toEqual([]);
       expect(keysOf(payload).filter((key) => MONEY_KEY.test(key))).toEqual([]);
+      // Nothing was ever filled: cold, not behind (#447).
+      expect(payload.freshness).toEqual({
+        filledThrough: null,
+        lastFilledAt: null,
+        behind: false,
+        failing: false,
+      });
+    });
+  });
+
+  describe("the rollups' freshness (#447)", () => {
+    it("names the stalest family's day and the last fill, and says when the rollups are behind", async () => {
+      const at = await bench();
+
+      await api.sql.query(
+        `insert into ouroboros.metric_rollup_state
+                (organization_id, family, last_filled_day, last_run_status, last_run_at)
+         values ($1, 'throughput', current_date - 1, 'succeeded', now() - interval '1 hour'),
+                ($1, 'dora',       current_date - 4, 'succeeded', now() - interval '3 days')`,
+        [at.id],
+      );
+
+      const behind = await read(at);
+
+      expect(behind.freshness).toMatchObject({
+        filledThrough: ago(4),
+        behind: true,
+        failing: false,
+      });
+      expect(Date.parse(behind.freshness.lastFilledAt ?? "")).toBeGreaterThan(
+        Date.now() - 2 * 3_600_000,
+      );
+
+      // The stale family catches up, and a later run of another fails: current, but failing.
+      await api.sql.query(
+        `update ouroboros.metric_rollup_state set last_filled_day = current_date - 1 where organization_id = $1`,
+        [at.id],
+      );
+      await api.sql.query(
+        `update ouroboros.metric_rollup_state
+            set last_run_status = 'failed', last_run_at = now(), last_error = 'boom'
+          where organization_id = $1 and family = 'throughput'`,
+        [at.id],
+      );
+
+      expect((await read(at)).freshness).toMatchObject({
+        filledThrough: ago(1),
+        behind: false,
+        failing: true,
+      });
     });
   });
 

@@ -21,7 +21,7 @@ import {
 } from "./page.cards";
 import { flakyOf } from "./page.flaky";
 import { barCardsOf, type BarBreakdowns } from "./page.hbars";
-import type { InsightsResource } from "./page.resources";
+import type { InsightsFreshness, InsightsResource } from "./page.resources";
 import { seriesOf, type ProviderCaps } from "./page.series";
 
 /** Everything the page is composed from — each fact read once, from the plane that owns it. */
@@ -40,6 +40,8 @@ export interface PageFacts {
   readonly caps: ProviderCaps;
   readonly flaky: readonly FlakeCardCase[];
   readonly scoreboard: Scoreboard;
+  /** How current the rollups are — `freshnessOf`'s, passed through. */
+  readonly freshness: InsightsFreshness;
 }
 
 /**
@@ -73,5 +75,6 @@ export function insightsResource(facts: PageFacts): InsightsResource {
     ),
     scoreboard: facts.scoreboard,
     dora: doraOf(windows),
+    freshness: facts.freshness,
   };
 }

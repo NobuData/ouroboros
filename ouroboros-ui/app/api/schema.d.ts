@@ -12821,6 +12821,33 @@ export interface components {
             scoreboard: components["schemas"]["Scoreboard"];
             /** @description The delivery-health strip, in cell order. */
             dora: components["schemas"]["InsightsDoraCell"][];
+            freshness: components["schemas"]["InsightsFreshness"];
+        };
+        /**
+         * InsightsFreshness
+         * @description How current the rollups behind the page are (#447) — what the page's rollup-lag banner says.
+         *     The rollups fill hourly with a live tail for today; when a job has been failing, the page is
+         *     drawn from days that stopped moving, and says so rather than presenting them as current.
+         *     Both instants are null before anything was filled — a cold workspace, which is not behind.
+         */
+        InsightsFreshness: {
+            /**
+             * Format: date
+             * @description The stalest metric family's last complete UTC day — the page is only as current as its oldest figure.
+             */
+            filledThrough: string | null;
+            /**
+             * Format: date-time
+             * @description When a rollup run last succeeded.
+             */
+            lastFilledAt: string | null;
+            /**
+             * @description True when a day the hourly job should have closed is missing (`filledThrough` is before
+             *     yesterday, UTC), or when some families have filled and another never has.
+             */
+            behind: boolean;
+            /** @description True when some family's latest rollup run failed. */
+            failing: boolean;
         };
         /**
          * InsightsDigest
@@ -30879,7 +30906,13 @@ export interface operations {
                      *             "aggregation": "ratio"
                      *           }
                      *         }
-                     *       ]
+                     *       ],
+                     *       "freshness": {
+                     *         "filledThrough": "2026-08-08",
+                     *         "lastFilledAt": "2026-08-09T11:00:00.000Z",
+                     *         "behind": false,
+                     *         "failing": false
+                     *       }
                      *     }
                      */
                     "application/json": components["schemas"]["Insights"];
