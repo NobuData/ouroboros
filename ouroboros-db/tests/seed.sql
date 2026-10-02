@@ -6422,6 +6422,47 @@ select pg_temp.must_hold(
     where s.id = '5eed0067-0000-4000-8000-000000000012'),
   'the re-warm card''s −1m 50s is its measured −168 s times the 0.6545 the ccache warm-up''s miss produced');
 
+-- BV.4 (#513): every composed impact reconstructs from its basis, and every confidence from its
+-- confidence_basis — the composer's arithmetic, stored, not typed.
+select pg_temp.must_hold(
+  (select bool_and((s.impact ->> 'estimate')::numeric
+                     = round((s.impact #>> '{basis,raw}')::numeric
+                             * (s.impact #>> '{basis,calibration,factor}')::numeric)
+                   and s.impact #>> '{basis,formula}' like '% v1: %'
+                   and s.impact #> '{basis,window}' = r.corpus_manifest -> 'window'
+                   and (s.impact #>> '{basis,calibration,factor}')::numeric
+                         = coalesce((select c.factor from ouroboros.analyzer_calibration c
+                                      where c.organization_id = s.organization_id
+                                        and c.repo_ref = s.repo_ref
+                                        and c.analyzer = s.impact #>> '{basis,calibration,analyzer}'
+                                        and c.impact_class = s.impact #>> '{basis,calibration,impact_class}'), 1))
+            and count(*) = 6
+     from ouroboros.analysis_suggestions s
+     join ouroboros.analysis_runs r on r.id = s.last_run_id
+    where s.last_run_id = '5eed0065-0000-4000-8000-000000000002' and s.impact is not null),
+  'each card''s impact is its formula''s raw estimate times its model''s calibration factor (1 without one), over the run''s window');
+
+select pg_temp.must_hold(
+  (select bool_and(s.confidence = (s.confidence_basis ->> 'value')::integer
+                   and s.confidence = round(100
+                         * (1 - exp(-(s.confidence_basis #>> '{inputs,n}')::numeric
+                                    / (s.confidence_basis #>> '{inputs,scale}')::numeric))
+                         * (s.confidence_basis #>> '{inputs,stability}')::numeric
+                         * (s.confidence_basis #>> '{inputs,effect}')::numeric))
+            and count(*) = 10
+     from ouroboros.analysis_suggestions s
+    where s.last_run_id = '5eed0065-0000-4000-8000-000000000002'),
+  'each of the ten confidences is round(100 × (1 − e^(−n/scale)) × stability × effect) over its stored inputs');
+
+select pg_temp.must_hold(
+  (select (f.data ->> 'slowdown_seconds')::int = 168 and f.data ->> 'trigger_title' = 'deps: refresh west manifest'
+      and (q.data ->> 'queue_p95_seconds')::int > (q.data ->> 'threshold_seconds')::int
+      and q.data ->> 'move_runner_id' = (select r.id::text from ouroboros.runners r
+                                          where r.organization_id = f.organization_id and r.name = 'forge-02')
+     from ouroboros.analysis_findings f, ouroboros.analysis_findings q
+    where f.id = '5eed0066-0000-4000-8000-000000000141' and q.id = '5eed0066-0000-4000-8000-000000000151'),
+  'the cache and queue findings carry the measured inputs their cards are composed from');
+
 -- --- BA-1…BA-4 and est. total ~1.5 days -------------------------------------------------------
 select pg_temp.must_hold(
   (select array_agg(d.local_key || '|' || upper(e.effort) order by d.local_key)

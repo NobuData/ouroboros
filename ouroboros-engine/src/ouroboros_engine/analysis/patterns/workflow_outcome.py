@@ -38,12 +38,21 @@ Zero is a finding, not an absence: *"caught 0 unique"* is the point. The workflo
   stability — is the share of the stage's jobs whose commit had another stage built at all, the
   share for which uniqueness could be judged.
 
+**Measured inputs (BV.4, #513)** — what the composer's impact formulas read: the review share
+carries ``attempt_seconds`` (the failed build stage's mean seconds per attempt) and the
+``build_stage``/``review_stage`` keys; a flake ratio carries ``suite`` (the cases' most frequent
+flaky suite); a stage's unique failures carry ``pr_seconds_per_commit`` (its seconds on refs other
+than the merge gate, per commit — what a PR stops paying if the stage moves to the gate) and
+``co_stages`` (the other stages built on every one of its commits).
+
 Requires ``jobs`` and ``loops``; reads ``tests`` when present.
 """
 
 import math
 import re
-from collections import defaultdict
+import statistics
+from collections import Counter, defaultdict
+from dataclasses import dataclass
 from datetime import date, timedelta
 from typing import Any, ClassVar
 
@@ -134,7 +143,17 @@ class WorkflowOutcomeAnalyzer(Analyzer):
 # ---------------------------------------------------------------------------
 
 
-def _review_outcome(loop: LoopRecord) -> bool | None:
+@dataclass(frozen=True)
+class _Judged:
+    """One judged loop: whether review flagged its failed build, and the stages involved."""
+
+    flagged: bool
+    build_stage: str
+    review_stage: str
+    attempt_seconds: float
+
+
+def _review_outcome(loop: LoopRecord) -> _Judged | None:
     """Whether a loop's failed build was later flagged by review.
 
     Args:
@@ -142,7 +161,9 @@ def _review_outcome(loop: LoopRecord) -> bool | None:
 
     Returns:
         ``None`` when the loop has no failed build stage followed by a review stage with a
-        known outcome; otherwise whether such a review stage ended ``flagged``.
+        known outcome; otherwise whether such a review stage ended ``flagged``, the two
+        stages' keys (the flagging review, else the first judged one) and the failed build
+        stage's seconds per attempt.
     """
     stages = loop.stages
     for index, stage in enumerate(stages):
@@ -154,8 +175,27 @@ def _review_outcome(loop: LoopRecord) -> bool | None:
             if _REVIEW.search(later.key) and later.outcome is not None
         ]
         if reviews:
-            return any(review.outcome == "flagged" for review in reviews)
+            flagging = [r for r in reviews if r.outcome == "flagged"]
+            return _Judged(
+                flagged=bool(flagging),
+                build_stage=stage.key,
+                review_stage=(flagging or reviews)[0].key,
+                attempt_seconds=stage.seconds / stage.attempts,
+            )
     return None
+
+
+def _most_common(values: list[str]) -> str:
+    """The most frequent value, the smallest on a tie.
+
+    Args:
+        values: At least one value.
+
+    Returns:
+        The value.
+    """
+    counts = Counter(values)
+    return min(counts, key=lambda value: (-counts[value], value))
 
 
 def review_findings(loops: list[LoopRecord], sampling: dict[str, Any]) -> list[Finding]:
@@ -169,7 +209,7 @@ def review_findings(loops: list[LoopRecord], sampling: dict[str, Any]) -> list[F
         One finding per workflow with at least ``min_support_cases`` judged loops and a
         cited workflow version, in workflow order.
     """
-    judged: dict[str, list[tuple[LoopRecord, bool]]] = defaultdict(list)
+    judged: dict[str, list[tuple[LoopRecord, _Judged]]] = defaultdict(list)
     for loop in loops:
         outcome = _review_outcome(loop)
         if loop.workflow is not None and outcome is not None:
@@ -183,7 +223,7 @@ def review_findings(loops: list[LoopRecord], sampling: dict[str, Any]) -> list[F
         n = len(rows)
         if n < PARAMETERS["min_support_cases"] or not versions:
             continue
-        flagged = sum(outcome for _, outcome in rows)
+        flagged = sum(outcome.flagged for _, outcome in rows)
         share = flagged / n
         half_width = 1.96 * math.sqrt(share * (1 - share) / n)
         findings.append(
@@ -200,6 +240,11 @@ def review_findings(loops: list[LoopRecord], sampling: dict[str, Any]) -> list[F
                     "unit": "share",
                     "sample": n,
                     "flagged": flagged,
+                    "build_stage": _most_common([o.build_stage for _, o in rows]),
+                    "review_stage": _most_common([o.review_stage for _, o in rows]),
+                    "attempt_seconds": round_half(
+                        statistics.mean(o.attempt_seconds for _, o in rows), 0
+                    ),
                     "sampling": sampling,
                 },
                 evidence_refs=[
@@ -239,22 +284,24 @@ def path_prefix(path: str) -> str | None:
     return "/".join(directories[: PARAMETERS["path_depth"]]) + "/"
 
 
-def _flake_days(corpus: Corpus, jobs: list[BuildJob]) -> dict[str, list[date]]:
-    """The days each commit's builds produced a flaky result.
+def _flake_days(
+    corpus: Corpus, jobs: list[BuildJob]
+) -> dict[str, list[tuple[date, str]]]:
+    """The flaky results each commit's builds produced.
 
     Args:
         corpus: The corpus, for its ``tests``.
         jobs: Its jobs.
 
     Returns:
-        Commit sha → sorted days with at least one ``flaky`` result on its builds.
+        Commit sha → its ``flaky`` results as sorted ``(day, suite)`` pairs.
     """
     commit_of = {job.build_id: job.commit_sha for job in jobs}
-    days: dict[str, set[date]] = defaultdict(set)
+    found: dict[str, set[tuple[date, str]]] = defaultdict(set)
     for result in corpus.tests or []:
         if result.status == "flaky" and result.build_id in commit_of:
-            days[commit_of[result.build_id]].add(result.day)
-    return {sha: sorted(found) for sha, found in days.items()}
+            found[commit_of[result.build_id]].add((result.day, result.suite))
+    return {sha: sorted(results) for sha, results in found.items()}
 
 
 def flake_findings(
@@ -277,7 +324,9 @@ def flake_findings(
     sampling = sampling_note(
         corpus, [CorpusSource.LOOPS, CorpusSource.JOBS, CorpusSource.TESTS]
     )
-    merged: dict[str, list[tuple[LoopRecord, frozenset[str], bool]]] = defaultdict(list)
+    merged: dict[str, list[tuple[LoopRecord, frozenset[str], list[str]]]] = defaultdict(
+        list
+    )
     for loop in loops:
         if (
             loop.workflow is None
@@ -289,8 +338,12 @@ def flake_findings(
             p for p in (path_prefix(path) for path in loop.paths_touched) if p
         )
         until = loop.day + timedelta(days=window)
-        flaked = any(loop.day <= d <= until for d in flakes.get(loop.merge_sha, []))
-        merged[loop.workflow].append((loop, prefixes, flaked))
+        suites = [
+            suite
+            for day, suite in flakes.get(loop.merge_sha, [])
+            if loop.day <= day <= until
+        ]
+        merged[loop.workflow].append((loop, prefixes, suites))
 
     findings = []
     for workflow in sorted(merged):
@@ -305,7 +358,7 @@ def flake_findings(
 def _flake_finding(
     workflow: str,
     prefix: str,
-    rows: list[tuple[LoopRecord, frozenset[str], bool]],
+    rows: list[tuple[LoopRecord, frozenset[str], list[str]]],
     window: int,
     sampling: dict[str, Any],
 ) -> Finding | None:
@@ -314,7 +367,8 @@ def _flake_finding(
     Args:
         workflow: The workflow.
         prefix: The directory prefix.
-        rows: The workflow's merged loops, their prefixes and whether they flaked.
+        rows: The workflow's merged loops, their prefixes and the suites of the flaky
+            results within the window (empty: it did not flake).
         window: The flake window in days.
         sampling: The sources' sampling note.
 
@@ -322,11 +376,11 @@ def _flake_finding(
         The finding, or ``None``.
     """
     support = PARAMETERS["min_support_cases"]
-    cases = [(loop, flaked) for loop, prefixes, flaked in rows if prefix in prefixes]
-    others = [flaked for _, prefixes, flaked in rows if prefix not in prefixes]
+    cases = [(loop, suites) for loop, prefixes, suites in rows if prefix in prefixes]
+    others = [bool(suites) for _, prefixes, suites in rows if prefix not in prefixes]
     if len(cases) < support or len(others) < support:
         return None
-    flaked = sum(f for _, f in cases)
+    flaked = sum(bool(suites) for _, suites in cases)
     baseline_flaked = sum(others)
     if baseline_flaked == 0:
         return None
@@ -355,6 +409,7 @@ def _flake_finding(
             "baseline": round_half(baseline, 3),
             "baseline_sample": len(others),
             "baseline_flaked": baseline_flaked,
+            "suite": _most_common([suite for _, suites in cases for suite in suites]),
             "sampling": sampling,
         },
         evidence_refs=distinct_refs(
@@ -410,6 +465,16 @@ def unique_failure_findings(
             )
         ]
         at_gate = sum(job.git_ref.startswith(gate) for job in unique)
+        pre_merge = [job for job in stage if not job.git_ref.startswith(gate)]
+        commits = {job.commit_sha for job in stage}
+        co_stages = sorted(
+            other
+            for other in by_label
+            if other != label
+            and all(
+                any(peer.label == other for peer in by_commit[sha]) for sha in commits
+            )
+        )
         judged = sum(
             any(other.build_id != job.build_id for other in by_commit[job.commit_sha])
             for job in stage
@@ -436,6 +501,12 @@ def unique_failure_findings(
                     "failures": len(failed),
                     "shared_failures": len(failed) - len(unique),
                     "at_merge_gate": at_gate,
+                    "pr_seconds_per_commit": round_half(
+                        sum(_seconds(job) for job in pre_merge)
+                        / max(1, len({job.commit_sha for job in pre_merge})),
+                        0,
+                    ),
+                    "co_stages": co_stages,
                     "sampling": sampling,
                 },
                 evidence_refs=refs,
@@ -449,3 +520,15 @@ def unique_failure_findings(
             )
         )
     return findings
+
+
+def _seconds(job: BuildJob) -> float:
+    """How long a job ran (from its start, or its queueing if it never recorded one).
+
+    Args:
+        job: The job.
+
+    Returns:
+        Seconds.
+    """
+    return (job.finished_at - (job.started_at or job.queued_at)).total_seconds()

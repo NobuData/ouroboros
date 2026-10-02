@@ -1,0 +1,66 @@
+{
+  "run_id": "5eed0065-0000-4000-8000-000000000002",
+  "repo_ref": "acme-robotics/helios-firmware",
+  "window": {
+    "from": "2026-05-10",
+    "to": "2026-08-07",
+    "days": 90
+  },
+  "findings": [
+    {
+      "id": "5eed0066-0000-4000-8000-000000000171",
+      "analyzer": "workflow_outcome",
+      "analyzer_version": 1,
+      "finding_type": "workflow_outcome",
+      "subject_key": "standard-fix/stage qemu_cortex_m3/unique_failures",
+      "identity_key": "workflow_outcome@v1/standard-fix/stage qemu_cortex_m3/unique_failures",
+      "data": {
+        "workflow": "standard-fix",
+        "scope": "stage qemu_cortex_m3",
+        "metric": "unique_failures",
+        "value": 0,
+        "unit": "count",
+        "sample": 214
+      },
+      "confidence": 91,
+      "confidence_basis": {
+        "method": "workflow_outcome v1",
+        "sample_size": 214,
+        "effect_size": 0,
+        "stability": 0.95
+      }
+    }
+  ],
+  "suggestions": [
+    {
+      "identity_key": "build_process:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "kind": "build_process",
+      "title": "Split the test gate: native_sim every build, QEMU + HIL only before merge",
+      "evidence_line": "qemu_cortex_m3 caught 0 unique failures in 214 builds; HIL caught 9 — all at merge gates",
+      "confidence": 91,
+      "impact": {
+        "estimate": -220,
+        "unit": "seconds",
+        "applies_to": "per loop",
+        "basis": {
+          "method": "extrapolated",
+          "description": "x",
+          "formula": "test_gate_split v1",
+          "inputs": {
+            "qemu_cortex_m3": 158,
+            "HIL": 48
+          }
+        }
+      },
+      "needs_spike": false,
+      "action_binding": {
+        "plane": "test_gate",
+        "change": {
+          "pr_builds": [
+            "native_sim"
+          ]
+        }
+      }
+    }
+  ]
+}

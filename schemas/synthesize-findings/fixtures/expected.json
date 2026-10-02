@@ -1,0 +1,83 @@
+{
+  "about": [
+    "The contract for POST /v0/synthesize-findings (#513), recorded: one document per rule, which half of the",
+    "contract it is (the root response or $defs/synthesis_request), and whether v0.json accepts it.",
+    "",
+    "BX.1 (#522) implements it; until then the stub answers actor none with nothing in it. Every invalid",
+    "document breaks exactly one rule -- chief among them, an impact claim with no computable basis.",
+    "",
+    "Reviewed and frozen, not regenerated: a change here is a change to the contract."
+  ],
+  "cases": [
+    {
+      "document": "valid/request-mockup-run.json",
+      "def": "request",
+      "valid": true
+    },
+    {
+      "document": "valid/response-model-candidate.json",
+      "def": "response",
+      "valid": true
+    },
+    {
+      "document": "valid/response-model-enrichment.json",
+      "def": "response",
+      "valid": true
+    },
+    {
+      "document": "valid/response-model-spike.json",
+      "def": "response",
+      "valid": true
+    },
+    {
+      "document": "valid/response-model-ticket.json",
+      "def": "response",
+      "valid": true
+    },
+    {
+      "document": "valid/response-stub.json",
+      "def": "response",
+      "valid": true
+    },
+    {
+      "document": "invalid/request-without-findings.json",
+      "def": "request",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-candidate-without-findings.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-card-without-impact.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-enrichment-with-number.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-impact-without-formula.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-impact-without-inputs.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-stub-with-candidate.json",
+      "def": "response",
+      "valid": false
+    },
+    {
+      "document": "invalid/response-unquantified-without-spike.json",
+      "def": "response",
+      "valid": false
+    }
+  ]
+}

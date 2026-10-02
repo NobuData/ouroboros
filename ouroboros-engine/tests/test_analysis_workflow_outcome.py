@@ -237,3 +237,43 @@ def test_a_stage_with_no_failures_still_reports_zero_and_cites_a_build() -> None
 def test_a_stage_below_the_minimum_sample_is_not_reported() -> None:
     small = _stages([(False, "refs/heads/pr")], size=PARAMETERS["min_stage_sample"] - 1)
     assert _unique(small) == {}
+
+
+# ---------------------------------------------------------------------------
+# The composer's measured inputs (BV.4, #513).
+# ---------------------------------------------------------------------------
+
+
+def test_the_review_share_carries_attempt_seconds_and_stage_keys(
+    mockup: dict[str, Finding],
+) -> None:
+    data = mockup[
+        "standard-fix/stage build→review/failed_builds_flagged_by_review"
+    ].data
+    assert (data["build_stage"], data["review_stage"]) == ("build", "review")
+    assert data["attempt_seconds"] == 300  # 600 s over two attempts
+
+
+def test_the_flake_ratio_names_the_suite_that_flaked(
+    mockup: dict[str, Finding],
+) -> None:
+    assert mockup["standard-fix/drivers/can/flake_ratio_7d"].data["suite"] == (
+        "telemetry integration"
+    )
+
+
+def test_unique_failures_carry_pre_merge_seconds_and_co_stages(
+    mockup: dict[str, Finding],
+) -> None:
+    qemu = mockup["build farm/stage qemu_cortex_m3/unique_failures"].data
+    assert qemu["pr_seconds_per_commit"] == 180
+    assert qemu["co_stages"] == ["native_sim"]
+    hil = mockup["build farm/stage HIL test rig/unique_failures"].data
+    assert hil["co_stages"] == ["zephyr build"]
+
+
+def test_merge_gate_runs_are_not_pre_merge_seconds() -> None:
+    rows = _stages([(False, GATE)] * 25)
+    data = _unique(rows)["stage qemu_cortex_m3"]
+    # Every qemu job ran at the gate: a PR pays nothing for it today.
+    assert data["pr_seconds_per_commit"] == 0

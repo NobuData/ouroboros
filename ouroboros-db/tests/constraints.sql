@@ -30438,6 +30438,138 @@ select pg_temp.must_hold(
   'a deleted workspace takes its runs and its counted jobs with it');
 
 -- ===========================================================================
+-- V087 — a suggestion's confidence keeps its arithmetic (#513, BV.4)
+-- ===========================================================================
+--
+-- The composer stores how it computed each confidence beside the number. The basis has a shape,
+-- its value is the column's, the composer's write takes it while the suggestion is open, and a
+-- resolution freezes it with the rest of the composition. A nine-argument call (the V081 write)
+-- still resolves. Fixtures: a workspace, a pool, a running run and one cache_window finding.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v087', 'Analyzer Composer', 'analyzer-composer-v087', now());
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v087', 'Ken V087', 'ken@analyzer-v087.example', true);
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image, tags) values
+  ('a8700001-0000-4000-8000-000000000001', 'org-v087', 'pool-a', 'shell', null, '[]');
+insert into ouroboros.analysis_runs (id, organization_id, repo_ref, trigger, analyzer_set) values
+  ('a8700000-0000-4000-8000-000000000001', 'org-v087', 'acme/helios-firmware', 'weekly',
+   '{"label": "deterministic analyzers v1",
+     "analyzers": [{"id": "cache_window", "version": 1, "kind": "deterministic"}]}');
+insert into ouroboros.analysis_findings
+    (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+     data, evidence_refs, confidence, confidence_basis) values
+  ('a8700000-0000-4000-8000-000000000001', 'org-v087', 'acme/helios-firmware', 'cache_window', 1,
+   'cache_window', 'deps-refresh',
+   '{"trigger": "deps-refresh merge", "hit_rate_before": 0.78, "hit_rate_after": 0.31,
+     "window_hours": 6, "occurrences": 14}',
+   '[{"kind": "runner_pool", "id": "a8700001-0000-4000-8000-000000000001"}]', 88,
+   '{"method": "posterior", "sample_size": 14, "effect_size": 0.47, "stability": 0.9}');
+
+create temp table v087 on commit drop as
+  select ouroboros.record_analysis_suggestion(
+           'a8700000-0000-4000-8000-000000000001', 'workflow',
+           array(select id from ouroboros.analysis_findings
+                  where run_id = 'a8700000-0000-4000-8000-000000000001'
+                    and subject_key = 'deps-refresh'),
+           'Refresh deps in the nightly loop, not in standard-fix', 'evidence for deps-refresh', 88,
+           '{"estimate": -30, "unit": "seconds", "applies_to": "per loop",
+             "basis": {"method": "extrapolated", "description": "fixture"}}'::jsonb,
+           '{"plane": "workflow", "change": {"workflow": "standard-fix"}}'::jsonb, false,
+           '{"formula": "composer v1", "inputs": {"n": 14, "scale": 5}, "value": 88}'::jsonb) as id;
+
+select pg_temp.must_hold(
+  (select confidence_basis = '{"formula": "composer v1", "inputs": {"n": 14, "scale": 5}, "value": 88}'
+     from ouroboros.analysis_suggestions where id = (select id from v087)),
+  'record_analysis_suggestion stores the confidence basis it is given');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set confidence_basis = '{"formula": "composer v1", "inputs": {}, "value": 12}'
+     where id = (select id from v087)$$,
+  'a confidence basis whose value is not the confidence', 'analysis_suggestions_confidence_basis_value');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set confidence_basis = '{"formula": "composer v1", "value": 88}'
+     where id = (select id from v087)$$,
+  'a confidence basis without its inputs', 'analysis_suggestions_confidence_basis_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set confidence_basis = '{"formula": " ", "inputs": {}, "value": 88}'
+     where id = (select id from v087)$$,
+  'a confidence basis without a formula', 'analysis_suggestions_confidence_basis_shape');
+
+-- Re-analysis of an open suggestion takes the new confidence and its basis.
+select ouroboros.record_analysis_suggestion(
+  'a8700000-0000-4000-8000-000000000001', 'workflow',
+  array(select id from ouroboros.analysis_findings
+         where run_id = 'a8700000-0000-4000-8000-000000000001' and subject_key = 'deps-refresh'),
+  'Refresh deps in the nightly loop, not in standard-fix', 'evidence for deps-refresh', 77,
+  '{"estimate": -30, "unit": "seconds", "applies_to": "per loop",
+    "basis": {"method": "extrapolated", "description": "fixture"}}'::jsonb,
+  '{"plane": "workflow", "change": {"workflow": "standard-fix"}}'::jsonb, false,
+  '{"formula": "composer v1", "inputs": {"n": 14, "scale": 6}, "value": 77}'::jsonb);
+
+select pg_temp.must_hold(
+  (select count(*) = 1 and bool_and(confidence = 77 and confidence_basis #>> '{inputs,scale}' = '6')
+     from ouroboros.analysis_suggestions
+    where identity_key = (select identity_key from ouroboros.analysis_suggestions
+                           where id = (select id from v087))),
+  'an open suggestion takes the re-composed confidence and basis — one row, not two');
+
+-- The V081 nine-argument write still resolves (the basis defaults to null).
+select pg_temp.must_hold(
+  (select ouroboros.record_analysis_suggestion(
+            'a8700000-0000-4000-8000-000000000001', 'workflow',
+            array(select id from ouroboros.analysis_findings
+                   where run_id = 'a8700000-0000-4000-8000-000000000001'
+                     and subject_key = 'deps-refresh'),
+            'Refresh deps in the nightly loop, not in standard-fix', 'evidence for deps-refresh', 77,
+            '{"estimate": -30, "unit": "seconds", "applies_to": "per loop",
+              "basis": {"method": "extrapolated", "description": "fixture"}}'::jsonb,
+            '{"plane": "workflow", "change": {"workflow": "standard-fix"}}'::jsonb)
+          = (select id from v087)),
+  'a nine-argument record_analysis_suggestion call still resolves, to the same suggestion');
+
+select ouroboros.record_analysis_suggestion(
+  'a8700000-0000-4000-8000-000000000001', 'workflow',
+  array(select id from ouroboros.analysis_findings
+         where run_id = 'a8700000-0000-4000-8000-000000000001' and subject_key = 'deps-refresh'),
+  'Refresh deps in the nightly loop, not in standard-fix', 'evidence for deps-refresh', 77,
+  '{"estimate": -30, "unit": "seconds", "applies_to": "per loop",
+    "basis": {"method": "extrapolated", "description": "fixture"}}'::jsonb,
+  '{"plane": "workflow", "change": {"workflow": "standard-fix"}}'::jsonb, false,
+  '{"formula": "composer v1", "inputs": {"n": 14, "scale": 6}, "value": 77}'::jsonb);
+
+-- Dismissed, the basis is frozen with what the person saw.
+update ouroboros.analysis_suggestions
+   set status = 'dismissed', resolved_by = 'user-v087', resolved_at = now(),
+       resolution_reason = 'the nightly loop has no deps step'
+ where id = (select id from v087);
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestions
+       set confidence_basis = '{"formula": "composer v2", "inputs": {}, "value": 77}'
+     where id = (select id from v087)$$,
+  'a resolved suggestion''s confidence basis being revised', 'analysis_suggestions_resolved_frozen');
+
+select ouroboros.record_analysis_suggestion(
+  'a8700000-0000-4000-8000-000000000001', 'workflow',
+  array(select id from ouroboros.analysis_findings
+         where run_id = 'a8700000-0000-4000-8000-000000000001' and subject_key = 'deps-refresh'),
+  'Refresh deps in the nightly loop, not in standard-fix', 'evidence for deps-refresh', 60,
+  '{"estimate": -30, "unit": "seconds", "applies_to": "per loop",
+    "basis": {"method": "extrapolated", "description": "fixture"}}'::jsonb,
+  '{"plane": "workflow", "change": {"workflow": "standard-fix"}}'::jsonb, false,
+  '{"formula": "composer v1", "inputs": {"n": 3, "scale": 6}, "value": 60}'::jsonb);
+
+select pg_temp.must_hold(
+  (select status = 'dismissed' and confidence = 77 and confidence_basis #>> '{inputs,n}' = '14'
+     from ouroboros.analysis_suggestions where id = (select id from v087)),
+  're-analysis leaves a dismissed suggestion''s confidence and basis as they were dismissed');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

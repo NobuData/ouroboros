@@ -1203,6 +1203,28 @@
 >   dimension kind) of succeeded farm jobs' start-to-finish `duration_ms`. The duration chart's
 >   series, the corpus's, and the measurement job's target metric.
 >
+> `V087` ([#513](https://github.com/NobuData/ouroboros/issues/513), BV.4) gives a suggestion's
+> confidence its arithmetic. It adds the column `analysis_suggestions.confidence_basis`:
+> `{formula, inputs, value}`, checked by `analysis_suggestion_confidence_basis_valid()`, and
+> `analysis_suggestions_confidence_basis_value` requires `value` to equal `confidence`. It is
+> nullable only for rows written before the migration.
+>
+> `record_analysis_suggestion()` gains a last, defaulted `p_confidence_basis`, so a nine-argument
+> call still resolves. The function takes the basis while the suggestion is open. The lifecycle
+> guard freezes it with the rest of the composition once the suggestion is resolved.
+>
+> The analyzer seed's suggestions are now composed by the composer's formulas over the stored
+> findings' measured fields, with no typed impact or confidence. Some measured inputs could not
+> be computed from the seeded rows, so the seed **stores** them, as it already did for 173–175:
+> - the ccache slowdown, 168 s. The engine's median-difference measure gives 45 s on these rows,
+>   because the plant slows only the top half of each window;
+> - the test gate's per-commit stage seconds, the queue wait reduction, the failed-attempt seconds
+>   and the link step's growth;
+> - the flake rate and baseline, the ccache release and the rig's missing capability.
+>
+> The stored findings' stabilities are tuned so that the documented confidence formula lands on
+> mockup 18's figures.
+>
 > [#509](https://github.com/NobuData/ouroboros/issues/509) (BU.4) seeds the page those three built
 > for, and plants the **corpus** rather than the answers:
 > [`R__dev_seed_workspace_metrics_analyzer.sql`](migrations/R__dev_seed_workspace_metrics_analyzer.sql)
@@ -2774,6 +2796,7 @@ ouroboros-db/
 │   ├── V084__insights_digest.sql            # the weekly Insights email: opt-in subscriptions, a weekly slot per workspace, runs claimed by slot with their content stored once, and the send audit — #440
 │   ├── V085__suggestion_measurements_calibration.sql # suggestion_measurements (prediction frozen at apply, per-row window + verdict bands, verdict as arithmetic, confounds) + analyzer_calibration and its history (the documented factor formula, traced to measurements), recalibrate_analyzer(), analyzer_measurement_policies (window + verdict bands per workspace) — #508
 │   ├── V086__analysis_orchestration.sql     # build_jobs.log_lines (counted where chunks land), analysis_runs.phase + progress (forward-only, frozen when terminal), the build_duration family (median per job_label) — #510
+│   ├── V087__analysis_suggestion_confidence_basis.sql # analysis_suggestions.confidence_basis {formula, inputs, value = confidence}, frozen when resolved; record_analysis_suggestion takes it — #513
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)

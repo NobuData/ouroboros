@@ -300,6 +300,11 @@ check_route schemas/hil-results/fixtures/expected.json 'rest.yml'
 check_route schemas/triage/v0.json 'rest.yml'
 check_route schemas/triage/fixtures/expected.json 'rest.yml'
 
+# The eleventh (#513). The synthesize-findings contract (the analyzer's v2 LLM pass) is committed
+# ahead of BX.1 (#522); ci/rest's unit suite is its drift check, as for triage.
+check_route schemas/synthesize-findings/v0.json 'rest.yml'
+check_route schemas/synthesize-findings/fixtures/expected.json 'rest.yml'
+
 # …and no further. The rest of the module is ci/rest's business alone, which is what
 # keeps the data tier out of every controller change.
 check_route ouroboros-rest/src/modules/health/health.controller.ts 'rest.yml'

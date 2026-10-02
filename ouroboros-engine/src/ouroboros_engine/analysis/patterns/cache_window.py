@@ -21,6 +21,10 @@ much as one with a thousand. A finding needs ``before - after >= min_drop``.
 ``recovery_horizon_hours``) whose own hit rate is back within ``recovery_tolerance`` of
 ``hit_rate_before``; ``recovery_hours_median`` is their median (``null`` when none recovered).
 
+**Measured inputs (BV.4, #513).** ``slowdown_seconds`` (median in-window build duration
+less the median of the same labels' other builds), ``trigger_title`` and ``pool_id`` — what the
+re-warm suggestion's impact and job hook are composed from.
+
 **The insights line (#446).** ``trigger_days`` are the merges' UTC days; ``failure_rate_trigger_days``
 and ``failure_rate_other_days`` are failed (or retried) jobs over all jobs on those days and on
 every other day; ``failures_cluster`` is true when the first is at least
@@ -34,6 +38,7 @@ rate sits below the midpoint of the two rates. ``sample_size`` is the cached bui
 
 import re
 import statistics
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from typing import Any, ClassVar
@@ -89,6 +94,9 @@ class _Cached:
     at: datetime
     hits: int
     objects: int
+    label: str
+    seconds: float
+    pool_id: str | None
 
 
 class CacheWindowAnalyzer(Analyzer):
@@ -167,7 +175,17 @@ def _cached(jobs: list[BuildJob], corpus: Corpus) -> list[_Cached]:
         stat = stats.get(job.build_id)
         if stat is None or stat.hits + stat.misses == 0:
             continue
-        cached.append(_Cached(utc(job.queued_at), stat.hits, stat.hits + stat.misses))
+        started = job.started_at or job.queued_at
+        cached.append(
+            _Cached(
+                utc(job.queued_at),
+                stat.hits,
+                stat.hits + stat.misses,
+                job.label,
+                (job.finished_at - started).total_seconds(),
+                job.pool_id,
+            )
+        )
     return cached
 
 
@@ -247,6 +265,7 @@ def _finding(
             "builds_in_window": len(inside),
             "share": round_half(len(inside) / len(cached), 2),
             "recovery_hours_median": recovery,
+            **_measured(merges, inside, outside),
             **split,
             "sampling": sampling,
         },
@@ -259,6 +278,40 @@ def _finding(
             stability=round_half(stability, 3),
         ),
     )
+
+
+def _measured(
+    merges: list[_Merge], inside: list[_Cached], outside: list[_Cached]
+) -> dict[str, Any]:
+    """What the composer's impact formula reads (BV.4, #513).
+
+    Args:
+        merges: The class's merges.
+        inside: The cached builds inside a window.
+        outside: Every other cached build.
+
+    Returns:
+        ``slowdown_seconds`` — the median in-window build's duration over the median of the
+        other builds of the same labels, whole seconds (``null`` with nothing to compare);
+        ``trigger_title`` — the class's most common merge title; ``pool_id`` — the pool most
+        in-window builds ran on (``null`` when none recorded one).
+    """
+    labels = {b.label for b in inside}
+    peers = [b.seconds for b in outside if b.label in labels]
+    slowdown = (
+        round_half(
+            statistics.median(b.seconds for b in inside) - statistics.median(peers), 0
+        )
+        if inside and peers
+        else None
+    )
+    titles = Counter(m.title for m in merges)
+    pools = Counter(b.pool_id for b in inside if b.pool_id is not None)
+    return {
+        "slowdown_seconds": slowdown,
+        "trigger_title": min(titles, key=lambda t: (-titles[t], t)),
+        "pool_id": min(pools, key=lambda p: (-pools[p], p)) if pools else None,
+    }
 
 
 def _recovery_median(

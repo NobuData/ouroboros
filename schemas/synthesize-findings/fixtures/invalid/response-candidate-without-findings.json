@@ -1,0 +1,37 @@
+{
+  "candidates": [
+    {
+      "kind": "workflow",
+      "finding_ids": [],
+      "title": "Run a HIL smoke stage on drivers/can merges",
+      "evidence_line": "HIL caught 9 unique failures, all at merge gates",
+      "impact": {
+        "estimate": -90,
+        "unit": "seconds",
+        "applies_to": "per loop",
+        "basis": {
+          "method": "extrapolated",
+          "description": "the hil smoke stage's measured seconds per commit",
+          "formula": "candidate: -pr_seconds_per_commit",
+          "inputs": {
+            "pr_seconds_per_commit": 90
+          }
+        }
+      },
+      "needs_spike": false,
+      "action_binding": {
+        "plane": "workflow",
+        "change": {
+          "workflow": "standard-fix",
+          "add_stage": "hil smoke"
+        }
+      }
+    }
+  ],
+  "enrichments": [],
+  "provenance": {
+    "actor": "model",
+    "model": "claude-sonnet-5",
+    "cost_cents": 4.2
+  }
+}

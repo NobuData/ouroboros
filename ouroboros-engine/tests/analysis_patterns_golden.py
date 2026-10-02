@@ -94,6 +94,9 @@ POOL_A = "pool-a"
 POOL_B = "pool-b"
 MAIN = "refs/heads/main"
 GATE = "refs/heads/gh-readonly-queue/main/pr-{n}"
+#: A zephyr build's seconds inside a cold-cache window: the usual 252 s plus 168 s.
+COLD_SECONDS = 252 + 168
+
 #: The general builds whose tails carry a Kconfig drift warning (one dead option each).
 DRIFTING = (7, 101, 211, 389)
 OTHER_PREFIXES = ("subsys/ota/", "drivers/i2c/", "boards/helios/", "lib/telemetry/")
@@ -399,7 +402,8 @@ def _refreshes(b: _Builder) -> None:
     """14 deps-refresh merges and the six cold hours after each.
 
     Each merge builds at 08:00; ten more builds queue 08:30-13:00 at a 31% hit rate, three
-    of them failing; the 14:00 build is back at 78%.
+    of them failing, and every build in the window runs 168 s longer than the usual 252 s
+    (``slowdown_seconds``, #513); the 14:00 build is back at 78%.
     """
     days = [3 + 6 * k for k in range(14)]
     for k, index in enumerate(days):
@@ -411,6 +415,7 @@ def _refreshes(b: _Builder) -> None:
             pool=POOL_A,
             ref=MAIN,
             title="deps: refresh west manifest",
+            seconds=COLD_SECONDS,
             cache=(31, 69),
         )
         for m in range(10):
@@ -422,6 +427,7 @@ def _refreshes(b: _Builder) -> None:
                 pool=POOL_A,
                 status="failed" if m < 3 else "succeeded",
                 lines=("FATAL ERROR: command exited with status 1",) if m < 3 else (),
+                seconds=COLD_SECONDS,
                 cache=(31, 69),
             )
         b.job(

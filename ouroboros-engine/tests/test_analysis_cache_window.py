@@ -110,3 +110,34 @@ def test_failures_that_do_not_cluster_say_so() -> None:
 
 def test_no_cached_builds_finds_nothing() -> None:
     assert CacheWindowAnalyzer().analyze(corpus(jobs=[], cache=[])) == []
+
+
+def test_the_finding_carries_the_composers_measured_inputs(mockup: Finding) -> None:
+    # BV.4 (#513) composes the re-warm impact from these, never from a guess.
+    assert mockup.data["slowdown_seconds"] == 168
+    assert mockup.data["trigger_title"] == "deps: refresh west manifest"
+    assert mockup.data["pool_id"] == uid("pool", 1)
+
+
+def test_no_comparable_builds_leaves_the_slowdown_unknown() -> None:
+    # Every cached build is inside a window: nothing to compare against.
+    jobs, cache = [], []
+    for k in range(3):
+        on = FROM + timedelta(days=k)
+        jobs.append(
+            job(k + 1, queued=instant(on, 8), title="deps: refresh x", ref=MAIN)
+        )
+        cache.append(
+            {
+                "build_id": uid("job", k + 1),
+                "day": jobs[-1]["day"],
+                "hits": 1,
+                "misses": 9,
+            }
+        )
+    jobs.append(job(9, queued=instant(FROM, 20), label="other"))
+    cache.append(
+        {"build_id": uid("job", 9), "day": jobs[-1]["day"], "hits": 9, "misses": 1}
+    )
+    (finding,) = CacheWindowAnalyzer().analyze(corpus(jobs=jobs, cache=cache))
+    assert finding.data["slowdown_seconds"] is None

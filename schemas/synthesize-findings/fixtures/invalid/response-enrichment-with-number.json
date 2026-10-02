@@ -1,0 +1,15 @@
+{
+  "candidates": [],
+  "enrichments": [
+    {
+      "identity_key": "build_process:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "narrative": "x",
+      "estimate": -300
+    }
+  ],
+  "provenance": {
+    "actor": "model",
+    "model": "claude-sonnet-5",
+    "cost_cents": 4.2
+  }
+}

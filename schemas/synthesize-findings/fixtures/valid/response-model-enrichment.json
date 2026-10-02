@@ -1,0 +1,14 @@
+{
+  "candidates": [],
+  "enrichments": [
+    {
+      "identity_key": "build_process:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "narrative": "QEMU has not caught a failure HIL or native_sim missed in 90 days; moving it to the merge gate keeps every catch."
+    }
+  ],
+  "provenance": {
+    "actor": "model",
+    "model": "claude-sonnet-5",
+    "cost_cents": 4.2
+  }
+}

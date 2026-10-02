@@ -75,6 +75,7 @@ make_fixture() {
       - "schemas/runner-protocol/**"
       - "schemas/hil-results/**"
       - "schemas/triage/**"
+      - "schemas/synthesize-findings/**"
       - "ouroboros-engine/openapi.yaml"
       - "docs/mockups/05-workflow-code.html"
       - "docker-compose.yml"'
@@ -1026,6 +1027,10 @@ check_break 'a rest workflow that stops watching the HIL results contract is rep
 check_break 'a rest workflow that stops watching the triage contract is reported' \
   'schemas/triage/v0\.json runs rest\.yml' \
   'sed -i "/^      - \"schemas\/triage\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
+
+check_break 'a rest workflow that stops watching the synthesize-findings contract is reported' \
+  'schemas/synthesize-findings/v0\.json runs rest\.yml' \
+  'sed -i "/^      - \"schemas\/synthesize-findings\/\*\*\"$/d" "$root/.github/workflows/rest.yml"'
 
 check_break 'an engine workflow that stops watching the plan contract is reported' \
   'schemas/plan/v0\.json runs engine\.yml rest\.yml' \

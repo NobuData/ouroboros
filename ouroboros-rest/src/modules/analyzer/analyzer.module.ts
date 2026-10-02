@@ -15,6 +15,10 @@
  * the corpus within the run's budgets (`corpus/`), dispatches it to the deployment's own engine
  * through `EngineModule`'s client, and writes progress, findings and the ending to the run row as
  * they happen. Nothing here sends a corpus anywhere else.
+ *
+ * In the `composing` phase the suggestion composer (`composer/`, BV.4,
+ * [#513](https://github.com/NobuData/ouroboros/issues/513)) turns the run's findings into
+ * suggestions through typed templates, with calibrated impact and documented confidence.
  */
 
 import { Module } from "@nestjs/common";
@@ -30,6 +34,9 @@ import { AnalysisOrchestrator } from "./analysis.orchestrator";
 import { AnalysisRepository } from "./analysis.repository";
 import { AnalysisScheduler } from "./analysis.scheduler";
 import { AnalysisService } from "./analysis.service";
+import { ComposerRepository } from "./composer/composer.repository";
+import { SuggestionComposer } from "./composer/composer.service";
+import { SYNTHESIZER, UnavailableSynthesizer } from "./composer/synthesis.contract";
 import { CorpusAssembler } from "./corpus/corpus.assembler";
 import { CorpusRepository } from "./corpus/corpus.repository";
 
@@ -44,6 +51,9 @@ import { CorpusRepository } from "./corpus/corpus.repository";
     AnalysisService,
     AnalysisScheduler,
     AnalysisBuildCounter,
+    ComposerRepository,
+    SuggestionComposer,
+    { provide: SYNTHESIZER, useClass: UnavailableSynthesizer },
   ],
   exports: [AnalysisOrchestrator],
 })
