@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**349 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
+**350 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12 | **290** |
-| 🟡 **In progress** | P11, P13 | **59** of 70 |
+| 🟡 **In progress** | P11, P13 | **60** of 70 |
 | — **Not started** | P14–P17 | 0 of 94 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -116,7 +116,7 @@ position is not forced by dependencies, one of these decided it.
 | **P10** | Run console & ingestion contract | ✅ 17/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | ✅ 28/28 | 28 | 83 | Mockups 14, 13 |
-| **P13** | Analytics — insights & build analyzer | 🟡 23/32 | 32 | 109 | Mockups 15, 18 |
+| **P13** | Analytics — insights & build analyzer | 🟡 24/32 | 32 | 109 | Mockups 15, 18 |
 | **P14** | Decisions & governance — inbox, settings | — 0/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
@@ -1620,7 +1620,7 @@ the blockquote above that records what it did and what it did differently.
 | 348 | **BW.2** | [#517](https://github.com/NobuData/ouroboros/issues/517) | Annotated duration chart | ouroboros-ui | M | BK.1, BW.1 |
 | 349 | **BJ.5** | ✅ [#441](https://github.com/NobuData/ouroboros/issues/441) | Insights integration tests | ouroboros-rest | M | BJ.2, BJ.4 |
 | 350 | **BK.2** | ✅ [#443](https://github.com/NobuData/ouroboros/issues/443) | Insights route, head, range & KPI row | ouroboros-ui | M | 5.3, D.5, BJ.2 |
-| 351 | **BV.4** | [#513](https://github.com/NobuData/ouroboros/issues/513) | Suggestion composer | ouroboros-rest | M | BV.2, BV.3 |
+| 351 | **BV.4** | ✅ [#513](https://github.com/NobuData/ouroboros/issues/513) | Suggestion composer | ouroboros-rest | M | BV.2, BV.3 |
 | 352 | **BK.3** | ✅ [#444](https://github.com/NobuData/ouroboros/issues/444) | Time-series cards (throughput & cost) | ouroboros-ui | M | BK.1, BK.2 |
 | 353 | **BK.5** | ✅ [#446](https://github.com/NobuData/ouroboros/issues/446) | Performance strip, secondary charts & flaky card | ouroboros-ui | M | BK.1, BK.2 |
 | 354 | **BV.5** | [#514](https://github.com/NobuData/ouroboros/issues/514) | Actions — apply, dismiss, draft & push | ouroboros-rest | L | P.3, BV.4 |

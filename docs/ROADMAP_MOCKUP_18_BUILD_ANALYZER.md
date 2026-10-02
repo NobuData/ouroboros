@@ -448,7 +448,7 @@ seeds: 90d series w/ 3 planted shifts + attribution anchors · run manifest ·
 | BV.1 | #510 ✅ | 🟢 Done | ouroboros-rest: [BV.1] Corpus assembly & run orchestration | Bounded readers, snapshots, budgets, schedule triggers (A2/A7) | mvp, analyzer, rest | N (after BU.1, AJ.4-shape) | Y | L | ouroboros-rest |
 | BV.2 | #511 ✅ | 🟢 Done | ouroboros-engine: [BV.2] Analyzer SPI & statistical core | The engine-side SPI + change-point (ruptures) + attribution | mvp, analyzer, engine | N (after BU.2, #52) | Y | L | ouroboros-engine |
 | BV.3 | #512 ✅ | 🟢 Done | ouroboros-engine: [BV.3] Pattern analyzers | Signatures, config-usage, cache-window, queue, waiver-cites, workflow-outcome | mvp, analyzer, engine | N (after BV.2) | Y | L | ouroboros-engine |
-| BV.4 | #513 | 🟡 Open | ouroboros-rest: [BV.4] Suggestion composer | Templates, impact math, confidence scoring, `/v0/synthesize` contract | mvp, analyzer, rest | N (after BV.2/BV.3) | Y | M | ouroboros-rest |
+| BV.4 | #513 ✅ | 🟢 Done | ouroboros-rest: [BV.4] Suggestion composer | Templates, impact math, confidence scoring, `/v0/synthesize` contract | mvp, analyzer, rest | N (after BV.2/BV.3) | Y | M | ouroboros-rest |
 | BV.5 | #514 | 🟡 Open | ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push | Plane compositions with previews; planning-batch drafting (A4/A5) | mvp, analyzer, rest, workflow, planning | N (after BV.4, WF-P.3, AK/AL) | Y | L | ouroboros-rest |
 | BV.6 | #515 | 🟡 Open | ouroboros-rest: [BV.6] Measurement job & calibration | 14d windows, verdicts, confounds, recalibration (A6); tests | mvp, analyzer, rest, ci | N (after BU.3, BV.5, BI.2) | Y | M | ouroboros-rest |
 
@@ -629,7 +629,33 @@ workflow_outcome: P(flake ≤7d | touched drivers/can) = 3.1× baseline (21 case
 
 ### Issue BV.4 — ouroboros-rest: [BV.4] Suggestion composer
 
-> **GitHub issue:** #513 · **Status:** 🟡 Open · **Parent epic:** #503
+> **GitHub issue:** #513 ✅ · **Status:** 🟢 Done · **Parent epic:** #503
+
+- **Delivered** (`ouroboros-rest` 0.38.7 `src/modules/analyzer/composer/`, `ouroboros-db`
+  `V087__analysis_suggestion_confidence_basis.sql`, `ouroboros-engine` 0.7.11,
+  `schemas/synthesize-findings/v0.json`).
+  - **Templates.** A registry of ten typed templates: the six cards and BA-1…BA-4. Every title
+    and evidence slot is read from finding data.
+  - **Impact.** Each impact is a named formula over the finding's **measured** fields, times BU.3's
+    factor for that analyzer and impact class. `impact.basis` stores the formula id, inputs,
+    window, calibration and raw estimate, and a test recomputes each one independently.
+  - **Spikes.** Missing inputs make the impact `unquantified` and the suggestion a spike; the link
+    card is a spike by rule.
+  - **Confidence.** `round(100 × (1 − e^(−n/scale)) × stability × min(1, |effect|/target))`,
+    stored in V087's new `confidence_basis`.
+  - **Recording.** Suggestions go through `record_analysis_suggestion()`, so re-analysis updates,
+    a dismissal sticks, and every cited finding is linked. Composition runs in the `composing`
+    phase and never fails a run.
+  - **Engine.** #512's analyzers now emit the composer's inputs (`slowdown_seconds`,
+    `pr_seconds_per_commit`, `wait_reduction_seconds`…).
+  - **Seed.** It stores the inputs its rows cannot yield, and composes the page by the same
+    formulas: the exact titles, lines, −220/−110/−240/−55/−125/−1 and 91/88/84/72/89/77 ·
+    86/90/82/93.
+  - **Synthesis contract.** `/v0/synthesize-findings` is committed with a ci/rest drift check
+    (`synthesis.contract.spec.ts`, plus a `rest.yml` filter and a `verify-ci` route). The
+    `UnavailableSynthesizer` stub answers until BX.1.
+  - *Not here:* filling the measured fields from BV.1's corpus (#512's follow-up), and the
+    suggestion read API (BW.3).
 
 - **Problem Statement:** Findings become suggestions through typed
   templates with computed impact and documented confidence (option
@@ -1062,8 +1088,8 @@ Ordered checklist (⊕ = parallelizable within its phase):
 1. **Phase 0 — Prerequisites:** AH, AS/AT.3, AO, AJ.4 shape, AG.5, AS.4,
    BI.1/BI.2, WF-P.3/S, AK/AL, farm config, BK.1, #41/#46.
 2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
-3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → BV.3 (#512) →
-   BV.4 (#513) → BV.5 (#514) → BV.6 (#515)
+3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → **BV.3 (#512) ✅** →
+   **BV.4 (#513) ✅** → BV.5 (#514) → BV.6 (#515)
 4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
    BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
 5. **v2:** BX.1 (#522) after AF.2 (#235); BX.2 (#523) ⊕ BX.3 (#524) ⊕

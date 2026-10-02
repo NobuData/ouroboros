@@ -26,6 +26,7 @@
         "2026-08-07"
       ],
       "idle_pool": "pool-b",
+      "idle_pool_id": "5eed0512-0002-4000-8000-000000000002",
       "idle_share": 0.82,
       "longest_wait_seconds": [
         600.0,
@@ -41,12 +42,16 @@
         600.0
       ],
       "metric": "queue_wait",
+      "move_runner_id": "5eed0512-0003-4000-8000-000000000005",
       "pool": "pool-a",
+      "pool_id": "5eed0512-0002-4000-8000-000000000001",
+      "queue_p95_seconds": 600.0,
       "sampling": {
         "rate": 1.0,
         "sampled": false
       },
       "threshold_seconds": 300,
+      "wait_reduction_seconds": 600.0,
       "window": {
         "from": "14:00",
         "to": "16:00"

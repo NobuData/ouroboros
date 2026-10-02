@@ -1,0 +1,26 @@
+{
+  "candidates": [
+    {
+      "kind": "ticket_draft",
+      "finding_ids": [
+        "5eed0066-0000-4000-8000-000000000172"
+      ],
+      "title": "Run a HIL smoke stage on drivers/can merges",
+      "evidence_line": "HIL caught 9 unique failures, all at merge gates",
+      "impact": null,
+      "needs_spike": false,
+      "action_binding": {
+        "plane": "planning",
+        "change": {
+          "ticket": "hil_smoke"
+        }
+      }
+    }
+  ],
+  "enrichments": [],
+  "provenance": {
+    "actor": "model",
+    "model": "claude-sonnet-5",
+    "cost_cents": 4.2
+  }
+}

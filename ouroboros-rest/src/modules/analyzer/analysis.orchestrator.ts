@@ -17,8 +17,9 @@
  *   2. **analyzing** — the corpus goes to the engine (`EngineClient.analyze`); each analyzer's
  *      start and end tick its entry in `progress`, and a completed analyzer's findings are written
  *      **as it completes**, so a run that stops later keeps them.
- *   3. **composing** — the run's outcome is decided and its confidence note computed. (BV.4's
- *      suggestion composer, #513, attaches here.)
+ *   3. **composing** — the suggestion composer (BV.4, #513, `composer/`) turns the findings into
+ *      suggestions, then the run's outcome is decided and its confidence note computed. A run that
+ *      failed composes nothing; a composer failure is logged and never fails the run.
  *
  * **Terminal states are honest about why.** `complete` — every analyzer had its turn (one that
  * failed on its own is recorded as failed in `progress`; BV.2's isolation). `budget_exceeded` — the
@@ -57,6 +58,7 @@ import {
   type CorpusBudget,
   type CorpusManifest,
 } from "./corpus/corpus.manifest";
+import { SuggestionComposer } from "./composer/composer.service";
 import { CorpusRepository, type CorpusScope } from "./corpus/corpus.repository";
 
 /** The clock the orchestrator reads, bound by name so a suite can move it. */
@@ -111,6 +113,7 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
    * @param assembler - Corpus assembly.
    * @param engine - The engine — the only place a corpus is sent.
    * @param clock - The current instant; `Date.now` unless a suite binds one.
+   * @param composer - The suggestion composer (BV.4); a suite may leave it out.
    */
   constructor(
     private readonly runs: AnalysisRepository,
@@ -118,6 +121,7 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
     private readonly assembler: CorpusAssembler,
     private readonly engine: EngineClient,
     @Optional() @Inject(ANALYSIS_CLOCK) private readonly clock: () => number = Date.now,
+    @Optional() private readonly composer?: SuggestionComposer,
   ) {}
 
   /**
@@ -438,6 +442,7 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
     );
     const summary = analyzerSummary(progress);
     const note = confidenceNote({ window: manifest.window, ...stability });
+    await this.suggest(run, manifest);
 
     if (stoppedEarly) {
       const stopped = [...summary.not_run, ...timedOutAtCeiling(progress)];
@@ -465,6 +470,30 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
       confidenceNote: note,
       failureReason: null,
     });
+  }
+
+  /**
+   * Compose the run's findings into suggestions while it is still running (BV.4).
+   *
+   * Never throws: a composition that breaks is logged, and the run ends as its analysis did.
+   *
+   * @param run - The run.
+   * @param manifest - What assembly read — its window is the impact basis's window.
+   * @returns When composed.
+   */
+  private async suggest(run: AnalysisRunRow, manifest: CorpusManifest): Promise<void> {
+    if (this.composer === undefined) {
+      return;
+    }
+    try {
+      const result = await this.composer.compose(run, manifest.window);
+      this.logger.log(
+        `Analysis ${run.id} composed ${String(result.recorded.length)} suggestion(s)` +
+          (result.failed.length === 0 ? "." : `; failed: ${result.failed.join(", ")}.`),
+      );
+    } catch (error) {
+      this.logger.error(`Analysis ${run.id} could not compose suggestions.`, describeForLog(error));
+    }
   }
 
   /**

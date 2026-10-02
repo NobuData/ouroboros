@@ -17,12 +17,14 @@
       "hit_rate_after": 0.31,
       "hit_rate_before": 0.78,
       "occurrences": 14,
+      "pool_id": "5eed0512-0002-4000-8000-000000000001",
       "recovery_hours_median": 6.0,
       "sampling": {
         "rate": 1.0,
         "sampled": false
       },
       "share": 0.19,
+      "slowdown_seconds": 168.0,
       "trigger": "deps-refresh merge",
       "trigger_days": [
         "2026-05-13",
@@ -41,6 +43,7 @@
         "2026-07-30"
       ],
       "trigger_pattern": "^deps: refresh",
+      "trigger_title": "deps: refresh west manifest",
       "window_hours": 6
     },
     "evidence_refs": [

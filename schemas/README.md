@@ -35,6 +35,12 @@ schemas/
 │       ├── valid/               # a worked example per message type, and the variants
 │       ├── invalid/             # one document per rule, each breaking exactly that rule
 │       └── sessions/            # ordered transcripts — each frame a path into valid/
+├── synthesize-findings/
+│   ├── v0.json                  # the contract — $id: …/synthesize-findings/v0.json, JSON Schema 2020-12
+│   └── fixtures/
+│       ├── expected.json        # every document below, which half it is, and its verdict
+│       ├── valid/               # a request, the stub's empty answer, model candidates and an enrichment
+│       └── invalid/             # one document per rule — an impact with no computable basis first
 ├── triage/
 │   ├── v0.json                  # the contract — $id: …/triage/v0.json, JSON Schema 2020-12
 │   └── fixtures/
@@ -78,6 +84,7 @@ schemas/
 | [`ouroboros-rest/src/modules/farm/protocol/`](../ouroboros-rest/src/modules/farm/protocol) | the farm gateway's protocol codec (AH.3, [#251](https://github.com/NobuData/ouroboros/issues/251)) — the runner contract's second implementation, a table-for-table port of the Go one | `protocol.spec.ts` (every case's diagnostics, code and path, in the contract's order; every transcript's frames decoded and held to their direction; every fixture named by a case; the TypeScript constants are the schema's published limits, and the two over-limit cases built from them), and `gateway/agent.gateway.integration-spec.ts`, which replays the session transcripts against the running gateway in both directions |
 | [`ouroboros-rest/src/modules/test-results/`](../ouroboros-rest/src/modules/test-results) | the result parser (AT.1, [#329](https://github.com/NobuData/ouroboros/issues/329)) — reads a rig's `ouro-hil-results.json` into V053's measurements, dropping only the smallest invalid element | `hil.schema.spec.ts` (the embedded copy is exactly `hil-results/v1.json`, and classifies every fixture as `expected.json` records) |
 | [`ouroboros-rest/src/modules/triage/`](../ouroboros-rest/src/modules/triage) | `/v0/triage` (AT.4, [#332](https://github.com/NobuData/ouroboros/issues/332)) — the routing service's heuristic hints answered in the response shape, and the request it will send; committed before its model implementation, AV.1 ([#343](https://github.com/NobuData/ouroboros/issues/343)) | `triage.contract.spec.ts` (every field of `v0.json` pinned with its type in `triage.contract.ts`, every fixture classified as `expected.json` records, and every request and heuristic response the service builds valid) |
+| [`ouroboros-rest/src/modules/analyzer/composer/`](../ouroboros-rest/src/modules/analyzer/composer) | `/v0/synthesize-findings` (BV.4, [#513](https://github.com/NobuData/ouroboros/issues/513)) — the request the suggestion composer would send the Build Analyzer's v2 LLM pass, and the stub's empty answer; committed before its implementation, BX.1 ([#522](https://github.com/NobuData/ouroboros/issues/522)) | `synthesis.contract.spec.ts` (every field of `v0.json` pinned with its type in `synthesis.contract.ts`, every fixture classified as `expected.json` records, and the request built from the seeded findings and the stub's answer valid) |
 | [`docs/TEST_RESULTS_INGEST.md`](../docs/TEST_RESULTS_INGEST.md) | the HIL results contract a person reads | Its worked example is `hil-results/fixtures/valid/helios-rig.json` |
 | [`docs/RUNNER_PROTOCOL.md`](../docs/RUNNER_PROTOCOL.md) | the runner wire contract a person reads | [`scripts/verify-runner-protocol.sh`](../scripts/verify-runner-protocol.sh) — every message type has a section, a fixture and a case; every example in the document is the committed fixture; every fixture is asserted against; the limits agree |
 

@@ -11,6 +11,7 @@ from ouroboros_engine.analysis.patterns.queue_correlation import (
     PARAMETERS,
     QueueCorrelationAnalyzer,
     observed_days,
+    p95,
 )
 
 
@@ -97,3 +98,20 @@ def test_a_pool_without_runners_is_never_the_idle_pool() -> None:
     assert (
         QueueCorrelationAnalyzer().analyze(corpus(jobs=_queue(60), pools=pools)) == []
     )
+
+
+def test_the_finding_carries_the_composers_measured_inputs(mockup: Finding) -> None:
+    # BV.4 (#513): the wait the move would remove, and the runner it names.
+    assert mockup.data["queue_p95_seconds"] == 600
+    assert mockup.data["wait_reduction_seconds"] == 600
+    assert mockup.data["move_runner_id"] == uid("runner", 5)
+    assert (mockup.data["pool_id"], mockup.data["idle_pool_id"]) == (
+        uid("pool", 1),
+        uid("pool", 2),
+    )
+
+
+def test_p95_is_nearest_rank() -> None:
+    assert p95([1.0]) == 1.0
+    assert p95([float(n) for n in range(1, 21)]) == 19.0
+    assert p95([float(n) for n in range(1, 101)]) == 95.0

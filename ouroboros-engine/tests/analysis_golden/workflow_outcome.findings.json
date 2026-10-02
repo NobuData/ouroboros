@@ -11,8 +11,12 @@
     },
     "data": {
       "at_merge_gate": 9,
+      "co_stages": [
+        "zephyr build"
+      ],
       "failures": 11,
       "metric": "unique_failures",
+      "pr_seconds_per_commit": 2077.0,
       "sample": 62,
       "sampling": {
         "rate": 1.0,
@@ -85,8 +89,12 @@
     },
     "data": {
       "at_merge_gate": 0,
+      "co_stages": [
+        "qemu_cortex_m3"
+      ],
       "failures": 55,
       "metric": "unique_failures",
+      "pr_seconds_per_commit": 120.0,
       "sample": 214,
       "sampling": {
         "rate": 1.0,
@@ -335,8 +343,12 @@
     },
     "data": {
       "at_merge_gate": 0,
+      "co_stages": [
+        "native_sim"
+      ],
       "failures": 12,
       "metric": "unique_failures",
+      "pr_seconds_per_commit": 180.0,
       "sample": 214,
       "sampling": {
         "rate": 1.0,
@@ -413,8 +425,10 @@
     },
     "data": {
       "at_merge_gate": 0,
+      "co_stages": [],
       "failures": 63,
       "metric": "unique_failures",
+      "pr_seconds_per_commit": 285.0,
       "sample": 794,
       "sampling": {
         "rate": 1.0,
@@ -706,6 +720,7 @@
         "sampled": false
       },
       "scope": "merges touching drivers/can/",
+      "suite": "telemetry integration",
       "unit": "ratio",
       "value": 3.1,
       "workflow": "standard-fix"
@@ -810,8 +825,11 @@
       "stability": 0.869
     },
     "data": {
+      "attempt_seconds": 300.0,
+      "build_stage": "build",
       "flagged": 17,
       "metric": "failed_builds_flagged_by_review",
+      "review_stage": "review",
       "sample": 50,
       "sampling": {
         "rate": 1.0,

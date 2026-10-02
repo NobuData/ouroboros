@@ -490,6 +490,19 @@ rules and its confidence formula.
 | `waiver_cite` | `waivers` | waivers in 60 days whose normalised reasons share a token (≥ 3); topic = the tokens all share |
 | `workflow_outcome` | `jobs`, `loops` (+ `tests`) | failed builds later flagged by review (share); path prefix × flake within 7 days as a ratio with case count and baseline, **suppressed below 10 cases**; per-stage **unique failures** (no other job of the same commit failed) with the merge-gate count |
 
+**Measured inputs for the composer** (BV.4, [#513](https://github.com/NobuData/ouroboros/issues/513)).
+`ouroboros-rest`'s suggestion composer computes each impact from the finding's own measured
+fields, never from a guess, so the analyzers emit them:
+- `cache_window`: `slowdown_seconds`, the median in-window build minus the median of the other
+  builds with the same labels.
+- `queue_correlation`: `queue_p95_seconds`, and `wait_reduction_seconds`, the p95 of the
+  exceeded days' longest waits.
+- `workflow_outcome`: `pr_seconds_per_commit` per stage, the failed build stage's
+  `attempt_seconds`, and a flake ratio's `suite`.
+
+They also carry the ids a binding names (`pool_id`, `move_runner_id`) and the slots a title
+reads (`trigger_title`, `co_stages`, `build_stage`/`review_stage`).
+
 `tests/analysis_golden.py` builds the planted-shift and noise-only corpora, and
 `tests/analysis_patterns_golden.py` builds mockup 18's pattern corpus. That corpus is 1,284 jobs
 with every evidence line planted, never stated. The expected findings are committed under

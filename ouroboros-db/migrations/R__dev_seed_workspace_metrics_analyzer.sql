@@ -108,6 +108,15 @@
 --     builds unattributed to loops, so these three are stored as the workflow_outcome analyzer's
 --     output with evidence that resolves (the standard-fix version, the four `can:` merges, the
 --     LTO merge) — not derived.
+--   * **The composer's measured inputs (#513).** BV.4 computes each card's impact from fields on
+--     the finding it cites. The seed reads what its rows hold — the deps-refresh merges' title and
+--     pool, the p95 of pool-a's daily longest wait, forge-02's id — and stores the rest: the
+--     168 s cold-cache slowdown (the plant slows only each window's top half, so the engine's
+--     median-difference measure reads 45 s here), the test gate's per-commit stage seconds, the
+--     240 s a moved runner would take off the queue, the failed attempt's 368 s, the link step's
+--     growth, the flake rate and baseline, the pinned ccache release and the rig's missing
+--     capability. The findings' stabilities are the composer's confidence inputs, chosen so its
+--     documented formula prints the page's figures.
 --   * **The run before's corpus** (271 loops, 2.9M log lines), whose window reaches back past
 --     the ninety days seeded here. The page's run is counted instead — see *Seeded to scale*.
 --   * **The run before** (38 days ago) and its two findings, which proposed the two changes the
@@ -1265,10 +1274,10 @@ lines as (
 signatures (n, template, pattern, population, confidence, stability) as (
   values (111, 'FAIL - ota.fixture.shared_setup: fixture ''ota_image_server'' setup timed out after <*>s',
                '^FAIL - ota\.fixture\.shared_setup: fixture ''ota_image_server'' setup timed out after [0-9.]+s$',
-               '^FAIL - ota\.', 90, 0.94),
+               '^FAIL - ota\.', 90, 0.86),
          (112, 'ccache: warning: manifest hash miss for <*> (ccache#1412)',
                '^ccache: warning: manifest hash miss for \S+ \(ccache#1412\)$',
-               null, 92, 0.97)
+               null, 92, 0.9)
 ),
 counted as (
   select s.*, hashed.hash,
@@ -1289,7 +1298,9 @@ select ('5eed0066-0000-4000-8000-' || lpad(c.n::text, 12, '0'))::uuid, run.id, r
        run.repo_ref, 'log_signature', 1, 'log_signature', c.hash,
        jsonb_build_object('template', c.template, 'signature_hash', c.hash, 'count', c.builds,
                           'share', round(c.matched::numeric / nullif(c.population_n, 0), 3),
-                          'sample_refs', c.samples),
+                          'sample_refs', c.samples)
+         -- Stored (#513): the ccache release the farm image pins, which the logs do not print.
+         || case when c.n = 112 then '{"tool_version": "4.9"}'::jsonb else '{}'::jsonb end,
        c.refs, c.confidence,
        jsonb_build_object('method', 'log_signature v1: lines clustered by masked template; share of '
                                     || 'the population the template is drawn from',
@@ -1415,13 +1426,19 @@ select '5eed0066-0000-4000-8000-000000000141'::uuid, run.id, run.organization_id
        'cache_window', 1, 'cache_window', 'deps-refresh merge',
        jsonb_build_object('trigger', 'deps-refresh merge', 'hit_rate_before', rates.before,
                           'hit_rate_after', rates.after, 'window_hours', 6,
-                          'occurrences', (select count(*) from refreshes), 'share', rates.share),
+                          'occurrences', (select count(*) from refreshes), 'share', rates.share,
+                          -- #513's measured inputs: the merges' title and the pool the cold
+                          -- builds ran on are read; the slowdown is stored (see the header).
+                          'trigger_title', (select min(r.title) from refreshes r),
+                          'pool_id', (select c.pool_id::text from cached c where c.after
+                                       group by c.pool_id order by count(*) desc, c.pool_id limit 1),
+                          'slowdown_seconds', 168),
        (select jsonb_agg(jsonb_build_object('kind', 'merge', 'id', r.commit_sha) order by r.at)
           from refreshes r),
        93,
        jsonb_build_object('method', 'cache_window v1: the hit rate inside each trigger''s window against the rest',
                           'sample_size', rates.n, 'effect_size', rates.before - rates.after,
-                          'stability', 0.96),
+                          'stability', 0.936),
        run.started_at + interval '18 minutes'
   from run, rates
  where ${ouro_dev_seed}
@@ -1483,7 +1500,17 @@ select '5eed0066-0000-4000-8000-000000000151'::uuid, run.id, run.organization_id
                           'days_exceeded', (select count(*) from exceeded),
                           'days_observed', (select count(*) from weekdays),
                           'idle_share', round(1 - busy.seconds / nullif(capacity.seconds, 0), 2),
-                          'pool', 'pool-a', 'idle_pool', 'pool-b'),
+                          'pool', 'pool-a', 'idle_pool', 'pool-b',
+                          -- #513's measured inputs: the p95 of each weekday's longest wait and
+                          -- the ids are read; the wait a moved runner would remove is stored.
+                          'queue_p95_seconds', (select percentile_disc(0.95) within group (order by w.wait)
+                                                  from waits w where w.rn = 1)::integer,
+                          'wait_reduction_seconds', 240,
+                          'move_runner_id', (select r.id::text from run
+                                               join ouroboros.runners r on r.organization_id = run.organization_id
+                                                                       and r.name = 'forge-02'),
+                          'pool_id', (select p.id::text from pools p where p.name = 'pool-a'),
+                          'idle_pool_id', (select p.id::text from pools p where p.name = 'pool-b')),
        (select jsonb_agg(ref order by ord) from (
           select jsonb_build_object('kind', 'runner_pool', 'id', p.id::text) as ref,
                  case p.name when 'pool-a' then 1 else 2 end as ord
@@ -1500,7 +1527,7 @@ select '5eed0066-0000-4000-8000-000000000151'::uuid, run.id, run.organization_id
                                     || 'window crossed the threshold, against the other pool''s idle share',
                           'sample_size', (select count(*) from waits), 'effect_size',
                           round((select count(*) from exceeded)::numeric / nullif((select count(*) from weekdays), 0), 3),
-                          'stability', 0.79),
+                          'stability', 0.895),
        run.started_at + interval '21 minutes'
   from run, busy, capacity
  where ${ouro_dev_seed}
@@ -1530,13 +1557,14 @@ cited as (
 select '5eed0066-0000-4000-8000-000000000161'::uuid, run.id, run.organization_id, run.repo_ref,
        'waiver_cite', 1, 'waiver_cite', 'missing thermal coverage',
        jsonb_build_object('topic', 'missing thermal coverage', 'window_days', 60,
-                          'waiver_count', (select count(*) from cited), 'rig', 'helios-rig-02'),
+                          'waiver_count', (select count(*) from cited), 'rig', 'helios-rig-02',
+                          'capability', 'thermal chamber'),
        (select jsonb_agg(jsonb_build_object('kind', 'waiver', 'id', c.id::text) order by c.created_at)
           from cited c),
        82,
        jsonb_build_object('method', 'waiver_cite v1: waivers in the window whose reasons cluster on one topic',
                           'sample_size', (select count(*) from cited), 'effect_size', 1.0,
-                          'stability', 0.9),
+                          'stability', 0.863),
        run.started_at + interval '24 minutes'
   from run
  where ${ouro_dev_seed}
@@ -1565,11 +1593,13 @@ corpus as (
    where (job.finished_at at time zone 'UTC')::date between run.day_from and run.day_to
 ),
 -- A stage's unique failure: it failed, and no other stage's build of the same commit did.
-stages (n, label, stage) as (
-  values (171, 'qemu_cortex_m3', 'qemu_cortex_m3'), (172, 'HIL test rig', 'HIL')
+-- pr_seconds is stored (#513): what a PR build pays for the stage today, per commit — the
+-- composer's test-gate saving. The farm's per-stage timings are not seeded at that grain.
+stages (n, label, stage, pr_seconds) as (
+  values (171, 'qemu_cortex_m3', 'qemu_cortex_m3', 158), (172, 'HIL test rig', 'HIL', 48)
 ),
 outcomes as (
-  select s.n, s.stage,
+  select s.n, s.stage, s.pr_seconds,
          (select count(*) from corpus c where c.label = s.label) as sample,
          (select count(*) from corpus c
            where c.label = s.label and c.status = 'failed'
@@ -1596,37 +1626,42 @@ stored (n, subject_key, data, refs, confidence, effect_size, stability) as (
   select 173, 'standard-fix/stage build→review/failed_builds_flagged_by_review',
          '{"workflow": "standard-fix", "scope": "stage build → review",
            "metric": "failed_builds_flagged_by_review", "value": 0.34, "unit": "share",
-           "sample": 50}'::jsonb,
+           "sample": 50, "build_stage": "build", "review_stage": "self-review",
+           "attempt_seconds": 368}'::jsonb,
          (select jsonb_build_array(jsonb_build_object('kind', 'workflow_version', 'id', v.id::text))
             from run
             join ouroboros.workflows w         on w.organization_id = run.organization_id
                                               and w.slug = 'standard-fix'
             join ouroboros.workflow_versions v on v.workflow_id = w.id and v.version is not null
            order by v.version desc limit 1),
-         89, 0.34, 0.88
+         89, 0.34, 0.896
   union all
   select 174, 'standard-fix/drivers-can/telemetry_flake_ratio_7d',
          '{"workflow": "standard-fix", "scope": "merges touching drivers/can",
-           "metric": "telemetry_flake_ratio_7d", "value": 3.1, "unit": "ratio", "sample": 21}'::jsonb,
+           "metric": "telemetry_flake_ratio_7d", "value": 3.1, "unit": "ratio", "sample": 21,
+           "suite": "telemetry", "rate": 0.62, "baseline": 0.2}'::jsonb,
          (select jsonb_agg(jsonb_build_object('kind', 'merge', 'id', m.commit_sha) order by m.at)
             from merges m where m.title like 'can: %'),
-         77, 3.1, 0.71
+         77, 3.1, 0.878
   union all
   select 175, 'zephyr build/step link/link_share',
          jsonb_build_object('workflow', 'zephyr build', 'scope', 'step link', 'metric', 'link_share',
                             'value', 0.42, 'unit', 'share', 'before', 0.18,
+                            'step_seconds_delta', 110, 'artifact', 'zephyr.elf',
+                            'since', 'v2.3 (LTO enabled)',
                             'sample', (select count(*) from corpus c, merges m
                                         where m.title like 'v2.3:%' and c.label = 'zephyr build'
                                           and c.queued_at >= m.at)),
          (select jsonb_agg(jsonb_build_object('kind', 'merge', 'id', m.commit_sha))
             from merges m where m.title like 'v2.3:%'),
-         72, 0.24, 0.81
+         72, 0.24, 0.751
 ),
 emitted (n, subject_key, data, refs, confidence, method, sample_size, effect_size, stability, minutes) as (
   select o.n, 'standard-fix/stage ' || o.stage || '/unique_failures',
          jsonb_build_object('workflow', 'standard-fix', 'scope', 'stage ' || o.stage,
                             'metric', 'unique_failures', 'value', o.unique_failures, 'unit', 'count',
-                            'sample', o.sample, 'at_merge_gate', o.at_merge_gate),
+                            'sample', o.sample, 'at_merge_gate', o.at_merge_gate,
+                            'pr_seconds_per_commit', o.pr_seconds, 'co_stages', jsonb_build_array('native_sim')),
          o.refs, case o.n when 171 then 91 else 90 end,
          'workflow_outcome v1: failures a stage caught that no other stage of the same commit did',
          o.sample, round(o.unique_failures::numeric / nullif(o.sample, 0), 3), 0.95, 27
@@ -1648,161 +1683,247 @@ select ('5eed0066-0000-4000-8000-' || lpad(r.n::text, 12, '0'))::uuid, run.id, r
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
--- What it suggests — six cards and four ticket drafts, each line composed from the findings it
--- cites.
+-- What it suggests — six cards and four ticket drafts, composed from the findings they cite by
+-- BV.4's templates (#513; ouroboros-rest src/modules/analyzer/composer/, whose unit suite composes
+-- the same rows from a mirror of these findings). Every slot is read from a finding's data; every
+-- impact is the template's formula over the finding's measured fields × the repository's
+-- calibration factor (V085, 1 without a row); every confidence is
+--
+--   round(100 × (1 − e^(−n/scale)) × stability × min(1, |effect| / target))
+--
+-- over the cited findings' bases, with the template's scale and target. No impact or confidence
+-- is typed here, and both are stored with their arithmetic (V087's confidence_basis).
 -- ---------------------------------------------------------------------------
 insert into ouroboros.analysis_suggestions
   (id, organization_id, repo_ref, kind, identity_key, last_run_id, title, evidence_line,
-   confidence, impact, needs_spike, action_binding, created_at)
+   confidence, confidence_basis, impact, needs_spike, action_binding, created_at)
 with run as (
-  select r.* from ouroboros.analysis_runs r
+  select r.*, r.corpus_manifest -> 'window' as win
+    from ouroboros.analysis_runs r
    where r.id = '5eed0065-0000-4000-8000-000000000002' and r.status = 'running'
 ),
 f as (
-  select right(finding.id::text, 3)::int as n, finding.data, finding.identity_key
+  select right(finding.id::text, 3)::int as n, finding.data, finding.identity_key,
+         finding.confidence_basis as basis
     from run
     join ouroboros.analysis_findings finding on finding.run_id = run.id
 ),
-factor as (
-  select coalesce(max(c.factor) filter (where c.analyzer = 'cache_window'), 1) as cache_window,
-         coalesce(max(c.factor) filter (where c.analyzer = 'workflow_outcome'), 1) as workflow_outcome
-    from run
-    left join ouroboros.analyzer_calibration c
-      on c.organization_id = run.organization_id and c.repo_ref = run.repo_ref
-     and c.impact_class = 'duration_delta'
-),
-composed (n, kind, findings, title, evidence_line, confidence, impact, needs_spike, binding) as (
-  select 11, 'build_process', array[171, 172],
+-- One row per suggestion: what it cites, its text, its impact formula (the raw estimate and the
+-- inputs it read; null for a ticket draft) and its template's confidence constants.
+composed (n, kind, template, findings, title, evidence_line, analyzer, impact_class, formula, raw,
+          inputs, unit, applies_to, share, method, sample_size, description, needs_spike, binding,
+          scale, target) as (
+  select 11, 'build_process', 'test_gate_split', array[171, 172],
          'Split the test gate: native_sim every build, QEMU + HIL only before merge',
          format('qemu_cortex_m3 caught %s unique failures in %s builds; HIL caught %s%s',
                 q.data ->> 'value', q.data ->> 'sample', h.data ->> 'value',
                 case when h.data ->> 'at_merge_gate' = h.data ->> 'value'
                      then ' — all at merge gates' else '' end),
-         91,
-         jsonb_build_object('estimate', round(-206 * factor.workflow_outcome), 'unit', 'seconds',
-                            'applies_to', 'per loop',
-                            'basis', jsonb_build_object('method', 'extrapolated',
-                              'description', 'the qemu_cortex_m3 and HIL stage time a PR build would '
-                                             || 'stop paying, scaled by the workflow model''s calibration')),
+         'workflow_outcome', 'duration_delta',
+         'test_gate_split v1: -sum(pr_seconds_per_commit of the gated stages)',
+         -((q.data ->> 'pr_seconds_per_commit')::numeric + (h.data ->> 'pr_seconds_per_commit')::numeric),
+         jsonb_build_object('qemu_cortex_m3.pr_seconds_per_commit', q.data -> 'pr_seconds_per_commit',
+                            'HIL.pr_seconds_per_commit', h.data -> 'pr_seconds_per_commit'),
+         'seconds', 'per loop', null::numeric, 'extrapolated', null::integer,
+         'the gated stages'' measured pre-merge seconds per commit, which a PR stops paying, '
+           || 'scaled by the workflow model''s calibration',
          false,
          '{"plane": "test_gate", "change": {"pr_builds": ["native_sim"],
-           "merge_gate": ["native_sim", "qemu_cortex_m3", "hil"]}}'::jsonb
-    from f q, f h, factor where q.n = 171 and h.n = 172
+           "merge_gate": ["native_sim", "qemu_cortex_m3", "HIL"]}}'::jsonb,
+         20, null::numeric
+    from f q, f h where q.n = 171 and h.n = 172
   union all
-  select 12, 'build_process', array[141],
-         'Re-warm ccache right after deps-refresh merges',
-         format('cache hit rate drops %s%%→%s%% for ~%sh after every deps-refresh merge (%s occurrences)',
+  select 12, 'build_process', 'ccache_rewarm', array[141],
+         'Re-warm ccache right after ' || regexp_replace(c.data ->> 'trigger', ' merge$', '') || ' merges',
+         format('cache hit rate drops %s%%→%s%% for ~%sh after every %s (%s occurrences)',
                 round((c.data ->> 'hit_rate_before')::numeric * 100),
                 round((c.data ->> 'hit_rate_after')::numeric * 100),
-                c.data ->> 'window_hours', c.data ->> 'occurrences'),
-         88,
-         jsonb_build_object('estimate', round(-168 * factor.cache_window), 'unit', 'seconds',
-                            'applies_to', 'builds after a deps-refresh merge',
-                            'share', (c.data ->> 'share')::numeric,
-                            'basis', jsonb_build_object('method', 'measured',
-                              'sample_size', (c.data ->> 'occurrences')::int,
-                              'description', 'the slowdown inside each window, scaled by the cache '
-                                             || 'model''s calibration')),
+                c.data ->> 'window_hours', c.data ->> 'trigger', c.data ->> 'occurrences'),
+         'cache_window', 'duration_delta', 'ccache_rewarm v1: -slowdown_seconds',
+         -(c.data ->> 'slowdown_seconds')::numeric,
+         jsonb_build_object('slowdown_seconds', c.data -> 'slowdown_seconds'),
+         'seconds', 'builds after a ' || (c.data ->> 'trigger'), (c.data ->> 'share')::numeric,
+         'measured', (c.data ->> 'occurrences')::integer,
+         'the slowdown measured inside each window, scaled by the cache model''s calibration',
          false,
-         '{"plane": "job_hook", "change": {"on": "merge", "title": "deps: refresh west manifest",
-           "pool": "pool-a", "run": "west build -t ccache-warm"}}'::jsonb
-    from f c, factor where c.n = 141
+         jsonb_build_object('plane', 'job_hook', 'change', jsonb_build_object(
+           'on', 'merge', 'title', c.data -> 'trigger_title', 'run', 'west build -t ccache-warm',
+           'pool', (select p.name from run
+                      join ouroboros.runner_pools p on p.organization_id = run.organization_id
+                                                   and p.id::text = c.data ->> 'pool_id'))),
+         50, 0.5
+    from f c where c.n = 141
   union all
-  select 13, 'build_process', array[151],
-         'Move forge-02 to pool-a during 14:00–16:00 UTC',
+  select 13, 'build_process', 'runner_move', array[151],
+         format('Move %s to %s during %s–%s UTC', mover.name, q.data ->> 'pool',
+                q.data #>> '{window,from}', q.data #>> '{window,to}'),
          format('%s queue exceeds %s min in that window on %s of last %s weekdays; %s sits idle %s%% of it',
                 q.data ->> 'pool', (q.data ->> 'threshold_seconds')::int / 60,
                 q.data ->> 'days_exceeded', q.data ->> 'days_observed', q.data ->> 'idle_pool',
                 round((q.data ->> 'idle_share')::numeric * 100)),
-         84,
-         '{"estimate": -240, "unit": "seconds", "applies_to": "queue p95",
-           "basis": {"method": "extrapolated",
-                     "description": "pool-a''s afternoon waits with a fourth runner taking the queue"}}'::jsonb,
+         'queue_correlation', 'queue_wait', 'runner_move v1: -wait_reduction_seconds',
+         -(q.data ->> 'wait_reduction_seconds')::numeric,
+         jsonb_build_object('wait_reduction_seconds', q.data -> 'wait_reduction_seconds'),
+         'seconds', 'queue p95', null::numeric, 'extrapolated', null::integer,
+         format('%s''s window waits with %s taking the backlog', q.data ->> 'pool', mover.name),
          false,
-         '{"plane": "farm_config", "change": {"runner": "forge-02", "pool": "pool-a",
-           "days_of_week": [1, 2, 3, 4, 5], "starts_at": "14:00", "ends_at": "16:00"}}'::jsonb
-    from f q where q.n = 151
+         jsonb_build_object('plane', 'farm_config', 'change', jsonb_build_object(
+           'runner', mover.name, 'pool', q.data -> 'pool', 'days_of_week', '[1, 2, 3, 4, 5]'::jsonb,
+           'starts_at', q.data #> '{window,from}', 'ends_at', q.data #> '{window,to}')),
+         5, 0.75
+    from f q
+    cross join lateral (select r.name from run
+                          join ouroboros.runners r on r.organization_id = run.organization_id
+                                                  and r.id::text = q.data ->> 'move_runner_id') mover
+   where q.n = 151
   union all
-  select 14, 'build_process', array[175],
-         'Link zephyr.elf incrementally (partial link cache)',
-         format('link step grew from %s%% to %s%% of build time since v2.3 (LTO enabled)',
-                round((l.data ->> 'before')::numeric * 100), round((l.data ->> 'value')::numeric * 100)),
-         72,
-         '{"estimate": -55, "unit": "seconds", "applies_to": "per build",
-           "basis": {"method": "extrapolated",
-                     "description": "the link step''s growth since LTO, if a partial link cache won half back"}}'::jsonb,
+  select 14, 'build_process', 'link_cache', array[175],
+         format('Link %s incrementally (partial link cache)', l.data ->> 'artifact'),
+         format('%s step grew from %s%% to %s%% of build time since %s',
+                regexp_replace(l.data ->> 'scope', '^step ', ''),
+                round((l.data ->> 'before')::numeric * 100), round((l.data ->> 'value')::numeric * 100),
+                l.data ->> 'since'),
+         'workflow_outcome', 'build_duration', 'link_cache v1: -step_seconds_delta * 0.5',
+         -(l.data ->> 'step_seconds_delta')::numeric * 0.5,
+         jsonb_build_object('step_seconds_delta', l.data -> 'step_seconds_delta'),
+         'seconds', 'per build', null::numeric, 'extrapolated', null::integer,
+         format('the %s step''s growth, if a partial link cache won half of it back',
+                regexp_replace(l.data ->> 'scope', '^step ', '')),
          true,
-         '{"plane": "planning", "change": {"spike": "partial link cache for zephyr.elf"}}'::jsonb
+         jsonb_build_object('plane', 'planning', 'change', jsonb_build_object(
+           'spike', format('Link %s incrementally (partial link cache)', l.data ->> 'artifact'))),
+         50, 0.25
     from f l where l.n = 175
   union all
-  select 15, 'workflow', array[173],
-         'standard-fix: run self-review BEFORE the build stage',
-         format('%s%% of failed builds in standard-fix loops contained defects the later self-review '
-                || 'flagged anyway — reordering catches them pre-build',
-                round((r.data ->> 'value')::numeric * 100)),
-         89,
-         '{"estimate": -125, "unit": "seconds", "applies_to": "per failed attempt",
-           "basis": {"method": "extrapolated",
-                     "description": "a failed build attempt''s wall-clock, for the share review would have caught first"}}'::jsonb,
+  select 15, 'workflow', 'review_first', array[173],
+         format('%s: run %s BEFORE the %s stage',
+                r.data ->> 'workflow', r.data ->> 'review_stage', r.data ->> 'build_stage'),
+         format('%s%% of failed builds in %s loops contained defects the later %s flagged anyway — '
+                || 'reordering catches them pre-%s',
+                round((r.data ->> 'value')::numeric * 100), r.data ->> 'workflow',
+                r.data ->> 'review_stage', r.data ->> 'build_stage'),
+         'workflow_outcome', 'attempt_duration', 'review_first v1: -attempt_seconds * share',
+         -(r.data ->> 'attempt_seconds')::numeric * (r.data ->> 'value')::numeric,
+         jsonb_build_object('attempt_seconds', r.data -> 'attempt_seconds', 'share', r.data -> 'value'),
+         'seconds', 'per failed attempt', null::numeric, 'extrapolated', null::integer,
+         'a failed build attempt''s wall-clock, for the share review would have caught first',
          false,
-         '{"plane": "workflow", "change": {"workflow": "standard-fix", "move": "self-review",
-           "before": "build"}}'::jsonb
+         jsonb_build_object('plane', 'workflow', 'change', jsonb_build_object(
+           'workflow', r.data -> 'workflow', 'move', r.data -> 'review_stage',
+           'before', r.data -> 'build_stage')),
+         10, 0.3
     from f r where r.n = 173
   union all
-  select 16, 'workflow', array[174],
-         'Loops touching drivers/can/: add a ''flake-retry under load profile'' test stage',
-         format('merges touching drivers/can are %s× more likely to flake the telemetry suite within '
-                || '7 days (%s cases)', c.data ->> 'value', c.data ->> 'sample'),
-         77,
-         '{"estimate": -1, "unit": "interventions", "applies_to": "per week",
-           "basis": {"method": "extrapolated",
-                     "description": "the telemetry flakes that reach a person each week, retried under load first"}}'::jsonb,
+  select 16, 'workflow', 'flake_retry_stage', array[174],
+         format('Loops touching %s/: add a ''flake-retry under load profile'' test stage', path.p),
+         format('merges touching %s are %s× more likely to flake the %s suite within %s days (%s cases)',
+                path.p, c.data ->> 'value', c.data ->> 'suite',
+                substring(c.data ->> 'metric' from 'flake_ratio_(\d+)d$'), c.data ->> 'sample'),
+         'workflow_outcome', 'interventions',
+         'flake_retry_stage v1: -(rate - baseline) * cases * 7 / window days',
+         -((c.data ->> 'rate')::numeric - (c.data ->> 'baseline')::numeric)
+           * (c.data ->> 'sample')::numeric * 7 / (run.win ->> 'days')::numeric,
+         jsonb_build_object('rate', c.data -> 'rate', 'baseline', c.data -> 'baseline',
+                            'cases', c.data -> 'sample', 'window_days', run.win -> 'days'),
+         'interventions', 'per week', null::numeric, 'extrapolated', null::integer,
+         'the excess flakes over the baseline that reach a person each week, retried under load first',
          false,
-         '{"plane": "workflow", "change": {"workflow": "standard-fix", "when_paths": ["drivers/can/**"],
-           "add_stage": "flake-retry under load profile"}}'::jsonb
-    from f c where c.n = 174
+         jsonb_build_object('plane', 'workflow', 'change', jsonb_build_object(
+           'workflow', c.data -> 'workflow', 'when_paths', jsonb_build_array(path.p || '/**'),
+           'add_stage', 'flake-retry under load profile')),
+         10, 2
+    from f c, run,
+         lateral (select regexp_replace(regexp_replace(c.data ->> 'scope', '^merges touching ', ''),
+                                        '/+$', '') as p) path
+   where c.n = 174
   union all
-  select 21, 'ticket_draft', array[111],
-         'Refactor tests/ota fixtures — shared setup times out under load',
-         format('%s%% of OTA suite failures share one fixture timeout signature (%s builds)',
-                round((s.data ->> 'share')::numeric * 100, 1), s.data ->> 'count'),
-         86, null::jsonb, false,
-         '{"plane": "planning", "change": {"local_key": "BA-1"}}'::jsonb
-    from f s where s.n = 111
+  select 21, 'ticket_draft', 'fixture_timeout_ticket', array[111],
+         format('Refactor tests/%s fixtures — %s times out under load', m[1], replace(m[2], '_', ' ')),
+         format('%s%% of %s suite failures share one fixture timeout signature (%s builds)',
+                round((s.data ->> 'share')::numeric * 100, 1), upper(m[1]), s.data ->> 'count'),
+         null, null, null, null::numeric, null::jsonb, null, null, null::numeric, null, null::integer,
+         null, false, '{"plane": "planning", "change": {"ticket": "fixture_timeout_ticket"}}'::jsonb,
+         50, 0.05
+    from f s,
+         lateral (select regexp_match(s.data ->> 'template',
+                    '^FAIL - (\w+)\.fixture\.(\w+): fixture ''[^'']+'' setup timed out') as m) match
+   where s.n = 111
   union all
-  select 22, 'ticket_draft', array[112],
-         'Bump ccache 4.9 → 4.11 — upstream fixes the hash misses in our logs',
+  select 22, 'ticket_draft', 'upstream_fix_ticket', array[112],
+         format('Bump ccache %s → 4.11 — upstream fixes the hash misses in our logs',
+                s.data ->> 'tool_version'),
          format('cache-miss signature matches ccache issue #1412 in %s builds', s.data ->> 'count'),
-         90, null, false,
-         '{"plane": "planning", "change": {"local_key": "BA-2"}}'::jsonb
+         null, null, null, null::numeric, null::jsonb, null, null, null::numeric, null, null::integer,
+         null, false, '{"plane": "planning", "change": {"ticket": "upstream_fix_ticket"}}'::jsonb,
+         50, 0.2
     from f s where s.n = 112
   union all
-  select 23, 'ticket_draft', array[161],
-         'Add thermal chamber to rig ' || (w.data ->> 'rig'),
+  select 23, 'ticket_draft', 'rig_capability_ticket', array[161],
+         format('Add %s to rig %s', w.data ->> 'capability', w.data ->> 'rig'),
          format('%s verification waivers in %s days cite %s',
                 w.data ->> 'waiver_count', w.data ->> 'window_days', w.data ->> 'topic'),
-         82, null, false,
-         '{"plane": "planning", "change": {"local_key": "BA-3"}}'::jsonb
+         null, null, null, null::numeric, null::jsonb, null, null, null::numeric, null, null::integer,
+         null, false, '{"plane": "planning", "change": {"ticket": "rig_capability_ticket"}}'::jsonb,
+         1, 0.5
     from f w where w.n = 161
   union all
-  select 24, 'ticket_draft', array_agg(o.n order by o.n),
+  select 24, 'ticket_draft', 'dead_options_ticket', array_agg(o.n order by o.n),
          format('Delete %s dead Kconfig options — never set in any build since %s',
-                count(*), to_char((min(run.corpus_manifest #>> '{window,from}'))::date, 'FMMonth')),
+                count(*), to_char((min(run.win ->> 'from'))::date, 'FMMonth')),
          format('%s of %s builds toggled them; %s caused config-drift warnings',
                 sum((o.data ->> 'occurrences')::int),
                 to_char(max((o.data ->> 'builds_considered')::int), 'FM9,999'),
                 count(*) filter (where (o.data ->> 'drift_warnings')::int > 0)),
-         93, null, false,
-         '{"plane": "planning", "change": {"local_key": "BA-4"}}'::jsonb
+         null, null, null, null::numeric, null::jsonb, null, null, null::numeric, null, null::integer,
+         null, false,
+         jsonb_build_object('plane', 'planning', 'change', jsonb_build_object(
+           'ticket', 'dead_options_ticket',
+           'options', jsonb_agg(o.data -> 'option' order by o.data ->> 'option'))),
+         480, null::numeric
     from f o, run where o.n between 121 and 132
 )
 select ('5eed0067-0000-4000-8000-' || lpad(c.n::text, 12, '0'))::uuid, run.organization_id,
        run.repo_ref, c.kind,
        ouroboros.analysis_suggestion_identity(c.kind,
          array(select f.identity_key from f where f.n = any (c.findings))),
-       run.id, c.title, c.evidence_line, c.confidence, c.impact, c.needs_spike, c.binding,
+       run.id, c.title, c.evidence_line, conf.value,
+       jsonb_build_object(
+         'formula', 'composer v1: round(100 * (1 - e^(-n/scale)) * stability * min(1, |effect|/target))',
+         'inputs', jsonb_build_object('template', c.template, 'n', b.n, 'scale', c.scale,
+                                      'support', s.support, 'stability', b.stability,
+                                      'effect_size', case when c.target is null then null else b.effect_size end,
+                                      'effect_target', c.target, 'effect', s.effect),
+         'value', conf.value),
+       case when c.kind <> 'ticket_draft' then
+         jsonb_build_object('estimate', round(c.raw * coalesce(cal.factor, 1)), 'unit', c.unit,
+                            'applies_to', c.applies_to)
+         || case when c.share is null then '{}'::jsonb else jsonb_build_object('share', c.share) end
+         || jsonb_build_object('basis',
+              jsonb_build_object('method', c.method, 'description', c.description)
+              || case when c.method = 'measured' then jsonb_build_object('sample_size', c.sample_size)
+                      else '{}'::jsonb end
+              || jsonb_build_object('formula', c.formula, 'inputs', c.inputs, 'window', run.win,
+                                    'calibration', jsonb_build_object('analyzer', c.analyzer,
+                                                                      'impact_class', c.impact_class,
+                                                                      'factor', coalesce(cal.factor, 1)),
+                                    'raw', c.raw))
+       end,
+       c.needs_spike, c.binding,
        run.started_at + interval '36 minutes'
-  from run, composed c
+  from run
+  cross join composed c
+  left join ouroboros.analyzer_calibration cal
+    on cal.organization_id = run.organization_id and cal.repo_ref = run.repo_ref
+   and cal.analyzer = c.analyzer and cal.impact_class = c.impact_class
+  cross join lateral (
+    select min((x.basis ->> 'sample_size')::numeric) as n,
+           min((x.basis ->> 'stability')::numeric) as stability,
+           min(abs((x.basis ->> 'effect_size')::numeric)) as effect_size
+      from f x where x.n = any (c.findings)) b
+  cross join lateral (
+    select 1 - exp(-b.n / c.scale) as support,
+           case when c.target is null then 1 else least(1, b.effect_size / c.target) end as effect) s
+  cross join lateral (select round(100 * s.support * b.stability * s.effect)::integer as value) conf
  where ${ouro_dev_seed}
 on conflict do nothing;
 

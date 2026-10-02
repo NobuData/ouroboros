@@ -26,8 +26,15 @@ The idlest pool (by name on a tie) makes it a finding when its idle share is at 
 ``sample_size`` is the starved pool's jobs inside the window over the days.
 
 Evidence: both pools, the idle pool's runners, and each exceeded day's longest-waiting build.
+
+**Measured inputs (BV.4, #513).** ``queue_p95_seconds`` — the nearest-rank p95 of each observed
+day's longest wait in the window; ``wait_reduction_seconds`` — the p95 of the exceeded days'
+longest waits, the saving if a moved runner absorbed that backlog (an extrapolation, and the
+composer labels it so); ``move_runner_id`` — the runner the move names: the idle pool's first by
+id, since jobs record pools, not runners; ``pool_id`` / ``idle_pool_id``.
 """
 
+import math
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, time, timedelta
@@ -82,6 +89,7 @@ class _Starved:
     exceeded: list[tuple[date, BuildJob]]
     over_threshold: int
     jobs_in_window: int
+    daily_longest: list[float]
 
 
 class QueueCorrelationAnalyzer(Analyzer):
@@ -176,6 +184,7 @@ def _starved(
     best: _Starved | None = None
     for hour in range(24 - PARAMETERS["window_hours"] + 1):
         exceeded: list[tuple[date, BuildJob]] = []
+        daily: list[float] = []
         inside = over = 0
         for day in days:
             opens, closes = _bounds(day, hour)
@@ -185,13 +194,14 @@ def _starved(
             if not queued:
                 continue
             longest = min(queued, key=lambda j: (-_wait(j), j.build_id))
+            daily.append(_wait(longest))
             if _wait(longest) > PARAMETERS["threshold_seconds"]:
                 exceeded.append((day, longest))
         if best is None or (len(exceeded), over) > (
             len(best.exceeded),
             best.over_threshold,
         ):
-            best = _Starved(pool, hour, exceeded, over, inside)
+            best = _Starved(pool, hour, exceeded, over, inside, daily)
     if best is None or len(best.exceeded) < PARAMETERS["min_days_exceeded"]:
         return None
     return best
@@ -252,6 +262,19 @@ def _idlest(
     if best is None or best[1] < PARAMETERS["min_idle_share"]:
         return None
     return best
+
+
+def p95(values: list[float]) -> float:
+    """The nearest-rank 95th percentile.
+
+    Args:
+        values: At least one value.
+
+    Returns:
+        The value at rank ``ceil(0.95 * n)`` of the sorted values.
+    """
+    ordered = sorted(values)
+    return ordered[math.ceil(0.95 * len(ordered)) - 1]
 
 
 def _clock(hour: int) -> str:
@@ -319,6 +342,13 @@ def _finding(
             "longest_wait_seconds": [
                 round_half(_wait(job), 0) for _, job in starved.exceeded
             ],
+            "queue_p95_seconds": round_half(p95(starved.daily_longest), 0),
+            "wait_reduction_seconds": round_half(
+                p95([_wait(job) for _, job in starved.exceeded]), 0
+            ),
+            "move_runner_id": min(idle_pool.runner_ids),
+            "pool_id": starved.pool.pool_id,
+            "idle_pool_id": idle_pool.pool_id,
             "sampling": sampling,
         },
         evidence_refs=refs,

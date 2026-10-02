@@ -6163,6 +6163,32 @@ as it completes — so `budget_exceeded` keeps them and names the analyzers that
 and a database refusal fails only that analyzer. The phases are `assembling → analyzing →
 composing`, then `complete`, `budget_exceeded` or `failed` with its reason.
 
+**Composing** (BV.4, [#513](https://github.com/NobuData/ouroboros/issues/513),
+[`composer/`](src/modules/analyzer/composer)) turns the run's findings into suggestions while the
+run is still `running`.
+- **Templates.** `composer.templates.ts` holds one typed template per suggestion kind: the six
+  mockup cards and the BA-1…BA-4 ticket drafts. A template selects the findings it can speak
+  about and fills the title and evidence line from their typed data, with no free text. Its
+  impact is a named formula over the finding's measured fields (`slowdown_seconds`,
+  `pr_seconds_per_commit`, `wait_reduction_seconds`…).
+- **Calibration.** The impact is multiplied by BU.3's factor for that analyzer and impact class
+  (`analyzer_calibration`, 1 without a row). `impact.basis` stores the formula id, its inputs,
+  the window, the calibration and the raw estimate, so the number reconstructs.
+- **Spikes.** A missing input makes the impact `unquantified` and the suggestion `needs_spike`,
+  bound to a spike draft.
+- **Confidence.** It is `round(100 × (1 − e^(−n/scale)) × stability × min(1, |effect|/target))`
+  over the cited findings' bases, stored with every input in V087's `confidence_basis`.
+- **Writing.** Each suggestion is recorded through `record_analysis_suggestion()`, which upserts
+  on the identity derived from the cited findings. Re-analysis therefore updates rather than
+  duplicates, and a resolved suggestion keeps what it was resolved as.
+- **Failures.** A template that throws, or a suggestion the database refuses, is logged and
+  skipped. Composition never fails a run.
+- **Synthesis contract.** `/v0/synthesize-findings` is committed here: it is
+  `schemas/synthesize-findings/v0.json`, and `synthesis.contract.spec.ts` is its drift check.
+  The v2 LLM pass (BX.1, #522) will implement it; until then the `SYNTHESIZER` port is bound to
+  `UnavailableSynthesizer`, which answers the contract's empty shape. Composition does not
+  depend on it.
+
 ```bash
 yarn test:integration src/modules/analyzer
 ```
@@ -6480,6 +6506,7 @@ ouroboros-rest/
 │       │                   #   artifact.retention.ts — the hourly sweep that leaves tombstones
 │       ├── test-plane/     # suites only: the failing-HIL scenario + isolation     · #334
 │       ├── analyzer/       # Build Analyzer runs: triggers, guard, orchestrator  · #510
+│       │   └── composer/   #   findings → suggestions: templates, impact, confidence · #513
 │       │                   #   corpus/ — bounded, paged readers, log tails, the manifest
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
