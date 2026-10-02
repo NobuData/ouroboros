@@ -15,6 +15,7 @@ import {
 import {
   BUILD_FARM_PATH,
   DASHBOARD_PATH,
+  INSIGHTS_PATH,
   ISSUES_PATH,
   KNOWLEDGE_PATH,
   MODELS_PATH,
@@ -42,16 +43,16 @@ import { registerNavEntry } from "./nav-registry";
  * the decision.
  *
  * Every destination except the dashboard, Issues, Workflows, Models, Build Farm, Knowledge,
- * Planning and Settings is a screen that does not exist yet: the placeholder routes are #49 and
+ * Planning, Insights and Settings is a screen that does not exist yet: the placeholder routes are #49 and
  * each real screen arrives with its own roadmap issue. Rather than link to a 404, those entries are `"soon"` and render as labelled,
  * non-interactive rows — the design system's honesty rule (§ 3.5): a surface that is not
  * ready is *labelled*, never dead. Each note names the issue that turns the row into a link,
  * so the tooltip is a usable answer to "when?" rather than the word *soon* on its own.
  *
  * **Models was the first of the nine to be answered, Issues the second, Workflows the third,
- * Planning the fourth, Build Farm the fifth and Knowledge the sixth.** #200 built `/models`, #115
- * built `/issues`, #147 built `/workflows`, #283 built `/planning`, #256 built `/build-farm` and
- * #417 built `/knowledge`, so each note has become a route — which is exactly the transition each remaining note promises,
+ * Planning the fourth, Build Farm the fifth, Knowledge the sixth and Insights the seventh.** #200
+ * built `/models`, #115 built `/issues`, #147 built `/workflows`, #283 built `/planning`, #256
+ * built `/build-farm`, #417 built `/knowledge` and #443 built `/insights`, so each note has become a route — which is exactly the transition each remaining note promises,
  * and the reason the notes name issues rather than saying *soon* and stopping.
  */
 
@@ -156,15 +157,16 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
     status: "soon",
     soonNote: "Research arrives with its own roadmap (mockup 22).",
   },
+  // Live since #443: the insights frame is built (`app/(app)/insights/page.tsx`), so the row that
+  // named the roadmap it was waiting for is a link — the amendment the insights roadmap recorded
+  // on #49, acted on. The charts, scoreboard and remaining cards (#444–#447) mount under it.
   {
     id: "insights",
     label: "Insights",
-    route: "/insights",
+    route: INSIGHTS_PATH,
     icon: ChartLine,
     group: "primary",
     sort: 90,
-    status: "soon",
-    soonNote: "Insights arrives with its own roadmap (mockup 15).",
   },
   {
     id: "needs-you",

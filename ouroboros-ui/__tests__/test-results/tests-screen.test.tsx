@@ -215,21 +215,32 @@ describe("the seeded head and strip (mockup 11)", () => {
 });
 
 describe("the flaky card's link to insights", () => {
-  it("names the real watching count and, while insights is soon, says so rather than linking", () => {
+  it("names the real watching count and links to insights, live since #443", () => {
     draw();
 
-    const words = within(stat("Flaky")).getByText("quarantine watching (1)");
+    expect(within(stat("Flaky")).getByRole("link", { name: "quarantine watching (1) ↗" })).toHaveAttribute(
+      "href",
+      "/insights",
+    );
+  });
+
+  it("says the words rather than linking while an insights entry is soon", () => {
+    const soon = {
+      id: "insights",
+      label: "Insights",
+      route: "/insights",
+      group: "primary",
+      sort: 90,
+      status: "soon",
+      soonNote: "Insights arrives with its own roadmap (mockup 15).",
+    } as NavEntry;
+    render(<InsightsLink entry={soon} watching={2} />);
+
+    const words = screen.getByText("quarantine watching (2)");
     expect(words.tagName).toBe("SPAN");
     expect(words).toHaveClass("tests-strip__soon");
     expect(words).toHaveAttribute("title", expect.stringMatching(/mockup 15/));
-    expect(within(stat("Flaky")).queryByRole("link")).toBeNull();
-  });
-
-  it("links to the insights entry the day it is live, with no edit to the card", () => {
-    const live: NavEntry = { id: "insights", label: "Insights", route: "/insights", group: "primary", sort: 90 } as NavEntry;
-    render(<InsightsLink entry={live} watching={2} />);
-
-    expect(screen.getByRole("link", { name: "quarantine watching (2) ↗" })).toHaveAttribute("href", "/insights");
+    expect(screen.queryByRole("link")).toBeNull();
   });
 
   it("shows a zero watching count when the attempt has flaky cases none of which is watched", () => {
@@ -237,7 +248,7 @@ describe("the flaky card's link to insights", () => {
       <SummaryStrip view={stripView(strip({ flakyCases: [{ ...strip().flakyCases[0]!, flakeState: "quarantined" }] }))} />,
     );
 
-    expect(screen.getByText("quarantine watching (0)")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "quarantine watching (0) ↗" })).toBeInTheDocument();
   });
 
   it("draws no link for an attempt with no flaky case", () => {

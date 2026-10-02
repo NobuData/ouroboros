@@ -121,6 +121,7 @@ const LIVE_ENTRIES = [
   "Build Farm",
   "Knowledge",
   "Planning",
+  "Insights",
 ] as const;
 
 /** The sidebar landmark — its accessible name is `aria-label="Primary"`. */

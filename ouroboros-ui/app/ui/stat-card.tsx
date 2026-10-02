@@ -40,6 +40,11 @@ import "./ui.css";
  *   rather than a string, so the caller composes it; a primitive that knew about links would
  *   be deciding where they go.
  *
+ * ### The one mockup 15 adds
+ *
+ * - **A caption that acts** — each KPI label opens its methodology popover (#443). `caption`
+ *   replaces the caption's text with the caller's node, and `label` stays the tile's name.
+ *
  * The caption is the tile's accessible name, so a reader moving between four of them hears
  * "Loops live, 3" rather than four unlabelled numbers. It is a `<section>` for the same reason:
  * an `aria-label` on a `<div>` names nothing.
@@ -72,6 +77,13 @@ export type StatValueTone = "ok" | "warn" | "err";
 export interface StatCardProps {
   /** The caption above the figure, and the tile's accessible name. */
   readonly label: string;
+  /**
+   * What is drawn in the caption's place, when the caption does more than name the tile — mockup
+   * 15's KPI labels, each a button opening its methodology. {@link StatCardProps.label} stays the
+   * tile's accessible name, so the caller should draw the same words. Omitted, the caption is the
+   * label as text.
+   */
+  readonly caption?: ReactNode;
   /** The figure, already formatted — an em dash when there is nothing to show. */
   readonly value: string;
   /**
@@ -122,6 +134,7 @@ const VALUE_TONE_CLASS: Record<StatValueTone, string> = {
  */
 export function StatCard({
   label,
+  caption,
   value,
   valueSuffix,
   accent = false,
@@ -134,7 +147,7 @@ export function StatCard({
   return (
     <Card as="section" className={className} aria-label={label}>
       <div className="ou-stat">
-        <span className="ou-stat__label">{label}</span>
+        <span className="ou-stat__label">{caption ?? label}</span>
         <span
           className={cx(
             "ou-stat__value",
