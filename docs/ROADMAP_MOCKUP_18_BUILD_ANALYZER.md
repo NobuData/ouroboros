@@ -239,7 +239,7 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BU.1 | #506 ✅ | 🟢 Done | ouroboros-db: [BU.1] Analysis runs & corpus snapshots | Run records, schedules, budgets, the meta-strip manifest (A2/A7) | mvp, analyzer, db | N (after AH.1, AS.1, AO.1, BI.1) | Y | M | ouroboros-db |
 | BU.2 | #507 ✅ | 🟢 Done | ouroboros-db: [BU.2] Findings & suggestions schema | Typed findings, evidence refs, suggestion lifecycle, confidence (A1/A4) | mvp, analyzer, db | N (after BU.1) | Y | M | ouroboros-db |
-| BU.3 | #508 | 🟡 Open | ouroboros-db: [BU.3] Application measurements & calibration | Predicted/measured windows, verdicts, confounds, factors (A6) | mvp, analyzer, db | N (after BU.2) | Y | S | ouroboros-db |
+| BU.3 | #508 ✅ | 🟢 Done | ouroboros-db: [BU.3] Application measurements & calibration | Predicted/measured windows, verdicts, confounds, factors (A6) | mvp, analyzer, db | N (after BU.2) | Y | S | ouroboros-db |
 | BU.4 | #509 | 🟡 Open | ouroboros-db: [BU.4] Analyzer seeds — mockup-18 parity + probes | 90d corpus stats, findings, suggestions, measurements; ci checks | mvp, analyzer, db, ci | N (after BU.3, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue BU.1 — ouroboros-db: [BU.1] Analysis runs & corpus snapshots
@@ -343,7 +343,28 @@ suggestion{build_process, "Re-warm ccache after deps-refresh merges",
 
 ### Issue BU.3 — ouroboros-db: [BU.3] Application measurements & calibration
 
-> **GitHub issue:** #508 · **Status:** 🟡 Open · **Parent epic:** #502
+> **GitHub issue:** #508 ✅ · **Status:** 🟢 Done · **Parent epic:** #502
+
+- **Delivered** (`ouroboros-db` `V085__suggestion_measurements_calibration.sql`):
+  `suggestion_measurements` — one row per applied suggestion: `applied_at`/`applied_by`,
+  `target_metric` (a `metric_definitions` id), `baseline` `{window, value}` and `predicted`
+  `{delta, unit, basis, calibration: {analyzer, impact_class, factor}}` — both **write-once**
+  (`suggestion_measurements_prediction_frozen`) — `window_days` and the verdict bands copied
+  from the workspace's configuration at insert and frozen, `measured` `{window, value, delta}`,
+  `verdict` `pending|delivered|under|over|confounded` held to
+  `suggestion_measurement_verdict()` (ratio = measured ÷ predicted against the stored bands; any
+  confound ⇒ `confounded`), `confounds` `[{kind: application|change_point, id, date}]` resolving
+  when recorded, `note`, `closed_at` (only after the window ends; a closed row is frozen), and
+  `suggestion_measurement_day()` for day N of the window. The bands and default window are a
+  per-workspace `analyzer_measurement_policies` row (`verdict_under_below` 0.80,
+  `verdict_over_above` 1.20, `window_days` 14; no row = the defaults), read through
+  `analyzer_measurement_policy()`. `analyzer_calibration` — per (workspace, repo, analyzer,
+  impact class): `factor = round(Σ measured ÷ Σ (predicted ÷ the factor it was made with), 4)`
+  over the cell's cleanly closed measurements, written by `recalibrate_analyzer()` with an
+  append-only `analyzer_calibration_history` row citing every input measurement and the ones
+  that moved it; a factor without that row is refused at commit.
+  *Left to BV.6 (#515):* deciding **which** in-window events are confounds — the schema records
+  and enforces them but does not detect them (the mockup's own pair is applied a week apart).
 
 - **Problem Statement:** The predicted-vs-measured card and the
   recalibration loop need rows (decision A6).
@@ -942,7 +963,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 
 1. **Phase 0 — Prerequisites:** AH, AS/AT.3, AO, AJ.4 shape, AG.5, AS.4,
    BI.1/BI.2, WF-P.3/S, AK/AL, farm config, BK.1, #41/#46.
-2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → BU.3 (#508) → BU.4 (#509)
+2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
 3. **Phase 2 — Pipeline:** BV.1 (#510) ⊕ (→) BV.2 (#511) → BV.3 (#512) →
    BV.4 (#513) → BV.5 (#514) → BV.6 (#515)
 4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕

@@ -1137,6 +1137,51 @@
 > their findings' retention — the stored identity is what keeps a dismissal after the evidence ages
 > out.
 >
+> `V085` ([#508](https://github.com/NobuData/ouroboros/issues/508), BU.3, decision **A6**) is the analyzer's accountability loop: what an
+> applied suggestion predicted, what was measured, and how the model was corrected.
+> `suggestion_measurements` is one row per applied suggestion. `baseline` `{window, value}` and
+> `predicted` `{delta, unit, basis, calibration: {analyzer, impact_class, factor}}` are recorded
+> at apply and are **write-once** (`suggestion_measurements_prediction_frozen`), as are the apply
+> itself, `target_metric` (a `metric_definitions` id), `window_days` and the two verdict bands —
+> all three copied from the workspace's configuration (`analyzer_measurement_policy()`) when the
+> row is inserted, so a later change to the default never alters an open measurement. Days are UTC days: day 0 is the apply day,
+> `window_ends_on` is `applied_on + window_days`, the row closes on any later day, and
+> `suggestion_measurement_day(applied_at, window_days, at)` is the card's *day N of 14*.
+>
+> **The verdict is arithmetic over stored numbers** — `suggestion_measurement_verdict()`, which
+> `suggestion_measurements_verdict_computed` holds every closed row to:
+>
+> ```
+> measured.delta = measured.value − baseline.value        ratio = measured.delta ÷ predicted.delta
+> any confound ⇒ confounded · ratio < verdict_under_below ⇒ under · ratio > verdict_over_above ⇒ over · else delivered
+>
+> predicted −220 · measured −235 ⇒ 1.07 ⇒ delivered ✓      predicted −110 · measured −72 ⇒ 0.65 ⇒ under
+> ```
+>
+> The bands are configuration, not code: `analyzer_measurement_policies` holds one lazily created
+> row per workspace — `verdict_under_below` (0.80), `verdict_over_above` (1.20) and `window_days`
+> (14) — and `analyzer_measurement_policy()` answers the defaults for a workspace that has never
+> set one. `confounds` lists what else happened inside the window —
+> `{kind: application|change_point, id, date}`, each resolving when recorded — and any entry makes
+> the only admissible verdict `confounded`: a muddied window is never counted as a win. A closed
+> row is frozen.
+>
+> `analyzer_calibration` is the multiplier the composer applies per (repository, analyzer, impact
+> class), and **its formula is the whole of "retrains on its own misses"**:
+>
+> ```
+> factor = round( Σ measured.delta ÷ Σ (predicted.delta ÷ predicted.calibration.factor) , 4 )
+>          over every measurement of the cell that closed delivered, under or over
+> ```
+>
+> Dividing each prediction by the factor it was made with compares outcomes to the *uncorrected*
+> prediction, so a correction is not applied twice. `recalibrate_analyzer()` is the write: it
+> sets the factor and appends an `analyzer_calibration_history` row with `from_factor`,
+> `to_factor`, both sums, every measurement the value is computed from and the ones that moved it
+> (`1.00 → 0.65 from [the ccache measurement]`). A history row that is not exactly the cell's
+> arithmetic is refused, the history is append-only, and a factor that is not its latest history
+> row's is refused at commit (`analyzer_calibration_traces`) — no factor changes without a trail.
+>
 > [#436](https://github.com/NobuData/ouroboros/issues/436) (BI.5) seeds the page those four built
 > for: [`R__dev_seed_workspace_metrics.sql`](migrations/R__dev_seed_workspace_metrics.sql) is
 > ninety days of `metric_daily` in which **components are seeded and every value is computed**,
@@ -2606,6 +2651,7 @@ ouroboros-db/
 │   ├── V082__scoreboard_registry.sql        # the model scoreboard's registry rows (scoreboard_merged, scoreboard_cost_per_success, scoreboard_trend; untouched stays merged_untouched_rate) — #439
 │   ├── V083__token_metrics_by_task_kind.sql # the task_kind dimension kind + tokens_by_task_kind and local_tokens (cost family, sums) — #438
 │   ├── V084__insights_digest.sql            # the weekly Insights email: opt-in subscriptions, a weekly slot per workspace, runs claimed by slot with their content stored once, and the send audit — #440
+│   ├── V085__suggestion_measurements_calibration.sql # suggestion_measurements (prediction frozen at apply, per-row window + verdict bands, verdict as arithmetic, confounds) + analyzer_calibration and its history (the documented factor formula, traced to measurements), recalibrate_analyzer(), analyzer_measurement_policies (window + verdict bands per workspace) — #508
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2779,6 +2825,10 @@ outside this module alters it.
 | `analysis_findings` | `V081` | One analyzer's output for one subject in one run ([#507](https://github.com/NobuData/ouroboros/issues/507), BU.2, decision **A1**) — `run_id`, `repo_ref`, `analyzer`, `analyzer_version`, `finding_type`, `subject_key`, `identity_key` (generated), `data`, `evidence_refs`, `confidence`, `confidence_basis` | `finding_type` is the seven families or `custom:*`; `data` held to its type (`analysis_finding_data_valid`); `evidence_refs` a non-empty list of distinct `{kind, id}` that resolve in the workspace when written, and every ref `data` cites is listed; `confidence` 0–100 with a `{method, sample_size, effect_size, stability}` basis; written only into a `running` run by an analyzer in its `analyzer_set`; unique on `(run_id, identity_key)`; never revised; cascades with the run; `ouroboros_app` may select and insert only |
 | `analysis_suggestions` | `V081` | A card or ticket draft ([#507](https://github.com/NobuData/ouroboros/issues/507), decision **A4**) — `repo_ref`, `kind`, `identity_key`, `last_run_id`, `title`, `evidence_line`, `confidence`, `impact`, `needs_spike`, `action_binding`, `status`, `resolved_by`, `resolved_at`, `resolution_reason`, `applied_event_id`, `draft_batch_id` | unique on `(organization_id, repo_ref, identity_key)`, the identity derived from the cited findings and checked at commit; `kind` `build_process\|workflow\|ticket_draft`; `impact` required except on ticket drafts, its `basis` mandatory, an `unquantified` basis needs `needs_spike`; planning is the plane of ticket drafts and spikes only, a workflow suggestion binds the workflow plane; born `open`; `applied` needs its `analysis_suggestion.applied` audit event (not a ticket draft or spike), `dismissed` an actor and a reason, `drafted` a same-workspace batch (ticket draft or spike); resolutions are terminal and frozen; `last_run_id` sets null; cascades with the workspace |
 | `analysis_suggestion_findings` | `V081` | Which findings a suggestion cites ([#507](https://github.com/NobuData/ouroboros/issues/507)) — `suggestion_id`, `finding_id`, `organization_id`, `repo_ref` | many-to-many; both sides share one `(organization_id, repo_ref)` by composite keys; cascades with either side; `ouroboros_app` may select and insert only |
+| `suggestion_measurements` | `V085` | What an applied suggestion predicted and what was measured ([#508](https://github.com/NobuData/ouroboros/issues/508), BU.3, decision **A6**) — `suggestion_id`, `repo_ref`, `applied_at`, `applied_by`, `target_metric`, `baseline`, `predicted`, `window_days`, `verdict_under_below`, `verdict_over_above`, `applied_on` and `window_ends_on` (generated), `measured`, `verdict`, `confounds`, `note`, `closed_at` | one per suggestion, which must be `applied`; `target_metric` is a `metric_definitions` id; `baseline` and `predicted` are write-once (`suggestion_measurements_prediction_frozen`) and the apply, metric, window and bands frozen with them; `window_days` and the bands default from the workspace's `analyzer_measurement_policy()` at insert; born `pending`; closes only after `window_ends_on`, with `measured.delta = measured.value − baseline.value` and the verdict `suggestion_measurement_verdict()` computes (`pending\|delivered\|under\|over\|confounded`); `confounds` entries are dated inside the window and resolve when recorded, and any entry forces `confounded`; `note` only on a closed row; a closed row is frozen; `applied_by` sets null; cascades with the suggestion; `ouroboros_app` may not delete |
+| `analyzer_measurement_policies` | `V085` | How a workspace's applied suggestions are measured ([#508](https://github.com/NobuData/ouroboros/issues/508)) — `window_days`, `verdict_under_below`, `verdict_over_above`, `updated_by` | one row per workspace as a primary key, **absent while at the defaults** (14 days, 0.80 / 1.20) — read through `analyzer_measurement_policy()`, which answers either way; `window_days` 1–90; `0 < verdict_under_below ≤ 1 ≤ verdict_over_above`; copied onto each measurement at apply, so a change never reaches an open one; `updated_by` sets null; cascades with the workspace; `ouroboros_app` may not delete |
+| `analyzer_calibration` | `V085` | The current calibration factor ([#508](https://github.com/NobuData/ouroboros/issues/508)) — `repo_ref`, `analyzer`, `impact_class`, `factor`, `sample_count` | primary key `(organization_id, repo_ref, analyzer, impact_class)`; no row means a factor of 1; `factor` and `sample_count` must equal the latest history row's at commit (`analyzer_calibration_traces`); written by `recalibrate_analyzer()`; cascades with the workspace; `ouroboros_app` may not delete |
+| `analyzer_calibration_history` | `V085` | One row per factor update ([#508](https://github.com/NobuData/ouroboros/issues/508)) — `from_factor`, `to_factor`, `sample_count`, `measured_sum`, `predicted_sum`, `measurement_ids`, `added_measurement_ids` | `to_factor = round(measured_sum / predicted_sum, 4)`; the inputs are exactly the cell's measurements that closed `delivered`, `under` or `over` and their sums (`analyzer_calibration_history_inputs`); `from_factor` is the previous `to_factor` (1 for the first); at least one newly closed measurement; append-only; cascades with its cell; `ouroboros_app` may select and insert only |
 | `intervention_overrides` | `V079` | The re-categorization audit ([#434](https://github.com/NobuData/ouroboros/issues/434)) — `event_id`, `actor_id`, `from_cause`, `to_cause`, `reason`, `created_at` | append-only; names its actor at insert (set null if the person is removed); starts from the event's current cause; changes it; requires a reason; cascades with the event |
 | `insights_digest_subscriptions` | `V084` | Who asked for the weekly Insights email ([#440](https://github.com/NobuData/ouroboros/issues/440), decision **I9**) — `organization_id`, `user_id`, `created_at` | one row per (workspace, person) — the row is the consent; the app role may insert and delete, never update; cascades with the workspace and with the person |
 | `insights_digest_schedules` | `V084` | A workspace's weekly digest slot — `weekly_day`, `weekly_time` (UTC), `updated_by` | one per workspace; `weekly_day` 1–7; whole minutes; `updated_by` set null if the person is removed |
@@ -3119,7 +3169,8 @@ full epic [#3](https://github.com/NobuData/ouroboros/issues/3) ·
 model registry epic [#575](https://github.com/NobuData/ouroboros/issues/575) ·
 auth database epic [#696](https://github.com/NobuData/ouroboros/issues/696) ·
 analysis runs & corpus snapshots [#506](https://github.com/NobuData/ouroboros/issues/506) *(done)* ·
-findings & suggestions schema [#507](https://github.com/NobuData/ouroboros/issues/507) *(done)*.
+findings & suggestions schema [#507](https://github.com/NobuData/ouroboros/issues/507) *(done)* ·
+application measurements & calibration [#508](https://github.com/NobuData/ouroboros/issues/508) *(done)*.
 
 See [`../docs/CONVENTIONS.md`](../docs/CONVENTIONS.md) for the conventions every module
 follows and [`../README.md`](../README.md) for the module map.

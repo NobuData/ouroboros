@@ -29355,6 +29355,889 @@ select pg_temp.must_hold(
   'a deleted workspace takes its subscriptions, schedule, runs and sends with it');
 
 -- ===========================================================================
+-- V085 — suggestion_measurements and analyzer_calibration: predicted, measured, corrected
+-- (#508, BU.3)
+-- ===========================================================================
+--
+-- Mockup 18's predicted-vs-measured pair as rows — the delivered ✓ and the under-delivered with
+-- its note — then everything that makes the card falsifiable: the prediction frozen at apply,
+-- the window and bands stored per row, the verdict as arithmetic, a confound forcing
+-- `confounded`, day N of the window, and a calibration factor that traces to its measurements.
+--
+--   Jul 2   gate-split applied                      closes Jul 17  delivered
+--   Jul 9   ccache-warm applied                     closes Jul 24  under      → factor 1.00 → 0.65
+--   Jul 20  pool-move applied                       closes Aug 4   confounded
+--   Jul 26  prune-warm applied (day 6 of pool-move) closes Aug 17  delivered  → factor 0.65 → 0.68
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v085',       'Analyzer Measurements', 'analyzer-measurements-v085', now()),
+  ('org-v085-other', 'Other Measurements',    'other-measurements-v085',    now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v085',   'Ken V085',  'ken@analyzer-v085.example',  true),
+  ('user-v085-b', 'Maya V085', 'maya@analyzer-v085.example', true);
+
+-- --- The configuration: the default window and the verdict bands -----------------
+
+-- The defaults are written twice — as column defaults and in analyzer_measurement_policy() — and
+-- bound here, as V011 binds its view's: a workspace with no row and one with a default row agree.
+insert into ouroboros.analyzer_measurement_policies (organization_id) values ('org-v085-other');
+
+select pg_temp.must_hold(
+  (select (absent.window_days, absent.verdict_under_below, absent.verdict_over_above)
+          = (14, 0.80, 1.20)
+          and absent = explicit
+     from ouroboros.analyzer_measurement_policy('org-v085') absent,
+          ouroboros.analyzer_measurement_policy('org-v085-other') explicit)
+  and not exists (select 1 from ouroboros.analyzer_measurement_policies
+                   where organization_id = 'org-v085'),
+  'a workspace that never set a policy reads a 14-day window and 0.80 / 1.20 bands — the column defaults — without a row');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analyzer_measurement_policies set verdict_under_below = 1.05
+     where organization_id = 'org-v085-other'$$,
+  'the lower band is at most 1', 'analyzer_measurement_policies_verdict_bands');
+select pg_temp.must_reject(
+  $$update ouroboros.analyzer_measurement_policies set verdict_under_below = 0
+     where organization_id = 'org-v085-other'$$,
+  'and above zero', 'analyzer_measurement_policies_verdict_bands');
+select pg_temp.must_reject(
+  $$update ouroboros.analyzer_measurement_policies set verdict_over_above = 0.95
+     where organization_id = 'org-v085-other'$$,
+  'the upper band is at least 1', 'analyzer_measurement_policies_verdict_bands');
+select pg_temp.must_reject(
+  $$update ouroboros.analyzer_measurement_policies set window_days = 0
+     where organization_id = 'org-v085-other'$$,
+  'a measurement window is at least a day', 'analyzer_measurement_policies_window_days_range');
+select pg_temp.must_reject(
+  $$insert into ouroboros.analyzer_measurement_policies (organization_id) values ('org-v085-other')$$,
+  'one policy per workspace', 'analyzer_measurement_policies_pkey');
+select pg_temp.must_reject(
+  $$insert into ouroboros.analyzer_measurement_policies (organization_id) values ('org-nowhere')$$,
+  'a policy belongs to a real workspace', 'analyzer_measurement_policies_organization_id_fkey');
+
+-- --- The applied suggestions being measured ---------------------------------------
+
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image, tags) values
+  ('a8500001-0000-4000-8000-000000000001', 'org-v085', 'pool-a', 'shell', null, '[]');
+
+create temp table v085_set (s jsonb) on commit drop;
+insert into v085_set values (
+  '{"label": "deterministic analyzers v1",
+    "analyzers": [{"id": "change_point",      "version": 2, "kind": "deterministic"},
+                  {"id": "cache_window",      "version": 1, "kind": "deterministic"},
+                  {"id": "queue_correlation", "version": 1, "kind": "deterministic"},
+                  {"id": "workflow_outcome",  "version": 1, "kind": "deterministic"}]}');
+
+insert into ouroboros.analysis_runs (id, organization_id, repo_ref, trigger, analyzer_set)
+select v.id::uuid, 'org-v085', v.repo, 'weekly', s
+  from v085_set,
+       (values ('a8510000-0000-4000-8000-000000000001', 'acme/helios-firmware'),
+               ('a8510000-0000-4000-8000-000000000002', 'acme/other-firmware')) as v (id, repo);
+
+create temp table v085_findings (run uuid, subject text, analyzer text, version int,
+                                 finding_type text, data jsonb) on commit drop;
+insert into v085_findings values
+  ('a8510000-0000-4000-8000-000000000001', 'stage:qemu_cortex_m3', 'workflow_outcome', 1,
+   'workflow_outcome',
+   '{"workflow": "standard-fix", "scope": "stage qemu_cortex_m3", "metric": "unique_failures",
+     "value": 0, "unit": "count", "sample": 214}'),
+  ('a8510000-0000-4000-8000-000000000001', 'deps-refresh', 'cache_window', 1, 'cache_window',
+   '{"trigger": "deps-refresh merge", "hit_rate_before": 0.78, "hit_rate_after": 0.31,
+     "window_hours": 6, "occurrences": 14}'),
+  ('a8510000-0000-4000-8000-000000000001', 'nightly-prune', 'cache_window', 1, 'cache_window',
+   '{"trigger": "nightly prune", "hit_rate_before": 0.78, "hit_rate_after": 0.52,
+     "window_hours": 2, "occurrences": 30}'),
+  ('a8510000-0000-4000-8000-000000000001', 'a8500001-0000-4000-8000-000000000001',
+   'queue_correlation', 1, 'queue_correlation',
+   '{"window": {"from": "14:00", "to": "16:00"}, "metric": "queue_wait", "threshold_seconds": 300,
+     "days_exceeded": 11, "days_observed": 14}'),
+  ('a8510000-0000-4000-8000-000000000001', 'build.duration_median@2026-07-25', 'change_point', 2,
+   'change_point',
+   '{"date": "2026-07-25", "metric": "build.duration_median", "delta_seconds": 35,
+     "candidates": [{"label": "pool-a image bump", "score": 0.8,
+                     "ref": {"kind": "runner_pool", "id": "a8500001-0000-4000-8000-000000000001"}}]}'),
+  ('a8510000-0000-4000-8000-000000000002', 'deps-refresh', 'cache_window', 1, 'cache_window',
+   '{"trigger": "deps-refresh merge", "hit_rate_before": 0.80, "hit_rate_after": 0.40,
+     "window_hours": 4, "occurrences": 9}');
+
+insert into ouroboros.analysis_findings
+    (run_id, organization_id, repo_ref, analyzer, analyzer_version, finding_type, subject_key,
+     data, evidence_refs, confidence, confidence_basis)
+select f.run, 'org-v085', r.repo_ref, f.analyzer, f.version, f.finding_type, f.subject, f.data,
+       '[{"kind": "runner_pool", "id": "a8500001-0000-4000-8000-000000000001"}]', 88,
+       '{"method": "posterior", "sample_size": 14, "effect_size": 0.6, "stability": 0.9}'
+  from v085_findings f join ouroboros.analysis_runs r on r.id = f.run;
+
+-- Composes one build-process suggestion from one finding of a run.
+--   p_run     — the run
+--   p_subject — the finding's subject_key
+--   p_title   — the title
+--   p_seconds — the impact estimate, in seconds
+--   p_plane   — the action binding's plane
+-- Returns the suggestion's id.
+create function pg_temp.v085_compose(p_run uuid, p_subject text, p_title text, p_seconds numeric,
+                                     p_plane text)
+returns uuid language sql as $$
+  select ouroboros.record_analysis_suggestion(
+           p_run, 'build_process',
+           array(select id from ouroboros.analysis_findings
+                  where run_id = p_run and subject_key = p_subject),
+           p_title, 'evidence for ' || p_subject, 88,
+           jsonb_build_object('estimate', p_seconds, 'unit', 'seconds', 'applies_to', 'per build',
+                              'basis', jsonb_build_object('method', 'extrapolated',
+                                                          'description', 'fixture')),
+           jsonb_build_object('plane', p_plane, 'change', '{}'::jsonb))
+$$;
+
+create temp table v085_s on commit drop as
+  select v.name, pg_temp.v085_compose(v.run::uuid, v.subject, v.title, v.seconds, v.plane) as id
+    from (values
+      ('gate-split', 'a8510000-0000-4000-8000-000000000001', 'stage:qemu_cortex_m3',
+       'Split the test gate: native_sim every build, QEMU + HIL only before merge', -220, 'test_gate'),
+      ('ccache-warm', 'a8510000-0000-4000-8000-000000000001', 'deps-refresh',
+       'Re-warm ccache right after deps-refresh merges', -110, 'job_hook'),
+      ('pool-move', 'a8510000-0000-4000-8000-000000000001', 'a8500001-0000-4000-8000-000000000001',
+       'Move forge-02 to pool-a during 14:00–16:00 UTC', -240, 'farm_config'),
+      ('prune-warm', 'a8510000-0000-4000-8000-000000000001', 'nightly-prune',
+       'Re-warm ccache after the nightly prune', -60, 'job_hook'),
+      ('other-warm', 'a8510000-0000-4000-8000-000000000002', 'deps-refresh',
+       'Re-warm ccache right after deps-refresh merges', -100, 'job_hook'))
+      as v (name, run, subject, title, seconds, plane);
+
+set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds immediate;
+set constraints ouroboros.analysis_suggestions_identity_holds, ouroboros.analysis_suggestion_findings_identity_holds deferred;
+
+-- Applies a fixture suggestion through its audit event, as BV.5 will.
+--   p_name — the fixture name
+--   p_at   — when it was applied
+create function pg_temp.v085_apply(p_name text, p_at timestamptz)
+returns void language sql as $$
+  with event as (
+    insert into ouroboros.audit_events (organization_id, actor_id, action, subject_type, subject_id)
+    select 'org-v085', 'user-v085', 'analysis_suggestion.applied', 'analysis_suggestion', id::text
+      from v085_s where name = p_name
+    returning id)
+  update ouroboros.analysis_suggestions
+     set status = 'applied', resolved_by = 'user-v085', resolved_at = p_at,
+         applied_event_id = (select id from event)
+   where id = (select id from v085_s where name = p_name)
+$$;
+
+select pg_temp.v085_apply(name, at::timestamptz)
+  from (values ('gate-split',  '2026-07-02T15:00:00Z'), ('ccache-warm', '2026-07-09T09:30:00Z'),
+               ('pool-move',   '2026-07-20T14:00:00Z'), ('other-warm',  '2026-07-26T08:00:00Z'))
+       as v (name, at);
+
+-- What BV.5 records at apply: the measurement id, the metric, the baseline and the prediction.
+create temp table v085_m (name text primary key, id uuid, applied_at timestamptz, metric text,
+                          baseline jsonb, predicted jsonb) on commit drop;
+insert into v085_m values
+  ('gate-split', 'a8530000-0000-4000-8000-000000000001', '2026-07-02T15:00:00Z', 'cycle_time',
+   '{"window": {"from": "2026-06-18", "to": "2026-07-01"}, "value": 912}',
+   '{"delta": -220, "unit": "seconds",
+     "basis": {"method": "measured", "sample_size": 214,
+               "description": "measured QEMU stage time × observed frequency over 214 builds"},
+     "calibration": {"analyzer": "workflow_outcome", "impact_class": "duration_delta", "factor": 1}}'),
+  ('ccache-warm', 'a8530000-0000-4000-8000-000000000002', '2026-07-09T09:30:00Z', 'stage_duration',
+   '{"window": {"from": "2026-06-25", "to": "2026-07-08"}, "value": 252}',
+   '{"delta": -110, "unit": "seconds",
+     "basis": {"method": "measured", "sample_size": 14, "description": "14 windows measured"},
+     "calibration": {"analyzer": "cache_window", "impact_class": "duration_delta", "factor": 1}}'),
+  ('pool-move', 'a8530000-0000-4000-8000-000000000003', '2026-07-20T14:00:00Z', 'cycle_time',
+   '{"window": {"from": "2026-07-06", "to": "2026-07-19"}, "value": 540}',
+   '{"delta": -240, "unit": "seconds",
+     "basis": {"method": "extrapolated", "description": "queue simulation over the last 14 weekdays"},
+     "calibration": {"analyzer": "queue_correlation", "impact_class": "duration_delta", "factor": 1}}'),
+  -- Composed after the cache model was revised: the raw −91.67 s already scaled by 0.6545.
+  ('prune-warm', 'a8530000-0000-4000-8000-000000000004', '2026-07-26T23:30:00Z', 'stage_duration',
+   '{"window": {"from": "2026-07-12", "to": "2026-07-25"}, "value": 200}',
+   '{"delta": -60, "unit": "seconds",
+     "basis": {"method": "measured", "sample_size": 30, "description": "30 windows measured"},
+     "calibration": {"analyzer": "cache_window", "impact_class": "duration_delta", "factor": 0.6545}}'),
+  ('other-warm', 'a8530000-0000-4000-8000-000000000005', '2026-07-26T08:00:00Z', 'stage_duration',
+   '{"window": {"from": "2026-07-12", "to": "2026-07-25"}, "value": 300}',
+   '{"delta": -100, "unit": "seconds",
+     "basis": {"method": "measured", "sample_size": 9, "description": "9 windows measured"},
+     "calibration": {"analyzer": "cache_window", "impact_class": "duration_delta", "factor": 1}}');
+
+-- The service role records two of them below, and a temp table is its owner's until granted.
+grant select on v085_s, v085_m to ouroboros_app;
+
+-- Records a fixture measurement, leaving the window and bands to the configuration.
+--   p_name — the fixture name
+create function pg_temp.v085_measure(p_name text)
+returns void language sql as $$
+  insert into ouroboros.suggestion_measurements
+      (id, suggestion_id, organization_id, repo_ref, applied_at, applied_by, target_metric,
+       baseline, predicted)
+  select m.id, s.id, s.organization_id, s.repo_ref, m.applied_at, 'user-v085', m.metric,
+         m.baseline, m.predicted
+    from v085_m m
+    join v085_s v on v.name = m.name
+    join ouroboros.analysis_suggestions s on s.id = v.id
+   where m.name = p_name
+$$;
+
+-- --- Born pending, against an applied suggestion ------------------------------------
+
+select pg_temp.must_reject(
+  $$select pg_temp.v085_measure('prune-warm')$$,
+  'only an applied suggestion is measured', 'suggestion_measurements_suggestion_applied');
+
+select pg_temp.v085_measure('gate-split');
+select pg_temp.v085_measure('ccache-warm');
+
+select pg_temp.must_hold(
+  (select count(*) = 2
+          and bool_and(verdict = 'pending' and measured is null and closed_at is null
+                       and confounds = '[]' and window_days = 14
+                       and verdict_under_below = 0.80 and verdict_over_above = 1.20)
+          and array_agg(applied_on || '→' || window_ends_on order by applied_on)
+              = '{2026-07-02→2026-07-16,2026-07-09→2026-07-23}'
+     from ouroboros.suggestion_measurements where organization_id = 'org-v085'),
+  'a measurement is born pending with the workspace''s window and bands, its window in UTC days');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.suggestion_measurements
+        (suggestion_id, organization_id, repo_ref, applied_at, target_metric, baseline, predicted,
+         measured, verdict, closed_at)
+    select s.id, s.organization_id, s.repo_ref, m.applied_at, m.metric, m.baseline, m.predicted,
+           '{"window": {"from": "2026-07-21", "to": "2026-08-03"}, "value": 300, "delta": -240}',
+           'delivered', '2026-08-04T02:00:00Z'
+      from v085_m m join v085_s v on v.name = m.name
+      join ouroboros.analysis_suggestions s on s.id = v.id
+     where m.name = 'pool-move'$$,
+  'a measurement cannot be born with its outcome', 'suggestion_measurements_born_pending');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.suggestion_measurements
+        (suggestion_id, organization_id, repo_ref, applied_at, target_metric, baseline, predicted)
+    select suggestion_id, organization_id, repo_ref, applied_at, target_metric, baseline, predicted
+      from ouroboros.suggestion_measurements where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'one measurement per applied suggestion', 'suggestion_measurements_suggestion_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.suggestion_measurements
+        (suggestion_id, organization_id, repo_ref, target_metric, baseline, predicted)
+    select s.id, s.organization_id, s.repo_ref, 'build_minutes_saved', m.baseline, m.predicted
+      from v085_m m join v085_s v on v.name = m.name
+      join ouroboros.analysis_suggestions s on s.id = v.id
+     where m.name = 'pool-move'$$,
+  'the target metric is a registered BI metric',
+  'suggestion_measurements_target_metric_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.suggestion_measurements
+        (suggestion_id, organization_id, repo_ref, target_metric, baseline, predicted)
+    select s.id, s.organization_id, 'acme/other-firmware', m.metric, m.baseline, m.predicted
+      from v085_m m join v085_s v on v.name = m.name
+      join ouroboros.analysis_suggestions s on s.id = v.id
+     where m.name = 'pool-move'$$,
+  'a measurement is its suggestion''s repo''s', 'suggestion_measurements_suggestion_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.suggestion_measurements
+        (suggestion_id, organization_id, repo_ref, applied_at, target_metric, baseline, predicted)
+    select s.id, s.organization_id, s.repo_ref, m.applied_at, m.metric,
+           '{"window": {"from": "2026-07-06", "to": "2026-07-21"}, "value": 540}', m.predicted
+      from v085_m m join v085_s v on v.name = m.name
+      join ouroboros.analysis_suggestions s on s.id = v.id
+     where m.name = 'pool-move'$$,
+  'a baseline ends no later than the apply day', 'suggestion_measurements_baseline_precedes');
+
+-- --- The frozen contracts ------------------------------------------------------------
+
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.suggestion_measurement_baseline_valid(baseline)
+                   and ouroboros.suggestion_measurement_predicted_valid(predicted))
+     from v085_m)
+  and (select bool_and(not ouroboros.suggestion_measurement_baseline_valid(t.b))
+         from (values ('{"value": 912}'::jsonb),
+                      ('{"window": {"from": "2026-06-18", "to": "2026-07-01"}}'),
+                      ('{"window": {"from": "2026-07-01", "to": "2026-06-18"}, "value": 912}'),
+                      ('{"window": {"from": "2026-06-31", "to": "2026-07-01"}, "value": 912}'),
+                      ('{"window": {"from": "June 18", "to": "2026-07-01"}, "value": 912}'),
+                      ('{"window": {"from": "2026-06-18", "to": "2026-07-01"}, "value": "15m 12s"}'),
+                      ('[]')) as t (b)),
+  'a baseline is a window of real dates in order and a number');
+
+select pg_temp.must_hold(
+  (select bool_and(not ouroboros.suggestion_measurement_predicted_valid(
+                         (select predicted from v085_m where name = 'ccache-warm') #- t.path
+                         || coalesce(t.patch, '{}')))
+     from (values
+       ('{delta}'::text[],       null::jsonb),
+       ('{x}',                   '{"delta": 0}'),
+       ('{x}',                   '{"delta": "-1m 50s"}'),
+       ('{x}',                   '{"unit": "minutes"}'),
+       ('{basis}',               null),
+       ('{basis,sample_size}',   null),
+       ('{x}',                   '{"basis": {"method": "unquantified", "description": "unknown"}}'),
+       ('{x}',                   '{"basis": {"method": "extrapolated", "description": " "}}'),
+       ('{calibration}',         null),
+       ('{calibration,factor}',  null),
+       ('{x}',                   '{"calibration": {"analyzer": "cache_window", "impact_class": "duration_delta", "factor": 0}}'),
+       ('{x}',                   '{"calibration": {"analyzer": "Cache Window", "impact_class": "duration_delta", "factor": 1}}'),
+       ('{calibration,impact_class}', null)) as t (path, patch)),
+  'a prediction states a non-zero delta, its unit, a quantified basis and the calibration it was made with');
+
+select pg_temp.must_hold(
+  ouroboros.analysis_json_date('"2026-07-02"') = date '2026-07-02'
+  and ouroboros.analysis_json_date('"2026-02-30"') is null
+  and ouroboros.analysis_json_date('"2026-7-2"') is null
+  and ouroboros.analysis_json_date('20260702') is null
+  and ouroboros.analysis_json_date(null) is null,
+  'a JSON date is a real YYYY-MM-DD date or nothing');
+
+-- --- The prediction is write-once -------------------------------------------------
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set predicted = jsonb_set(predicted, '{delta}', '-70')
+     where id = 'a8530000-0000-4000-8000-000000000002'$$,
+  'a prediction is not edited after the fact', 'suggestion_measurements_prediction_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set baseline = jsonb_set(baseline, '{value}', '190')
+     where id = 'a8530000-0000-4000-8000-000000000002'$$,
+  'nor is the baseline it is measured against', 'suggestion_measurements_prediction_frozen');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set predicted = jsonb_set(predicted, '{calibration,factor}', '0.5')
+     where id = 'a8530000-0000-4000-8000-000000000002'$$,
+  'nor the factor the prediction was made with', 'suggestion_measurements_prediction_frozen');
+
+select pg_temp.must_reject(
+         format('update ouroboros.suggestion_measurements set %s where id = %L', t.assignment,
+                'a8530000-0000-4000-8000-000000000002'),
+         'the apply is frozen with its prediction: ' || t.assignment,
+         'suggestion_measurements_application_frozen')
+  from (values ('applied_at = applied_at + interval ''3 days'''),
+               ('target_metric = ''cycle_time'''),
+               ('window_days = 28'),
+               ('verdict_under_below = 0.50'),
+               ('verdict_over_above = 3'),
+               ('suggestion_id = (select id from v085_s where name = ''pool-move'')'),
+               ('applied_by = ''66666666-6666-6666-6666-666666666666''')) as t (assignment);
+
+-- --- Pending progress: day N of the window ----------------------------------------
+
+select pg_temp.must_hold(
+  (select array_agg(ouroboros.suggestion_measurement_day(applied_at, window_days, t.at::timestamptz)
+                    order by t.at)
+          = '{0,0,1,6,14,14}'
+     from ouroboros.suggestion_measurements,
+          (values ('2026-06-30T12:00:00Z'), ('2026-07-02T23:59:00Z'), ('2026-07-03T00:00:00Z'),
+                  ('2026-07-08T10:00:00Z'), ('2026-07-16T10:00:00Z'), ('2026-08-30T10:00:00Z'))
+            as t (at)
+    where id = 'a8530000-0000-4000-8000-000000000001'),
+  'an open measurement reports day N of 14 from its own row: 0 on the apply day, capped at the window');
+
+select pg_temp.must_hold(
+  ouroboros.suggestion_measurement_day('2026-07-02T15:00:00Z', 14) = 14
+  and ouroboros.suggestion_measurement_day(now(), 14) = 0,
+  'day N defaults to now');
+
+-- --- Closing: the verdict is arithmetic -------------------------------------------
+
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.suggestion_measurement_verdict(t.p, t.m, 0.80, 1.20, t.c)
+                   is not distinct from t.verdict)
+     from (values (-220, -235,   false, 'delivered'),
+                  (-110,  -72,   false, 'under'),
+                  (-100,  -80,   false, 'delivered'),   -- the lower band is inclusive
+                  (-100,  -79.9, false, 'under'),
+                  (-100, -120,   false, 'delivered'),   -- and so is the upper
+                  (-100, -120.1, false, 'over'),
+                  (-100,   25,   false, 'under'),       -- it got slower: a negative ratio
+                  ( 100,   90,   false, 'delivered'),   -- a predicted increase works the same way
+                  (-100, -100,   true,  'confounded'),
+                  (-100,    0,   false, 'under'),
+                  (   0,  -50,   false, null),
+                  (-100, null,   false, null)) as t (p, m, c, verdict)),
+  'the verdict is the ratio against the two bands, both inclusive; any confound is confounded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set measured = '{"window": {"from": "2026-07-03", "to": "2026-07-15"}, "value": 677, "delta": -235}',
+           verdict = 'delivered', closed_at = '2026-07-16T23:00:00Z'
+     where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'a measurement closes after its window has ended, not on its last day',
+  'suggestion_measurements_closed_after_window');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements set verdict = 'delivered', closed_at = '2026-07-17T02:00:00Z'
+     where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'a verdict needs the measurement it is the verdict of',
+  'suggestion_measurements_measured_when_closed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set measured = '{"window": {"from": "2026-07-03", "to": "2026-07-16"}, "value": 677, "delta": -235}',
+           verdict = 'delivered'
+     where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'a verdict is stamped with when it closed', 'suggestion_measurements_closed_when_verdict');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements set note = 'looking good so far'
+     where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'an open measurement has no revision line yet', 'suggestion_measurements_note_when_closed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set measured = '{"window": {"from": "2026-07-03", "to": "2026-07-20"}, "value": 677, "delta": -235}',
+           verdict = 'delivered', closed_at = '2026-07-21T02:00:00Z'
+     where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'the measured window is inside the row''s own window', 'suggestion_measurements_measured_window');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set measured = '{"window": {"from": "2026-07-03", "to": "2026-07-16"}, "value": 677, "delta": -260}',
+           verdict = 'delivered', closed_at = '2026-07-17T02:00:00Z'
+     where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'the measured delta is the measured value minus the baseline', 'suggestion_measurements_measured_delta');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set measured = '{"window": {"from": "2026-07-03", "to": "2026-07-16"}, "delta": -235}',
+           verdict = 'delivered', closed_at = '2026-07-17T02:00:00Z'
+     where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'a measured result is a window, a value and a delta', 'suggestion_measurements_measured_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set measured = '{"window": {"from": "2026-07-10", "to": "2026-07-23"}, "value": 180, "delta": -72}',
+           verdict = 'delivered', closed_at = '2026-07-24T02:00:00Z'
+     where id = 'a8530000-0000-4000-8000-000000000002'$$,
+  'a miss cannot be closed as delivered', 'suggestion_measurements_verdict_computed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set measured = '{"window": {"from": "2026-07-03", "to": "2026-07-16"}, "value": 677, "delta": -235}',
+           verdict = 'over', closed_at = '2026-07-17T02:00:00Z'
+     where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'nor a delivery as over-delivered', 'suggestion_measurements_verdict_computed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set measured = '{"window": {"from": "2026-07-03", "to": "2026-07-16"}, "value": 677, "delta": -235}',
+           verdict = 'confounded', closed_at = '2026-07-17T02:00:00Z'
+     where id = 'a8530000-0000-4000-8000-000000000001'$$,
+  'confounded names what interfered', 'suggestion_measurements_verdict_computed');
+
+-- Nothing has closed, so there is nothing to calibrate from.
+select pg_temp.must_hold(
+  ouroboros.recalibrate_analyzer('org-v085', 'acme/helios-firmware', 'cache_window', 'duration_delta') is null
+  and not exists (select 1 from ouroboros.analyzer_calibration where organization_id = 'org-v085'),
+  'pending measurements move no factor');
+
+-- The job closes the mockup's pair.
+update ouroboros.suggestion_measurements
+   set measured = '{"window": {"from": "2026-07-03", "to": "2026-07-16"}, "value": 677, "delta": -235}',
+       verdict = 'delivered', closed_at = '2026-07-17T02:00:00Z'
+ where id = 'a8530000-0000-4000-8000-000000000001';
+
+update ouroboros.suggestion_measurements
+   set measured = '{"window": {"from": "2026-07-10", "to": "2026-07-23"}, "value": 180, "delta": -72}',
+       verdict = 'under', note = 'under-delivered — analyzer revised its cache model',
+       closed_at = '2026-07-24T02:00:00Z'
+ where id = 'a8530000-0000-4000-8000-000000000002';
+
+select pg_temp.must_hold(
+  (select array_agg(format('(applied %s) predicted %s / measured %s%s%s',
+                           to_char(applied_on, 'Mon FMDD'),
+                           btrim(pg_temp.v081_duration((predicted ->> 'delta')::numeric)),
+                           btrim(pg_temp.v081_duration((measured ->> 'delta')::numeric)),
+                           case verdict when 'delivered' then ' ✓' else '' end,
+                           coalesce(' | ' || note, ''))
+                    order by applied_on)
+          = array['(applied Jul 2) predicted −3m 40s / measured −3m 55s ✓',
+                  '(applied Jul 9) predicted −1m 50s / measured −1m 12s | under-delivered — analyzer revised its cache model']
+     from ouroboros.suggestion_measurements
+    where organization_id = 'org-v085' and verdict <> 'pending'),
+  'the mockup''s two rows are two measurements: the delivered ✓ pair, and the under-delivered pair with its note');
+
+-- By hand, from the stored numbers and the stored bands.
+select pg_temp.must_hold(
+  (select array_agg(round((measured ->> 'delta')::numeric / (predicted ->> 'delta')::numeric, 2)
+                    order by applied_on) = '{1.07,0.65}'
+          and bool_and(verdict = case
+                when (measured ->> 'delta')::numeric / (predicted ->> 'delta')::numeric
+                     < verdict_under_below then 'under'
+                when (measured ->> 'delta')::numeric / (predicted ->> 'delta')::numeric
+                     > verdict_over_above then 'over'
+                else 'delivered' end)
+          and bool_and((measured ->> 'delta')::numeric
+                       = (measured ->> 'value')::numeric - (baseline ->> 'value')::numeric)
+     from ouroboros.suggestion_measurements
+    where organization_id = 'org-v085' and verdict <> 'pending'),
+  'recomputing by hand gives the stored verdicts: ratio 1.07 is delivered, 0.65 is under');
+
+-- --- A closed measurement is a record ----------------------------------------------
+
+select pg_temp.must_reject(
+         format('update ouroboros.suggestion_measurements set %s where id = %L', t.assignment,
+                'a8530000-0000-4000-8000-000000000002'),
+         'a closed measurement is not revised: ' || t.assignment,
+         'suggestion_measurements_closed_frozen')
+  from (values ('note = ''on reflection, close enough'''),
+               ('note = null'),
+               ('closed_at = closed_at + interval ''1 day'''),
+               ('verdict = ''pending'', measured = null, closed_at = null, note = null'),
+               ('measured = ''{"window": {"from": "2026-07-10", "to": "2026-07-23"}, "value": 150, "delta": -102}'', verdict = ''delivered''')) as t (assignment);
+
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements set predicted = jsonb_set(predicted, '{delta}', '-72')
+     where id = 'a8530000-0000-4000-8000-000000000002'$$,
+  'and the prediction it missed stays the prediction it made',
+  'suggestion_measurements_prediction_frozen');
+
+-- --- Calibration: the miss moves the factor, with its trail -------------------------
+
+select pg_temp.must_hold(
+  ouroboros.recalibrate_analyzer('org-v085', 'acme/helios-firmware', 'cache_window', 'duration_delta') = 0.6545,
+  'the factor is Σ measured ÷ Σ raw predicted: −72 ÷ −110 = 0.6545');
+set constraints ouroboros.analyzer_calibration_traces, ouroboros.analyzer_calibration_history_traces immediate;
+set constraints ouroboros.analyzer_calibration_traces, ouroboros.analyzer_calibration_history_traces deferred;
+
+select pg_temp.must_hold(
+  (select round(c.factor, 2) = 0.65 and c.sample_count = 1
+          and (h.from_factor, h.to_factor, h.measured_sum, h.predicted_sum) = (1, 0.6545, -72, -110)
+          and h.measurement_ids = '{a8530000-0000-4000-8000-000000000002}'
+          and h.added_measurement_ids = h.measurement_ids
+     from ouroboros.analyzer_calibration c
+     join ouroboros.analyzer_calibration_history h
+       using (organization_id, repo_ref, analyzer, impact_class)
+    where c.organization_id = 'org-v085' and c.analyzer = 'cache_window'),
+  'calibration{cache_window, duration_delta} 1.00 → 0.65, from the under-delivered measurement');
+
+select pg_temp.must_hold(
+  ouroboros.recalibrate_analyzer('org-v085', 'acme/helios-firmware', 'cache_window', 'duration_delta') = 0.6545
+  and (select count(*) = 1 from ouroboros.analyzer_calibration_history where organization_id = 'org-v085'),
+  'recalibrating with nothing new writes nothing');
+
+select pg_temp.must_hold(
+  ouroboros.recalibrate_analyzer('org-v085', 'acme/helios-firmware', 'workflow_outcome', 'duration_delta') = 1.0682
+  and ouroboros.recalibrate_analyzer('org-v085', 'acme/helios-firmware', 'workflow_outcome', 'queue_delta') is null,
+  'a delivered measurement calibrates its own cell (−235 ÷ −220), and only its own');
+
+-- --- Stored per row: a configuration change does not reach an open measurement -------
+
+select pg_temp.v085_measure('pool-move');
+
+-- The service saves a stricter policy: three weeks, and ±10 %.
+set local role ouroboros_app;
+insert into ouroboros.analyzer_measurement_policies
+    (organization_id, window_days, verdict_under_below, verdict_over_above, updated_by)
+values ('org-v085', 21, 0.90, 1.10, 'user-v085-b')
+on conflict (organization_id) do update
+   set window_days = excluded.window_days, verdict_under_below = excluded.verdict_under_below,
+       verdict_over_above = excluded.verdict_over_above, updated_by = excluded.updated_by;
+reset role;
+
+select pg_temp.v085_apply('prune-warm', '2026-07-26T23:30:00Z');
+
+-- The service records and closes measurements; these two run as it.
+set local role ouroboros_app;
+select pg_temp.v085_measure('prune-warm');
+insert into ouroboros.suggestion_measurements
+    (id, suggestion_id, organization_id, repo_ref, applied_at, target_metric, baseline, predicted,
+     window_days, verdict_under_below, verdict_over_above)
+select m.id, s.id, s.organization_id, s.repo_ref, m.applied_at, m.metric, m.baseline, m.predicted,
+       14, 0.80, 1.20
+  from v085_m m join v085_s v on v.name = m.name
+  join ouroboros.analysis_suggestions s on s.id = v.id
+ where m.name = 'other-warm';
+reset role;
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s:%s:%s:%s:%s', v.name, m.window_days, m.verdict_under_below,
+                           m.verdict_over_above, m.window_ends_on) order by v.name)
+          = array['other-warm:14:0.80:1.20:2026-08-09',
+                  'pool-move:14:0.80:1.20:2026-08-03',
+                  'prune-warm:21:0.90:1.10:2026-08-16']
+     from ouroboros.suggestion_measurements m join v085_s v on v.id = m.suggestion_id
+    where m.verdict = 'pending'),
+  'the open measurement keeps its 14 days and its bands; the next application takes the new 21 and 0.90 / 1.10; an explicit window is kept');
+
+-- --- Confounds: a second application inside the window ----------------------------
+
+select pg_temp.must_hold(
+  (select ouroboros.suggestion_measurement_day(p.applied_at, p.window_days, w.applied_at) = 6
+     from ouroboros.suggestion_measurements p, ouroboros.suggestion_measurements w
+    where p.id = 'a8530000-0000-4000-8000-000000000003'
+      and w.id = 'a8530000-0000-4000-8000-000000000004'),
+  'the second apply lands on day 6 of the pool move''s window');
+
+select pg_temp.must_hold(
+  (select bool_and(not ouroboros.suggestion_measurement_confounds_valid(t.c, '2026-07-20', '2026-08-03'))
+     from (values ('{}'::jsonb),
+                  ('["a8530000-0000-4000-8000-000000000004"]'),
+                  ('[{"kind": "application", "id": "a8530000-0000-4000-8000-000000000004"}]'),
+                  ('[{"kind": "application", "id": "suggestion #7", "date": "2026-07-26"}]'),
+                  ('[{"kind": "deploy", "id": "a8530000-0000-4000-8000-000000000004", "date": "2026-07-26"}]'),
+                  ('[{"kind": "application", "id": "a8530000-0000-4000-8000-000000000004", "date": "2026-07-26", "note": "x"}]'),
+                  ('[{"kind": "application", "id": "a8530000-0000-4000-8000-000000000004", "date": "2026-07-19"}]'),
+                  ('[{"kind": "application", "id": "a8530000-0000-4000-8000-000000000004", "date": "2026-08-04"}]'),
+                  ('[{"kind": "application", "id": "a8530000-0000-4000-8000-000000000004", "date": "2026-07-26"},
+                     {"kind": "application", "id": "a8530000-0000-4000-8000-000000000004", "date": "2026-07-26"}]'))
+            as t (c))
+  and ouroboros.suggestion_measurement_confounds_valid('[]', '2026-07-20', '2026-08-03')
+  and ouroboros.suggestion_measurement_confounds_valid(
+        '[{"kind": "change_point", "id": "a8530000-0000-4000-8000-000000000004", "date": "2026-07-20"}]',
+        '2026-07-20', '2026-08-03'),
+  'a confound is a distinct {kind, id, date} dated inside the window, the apply day included');
+
+-- Records one confound on the pool move's measurement.
+--   p_kind — application | change_point
+--   p_id   — the suggestion or finding id
+--   p_date — the date
+create function pg_temp.v085_confound(p_kind text, p_id uuid, p_date text)
+returns void language sql as $$
+  update ouroboros.suggestion_measurements
+     set confounds = confounds || jsonb_build_array(
+           jsonb_build_object('kind', p_kind, 'id', p_id, 'date', p_date))
+   where id = 'a8530000-0000-4000-8000-000000000003'
+$$;
+
+select pg_temp.must_reject(
+  $$select pg_temp.v085_confound('application', id, '2026-07-27') from v085_s where name = 'prune-warm'$$,
+  'an application confound is dated the day that suggestion was applied',
+  'suggestion_measurements_confound_resolves');
+select pg_temp.must_reject(
+  $$select pg_temp.v085_confound('application', id, '2026-07-26') from v085_s where name = 'other-warm'$$,
+  'another repository''s application is not this window''s confound',
+  'suggestion_measurements_confound_resolves');
+select pg_temp.must_reject(
+  $$select pg_temp.v085_confound('application', id, '2026-07-20') from v085_s where name = 'pool-move'$$,
+  'a measurement does not confound itself', 'suggestion_measurements_confound_resolves');
+select pg_temp.must_reject(
+  $$select pg_temp.v085_confound('change_point', id, '2026-07-25')
+      from ouroboros.analysis_findings
+     where organization_id = 'org-v085' and subject_key = 'nightly-prune'$$,
+  'a change-point confound names a change-point finding',
+  'suggestion_measurements_confound_resolves');
+select pg_temp.must_reject(
+  $$select pg_temp.v085_confound('application', id, '2026-07-09') from v085_s where name = 'ccache-warm'$$,
+  'an application before the window is not a confound of it', 'suggestion_measurements_confounds_shape');
+
+select pg_temp.v085_confound('application', id, '2026-07-26') from v085_s where name = 'prune-warm';
+select pg_temp.v085_confound('change_point', id, '2026-07-25')
+  from ouroboros.analysis_findings
+ where organization_id = 'org-v085' and subject_key = 'build.duration_median@2026-07-25';
+
+select pg_temp.must_hold(
+  (select verdict = 'pending' and jsonb_array_length(confounds) = 2
+          and confounds -> 0 = jsonb_build_object(
+                'kind', 'application', 'date', '2026-07-26',
+                'id', (select id from v085_s where name = 'prune-warm'))
+     from ouroboros.suggestion_measurements where id = 'a8530000-0000-4000-8000-000000000003'),
+  'the second application and a change-point are recorded on the open measurement, each with its reference and date');
+
+-- −230 against −240 is a ratio of 0.96: a clean delivery, were the window clean.
+select pg_temp.must_reject(
+  $$update ouroboros.suggestion_measurements
+       set measured = '{"window": {"from": "2026-07-21", "to": "2026-08-03"}, "value": 310, "delta": -230}',
+           verdict = 'delivered', closed_at = '2026-08-04T02:00:00Z'
+     where id = 'a8530000-0000-4000-8000-000000000003'$$,
+  'a confounded window is never counted as a clean win', 'suggestion_measurements_verdict_computed');
+
+update ouroboros.suggestion_measurements
+   set measured = '{"window": {"from": "2026-07-21", "to": "2026-08-03"}, "value": 310, "delta": -230}',
+       verdict = 'confounded', note = 'confounded — a second change was applied on day 6',
+       closed_at = '2026-08-04T02:00:00Z'
+ where id = 'a8530000-0000-4000-8000-000000000003';
+
+select pg_temp.must_hold(
+  ouroboros.recalibrate_analyzer('org-v085', 'acme/helios-firmware', 'queue_correlation', 'duration_delta') is null
+  and not exists (select 1 from ouroboros.analyzer_calibration where analyzer = 'queue_correlation'),
+  'a confounded measurement moves no factor');
+
+-- --- Calibration: the trail is the arithmetic ---------------------------------------
+
+-- The service closes the two cache measurements: prune-warm exactly on its upper band (−66 ÷ −60
+-- = 1.10, inclusive), the other repository's as a miss.
+set local role ouroboros_app;
+update ouroboros.suggestion_measurements
+   set measured = '{"window": {"from": "2026-07-27", "to": "2026-08-16"}, "value": 134, "delta": -66}',
+       verdict = 'delivered', closed_at = '2026-08-17T02:00:00Z'
+ where id = 'a8530000-0000-4000-8000-000000000004';
+update ouroboros.suggestion_measurements
+   set measured = '{"window": {"from": "2026-07-27", "to": "2026-08-09"}, "value": 260, "delta": -40}',
+       verdict = 'under', closed_at = '2026-08-10T02:00:00Z'
+ where id = 'a8530000-0000-4000-8000-000000000005';
+reset role;
+
+-- A newly closed measurement makes a history row writable; only the cell's own arithmetic is.
+create temp table v085_h on commit drop as
+  select 'org-v085'::text as organization_id, 'acme/helios-firmware'::ouroboros.repo_ref as repo_ref,
+         'cache_window'::text as analyzer, 'duration_delta'::text as impact_class,
+         0.6545::numeric as from_factor, round(i.measured_sum / i.predicted_sum, 4) as to_factor,
+         i.sample_count, i.measured_sum, i.predicted_sum, i.measurement_ids,
+         '{a8530000-0000-4000-8000-000000000004}'::uuid[] as added_measurement_ids
+    from ouroboros.analyzer_calibration_inputs('org-v085', 'acme/helios-firmware', 'cache_window',
+                                               'duration_delta') i;
+
+select pg_temp.must_hold(
+  (select (sample_count, measured_sum, predicted_sum, to_factor) = (2, -138, -201.673033, 0.6843)
+          and measurement_ids = '{a8530000-0000-4000-8000-000000000002,a8530000-0000-4000-8000-000000000004}'
+     from v085_h),
+  'the inputs are the cell''s clean measurements: −138 over −110 − 60 ÷ 0.6545 — the other repository''s is not among them');
+
+select pg_temp.must_reject(
+         format('insert into ouroboros.analyzer_calibration_history
+                     (organization_id, repo_ref, analyzer, impact_class, from_factor, to_factor,
+                      sample_count, measured_sum, predicted_sum, measurement_ids, added_measurement_ids)
+                 select organization_id, repo_ref, analyzer, impact_class, %s from v085_h', t.cols),
+         t.what, t.rule)
+  from (values
+    ('from_factor, to_factor, 1, -66, -91.673033, added_measurement_ids, added_measurement_ids',
+     'a calibration update cannot cherry-pick its measurements', 'analyzer_calibration_history_inputs'),
+    ('from_factor, to_factor, sample_count, -150, predicted_sum, measurement_ids, added_measurement_ids',
+     'nor state sums its measurements do not add up to', 'analyzer_calibration_history_inputs'),
+    ('from_factor, to_factor, 3, measured_sum, predicted_sum, measurement_ids || ''a8530000-0000-4000-8000-000000000003''::uuid, added_measurement_ids',
+     'nor count a confounded measurement', 'analyzer_calibration_history_inputs'),
+    ('1, to_factor, sample_count, measured_sum, predicted_sum, measurement_ids, added_measurement_ids',
+     'an update starts from the factor in force', 'analyzer_calibration_history_from_current'),
+    ('from_factor, to_factor, sample_count, measured_sum, predicted_sum, measurement_ids, measurement_ids',
+     'an update names exactly the measurements new to it', 'analyzer_calibration_history_adds'),
+    ('from_factor, 0.72, sample_count, measured_sum, predicted_sum, measurement_ids, added_measurement_ids',
+     'the new factor is the ratio of the two sums, not a number somebody chose',
+     'analyzer_calibration_history_formula')) as t (cols, what, rule);
+
+select pg_temp.must_reject(
+  $q$do $x$
+  begin
+    update ouroboros.analyzer_calibration set factor = 0.9
+     where organization_id = 'org-v085' and analyzer = 'cache_window';
+    set constraints ouroboros.analyzer_calibration_traces immediate;
+  end $x$ $q$,
+  'a factor cannot change without the history row that says why', 'analyzer_calibration_traces');
+
+select pg_temp.must_reject(
+  $q$do $x$
+  begin
+    insert into ouroboros.analyzer_calibration
+        (organization_id, repo_ref, analyzer, impact_class, factor, sample_count)
+    values ('org-v085', 'acme/helios-firmware', 'queue_correlation', 'duration_delta', 0.5, 1);
+    set constraints ouroboros.analyzer_calibration_traces immediate;
+  end $x$ $q$,
+  'nor appear without one', 'analyzer_calibration_traces');
+
+select pg_temp.must_reject(
+  $q$do $x$
+  begin
+    insert into ouroboros.analyzer_calibration_history
+        (organization_id, repo_ref, analyzer, impact_class, from_factor, to_factor, sample_count,
+         measured_sum, predicted_sum, measurement_ids, added_measurement_ids)
+    select * from v085_h;
+    set constraints ouroboros.analyzer_calibration_history_traces immediate;
+  end $x$ $q$,
+  'and a history row moves the factor it records', 'analyzer_calibration_traces');
+set constraints ouroboros.analyzer_calibration_traces, ouroboros.analyzer_calibration_history_traces deferred;
+
+-- The write, as the service.
+set local role ouroboros_app;
+select pg_temp.must_hold(
+  ouroboros.recalibrate_analyzer('org-v085', 'acme/helios-firmware', 'cache_window', 'duration_delta') = 0.6843
+  and ouroboros.recalibrate_analyzer('org-v085', 'acme/other-firmware', 'cache_window', 'duration_delta') = 0.4,
+  'the second update divides each prediction by the factor it was made with: 0.65 → 0.68, not 0.65 × 1.10');
+reset role;
+set constraints ouroboros.analyzer_calibration_traces, ouroboros.analyzer_calibration_history_traces immediate;
+set constraints ouroboros.analyzer_calibration_traces, ouroboros.analyzer_calibration_history_traces deferred;
+
+select pg_temp.must_hold(
+  (select array_agg(format('%s→%s n=%s +%s', h.from_factor, h.to_factor, h.sample_count,
+                           right(h.added_measurement_ids[1]::text, 1)) order by h.id)
+          = '{"1.0000→0.6545 n=1 +2","0.6545→0.6843 n=2 +4"}'
+     from ouroboros.analyzer_calibration_history h
+    where h.repo_ref = 'acme/helios-firmware' and h.analyzer = 'cache_window')
+  and (select array_agg(format('%s/%s=%s n=%s', c.repo_ref, c.analyzer, c.factor, c.sample_count)
+                        order by c.repo_ref, c.analyzer)
+              = array['acme/helios-firmware/cache_window=0.6843 n=2',
+                      'acme/helios-firmware/workflow_outcome=1.0682 n=1',
+                      'acme/other-firmware/cache_window=0.4000 n=1']
+         from ouroboros.analyzer_calibration c where c.organization_id = 'org-v085'),
+  'each factor update traces to the measurement that moved it, and each repository keeps its own factors');
+
+-- Every factor, by hand from the measurements its latest history row cites.
+select pg_temp.must_hold(
+  (select bool_and(c.factor = (
+            select round(sum((m.measured ->> 'delta')::numeric)
+                         / round(sum((m.predicted ->> 'delta')::numeric
+                                     / (m.predicted #>> '{calibration,factor}')::numeric), 6), 4)
+              from ouroboros.suggestion_measurements m
+             where m.id = any (h.measurement_ids)))
+     from ouroboros.analyzer_calibration c
+     join lateral (select measurement_ids from ouroboros.analyzer_calibration_history h
+                    where (h.organization_id, h.repo_ref, h.analyzer, h.impact_class)
+                          = (c.organization_id, c.repo_ref, c.analyzer, c.impact_class)
+                    order by h.id desc limit 1) h on true
+    where c.organization_id = 'org-v085'),
+  'every factor is derivable by hand from the measurements its history cites');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analyzer_calibration_history set to_factor = 0.7, measured_sum = -141.171123
+     where organization_id = 'org-v085'$$,
+  'calibration history is append-only', 'analyzer_calibration_history_append_only');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analyzer_calibration_history
+        (organization_id, repo_ref, analyzer, impact_class, from_factor, to_factor, sample_count,
+         measured_sum, predicted_sum, measurement_ids, added_measurement_ids)
+    select organization_id, repo_ref, analyzer, impact_class, 0.6843, to_factor, sample_count,
+           measured_sum, predicted_sum, measurement_ids, '{}' from v085_h$$,
+  'an update with no new measurement is not an update', 'analyzer_calibration_history_adds');
+
+-- --- The service role ------------------------------------------------------------
+
+set local role ouroboros_app;
+select pg_temp.must_hold(
+  (select count(*) = 5 from ouroboros.suggestion_measurements where organization_id = 'org-v085')
+  and (select count(*) = 4 from ouroboros.analyzer_calibration_history where organization_id = 'org-v085'),
+  'the service reads measurements and the calibration trail');
+select pg_temp.must_raise(
+  $$delete from ouroboros.suggestion_measurements where id = 'a8530000-0000-4000-8000-000000000002'$$,
+  '42501', 'the service may not delete a measurement — a published miss stays published');
+reset role;
+
+select pg_temp.must_hold(
+  not has_table_privilege('ouroboros_app', 'ouroboros.analyzer_measurement_policies', 'delete')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.analyzer_calibration', 'delete')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.analyzer_calibration_history', 'delete')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.analyzer_calibration_history', 'update'),
+  'the app role never deletes a policy or a factor, and never edits or deletes a factor''s trail');
+
+-- --- Lifecycle --------------------------------------------------------------------
+
+delete from ouroboros."user" where "id" = 'user-v085';
+
+select pg_temp.must_hold(
+  (select count(*) = 5 and bool_and(applied_by is null)
+          and count(*) filter (where verdict = 'under') = 2
+     from ouroboros.suggestion_measurements where organization_id = 'org-v085'),
+  'a removed person''s applications stay measured, unattributed');
+
+delete from ouroboros."user" where "id" = 'user-v085-b';
+
+select pg_temp.must_hold(
+  (select updated_by is null and (window_days, verdict_under_below, verdict_over_above)
+                                 = (21, 0.90, 1.10)
+     from ouroboros.analyzer_measurement_policies where organization_id = 'org-v085'),
+  'removing whoever saved a policy keeps the policy');
+
+delete from ouroboros.organization where "id" in ('org-v085', 'org-v085-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.suggestion_measurements where organization_id like 'org-v085%')
+  and not exists (select 1 from ouroboros.analyzer_measurement_policies where organization_id like 'org-v085%')
+  and not exists (select 1 from ouroboros.analyzer_calibration where organization_id like 'org-v085%')
+  and not exists (select 1 from ouroboros.analyzer_calibration_history where organization_id like 'org-v085%'),
+  'a deleted workspace takes its measurements, policy, factors and their trail with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
