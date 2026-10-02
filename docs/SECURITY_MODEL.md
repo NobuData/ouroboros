@@ -809,6 +809,36 @@ and the guard's refusals are shaped to leak nothing:
   owner-or-admin; a member session is refused by the API and not merely by a hidden
   button.
 
+### 6.6 The Build Analyzer's corpus stays on the tenant
+
+> **Status: Shipped** — BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)) and BV.2
+> ([#511](https://github.com/NobuData/ouroboros/issues/511)).
+
+Mockup 18's footer says *"Runs on your build farm's data. Nothing leaves the tenant."* That is
+architecture, held in three places, and not a convention:
+
+- **Assembly reads the tenant's own database and nothing else.** `ouroboros-rest`'s corpus
+  assembler ([`analyzer/corpus/`](../ouroboros-rest/src/modules/analyzer/corpus)) reads builds,
+  log tails, test failures, loop statistics, cache statistics, waivers and rolled-up series out
+  of this deployment's PostgreSQL, scoped to the workspace and the repository, within the run's
+  budgets.
+- **Dispatch has one destination: this deployment's engine.** The corpus is handed to
+  `EngineClient.analyze`, which sends it to `OURO_ENGINE_URL` with the internal shared secret and
+  nowhere else — asserted by `engine/engine.analysis.spec.ts` (*"sends the corpus to the
+  configured engine, and only there"*). The analyzer module cannot grow a second way out: the
+  `analyzer-corpus-stays-on-tenant` dependency rule refuses any network client, mailer or tracker
+  SDK under `src/modules/analyzer/`, and `analyzer/boundary.spec.ts` watches it fail.
+- **Analyzers cannot reach the network.** Each analyzer runs in its own sandbox process in the
+  engine, whose audit hook refuses every socket, name lookup and process start — a refusal the
+  analyzer swallows still voids its findings (BV.2's harness).
+
+**What this does not cover.** `OURO_ENGINE_URL` is an operator's setting: an operator who points
+it at an engine outside the deployment has moved the boundary, and nothing here can tell. The
+analyzers in this release are all deterministic, so no model provider sees a corpus; when the v2
+LLM synthesis pass ([#522](https://github.com/NobuData/ouroboros/issues/522)) is enabled, data
+*does* reach the configured provider, and this section and the page must both say so — a tenant
+that has not enabled it keeps the stronger claim.
+
 ---
 
 ## 7. The build farm's certificate authority
@@ -1198,9 +1228,10 @@ never leave your deployment.** That one is true of every installation today, and
 
 Later roadmaps filed four additions against this document — three amendment comments on
 [#226](https://github.com/NobuData/ouroboros/issues/226), carrying four items between them.
-**One of the four has landed**: the build-farm CA is now
-[§7](#7-the-build-farms-certificate-authority) rather than a line in this table, which is what
-§10 means by a section moving from Planned to Shipped. The three below are still **Planned**;
+**Two of the four have landed**: the build-farm CA is now
+[§7](#7-the-build-farms-certificate-authority) and the Build Analyzer's tenant locality is
+[§6.6](#66-the-build-analyzers-corpus-stays-on-the-tenant) rather than lines in this table, which
+is what §10 means by a section moving from Planned to Shipped. The two below are still **Planned**;
 each becomes a section of its own when the work it describes lands. They are listed rather than
 written up as though they were true, which is the same rule the rest of this document follows.
 
@@ -1208,7 +1239,6 @@ written up as though they were true, which is the same rule the rest of this doc
 |---|---|---|
 | **Crypto-shredding as the deletion guarantee** | BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) | Workspace deletion — typed confirmation and step-up, then `pending_delete`, then a 30-day recovery window, then a scheduled purge that deletes tenant data across planes **and destroys the tenant DEK**. That last clause is what makes residual ciphertext in backups permanently unreadable; row deletion alone cannot reach a backup. [§2.6](#26-deleting-a-workspace-destroys-its-credentials) is the mechanism, and #489 is the lifecycle that invokes it. |
 | **Deployment truth in Settings** | BQ.4 ([#483](https://github.com/NobuData/ouroboros/issues/483)), roadmap decision **S6** | The settings page renders what is true of *this* deployment: a self-hosted install shows its region read-only rather than offering a chooser it cannot honour, and states plainly that this deployment never trains on your data. The residency documentation that card links to is this document. |
-| **Analyzer tenant locality** | BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)), BV.2 ([#511](https://github.com/NobuData/ouroboros/issues/511)) | The Build Analyzer's claim that nothing leaves the tenant: corpus assembly dispatches to the tenant's own engine, and analyzer code cannot reach the network — enforced by the execution harness, not by convention. When the v2 LLM synthesis pass ([#522](https://github.com/NobuData/ouroboros/issues/522)) is enabled, data *does* reach the configured provider, so both this document and the page must say so, and a tenant that has not enabled it keeps the stronger claim. |
 
 ---
 

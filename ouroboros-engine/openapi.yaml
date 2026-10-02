@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.8
+  version: 0.7.9
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -121,7 +121,7 @@ paths:
                 $ref: "#/components/schemas/ServiceIdentity"
               example:
                 service: ouroboros-engine
-                version: 0.7.8
+                version: 0.7.9
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -147,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ServiceStatus"
               example:
                 service: ouroboros-engine
-                version: 0.7.8
+                version: 0.7.9
                 uptime_seconds: 1234.567
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -195,7 +195,7 @@ paths:
                   task_kind: echo
                   payload:
                     note: hello from ouroboros-rest
-                engine_version: 0.7.8
+                engine_version: 0.7.9
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -971,6 +971,109 @@ paths:
                           id: a7150000-0000-0000-0000-000000000498
                 extractor: llm-v1
                 notes: []
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "422":
+          $ref: "#/components/responses/UnprocessableEntity"
+
+  /v0/analysis/analyzers:
+    get:
+      tags: [v0]
+      summary: The installed analyzer set
+      description: |-
+        The analyzers a run would execute, in `analysis_runs.analyzer_set`'s shape (`V080`) —
+        BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)). `ouroboros-rest` records
+        it on the run before it assembles a corpus, so a run's provenance is known from its first
+        row. `label` is what *Analyzed by* renders: `deterministic analyzers v1` until BX.1's LLM
+        pass exists (decision **A3**). Analyzers are in id order — the order a run executes them.
+      operationId: analyzerSet
+      responses:
+        "200":
+          description: The installed set.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalyzerSet"
+              example:
+                label: deterministic analyzers v1
+                analyzers:
+                  - id: change_point
+                    version: 1
+                    kind: deterministic
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /v0/analysis/runs:
+    post:
+      tags: [v0]
+      summary: Run the analyzers over a corpus, streaming progress
+      description: |-
+        Dispatch one analysis run — BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510))
+        over BV.2's harness ([#511](https://github.com/NobuData/ouroboros/issues/511)). The corpus
+        is the bounded, snapshotted read `ouroboros-rest` assembled on the tenant's own data; it
+        is analyzed here in sandboxes that cannot open a socket, and the findings come back on
+        this connection. **Nothing leaves the tenant.**
+
+        The answer is `application/x-ndjson`, one event per line, written as it happens:
+
+        * `started` — an analyzer's sandbox is starting (only for an analyzer that runs);
+        * `outcome` — its outcome, with its findings, the moment it ends: `completed`, `skipped`
+          (a required source is absent from the corpus), `failed`, `timed_out`,
+          `memory_exceeded` or `not_run` (the compute ceiling was already reached);
+        * `report` — always last: `budget_exceeded` and the analyzers that failed.
+
+        A stream that ends **without** a `report` was cut short, and the caller treats the run
+        as failed. A run whose ceiling bound still reports the finished analyzers' outcomes and
+        findings before its report — a partial run is not a failed one.
+      operationId: runAnalysis
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AnalysisRequest"
+            example:
+              run_id: 5eed0065-0000-4000-8000-000000000002
+              compute_ceiling_seconds: 3600
+              corpus:
+                repo_ref: acme-robotics/helios-firmware
+                window:
+                  from: "2026-07-01"
+                  to: "2026-07-03"
+                builds:
+                  - build_id: 5eed0062-0000-4000-8000-000000010001
+                    day: "2026-07-01"
+                    duration_seconds: 252
+                  - build_id: 5eed0062-0000-4000-8000-000000010002
+                    day: "2026-07-02"
+                    duration_seconds: 251
+                  - build_id: 5eed0062-0000-4000-8000-000000010003
+                    day: "2026-07-03"
+                    duration_seconds: 253
+                events: []
+                rig_telemetry: null
+      responses:
+        "200":
+          description: |-
+            The run, streamed. For the example: `change_point` starts, completes with no
+            finding (three days are too few to segment), and the report follows.
+          content:
+            application/x-ndjson:
+              schema:
+                oneOf:
+                  - $ref: "#/components/schemas/AnalyzerStarted"
+                  - $ref: "#/components/schemas/AnalyzerFinished"
+                  - $ref: "#/components/schemas/AnalysisFinished"
+                discriminator:
+                  propertyName: event
+                  mapping:
+                    started: "#/components/schemas/AnalyzerStarted"
+                    outcome: "#/components/schemas/AnalyzerFinished"
+                    report: "#/components/schemas/AnalysisFinished"
+              example: |
+                {"event":"started","analyzer":"change_point","version":1}
+                {"event":"outcome","outcome":{"analyzer":"change_point","version":1,"status":"completed","findings":[],"reason":null,"error":null,"elapsed_seconds":0.41}}
+                {"event":"report","budget_exceeded":false,"failed":[]}
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -2218,3 +2321,198 @@ components:
             it. Empty rather than absent when there is none, so reading `details.task_kind`
             never has to check `details` first.
           examples: [{}]
+
+    AnalyzerSetEntry:
+      type: object
+      title: AnalyzerSetEntry
+      description: One installed analyzer. Closed.
+      additionalProperties: false
+      required: [id, version, kind]
+      properties:
+        id:
+          type: string
+          pattern: "^[a-z][a-z0-9_]{0,62}$"
+          examples: [change_point]
+        version:
+          type: integer
+          minimum: 1
+        kind:
+          type: string
+          enum: [deterministic, llm]
+
+    AnalyzerSet:
+      type: object
+      title: AnalyzerSet
+      description: |-
+        The installed analyzers — `analysis_runs.analyzer_set` exactly (`V080`). Closed.
+      additionalProperties: false
+      required: [label, analyzers]
+      properties:
+        label:
+          type: string
+          minLength: 1
+          description: What *Analyzed by* renders.
+          examples: [deterministic analyzers v1]
+        analyzers:
+          type: array
+          items:
+            $ref: "#/components/schemas/AnalyzerSetEntry"
+
+    Corpus:
+      type: object
+      title: Corpus
+      description: |-
+        One repository's snapshotted history, as an analysis run reads it. Every source but
+        `repo_ref` and `window` is optional, and **absent (`null` or missing) is not empty
+        (`[]`)**: an analyzer whose required source is absent is `skipped`, never run on
+        nothing. Every dated record must lie inside `window`; unknown keys are refused at
+        every level. `rig_telemetry` is the read shape AJ.4
+        ([#266](https://github.com/NobuData/ouroboros/issues/266)) must produce, and is absent
+        until it does.
+      additionalProperties: false
+      required: [repo_ref, window]
+      properties:
+        repo_ref:
+          type: string
+          minLength: 1
+          maxLength: 255
+          examples: [acme-robotics/helios-firmware]
+        window:
+          type: object
+          description: The corpus bounds, UTC dates, inclusive; `from` ≤ `to`.
+          additionalProperties: false
+          required: [from, to]
+          properties:
+            from: {type: string, format: date}
+            to: {type: string, format: date}
+        builds:
+          type: [array, "null"]
+          description: "The duration series — `{build_id, day, duration_seconds}` per succeeded build."
+          items: {type: object}
+        events:
+          type: [array, "null"]
+          description: "Attribution candidates — `{kind, day, label, ref: {kind, id}}`."
+          items: {type: object}
+        log_tails:
+          type: [array, "null"]
+          description: |-
+            `{build_id, day, label, status, line_count, lines}` — each build's stored line count
+            and only the tail of its log.
+          items: {type: object}
+        tests:
+          type: [array, "null"]
+          description: |-
+            `{test_run_id, build_id, day, suite, platform, case_key, status, failure}` per case
+            result; `status` is `passed`, `failed`, `flaky` or `skipped`.
+          items: {type: object}
+        flakes:
+          type: [array, "null"]
+          description: "`{case_key, score, state}` — current flake scores, not dated."
+          items: {type: object}
+        loops:
+          type: [array, "null"]
+          description: |-
+            `{run_id, day, status, stages: [{key, attempts, seconds}], events, event_bytes}` —
+            stage timings and transcript statistics, never transcript bodies.
+          items: {type: object}
+        cache:
+          type: [array, "null"]
+          description: "`{build_id, day, hits, misses}` — each build's ccache counters."
+          items: {type: object}
+        waivers:
+          type: [array, "null"]
+          description: "`{waiver_id, run_id, day, case_keys, reason}`."
+          items: {type: object}
+        series:
+          type: [object, "null"]
+          description: |-
+            BI rollup rows by metric id — `{"build_duration": [{day, dimension, value, samples}]}`.
+          additionalProperties:
+            type: array
+            items: {type: object}
+        rig_telemetry:
+          type: [array, "null"]
+          description: "`{runner_id, day, metric, value}` — absent until AJ.4 lands."
+          items: {type: object}
+
+    AnalysisRequest:
+      type: object
+      title: AnalysisRequest
+      description: The body of a `POST /v0/analysis/runs` request. Closed.
+      additionalProperties: false
+      required: [run_id, corpus]
+      properties:
+        run_id:
+          type: string
+          format: uuid
+          description: The `analysis_runs` row this run is — logged, nothing else.
+        corpus:
+          $ref: "#/components/schemas/Corpus"
+        compute_ceiling_seconds:
+          type: [number, "null"]
+          exclusiveMinimum: 0
+          description: |-
+            What is left of the run's compute ceiling after assembly, or `null` for none. Once
+            the analyzers' summed time reaches it the rest are `not_run` and the report says
+            `budget_exceeded`.
+
+    AnalyzerStarted:
+      type: object
+      title: AnalyzerStarted
+      description: An analyzer's sandbox is starting.
+      additionalProperties: false
+      required: [analyzer, version]
+      properties:
+        event:
+          type: string
+          const: started
+        analyzer:
+          type: string
+        version:
+          type: integer
+
+    AnalyzerFinished:
+      type: object
+      title: AnalyzerFinished
+      description: |-
+        One analyzer's outcome, as soon as it is known: `{analyzer, version, status, findings,
+        reason, error, elapsed_seconds}`. Each finding is one `analysis_findings` row (`V081`):
+        `{analyzer, analyzer_version, finding_type, subject_key, data, evidence_refs, confidence,
+        confidence_basis}`.
+      additionalProperties: false
+      required: [outcome]
+      properties:
+        event:
+          type: string
+          const: outcome
+        outcome:
+          type: object
+          required: [analyzer, version, status]
+          properties:
+            analyzer: {type: string}
+            version: {type: integer}
+            status:
+              type: string
+              enum: [completed, skipped, failed, timed_out, memory_exceeded, not_run]
+            findings:
+              type: array
+              items: {type: object}
+            reason: {type: [string, "null"]}
+            error: {type: [object, "null"]}
+            elapsed_seconds: {type: number}
+
+    AnalysisFinished:
+      type: object
+      title: AnalysisFinished
+      description: The run's report — always the last line of a run that was not cut short.
+      additionalProperties: false
+      required: [budget_exceeded, failed]
+      properties:
+        event:
+          type: string
+          const: report
+        budget_exceeded:
+          type: boolean
+        failed:
+          type: array
+          items: {type: string}

@@ -70,6 +70,17 @@ import {
   type Plan,
   type PlanRequest,
 } from "./engine.contract";
+import {
+  ENGINE_ANALYSIS_RUN_ROUTE,
+  ENGINE_ANALYZERS_ROUTE,
+  NDJSON_MEDIA_TYPE,
+  analysisEventSchema,
+  analyzerSetSchema,
+  ndjsonLines,
+  type AnalysisEvent,
+  type AnalyzerSet,
+  type EngineAnalysisRequest,
+} from "./engine.analysis";
 import { engineUnavailable } from "./engine.errors";
 
 /**
@@ -288,6 +299,111 @@ export class EngineClient {
   }
 
   /**
+   * Ask the engine which analyzers a Build Analyzer run would dispatch to.
+   *
+   * BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)): read when a run starts, so
+   * the run row's `analyzer_set` names exactly the analyzers that will write into it.
+   *
+   * @returns The set, in `analysis_runs.analyzer_set`'s shape.
+   * @throws {UpstreamError} `engine_unavailable` for every way this can fail — see {@link call}.
+   */
+  async analyzerSet(): Promise<AnalyzerSet> {
+    return this.call(ENGINE_ANALYZERS_ROUTE, analyzerSetSchema);
+  }
+
+  /**
+   * Run every analyzer over one corpus, handing each event of the engine's stream to `onEvent`
+   * as it arrives.
+   *
+   * BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)). **The one call that is not
+   * bounded by {@link ENGINE_TIMEOUT_MS}.** An analysis runs for as long as its compute ceiling
+   * allows, so the caller passes the deadline — what is left of that ceiling plus a margin — and
+   * the request is aborted there like any other. Its answer is a stream rather than a body: one
+   * {@link AnalysisEvent} per line, so progress is real as it happens and a finding from an
+   * analyzer that finished is not lost to one that did not.
+   *
+   * `onEvent` is awaited before the next line is read, so a slow consumer slows the read rather
+   * than buffering the stream.
+   *
+   * **Where the corpus goes.** To `OURO_ENGINE_URL` and nowhere else: this is the only call that
+   * carries tenant build data out of this process, and the engine it reaches is the deployment's
+   * own (`docs/SECURITY_MODEL.md`).
+   *
+   * @param request - The run, its corpus and what is left of its compute ceiling.
+   * @param deadlineMs - How long the whole call may take, stream included.
+   * @param onEvent - Called once per event, in order.
+   * @returns When the stream has ended — with or without its `report`, which is the caller's to
+   *   check.
+   * @throws {UpstreamError} `engine_unavailable` when the call could not be made, was refused,
+   *   answered a line that is not the contract, or broke off mid-stream (the deadline included).
+   *   Events already handed to `onEvent` stay handed.
+   */
+  async analyze(
+    request: EngineAnalysisRequest,
+    deadlineMs: number,
+    onEvent: (event: AnalysisEvent) => Promise<void>,
+  ): Promise<void> {
+    const url = engineRouteUrl(this.config.engineUrl, ENGINE_ANALYSIS_RUN_ROUTE);
+    const init: RequestInit = {
+      method: "POST",
+      headers: { "content-type": "application/json", accept: NDJSON_MEDIA_TYPE },
+      body: JSON.stringify(request),
+    };
+    const response = await this.send(url, init, deadlineMs);
+
+    if (!response.ok || response.body === null) {
+      await this.refuse(response, url, init);
+    }
+
+    // Parsing is outside the read's try so a contract break is reported as one, not as a
+    // broken stream.
+    const lines = ndjsonLines(response.body as AsyncIterable<Uint8Array>);
+    for (;;) {
+      let next: IteratorResult<string>;
+      try {
+        next = await lines.next();
+      } catch (error) {
+        this.logger.error(`POST ${url} broke off mid-stream`, describeForLog(error));
+        throw engineUnavailable();
+      }
+      if (next.done === true) {
+        return;
+      }
+
+      await onEvent(this.parseEvent(url, next.value));
+    }
+  }
+
+  /**
+   * One line of an analysis stream, parsed.
+   *
+   * @param url - The route, for the log.
+   * @param line - The line.
+   * @returns The event, in this service's names.
+   * @throws {UpstreamError} `engine_unavailable` for a line that is not JSON or not an event.
+   */
+  private parseEvent(url: string, line: string): AnalysisEvent {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(line);
+    } catch (error) {
+      this.logger.error(`POST ${url} streamed a line that is not JSON`, { cause: error });
+      throw engineUnavailable();
+    }
+
+    const parsed = analysisEventSchema.safeParse(payload);
+    if (!parsed.success) {
+      this.logger.error(
+        `POST ${url} streamed an event outside the /v0 contract: ` +
+          JSON.stringify(parsed.error.issues),
+      );
+      throw engineUnavailable();
+    }
+
+    return parsed.data;
+  }
+
+  /**
    * Make one call, with the deadline, the retry and the parsing every call needs.
    *
    * @param route - A route relative to `OURO_ENGINE_URL`, from `engine.contract.ts`.
@@ -303,29 +419,11 @@ export class EngineClient {
     const response = await this.send(url, init);
 
     if (!response.ok) {
-      // The body is never read: it is the engine's error envelope, written for this
-      // service, and forwarding any of it would publish an internal contract as this
-      // API's. Cancelling gives the socket back to undici's pool immediately rather than
-      // when the garbage collector gets to it.
-      await response.body?.cancel();
-
-      if (response.status === ENGINE_UNAUTHORIZED) {
-        // Named separately because it is the one failure here that is *this deployment's*
-        // to fix and would otherwise be indistinguishable from an engine that is simply
-        // unwell. `docs/ARCHITECTURE.md` § 3.2's third acceptance criterion.
-        this.logger.error(
-          `${this.describe(init)} ${url} was refused: OURO_ENGINE_SHARED_SECRET does not ` +
-            "match the value ouroboros-engine holds. The client is told the engine is " +
-            "unavailable, never that it was unauthorised.",
-        );
-      } else {
-        this.logger.error(`${this.describe(init)} ${url} responded ${response.status}`);
-      }
-
-      throw engineUnavailable();
+      await this.refuse(response, url, init);
     }
 
     let payload: unknown;
+
     try {
       payload = await response.json();
     } catch (error) {
@@ -352,15 +450,52 @@ export class EngineClient {
   }
 
   /**
+   * Turn a non-2xx answer into the one failure a caller sees.
+   *
+   * @param response - The answer.
+   * @param url - What was called, for the log.
+   * @param init - How, for the log.
+   * @returns Never.
+   * @throws {UpstreamError} `engine_unavailable`, always.
+   */
+  private async refuse(response: Response, url: string, init: RequestInit): Promise<never> {
+    // The body is never read: it is the engine's error envelope, written for this
+    // service, and forwarding any of it would publish an internal contract as this
+    // API's. Cancelling gives the socket back to undici's pool immediately rather than
+    // when the garbage collector gets to it.
+    await response.body?.cancel();
+
+    if (response.status === ENGINE_UNAUTHORIZED) {
+      // Named separately because it is the one failure here that is *this deployment's*
+      // to fix and would otherwise be indistinguishable from an engine that is simply
+      // unwell. `docs/ARCHITECTURE.md` § 3.2's third acceptance criterion.
+      this.logger.error(
+        `${this.describe(init)} ${url} was refused: OURO_ENGINE_SHARED_SECRET does not ` +
+          "match the value ouroboros-engine holds. The client is told the engine is " +
+          "unavailable, never that it was unauthorised.",
+      );
+    } else {
+      this.logger.error(`${this.describe(init)} ${url} responded ${response.status}`);
+    }
+
+    throw engineUnavailable();
+  }
+
+  /**
    * Perform the request, retrying once when nothing was delivered.
    *
    * @param url - The absolute URL to call.
    * @param init - Method, headers and body.
+   * @param timeoutMs - The deadline; {@link ENGINE_TIMEOUT_MS} for every call but an analysis.
    * @returns Whatever the engine answered, whether or not it is a success.
    * @throws {UpstreamError} `engine_unavailable` when the last attempt did not produce an
    *   answer at all — a refused connection, an unresolvable name, or the deadline.
    */
-  private async send(url: string, init: RequestInit): Promise<Response> {
+  private async send(
+    url: string,
+    init: RequestInit,
+    timeoutMs: number = ENGINE_TIMEOUT_MS,
+  ): Promise<Response> {
     for (let attempt = 1; ; attempt += 1) {
       try {
         return await this.fetchImpl(url, {
@@ -368,7 +503,7 @@ export class EngineClient {
           headers: { ...this.headers(), ...init.headers },
           // Built per attempt, deliberately: a signal that has already fired aborts the
           // retry before it is sent, which would make the second attempt a formality.
-          signal: AbortSignal.timeout(ENGINE_TIMEOUT_MS),
+          signal: AbortSignal.timeout(timeoutMs),
         });
       } catch (error) {
         const retryable = attempt < MAX_ATTEMPTS && isRetryable(error);

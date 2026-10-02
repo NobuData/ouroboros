@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.5"
+  version: "0.38.6"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -672,6 +672,13 @@ tags:
       ([#435](https://github.com/NobuData/ouroboros/issues/435), decision **I7**): every merged loop
       graded against the estimate in force when its work was queued, reported as the headline
       *"89% within band"* and per-effort slices with the direction of bias.
+  - name: analyzer
+    description: |-
+      **The Build Analyzer** (mockup 18, epic [#503](https://github.com/NobuData/ouroboros/issues/503))
+      — today its run orchestration ([#510](https://github.com/NobuData/ouroboros/issues/510),
+      decisions **A2**, **A7**): *Run analysis now*, the weekly and every-N-builds triggers, the
+      concurrent-run guard, and the status, phase, per-analyzer progress and corpus manifest of a
+      run. The corpus is assembled within budgets and analyzed by the deployment's own engine.
   - name: farm
     description: |-
       **The build farm's identity layer** (mockup 08, epic
@@ -6194,7 +6201,6 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
-
   /api/v1/settings/auto-merge:
     get:
       tags: [dashboard]
@@ -6598,12 +6604,14 @@ paths:
                     methodology:
                       metricId: "merge_rate"
                       title: "Autonomous merge rate"
-                      formula: "Loop PRs that merged without a human intervention, divided by all loop PRs that closed
+                      formula:
+                        "Loop PRs that merged without a human intervention, divided by all loop PRs that closed
                         (merged or not) in the window."
                       sources:
                         - "pull_requests"
                         - "runs"
-                      caveats: "A window's rate is total autonomous merges over total closed PRs, not an average of
+                      caveats:
+                        "A window's rate is total autonomous merges over total closed PRs, not an average of
                         daily rates."
                       unit: "pct"
                       version: 1
@@ -6620,11 +6628,13 @@ paths:
                     methodology:
                       metricId: "merged_untouched_rate"
                       title: "Merged w/o human edits"
-                      formula: "Merged PRs whose revisions contain no human-authored pushes and no human-edited files
+                      formula:
+                        "Merged PRs whose revisions contain no human-authored pushes and no human-edited files
                         after the loop's last revision, divided by all merged PRs."
                       sources:
                         - "pull_requests"
-                      caveats: "Authorship comes from host sync; a human edit made outside the host (a squash rewrite)
+                      caveats:
+                        "Authorship comes from host sync; a human edit made outside the host (a squash rewrite)
                         is not seen."
                       unit: "pct"
                       version: 1
@@ -6641,12 +6651,14 @@ paths:
                     methodology:
                       metricId: "cycle_time"
                       title: "Median cycle"
-                      formula: "The median time from a loop starting to the loop finishing merged, over loops that
+                      formula:
+                        "The median time from a loop starting to the loop finishing merged, over loops that
                         finished merged. A window's median is computed over every loop in the window — each day
                         keeps its loops' times — never as an average or median of daily medians."
                       sources:
                         - "runs"
-                      caveats: "Only merged loops are timed; a loop handed to a person or failed is not in the median.
+                      caveats:
+                        "Only merged loops are timed; a loop handed to a person or failed is not in the median.
                         Time in the queue before the loop starts is not included."
                       unit: "duration_ms"
                       version: 1
@@ -6667,7 +6679,8 @@ paths:
                       sources:
                         - "usage"
                         - "pull_requests"
-                      caveats: "Spend on loops that did not merge is included in the numerator — failure has a cost.
+                      caveats:
+                        "Spend on loops that did not merge is included in the numerator — failure has a cost.
                         Computed for the whole window as total priced cost over merged PRs, never per day: a day
                         of spend with no merges has no per-day ratio."
                       unit: "cents"
@@ -6685,7 +6698,8 @@ paths:
                     methodology:
                       metricId: "human_interventions"
                       title: "Human interventions"
-                      formula: "Intervention events detected on this day, by cause: a loop handed to a person
+                      formula:
+                        "Intervention events detected on this day, by cause: a loop handed to a person
                         (needs-human), a person's failure classification or waiver, the first failure of a
                         guardrail or policy-gate check on a loop, and blocking review votes. Each event's cause
                         is the one a versioned mapping rule assigned, or the one a person re-categorized it to."
@@ -6693,7 +6707,8 @@ paths:
                         - "runs"
                         - "tests"
                         - "interventions"
-                      caveats: "One stop can be more than one event: a needs-human handoff and the classification that
+                      caveats:
+                        "One stop can be more than one event: a needs-human handoff and the classification that
                         explains it are two moments a person was needed. Counts moments, not minutes spent. A
                         re-categorized event counts under the person's cause."
                       unit: "count"
@@ -6812,11 +6827,13 @@ paths:
                     methodology:
                       metricId: "builds"
                       title: "Builds"
-                      formula: "Build-farm jobs that finished succeeded or failed on this day; a job that failed and
+                      formula:
+                        "Build-farm jobs that finished succeeded or failed on this day; a job that failed and
                         was retried counts as a failed build."
                       sources:
                         - "builds"
-                      caveats: "Canceled jobs are not counted. Every pool and ref is included, not only the default
+                      caveats:
+                        "Canceled jobs are not counted. Every pool and ref is included, not only the default
                         branch."
                       unit: "count"
                       version: 1
@@ -6840,7 +6857,8 @@ paths:
                     methodology:
                       metricId: "human_interventions"
                       title: "Human interventions"
-                      formula: "Intervention events detected on this day, by cause: a loop handed to a person
+                      formula:
+                        "Intervention events detected on this day, by cause: a loop handed to a person
                         (needs-human), a person's failure classification or waiver, the first failure of a
                         guardrail or policy-gate check on a loop, and blocking review votes. Each event's cause
                         is the one a versioned mapping rule assigned, or the one a person re-categorized it to."
@@ -6848,7 +6866,8 @@ paths:
                         - "runs"
                         - "tests"
                         - "interventions"
-                      caveats: "One stop can be more than one event: a needs-human handoff and the classification that
+                      caveats:
+                        "One stop can be more than one event: a needs-human handoff and the classification that
                         explains it are two moments a person was needed. Counts moments, not minutes spent. A
                         re-categorized event counts under the person's cause."
                       unit: "count"
@@ -6881,12 +6900,14 @@ paths:
                     methodology:
                       metricId: "stage_duration"
                       title: "Cycle time by stage"
-                      formula: "For each stage, the median time a merged loop spent in it — the sum of every attempt's
+                      formula:
+                        "For each stage, the median time a merged loop spent in it — the sum of every attempt's
                         start-to-finish time for that stage — dated by the day the loop finished. A window's
                         median pools every loop's time in the window, never averaging daily medians."
                       sources:
                         - "runs"
-                      caveats: "Retried attempts are summed into their stage, so a stage that often retries looks slow
+                      caveats:
+                        "Retried attempts are summed into their stage, so a stage that often retries looks slow
                         rather than hidden. An attempt with no finish time is not counted."
                       unit: "duration_ms"
                       version: 1
@@ -6912,12 +6933,14 @@ paths:
                     methodology:
                       metricId: "test_failures_by_suite"
                       title: "Test failures by suite"
-                      formula: "Failed test cases per suite across every finished test run started on this day. The
+                      formula:
+                        "Failed test cases per suite across every finished test run started on this day. The
                         suite is the suite name the report gave; the same name on two platforms is one suite
                         here."
                       sources:
                         - "tests"
-                      caveats: "Counts failing case runs, not distinct failing cases — a case failing in three runs is
+                      caveats:
+                        "Counts failing case runs, not distinct failing cases — a case failing in three runs is
                         three."
                       unit: "count"
                       version: 1
@@ -6946,14 +6969,16 @@ paths:
                     methodology:
                       metricId: "completion_time_by_effort"
                       title: "Time to completion by effort"
-                      formula: "For each predicted effort (XS–XL), the median lead time — loop start to merge — of
+                      formula:
+                        "For each predicted effort (XS–XL), the median lead time — loop start to merge — of
                         merged loops estimated at that effort when they were queued. A window's median pools
                         every merge in the window."
                       sources:
                         - "estimates"
                         - "runs"
                         - "pull_requests"
-                      caveats: "Sliced by the effort predicted at queue time, not the effort the work turned out to
+                      caveats:
+                        "Sliced by the effort predicted at queue time, not the effort the work turned out to
                         need. Unestimated merges are in no slice."
                       unit: "duration_ms"
                       version: 1
@@ -6988,11 +7013,13 @@ paths:
                     methodology:
                       metricId: "tokens_by_task_kind"
                       title: "Tokens by stage"
-                      formula: "Input plus output tokens on this day, by the task kind the usage was recorded for —
+                      formula:
+                        "Input plus output tokens on this day, by the task kind the usage was recorded for —
                         implement, review, plan and so on, as the routing matrix names them."
                       sources:
                         - "usage"
-                      caveats: "Usage recorded with no task kind is counted in Tokens and in no bar here, so the bars
+                      caveats:
+                        "Usage recorded with no task kind is counted in Tokens and in no bar here, so the bars
                         can sum to less than the total. A task kind is what a model was asked for, not the loop
                         stage it ran in: one stage can ask for several."
                       unit: "tokens"
@@ -7006,11 +7033,13 @@ paths:
                     methodology:
                       metricId: "builds"
                       title: "Builds"
-                      formula: "Build-farm jobs that finished succeeded or failed on this day; a job that failed and
+                      formula:
+                        "Build-farm jobs that finished succeeded or failed on this day; a job that failed and
                         was retried counts as a failed build."
                       sources:
                         - "builds"
-                      caveats: "Canceled jobs are not counted. Every pool and ref is included, not only the default
+                      caveats:
+                        "Canceled jobs are not counted. Every pool and ref is included, not only the default
                         branch."
                       unit: "count"
                       version: 1
@@ -7028,7 +7057,8 @@ paths:
                       formula: "Succeeded builds divided by succeeded plus failed builds (retried failures included)."
                       sources:
                         - "builds"
-                      caveats: "A window's rate is total successes over total finished builds, not an average of daily
+                      caveats:
+                        "A window's rate is total successes over total finished builds, not an average of daily
                         rates. Canceled jobs are in neither side."
                       unit: "pct"
                       version: 1
@@ -7040,7 +7070,8 @@ paths:
                     methodology:
                       metricId: "test_cases_run"
                       title: "Test cases run"
-                      formula: "Test cases that ran — passed, failed or flaky — across every finished test run started
+                      formula:
+                        "Test cases that ran — passed, failed or flaky — across every finished test run started
                         on this day. Skipped cases did not run."
                       sources:
                         - "tests"
@@ -7061,7 +7092,8 @@ paths:
                       formula: "Cases that passed — first time or on retry (flaky) — divided by cases that ran."
                       sources:
                         - "tests"
-                      caveats: "A flaky case counts as passed because it passed in the end; the flaky-tests card is
+                      caveats:
+                        "A flaky case counts as passed because it passed in the end; the flaky-tests card is
                         where flakiness is measured."
                       unit: "pct"
                       version: 1
@@ -7134,11 +7166,13 @@ paths:
                     untouched:
                       metricId: "merged_untouched_rate"
                       title: "Merged w/o human edits"
-                      formula: "Merged PRs whose revisions contain no human-authored pushes and no human-edited files
+                      formula:
+                        "Merged PRs whose revisions contain no human-authored pushes and no human-edited files
                         after the loop's last revision, divided by all merged PRs."
                       sources:
                         - "pull_requests"
-                      caveats: "Authorship comes from host sync; a human edit made outside the host (a squash rewrite)
+                      caveats:
+                        "Authorship comes from host sync; a human edit made outside the host (a squash rewrite)
                         is not seen."
                       unit: "pct"
                       version: 1
@@ -7147,14 +7181,16 @@ paths:
                     costPerSuccess:
                       metricId: "scoreboard_cost_per_success"
                       title: "Cost per success"
-                      formula: "Priced usage the row's runs spent on its task kind inside the window, divided by the
+                      formula:
+                        "Priced usage the row's runs spent on its task kind inside the window, divided by the
                         row's merges in the window. Spend on loops that never merged is counted, so failure has
                         a price."
                       sources:
                         - "token_usage"
                         - "resolution_snapshots"
                         - "pull_requests"
-                      caveats: "Shown in dollars only when every token in the row was priced; with any unpriced usage
+                      caveats:
+                        "Shown in dollars only when every token in the row was priced; with any unpriced usage
                         the row shows tokens per success instead, never a partial dollar figure. A local model
                         priced at zero shows $0.00, which is true. Usage no task kind was recorded for is in no
                         row."
@@ -7165,13 +7201,15 @@ paths:
                     trend:
                       metricId: "scoreboard_trend"
                       title: "Scoreboard trend"
-                      formula: "The row's merge-untouched rate in this window minus the same row's rate in the prior
+                      formula:
+                        "The row's merge-untouched rate in this window minus the same row's rate in the prior
                         window of equal length (the N UTC days before): up when higher, down when lower, flat
                         when equal."
                       sources:
                         - "resolution_snapshots"
                         - "pull_requests"
-                      caveats: "Flat with no arrow when the prior window has no merges for the row, as well as when
+                      caveats:
+                        "Flat with no arrow when the prior window has no merges for the row, as well as when
                         the rate did not move. The arrow says which way, not whether the move is significant;
                         read it beside the sample."
                       unit: "pct"
@@ -7181,7 +7219,8 @@ paths:
                     sample:
                       metricId: "scoreboard_merged"
                       title: "Scoreboard sample"
-                      formula: "Merged loop PRs backing a scoreboard row. A merge belongs to a row for every task kind
+                      formula:
+                        "Merged loop PRs backing a scoreboard row. A merge belongs to a row for every task kind
                         its run resolved: the row is the task kind, the model of the hop that served it (the
                         last kept hop the executor tried, else the first kept hop) and that hop's place in the
                         resolved chain. Hop 1 is the primary; any later hop is a fallback."
@@ -7189,7 +7228,8 @@ paths:
                         - "resolution_snapshots"
                         - "runs"
                         - "pull_requests"
-                      caveats: "A fallback row describes the work its primary could not do, so a lower untouched rate
+                      caveats:
+                        "A fallback row describes the work its primary could not do, so a lower untouched rate
                         there is expected rather than damning. A row backed by fewer than 10 merges is shown
                         with a low-sample badge: its rate is noise, not a ranking. One run that resolved
                         implement and review counts in both rows."
@@ -7221,7 +7261,8 @@ paths:
                       formula: "Successful default-branch builds on the build farm per day."
                       sources:
                         - "builds"
-                      caveats: "A green default-branch build stands in for a deploy; pipelines that deploy elsewhere
+                      caveats:
+                        "A green default-branch build stands in for a deploy; pipelines that deploy elsewhere
                         are not seen."
                       unit: "count"
                       version: 1
@@ -7251,7 +7292,8 @@ paths:
                       sources:
                         - "runs"
                         - "pull_requests"
-                      caveats: "A mean of the window's merges, re-windowed from total time over count. Time before the
+                      caveats:
+                        "A mean of the window's merges, re-windowed from total time over count. Time before the
                         loop picked the issue up is not included."
                       unit: "duration_ms"
                       version: 1
@@ -7280,7 +7322,8 @@ paths:
                       formula: "Merged pull requests later reverted, divided by merged pull requests."
                       sources:
                         - "pull_requests"
-                      caveats: "A proxy: revert detection only. A failure fixed forward rather than reverted is not
+                      caveats:
+                        "A proxy: revert detection only. A failure fixed forward rather than reverted is not
                         counted."
                       unit: "pct"
                       version: 1
@@ -7306,12 +7349,14 @@ paths:
                     methodology:
                       metricId: "mttr"
                       title: "MTTR"
-                      formula: "Mean time from a loop's build or test failure to the same loop's next green, over
+                      formula:
+                        "Mean time from a loop's build or test failure to the same loop's next green, over
                         recoveries completed that day."
                       sources:
                         - "runs"
                         - "builds"
-                      caveats: "A proxy: loop-scoped recovery, not production incidents. Re-windowed from total time
+                      caveats:
+                        "A proxy: loop-scoped recovery, not production incidents. Re-windowed from total time
                         over count."
                       unit: "duration_ms"
                       version: 1
@@ -7646,7 +7691,7 @@ paths:
                 $ref: "#/components/schemas/InsightsDigestPreview"
               example:
                 subject: "Weekly insights · Acme Robotics · Sep 26 – Oct 2, 2026"
-                html: "<!doctype html><html lang=\"en\"><head><title>Weekly insights</title></head><body>21 PRs merged this week. 14 needed a human.</body></html>"
+                html: '<!doctype html><html lang="en"><head><title>Weekly insights</title></head><body>21 PRs merged this week. 14 needed a human.</body></html>'
                 text: "Weekly insights — Acme Robotics\n\n21 PRs merged this week. 14 needed a human.\n"
                 window:
                   from: "2026-09-26"
@@ -7813,11 +7858,56 @@ paths:
                 withinBand: 42
                 withinBandPct: 89.4
                 efforts:
-                  - { effort: xs, estimated: 9, withinBand: 9, withinBandPct: 100, over: 0, under: 0, biasPct: -8.3, bias: under }
-                  - { effort: s, estimated: 14, withinBand: 13, withinBandPct: 92.9, over: 1, under: 0, biasPct: 1.9, bias: over }
-                  - { effort: m, estimated: 12, withinBand: 11, withinBandPct: 91.7, over: 1, under: 0, biasPct: 3.4, bias: over }
-                  - { effort: l, estimated: 8, withinBand: 6, withinBandPct: 75, over: 2, under: 0, biasPct: 12, bias: over }
-                  - { effort: xl, estimated: 4, withinBand: 3, withinBandPct: 75, over: 0, under: 1, biasPct: -2.5, bias: under }
+                  - {
+                      effort: xs,
+                      estimated: 9,
+                      withinBand: 9,
+                      withinBandPct: 100,
+                      over: 0,
+                      under: 0,
+                      biasPct: -8.3,
+                      bias: under,
+                    }
+                  - {
+                      effort: s,
+                      estimated: 14,
+                      withinBand: 13,
+                      withinBandPct: 92.9,
+                      over: 1,
+                      under: 0,
+                      biasPct: 1.9,
+                      bias: over,
+                    }
+                  - {
+                      effort: m,
+                      estimated: 12,
+                      withinBand: 11,
+                      withinBandPct: 91.7,
+                      over: 1,
+                      under: 0,
+                      biasPct: 3.4,
+                      bias: over,
+                    }
+                  - {
+                      effort: l,
+                      estimated: 8,
+                      withinBand: 6,
+                      withinBandPct: 75,
+                      over: 2,
+                      under: 0,
+                      biasPct: 12,
+                      bias: over,
+                    }
+                  - {
+                      effort: xl,
+                      estimated: 4,
+                      withinBand: 3,
+                      withinBandPct: 75,
+                      over: 0,
+                      under: 1,
+                      biasPct: -2.5,
+                      bias: under,
+                    }
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -8068,6 +8158,339 @@ paths:
           description: |-
             `validation_failed` — `cause` is not one of the five causes, `reason` is missing, blank
             or over 2 000 characters, or `id` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/runs:
+    post:
+      tags: [analyzer]
+      summary: Run analysis now
+      description: |-
+        BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)) — mockup 18's **Run analysis
+        now ⟳**: start a Build Analyzer run of one repository. The run is created `running` in phase
+        `assembling` and the answer is a `202`; everything after happens in the background and is
+        written to the run as it happens, so `GET /api/v1/analyzer/runs/{id}` is the progress API.
+
+        **Phases.** `assembling` — the corpus is read within the run's budgets (the repository's
+        schedule, or `2000` builds · `5000000` log lines · `3600` s by default): builds and their
+        log **tails**, test failures, flake scores, loop stage timings and transcript statistics,
+        cache statistics, waivers and the `build_duration` series. The manifest — the meta strip's
+        counts, window and a **per-source sampling record** — is stored as soon as it exists.
+        `analyzing` — the corpus is dispatched to the deployment's own `ouroboros-engine`; each
+        analyzer's entry in `progress` ticks `pending → running → completed` (or how it ended), and
+        a completed analyzer's findings are written as it completes. `composing` — the outcome is
+        decided and the confidence note computed.
+
+        **Terminal states.** `complete`; `budget_exceeded` — the compute ceiling was reached during
+        assembly or analysis: the completed analyzers' findings are **kept**, and the manifest's
+        `analyzers.notRun` and `failureReason` name the ones that did not finish; `failed` — the run
+        itself broke (the engine unreachable or its stream cut off), with the reason.
+
+        **One running analysis per repository.** A start while one runs is a `409
+        analysis_already_running` whose `details` name the run that is going (`runId`, `trigger`,
+        `phase`, `startedAt`) — the UI follows it rather than queuing a second.
+
+        **On-tenant.** The corpus is sent to `OURO_ENGINE_URL` and nowhere else
+        (`docs/SECURITY_MODEL.md`).
+
+        **`owner` or `admin`**, audited as `analyzer.run_requested` (subject `analysis_run`). The
+        weekly slot and the every-N-builds counter start runs of their own, with `trigger`
+        `weekly` and `every_n_builds`.
+
+        **The workspace is the session's**: the session's active organization or `X-Ouro-Tenant`
+        decides; a repository the workspace does not have is a `404`.
+      operationId: startAnalysis
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/StartAnalysisBody"
+            example:
+              repo: acme-robotics/helios-firmware
+      responses:
+        "202":
+          description: The run, started. Poll it for progress.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisRun"
+              example:
+                id: 8c14647a-6139-476d-ba49-76545ffb5aec
+                repo: acme-robotics/helios-firmware
+                trigger: manual
+                status: running
+                phase: assembling
+                progress:
+                  analyzers:
+                    - {
+                        id: change_point,
+                        version: 1,
+                        status: pending,
+                        findings: null,
+                        elapsedSeconds: null,
+                        reason: null,
+                      }
+                manifest: null
+                analyzerSet:
+                  label: deterministic analyzers v1
+                  analyzers:
+                    - { id: change_point, version: 1, kind: deterministic }
+                startedAt: "2026-10-02T20:49:04.886Z"
+                finishedAt: null
+                computeSeconds: 0
+                llmCostCents: null
+                confidenceNote: null
+                failureReason: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `analysis_repository_not_found` — this workspace has no such repository.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `analysis_already_running` — the repository already has a running analysis. `details`
+            names it: `{repo, runId, trigger, phase, startedAt}`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+              example:
+                code: analysis_already_running
+                message: >-
+                  An analysis of acme-robotics/helios-firmware is already running. Wait for it to
+                  finish, or follow its progress.
+                details:
+                  repo: acme-robotics/helios-firmware
+                  runId: 8c14647a-6139-476d-ba49-76545ffb5aec
+                  trigger: weekly
+                  phase: analyzing
+                  startedAt: "2026-10-02T06:00:31.000Z"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or not `owner/name`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "502":
+          description: |-
+            `engine_unavailable` — the analysis engine could not say which analyzers it has, so
+            no run was started.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/runs/latest:
+    get:
+      tags: [analyzer]
+      summary: A repository's newest analysis run
+      description: |-
+        BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)) — what mockup 18's meta
+        strip renders: the newest run of one repository, running or finished, or `run: null` before
+        the first analysis. Every member, a `viewer` included.
+      operationId: getLatestAnalysis
+      parameters:
+        - name: repo
+          in: query
+          required: true
+          description: The repository, `owner/name`.
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 255
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The newest run, or null.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LatestAnalysis"
+              example:
+                run: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or not `owner/name`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/runs/{id}:
+    get:
+      tags: [analyzer]
+      summary: One analysis run — status, phase, progress and manifest
+      description: |-
+        BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)) — the progress API BW.1
+        polls: `status`, the `phase` a running run is in (`assembling → analyzing → composing`),
+        each analyzer's `progress`, and the corpus `manifest` once assembly has stored it — the
+        strip's counts, the window, the budget and, per source, whether it was sampled, at what
+        rate and under which cap. `absent` names a source the corpus does not carry (rig telemetry
+        until AJ.4, #266) rather than zeroing it. Every member, a `viewer` included; another
+        workspace's run is a `404`.
+      operationId: getAnalysisRun
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The run's id.
+          schema:
+            type: string
+            format: uuid
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisRun"
+              example:
+                id: 8c14647a-6139-476d-ba49-76545ffb5aec
+                repo: acme-robotics/helios-firmware
+                trigger: every_n_builds
+                status: complete
+                phase: composing
+                progress:
+                  analyzers:
+                    - {
+                        id: change_point,
+                        version: 1,
+                        status: completed,
+                        findings: 3,
+                        elapsedSeconds: 0.719,
+                        reason: null,
+                      }
+                manifest:
+                  window: { from: "2026-07-04", to: "2026-10-01", days: 90 }
+                  counts: { builds: 1284, loops: 312, logLines: 4100000, hilSessions: 62 }
+                  sources:
+                    builds: { sampled: false, rate: 1, cap: null }
+                    loops: { sampled: false, rate: 1, cap: null }
+                    logLines: { sampled: true, rate: 0.3, cap: maxLogLines }
+                    hilSessions: { sampled: false, rate: 1, cap: null }
+                  budget: { maxBuilds: 2000, maxLogLines: 1230000, computeCeilingSeconds: 3600 }
+                  durationLabel: zephyr build
+                  absent:
+                    - source: rig_telemetry
+                      reason: Rig/HIL telemetry export (AJ.4, #266) is not available in this deployment.
+                  analyzers: { completed: [change_point], skipped: [], failed: [], notRun: [] }
+                analyzerSet:
+                  label: deterministic analyzers v1
+                  analyzers:
+                    - { id: change_point, version: 1, kind: deterministic }
+                startedAt: "2026-10-02T18:08:00.000Z"
+                finishedAt: "2026-10-02T18:49:00.000Z"
+                computeSeconds: 2460
+                llmCostCents: null
+                confidenceNote: high — 90d of stable telemetry
+                failureReason: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `analysis_run_not_found` — no such run in this workspace.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `id` is not a uuid.
           content:
             application/json:
               schema:
@@ -24857,7 +25280,8 @@ paths:
             schema:
               $ref: "#/components/schemas/ReorderCriteriaRequest"
             example:
-              criterionIds: [5eed003e-0000-4000-8000-000000005142, 5eed003e-0000-4000-8000-000000005141]
+              criterionIds:
+                [5eed003e-0000-4000-8000-000000005142, 5eed003e-0000-4000-8000-000000005141]
       responses:
         "200":
           description: The matrix, in its new order.
@@ -29152,8 +29576,20 @@ components:
       description: One case worth distrusting — an entry of the insights payload.
       additionalProperties: false
       required:
-        [caseKey, githubRepoId, repository, name, classname, suite, score, windowRuns, state,
-         formulaVersion, lastScoredAt, stateChangedAt]
+        [
+          caseKey,
+          githubRepoId,
+          repository,
+          name,
+          classname,
+          suite,
+          score,
+          windowRuns,
+          state,
+          formulaVersion,
+          lastScoredAt,
+          stateChangedAt,
+        ]
       properties:
         caseKey:
           type: string
@@ -29195,8 +29631,17 @@ components:
       description: One nightly re-score pass over the workspace — its bookkeeping row.
       additionalProperties: false
       required:
-        [id, formulaVersion, status, startedAt, finishedAt, durationMs, casesScored,
-         stateChanges, error]
+        [
+          id,
+          formulaVersion,
+          status,
+          startedAt,
+          finishedAt,
+          durationMs,
+          casesScored,
+          stateChanges,
+          error,
+        ]
       properties:
         id:
           type: string
@@ -29282,7 +29727,21 @@ components:
       type: object
       title: Classification
       additionalProperties: false
-      required: [id, testCaseId, class, subtype, note, actor, ruleId, confidence, routed, createdBy, createdAt, supersededBy]
+      required:
+        [
+          id,
+          testCaseId,
+          class,
+          subtype,
+          note,
+          actor,
+          ruleId,
+          confidence,
+          routed,
+          createdBy,
+          createdAt,
+          supersededBy,
+        ]
       properties:
         id:
           type: string
@@ -29602,7 +30061,19 @@ components:
       title: TestStrip
       description: The five stat cards of one attempt, computed by the service.
       additionalProperties: false
-      required: [total, suiteCount, passed, passedDelta, failed, failedCases, flaky, flakyCases, skipped, wallTime]
+      required:
+        [
+          total,
+          suiteCount,
+          passed,
+          passedDelta,
+          failed,
+          failedCases,
+          flaky,
+          flakyCases,
+          skipped,
+          wallTime,
+        ]
       properties:
         total:
           type: integer
@@ -29665,7 +30136,19 @@ components:
       title: TestAttempt
       description: One build attempt — *Build 1 · 2 · 3* — with its strip.
       additionalProperties: false
-      required: [id, attemptSeq, status, commitSha, startedAt, lastReceivedAt, selection, build, rigs, strip]
+      required:
+        [
+          id,
+          attemptSeq,
+          status,
+          commitSha,
+          startedAt,
+          lastReceivedAt,
+          selection,
+          build,
+          rigs,
+          strip,
+        ]
       properties:
         id:
           type: string
@@ -29711,7 +30194,8 @@ components:
       title: TestTimelineRun
       description: The run a timeline belongs to — `branch loop/482-canbus-flake · loop #1847`.
       additionalProperties: false
-      required: [id, issueNumber, issueTitle, loopSeq, branch, workflowTag, workflowVersionPin, startedAt]
+      required:
+        [id, issueNumber, issueTitle, loopSeq, branch, workflowTag, workflowVersionPin, startedAt]
       properties:
         id:
           type: string
@@ -29872,7 +30356,19 @@ components:
       title: TestCaseResult
       description: One case, with its retries. Its failure payload is its own route.
       additionalProperties: false
-      required: [id, caseKey, name, classname, status, retries, retryOutcomes, durationMs, hasFailure, flake]
+      required:
+        [
+          id,
+          caseKey,
+          name,
+          classname,
+          status,
+          retries,
+          retryOutcomes,
+          durationMs,
+          hasFailure,
+          flake,
+        ]
       properties:
         id:
           type: string
@@ -29969,7 +30465,7 @@ components:
           enum: [pass, fail]
         comparative:
           type: [string, "null"]
-          description: '`was 37 in build 1`, composed by the database; null when nothing changed.'
+          description: "`was 37 in build 1`, composed by the database; null when nothing changed."
         trials:
           type: integer
           minimum: 0
@@ -30032,7 +30528,24 @@ components:
         One artifact — a live file, or the tombstone the retention sweep left. Never a storage
         path, key or driver.
       additionalProperties: false
-      required: [id, name, kind, sizeBytes, checksum, createdAt, retainedUntil, retentionDays, state, expiredAt, truncated, truncationNote, preview, href, coverage]
+      required:
+        [
+          id,
+          name,
+          kind,
+          sizeBytes,
+          checksum,
+          createdAt,
+          retainedUntil,
+          retentionDays,
+          state,
+          expiredAt,
+          truncated,
+          truncationNote,
+          preview,
+          href,
+          coverage,
+        ]
       properties:
         id:
           type: string
@@ -30056,7 +30569,7 @@ components:
           format: date-time
         retentionDays:
           type: integer
-          description: '`retained 30d`.'
+          description: "`retained 30d`."
         state:
           type: string
           enum: [available, expired]
@@ -30070,7 +30583,7 @@ components:
         preview:
           type: string
           enum: [inline, download]
-          description: '`inline` opens in the browser; `download` is saved.'
+          description: "`inline` opens in the browser; `download` is saved."
         href:
           type: [string, "null"]
           description: The download route; null once expired.
@@ -30084,7 +30597,8 @@ components:
       type: object
       title: TestRunPage
       additionalProperties: false
-      required: [runId, testRun, parseWarnings, suites, physical, classifications, artifacts, coverage]
+      required:
+        [runId, testRun, parseWarnings, suites, physical, classifications, artifacts, coverage]
       properties:
         runId:
           type: string
@@ -30122,7 +30636,21 @@ components:
       type: object
       title: TestCaseFailureDetail
       additionalProperties: false
-      required: [testRunId, caseId, caseKey, name, classname, suite, platform, status, retryOutcomes, message, logExcerpt, path]
+      required:
+        [
+          testRunId,
+          caseId,
+          caseKey,
+          name,
+          classname,
+          suite,
+          platform,
+          status,
+          retryOutcomes,
+          message,
+          logExcerpt,
+          path,
+        ]
       properties:
         testRunId:
           type: string
@@ -30155,7 +30683,7 @@ components:
           type: [string, "null"]
         path:
           type: [string, "null"]
-          description: '`tests/hil/test_estop_release.py`.'
+          description: "`tests/hil/test_estop_release.py`."
 
     WaiveRequest:
       type: object
@@ -30442,7 +30970,20 @@ components:
       type: object
       title: PrCriterion
       additionalProperties: false
-      required: [id, prId, claim, source, status, sortOrder, createdBy, createdAt, updatedAt, evidence, waiver]
+      required:
+        [
+          id,
+          prId,
+          claim,
+          source,
+          status,
+          sortOrder,
+          createdBy,
+          createdAt,
+          updatedAt,
+          evidence,
+          waiver,
+        ]
       properties:
         id:
           type: string
@@ -30628,13 +31169,42 @@ components:
         Why the executor's re-check refused a merge. `gates_pending` never disarms; every other
         code disarms an armed plan. `dry_run_policy_active` (#382) is the workspace's dry-run
         policy, re-checked at execution — a plan armed before it turned on is disarmed, never merged.
-      enum: [dry_run_policy_active, head_moved, gate_red, gates_pending, host_not_open, host_head_moved, host_conflict, host_refused]
+      enum:
+        [
+          dry_run_policy_active,
+          head_moved,
+          gate_red,
+          gates_pending,
+          host_not_open,
+          host_head_moved,
+          host_conflict,
+          host_refused,
+        ]
 
     PrMergePlan:
       type: object
       title: PrMergePlan
       additionalProperties: false
-      required: [prId, strategy, deleteBranch, commitMessage, closeTicket, commentEvidence, backAnnotateEpic, epicId, armed, armedBy, armedByPerson, armedAt, armedAgainstRevisionId, disarmReason, mergedResult, dryRun, updatedAt]
+      required:
+        [
+          prId,
+          strategy,
+          deleteBranch,
+          commitMessage,
+          closeTicket,
+          commentEvidence,
+          backAnnotateEpic,
+          epicId,
+          armed,
+          armedBy,
+          armedByPerson,
+          armedAt,
+          armedAgainstRevisionId,
+          disarmReason,
+          mergedResult,
+          dryRun,
+          updatedAt,
+        ]
       properties:
         prId:
           type: string
@@ -30786,7 +31356,8 @@ components:
       title: PrRun
       description: The loop that opened a PR — `loop #1847`.
       additionalProperties: false
-      required: [id, loopSeq, issueNumber, model, workflowTag, workflowVersionPin, status, finishedAt]
+      required:
+        [id, loopSeq, issueNumber, model, workflowTag, workflowVersionPin, status, finishedAt]
       properties:
         id:
           type: string
@@ -30837,7 +31408,26 @@ components:
       title: PullRequestHead
       description: A PR's head — the page's `h1` and meta chips.
       additionalProperties: false
-      required: [id, number, url, title, state, headBranch, baseBranch, additions, deletions, changedFiles, mergedAt, mergedBy, run, ticket, createdAt, updatedAt, syncedAt]
+      required:
+        [
+          id,
+          number,
+          url,
+          title,
+          state,
+          headBranch,
+          baseBranch,
+          additions,
+          deletions,
+          changedFiles,
+          mergedAt,
+          mergedBy,
+          run,
+          ticket,
+          createdAt,
+          updatedAt,
+          syncedAt,
+        ]
       properties:
         id:
           type: string
@@ -30942,7 +31532,29 @@ components:
       title: PullRequestSummary
       description: One row of the listing — the head, the latest revision and its aggregate, and the needs-you flag.
       additionalProperties: false
-      required: [id, number, url, title, state, headBranch, baseBranch, additions, deletions, changedFiles, mergedAt, mergedBy, run, ticket, createdAt, updatedAt, syncedAt, latestRevision, gates, reviewRequested]
+      required:
+        [
+          id,
+          number,
+          url,
+          title,
+          state,
+          headBranch,
+          baseBranch,
+          additions,
+          deletions,
+          changedFiles,
+          mergedAt,
+          mergedBy,
+          run,
+          ticket,
+          createdAt,
+          updatedAt,
+          syncedAt,
+          latestRevision,
+          gates,
+          reviewRequested,
+        ]
       properties:
         id:
           type: string
@@ -31052,7 +31664,19 @@ components:
       title: PrGateRow
       description: One gate's newest verdict on one revision.
       additionalProperties: false
-      required: [key, label, required, sortOrder, source, verdict, evidence, evidenceRef, evaluatedAt, providerVersion]
+      required:
+        [
+          key,
+          label,
+          required,
+          sortOrder,
+          source,
+          verdict,
+          evidence,
+          evidenceRef,
+          evaluatedAt,
+          providerVersion,
+        ]
       properties:
         key:
           type: string
@@ -31180,7 +31804,8 @@ components:
       title: PrRevision
       description: One step of the revision-cycle strip, with its own gate snapshot.
       additionalProperties: false
-      required: [id, seq, headSha, pushedAt, testAttempt, stageAttempt, commitMessage, gates, correction]
+      required:
+        [id, seq, headSha, pushedAt, testAttempt, stageAttempt, commitMessage, gates, correction]
       properties:
         id:
           type: string
@@ -31285,7 +31910,21 @@ components:
       type: object
       title: PrThreadEntry
       additionalProperties: false
-      required: [id, revisionId, revisionSeq, authorKind, authorName, tag, body, blocking, resolved, resolutionBody, simulated, createdAt]
+      required:
+        [
+          id,
+          revisionId,
+          revisionSeq,
+          authorKind,
+          authorName,
+          tag,
+          body,
+          blocking,
+          resolved,
+          resolutionBody,
+          simulated,
+          createdAt,
+        ]
       properties:
         id:
           type: string
@@ -31466,7 +32105,19 @@ components:
       title: PrReview
       description: A human-approval slot (V065). An open one is the PR's needs-you item.
       additionalProperties: false
-      required: [id, state, requestedRevisionId, requestedBy, requestedAt, host, decidedRevisionId, decidedBy, decidedAt, note]
+      required:
+        [
+          id,
+          state,
+          requestedRevisionId,
+          requestedBy,
+          requestedAt,
+          host,
+          decidedRevisionId,
+          decidedBy,
+          decidedAt,
+          note,
+        ]
       properties:
         id:
           type: string
@@ -31518,7 +32169,8 @@ components:
       title: PullRequestPage
       description: Every region of mockup 12's PR Verification page.
       additionalProperties: false
-      required: [pullRequest, revisions, gates, criteria, files, thread, plan, spend, review, loopReturn]
+      required:
+        [pullRequest, revisions, gates, criteria, files, thread, plan, spend, review, loopReturn]
       properties:
         pullRequest:
           $ref: "#/components/schemas/PullRequestHead"
@@ -31668,7 +32320,22 @@ components:
       type: object
       title: RunControl
       additionalProperties: false
-      required: [id, runId, kind, state, requestedBy, requestedAt, deliveredAt, ackedAt, expiresAt, detail, hasPayload, remember, retryStage]
+      required:
+        [
+          id,
+          runId,
+          kind,
+          state,
+          requestedBy,
+          requestedAt,
+          deliveredAt,
+          ackedAt,
+          expiresAt,
+          detail,
+          hasPayload,
+          remember,
+          retryStage,
+        ]
       properties:
         id:
           type: string
@@ -33363,7 +34030,18 @@ components:
       description: A scored candidate with its reasoning (#387).
       additionalProperties: false
       required:
-        [issueId, number, title, url, effort, suggestedWorkflow, score, clearsBar, estimate, reasoning]
+        [
+          issueId,
+          number,
+          title,
+          url,
+          effort,
+          suggestedWorkflow,
+          score,
+          clearsBar,
+          estimate,
+          reasoning,
+        ]
       properties:
         issueId:
           type: string
@@ -33668,8 +34346,7 @@ components:
           properties:
             key:
               type: string
-              enum:
-                [dry_run_policy, github_app_uninstall, source_pause, vault_envelope_encryption]
+              enum: [dry_run_policy, github_app_uninstall, source_pause, vault_envelope_encryption]
             description:
               type: string
               description: What the mechanism does, in a sentence.
@@ -34093,7 +34770,20 @@ components:
       description: |-
         One moment a person had to step into a loop (#434), with the cause a rule assigned or a
         person re-categorized it to.
-      required: [id, runId, source, sourceRef, detectedAt, signals, cause, causeOrigin, ruleId, ruleVersion, override]
+      required:
+        [
+          id,
+          runId,
+          source,
+          sourceRef,
+          detectedAt,
+          signals,
+          cause,
+          causeOrigin,
+          ruleId,
+          ruleVersion,
+          override,
+        ]
       properties:
         id:
           type: string
@@ -34135,6 +34825,268 @@ components:
             - $ref: "#/components/schemas/InterventionOverride"
             - type: "null"
           description: The re-categorization that set a human cause; null for a rule's.
+    StartAnalysisBody:
+      type: object
+      title: StartAnalysisBody
+      additionalProperties: false
+      description: What `POST /api/v1/analyzer/runs` reads (#510).
+      required: [repo]
+      properties:
+        repo:
+          type: string
+          minLength: 3
+          maxLength: 255
+          description: The repository to analyze, `owner/name`.
+    AnalyzerSet:
+      type: object
+      title: AnalyzerSet
+      additionalProperties: false
+      description: |-
+        The run's provenance (V080, decision **A3**): `label` is what *Analyzed by* renders, and
+        `analyzers` the versioned list behind it.
+      required: [label, analyzers]
+      properties:
+        label:
+          type: string
+        analyzers:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, version, kind]
+            properties:
+              id:
+                type: string
+              version:
+                type: integer
+                minimum: 1
+              kind:
+                type: string
+                enum: [deterministic, llm]
+    AnalyzerProgress:
+      type: object
+      title: AnalyzerProgress
+      additionalProperties: false
+      description: One analyzer's part of a run (#510) — pending, running, or how it ended.
+      required: [id, version, status, findings, elapsedSeconds, reason]
+      properties:
+        id:
+          type: string
+        version:
+          type: integer
+        status:
+          type: string
+          enum: [pending, running, completed, skipped, failed, timed_out, memory_exceeded, not_run]
+        findings:
+          type: [integer, "null"]
+          description: Findings written, once completed.
+        elapsedSeconds:
+          type: [number, "null"]
+        reason:
+          type: [string, "null"]
+          description: Why it did not complete.
+    AnalysisSamplingRecord:
+      type: object
+      title: AnalysisSamplingRecord
+      additionalProperties: false
+      description: |-
+        How much of one source a run read (V080): a full read is `sampled: false, rate: 1, cap:
+        null`; a source a budget bound is `sampled: true`, the fraction read (two places, strictly
+        between 0 and 1) and the budget that bound it.
+      required: [sampled, rate, cap]
+      properties:
+        sampled:
+          type: boolean
+        rate:
+          type: number
+          exclusiveMinimum: 0
+          maximum: 1
+        cap:
+          type: [string, "null"]
+          enum: [maxBuilds, maxLogLines, computeCeilingSeconds, null]
+    AnalysisManifest:
+      type: object
+      title: AnalysisManifest
+      additionalProperties: false
+      description: |-
+        The corpus receipt mockup 18's meta strip renders (#506, #510) — `Corpus 1,284 builds ·
+        312 loops · 90 days · 4.1M log lines · 62 HIL sessions` — with the per-source sampling
+        record, the budget the run was assembled under, the duration series' job label, the
+        sources the corpus lacks and, once the run has ended, which analyzers completed.
+      required: [window, counts, sources, budget, durationLabel, absent, analyzers]
+      properties:
+        window:
+          type: object
+          additionalProperties: false
+          required: [from, to, days]
+          properties:
+            from:
+              type: string
+              format: date
+            to:
+              type: string
+              format: date
+            days:
+              type: integer
+              minimum: 1
+        counts:
+          type: object
+          additionalProperties: false
+          required: [builds, loops, logLines, hilSessions]
+          properties:
+            builds:
+              type: integer
+              minimum: 0
+            loops:
+              type: integer
+              minimum: 0
+            logLines:
+              type: integer
+              minimum: 0
+            hilSessions:
+              type: integer
+              minimum: 0
+        sources:
+          type: object
+          additionalProperties: false
+          required: [builds, loops, logLines, hilSessions]
+          properties:
+            builds:
+              $ref: "#/components/schemas/AnalysisSamplingRecord"
+            loops:
+              $ref: "#/components/schemas/AnalysisSamplingRecord"
+            logLines:
+              $ref: "#/components/schemas/AnalysisSamplingRecord"
+            hilSessions:
+              $ref: "#/components/schemas/AnalysisSamplingRecord"
+        budget:
+          type: object
+          additionalProperties: false
+          required: [maxBuilds, maxLogLines, computeCeilingSeconds]
+          properties:
+            maxBuilds:
+              type: integer
+            maxLogLines:
+              type: integer
+            computeCeilingSeconds:
+              type: integer
+        durationLabel:
+          type: [string, "null"]
+          description: The job label whose durations are the duration series.
+        absent:
+          type: array
+          description: Sources the corpus does not carry, and why — never a zero standing in.
+          items:
+            type: object
+            additionalProperties: false
+            required: [source, reason]
+            properties:
+              source:
+                type: string
+              reason:
+                type: string
+        analyzers:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [completed, skipped, failed, notRun]
+          properties:
+            completed:
+              type: array
+              items:
+                type: string
+            skipped:
+              type: array
+              items:
+                type: string
+            failed:
+              type: array
+              items:
+                type: string
+            notRun:
+              type: array
+              items:
+                type: string
+    AnalysisRun:
+      type: object
+      title: AnalysisRun
+      additionalProperties: false
+      description: |-
+        One Build Analyzer run (#506, #510) — its trigger, status, phase, per-analyzer progress,
+        manifest and provenance. `llmCostCents` is null unless an LLM pass ran (V080).
+      required:
+        [
+          id,
+          repo,
+          trigger,
+          status,
+          phase,
+          progress,
+          manifest,
+          analyzerSet,
+          startedAt,
+          finishedAt,
+          computeSeconds,
+          llmCostCents,
+          confidenceNote,
+          failureReason,
+        ]
+      properties:
+        id:
+          type: string
+          format: uuid
+        repo:
+          type: string
+        trigger:
+          type: string
+          enum: [manual, weekly, every_n_builds]
+        status:
+          type: string
+          enum: [running, complete, failed, budget_exceeded]
+        phase:
+          type: string
+          enum: [assembling, analyzing, composing]
+          description: The phase a running run is in, or the one a finished run ended in.
+        progress:
+          type: object
+          additionalProperties: false
+          required: [analyzers]
+          properties:
+            analyzers:
+              type: array
+              items:
+                $ref: "#/components/schemas/AnalyzerProgress"
+        manifest:
+          oneOf:
+            - $ref: "#/components/schemas/AnalysisManifest"
+            - type: "null"
+        analyzerSet:
+          $ref: "#/components/schemas/AnalyzerSet"
+        startedAt:
+          type: string
+          format: date-time
+        finishedAt:
+          type: [string, "null"]
+          format: date-time
+        computeSeconds:
+          type: integer
+          minimum: 0
+        llmCostCents:
+          type: [integer, "null"]
+        confidenceNote:
+          type: [string, "null"]
+        failureReason:
+          type: [string, "null"]
+    LatestAnalysis:
+      type: object
+      title: LatestAnalysis
+      additionalProperties: false
+      description: A repository's newest run, or null before the first analysis (#510).
+      required: [run]
+      properties:
+        run:
+          oneOf:
+            - $ref: "#/components/schemas/AnalysisRun"
+            - type: "null"
     InterventionList:
       type: object
       title: InterventionList
@@ -34191,7 +35143,22 @@ components:
         carries `costCents` only when the usage it covers was priced — otherwise the key is absent,
         never `0`. Claims whose source does not exist yet (cap alerts, the routing suggestion, the
         analyzer's cluster note) have no key at all.
-      required: [range, window, repo, usage, head, kpis, series, hbars, performance, flaky, scoreboard, dora, freshness]
+      required:
+        [
+          range,
+          window,
+          repo,
+          usage,
+          head,
+          kpis,
+          series,
+          hbars,
+          performance,
+          flaky,
+          scoreboard,
+          dora,
+          freshness,
+        ]
       properties:
         range:
           type: string
@@ -34484,7 +35451,14 @@ components:
       properties:
         key:
           type: string
-          enum: [autonomous_merge_rate, merged_untouched_rate, cycle_time, cost_per_merged_pr, human_interventions]
+          enum:
+            [
+              autonomous_merge_rate,
+              merged_untouched_rate,
+              cycle_time,
+              cost_per_merged_pr,
+              human_interventions,
+            ]
         unit:
           type: string
           enum: [count, pct, duration_ms, cents, tokens]
@@ -34892,7 +35866,8 @@ components:
       type: object
       title: ScoreboardRow
       additionalProperties: false
-      required: [taskKind, model, hop, role, merged, untouched, untouchedRate, cost, trend, lowSample]
+      required:
+        [taskKind, model, hop, role, merged, untouched, untouchedRate, cost, trend, lowSample]
       properties:
         taskKind:
           type: string
@@ -34976,7 +35951,8 @@ components:
       description: |-
         Estimator calibration over a window (#435). Rates are percentages to one decimal, null when
         nothing was estimated.
-      required: [window, from, to, merged, estimated, unestimated, withinBand, withinBandPct, efforts]
+      required:
+        [window, from, to, merged, estimated, unestimated, withinBand, withinBandPct, efforts]
       properties:
         window:
           type: string
@@ -36691,7 +37667,10 @@ components:
             row's `price` is `null` and its `display` is `"—"` — the same shape as *the catalog
             covers nothing*, which is exactly why this field exists: it is the only way to tell
             an outage from an unpriced model.
-          examples: ["Prices could not be looked up just now, so the price column is blank. Nothing else in the registry is affected."]
+          examples:
+            [
+              "Prices could not be looked up just now, so the price column is blank. Nothing else in the registry is affected.",
+            ]
 
     ModelAliasWarning:
       type: object
@@ -39275,7 +40254,8 @@ components:
           examples: [false]
         reason:
           type: [string, "null"]
-          examples: [This tracker is read-only in Ouroboros — it can sync tickets but not create them.]
+          examples:
+            [This tracker is read-only in Ouroboros — it can sync tickets but not create them.]
 
     TicketSourceFormWidget:
       type: string
@@ -42435,7 +43415,10 @@ components:
           format: date-time
         reason:
           type: [string, "null"]
-          examples: ["platform_version anchor zephyr-4.0 matched: removed \"revision: v4.0.0\" in west.yml (PR #531)"]
+          examples:
+            [
+              'platform_version anchor zephyr-4.0 matched: removed "revision: v4.0.0" in west.yml (PR #531)',
+            ]
 
     FactProvenance:
       type: object
@@ -42458,7 +43441,18 @@ components:
               kind:
                 type: string
                 enum:
-                  [run, pull_request, ticket, classification, waiver, steer, run_stage, gate, person, import]
+                  [
+                    run,
+                    pull_request,
+                    ticket,
+                    classification,
+                    waiver,
+                    steer,
+                    run_stage,
+                    gate,
+                    person,
+                    import,
+                  ]
                 description: |-
                   `run`, `pull_request` and `ticket` (V071), and — since BF.3 (#412) — the source a
                   proposer learned from - `classification`, `waiver`, `steer`, `run_stage`, `gate`, and
@@ -42527,7 +43521,17 @@ components:
       description: A candidate not proposed because an existing fact matched it (V074, #412).
       additionalProperties: false
       required:
-        [id, proposer, proposerVersion, repoRef, text, matchedFactId, provenance, sourceKey, createdAt]
+        [
+          id,
+          proposer,
+          proposerVersion,
+          repoRef,
+          text,
+          matchedFactId,
+          provenance,
+          sourceKey,
+          createdAt,
+        ]
       properties:
         id:
           type: string
@@ -42580,7 +43584,16 @@ components:
       properties:
         kind:
           type: string
-          enum: [classification, waiver, steer, import, pr_review_cycle, run_observation, correction_note]
+          enum:
+            [
+              classification,
+              waiver,
+              steer,
+              import,
+              pr_review_cycle,
+              run_observation,
+              correction_note,
+            ]
         id:
           type: string
           description: The row's id, or `<file>#<section>` for an import.
@@ -42684,7 +43697,8 @@ components:
               $ref: "#/components/schemas/FactCandidateSource"
             reason:
               type: string
-              enum: [source_not_found, no_note, not_human, not_remembered, empty, too_short, too_long]
+              enum:
+                [source_not_found, no_note, not_human, not_remembered, empty, too_short, too_long]
 
     FactProposerBackfill:
       type: object
@@ -42761,9 +43775,25 @@ components:
       type: object
       title: FactFields
       description: The fields every fact resource carries — `Fact` and `FactDetail` close over them.
-      required: [id, repoRef, text, status, proposer, provenance, confirmation, staleness, expiry,
-                 usedCount, relearnedFromFactId, relearnedByFactIds, anchors, sweep, createdAt,
-                 updatedAt]
+      required:
+        [
+          id,
+          repoRef,
+          text,
+          status,
+          proposer,
+          provenance,
+          confirmation,
+          staleness,
+          expiry,
+          usedCount,
+          relearnedFromFactId,
+          relearnedByFactIds,
+          anchors,
+          sweep,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id:
           type: string
@@ -43379,7 +44409,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
           description: A workflow's slug. Omit when no workflow is in scope.
           examples: [standard-fix]
         overrides:
@@ -43397,7 +44427,20 @@ components:
       description: One resolved skill, at the version in force.
       additionalProperties: false
       required:
-        [skillId, slug, name, scope, tier, required, versionId, version, load, triggers, estTokens, body]
+        [
+          skillId,
+          slug,
+          name,
+          scope,
+          tier,
+          required,
+          versionId,
+          version,
+          load,
+          triggers,
+          estTokens,
+          body,
+        ]
       properties:
         skillId:
           type: string
@@ -43642,7 +44685,17 @@ components:
       description: One recorded injection — a `context_injections` row (V071).
       additionalProperties: false
       required:
-        [id, consumer, estimateId, runStageId, runId, skillVersionIds, factIds, manifestHash, injectedAt]
+        [
+          id,
+          consumer,
+          estimateId,
+          runStageId,
+          runId,
+          skillVersionIds,
+          factIds,
+          manifestHash,
+          injectedAt,
+        ]
       properties:
         id:
           type: string
@@ -43760,7 +44813,19 @@ components:
       description: One recipe, as mockup 14's playbooks card draws it (BF.6, #415).
       additionalProperties: false
       required:
-        [id, name, description, workflow, skillOverrides, contextPreset, issueFilter, sourceRunId, runCount, createdAt, updatedAt]
+        [
+          id,
+          name,
+          description,
+          workflow,
+          skillOverrides,
+          contextPreset,
+          issueFilter,
+          sourceRunId,
+          runCount,
+          createdAt,
+          updatedAt,
+        ]
       properties:
         id:
           type: string
@@ -43836,7 +44901,15 @@ components:
       description: What create-from-run captured from a terminal run, before a person names it.
       additionalProperties: false
       required:
-        [sourceRunId, sourceLoopSeq, workflow, skillOverrides, contextPreset, derivedFrom, suggestedDescription]
+        [
+          sourceRunId,
+          sourceLoopSeq,
+          workflow,
+          skillOverrides,
+          contextPreset,
+          derivedFrom,
+          suggestedDescription,
+        ]
       properties:
         sourceRunId:
           type: string
@@ -44028,7 +45101,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
         workflowVersion:
           type: integer
           minimum: 1
@@ -44059,7 +45132,7 @@ components:
           type: string
           minLength: 1
           maxLength: 64
-          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          pattern: "^[a-z0-9]+(-[a-z0-9]+)*$"
         workflowVersion:
           type: integer
           minimum: 1
@@ -44782,8 +45855,22 @@ components:
       description: One draft row of the generator card.
       additionalProperties: false
       required:
-        [id, localKey, title, body, selected, suggestedWorkflow, provenance, dependencies,
-         blockedByTicketIds, pushState, pushedTicketId, pushedTicket, pushError, estimate]
+        [
+          id,
+          localKey,
+          title,
+          body,
+          selected,
+          suggestedWorkflow,
+          provenance,
+          dependencies,
+          blockedByTicketIds,
+          pushState,
+          pushedTicketId,
+          pushedTicket,
+          pushError,
+          estimate,
+        ]
       properties:
         id:
           type: string
@@ -44896,8 +45983,22 @@ components:
       description: A planning batch, its drafts and its footer.
       additionalProperties: false
       required:
-        [id, status, planner, prompt, outline, targetSourceId, milestone, epicId, autoSize,
-         queueSmall, createdAt, updatedAt, drafts, summary]
+        [
+          id,
+          status,
+          planner,
+          prompt,
+          outline,
+          targetSourceId,
+          milestone,
+          epicId,
+          autoSize,
+          queueSmall,
+          createdAt,
+          updatedAt,
+          drafts,
+          summary,
+        ]
       properties:
         id:
           type: string
@@ -44976,7 +46077,8 @@ components:
       title: PlanningPushReport
       description: What one push run did, and where the batch stands (AL.3).
       additionalProperties: false
-      required: [batchId, outcome, batchStatus, pushedThisRun, links, retryAt, milestone, epic, drafts]
+      required:
+        [batchId, outcome, batchStatus, pushedThisRun, links, retryAt, milestone, epic, drafts]
       properties:
         batchId:
           type: string
@@ -45143,7 +46245,8 @@ components:
       title: PlanningEpic
       description: One roadmap lane, with its computed chip.
       additionalProperties: false
-      required: [id, name, tint, status, startMonth, endMonth, sortOrder, roadmapName, roadmapWindow, chips]
+      required:
+        [id, name, tint, status, startMonth, endMonth, sortOrder, roadmapName, roadmapWindow, chips]
       properties:
         id:
           type: string
@@ -45736,7 +46839,18 @@ components:
         present, and whichever it is, it is present in this response only.
       additionalProperties: false
       required:
-        [runnerId, name, poolId, securityMode, certificate, serial, notAfter, renewAfter, bearerToken, authority]
+        [
+          runnerId,
+          name,
+          poolId,
+          securityMode,
+          certificate,
+          serial,
+          notAfter,
+          renewAfter,
+          bearerToken,
+          authority,
+        ]
       properties:
         runnerId:
           type: string
@@ -45822,7 +46936,18 @@ components:
         incident. A handshake refuses both.
       additionalProperties: false
       required:
-        [id, serial, fingerprint, issuedFor, issuedAt, notAfter, revoked, revokedAt, revocationReason, supersededAt]
+        [
+          id,
+          serial,
+          fingerprint,
+          issuedFor,
+          issuedAt,
+          notAfter,
+          revoked,
+          revokedAt,
+          revocationReason,
+          supersededAt,
+        ]
       properties:
         id:
           type: string
@@ -46129,7 +47254,26 @@ components:
         renders exactly like a fresh one, which is the thing that clearing prevents.
       additionalProperties: false
       required:
-        [id, name, arch, poolId, pool, status, desiredState, securityMode, agentVersion, hostname, lastSeenAt, enrolledAt, uptimeSeconds, telemetry, queueDepth, currentJob, capabilities, certificate]
+        [
+          id,
+          name,
+          arch,
+          poolId,
+          pool,
+          status,
+          desiredState,
+          securityMode,
+          agentVersion,
+          hostname,
+          lastSeenAt,
+          enrolledAt,
+          uptimeSeconds,
+          telemetry,
+          queueDepth,
+          currentJob,
+          capabilities,
+          certificate,
+        ]
       properties:
         id:
           type: string
@@ -46486,7 +47630,21 @@ components:
         POOLS card is two of these.
       additionalProperties: false
       required:
-        [id, name, description, executor, image, enabled, maxConcurrency, envAllowlist, tags, defaultCommand, artifactGlobs, autoscalePref, runners]
+        [
+          id,
+          name,
+          description,
+          executor,
+          image,
+          enabled,
+          maxConcurrency,
+          envAllowlist,
+          tags,
+          defaultCommand,
+          artifactGlobs,
+          autoscalePref,
+          runners,
+        ]
       properties:
         id:
           type: string
@@ -46796,7 +47954,29 @@ components:
         `retried`, the stat row's `3 retried`.
       additionalProperties: false
       required:
-        [id, number, status, pool, repository, ref, commit, command, commandLine, executor, image, label, title, runnerId, runId, retryOf, queuedAt, offeredAt, startedAt, finishedAt, exitCode]
+        [
+          id,
+          number,
+          status,
+          pool,
+          repository,
+          ref,
+          commit,
+          command,
+          commandLine,
+          executor,
+          image,
+          label,
+          title,
+          runnerId,
+          runId,
+          retryOf,
+          queuedAt,
+          offeredAt,
+          startedAt,
+          finishedAt,
+          exitCode,
+        ]
       properties:
         id:
           type: string

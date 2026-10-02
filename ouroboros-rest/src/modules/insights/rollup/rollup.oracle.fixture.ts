@@ -317,6 +317,20 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
       [org, from, to],
     ),
 
+  build_duration: (sql, org, from, to) =>
+    grouped(
+      sql,
+      `select ${REPO} as repo_ref, b.label as dimension,
+              percentile_cont(0.5) within group (
+                order by round(extract(epoch from (b.finished_at - b.started_at)) * 1000)) as value
+         from ouroboros.build_jobs b
+         ${JOB_REPO}
+        where b.organization_id = $1 and b.status = 'succeeded' and b.started_at is not null
+          and b.finished_at >= $2 and b.finished_at < $3
+        group by 1, b.label`,
+      [org, from, to],
+    ),
+
   build_success_rate: (sql, org, from, to) =>
     grouped(
       sql,

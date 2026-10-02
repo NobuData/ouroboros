@@ -5557,13 +5557,13 @@ $$;
 -- Ninety days, every family, one workspace — and the grain once each, which is also the
 -- idempotency test: a second application that wrote anything would collide or add.
 select pg_temp.must_hold(
-  (select count(distinct metric_id) = 22
+  (select count(distinct metric_id) = 23
           and min(day) = (now() at time zone 'UTC')::date - 89
           and count(distinct day) = 90
           and count(*) = count(distinct (repo_ref, metric_id, dimension, day))
      from ouroboros.metric_daily
     where organization_id = '5eed0001-0000-4000-8000-000000000001'),
-  'the insights seed fills ninety days of all twenty-two daily metrics for acme-robotics, each grain once');
+  'the insights seed fills ninety days of all twenty-three daily metrics for acme-robotics (the analyzer seed the build-duration family, #510), each grain once');
 
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.metric_daily
@@ -5934,7 +5934,7 @@ select pg_temp.must_hold(
 -- --- the rollup's bookkeeping, and what is not written ------------------------------------------
 select pg_temp.must_hold(
   (select array_agg(family order by family)
-            = '{builds,cost,cycle,dora,effort,interventions,tests,throughput}'
+            = '{build_duration,builds,cost,cycle,dora,effort,interventions,tests,throughput}'
           and bool_and(last_filled_day = (now() at time zone 'UTC')::date - 1
                        and last_run_status = 'succeeded' and backfill_cursor is null)
      from ouroboros.metric_rollup_state
@@ -6082,6 +6082,124 @@ select pg_temp.must_hold(
       and r.corpus_manifest #> '{sources,log_lines}' @> '{"sampled": true, "rate": 0.3}'
      from ouroboros.analysis_runs r where r.id = '5eed0065-0000-4000-8000-000000000002'),
   'Corpus 1,284 builds · 312 loops · 90 days · 4.1M log lines · 62 HIL sessions — the builds and sessions counted, the log source sampled and saying so');
+
+-- Seeded to scale (#510): every count on the strip is BV.1's definition over the rows — finished
+-- builds, the ones on a pool tagged `hil`, the lines V086 counted on them, and the loops started
+-- in the window — so the corpus assembly re-reads the same manifest the seed stored.
+select pg_temp.must_hold(
+  (select r.corpus_manifest -> 'counts'
+          = jsonb_build_object(
+              'builds',       (select count(*) from analyzer_corpus
+                                where status in ('succeeded', 'failed', 'retried')),
+              'hil_sessions', (select count(*) from analyzer_corpus job
+                                 join ouroboros.runner_pools pool on pool.id = job.pool_id
+                                where job.status in ('succeeded', 'failed', 'retried')
+                                  and pool.tags ? 'hil'),
+              'log_lines',    (select sum(log_lines) from analyzer_corpus
+                                where status in ('succeeded', 'failed', 'retried')),
+              'loops',        (select count(*) from ouroboros.runs run
+                                 join ouroboros.github_repos repo on repo.id = run.github_repo_id
+                                                                 and repo.name = 'helios-firmware'
+                                 join ouroboros.organization org  on org."id" = run.organization_id
+                                                                 and org."slug" = 'acme-robotics'
+                                where (run.started_at at time zone 'UTC')::date
+                                      between (now() at time zone 'UTC')::date - 90
+                                          and (now() at time zone 'UTC')::date - 1))
+      and r.corpus_manifest -> 'counts'
+          = '{"builds": 1284, "loops": 312, "log_lines": 4100000, "hil_sessions": 62}'::jsonb
+     from ouroboros.analysis_runs r where r.id = '5eed0065-0000-4000-8000-000000000002'),
+  'the strip''s four counts are the rows'' — 1,284 finished builds, 62 on the hil pool, 4.1M counted lines, 312 loops started in the window');
+
+-- Sampled at 0.3 because the cap allows that much of the volume, not because somebody said so.
+select pg_temp.must_hold(
+  (select round((r.corpus_manifest #>> '{budget,max_log_lines}')::numeric
+                / (r.corpus_manifest #>> '{counts,log_lines}')::numeric, 2) = 0.3
+      and (r.corpus_manifest #>> '{budget,max_log_lines}')::bigint = s.max_log_lines
+     from ouroboros.analysis_runs r
+     join ouroboros.analysis_schedules s on s.id = r.schedule_id
+    where r.id = '5eed0065-0000-4000-8000-000000000002'),
+  'the log source''s 0.3 is the schedule''s 1.23M-line cap over the 4.1M lines counted');
+
+-- Every corpus build counted more lines than its kept tail holds; the tails are the farm's last
+-- words, the count everything it said.
+select pg_temp.must_hold(
+  (select bool_and(job.log_lines >= ouroboros.log_newline_count(chunk.content))
+          and count(*) = 233
+     from ouroboros.build_jobs job
+     join ouroboros.build_log_chunks chunk on chunk.job_id = job.id
+    where job.id::text like '5eed0062-%'),
+  'no corpus build counts fewer lines than its kept tail holds');
+
+-- The older loops are what they say: helios-firmware's, 31–89 days back, standard-fix, merged with
+-- a pull request number or failed at the farm without one — never stopped for a person, never
+-- with a pull-request row or a build job, numbered below and apart from every other loop.
+select pg_temp.must_hold(
+  (select count(*) > 0
+      and bool_and(repo.name = 'helios-firmware' and org."slug" = 'acme-robotics')
+      and bool_and((now() at time zone 'UTC')::date - (run.started_at at time zone 'UTC')::date
+                   between 31 and 89)
+      and bool_and(run.workflow_tag = 'standard-fix' and not run.simulated)
+      and bool_and(case run.status
+                     when 'merged' then run.pr_number is not null
+                     when 'failed' then run.pr_number is null and run.checks_total is null
+                     else false end)
+      and count(*) filter (where run.status = 'failed') > 0
+      and bool_and(run.issue_number between 3001 and 3399 and run.loop_seq between 1301 and 1699)
+      and not exists (select 1 from ouroboros.pull_requests pr where pr.run_id in
+                        (select id from ouroboros.runs where id::text like '5eed006e-%'))
+      and not exists (select 1 from ouroboros.build_jobs job where job.run_id in
+                        (select id from ouroboros.runs where id::text like '5eed006e-%'))
+      and not exists (select 1 from ouroboros.intervention_events e where e.run_id in
+                        (select id from ouroboros.runs where id::text like '5eed006e-%'))
+      and max(run.loop_seq) < (select min(other.loop_seq) from ouroboros.runs other
+                                 join ouroboros.organization o on o."id" = other.organization_id
+                                where o."slug" = 'acme-robotics'
+                                  and other.id::text not like '5eed006e-%')
+     from ouroboros.runs run
+     join ouroboros.github_repos repo on repo.id = run.github_repo_id
+     join ouroboros.organization org  on org."id" = run.organization_id
+    where run.id::text like '5eed006e-%'),
+  'the older loops are helios-firmware standard-fix loops 31–89 days back, merged or failed, with no PR row, build or intervention, and loop numbers below every other');
+
+-- Both runs ended composing, and their progress names every analyzer of their set, completed,
+-- with exactly the findings it wrote (#510).
+select pg_temp.must_hold(
+  (select bool_and(r.phase = 'composing'
+                   and jsonb_array_length(r.progress -> 'analyzers')
+                       = jsonb_array_length(r.analyzer_set -> 'analyzers')
+                   and not exists (
+                     select 1 from jsonb_array_elements(r.progress -> 'analyzers') tick
+                      where tick ->> 'status' <> 'completed'
+                         or (tick ->> 'findings')::int
+                            <> (select count(*) from ouroboros.analysis_findings f
+                                 where f.run_id = r.id and f.analyzer = tick ->> 'id'
+                                   and f.analyzer_version = (tick ->> 'version')::int)))
+          and count(*) = 2
+     from ouroboros.analysis_runs r where r.id::text like '5eed0065-%'),
+  'both seeded runs ended composing, every analyzer ticked completed with the findings it wrote');
+
+-- The duration series is the farm plane's, derived the build_duration extractor's way: one row per
+-- (repository, label, day) with succeeded builds, every build's milliseconds as a sample (#510).
+select pg_temp.must_hold(
+  (select count(*) = (select count(*) from (
+                        select distinct job.github_repo_id, job.label,
+                               (job.finished_at at time zone 'UTC')::date
+                          from ouroboros.build_jobs job
+                          join ouroboros.organization org on org."id" = job.organization_id
+                                                         and org."slug" = 'acme-robotics'
+                         where job.status = 'succeeded'
+                           and (job.finished_at at time zone 'UTC')::date
+                               between (now() at time zone 'UTC')::date - 89
+                                   and (now() at time zone 'UTC')::date) g)
+      and bool_and(jsonb_array_length(d.meta -> 'samples') = (
+            select count(*) from analyzer_corpus job
+             where job.status = 'succeeded' and job.label = d.dimension and job.day = d.day)
+            or d.repo_ref <> 'acme-robotics/helios-firmware'
+            or d.day = (now() at time zone 'UTC')::date)
+     from ouroboros.metric_daily d
+    where d.metric_id = 'build_duration'
+      and d.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'build_duration holds a median per repository, label and day with succeeded builds, each build a sample');
 
 select pg_temp.must_hold(
   (select r.status = 'complete' and r.trigger = 'every_n_builds'

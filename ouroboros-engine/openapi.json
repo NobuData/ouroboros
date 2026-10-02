@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-engine",
-    "version": "0.7.8",
+    "version": "0.7.9",
     "summary": "Internal backend for Ouroboros — executes the work ouroboros-rest brokers.",
     "description": "The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the\nservice that executes the work `ouroboros-rest` brokers.\n\nIt is **internal only**. Every request arrives from `ouroboros-rest`, inside the\ncluster, carrying a shared secret on the `X-Ouro-Internal-Key` header; a browser\nnever reaches it. That is a deployment claim, so the service enforces it itself\nrather than trusting it — **every path but `/healthz` requires the key**, the\ncomparison is constant time, and a request without one is refused before routing.\n\nA rejection is therefore one constant body whether the path exists or not: status\ncodes are how a surface gets mapped from outside, and an unauthenticated caller cannot\ntell `/v0/status` from `/v0/anything-else`. Read the `401` documented on each operation\nbelow as the answer to *anything* unauthenticated, including paths this document does\nnot list.\n\n**Every error has one shape** — `{code, message, details}`, the same envelope\n`ouroboros-rest` answers a browser with (`docs/ARCHITECTURE.md` § 5.3), so a failure\ncrossing the gateway does not change form on the way out. `code` is stable and\nmachine-readable and is what a caller branches on; `message` is written for a person\nand is a constant for anything `5xx`, because the real diagnosis names the inside of\nthis process and belongs in a log; `details` carries what is specific to the failure,\nwhich for a `422` is one entry per field that was refused. That covers the answers no\nroute produced too — a path nothing claims, a method a path does not allow, a body\nthat could not be parsed.\n\n`/v0` is the versioned internal prefix. It is unstable by definition — it changes\nwith the two services that share it, which deploy together — and a stable `/v1` is a\nlater promise, not this one. A field may be added to a response and a route may be\nadded to the prefix; a field that disappears, changes type or changes meaning is a\n`/v1` served alongside this one, not an edit to it.",
     "license": {
@@ -80,7 +80,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.7.8"
+                  "version": "0.7.9"
                 }
               }
             }
@@ -109,7 +109,7 @@
                 },
                 "example": {
                   "service": "ouroboros-engine",
-                  "version": "0.7.8",
+                  "version": "0.7.9",
                   "uptime_seconds": 1234.567
                 }
               }
@@ -161,7 +161,7 @@
                       "note": "hello from ouroboros-rest"
                     }
                   },
-                  "engine_version": "0.7.8"
+                  "engine_version": "0.7.9"
                 }
               }
             }
@@ -957,6 +957,128 @@
                   "extractor": "llm-v1",
                   "notes": []
                 }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          }
+        }
+      }
+    },
+    "/v0/analysis/analyzers": {
+      "get": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "The installed analyzer set",
+        "description": "The analyzers a run would execute, in `analysis_runs.analyzer_set`'s shape (`V080`) —\nBV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)). `ouroboros-rest` records\nit on the run before it assembles a corpus, so a run's provenance is known from its first\nrow. `label` is what *Analyzed by* renders: `deterministic analyzers v1` until BX.1's LLM\npass exists (decision **A3**). Analyzers are in id order — the order a run executes them.",
+        "operationId": "analyzerSet",
+        "responses": {
+          "200": {
+            "description": "The installed set.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzerSet"
+                },
+                "example": {
+                  "label": "deterministic analyzers v1",
+                  "analyzers": [
+                    {
+                      "id": "change_point",
+                      "version": 1,
+                      "kind": "deterministic"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v0/analysis/runs": {
+      "post": {
+        "tags": [
+          "v0"
+        ],
+        "summary": "Run the analyzers over a corpus, streaming progress",
+        "description": "Dispatch one analysis run — BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510))\nover BV.2's harness ([#511](https://github.com/NobuData/ouroboros/issues/511)). The corpus\nis the bounded, snapshotted read `ouroboros-rest` assembled on the tenant's own data; it\nis analyzed here in sandboxes that cannot open a socket, and the findings come back on\nthis connection. **Nothing leaves the tenant.**\n\nThe answer is `application/x-ndjson`, one event per line, written as it happens:\n\n* `started` — an analyzer's sandbox is starting (only for an analyzer that runs);\n* `outcome` — its outcome, with its findings, the moment it ends: `completed`, `skipped`\n  (a required source is absent from the corpus), `failed`, `timed_out`,\n  `memory_exceeded` or `not_run` (the compute ceiling was already reached);\n* `report` — always last: `budget_exceeded` and the analyzers that failed.\n\nA stream that ends **without** a `report` was cut short, and the caller treats the run\nas failed. A run whose ceiling bound still reports the finished analyzers' outcomes and\nfindings before its report — a partial run is not a failed one.",
+        "operationId": "runAnalysis",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnalysisRequest"
+              },
+              "example": {
+                "run_id": "5eed0065-0000-4000-8000-000000000002",
+                "compute_ceiling_seconds": 3600,
+                "corpus": {
+                  "repo_ref": "acme-robotics/helios-firmware",
+                  "window": {
+                    "from": "2026-07-01",
+                    "to": "2026-07-03"
+                  },
+                  "builds": [
+                    {
+                      "build_id": "5eed0062-0000-4000-8000-000000010001",
+                      "day": "2026-07-01",
+                      "duration_seconds": 252
+                    },
+                    {
+                      "build_id": "5eed0062-0000-4000-8000-000000010002",
+                      "day": "2026-07-02",
+                      "duration_seconds": 251
+                    },
+                    {
+                      "build_id": "5eed0062-0000-4000-8000-000000010003",
+                      "day": "2026-07-03",
+                      "duration_seconds": 253
+                    }
+                  ],
+                  "events": [],
+                  "rig_telemetry": null
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The run, streamed. For the example: `change_point` starts, completes with no\nfinding (three days are too few to segment), and the report follows.",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AnalyzerStarted"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AnalyzerFinished"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AnalysisFinished"
+                    }
+                  ],
+                  "discriminator": {
+                    "propertyName": "event",
+                    "mapping": {
+                      "started": "#/components/schemas/AnalyzerStarted",
+                      "outcome": "#/components/schemas/AnalyzerFinished",
+                      "report": "#/components/schemas/AnalysisFinished"
+                    }
+                  }
+                },
+                "example": "{\"event\":\"started\",\"analyzer\":\"change_point\",\"version\":1}\n{\"event\":\"outcome\",\"outcome\":{\"analyzer\":\"change_point\",\"version\":1,\"status\":\"completed\",\"findings\":[],\"reason\":null,\"error\":null,\"elapsed_seconds\":0.41}}\n{\"event\":\"report\",\"budget_exceeded\":false,\"failed\":[]}\n"
               }
             }
           },
@@ -2557,6 +2679,343 @@
             "examples": [
               {}
             ]
+          }
+        }
+      },
+      "AnalyzerSetEntry": {
+        "type": "object",
+        "title": "AnalyzerSetEntry",
+        "description": "One installed analyzer. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "version",
+          "kind"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_]{0,62}$",
+            "examples": [
+              "change_point"
+            ]
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "deterministic",
+              "llm"
+            ]
+          }
+        }
+      },
+      "AnalyzerSet": {
+        "type": "object",
+        "title": "AnalyzerSet",
+        "description": "The installed analyzers — `analysis_runs.analyzer_set` exactly (`V080`). Closed.",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "analyzers"
+        ],
+        "properties": {
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What *Analyzed by* renders.",
+            "examples": [
+              "deterministic analyzers v1"
+            ]
+          },
+          "analyzers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AnalyzerSetEntry"
+            }
+          }
+        }
+      },
+      "Corpus": {
+        "type": "object",
+        "title": "Corpus",
+        "description": "One repository's snapshotted history, as an analysis run reads it. Every source but\n`repo_ref` and `window` is optional, and **absent (`null` or missing) is not empty\n(`[]`)**: an analyzer whose required source is absent is `skipped`, never run on\nnothing. Every dated record must lie inside `window`; unknown keys are refused at\nevery level. `rig_telemetry` is the read shape AJ.4\n([#266](https://github.com/NobuData/ouroboros/issues/266)) must produce, and is absent\nuntil it does.",
+        "additionalProperties": false,
+        "required": [
+          "repo_ref",
+          "window"
+        ],
+        "properties": {
+          "repo_ref": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255,
+            "examples": [
+              "acme-robotics/helios-firmware"
+            ]
+          },
+          "window": {
+            "type": "object",
+            "description": "The corpus bounds, UTC dates, inclusive; `from` ≤ `to`.",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to"
+            ],
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date"
+              },
+              "to": {
+                "type": "string",
+                "format": "date"
+              }
+            }
+          },
+          "builds": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "The duration series — `{build_id, day, duration_seconds}` per succeeded build.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "events": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "Attribution candidates — `{kind, day, label, ref: {kind, id}}`.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "log_tails": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "`{build_id, day, label, status, line_count, lines}` — each build's stored line count\nand only the tail of its log.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "tests": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "`{test_run_id, build_id, day, suite, platform, case_key, status, failure}` per case\nresult; `status` is `passed`, `failed`, `flaky` or `skipped`.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "flakes": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "`{case_key, score, state}` — current flake scores, not dated.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "loops": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "`{run_id, day, status, stages: [{key, attempts, seconds}], events, event_bytes}` —\nstage timings and transcript statistics, never transcript bodies.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "cache": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "`{build_id, day, hits, misses}` — each build's ccache counters.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "waivers": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "`{waiver_id, run_id, day, case_keys, reason}`.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "series": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "BI rollup rows by metric id — `{\"build_duration\": [{day, dimension, value, samples}]}`.",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            }
+          },
+          "rig_telemetry": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "description": "`{runner_id, day, metric, value}` — absent until AJ.4 lands.",
+            "items": {
+              "type": "object"
+            }
+          }
+        }
+      },
+      "AnalysisRequest": {
+        "type": "object",
+        "title": "AnalysisRequest",
+        "description": "The body of a `POST /v0/analysis/runs` request. Closed.",
+        "additionalProperties": false,
+        "required": [
+          "run_id",
+          "corpus"
+        ],
+        "properties": {
+          "run_id": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The `analysis_runs` row this run is — logged, nothing else."
+          },
+          "corpus": {
+            "$ref": "#/components/schemas/Corpus"
+          },
+          "compute_ceiling_seconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "exclusiveMinimum": 0,
+            "description": "What is left of the run's compute ceiling after assembly, or `null` for none. Once\nthe analyzers' summed time reaches it the rest are `not_run` and the report says\n`budget_exceeded`."
+          }
+        }
+      },
+      "AnalyzerStarted": {
+        "type": "object",
+        "title": "AnalyzerStarted",
+        "description": "An analyzer's sandbox is starting.",
+        "additionalProperties": false,
+        "required": [
+          "analyzer",
+          "version"
+        ],
+        "properties": {
+          "event": {
+            "type": "string",
+            "const": "started"
+          },
+          "analyzer": {
+            "type": "string"
+          },
+          "version": {
+            "type": "integer"
+          }
+        }
+      },
+      "AnalyzerFinished": {
+        "type": "object",
+        "title": "AnalyzerFinished",
+        "description": "One analyzer's outcome, as soon as it is known: `{analyzer, version, status, findings,\nreason, error, elapsed_seconds}`. Each finding is one `analysis_findings` row (`V081`):\n`{analyzer, analyzer_version, finding_type, subject_key, data, evidence_refs, confidence,\nconfidence_basis}`.",
+        "additionalProperties": false,
+        "required": [
+          "outcome"
+        ],
+        "properties": {
+          "event": {
+            "type": "string",
+            "const": "outcome"
+          },
+          "outcome": {
+            "type": "object",
+            "required": [
+              "analyzer",
+              "version",
+              "status"
+            ],
+            "properties": {
+              "analyzer": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "status": {
+                "type": "string",
+                "enum": [
+                  "completed",
+                  "skipped",
+                  "failed",
+                  "timed_out",
+                  "memory_exceeded",
+                  "not_run"
+                ]
+              },
+              "findings": {
+                "type": "array",
+                "items": {
+                  "type": "object"
+                }
+              },
+              "reason": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "error": {
+                "type": [
+                  "object",
+                  "null"
+                ]
+              },
+              "elapsed_seconds": {
+                "type": "number"
+              }
+            }
+          }
+        }
+      },
+      "AnalysisFinished": {
+        "type": "object",
+        "title": "AnalysisFinished",
+        "description": "The run's report — always the last line of a run that was not cut short.",
+        "additionalProperties": false,
+        "required": [
+          "budget_exceeded",
+          "failed"
+        ],
+        "properties": {
+          "event": {
+            "type": "string",
+            "const": "report"
+          },
+          "budget_exceeded": {
+            "type": "boolean"
+          },
+          "failed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         }
       }

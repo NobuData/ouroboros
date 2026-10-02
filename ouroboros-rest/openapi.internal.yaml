@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.38.5"
+  version: "0.38.6"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -1091,7 +1091,8 @@ paths:
                 code: validation_failed
                 message: The request body is not valid.
                 details:
-                  spend: ["costCents must be a non-negative decimal with at most four decimal places"]
+                  spend:
+                    ["costCents must be a non-negative decimal with at most four decimal places"]
 
   /internal/runs/{id}/controls/fetch:
     post:
@@ -1717,7 +1718,16 @@ components:
         column maps each word to a phrase, and a word with no phrase would compose a sentence
         with a hole in it.
       enum:
-        [failed_tests, failed_build, failed_checks, failed_review, gate_rejected, budget_exhausted, timed_out, errored]
+        [
+          failed_tests,
+          failed_build,
+          failed_checks,
+          failed_review,
+          gate_rejected,
+          budget_exhausted,
+          timed_out,
+          errored,
+        ]
 
     RunEventActor:
       type: string
@@ -1839,7 +1849,21 @@ components:
       description: The run that was opened.
       additionalProperties: false
       required:
-        [id, loopSeq, organizationId, issueNumber, issueTitle, workflowTag, workflowVersionPin, branchName, mergeStrategy, model, simulated, status, startedAt]
+        [
+          id,
+          loopSeq,
+          organizationId,
+          issueNumber,
+          issueTitle,
+          workflowTag,
+          workflowVersionPin,
+          branchName,
+          mergeStrategy,
+          model,
+          simulated,
+          status,
+          startedAt,
+        ]
       properties:
         id:
           type: string
@@ -1958,7 +1982,20 @@ components:
       description: Where the stage stands after the transition.
       additionalProperties: false
       required:
-        [runStageId, stageKey, stageLabel, position, attempt, maxAttempts, tokenBudget, status, note, startedAt, finishedAt, returnedFrom]
+        [
+          runStageId,
+          stageKey,
+          stageLabel,
+          position,
+          attempt,
+          maxAttempts,
+          tokenBudget,
+          status,
+          note,
+          startedAt,
+          finishedAt,
+          returnedFrom,
+        ]
       properties:
         runStageId:
           type: string
@@ -2456,7 +2493,22 @@ components:
       title: AckedControl
       description: A control as it stands after an acknowledgment — the same shape the console reads.
       additionalProperties: false
-      required: [id, runId, kind, state, requestedBy, requestedAt, deliveredAt, ackedAt, expiresAt, detail, hasPayload, remember, retryStage]
+      required:
+        [
+          id,
+          runId,
+          kind,
+          state,
+          requestedBy,
+          requestedAt,
+          deliveredAt,
+          ackedAt,
+          expiresAt,
+          detail,
+          hasPayload,
+          remember,
+          retryStage,
+        ]
       properties:
         id:
           type: string

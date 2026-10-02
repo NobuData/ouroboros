@@ -20,7 +20,9 @@ import logging
 
 from fastapi import FastAPI
 
+from ouroboros_engine.analysis.registry import default_registry
 from ouroboros_engine.api import (
+    analysis,
     estimate,
     health,
     learn,
@@ -136,6 +138,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # contract, and installing it is this line. See `ouroboros_engine.learning`.
     app.state.extractor = UnavailableExtractor()
 
+    # And which analyzers `/v0/analysis` runs (BV.1, #510): the built-ins plus anything
+    # installed under the `ouroboros_engine.analyzers` entry-point group, checked against the
+    # parameter ledger here — so an analyzer that breaks the SPI stops the process at start-up
+    # rather than vanishing from every run. A test installs its own registry the same way.
+    app.state.analyzer_registry = default_registry()
+
     # Added before any route is registered, and the only middleware there is, so it is
     # the outermost thing a request meets: the guard cannot be bypassed by a path that
     # is added later, and an unauthenticated request never reaches routing at all.
@@ -159,6 +167,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(workflows.router)
     app.include_router(plan.router)
     app.include_router(learn.router)
+    app.include_router(analysis.router)
     _mount_simulator(app, resolved)
     return app
 

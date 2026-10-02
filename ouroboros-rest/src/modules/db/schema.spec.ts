@@ -450,8 +450,9 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-thirteenth to sixteenth are V084's `insights_digest_subscriptions`,
     // `insights_digest_schedules`, `insights_digest_runs` and `insights_digest_sends`, mirrored by
     // BJ.4 (#440) — who asked for the weekly email, when a workspace's goes out, and the audit of
-    // what was sent to whom.
-    expect(TABLE_NAMES).toHaveLength(116);
+    // what was sent to whom. BV.1 (#510) — the Build Analyzer's schedules, runs and findings, which
+    // its orchestrator reads and writes.
+    expect(TABLE_NAMES).toHaveLength(119);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

@@ -13,6 +13,7 @@
 * :mod:`~ouroboros_engine.analysis.changepoint` — the first analyzer: PELT over daily median
   build durations, with ranked attribution.
 
-Nothing here is served over HTTP yet: corpus assembly and the run orchestration that calls the
-harness are BV.1 (`#510 <https://github.com/NobuData/ouroboros/issues/510>`_).
+:mod:`ouroboros_engine.api.analysis` serves the harness to BV.1's run orchestrator in
+``ouroboros-rest`` (`#510 <https://github.com/NobuData/ouroboros/issues/510>`_), which assembles
+the corpus.
 """

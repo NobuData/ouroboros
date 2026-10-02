@@ -1,4 +1,5 @@
 import { recordingDatabase, type RecordingDatabase } from "../../../db/database.fixture";
+import { buildDurationExtractor } from "./build_duration.extractor";
 import { buildsExtractor } from "./builds.extractor";
 import { costExtractor } from "./cost.extractor";
 import { cycleExtractor } from "./cycle.extractor";
@@ -209,6 +210,44 @@ describe("the extractors", () => {
     ]);
     expectScoped();
     expect(database.statements[0].sql).toContain("b.status in ('succeeded', 'failed', 'retried')");
+  });
+
+  it("build_duration: a median row per repository and job label, every succeeded build a sample", async () => {
+    database.answers({
+      rows: [
+        { repo_ref: HELIOS, label: "zephyr build", ms: "252000" },
+        { repo_ref: HELIOS, label: "native_sim", ms: "91000" },
+        { repo_ref: HELIOS, label: "zephyr build", ms: "238000" },
+        { repo_ref: HELIOS, label: "zephyr build", ms: "260500" },
+      ],
+    });
+
+    expect(await buildDurationExtractor.extract(database.service.db, ORG, DAY)).toEqual([
+      {
+        repoRef: HELIOS,
+        metricId: "build_duration",
+        dimension: "zephyr build",
+        value: 252_000,
+        samples: [238_000, 252_000, 260_500],
+      },
+      {
+        repoRef: HELIOS,
+        metricId: "build_duration",
+        dimension: "native_sim",
+        value: 91_000,
+        samples: [91_000],
+      },
+    ]);
+    expectScoped();
+    // Only a succeeded build is timed, and to the millisecond as the seed's rows are.
+    expect(database.statements[0].sql).toContain("b.status = 'succeeded'");
+    expect(database.statements[0].sql).toContain("round(extract(epoch from");
+  });
+
+  it("build_duration: writes nothing for a day with no succeeded build", async () => {
+    database.answers({ rows: [] });
+
+    expect(await buildDurationExtractor.extract(database.service.db, ORG, DAY)).toEqual([]);
   });
 
   it("tests: suite rows only for failing suites; cases and pass rate per repository", async () => {

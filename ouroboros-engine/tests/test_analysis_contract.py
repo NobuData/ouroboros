@@ -7,6 +7,7 @@ from pydantic import ValidationError
 
 from analysis_fakes import finding
 from ouroboros_engine.analysis.contract import (
+    SOURCE_GRAINS,
     BuildSample,
     CandidateEvent,
     Corpus,
@@ -216,3 +217,119 @@ def test_findings_json_orders_by_analyzer_then_subject() -> None:
 def test_merge_refs_take_a_sha_and_everything_else_a_uuid() -> None:
     assert EvidenceRef(kind="merge", id="ccace01").id == "ccace01"
     assert EvidenceRef(kind="runner_pool", id=UUID).kind == "runner_pool"
+
+
+# ---------------------------------------------------------------------------
+# BV.1's sources (#510) — one per bounded reader in ouroboros-rest
+# ---------------------------------------------------------------------------
+
+#: One valid record per new source, inside the fixture window.
+_SOURCES: dict[str, object] = {
+    "log_tails": [
+        {
+            "build_id": UUID,
+            "day": "2026-06-01",
+            "label": "zephyr build",
+            "status": "failed",
+            "line_count": 3184,
+            "lines": ["FAIL: test_fixture_timeout", "west: exit 1"],
+        }
+    ],
+    "tests": [
+        {
+            "test_run_id": UUID,
+            "build_id": None,
+            "day": "2026-06-01",
+            "suite": "ota",
+            "platform": "native_sim",
+            "case_key": "ota.rollback",
+            "status": "failed",
+            "failure": "timeout after 30 s",
+        }
+    ],
+    "flakes": [{"case_key": "ota.rollback", "score": 0.31, "state": "watching"}],
+    "loops": [
+        {
+            "run_id": UUID,
+            "day": "2026-06-01",
+            "status": "merged",
+            "stages": [{"key": "build", "attempts": 2, "seconds": 412.5}],
+            "events": 120,
+            "event_bytes": 48211,
+        }
+    ],
+    "cache": [{"build_id": UUID, "day": "2026-06-01", "hits": 380, "misses": 140}],
+    "waivers": [
+        {
+            "waiver_id": UUID,
+            "run_id": UUID,
+            "day": "2026-06-01",
+            "case_keys": ["hil.thermal_soak"],
+            "reason": "rig thermal chamber offline",
+        }
+    ],
+    "series": {
+        "build_duration": [
+            {
+                "day": "2026-06-01",
+                "dimension": "zephyr build",
+                "value": 252000,
+                "samples": [251000, 252000, 253000],
+            }
+        ]
+    },
+    "rig_telemetry": [
+        {"runner_id": UUID, "day": "2026-06-01", "metric": "chamber_c", "value": 41.5}
+    ],
+}
+
+
+def test_every_source_has_a_grain_and_a_field() -> None:
+    assert set(SOURCE_GRAINS) == set(CorpusSource)
+    for source in CorpusSource:
+        assert source.value in Corpus.model_fields
+
+
+def test_each_new_source_is_absent_by_default_and_available_when_carried() -> None:
+    for name, records in _SOURCES.items():
+        source = CorpusSource(name)
+        requirement = CorpusRequirement(source=source, grain=SOURCE_GRAINS[source])
+
+        assert getattr(_corpus(), name) is None
+        assert requirement not in _corpus().available()
+        assert requirement in _corpus(**{name: records}).available()
+        # Present and empty is still present — an empty plane, not a missing one.
+        empty = {} if isinstance(records, dict) else []
+        assert requirement in _corpus(**{name: empty}).available()
+
+
+@pytest.mark.parametrize("name", sorted(set(_SOURCES) - {"flakes"}))
+def test_a_dated_record_outside_the_window_is_refused(name: str) -> None:
+    records = json.loads(json.dumps(_SOURCES[name]))
+    first = records["build_duration"][0] if name == "series" else records[0]
+    first["day"] = "2026-08-06"
+
+    with pytest.raises(ValidationError, match="outside the window"):
+        _corpus(**{name: records})
+
+
+@pytest.mark.parametrize("name", sorted(_SOURCES))
+def test_an_unknown_key_in_a_new_source_is_refused(name: str) -> None:
+    records = json.loads(json.dumps(_SOURCES[name]))
+    first = records["build_duration"][0] if name == "series" else records[0]
+    first["body"] = "a transcript body the corpus never carries"
+
+    with pytest.raises(ValidationError):
+        _corpus(**{name: records})
+
+
+def test_a_series_is_keyed_by_a_metric_id() -> None:
+    with pytest.raises(ValidationError):
+        _corpus(series={"Build Duration": []})
+
+
+def test_the_full_corpus_round_trips_on_the_wire() -> None:
+    corpus = _corpus(**_SOURCES)
+
+    wire = corpus.model_dump(mode="json", by_alias=True)
+    assert Corpus.model_validate(wire) == corpus

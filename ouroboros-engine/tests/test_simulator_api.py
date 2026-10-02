@@ -100,7 +100,13 @@ def test_with_the_secret_a_development_engine_mounts_dev() -> None:
 def test_a_build_without_the_driver_mounts_nothing_whatever_the_environment_says(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def absent(name: str) -> None:
+    real_import = main.importlib.import_module
+
+    # Only the driver is missing: the patch is process-wide, and create_app also imports the
+    # registered analyzers (#510), which a production wheel does contain.
+    def absent(name: str) -> object:
+        if not name.startswith(f"{main.SIMULATOR_PACKAGE}."):
+            return real_import(name)
         raise ModuleNotFoundError(
             f"No module named {name!r}", name="ouroboros_simulator"
         )
@@ -115,7 +121,11 @@ def test_a_build_without_the_driver_mounts_nothing_whatever_the_environment_says
 def test_a_broken_development_install_is_not_hidden(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def broken(_name: str) -> None:
+    real_import = main.importlib.import_module
+
+    def broken(name: str) -> object:
+        if not name.startswith(f"{main.SIMULATOR_PACKAGE}."):
+            return real_import(name)
         raise ModuleNotFoundError("No module named 'something_it_needs'", name="x")
 
     monkeypatch.setattr(main.importlib, "import_module", broken)

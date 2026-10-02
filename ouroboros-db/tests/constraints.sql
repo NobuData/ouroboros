@@ -26972,15 +26972,15 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   (select array_agg(metric_id order by metric_id)
-            = '{completion_time_by_effort,cycle_time,stage_duration}'
+            = '{build_duration,completion_time_by_effort,cycle_time,stage_duration}'
      from ouroboros.metric_definitions where aggregation = 'median'),
-  'the shipped medians are cycle time, stage duration and completion time by effort');
+  'the shipped medians are cycle time, stage duration, completion time by effort and (V086) build duration');
 
 select pg_temp.must_hold(
   (select array_agg(metric_id || ':' || dimension_kind order by metric_id)
-            = '{completion_time_by_effort:effort,human_interventions:cause,stage_duration:stage,test_failures_by_suite:suite,tokens_by_task_kind:task_kind}'
+            = '{build_duration:job_label,completion_time_by_effort:effort,human_interventions:cause,stage_duration:stage,test_failures_by_suite:suite,tokens_by_task_kind:task_kind}'
      from ouroboros.metric_definitions where dimension_kind is not null),
-  'the shipped dimensioned metrics name their dimension (V079 added the cause, V083 the task kind)');
+  'the shipped dimensioned metrics name their dimension (V079 added the cause, V083 the task kind, V086 the job label)');
 
 select pg_temp.must_hold(
   (select count(*) = 4 from ouroboros.metric_definitions
@@ -30236,6 +30236,206 @@ select pg_temp.must_hold(
   and not exists (select 1 from ouroboros.analyzer_calibration where organization_id like 'org-v085%')
   and not exists (select 1 from ouroboros.analyzer_calibration_history where organization_id like 'org-v085%'),
   'a deleted workspace takes its measurements, policy, factors and their trail with it');
+
+-- ===========================================================================
+-- V086 — log-line counts, a run's phase and progress, and the build-duration family (#510, BV.1)
+-- ===========================================================================
+--
+-- The three things BV.1's orchestrator reads or writes that V080 did not hold: a job's log lines
+-- counted where the bytes land (whole, clamped, past the cap), a run's phase that only moves
+-- forward and progress frozen once the run ends, and the `build_duration` registry row.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v086', 'Analyzer Orchestration', 'analyzer-orchestration-v086', now());
+
+insert into ouroboros.github_orgs (id, organization_id, login) values
+  ('a8600010-0000-4000-8000-000000000001', 'org-v086', 'orch-co');
+insert into ouroboros.github_repos (id, org_id, name) values
+  ('a8600011-0000-4000-8000-000000000001', 'a8600010-0000-4000-8000-000000000001', 'helios-firmware');
+insert into ouroboros.runner_pools (id, organization_id, name, executor, image, tags) values
+  ('a8600001-0000-4000-8000-000000000001', 'org-v086', 'pool-a', 'shell', null, '[]');
+
+insert into ouroboros.build_jobs
+  (id, organization_id, number, pool_id, github_repo_id, git_ref, label, title, executor,
+   command, status, log_cap_bytes) values
+  ('a8600004-0000-4000-8000-000000000001', 'org-v086', 1, 'a8600001-0000-4000-8000-000000000001',
+   'a8600011-0000-4000-8000-000000000001', 'refs/heads/main', 'zephyr build', 'capped', 'shell',
+   'west build', 'queued', 65536),
+  ('a8600004-0000-4000-8000-000000000002', 'org-v086', 2, 'a8600001-0000-4000-8000-000000000001',
+   'a8600011-0000-4000-8000-000000000001', 'refs/heads/main', 'zephyr build', 'binary', 'shell',
+   'west build', 'queued', 65536);
+
+-- --- log_lines: counted where the bytes land --------------------------------------
+
+select pg_temp.must_hold(
+  (select bool_and(log_lines = 0) from ouroboros.build_jobs where organization_id = 'org-v086'),
+  'a job with no log has counted no lines');
+
+-- 32,765 two-byte lines, then a chunk with a line split across the boundary.
+insert into ouroboros.build_log_chunks (job_id, seq, content) values
+  ('a8600004-0000-4000-8000-000000000001', 0, convert_to(repeat(E'x\n', 32765), 'UTF8'));
+insert into ouroboros.build_log_chunks (job_id, seq, content) values
+  ('a8600004-0000-4000-8000-000000000001', 1, convert_to('ab', 'UTF8'));
+
+select pg_temp.must_hold(
+  (select log_lines = 32765 from ouroboros.build_jobs
+    where id = 'a8600004-0000-4000-8000-000000000001'),
+  'every newline of a stored chunk is a line, and a line not yet ended is not counted');
+
+-- 65,532 bytes stored; four are left. 'c\nd\nef\n' is clamped to 'c\nd\n' — two lines kept.
+insert into ouroboros.build_log_chunks (job_id, seq, content) values
+  ('a8600004-0000-4000-8000-000000000001', 2, convert_to(E'c\nd\nef\n', 'UTF8'));
+
+select pg_temp.must_hold(
+  (select log_lines = 32767 and log_bytes = log_cap_bytes and log_dropped_bytes = 3
+     from ouroboros.build_jobs where id = 'a8600004-0000-4000-8000-000000000001'),
+  'a chunk the cap clamped counts only the lines it kept — the line ending the split one included');
+
+insert into ouroboros.build_log_chunks (job_id, seq, content) values
+  ('a8600004-0000-4000-8000-000000000001', 3, convert_to(E'past\nthe\ncap\n', 'UTF8'));
+
+select pg_temp.must_hold(
+  (select log_lines = 32767 from ouroboros.build_jobs
+    where id = 'a8600004-0000-4000-8000-000000000001')
+  and not exists (select 1 from ouroboros.build_log_chunks
+                   where job_id = 'a8600004-0000-4000-8000-000000000001' and seq = 3),
+  'a chunk past the cap has no row and adds no lines');
+
+-- Zero and high-bit bytes are escaped by `escape` encoding; none of them is a newline.
+insert into ouroboros.build_log_chunks (job_id, seq, content) values
+  ('a8600004-0000-4000-8000-000000000002', 0, '\xff0a005c0a0d0a'::bytea);
+
+select pg_temp.must_hold(
+  (select log_lines = 3 from ouroboros.build_jobs where id = 'a8600004-0000-4000-8000-000000000002')
+  and ouroboros.log_newline_count(null) = 0
+  and ouroboros.log_newline_count('\x0a0a'::bytea) = 2,
+  'lines are 0x0a bytes whatever else the log holds — a zero byte, a backslash, a high-bit byte, a CR');
+
+delete from ouroboros.build_log_chunks where job_id = 'a8600004-0000-4000-8000-000000000002';
+
+select pg_temp.must_hold(
+  (select log_lines = 3 from ouroboros.build_jobs where id = 'a8600004-0000-4000-8000-000000000002'),
+  'the count is history: sweeping a job''s chunks does not take its lines back');
+
+select pg_temp.must_reject(
+  $$update ouroboros.build_jobs set log_lines = -1 where id = 'a8600004-0000-4000-8000-000000000002'$$,
+  'a job never has fewer than zero lines', 'build_jobs_log_lines_non_negative');
+
+-- --- phase and progress ------------------------------------------------------------
+
+insert into ouroboros.analysis_runs (id, organization_id, repo_ref, trigger, analyzer_set) values
+  ('a8610000-0000-4000-8000-000000000001', 'org-v086', 'orch-co/helios-firmware', 'manual',
+   '{"label": "deterministic analyzers v1",
+     "analyzers": [{"id": "change_point", "version": 1, "kind": "deterministic"},
+                   {"id": "log_signature", "version": 1, "kind": "deterministic"}]}');
+
+select pg_temp.must_hold(
+  (select phase = 'assembling' and progress = '{"analyzers": []}'::jsonb
+     from ouroboros.analysis_runs where id = 'a8610000-0000-4000-8000-000000000001'),
+  'a run is born assembling, with no analyzer ticked');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set phase = 'sleeping'
+     where id = 'a8610000-0000-4000-8000-000000000001'$$,
+  'the phase is assembling, analyzing or composing', 'analysis_runs_phase_known');
+
+select pg_temp.must_hold(
+  ouroboros.analysis_progress_valid(
+    '{"analyzers": [{"id": "change_point", "version": 1, "status": "completed", "findings": 3,
+                     "elapsed_seconds": 12.5},
+                    {"id": "log_signature", "version": 1, "status": "not_run",
+                     "reason": "the run''s compute ceiling was reached"}]}')
+  and ouroboros.analysis_progress_valid('{"analyzers": []}')
+  and ouroboros.analysis_progress_valid(null) is null,
+  'progress is a list of ticks: id, version, status, and optionally findings, elapsed and a reason');
+
+select pg_temp.must_hold(
+  not coalesce(ouroboros.analysis_progress_valid(p::jsonb), true),
+  'malformed progress is refused: ' || p)
+  from (values ('[]'), ('{}'), ('{"analyzers": {}}'),
+               ('{"analyzers": [{"id": "Change", "version": 1, "status": "completed"}]}'),
+               ('{"analyzers": [{"id": "change_point", "version": 0, "status": "completed"}]}'),
+               ('{"analyzers": [{"id": "change_point", "version": 1, "status": "done"}]}'),
+               ('{"analyzers": [{"id": "change_point", "version": 1}]}'),
+               ('{"analyzers": [{"id": "change_point", "version": 1, "status": "completed", "findings": -1}]}'),
+               ('{"analyzers": [{"id": "change_point", "version": 1, "status": "completed", "findings": 1.5}]}'),
+               ('{"analyzers": [{"id": "change_point", "version": 1, "status": "completed", "elapsed_seconds": -2}]}'),
+               ('{"analyzers": [{"id": "change_point", "version": 1, "status": "failed", "reason": 7}]}'),
+               ('{"analyzers": ["change_point"]}')) as bad (p);
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set progress = '{"analyzers": [{"id": "change_point"}]}'
+     where id = 'a8610000-0000-4000-8000-000000000001'$$,
+  'the column holds progress to its contract', 'analysis_runs_progress_shape');
+
+update ouroboros.analysis_runs
+   set phase = 'analyzing',
+       progress = '{"analyzers": [{"id": "change_point", "version": 1, "status": "running"},
+                                  {"id": "log_signature", "version": 1, "status": "pending"}]}'
+ where id = 'a8610000-0000-4000-8000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set phase = 'assembling'
+     where id = 'a8610000-0000-4000-8000-000000000001'$$,
+  'the phase never moves backwards', 'analysis_runs_progress_guard');
+
+-- The statement that ends the run still writes its last tick and phase.
+update ouroboros.analysis_runs
+   set status = 'budget_exceeded', finished_at = now(), phase = 'composing',
+       failure_reason = 'compute ceiling reached before log_signature ran',
+       corpus_manifest = '{"window": {"from": "2026-07-03", "to": "2026-10-01", "days": 90},
+                           "counts": {"builds": 3, "loops": 1, "log_lines": 10, "hil_sessions": 0},
+                           "sources": {"builds": {"sampled": false, "rate": 1, "cap": null},
+                                       "loops": {"sampled": false, "rate": 1, "cap": null},
+                                       "log_lines": {"sampled": false, "rate": 1, "cap": null},
+                                       "hil_sessions": {"sampled": false, "rate": 1, "cap": null}},
+                           "budget": {"max_builds": 2000, "max_log_lines": 1500000,
+                                      "compute_ceiling_seconds": 60}}',
+       progress = '{"analyzers": [{"id": "change_point", "version": 1, "status": "completed", "findings": 0},
+                                  {"id": "log_signature", "version": 1, "status": "not_run"}]}'
+ where id = 'a8610000-0000-4000-8000-000000000001';
+
+select pg_temp.must_hold(
+  (select phase = 'composing' and progress #>> '{analyzers,1,status}' = 'not_run'
+     from ouroboros.analysis_runs where id = 'a8610000-0000-4000-8000-000000000001'),
+  'the statement that ends a run records the phase it ended in and its last ticks');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs
+       set progress = '{"analyzers": [{"id": "change_point", "version": 1, "status": "completed"},
+                                      {"id": "log_signature", "version": 1, "status": "completed"}]}'
+     where id = 'a8610000-0000-4000-8000-000000000001'$$,
+  'a finished run''s progress is a record', 'analysis_runs_progress_guard');
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_runs set phase = 'composing', progress = '{"analyzers": []}'
+     where id = 'a8610000-0000-4000-8000-000000000001'$$,
+  'and so is the rest of it', 'analysis_runs_progress_guard');
+
+select pg_temp.must_hold(
+  ouroboros.analysis_phase_rank('assembling') < ouroboros.analysis_phase_rank('analyzing')
+  and ouroboros.analysis_phase_rank('analyzing') < ouroboros.analysis_phase_rank('composing')
+  and ouroboros.analysis_phase_rank('done') is null,
+  'assembling < analyzing < composing');
+
+-- --- the build-duration family ----------------------------------------------------
+
+select pg_temp.must_hold(
+  (select family = 'build_duration' and aggregation = 'median' and dimension_kind = 'job_label'
+          and unit = 'duration_ms' and not is_rate and not proxy
+          and source_planes = '{builds}' and version = 1
+     from ouroboros.metric_definitions where metric_id = 'build_duration'),
+  'build_duration is registered: its own family, a median per job label, in milliseconds');
+
+select pg_temp.must_hold(
+  'job_label' = any (pg_temp.vocabulary('ouroboros.metric_definitions',
+                                        'metric_definitions_dimension_kind_known')),
+  'job_label joins the dimension vocabulary');
+
+delete from ouroboros.organization where "id" = 'org-v086';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.analysis_runs where organization_id = 'org-v086')
+  and not exists (select 1 from ouroboros.build_jobs where organization_id = 'org-v086'),
+  'a deleted workspace takes its runs and its counted jobs with it');
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

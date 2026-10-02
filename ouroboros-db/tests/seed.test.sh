@@ -1513,7 +1513,7 @@ check_absent "$METRICS_BODY" '5eed0001-0000-4000-8000|5eed001a-0000-4000-8000|5e
 printf '\nR__dev_seed_workspace_metrics_analyzer.sql — the Build Analyzer\n'
 
 for prefix in '5eed0062' '5eed0063' '5eed0064' '5eed0065' '5eed0066' '5eed0067' '5eed0068' \
-              '5eed0069' '5eed006a' '5eed006b' '5eed006c' '5eed006d'; do
+              '5eed0069' '5eed006a' '5eed006b' '5eed006c' '5eed006d' '5eed006e'; do
   check_contains "$ANALYZER_BODY" "'$prefix-0000-4000-8000-" \
     "the analyzer seed builds its ids from the $prefix… prefix"
 done
@@ -1524,9 +1524,16 @@ done
 # V081 and V085 let them be written.
 analyzer_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$ANALYZER_BODY" |
   sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
-check_equals 'analysis_findings analysis_runs analysis_schedules analysis_suggestion_findings analysis_suggestions audit_events build_jobs build_log_chunks draft_batches issue_estimates pr_waivers suggestion_measurements ticket_drafts ' \
+check_equals 'analysis_findings analysis_runs analysis_schedules analysis_suggestion_findings analysis_suggestions audit_events build_jobs build_log_chunks draft_batches issue_estimates metric_daily metric_rollup_state pr_waivers runs suggestion_measurements ticket_drafts ' \
   "$analyzer_tables" \
-  'the analyzer seed writes the corpus, the analysis rows, its batch, its waivers and its apply records — and nothing else'
+  'the analyzer seed writes the corpus (its older loops and its duration series included), the analysis rows, its batch, its waivers and its apply records — and nothing else'
+
+# **The strip is counted** (#510): the page's manifest takes its loops and log lines from the
+# rows, so neither figure is written into it.
+check_absent "$ANALYZER_BODY" "'loops', 312|'log_lines', 4100000" \
+  'the page run'"'"'s manifest counts its loops and log lines rather than storing them'
+check_contains "$ANALYZER_BODY" "'log_lines', counted\.log_lines" \
+  'its log lines are the sum of the jobs'"'"' counted lines'
 
 # The verdicts and the factor are V085's, through its own function and writer; identities V081's.
 check_contains "$ANALYZER_BODY" 'ouroboros\.suggestion_measurement_verdict\(' \

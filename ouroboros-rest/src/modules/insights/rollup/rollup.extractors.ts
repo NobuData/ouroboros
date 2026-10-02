@@ -7,6 +7,7 @@
  * its bias metric is signed, which the grain cannot store.
  */
 
+import { buildDurationExtractor } from "./extractors/build_duration.extractor";
 import { buildsExtractor } from "./extractors/builds.extractor";
 import { costExtractor } from "./extractors/cost.extractor";
 import { cycleExtractor } from "./extractors/cycle.extractor";
@@ -24,6 +25,7 @@ export const ROLLUP_EXTRACTORS: readonly FamilyExtractor[] = Object.freeze([
   cycleExtractor,
   costExtractor,
   buildsExtractor,
+  buildDurationExtractor,
   testsExtractor,
   effortExtractor,
   doraExtractor,
