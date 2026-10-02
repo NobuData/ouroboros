@@ -1615,7 +1615,7 @@ the blockquote above that records what it did and what it did differently.
 | 343 | **BW.1** | [#516](https://github.com/NobuData/ouroboros/issues/516) | Analyzer route, head, schedule & meta strip | ouroboros-ui | M | 5.3, D.5, BV.1 |
 | 344 | **BJ.2** | ✅ [#438](https://github.com/NobuData/ouroboros/issues/438) | Insights read APIs | ouroboros-rest | M | BI.3, BJ.1 |
 | 345 | **BK.4** | ✅ [#445](https://github.com/NobuData/ouroboros/issues/445) | Scoreboard & intervention/stage cards | ouroboros-ui | M | BJ.3, BK.1 |
-| 346 | **BU.4** | [#509](https://github.com/NobuData/ouroboros/issues/509) | Analyzer seeds — mockup-18 parity + probes | ouroboros-db, .github | M | 3.6, BU.3 |
+| 346 | **BU.4** | ✅ [#509](https://github.com/NobuData/ouroboros/issues/509) | Analyzer seeds — mockup-18 parity + probes | ouroboros-db, .github | M | 3.6, BU.3 |
 | 347 | **BV.3** | [#512](https://github.com/NobuData/ouroboros/issues/512) | Pattern analyzers | ouroboros-engine | L | BV.2 |
 | 348 | **BW.2** | [#517](https://github.com/NobuData/ouroboros/issues/517) | Annotated duration chart | ouroboros-ui | M | BK.1, BW.1 |
 | 349 | **BJ.5** | ✅ [#441](https://github.com/NobuData/ouroboros/issues/441) | Insights integration tests | ouroboros-rest | M | BJ.2, BJ.4 |

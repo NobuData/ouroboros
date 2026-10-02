@@ -245,6 +245,13 @@ check_route ouroboros-rest/package.json 'db.yml rest.yml'
 # and its suite replays those rules against the expected-verdict file and the documents it names,
 # then holds a scripted build of the seeded docs-loop to the published schema.
 check_route schemas/workflow-dsl/v1.json 'db.yml engine.yml rest.yml ui.yml'
+
+# The seventh (#509), and the first from the engine into the data tier. ci/db proves the Build
+# Analyzer seed by running the engine's change-point analyzer over the seeded corpus, so the
+# analysis package and the lock that pins numpy and ruptures under it reach ci/db as well as
+# ci/engine. The rest of the engine does not: an API handler cannot change what the seed means.
+check_route ouroboros-engine/src/ouroboros_engine/analysis/changepoint.py 'db.yml engine.yml'
+check_route ouroboros-engine/uv.lock 'db.yml engine.yml'
 check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml ui.yml'
 check_route schemas/workflow-dsl/fixtures/invalid/two-triggers.json 'engine.yml rest.yml ui.yml'
 
@@ -672,6 +679,17 @@ check_contains "$DB_WORKFLOW" 'tests/planning-invariants\.sql' \
   'db.yml asserts the planning invariants against the seeded database'
 check_contains "$DB_WORKFLOW" 'tests/verify-planning-invariants\.sh' \
   'db.yml plants bad planning rows and requires the invariants to go red'
+
+# The Build Analyzer's (#509), the same two halves — and a third: the change-point analyzer run
+# over the seeded corpus, which needs the engine's environment in the job before it.
+check_contains "$DB_WORKFLOW" 'tests/analyzer-invariants\.sql' \
+  'db.yml asserts the analyzer invariants against the seeded database'
+check_contains "$DB_WORKFLOW" 'tests/verify-analyzer-invariants\.sh' \
+  'db.yml plants bad analysis rows and requires the invariants to go red'
+check_contains "$DB_WORKFLOW" '^        run: uv sync --locked$' \
+  'db.yml prepares the engine environment the rediscovery runs in'
+check_contains "$DB_WORKFLOW" 'tests/verify-analyzer-rediscovery\.sh' \
+  'db.yml runs the change-point analyzer over the seeded corpus'
 
 # It reads the library out of the installed dependency, so the job has to install and
 # build. Without the build the check cannot load the configuration that decides the

@@ -1182,6 +1182,17 @@
 > arithmetic is refused, the history is append-only, and a factor that is not its latest history
 > row's is refused at commit (`analyzer_calibration_traces`) — no factor changes without a trail.
 >
+> [#509](https://github.com/NobuData/ouroboros/issues/509) (BU.4) seeds the page those three built
+> for, and plants the **corpus** rather than the answers:
+> [`R__dev_seed_workspace_metrics_analyzer.sql`](migrations/R__dev_seed_workspace_metrics_analyzer.sql)
+> is ninety days of helios-firmware builds, log tails, merges, waivers and pool windows, with mockup
+> 18's three duration shifts in the data. BV.2's own change-point analyzer, run over it by
+> [`tests/verify-analyzer-rediscovery.sh`](tests/verify-analyzer-rediscovery.sh), must emit exactly
+> the findings the seed stored; every pattern figure is computed from the rows; and
+> [`tests/analyzer-invariants.sql`](tests/analyzer-invariants.sql) with
+> [`tests/verify-analyzer-invariants.sh`](tests/verify-analyzer-invariants.sh) are its red-then-green
+> probes — see [What it could have done better](#what-it-could-have-done-better).
+>
 > [#436](https://github.com/NobuData/ouroboros/issues/436) (BI.5) seeds the page those four built
 > for: [`R__dev_seed_workspace_metrics.sql`](migrations/R__dev_seed_workspace_metrics.sql) is
 > ninety days of `metric_daily` in which **components are seeded and every value is computed**,
@@ -1778,7 +1789,9 @@ trend the way the mockup's sparklines do. `tests/seed.sql` re-derives each of th
 Where another seed already holds the source plane, the history is **reconciled** with it:
 the intervention bars for the last 30 days *are* `intervention_cause_daily` over #434's twenty
 events; builds and tests are the farm's and test plane's own rows **plus** the ledger's extras, so
-no seeded count is ever below what those seeds store and today is exactly theirs. The rest
+no seeded count is ever below what those seeds store and today is exactly theirs. Since
+[#509](https://github.com/NobuData/ouroboros/issues/509) the extra builds are rows as well — the
+Build Analyzer seed writes them — so a build day is exactly its rows. The rest
 (throughput, cost, cycle, effort, DORA) are summaries, because their source planes hold days of
 history, not months. The seed's header tabulates each boundary, and the places the source planes
 overrule the mockup. The 30-day intervention count is 20, not `2/wk`. The suites are
@@ -1800,7 +1813,48 @@ band, **89%**. Four of those loops are `standard-fix`, which keeps mockup 05's *
 runs* true at 26 of 62. `metric_rollup_state` is written through yesterday for every extractor
 family, so ouroboros-rest's first tick does not backfill over the history. Its hourly tail still
 re-fills today from the source planes, which replaces the summarised families' today until the
-seed is re-applied. It sorts last, after every seed it reads.
+seed is re-applied. It sorts after every seed it reads; only the Build Analyzer seed, whose
+builds its ledger counts, follows it.
+
+#### What it could have done better
+
+[`R__dev_seed_workspace_metrics_analyzer.sql`](migrations/R__dev_seed_workspace_metrics_analyzer.sql)
+([#509](https://github.com/NobuData/ouroboros/issues/509)) is mockup 18's Build Analyzer — and the
+one seed whose findings have to be *rediscoverable*. A finding that says *"Jun 22, −2m 10s, ccache
+enabled"* proves nothing if it was typed, so the seed's substance is the **corpus**: 1,270
+helios-firmware builds over the eighty-nine days before today (`#10001`–`#11270`), which with the
+farm seed's fourteen of the prior week are the strip's **1,284 builds**. A per-day `plan` of
+components — zephyr builds and failures, native_sim/qemu pairs, the HIL sweep, the day's main
+builds — expands into rows by formula. Mockup 18's *today* is Aug 8, so its May 18, Jun 22 and
+Jul 30 are **82, 47 and 9 days ago**.
+
+| The page | From the rows |
+|---|---|
+| The duration curve and its three chips | each day's firmware builds sit around a level that steps 252 → 342 → 212 → 252 s; the merge first built on main that day is the anchor, with near misses (an image bump, standard-fix v5 and v9, a typo fix, a CAN tweak, four farm merges) in reach |
+| `7.2% … fixture timeout (31 builds)` · `ccache #1412 in 118 builds` | lines in the builds' log tails (`build_log_chunks`) — 31 of 430 OTA failure lines; 118 cached builds |
+| `0 of 1,284 builds toggled them; 4 … drift` | no build command sets the twelve options; four tails carry Kconfig's drift warning |
+| `78%→31% for ~6h … (14 occurrences)`, `~20%` | `ccache_stats` inside and outside six hours after each `deps: refresh west manifest` merge |
+| `11 of last 14 weekdays`, `idle 82%` | pool-a's longest wait queued 14:00–16:00 each weekday; pool-b's HIL sweeps' overlap with it |
+| `0 unique failures in 214 builds; HIL caught 9` | per commit, a stage's failure no other stage shared — all nine on merge-queue refs |
+| `3 verification waivers in 60 days` | three thermal `pr_waivers` on helios-firmware loops, 33–57 days back |
+| BA-1…BA-4, `est. total ~1.5 days` | four `ticket_draft` suggestions drafted into a `build-analyzer-v1` batch, sized by `heuristic-v0`: 660 + 120 + 1 020 + 360 minutes |
+| Predicted vs measured | the run before (38 days ago) proposed *Test-suite split* and *ccache warm-up*; both were applied, measured (V085's verdicts: delivered, under) and `recalibrate_analyzer()` turned the miss into the cache model's **0.6545** — which is why the re-warm card's raw −168 s reads −1m 50s |
+
+`tests/seed.sql` re-derives every figure above from the rows by its own queries and compares it
+with what the finding stored. Three numbers are **stored**, and the header says why: *34%*,
+*3.1× (21 cases)* and *18% → 42%* are loop-stage, flake and per-step-timing correlations whose
+planes are not seeded at that scale (decision B6 keeps builds unattributed to loops); likewise
+the manifest's *312 loops* and *4.1M log lines*, with the log source recorded as sampled. The
+provenance is `deterministic analyzers v1` and `llm_cost_cents` is null on both runs — no model
+ran, so no `$` (decision A3).
+
+**It is the shared universe's corpus, not a parallel one.** Each day's builds and failures are
+exactly the insights ledger's *extra builds* (whose days 30–87 gained 115 so the ninety days hold
+1,284), its main-branch successes are that day's DORA deploys, and the HIL sweeps' lengths keep
+the farm's prior-week mean at 290 s whatever weekday the seed runs on. The farm's *without the day
+window* near misses are now asserted over its own jobs. It is named `workspace_metrics_analyzer`
+to **sort after** the insights seed, which computes its history from the farm before these rows
+exist.
 
 #### Where a team starts
 
@@ -2004,6 +2058,8 @@ PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
   -v ON_ERROR_STOP=1 -f ouroboros-db/tests/planning-invariants.sql
 PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
   -v ON_ERROR_STOP=1 -f ouroboros-db/tests/insights-invariants.sql
+PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros \
+  -v ON_ERROR_STOP=1 -f ouroboros-db/tests/analyzer-invariants.sql
 ```
 
 [`tests/planning-invariants.sql`](tests/planning-invariants.sql) is the same arrangement for
@@ -2014,7 +2070,10 @@ reads the rows the database holds and the catalogue, so it is green against AK.4
 planning rows are sound. [`tests/insights-invariants.sql`](tests/insights-invariants.sql) does the
 same for BI.5's ([#436](https://github.com/NobuData/ouroboros/issues/436)) rollup probes, kept in
 [`tests/lib/insights-invariants.sql`](tests/lib/insights-invariants.sql), against the insights
-seed's ninety days.
+seed's ninety days, and [`tests/analyzer-invariants.sql`](tests/analyzer-invariants.sql) for BU.4's
+([#509](https://github.com/NobuData/ouroboros/issues/509)), kept in
+[`tests/lib/analyzer-invariants.sql`](tests/lib/analyzer-invariants.sql), against the Build
+Analyzer seed's runs.
 
 `constraints.sql` creates its own fixtures inside a transaction and rolls back, so it
 leaves no rows behind — including the seed's, which it clears and restores so its counts
@@ -2197,6 +2256,37 @@ naming the invariant.
 PGPASSWORD=ouroboros OURO_DB_NAME=ouroboros ouroboros-db/tests/verify-insights-invariants.sh
 ```
 
+### Proving the analyzer invariants read the rows
+
+[`tests/verify-analyzer-invariants.sh`](tests/verify-analyzer-invariants.sh) is
+[#509](https://github.com/NobuData/ouroboros/issues/509)'s *"every probe is verified
+red-then-green"*, the same shape again. It requires `analyzer-invariants.sql` to be green, then
+removes one rule at a time — or switches off the trigger that is it — and writes the row that rule
+refused: a finding typed outside the seven families, a suggestion kind no card has, an applied
+suggestion with no audit event, evidence naming a build that does not exist, a confidence of 140,
+a prediction rewritten after the apply, a verdict that is not its arithmetic, a `$2.86` on a
+deterministic run, a calibration factor typed by hand and an identity nothing derives. Each run
+must fail naming the invariant.
+
+```bash
+PGPASSWORD=ouroboros OURO_DB_NAME=ouroboros ouroboros-db/tests/verify-analyzer-invariants.sh
+```
+
+### Proving the analyzer rediscovers the seed
+
+[`tests/verify-analyzer-rediscovery.sh`](tests/verify-analyzer-rediscovery.sh) reads the corpus out
+of the seeded database in the engine's `Corpus` shape
+([`tests/lib/analyzer-corpus.sql`](tests/lib/analyzer-corpus.sql) — the read shape BV.1's reader
+must produce for `change_point`), runs BV.2's `ChangePointAnalyzer` over it under
+`ouroboros-engine`'s locked environment ([`tests/lib/rediscover.py`](tests/lib/rediscover.py)), and
+requires exactly the three findings the seed stored — dates, deltas, the ranked candidates with
+every score, the evidence, the confidence and its basis — with each anchor out-ranking its near
+misses. It then tampers one stored delta and requires the comparison to refuse it. It needs `uv`.
+
+```bash
+PGPASSWORD=ouroboros OURO_DB_NAME=ouroboros ouroboros-db/tests/verify-analyzer-rediscovery.sh
+```
+
 ### Proving the guard is a guard
 
 `constraints.sql` is one session inside one transaction, and CG.3's delete guard
@@ -2357,6 +2447,9 @@ misnamed migration is worth reporting before a database is waited on.
 | `tests/verify-planning-invariants.sh` | That those go red on a planted cycle, reversed or half-null month range, duplicate local key, bad push state, tint, status or endpoint, naming the invariant ([#276](https://github.com/NobuData/ouroboros/issues/276)) | yes (rolled back) |
 | `tests/insights-invariants.sql` | The rollup invariants mockup 15 trusts, against the *seeded* history — grain, components, registry, vocabularies, meta shapes ([#436](https://github.com/NobuData/ouroboros/issues/436)) | no |
 | `tests/verify-insights-invariants.sh` | That each of those goes red when its rule is removed and the refused row written, naming the invariant ([#436](https://github.com/NobuData/ouroboros/issues/436)) | yes (rolled back) |
+| `tests/analyzer-invariants.sql` | The Build Analyzer invariants mockup 18 trusts, against the *seeded* runs — vocabularies, lifecycle, evidence, confidence, write-once predictions, verdicts, factors, no LLM cost, identity ([#509](https://github.com/NobuData/ouroboros/issues/509)) | no |
+| `tests/verify-analyzer-invariants.sh` | That each of those goes red when its rule is removed and the refused row written, naming the invariant ([#509](https://github.com/NobuData/ouroboros/issues/509)) | yes (rolled back) |
+| `tests/verify-analyzer-rediscovery.sh` | That BV.2's change-point analyzer, run over the seeded corpus, emits exactly the seeded change-point findings ([#509](https://github.com/NobuData/ouroboros/issues/509)) — after `uv sync --locked` in `ouroboros-engine` | no |
 | `tests/registry-invariants.sql` | The registry rules again, against the *seeded* database — and `tests/seed.sql` a second time to say it survived them ([#583](https://github.com/NobuData/ouroboros/issues/583)) | yes (that one) |
 
 The drift check is the one step that needs a Node toolchain, which is why the job installs
@@ -2668,7 +2761,8 @@ ouroboros-db/
 │   ├── R__dev_seed_workflows.sql     # mockup 04's studio — five workflows, standard-fix at v14, dev only — #136 (sorts after the above)
 │   ├── R__dev_seed_workspace_interventions.sql # mockup 15 — twenty intervention events, 8/5/4/2/1, from source records, dev only — #434 (sorts after test_results)
 │   ├── R__dev_seed_workspace_knowledge.sql # mockup 14 — skills, facts, playbooks, env recipe, injection records, dev only — #409
-│   ├── R__dev_seed_workspace_metrics.sql # mockup 15 — ninety days of metric_daily from components, nine graded merges, dev only — #436 (sorts last)
+│   ├── R__dev_seed_workspace_metrics.sql # mockup 15 — ninety days of metric_daily from components, nine graded merges, dev only — #436
+│   ├── R__dev_seed_workspace_metrics_analyzer.sql # mockup 18 — the corpus, two analysis runs, findings, suggestions, measurements, dev only — #509 (sorts last)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
@@ -2677,6 +2771,9 @@ ouroboros-db/
     │   ├── sessions.sh               # the two-session harness the concurrency scripts share — #581, #506
     │   ├── planning-invariants.sql   # the planning invariants, named — included twice — #276
     │   ├── insights-invariants.sql   # the rollup invariants mockup 15 trusts, named — #436
+    │   ├── analyzer-invariants.sql   # the Build Analyzer invariants mockup 18 trusts, named — #509
+    │   ├── analyzer-corpus.sql       # the seeded corpus as the engine's Corpus JSON — #509
+    │   ├── rediscover.py             # runs the change-point analyzer over it and compares — #509
     │   ├── dependency-cycles.sql     # the recursive-CTE walk that finds a stored cycle — #276
     │   └── run-events-jsonl.sql      # the JSONL export's bytes, for mockup 10's transcript — #299
     ├── rehearsal/
@@ -2695,6 +2792,10 @@ ouroboros-db/
     ├── insights-invariants.test.sh   # the insights verifier's usage, and that its pieces agree — #436
     ├── insights-invariants.sql       # the rollup invariants against the seeded history — #436
     ├── verify-insights-invariants.sh # that they go red when a rule is removed, naming it — #436
+    ├── analyzer-invariants.test.sh   # the analyzer verifiers' usage, and that their pieces agree — #509
+    ├── analyzer-invariants.sql       # the Build Analyzer invariants against the seeded runs — #509
+    ├── verify-analyzer-invariants.sh # that they go red when a rule is removed, naming it — #509
+    ├── verify-analyzer-rediscovery.sh # the change-point analyzer rediscovers the seeded chips — #509
     ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
