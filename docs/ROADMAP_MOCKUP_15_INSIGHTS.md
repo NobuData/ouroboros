@@ -762,7 +762,7 @@ mockup is silent; the mockup remains binding where they differ.
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BK.1 | #442 ✅ | 🟢 Done | ouroboros-ui: [BK.1] Chart primitives (SVG) | TimeSeries, HBars, Sparkline, StackedVBars — token-driven (I4) | mvp, insights, ui, design | N (after #46, #16) | Y | L | ouroboros-ui |
-| BK.2 | #443 | 🟡 Open | ouroboros-ui: [BK.2] Insights route, head, range & KPI row | Frame, composed headline, range segment, five KPI cards | mvp, insights, ui, design | N (after #41, BJ.2, BA-D.5) | Y | M | ouroboros-ui |
+| BK.2 | #443 ✅ | 🟢 Done | ouroboros-ui: [BK.2] Insights route, head, range & KPI row | Frame, composed headline, range segment, five KPI cards | mvp, insights, ui, design | N (after #41, BJ.2, BA-D.5) | Y | M | ouroboros-ui |
 | BK.3 | #444 | 🟡 Open | ouroboros-ui: [BK.3] Time-series cards (throughput & cost) | Line/area charts with tooltip, guide, spike label, projections | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
 | BK.4 | #445 | 🟡 Open | ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards | Table + meters + suggestion slot; two hbar cards + insight lines | mvp, insights, ui, design | N (after BK.1, BJ.3) | Y | M | ouroboros-ui |
 | BK.5 | #446 | 🟡 Open | ouroboros-ui: [BK.5] Performance strip, secondary charts & flaky card | Strip, stacked vbars, suite/effort/token hbars, flaky sparklines | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
@@ -812,7 +812,7 @@ mockup is silent; the mockup remains binding where they differ.
 
 ### Issue BK.2 — ouroboros-ui: [BK.2] Insights route, head, range & KPI row
 
-> **GitHub issue:** #443 · **Status:** 🟡 Open · **Parent epic:** #430
+> **GitHub issue:** #443 ✅ · **Status:** 🟢 Done · **Parent epic:** #430
 
 - **Problem Statement:** The frame: a headline composed from live weekly
   data, the range segment driving everything, and five delta-bearing KPI
@@ -1172,7 +1172,7 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BK.2 | #443 | 🟡 Open | Mounts in the shell content pane; navigation via the sidebar **Insights** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
+| BK.2 | #443 ✅ | 🟢 Done | Mounts in the shell content pane; navigation via the sidebar **Insights** entry (CP.2 registry), not a topbar link; in-page subnavs via the CP.4 PageSubnav primitive (sticky within the pane scroll) |
 | BK.1, BK.3–BK.5, BL.2 | rem-based type (CQ.1 tokens); sticky elements stick within the content pane (CP.4); component/state/a11y standards per spec §3 |
 | BK.6 | #447 | 🟡 Open | Gains shell assertions: header/sidebar fixed while this page scrolls, correct sidebar active state, and a font-scale (125%) render check |
 

@@ -13,10 +13,10 @@ const INSIGHTS: NavEntry | undefined = SEEDED_NAV_ENTRIES.find((entry) => entry.
 /**
  * The flaky card's onward link — to insights, **honestly**.
  *
- * Insights is mockup 15 and is not built: its sidebar entry is `soon`, with a note saying so.
- * While it is, the words are drawn as the sidebar draws that entry — said, carrying the note as
- * their tooltip, and not a link to a page that does not exist. The day the entry goes live this
- * becomes a link to it with no edit here, because it reads the entry rather than a copy of it.
+ * Insights is mockup 15, live since #443. While an entry is `soon`, the words are drawn as the
+ * sidebar draws that entry — said, carrying the note as their tooltip, and not a link to a page
+ * that does not exist. The entry went live and this became a link to it with no edit here,
+ * because it reads the entry rather than a copy of it.
  *
  * @param props.watching How many flaky cases the quarantine is watching — zero included, which is
  *   a count the reader is owed as much as one.

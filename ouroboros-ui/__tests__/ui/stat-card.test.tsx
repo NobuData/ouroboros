@@ -153,3 +153,29 @@ describe("mockup 11's additions (#335)", () => {
     expect(screen.getByRole("link", { name: "quarantine watching" })).toHaveAttribute("href", "/insights");
   });
 });
+
+describe("mockup 15's caption that acts (#443)", () => {
+  it("draws the caller's node in the caption's place, and keeps the label as the tile's name", () => {
+    render(
+      <StatCard
+        caption={
+          <button type="button">Median cycle</button>
+        }
+        label="Median cycle"
+        value="14m 20s"
+      />,
+    );
+
+    const tile = screen.getByRole("region", { name: "Median cycle" });
+    expect(tile.querySelector(".ou-stat__label > button")).toHaveTextContent("Median cycle");
+    expect(screen.getByRole("button", { name: "Median cycle" })).toBeInTheDocument();
+  });
+
+  it("draws the label as text when no caption is given, so every other tile is unchanged", () => {
+    render(<StatCard label="Loops live" value="3" />);
+
+    expect(screen.getByRole("region", { name: "Loops live" }).querySelector(".ou-stat__label")?.innerHTML).toBe(
+      "Loops live",
+    );
+  });
+});

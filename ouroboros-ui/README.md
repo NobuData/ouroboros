@@ -3914,6 +3914,48 @@ inert likewise. The gates are the service's, and e2e leg 21 makes each refused c
 head that could not wrap pushed the whole content pane sideways by the select's own width, which
 leg 21's shell assertion found.
 
+## Insights
+
+`/insights` ([#443](https://github.com/NobuData/ouroboros/issues/443)) is
+[`docs/mockups/15-insights.html`](../docs/mockups/15-insights.html)'s **frame**: the page head with
+its composed headline, the range segment, the three head actions and the five KPI cards. The
+charts, the scoreboard and the remaining cards (#444–#447) mount in its grid as they land. The
+sidebar's **Insights** entry is live and leads here, which retires the `/insights` placeholder #49
+held; the mockup's topbar is superseded by the shell, and the page adds no chrome of its own.
+
+```
+INSIGHTS
+27 PRs merged this week. 2 needed a human.      [7d|●30d|90d|custom]  [✦ Build Analyzer SOON]
+Every loop measured: what merged untouched,      [Email weekly digest SOON]  [Send to Slack SOON]
+what it cost, where humans still step in.
+┌ AUTONOMOUS MERGE ┐┌ MERGED W/O HUMAN ┐┌ MEDIAN CYCLE ┐┌ COST PER MERGED PR ┐┌ HUMAN INTERVENTIONS ┐
+│ 92%              ││ 78%              ││ 14m 20s      ││ $1.87              ││ 2/wk                │
+│ ▲ 3pts vs prior  ││ of all merged PRs││ ▼ 2m faster  ││ ▼ $0.41 vs prior   ││ ▼ 5/wk vs prior 30d │
+└──────────────────┘└──────────────────┘└──────────────┘└────────────────────┘└─────────────────────┘
+  each caption is a button ▸ popover: formula · sources · caveats · metric_id · vN
+```
+
+- **One read, one range.** `GET /api/v1/insights?range=` (BJ.2,
+  [#438](https://github.com/NobuData/ouroboros/issues/438)) is the whole page, read on the server
+  for the first paint ([`app/insights/data.ts`](app/insights/data.ts)) and kept fresh by a poll
+  keyed on the range ([`app/insights/insights-store.tsx`](app/insights/insights-store.tsx)), so
+  every region on the page always draws the same window.
+- **The range lives in the address.** `?range=7d|90d` (the default `30d` is the bare `/insights`)
+  is read by the route and written back by the segment with `router.replace`, so a shared link
+  opens on the same range ([`app/insights/range.ts`](app/insights/range.ts)). `custom` is present
+  and inert, its tooltip naming BL.3 (#450).
+- **The headline is composed.** Both numbers are the last seven days whatever the range, and it
+  pluralizes at one and reads a zero week as intentional.
+- **Deltas are coloured by goodness, not sign.** The service sends `trend.good` from each metric's
+  polarity; `▼ 2m faster` is good news and draws as such.
+- **Every KPI label opens its methodology** — the BI.1 registry entry the payload carries — so
+  *Merged w/o human edits* states the I6 definition rather than a copy of it.
+- **The head's actions are honest.** ✦ Build Analyzer (#516), Email weekly digest (#447) and
+  Send to Slack (#536) are inert buttons whose tooltips name the issue that builds them.
+
+Every judgement is a pure function in [`app/insights/view.ts`](app/insights/view.ts), so each
+acceptance criterion is a unit test on a small value.
+
 ## Run console
 
 `/runs/:id` ([#309](https://github.com/NobuData/ouroboros/issues/309)) is

@@ -1,0 +1,266 @@
+/*
+ * Insights (#443) — mockup 15's page frame, head, range segment and KPI row.
+ *
+ * The mockup is docs/mockups/15-insights.html over docs/mockups/assets/ouroboros.css. What is
+ * taken from it is the anatomy the design system requires of every module page
+ * (docs/DESIGN_SYSTEM_APP_SHELL.md § 2): page head, then the twelve-column card grid, at the
+ * pane's own measure. What is not taken from it is the topbar — this page renders inside the app
+ * shell (#41) and adds no fixed or sticky chrome of its own, so the header and the sidebar stay
+ * put while the pane scrolls.
+ *
+ * The buttons, the eyebrow, the banner's box and the stat tile are the primitives in `app/ui/`.
+ * What stays here is what belongs to this page: the gutter rhythm, the head, the range segment,
+ * the grid and its breakpoints, the mark an unbuilt action carries, and the methodology popover.
+ *
+ * Held to the two rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a token
+ * from app/tokens.css, which is what makes both palettes one sheet, and every length that should
+ * follow the reader's font-size preference is rem, which is what makes the 125% step correct.
+ * Media-query widths are the exception, for the reason app/shell/shell.css sets out.
+ */
+
+/* ---------- the page frame ---------- */
+
+.insights {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.insights__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+/* The floor keeps the composed headline from being squeezed beside the segment and actions. */
+.insights__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.insights__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+  /* The counts are live: tabular digits keep `9 PRs` → `10 PRs` from jittering. */
+  font-variant-numeric: tabular-nums;
+}
+
+.insights__sub {
+  max-width: 64ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.insights__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+/* The mark an unbuilt action carries in its text — the farm head's treatment of the same thing. */
+.insights__soon {
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* ---------- the range segment ---------- */
+
+/* Mockup 15's `.seg`: a hairline well holding four mono options. */
+.insights-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  padding: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--surface);
+}
+
+.insights-seg__option {
+  padding: var(--sp-2) var(--sp-6);
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.insights-seg__option:hover {
+  color: var(--ink);
+}
+
+/* The mockup's active treatment: the accent fill, its ink on top. */
+.insights-seg__option--selected {
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-weight: 500;
+}
+
+.insights-seg__option--selected:hover {
+  color: var(--accent-ink);
+}
+
+/* `custom` reads as unavailable, keeps its tooltip, and never looks pressed. */
+.insights-seg__option[aria-disabled="true"] {
+  color: var(--ink-faint);
+  cursor: not-allowed;
+}
+
+/* ---------- the stale-data banner ---------- */
+
+.insights-stale {
+  margin-bottom: var(--sp-8);
+}
+
+/* ---------- the grid ---------- */
+
+.insights__grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-8);
+}
+
+/* A range switch in flight: the old range's figures stay, drawn quieter until the new ones land. */
+.insights__grid--pending {
+  opacity: 0.6;
+  transition: opacity 120ms ease;
+}
+
+/* The mockup's `c-2`: the three narrow KPI cards. */
+.insights-col--2 {
+  grid-column: span 2;
+  min-width: 0;
+}
+
+/* The mockup's `c-3`: the two KPI cards whose figures carry a unit. */
+.insights-col--3 {
+  grid-column: span 3;
+  min-width: 0;
+}
+
+/*
+ * The mockup's steps. Five cards in a row need its full width; narrower, they pair, then stack,
+ * so a narrow pane shows readable cards rather than five crushed ones.
+ */
+@media (max-width: 68.75rem) {
+  .insights-col--2,
+  .insights-col--3 {
+    grid-column: span 4;
+  }
+}
+
+@media (max-width: 52rem) {
+  .insights-col--2,
+  .insights-col--3 {
+    grid-column: span 6;
+  }
+}
+
+@media (max-width: 40rem) {
+  .insights__grid > * {
+    grid-column: span 12;
+  }
+
+  .insights {
+    padding-inline: var(--sp-6);
+  }
+}
+
+/* ---------- the KPI cards and their methodology popover ---------- */
+
+/* The card is the popover's positioning context, so it opens under the label it belongs to. */
+.insights-kpi {
+  position: relative;
+}
+
+.insights-kpi__caption {
+  display: inline-flex;
+}
+
+/*
+ * The label is a button that looks like the caption it replaces: the caption's own type comes
+ * from `.ou-stat__label` around it; this removes the button's chrome and adds the dotted rule
+ * that says *there is more here*.
+ */
+.insights-kpi__label {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: var(--sp-1);
+  cursor: help;
+}
+
+.insights-kpi__label:hover,
+.insights-kpi__label[aria-expanded="true"] {
+  color: var(--ink-dim);
+}
+
+/*
+ * Drawn over the cards beside and below, so the row's geometry never moves when it opens. The
+ * caption's uppercase mono is reset: the popover is prose.
+ */
+.insights-kpi__popover {
+  position: absolute;
+  top: calc(100% - var(--sp-4));
+  left: var(--sp-6);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(22rem, 80vw);
+  padding: var(--sp-6) var(--sp-7);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--surface);
+  box-shadow: 0 var(--sp-4) var(--sp-10) var(--scrim);
+  color: var(--ink-dim);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  letter-spacing: normal;
+  line-height: var(--lh-body);
+  text-transform: none;
+}
+
+.insights-kpi__popover-title {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+.insights-kpi__popover-heading {
+  margin-top: var(--sp-2);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.insights-kpi__popover-text {
+  color: var(--ink-dim);
+}
+
+.insights-kpi__popover-version {
+  margin-top: var(--sp-2);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
