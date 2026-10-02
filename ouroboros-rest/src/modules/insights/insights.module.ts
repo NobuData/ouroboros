@@ -28,6 +28,11 @@
  * flakes plane's card read (`FlakesModule`) and the workspace's provider caps. {@link
  * InsightsPageService} is exported so the email digest (#440) is assembled from the same payload
  * and inherits its honesty rules rather than re-deriving a number.
+ *
+ * BJ.4 ([#440](https://github.com/NobuData/ouroboros/issues/440)) adds that digest (`digest/`):
+ * per-person opt-in subscriptions, a weekly slot per workspace, a run that assembles the 7-day
+ * page once and mails it through `MailModule`'s mailer, an unsubscribe link that needs no
+ * session, and the send audit. It reads no metric of its own.
  */
 
 import { Module } from "@nestjs/common";
@@ -35,10 +40,17 @@ import { ScheduleModule } from "@nestjs/schedule";
 
 import { DbModule } from "../db/db.module";
 import { FlakesModule } from "../flakes/flakes.module";
+import { MailModule } from "../mail/mail.module";
 import { CalibrationController } from "./calibration.controller";
 import { CALIBRATION_MERGE_OBSERVER } from "./calibration.observer";
 import { CalibrationRepository } from "./calibration.repository";
 import { CalibrationService } from "./calibration.service";
+import { DigestController } from "./digest/digest.controller";
+import { DigestRepository } from "./digest/digest.repository";
+import { DigestRunner } from "./digest/digest.runner";
+import { DigestScheduler } from "./digest/digest.scheduler";
+import { DigestService } from "./digest/digest.service";
+import { DigestUnsubscribeController } from "./digest/digest.unsubscribe.controller";
 import { InterventionsController } from "./interventions.controller";
 import { InterventionRepository } from "./interventions.repository";
 import { InterventionsService } from "./interventions.service";
@@ -56,8 +68,14 @@ import { ScoreboardRepository } from "./scoreboard/scoreboard.repository";
 import { ScoreboardService } from "./scoreboard/scoreboard.service";
 
 @Module({
-  imports: [DbModule, FlakesModule, ScheduleModule.forRoot()],
-  controllers: [CalibrationController, InterventionsController, InsightsPageController],
+  imports: [DbModule, FlakesModule, MailModule, ScheduleModule.forRoot()],
+  controllers: [
+    CalibrationController,
+    InterventionsController,
+    InsightsPageController,
+    DigestController,
+    DigestUnsubscribeController,
+  ],
   providers: [
     CalibrationRepository,
     CalibrationService,
@@ -77,6 +95,10 @@ import { ScoreboardService } from "./scoreboard/scoreboard.service";
     ScoreboardService,
     InsightsPageRepository,
     InsightsPageService,
+    DigestRepository,
+    DigestService,
+    DigestRunner,
+    DigestScheduler,
   ],
   exports: [CALIBRATION_MERGE_OBSERVER, MetricsService, ScoreboardService, InsightsPageService],
 })

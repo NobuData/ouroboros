@@ -29075,6 +29075,286 @@ select pg_temp.must_reject(
   'local tokens are not broken out', 'metric_daily_shape_guard');
 
 -- ===========================================================================
+-- V084 — the weekly Insights email: subscriptions, schedule, runs and sends (#440, BJ.4)
+-- ===========================================================================
+--
+-- In the order a digest happens: a person opts in (a row, one per workspace and person); the
+-- workspace has a weekly slot; a slot is claimed as a run exactly once and its content is set
+-- once; each recipient is claimed before the mail leaves and settled once. Then what the
+-- service role may do, and what removing a person or a workspace leaves behind.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v084',       'Digest Works', 'digest-works-v084', now()),
+  ('org-v084-other', 'Other Works',  'other-works-v084',  now());
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('user-v084',   'Ken V084',  'ken@digest-v084.example',  true),
+  ('user-v084-b', 'Maya V084', 'maya@digest-v084.example', true);
+
+-- --- Subscriptions: opt-in is a row ---------------------------------------------------
+
+insert into ouroboros.insights_digest_subscriptions (organization_id, user_id) values
+  ('org-v084',       'user-v084'),
+  ('org-v084-other', 'user-v084');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.insights_digest_subscriptions where user_id = 'user-v084'),
+  'a person subscribes to each workspace on its own');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_subscriptions (organization_id, user_id)
+    values ('org-v084', 'user-v084')$$,
+  'a person is subscribed to a workspace once', 'insights_digest_subscriptions_member_key');
+
+-- --- The schedule: one weekly slot per workspace, in UTC ---------------------------------
+
+insert into ouroboros.insights_digest_schedules (organization_id) values ('org-v084');
+
+select pg_temp.must_hold(
+  (select weekly_day = 1 and weekly_time = '09:00' from ouroboros.insights_digest_schedules
+    where organization_id = 'org-v084'),
+  'a schedule row defaults to Monday 09:00');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_schedules (organization_id) values ('org-v084')$$,
+  'a workspace has one digest schedule', 'insights_digest_schedules_pkey');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_schedules set weekly_day = 8
+     where organization_id = 'org-v084'$$,
+  'a digest weekday is an ISO day of week', 'insights_digest_schedules_weekly_day_range');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_schedules set weekly_day = 0
+     where organization_id = 'org-v084'$$,
+  'a digest weekday is never zero', 'insights_digest_schedules_weekly_day_range');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_schedules set weekly_time = '09:00:30'
+     where organization_id = 'org-v084'$$,
+  'a digest time is a whole minute', 'insights_digest_schedules_weekly_time_minute');
+
+update ouroboros.insights_digest_schedules
+   set weekly_day = 5, weekly_time = '16:30', updated_by = 'user-v084'
+ where organization_id = 'org-v084';
+
+-- --- Runs: a slot is claimed once, and its content is set once ---------------------------
+
+insert into ouroboros.insights_digest_runs (id, organization_id, slot_at) values
+  ('a8400000-0000-4000-8000-000000000001', 'org-v084',       '2026-09-28 09:00+00'),
+  ('a8400000-0000-4000-8000-000000000002', 'org-v084-other', '2026-09-28 09:00+00');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_runs (organization_id, slot_at)
+    values ('org-v084', '2026-09-28 09:00+00')$$,
+  'a slot is claimed by one run', 'insights_digest_runs_slot_key');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_runs set content = '{"empty": true}'
+     where id = 'a8400000-0000-4000-8000-000000000001'$$,
+  'content arrives with its window and version', 'insights_digest_runs_assembled_together');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_runs set completed_at = now()
+     where id = 'a8400000-0000-4000-8000-000000000001'$$,
+  'a run that never assembled cannot be complete', 'insights_digest_runs_complete_has_content');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_runs
+       set content = '[]', window_from = '2026-09-22', window_to = '2026-09-28', content_version = 1
+     where id = 'a8400000-0000-4000-8000-000000000001'$$,
+  'a run''s content is an object', 'insights_digest_runs_content_object');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_runs
+       set content = '{}', window_from = '2026-09-28', window_to = '2026-09-22', content_version = 1
+     where id = 'a8400000-0000-4000-8000-000000000001'$$,
+  'a run''s window runs forwards', 'insights_digest_runs_window_ordered');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_runs
+       set content = '{}', window_from = '2026-09-22', window_to = '2026-09-28', content_version = 0
+     where id = 'a8400000-0000-4000-8000-000000000001'$$,
+  'a content version starts at one', 'insights_digest_runs_content_version_positive');
+
+update ouroboros.insights_digest_runs
+   set content = '{"empty": false}', window_from = '2026-09-22', window_to = '2026-09-28',
+       content_version = 1
+ where id = 'a8400000-0000-4000-8000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_runs set content = '{"empty": true}'
+     where id = 'a8400000-0000-4000-8000-000000000001'$$,
+  'assembled content is never revised', 'insights_digest_runs_guard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_runs set window_to = '2026-09-29'
+     where id = 'a8400000-0000-4000-8000-000000000001'$$,
+  'an assembled window is never revised', 'insights_digest_runs_guard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_runs set slot_at = '2026-10-05 09:00+00'
+     where id = 'a8400000-0000-4000-8000-000000000001'$$,
+  'a run cannot move to another slot', 'insights_digest_runs_guard');
+
+-- --- Sends: claimed before the mail leaves, settled once --------------------------------
+
+insert into ouroboros.insights_digest_sends
+  (id, organization_id, run_id, user_id, recipient, attempt, message_id, unsubscribe_token_hash)
+values
+  ('a8400000-0000-4000-8000-000000000011', 'org-v084', 'a8400000-0000-4000-8000-000000000001',
+   'user-v084', 'ken@digest-v084.example', 1, '<run-1.user-v084@digest.example>', repeat('a', 64));
+
+select pg_temp.must_hold(
+  (select status = 'claimed' and settled_at is null and error is null
+     from ouroboros.insights_digest_sends where id = 'a8400000-0000-4000-8000-000000000011'),
+  'a send starts as a claim');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_sends
+      (organization_id, run_id, user_id, recipient, attempt, message_id, unsubscribe_token_hash)
+    values ('org-v084', 'a8400000-0000-4000-8000-000000000001', 'user-v084',
+            'ken@digest-v084.example', 1, '<m@digest.example>', repeat('b', 64))$$,
+  'one attempt at one person in one run is claimed once', 'insights_digest_sends_attempt_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_sends
+      (organization_id, run_id, user_id, recipient, attempt, message_id, unsubscribe_token_hash)
+    values ('org-v084', 'a8400000-0000-4000-8000-000000000001', 'user-v084-b',
+            'maya@digest-v084.example', 1, '<m@digest.example>', repeat('a', 64))$$,
+  'an unsubscribe token belongs to one send', 'insights_digest_sends_token_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_sends
+      (organization_id, run_id, user_id, recipient, attempt, message_id, unsubscribe_token_hash)
+    values ('org-v084', 'a8400000-0000-4000-8000-000000000002', 'user-v084',
+            'ken@digest-v084.example', 1, '<m@digest.example>', repeat('c', 64))$$,
+  'a send cannot name another workspace''s run', 'insights_digest_sends_run_fkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_sends
+      (organization_id, run_id, user_id, recipient, attempt, message_id, unsubscribe_token_hash)
+    values ('org-v084', 'a8400000-0000-4000-8000-000000000001', 'user-v084-b',
+            'maya@digest-v084.example', 1, '<m@digest.example>', 'not-a-hash')$$,
+  'a token hash is sixty-four hex characters', 'insights_digest_sends_token_hash_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_sends
+      (organization_id, run_id, user_id, recipient, attempt, status, settled_at, message_id,
+       unsubscribe_token_hash)
+    values ('org-v084', 'a8400000-0000-4000-8000-000000000001', 'user-v084-b',
+            'maya@digest-v084.example', 1, 'queued', now(), '<m@digest.example>', repeat('d', 64))$$,
+  'a send is claimed, sent or failed', 'insights_digest_sends_status_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_sends
+      (organization_id, run_id, user_id, recipient, attempt, status, message_id, unsubscribe_token_hash)
+    values ('org-v084', 'a8400000-0000-4000-8000-000000000001', 'user-v084-b',
+            'maya@digest-v084.example', 1, 'sent', '<m@digest.example>', repeat('d', 64))$$,
+  'a settled send says when', 'insights_digest_sends_settled_stamped');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_sends
+      (organization_id, run_id, user_id, recipient, attempt, status, settled_at, message_id,
+       unsubscribe_token_hash)
+    values ('org-v084', 'a8400000-0000-4000-8000-000000000001', 'user-v084-b',
+            'maya@digest-v084.example', 1, 'failed', now(), '<m@digest.example>', repeat('d', 64))$$,
+  'a failed send says why', 'insights_digest_sends_error_on_failure');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_sends
+      (organization_id, run_id, user_id, recipient, attempt, message_id, unsubscribe_token_hash)
+    values ('org-v084', 'a8400000-0000-4000-8000-000000000001', 'user-v084-b',
+            'maya@digest-v084.example', 0, '<m@digest.example>', repeat('d', 64))$$,
+  'attempts count from one', 'insights_digest_sends_attempt_positive');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.insights_digest_sends
+      (organization_id, run_id, user_id, recipient, attempt, message_id, unsubscribe_token_hash)
+    values ('org-v084', 'a8400000-0000-4000-8000-000000000001', 'user-v084-b',
+            '  ', 1, '<m@digest.example>', repeat('d', 64))$$,
+  'a send names its recipient', 'insights_digest_sends_recipient_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_sends set recipient = 'elsewhere@digest-v084.example'
+     where id = 'a8400000-0000-4000-8000-000000000011'$$,
+  'a claim''s recipient cannot be rewritten', 'insights_digest_sends_guard');
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_sends
+       set status = 'failed', settled_at = now(), error = 'x', unsubscribe_token_hash = repeat('e', 64)
+     where id = 'a8400000-0000-4000-8000-000000000011'$$,
+  'settling a claim cannot swap its token', 'insights_digest_sends_guard');
+
+update ouroboros.insights_digest_sends
+   set status = 'failed', settled_at = now(), error = 'connection refused'
+ where id = 'a8400000-0000-4000-8000-000000000011';
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_sends set status = 'sent', error = null
+     where id = 'a8400000-0000-4000-8000-000000000011'$$,
+  'a settled send is settled once', 'insights_digest_sends_guard');
+
+-- The retry is the next attempt, with a token of its own.
+insert into ouroboros.insights_digest_sends
+  (id, organization_id, run_id, user_id, recipient, attempt, message_id, unsubscribe_token_hash)
+values
+  ('a8400000-0000-4000-8000-000000000012', 'org-v084', 'a8400000-0000-4000-8000-000000000001',
+   'user-v084', 'ken@digest-v084.example', 2, '<run-1.user-v084@digest.example>', repeat('f', 64));
+
+update ouroboros.insights_digest_sends set status = 'sent', settled_at = now()
+ where id = 'a8400000-0000-4000-8000-000000000012';
+
+update ouroboros.insights_digest_runs set completed_at = now()
+ where id = 'a8400000-0000-4000-8000-000000000001';
+
+select pg_temp.must_reject(
+  $$update ouroboros.insights_digest_runs set completed_at = null
+     where id = 'a8400000-0000-4000-8000-000000000001'$$,
+  'a completed run stays completed', 'insights_digest_runs_guard');
+
+-- --- The service role ---------------------------------------------------------------
+
+set local role ouroboros_app;
+insert into ouroboros.insights_digest_subscriptions (organization_id, user_id)
+values ('org-v084', 'user-v084-b');
+delete from ouroboros.insights_digest_subscriptions
+ where organization_id = 'org-v084' and user_id = 'user-v084-b';
+update ouroboros.insights_digest_schedules set weekly_day = 1 where organization_id = 'org-v084';
+select pg_temp.must_hold(
+  (select count(*) = 2 from ouroboros.insights_digest_sends where organization_id = 'org-v084'),
+  'the service subscribes, unsubscribes, reschedules and reads the send audit');
+reset role;
+
+select pg_temp.must_hold(
+  not has_table_privilege('ouroboros_app', 'ouroboros.insights_digest_subscriptions', 'update')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.insights_digest_runs', 'delete')
+  and not has_table_privilege('ouroboros_app', 'ouroboros.insights_digest_sends', 'delete')
+  and has_table_privilege('ouroboros_app', 'ouroboros.insights_digest_sends', 'update'),
+  'the app role never edits a subscription and never deletes a run or a send');
+
+-- --- Lifecycle ----------------------------------------------------------------
+
+delete from ouroboros."user" where "id" = 'user-v084';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.insights_digest_subscriptions where user_id = 'user-v084')
+  and (select count(*) = 2 and bool_and(user_id is null)
+              and bool_and(recipient = 'ken@digest-v084.example')
+         from ouroboros.insights_digest_sends where organization_id = 'org-v084')
+  and (select updated_by is null from ouroboros.insights_digest_schedules
+        where organization_id = 'org-v084'),
+  'removing a person ends their subscriptions and forgets who, while the send audit keeps where the mail went');
+
+delete from ouroboros."user" where "id" = 'user-v084-b';
+delete from ouroboros.organization where "id" in ('org-v084', 'org-v084-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.insights_digest_subscriptions where organization_id like 'org-v084%')
+  and not exists (select 1 from ouroboros.insights_digest_schedules where organization_id like 'org-v084%')
+  and not exists (select 1 from ouroboros.insights_digest_runs where organization_id like 'org-v084%')
+  and not exists (select 1 from ouroboros.insights_digest_sends where organization_id like 'org-v084%'),
+  'a deleted workspace takes its subscriptions, schedule, runs and sends with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

@@ -497,7 +497,7 @@ seeds: 30d × all families ─▶ every mockup number reproduced · Aug-4 toolti
 | BJ.1 | #437 ✅ | 🟢 Done | ouroboros-rest: [BJ.1] Windowed metrics service | Range + prior-delta over rollups + live tail; registry-driven (I1–I3) | mvp, insights, rest | N (after BI.2) | Y | L | ouroboros-rest |
 | BJ.2 | #438 ✅ | 🟢 Done | ouroboros-rest: [BJ.2] Insights read APIs | KPIs, series, hbar sets, scoreboard, flaky, DORA payloads | mvp, insights, rest | N (after BJ.1, BI.3) | Y | M | ouroboros-rest |
 | BJ.3 | #439 ✅ | 🟢 Done | ouroboros-rest: [BJ.3] Model scoreboard aggregation | Task×model outcomes: untouched %, $/success, trends (I6) | mvp, insights, rest, routing | N (after BJ.1, AW) | Y | M | ouroboros-rest |
-| BJ.4 | #440 | 🟡 Open | ouroboros-rest: [BJ.4] Email digest generation | Weekly registry-rendered digest per subscriber (I9) | mvp, insights, rest | N (after BJ.1, BA-E.3 mailer) | Y | M | ouroboros-rest |
+| BJ.4 | #440 ✅ | 🟢 Done | ouroboros-rest: [BJ.4] Email digest generation | Weekly registry-rendered digest per subscriber (I9) | mvp, insights, rest | N (after BJ.1, BA-E.3 mailer) | Y | M | ouroboros-rest |
 | BJ.5 | #441 | 🟡 Open | ouroboros-rest: [BJ.5] Insights integration tests | Parity, deltas, taxonomy, scoreboard, digest, isolation | mvp, insights, rest, ci | N (after BJ.2–BJ.4) | Y | M | ouroboros-rest |
 
 ### Issue BJ.1 — ouroboros-rest: [BJ.1] Windowed metrics service
@@ -669,7 +669,39 @@ implement(fallback) × gpt-5-codex ─▶ 61% · $0.94 · ▼   (+ AB.3 suggesti
 
 ### Issue BJ.4 — ouroboros-rest: [BJ.4] Email digest generation
 
-> **GitHub issue:** #440 · **Status:** 🟡 Open · **Parent epic:** #429
+> **GitHub issue:** #440 ✅ · **Status:** 🟢 Done · **Parent epic:** #429
+
+- **Delivered** (`ouroboros-rest` `src/modules/insights/digest/` and `src/modules/mail/`, 0.38.3;
+  `ouroboros-db` `V084__insights_digest.sql`; `tests/e2e/email/`): a weekly email assembled from
+  the seven-day Insights page and nothing else. `assembleDigest(page)` turns BJ.2's payload into
+  a `DigestAssembly` — KPI row with deltas, top intervention cause with the page's computed line,
+  flaky tests that moved, cost line — and the HTML and plain-text renderers print that object's
+  own strings, so both parts carry the same figures and BZ.2 (#536) can render the same object
+  for chat. The digest directory imports no layer a metric is computed in and its repository
+  reads only its own tables and the people it mails; a spec holds it to that. The page's rules
+  arrive with the payload: an unpriced workspace's mail has tokens and no `$` anywhere, a partly
+  priced week says what its dollar figure leaves out, a proxy metric is marked, and a week with
+  nothing in it is mailed *"Nothing to report this week."* instead of zeroes.
+  **Subscriptions** are per person, per workspace, opt-in (`GET /api/v1/insights/digest`,
+  `PUT …/subscription`); the **schedule** is a weekly UTC slot per workspace, Monday 09:00 until
+  an administrator moves it (`PATCH …/schedule`); `GET …/preview` renders the digest as of now
+  for BK.6's subscribe sheet. The **unsubscribe link** needs no session: a per-send token, kept
+  only as a hash, behind a `GET` that confirms and a `POST` that unsubscribes (also RFC 8058's
+  one-click). **The run** claims a slot by unique key, reads the page once as of the slot, stores
+  the assembly on the run, and claims each recipient before sending — so two replicas cannot mail
+  one person twice, a retry prints the numbers the first attempt did, and the **send audit**
+  (`insights_digest_sends`, with the run's window and content version) describes what was sent.
+  **Decided at implementation** (2026-10-01): the **mailer was built here** rather than waiting
+  for E.3 — a `Mailer` interface, an SMTP transport over `nodemailer`, mailpit in
+  `docker-compose.yml` (`OURO_SMTP_URL`, `OURO_MAIL_FROM`; unset, the deployment sends no mail,
+  says `mail.transport: "none"` and refuses subscriptions). **Org-level notification routes**
+  (the #488 amendment's `weekly_insights` target) are left to #488; this sends to per-user
+  subscribers only. **"Fixture screenshots in major email clients"** are Chromium **client
+  profiles** — 600 px, 360 px, dark colour scheme, `<style>` stripped — over the renderer's
+  golden HTML, compared with committed baselines nightly; they are emulations, not Outlook or
+  Gmail. The dev seed subscribes nobody (opt-in), so the mailpit criterion is proven by an
+  integration suite that sends through a real mailpit and compares each mail with
+  `GET /api/v1/insights?range=7d`.
 
 - **Problem Statement:** "Email weekly digest" must produce a real,
   subscriber-scoped weekly render of this page's truth (decision I9).
@@ -1068,7 +1100,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    INTAKE-K.2 (#100), AT.4 (#332), the E.3 mailer, #41/#46/#16, BA-D.5,
    DASH-I.8 (#87).
 2. **Phase 1 — Domain & rollups:** **BI.1 (#432) ✅** → **BI.2 (#433) ✅** ⊕ { **BI.3 (#434) ✅** ⊕ **BI.4 (#435) ✅** } → **BI.5 (#436) ✅**
-3. **Phase 2 — Services:** **BJ.1 (#437) ✅** → { **BJ.2 (#438) ✅** ⊕ **BJ.3 (#439) ✅** ⊕ BJ.4 (#440) } → BJ.5 (#441)
+3. **Phase 2 — Services:** **BJ.1 (#437) ✅** → { **BJ.2 (#438) ✅** ⊕ **BJ.3 (#439) ✅** ⊕ **BJ.4 (#440) ✅** } → BJ.5 (#441)
 4. **Phase 3 — UI:** BK.1 (#442) ⊕ BK.2 (#443) → { BK.3 (#444) ⊕ BK.4 (#445) ⊕ BK.5 (#446) } → **BK.6 (#447) ✅**
    *(MVP gate, amending #56)*
 5. **v2:** BL.1 (#448) with mockup 19; BL.2 (#449) with AB.3 (#209);

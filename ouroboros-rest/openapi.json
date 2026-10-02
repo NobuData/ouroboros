@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.38.2",
+    "version": "0.38.3",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -7364,6 +7364,484 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/insights/digest": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "The weekly email digest — your subscription and the workspace's schedule",
+        "description": "BJ.4 ([#440](https://github.com/NobuData/ouroboros/issues/440), decision I9) — the state\nbehind the Insights head's **Email weekly digest** action.\n\n**The digest says what the page says.** Once a week, at the workspace's slot, the seven-day\nInsights page (`GET /api/v1/insights?range=7d`) is assembled once and mailed to each\nsubscriber: the KPI row with its deltas, the top intervention cause, the flaky tests that\nmoved and the cost line. Nothing is computed for the email, so it inherits the page's\nrules — dollars only for priced usage, proxy metrics marked, insight lines computed, and\na week with nothing in it says *\"Nothing to report this week\"* rather than printing zeroes.\n\n**Subscription is yours, per workspace, and opt-in.** `subscribed` is false until you ask;\n`recipient` is your account's address. Every mail carries an unsubscribe link that needs\nno sign-in.\n\n**`mail.transport` is `none` on a deployment with no mail server** (`OURO_SMTP_URL`\nunset). The digest is then off, and subscribing is refused rather than accepted into\nsilence.\n\n**Open to every member.** The workspace is the session's.",
+        "operationId": "getInsightsDigest",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The caller's subscription and the workspace's schedule.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsightsDigest"
+                },
+                "example": {
+                  "subscribed": true,
+                  "recipient": "ken@acme-robotics.dev",
+                  "schedule": {
+                    "weeklyDay": 1,
+                    "weeklyTime": "09:00",
+                    "timezone": "UTC",
+                    "nextRunAt": "2026-10-05T09:00:00.000Z"
+                  },
+                  "mail": {
+                    "transport": "smtp"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/insights/digest/subscription": {
+      "put": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Subscribe to, or unsubscribe from, the weekly digest",
+        "description": "Opt **yourself** in or out of this workspace's weekly digest\n([#440](https://github.com/NobuData/ouroboros/issues/440)). The person is the session's —\nnobody is subscribed on another's behalf — and the answer is the state as it now stands.\nAsking twice is asking once.\n\nA subscription starts with the **next** slot: subscribing never triggers a late copy of a\ndigest that already went out.\n\n**Every member**, viewers included: whoever may read Insights may be mailed them.",
+        "operationId": "putInsightsDigestSubscription",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsightsDigestSubscriptionPut"
+              },
+              "example": {
+                "subscribed": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The state after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsightsDigest"
+                },
+                "example": {
+                  "subscribed": true,
+                  "recipient": "ken@acme-robotics.dev",
+                  "schedule": {
+                    "weeklyDay": 1,
+                    "weeklyTime": "09:00",
+                    "timezone": "UTC",
+                    "nextRunAt": "2026-10-05T09:00:00.000Z"
+                  },
+                  "mail": {
+                    "transport": "smtp"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`insights_digest_mail_unconfigured` — this deployment has no mail server, so it cannot\nsend a digest and will not take a subscription to one. Unsubscribing is never refused.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `subscribed` was not a boolean. `details` names the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/insights/digest/schedule": {
+      "patch": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Move the workspace's weekly digest slot",
+        "description": "When this workspace's digest goes out ([#440](https://github.com/NobuData/ouroboros/issues/440)):\nan ISO day of week and a time of day, **in UTC**. Send what changed; a field left out keeps\nits value, and a body carrying nothing changes nothing. A workspace that has never chosen\nuses Monday 09:00.\n\nA digest leaves within a few minutes of its slot. Moving the slot never sends a second\ndigest in a week that already had one.\n\n**`owner` or `admin`.** It changes when everybody's digest arrives.",
+        "operationId": "patchInsightsDigestSchedule",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InsightsDigestSchedulePatch"
+              },
+              "example": {
+                "weeklyDay": 5,
+                "weeklyTime": "16:30"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The state after the change.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsightsDigest"
+                },
+                "example": {
+                  "subscribed": false,
+                  "recipient": "ken@acme-robotics.dev",
+                  "schedule": {
+                    "weeklyDay": 5,
+                    "weeklyTime": "16:30",
+                    "timezone": "UTC",
+                    "nextRunAt": "2026-10-02T16:30:00.000Z"
+                  },
+                  "mail": {
+                    "transport": "smtp"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — you are a member of this workspace and your role does not permit this.\nMoving the workspace's digest schedule is `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `weeklyDay` is not a whole number from 1 (Monday) to 7 (Sunday), or\n`weeklyTime` is not a twenty-four-hour `HH:MM`. `details` names the field.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/insights/digest/preview": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Preview the weekly digest as it would be sent now",
+        "description": "The digest for this workspace as of now ([#440](https://github.com/NobuData/ouroboros/issues/440)):\nits subject, its HTML part and its plain-text part, rendered by the code that sends it —\nwhat the subscribe sheet shows before anybody opts in.\n\nThe figures are `GET /api/v1/insights?range=7d`'s for the same instant. A preview is sent\nto nobody, so it carries no unsubscribe link and says so in its footer.\n\n`html` is a complete document with every style inline and nothing to fetch; show it in a\nsandboxed frame.\n\n**Open to every member.**",
+        "operationId": "getInsightsDigestPreview",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The rendered digest.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InsightsDigestPreview"
+                },
+                "example": {
+                  "subject": "Weekly insights · Acme Robotics · Sep 26 – Oct 2, 2026",
+                  "html": "<!doctype html><html lang=\"en\"><head><title>Weekly insights</title></head><body>21 PRs merged this week. 14 needed a human.</body></html>",
+                  "text": "Weekly insights — Acme Robotics\n\n21 PRs merged this week. 14 needed a human.\n",
+                  "window": {
+                    "from": "2026-09-26",
+                    "to": "2026-10-02"
+                  },
+                  "contentVersion": 1
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/insights/digest/unsubscribe/{token}": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "The page a digest's unsubscribe link opens",
+        "description": "The link at the bottom of every weekly digest\n([#440](https://github.com/NobuData/ouroboros/issues/440)). It answers **an HTML page**, to\na person arriving from a mail.\n\n**No session.** The token in the path is the whole credential: random, minted for one\nsend, kept by this service only as a hash. All it can do is stop that one person's digest\nfor that one workspace, and it does not expire — a mail read months later must still be\nable to stop the next one.\n\n**Opening the link changes nothing.** Mail scanners and link previewers open every link in\na message, so this page only asks; its one button sends the `POST` beside it.",
+        "operationId": "confirmInsightsDigestUnsubscribe",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/InsightsDigestToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The confirmation page, naming the workspace.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "A page saying the link is not valid: the token is malformed, or no digest ever\ncarried it.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "Unsubscribe from the weekly digest, from its link",
+        "description": "Stops the weekly digest for the person the token's mail was sent to\n([#440](https://github.com/NobuData/ouroboros/issues/440)), and answers an HTML page saying\nso. **Idempotent**: a second request answers the same page.\n\n**No session**, for the reason the `GET` gives. The request body is ignored — this is also\nthe request a mail client's own unsubscribe control sends (`List-Unsubscribe-Post:\nList-Unsubscribe=One-Click`, RFC 8058), which the digest advertises when this API is\nserved over https.\n\nSubscribing again is `PUT /api/v1/insights/digest/subscription`, signed in.",
+        "operationId": "unsubscribeInsightsDigest",
+        "security": [],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/InsightsDigestToken"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The page saying the digest has stopped.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "A page saying the link is not valid: the token is malformed, or no digest ever\ncarried it. Nothing was changed.",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
                 }
               }
             }
@@ -29469,6 +29947,16 @@
         },
         "example": "acme-robotics/helios-firmware"
       },
+      "InsightsDigestToken": {
+        "name": "token",
+        "in": "path",
+        "required": true,
+        "description": "The unsubscribe token from a digest mail ([#440](https://github.com/NobuData/ouroboros/issues/440)):\n`ouro_unsub_` and 43 URL-safe characters. Anything else is answered as an invalid link\nwithout a lookup.",
+        "schema": {
+          "type": "string"
+        },
+        "example": "ouro_unsub_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8"
+      },
       "CalibrationWindow": {
         "name": "window",
         "in": "query",
@@ -40157,6 +40645,153 @@
             "items": {
               "$ref": "#/components/schemas/InsightsDoraCell"
             }
+          }
+        }
+      },
+      "InsightsDigest": {
+        "type": "object",
+        "title": "InsightsDigest",
+        "additionalProperties": false,
+        "description": "The weekly email digest as one member sees it (#440): whether they receive it, where it\ngoes, when the workspace's is sent, and whether this deployment can send mail at all.",
+        "required": [
+          "subscribed",
+          "recipient",
+          "schedule",
+          "mail"
+        ],
+        "properties": {
+          "subscribed": {
+            "type": "boolean",
+            "description": "Whether the caller receives this workspace's digest. Opt-in: false until they ask."
+          },
+          "recipient": {
+            "type": "string",
+            "description": "Where the caller's digest goes — their account's address."
+          },
+          "schedule": {
+            "$ref": "#/components/schemas/InsightsDigestSchedule"
+          },
+          "mail": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "transport"
+            ],
+            "properties": {
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "smtp",
+                  "none"
+                ],
+                "description": "How this deployment sends mail. `none` means it cannot — no mail server is\nconfigured — so the digest is off and subscribing is refused."
+              }
+            }
+          }
+        }
+      },
+      "InsightsDigestSchedule": {
+        "type": "object",
+        "title": "InsightsDigestSchedule",
+        "additionalProperties": false,
+        "description": "A workspace's weekly digest slot (#440).",
+        "required": [
+          "weeklyDay",
+          "weeklyTime",
+          "timezone",
+          "nextRunAt"
+        ],
+        "properties": {
+          "weeklyDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO day of week — 1 is Monday, 7 is Sunday."
+          },
+          "weeklyTime": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "description": "Time of day, twenty-four-hour `HH:MM`, in `timezone`."
+          },
+          "timezone": {
+            "type": "string",
+            "enum": [
+              "UTC"
+            ],
+            "description": "Slots are stored and stated in UTC."
+          },
+          "nextRunAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The next slot after now."
+          }
+        }
+      },
+      "InsightsDigestSubscriptionPut": {
+        "type": "object",
+        "title": "InsightsDigestSubscriptionPut",
+        "additionalProperties": false,
+        "description": "The body of `PUT /api/v1/insights/digest/subscription` (#440).",
+        "required": [
+          "subscribed"
+        ],
+        "properties": {
+          "subscribed": {
+            "type": "boolean",
+            "description": "True to receive this workspace's weekly digest, false to stop."
+          }
+        }
+      },
+      "InsightsDigestSchedulePatch": {
+        "type": "object",
+        "title": "InsightsDigestSchedulePatch",
+        "additionalProperties": false,
+        "description": "The body of `PATCH /api/v1/insights/digest/schedule` (#440): send what changed. A field\nleft out keeps its value.",
+        "properties": {
+          "weeklyDay": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 7,
+            "description": "ISO day of week — 1 is Monday, 7 is Sunday."
+          },
+          "weeklyTime": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "description": "Time of day in UTC, twenty-four-hour `HH:MM`."
+          }
+        }
+      },
+      "InsightsDigestPreview": {
+        "type": "object",
+        "title": "InsightsDigestPreview",
+        "additionalProperties": false,
+        "description": "The weekly digest as it would be sent now (#440).",
+        "required": [
+          "subject",
+          "html",
+          "text",
+          "window",
+          "contentVersion"
+        ],
+        "properties": {
+          "subject": {
+            "type": "string"
+          },
+          "html": {
+            "type": "string",
+            "description": "The HTML part — a complete document, every style inline, nothing to fetch."
+          },
+          "text": {
+            "type": "string",
+            "description": "The plain-text part. It prints the same figures as `html`."
+          },
+          "window": {
+            "$ref": "#/components/schemas/InsightsDaySpan"
+          },
+          "contentVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The version of the digest's content rules. It moves when the assembly's shape or\nwording rules change, and the send audit records it with every run."
           }
         }
       },

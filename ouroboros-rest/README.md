@@ -109,6 +109,11 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/queue`                                 | The ordered queue (#73) — `position` ascending, optional `repo` filter, `totalEstMinutes` equal to the stat row's own sum |
 | `GET PATCH /api/v1/policies/dry-run`                | [The dry-run policy](#the-dry-run-policy) (#382) — read by any member, flipped by `owner`/`admin`, audited `policy.dry_run_changed` |
 | `GET /api/v1/insights`                             | [The Insights page](#insights-page) (#438) — `?range=7d\|30d\|90d` (`30d` when absent), optional `?repo=owner/name`; head, KPIs, series, bar cards with computed lines, performance, flaky, scoreboard and DORA in one payload; any member |
+| `GET /api/v1/insights/digest`                      | [The weekly email digest](#email-digest) (#440) — the caller's subscription, the workspace's weekly slot (UTC) with `nextRunAt`, and `mail.transport` (`smtp`, or `none` when no mail server is configured); any member |
+| `PUT /api/v1/insights/digest/subscription`         | Opt yourself in or out of this workspace's digest (#440) — `{subscribed}`; `409 insights_digest_mail_unconfigured` when subscribing on a deployment that sends no mail; any member |
+| `PATCH /api/v1/insights/digest/schedule`           | Move the workspace's weekly slot (#440) — `{weeklyDay?, weeklyTime?}`, ISO day 1–7 and `HH:MM` UTC; `owner`/`admin` |
+| `GET /api/v1/insights/digest/preview`              | The digest as it would be sent now (#440) — `{subject, html, text, window, contentVersion}`; any member |
+| `GET POST /api/v1/insights/digest/unsubscribe/{token}` | A digest's unsubscribe link (#440) — **no session**; `GET` renders a confirmation and changes nothing, `POST` unsubscribes; HTML, with a `404` page for a link no mail carried |
 | `GET /api/v1/insights/calibration`                 | [Estimator calibration](#estimator-calibration) (#435) — `?window=7d\|30d\|90d`; within-band headline, unestimated count and per-effort bias direction; any member |
 | `POST /api/v1/insights/interventions/{id}/recategorize` | [Intervention causes](#intervention-causes) (#434) — a person's cause with a reason, audited in `intervention_overrides`; never overwritten by a rule run; `owner`/`admin`/`member` |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
@@ -309,6 +314,9 @@ service never starts half-configured.
 | `OURO_INSIGHTS_ROLLUP_CONSOLIDATE_DAYS` | Days, ending yesterday, the first tick of a UTC day re-fills so late data reaches its day | no — 3 | a whole number of days, 1–31 |
 | `OURO_INSIGHTS_ROLLUP_BACKFILL_DAYS` | How far back a family's first fill reaches; also the furthest any consolidation reaches | no — 90 | a whole number of days, 1–730 |
 | `OURO_INSIGHTS_ROLLUP_DAYS_PER_TICK` | Most backfill days one tick fills per family; the next tick resumes at the cursor | no — 31 | a whole number of days, 1–366 |
+| `OURO_SMTP_URL` | The SMTP server [mail](#mail) is sent through ([#440](https://github.com/NobuData/ouroboros/issues/440)); unset, this deployment sends no mail and the [weekly digest](#email-digest) is off |     no — unset     | `smtp://host:port` or `smtps://user:password@host:port` |
+| `OURO_MAIL_FROM` | The address mail is sent from; it goes out as *Ouroboros* | with `OURO_SMTP_URL` | a bare address — no display name; refused without `OURO_SMTP_URL` |
+| `OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS` | Seconds between checks for a workspace whose [weekly digest](#email-digest) slot has come due — jittered ±25% | no — 300 | a whole number of seconds, 5–3600 |
 | `OURO_REPO_MAP_HOUR_UTC` | The UTC hour the [nightly repo-map generator](#playbooks-and-the-repo-map-generator) is scheduled at; each pass lands at a random minute in the hour after it ([#415](https://github.com/NobuData/ouroboros/issues/415)) |      no — 5       | a whole number, 0–23 |
 | `OURO_ONBOARDING_UNLOCK_THRESHOLD` | The merged-loop count that unlocks an advanced [onboarding template tile](#template-tiles-and-instantiation) ([#386](https://github.com/NobuData/ouroboros/issues/386)), replacing each template's own rule |     no — unset     | a whole number, 0–10000; `0` unlocks every tier |
 | `OURO_MANAGED_KEY_POOL` | Whether this deployment declares a managed key pool — selects the [Smart Defaults](#the-first-run-launcher-and-smart-defaults) models row ([#388](https://github.com/NobuData/ouroboros/issues/388)) |     no — false     | `true` or `false` |
@@ -6023,6 +6031,112 @@ the source planes hold, not the seeded `metric_daily` row for today.
 ```bash
 yarn test src/modules/insights/page                # composers, lines, money rule, contract
 yarn test:integration src/modules/insights/page    # one truth vs window(), gates, isolation
+```
+
+### Email digest
+
+BJ.4 ([#440](https://github.com/NobuData/ouroboros/issues/440)), decision **I9**, in
+[`src/modules/insights/digest/`](src/modules/insights/digest) over V084's four tables. A weekly
+email that says what the [Insights page](#insights-page) says.
+
+**It is assembled from the page and from nothing else.** A run reads
+`InsightsPageService.read(org, {range: "7d"})` once and `assembleDigest(page)` turns that payload
+into a `DigestAssembly`: the KPI row with its deltas, the top intervention cause with the page's
+own computed line, the flaky tests that moved, and the cost line. No file in `digest/` imports a
+layer a metric is computed in, and its repository reads only its own tables and the people it
+mails — `digest.sources.spec.ts` fails the build otherwise. So the mail inherits the page's rules
+without restating them:
+
+| Page rule | In the mail |
+| --------- | ----------- |
+| Dollars only for priced usage (I8) | Priced: `$118 this week across 31M tokens.` Partly priced: `… for priced usage only — 7.8M of 31M tokens have no price.` Unpriced: tokens only, the fourth KPI reads *Tokens per merged PR*, and no `$` appears anywhere. |
+| Proxy metrics are flagged | A KPI whose registry entry is a proxy is marked `(proxy)`. |
+| Insight lines are computed | The cause section prints the page's own line. |
+| A figure with nothing to compute it from is null | Printed `—`, never `0`. |
+
+A week with no merges, closes, interventions, usage, builds or test runs is mailed one sentence —
+*"Nothing to report this week."* — and no table. A flaky case that did not run this week does
+not count as activity.
+
+**One assembly, two presentations.** `digest.html.ts` and `digest.text.ts` print the assembly's
+own strings, so the plain-text part carries the same figures as the HTML part, and a chat
+rendering (#536) can read the same object. The HTML is one 600 px table with every style inline,
+no image, script or web font, drawn in the light design tokens and declared `color-scheme:
+light`. [`tests/e2e`](../tests/e2e/README.md#the-digest-emails-client-profiles) renders it under
+four client profiles.
+
+| route | what | who |
+| ----- | ---- | --- |
+| `GET /api/v1/insights/digest` | `{subscribed, recipient, schedule{weeklyDay, weeklyTime, timezone, nextRunAt}, mail{transport}}` | every member |
+| `PUT …/subscription` `{subscribed}` | opt **yourself** in or out; `409 insights_digest_mail_unconfigured` when subscribing with no mail server | every member |
+| `PATCH …/schedule` `{weeklyDay?, weeklyTime?}` | the workspace's weekly slot: ISO day 1–7, `HH:MM` **UTC**; Monday 09:00 until somebody chooses | `owner`, `admin` |
+| `GET …/preview` | `{subject, html, text, window, contentVersion}` as of now, with no unsubscribe link | every member |
+| `GET …/unsubscribe/{token}` | an HTML confirmation page; changes nothing | **no session** |
+| `POST …/unsubscribe/{token}` | unsubscribes, answers an HTML page; idempotent | **no session** |
+
+**Subscription is per person, per workspace, and opt-in**: a row in
+`insights_digest_subscriptions`, absent until somebody asks. Recipients are read by joining
+subscriptions to `member` and `user`, so a person removed from a workspace stops receiving its
+numbers, and one workspace's run can only address its own members.
+
+**The unsubscribe link needs no login.** Each send mints a random token; the mail carries it and
+the send row keeps only its SHA-256, written *before* the mail leaves. `GET` renders a page with
+one button because mail scanners open every link; the button's `POST` unsubscribes, and is also
+what a mail client's own control sends (`List-Unsubscribe-Post`, RFC 8058, advertised when
+`OURO_REST_URL` is https). A malformed token is refused before any read. The token does not
+expire.
+
+**The weekly run** (`digest.runner.ts`, ticked by `digest.scheduler.ts` every
+`OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS`):
+
+| Step | Rule |
+| ---- | ---- |
+| **Due** | The latest weekly slot at or before now, if it is at most 24 h old and the workspace has no run in the 6 days before it — a moved schedule never sends twice in a week. |
+| **Who** | Members subscribed at or before the slot. Subscribing never triggers a late copy. |
+| **Claim the run** | One short transaction under a per-workspace advisory lock inserts `(organization_id, slot_at)`; the unique key decides between replicas. |
+| **Assemble once** | The page is read as of the slot and the assembly is stored on the run row. Every send and retry renders that stored content. |
+| **Claim each send** | `(run_id, user_id, attempt)` is inserted as `claimed`, with the token hash, before sending; only the inserter sends, then settles it `sent` or `failed`. |
+| **Retry** | A failed send is retried on later ticks, up to 3 attempts, under the same `Message-ID`. A claim unsettled for 5 minutes is failed. |
+| **Complete** | When nobody is left to mail or retry. |
+
+**The send audit** is `insights_digest_sends` joined to its run: recipient, attempt, outcome and
+reason, with the run's window and `content_version` (`DIGEST_CONTENT_VERSION`, which moves when
+the assembly's shape or wording rules change).
+
+Organisation-level notification routes (`weekly_insights` to a list or a channel) are #488's;
+Slack is #448's.
+
+```bash
+yarn test src/modules/insights/digest                # assembly, honesty, renders + golden, runner, routes
+yarn test:integration src/modules/insights/digest    # real SMTP into mailpit, vs GET /insights?range=7d
+OURO_UPDATE_GOLDENS=1 yarn jest src/modules/insights/digest/digest.render   # after changing the template
+```
+
+### Mail
+
+BJ.4 ([#440](https://github.com/NobuData/ouroboros/issues/440)), in
+[`src/modules/mail/`](src/modules/mail). One seam for everything this service mails: the digest
+today, invitations (#724) and the inbox digest (#463) later.
+
+```ts
+interface Mailer {
+  readonly transport: "smtp" | "none";
+  send(message: { to, subject, text, html, messageId?, headers? }): Promise<{ messageId }>;
+}
+```
+
+`MailModule` provides it under the `MAILER` token, chosen once at boot. `OURO_SMTP_URL` set:
+`SmtpMailer`, over `nodemailer` — the only file that names it — with explicit connection,
+greeting and socket timeouts, sending as *Ouroboros* from `OURO_MAIL_FROM`. Unset: a mailer that
+reports `none` and refuses to send, so "mail is not configured" is a state callers read rather
+than a message silently dropped.
+
+In development the server is **mailpit** (`docker compose --profile mail up -d mailpit`, or any
+`--profile full` stack): SMTP on `localhost:1025`, the inbox at <http://localhost:8025>. It
+relays nothing.
+
+```bash
+yarn test src/modules/mail
 ```
 
 ### PR page reads & head actions

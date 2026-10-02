@@ -118,6 +118,15 @@ export const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   // the registration route above.
   `GET ${INSTALL_SCRIPT_PATH}`,
   `GET ${RELEASE_FILE_PATH}`,
+  // The weekly digest's unsubscribe link (#440, BJ.4). The caller is whoever holds the mail:
+  // an unsubscribe that asks for a login is one people replace with a filter rule. The token in
+  // the path is the whole credential — random, minted per send, stored only as a hash — and all
+  // it can do is stop that one person's digest for that one workspace. `GET` renders a
+  // confirmation and changes nothing (mail scanners open links); `POST` unsubscribes, and is
+  // also what a mail client's own unsubscribe control sends (RFC 8058). A value that is not
+  // shaped like a token is refused before any read, as a page with a `404`.
+  `GET ${API_BASE_PATH}/insights/digest/unsubscribe/:token`,
+  `POST ${API_BASE_PATH}/insights/digest/unsubscribe/:token`,
 ].sort();
 
 /**

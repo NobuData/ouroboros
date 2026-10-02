@@ -639,6 +639,8 @@ nothing, and #33's `ouro_session` is neither honoured nor crashed into.
 tests/e2e/
 ├── playwright.config.ts        # the runner: the 10-minute budget, no retries, no webServer, one worker
 ├── playwright.readability.config.ts  # leg 8's: its own 3-minute budget, one worker
+├── playwright.email.config.ts  # the digest email's four client profiles: no stack, its own spec directory (#440)
+├── email/                      # the digest email rendered from ouroboros-rest's golden HTML, and its baselines
 ├── specs/                      # one file per leg
 │   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20 and 21's baselines, and leg 8's matrix under readability/
 ├── support/
@@ -887,6 +889,38 @@ mysterious.
 This procedure was exercised once when #650 landed, which is how the stale-seed precondition
 came to be written down: the first recording of the matrix was made against a week-old
 volume and produced a dashboard reading zeroes.
+
+### The digest email's client profiles
+
+Not a leg: it needs no stack. `yarn email` ([#440](https://github.com/NobuData/ouroboros/issues/440))
+renders the weekly Insights email — the HTML part `ouroboros-rest` actually sends, read from its
+golden file `src/modules/insights/digest/digest.golden.json` — under four **client profiles** and
+compares each with a committed baseline in `email/__screenshots__/`:
+
+| Project | What it emulates |
+| ------- | ---------------- |
+| `desktop-600` | a desktop client's reading pane, 600 px wide |
+| `mobile-360` | a phone, 360 px wide |
+| `dark-scheme` | a client in dark mode; the mail declares itself light and must stay as drawn |
+| `style-stripped` | a client that removes `<style>` blocks, leaving only inline styles |
+
+These are Chromium emulating things mail clients do to a message. They are not Outlook, Gmail
+or Apple Mail, and a green run does not say the mail is right in those — it says the layout
+survives a narrow pane, a dark scheme and a stripped stylesheet, in each of the digest's four
+states (priced, partly priced, unpriced, empty). Each profile also asserts that nothing overflows
+sideways, that nothing is fetched, and that every colour is a light token from
+`docs/design/tokens.css`.
+
+The text is drawn in Liberation Sans for the camera: the mail asks for the reader's system
+font, which differs per machine, and a baseline of that would be a baseline of the machine.
+
+```bash
+yarn email                      # compare
+yarn email --update-snapshots   # after the renderer changed: regenerate the golden first, in
+                                # ouroboros-rest: OURO_UPDATE_GOLDENS=1 yarn jest src/modules/insights/digest/digest.render
+```
+
+The nightly workflow runs it before the stack is built.
 
 ### Adding a leg
 

@@ -20,3 +20,7 @@ src/modules/test-results/fixtures/
 # element per line, where Prettier would fill short arrays to its print width. Formatting it
 # would make every regeneration a diff of whitespace.
 src/modules/detection/detection.archetypes.golden.json
+
+# The digest's golden renders (#440), as `GoldenFile.save` writes them. The HTML parts are
+# single-line strings the screenshot suite loads as they are.
+src/modules/insights/digest/digest.golden.json

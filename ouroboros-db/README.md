@@ -1163,6 +1163,30 @@
 > the card's local share). Both are cost-family sums on the daily grain. Usage with no task kind
 > is in `tokens` and in no bar, and the caveat says so.
 
+> `V084` ([#440](https://github.com/NobuData/ouroboros/issues/440), BJ.4, decision **I9**) is the
+> weekly Insights email's storage. It holds no metric — the email is assembled from the page's own
+> payload — only consent, a schedule and a record:
+>
+> - `insights_digest_subscriptions` — one row per (workspace, person). **Opt-in is the row**:
+>   there is no `enabled` column, and nobody is subscribed until they ask. Membership is checked
+>   against BetterAuth's `member` at send time rather than by foreign key.
+> - `insights_digest_schedules` — a workspace's weekly slot, `weekly_day` (ISO 1–7) and
+>   `weekly_time` (UTC, whole minutes), as V080 stores a schedule. No row means Monday 09:00,
+>   which the service applies.
+> - `insights_digest_runs` — one row per (workspace, slot). The unique key
+>   `insights_digest_runs_slot_key` is the claim across replicas. `content` (the assembly, with
+>   `window_from`/`window_to` and `content_version`) is set **once** and every send of the run
+>   renders from it, so a retry cannot print different numbers from the ones the row records.
+>   `insights_digest_runs_guard` refuses to move a run's slot, revise its content or undo its
+>   completion.
+> - `insights_digest_sends` — the send audit: one row per (run, person, attempt), inserted
+>   `claimed` **before** the mail leaves (the unique key `insights_digest_sends_attempt_key` stops
+>   two senders mailing one person) and settled `sent` or `failed` exactly once.
+>   `insights_digest_sends_guard` allows that one transition and the person foreign key's own
+>   set-null, nothing else. The row keeps the SHA-256 of the unsubscribe token its mail carries —
+>   never the token — and the recipient's address, which outlives the person: the audit is *what
+>   was sent, to whom*. A deleted workspace takes all four tables' rows with it.
+
 > **If you have a database from before `V002` landed, reset it.** `V002` filled a version
 > number `V003` had already passed, so a database carrying `V003` sees a pending
 > migration *below* its current version — which `validate` rejects, and `migrate`
@@ -2581,6 +2605,7 @@ ouroboros-db/
 │   ├── V081__analysis_findings_suggestions.sql # analysis_findings (typed data, resolvable evidence, bounded confidence + basis) + analysis_suggestions (stable identity, A4 lifecycle, impact basis / needs_spike) + their many-to-many citations, record_analysis_suggestion() — #507
 │   ├── V082__scoreboard_registry.sql        # the model scoreboard's registry rows (scoreboard_merged, scoreboard_cost_per_success, scoreboard_trend; untouched stays merged_untouched_rate) — #439
 │   ├── V083__token_metrics_by_task_kind.sql # the task_kind dimension kind + tokens_by_task_kind and local_tokens (cost family, sums) — #438
+│   ├── V084__insights_digest.sql            # the weekly Insights email: opt-in subscriptions, a weekly slot per workspace, runs claimed by slot with their content stored once, and the send audit — #440
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2755,6 +2780,10 @@ outside this module alters it.
 | `analysis_suggestions` | `V081` | A card or ticket draft ([#507](https://github.com/NobuData/ouroboros/issues/507), decision **A4**) — `repo_ref`, `kind`, `identity_key`, `last_run_id`, `title`, `evidence_line`, `confidence`, `impact`, `needs_spike`, `action_binding`, `status`, `resolved_by`, `resolved_at`, `resolution_reason`, `applied_event_id`, `draft_batch_id` | unique on `(organization_id, repo_ref, identity_key)`, the identity derived from the cited findings and checked at commit; `kind` `build_process\|workflow\|ticket_draft`; `impact` required except on ticket drafts, its `basis` mandatory, an `unquantified` basis needs `needs_spike`; planning is the plane of ticket drafts and spikes only, a workflow suggestion binds the workflow plane; born `open`; `applied` needs its `analysis_suggestion.applied` audit event (not a ticket draft or spike), `dismissed` an actor and a reason, `drafted` a same-workspace batch (ticket draft or spike); resolutions are terminal and frozen; `last_run_id` sets null; cascades with the workspace |
 | `analysis_suggestion_findings` | `V081` | Which findings a suggestion cites ([#507](https://github.com/NobuData/ouroboros/issues/507)) — `suggestion_id`, `finding_id`, `organization_id`, `repo_ref` | many-to-many; both sides share one `(organization_id, repo_ref)` by composite keys; cascades with either side; `ouroboros_app` may select and insert only |
 | `intervention_overrides` | `V079` | The re-categorization audit ([#434](https://github.com/NobuData/ouroboros/issues/434)) — `event_id`, `actor_id`, `from_cause`, `to_cause`, `reason`, `created_at` | append-only; names its actor at insert (set null if the person is removed); starts from the event's current cause; changes it; requires a reason; cascades with the event |
+| `insights_digest_subscriptions` | `V084` | Who asked for the weekly Insights email ([#440](https://github.com/NobuData/ouroboros/issues/440), decision **I9**) — `organization_id`, `user_id`, `created_at` | one row per (workspace, person) — the row is the consent; the app role may insert and delete, never update; cascades with the workspace and with the person |
+| `insights_digest_schedules` | `V084` | A workspace's weekly digest slot — `weekly_day`, `weekly_time` (UTC), `updated_by` | one per workspace; `weekly_day` 1–7; whole minutes; `updated_by` set null if the person is removed |
+| `insights_digest_runs` | `V084` | One digest run per (workspace, slot) — `slot_at`, `window_from`, `window_to`, `content_version`, `content`, `completed_at` | one run per slot; content, window and version arrive together and are set once; a run's slot never moves and a completion is never undone (`insights_digest_runs_guard`) |
+| `insights_digest_sends` | `V084` | The digest's send audit — `run_id`, `user_id`, `recipient`, `attempt`, `status`, `message_id`, `unsubscribe_token_hash`, `error` | one row per (run, person, attempt); `claimed` → `sent` \| `failed` once, and nothing else changes but the person's set-null (`insights_digest_sends_guard`); a send's run is its workspace's; a token hash names one send; a failure says why |
 | `fact_anchors` | `V071` | Why a fact can expire ([#406](https://github.com/NobuData/ouroboros/issues/406), **K4**) — `kind`, `value`, `last_checked_at` | `kind` is `path_glob\|dependency\|platform_version`; `(fact_id, kind, value)` unique; a `path_glob` is relative with no `..`; indexed `(kind, value)` for the staleness sweep, with `path_glob_matches(glob, path)` for a changed path set; a fact with none is never flagged |
 | `context_injections` | `V071` | What context assembly actually injected ([#406](https://github.com/NobuData/ouroboros/issues/406)) — `consumer`, `estimate_id`, `run_stage_id`, `run_id`, `skill_version_ids`, `fact_ids`, `manifest_hash`, `injected_at` | `consumer` is `estimator` (estimate) \| `run_stage` (stage + its run) \| `playbook` (the launched run); arrays are sets; every fact is a confirmed fact and every skill version a published version of a non-draft skill of the workspace (`context_injections_resolves`); GIN-indexed arrays; append-only by trigger and grant — the sole source of every usage number |
 | `playbooks` | `V072` | Mockup 14's playbooks card ([#407](https://github.com/NobuData/ouroboros/issues/407), BE.3, decision **K6**) — `name`, `description`, `workflow_id`, `workflow_version`, `skill_overrides`, `context_preset`, `source_run_id`, `issue_filter` | `name` unique per organization; `(workflow_id, workflow_version)` is a published version of a workflow of the same workspace (`playbooks_workflow_version_fk`, `playbooks_workflow_fk` cascading) — `not null`, so never head; `skill_overrides` `{enable?, disable?}` (disjoint uuid sets ≤ 64), `context_preset` `{steer_notes?, fact_ids?}` and `issue_filter` `{labels?, repos?}` are typed by `playbook_*_typed`; `playbooks_refs_resolve` holds skill and fact ids to the workspace and refuses disabling a required skill; `source_run_id` is a run of the workspace, `on delete set null (source_run_id)`; launches are `runs.playbook_id` / `queue_items.playbook_id` (same-workspace, set null) — **no count column**; `ouroboros_app` has full DML |

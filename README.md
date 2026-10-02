@@ -257,6 +257,22 @@ in the stack depends on it — point an Ollama connection's **Host** field at
 does the rest. Models live in a named volume, so `down` keeps them and `down -v` reclaims
 them.
 
+### Mail
+
+The weekly Insights email digest ([#440](https://github.com/NobuData/ouroboros/issues/440)) is
+sent through SMTP, and in development the server is [mailpit](https://mailpit.axllent.org/): it
+accepts every message, shows it in a browser, and relays nothing.
+
+```bash
+docker compose --profile mail up -d mailpit   # SMTP on localhost:1025 · inbox at http://localhost:8025
+```
+
+`--profile full` starts it too, and points `rest` at it. A `rest` running on the host reaches
+it through `.env.example`'s `OURO_SMTP_URL=smtp://localhost:1025`. Unset that variable and the
+service sends no mail and says so: the digest is off, and subscribing is refused. Nobody is
+subscribed until they ask — `PUT /api/v1/insights/digest/subscription` — so a fresh stack mails
+nothing.
+
 ### A build machine
 
 The Build Farm page's **Copy command** is meant to be pasted into a machine, and the stack has

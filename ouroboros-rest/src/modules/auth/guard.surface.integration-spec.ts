@@ -123,6 +123,13 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // this suite observes.
   factId: "5eed0044-0000-4000-8000-000000000005",
   anchorId: "5eed0045-0000-4000-8000-000000000005",
+  // `POST /api/v1/knowledge/playbooks/from-run/:runId` (#415). A well-formed uuid. The entry was
+  // missing, and this walk throws on the first parameter it cannot fill — so it is added with
+  // #440's, whose routes the walk could not otherwise reach.
+  runId: "4d2a8b31-7c65-4e0a-9f38-1b6c2d5e7a94",
+  // `/api/v1/insights/digest/unsubscribe/:token` (#440). Shaped like a token and carried by no
+  // send — so the public route answers its own `404` page rather than the session guard's 401.
+  token: `ouro_unsub_${"A".repeat(43)}`,
 };
 
 /**

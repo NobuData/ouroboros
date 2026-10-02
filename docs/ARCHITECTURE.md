@@ -85,6 +85,7 @@ re-implemented differently.
 | `ouroboros-engine` | 8000 | no — compose-internal | **no** |
 | `ouroboros-db` (PostgreSQL) | 5432 | `127.0.0.1` only | **no** |
 | `ouroboros-runner` | — none | n/a — it listens on nothing | **no** |
+| mailpit (development mail catcher) | 1025 · 8025 | `127.0.0.1` only | the inbox, at 8025 |
 
 Every service reads its listen port from the unprefixed `PORT`, because that is what
 container platforms set. `ouroboros-web` also defaults to 3000; it is the marketing site,
@@ -97,6 +98,11 @@ interface on the machine. The full-stack compose file
 `rest:4000`; the engine and the database stay on the internal network, and a check that
 the engine port is *unreachable* from the host is one of that issue's acceptance
 criteria.
+
+mailpit is not part of the product: it is where development mail goes
+([#440](https://github.com/NobuData/ouroboros/issues/440)). It accepts SMTP on 1025, shows what
+it caught at `http://localhost:8025`, and relays nothing. A deployment points
+`OURO_SMTP_URL` at its own relay instead, or leaves it unset and sends no mail.
 
 ## 2. The modules
 
@@ -850,6 +856,9 @@ checkout runs with:
 | `OURO_MANAGED_KEY_POOL` | `ouroboros-rest` | Whether this deployment declares a **managed key pool** — model keys the operator runs for its workspaces. `true` or `false`. It selects the Smart Defaults card's models row (`GET /api/v1/onboarding/defaults`, [#388](https://github.com/NobuData/ouroboros/issues/388), decision O6): declared, *managed keys*; undeclared, *bring your own keys → Providers*. The pool itself is [#397](https://github.com/NobuData/ouroboros/issues/397) | `false` |
 | `OURO_MANAGED_KEY_TRIAL_CENTS` | `ouroboros-rest` | The trial credit the managed key pool gives a new workspace, in whole cents (1–1000000) — `500` prints *$5 trial credit* on the managed row. Unset, the row names no figure; set without `OURO_MANAGED_KEY_POOL=true`, the service refuses to boot | *(unset)* |
 | `OURO_HOSTED_RUNNER_POOL` | `ouroboros-rest` | Whether this deployment declares a **hosted runner pool** for a workspace's first loops. `true` or `false`. Declared, the Smart Defaults card's build row offers the hosted runner; undeclared, *enroll a runner → Build Farm* ([#388](https://github.com/NobuData/ouroboros/issues/388)) | `false` |
+| `OURO_SMTP_URL` | `ouroboros-rest` | The SMTP server mail is sent through — `smtp://host:port`, or `smtps://user:password@host:port` ([#440](https://github.com/NobuData/ouroboros/issues/440)). Unset, the deployment sends **no mail**: the weekly Insights digest is off, `GET /api/v1/insights/digest` reports `mail.transport: "none"`, and subscribing is refused. Boot logs mask its password | `smtp://localhost:1025` (mailpit) |
+| `OURO_MAIL_FROM` | `ouroboros-rest` | The bare address mail is sent from; it goes out as *Ouroboros*. Required with `OURO_SMTP_URL`, refused at boot without it | `no-reply@ouroboros.localhost` |
+| `OURO_INSIGHTS_DIGEST_INTERVAL_SECONDS` | `ouroboros-rest` | Whole seconds between checks for a workspace whose weekly digest slot has come due — how late after its slot a digest may leave, not how often one is sent. Jittered ±25%. 5 to 3600 | `300` |
 | `OURO_DASHBOARD_POLL_SECONDS` | `ouroboros-rest` | Whole seconds sent as `X-Ouro-Poll-After` on every dashboard answer — the poll interval the client honours ([§ 5.4](#54-the-polling-contract)); raising it slows every open dashboard within one poll cycle | `15` |
 | `OURO_PROVIDER_HEALTH_INTERVAL_SECONDS` | `ouroboros-rest` | Whole seconds between provider health sweeps, and the age at which a *local* provider's last check counts as stale ([#196](https://github.com/NobuData/ouroboros/issues/196), decision **M8**). The delay is jittered ±25% around it, the first cycle included, so a fleet of self-hosted instances restarted together does not arrive at a vendor's endpoint in the same second. There is deliberately no value that turns the sweep off | `60` |
 | `OURO_PROVIDER_HEALTH_KEY_CHECK_SECONDS` | `ouroboros-rest` | Whole seconds before a cloud provider's key validation is redone — much slower than the sweep, and separate from it, because it asks somebody else's rate-limited service rather than the operator's own machine. What it detects is a rotated or revoked key, which happens on a human timescale | `900` |

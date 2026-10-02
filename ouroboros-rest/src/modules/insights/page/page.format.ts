@@ -5,6 +5,9 @@
  * The payload's values are numbers and the UI formats them. The **insight lines** are the
  * exception: each is a sentence computed on the server, so the figures inside it are printed
  * here — one place, so *"8m 20s"* in a line and the bar beside it can never be rounded two ways.
+ *
+ * The weekly email digest (BJ.4, #440) is the second exception: a mail has no client to format
+ * for it, so every figure it prints goes through the printers below too.
  */
 
 const SECOND_MS = 1_000;
@@ -106,4 +109,113 @@ export function formatShare(numerator: number, denominator: number): string {
  */
 export function formatCountWord(count: number): string {
   return NUMBER_WORDS[count] ?? String(count);
+}
+
+/** The units a figure can be in — the metric registry's. */
+export type FigureUnit = "count" | "pct" | "duration_ms" | "cents" | "tokens";
+
+/** What a figure with nothing to compute it from prints as. */
+export const NO_FIGURE = "—";
+
+/**
+ * A count with thousands separators: `20`, `26,430`.
+ *
+ * @param value - The count.
+ * @returns It, rounded to a whole number.
+ */
+export function formatCount(value: number): string {
+  return Math.round(value).toLocaleString("en-US");
+}
+
+/**
+ * Cents as dollars: `$1.87`, `$31.40`, `$118`, `$1,204.50`.
+ *
+ * Rounded to the cent. A whole number of dollars drops the cents, as the mockup's `$118 this
+ * week` does.
+ *
+ * @param cents - The amount, non-negative.
+ * @returns The dollar figure.
+ */
+export function formatMoney(cents: number): string {
+  const rounded = Math.round(cents);
+  const digits = rounded % 100 === 0 ? 0 : 2;
+
+  return `$${(rounded / 100).toLocaleString("en-US", {
+    minimumFractionDigits: digits,
+    maximumFractionDigits: digits,
+  })}`;
+}
+
+/**
+ * A stored percentage (0–100) as the page prints one: `92%`, `0.12%`.
+ *
+ * @param value - The percentage.
+ * @returns It, with {@link formatShare}'s decimals.
+ */
+export function formatPercent(value: number): string {
+  return formatShare(value, 100);
+}
+
+/**
+ * A figure in its unit: `92%`, `14m 20s`, `$1.87`, `1.3M`, `20` — or `—` when there is nothing
+ * to compute it from.
+ *
+ * @param value - The figure, or null.
+ * @param unit - What it is in.
+ * @returns The printed figure.
+ */
+export function formatFigure(value: number | null, unit: FigureUnit): string {
+  if (value === null) {
+    return NO_FIGURE;
+  }
+
+  switch (unit) {
+    case "pct":
+      return formatPercent(value);
+    case "duration_ms":
+      return formatDuration(value);
+    case "cents":
+      return formatMoney(value);
+    case "tokens":
+      return formatCompact(value);
+    case "count":
+      return formatCount(value);
+  }
+}
+
+/**
+ * How far a figure moved against the prior window, as the mockup's KPI cards print it:
+ * `▲ 3pts`, `▼ 2m`, `▼ $0.41`, `▼ 5`.
+ *
+ * A percentage moves in points. The arrow is the direction of the number, not a judgement:
+ * whether down is good is the caller's to say.
+ *
+ * @param delta - `value − prior` in `unit`, or null when either is unknown.
+ * @param unit - What the figure is in.
+ * @returns The move, or null when there is none to state — nothing to compare with, or a move
+ *   too small to print.
+ */
+export function formatDelta(delta: number | null, unit: FigureUnit): string | null {
+  if (delta === null || delta === 0) {
+    return null;
+  }
+
+  const size = Math.abs(delta);
+  let printed: string;
+
+  if (unit === "pct") {
+    // Whole points from one point up; a tenth below, so a 0.4-point move is not printed as 0.
+    const points = size >= 1 ? String(Math.round(size)) : size.toFixed(1);
+
+    printed = Number(points) === 0 ? "" : `${points}${points === "1" ? "pt" : "pts"}`;
+  } else {
+    printed = formatFigure(size, unit);
+  }
+
+  // A move that rounds away at print precision is not a move the reader can check.
+  if (printed === "" || printed === formatFigure(0, unit)) {
+    return null;
+  }
+
+  return `${delta > 0 ? "▲" : "▼"} ${printed}`;
 }

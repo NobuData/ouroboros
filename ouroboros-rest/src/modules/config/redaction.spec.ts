@@ -67,6 +67,21 @@ describe("redactedEnvironment", () => {
     expect(redacted).toBe(`postgresql://ouroboros:${REDACTED_PASSWORD}@db:5432/ouroboros`);
   });
 
+  it("masks the password inside the mail server URL the same way (#440)", () => {
+    const redacted = redactedEnvironment(
+      testConfiguration({
+        OURO_SMTP_URL: "smtps://digest:mail-password-that-must-not-leak@smtp.acme.dev:465",
+        OURO_MAIL_FROM: "no-reply@acme.dev",
+      }),
+    );
+
+    expect(redacted[VARIABLES.smtpUrl]).toBe(
+      `smtps://digest:${REDACTED_PASSWORD}@smtp.acme.dev:465`,
+    );
+    expect(redacted[VARIABLES.mailFrom]).toBe("no-reply@acme.dev");
+    expect(JSON.stringify(redacted)).not.toContain("mail-password-that-must-not-leak");
+  });
+
   // Publishing the client id costs nothing — it is in the OAuth redirect every browser
   // follows — and hiding it would cost the one field that says which app is configured.
   // `BETTER_AUTH_URL` is there for the same reason: it is the address a browser is sent

@@ -1,12 +1,20 @@
+import { SchedulerRegistry } from "@nestjs/schedule";
 import { Test } from "@nestjs/testing";
 
 import { ConfigurationModule } from "../config/config.module";
 import { FlakeStateService } from "../flakes/flake-state.service";
+import { MAILER, type Mailer } from "../mail/mailer";
 import { testConfiguration } from "../config/configuration.fixture";
 import { CalibrationController } from "./calibration.controller";
 import { CALIBRATION_MERGE_OBSERVER } from "./calibration.observer";
 import { CalibrationRepository } from "./calibration.repository";
 import { CalibrationService } from "./calibration.service";
+import { DigestController } from "./digest/digest.controller";
+import { DigestRepository } from "./digest/digest.repository";
+import { DigestRunner } from "./digest/digest.runner";
+import { DIGEST_TIMEOUT, DigestScheduler } from "./digest/digest.scheduler";
+import { DigestService } from "./digest/digest.service";
+import { DigestUnsubscribeController } from "./digest/digest.unsubscribe.controller";
 import { InsightsModule } from "./insights.module";
 import { InterventionsController } from "./interventions.controller";
 import { InterventionRepository } from "./interventions.repository";
@@ -110,6 +118,34 @@ describe("the insights module", () => {
     expect(moduleRef.get(InsightsPageRepository)).toBeInstanceOf(InsightsPageRepository);
     // Exported from FlakesModule for the flaky card; resolvable here because it is imported.
     expect(moduleRef.get(FlakeStateService, { strict: false })).toBeInstanceOf(FlakeStateService);
+
+    await moduleRef.close();
+  });
+
+  it("resolves the weekly digest: routes, service, runner, loop — and the mailer it sends through", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConfigurationModule.forRoot(testConfiguration()), InsightsModule],
+    }).compile();
+
+    expect(moduleRef.get(DigestController)).toBeInstanceOf(DigestController);
+    expect(moduleRef.get(DigestUnsubscribeController)).toBeInstanceOf(DigestUnsubscribeController);
+    expect(moduleRef.get(DigestService)).toBeInstanceOf(DigestService);
+    expect(moduleRef.get(DigestRepository)).toBeInstanceOf(DigestRepository);
+    expect(moduleRef.get(DigestRunner)).toBeInstanceOf(DigestRunner);
+    expect(moduleRef.get(DigestScheduler)).toBeInstanceOf(DigestScheduler);
+    // MailModule's: a test environment configures no mail server, so it reports `none`.
+    expect(moduleRef.get<Mailer>(MAILER, { strict: false }).transport).toBe("none");
+
+    await moduleRef.close();
+  });
+
+  it("books no digest timer when the deployment sends no mail", async () => {
+    const moduleRef = await Test.createTestingModule({
+      imports: [ConfigurationModule.forRoot(testConfiguration()), InsightsModule],
+    }).compile();
+    await moduleRef.init();
+
+    expect(moduleRef.get(SchedulerRegistry).doesExist("timeout", DIGEST_TIMEOUT)).toBe(false);
 
     await moduleRef.close();
   });
