@@ -1,0 +1,45 @@
+[
+  {
+    "analyzer": "waiver_cite",
+    "analyzer_version": 1,
+    "confidence": 36,
+    "confidence_basis": {
+      "effect_size": 0.6,
+      "method": "waiver_cite v1: waivers in the window whose reasons share a topic token; 100 * min(1, waivers / 6) * (0.5 + 0.5 * cohesion)",
+      "sample_size": 3,
+      "stability": 0.45
+    },
+    "data": {
+      "case_keys": [
+        "tests/hil/test_thermal.py::test_1",
+        "tests/hil/test_thermal.py::test_2",
+        "tests/hil/test_thermal.py::test_3"
+      ],
+      "first_day": "2026-06-19",
+      "last_day": "2026-07-26",
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      },
+      "topic": "thermal chamber availability",
+      "waiver_count": 3,
+      "window_days": 60
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0006-4000-8000-000000000002",
+        "kind": "waiver"
+      },
+      {
+        "id": "5eed0512-0006-4000-8000-000000000003",
+        "kind": "waiver"
+      },
+      {
+        "id": "5eed0512-0006-4000-8000-000000000004",
+        "kind": "waiver"
+      }
+    ],
+    "finding_type": "waiver_cite",
+    "subject_key": "availability chamber thermal"
+  }
+]

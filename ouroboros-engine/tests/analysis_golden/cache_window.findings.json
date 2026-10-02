@@ -1,0 +1,107 @@
+[
+  {
+    "analyzer": "cache_window",
+    "analyzer_version": 1,
+    "confidence": 100,
+    "confidence_basis": {
+      "effect_size": 0.47,
+      "method": "cache_window v1: pooled hit rate inside each trigger's window against the rest; 100 * stability * min(1, occurrences / 6) * min(1, drop / 0.4)",
+      "sample_size": 794,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_in_window": 154,
+      "failure_rate_other_days": 0.087,
+      "failure_rate_trigger_days": 0.171,
+      "failures_cluster": true,
+      "hit_rate_after": 0.31,
+      "hit_rate_before": 0.78,
+      "occurrences": 14,
+      "recovery_hours_median": 6.0,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      },
+      "share": 0.19,
+      "trigger": "deps-refresh merge",
+      "trigger_days": [
+        "2026-05-13",
+        "2026-05-19",
+        "2026-05-25",
+        "2026-05-31",
+        "2026-06-06",
+        "2026-06-12",
+        "2026-06-18",
+        "2026-06-24",
+        "2026-06-30",
+        "2026-07-06",
+        "2026-07-12",
+        "2026-07-18",
+        "2026-07-24",
+        "2026-07-30"
+      ],
+      "trigger_pattern": "^deps: refresh",
+      "window_hours": 6
+    },
+    "evidence_refs": [
+      {
+        "id": "fe4e3031e623563b5a65bec7eea4d2ed8056920e",
+        "kind": "merge"
+      },
+      {
+        "id": "7aa6791e7c64e672263a58205b3a563afd3e73ae",
+        "kind": "merge"
+      },
+      {
+        "id": "def01483a50b7f3fc0fd99c5a51ef2c6e522ca10",
+        "kind": "merge"
+      },
+      {
+        "id": "766d3a5dd1361dc4b4e785dca6d040413b216ddd",
+        "kind": "merge"
+      },
+      {
+        "id": "7364d91ce6b3288d75bd4333c12c5689ad558786",
+        "kind": "merge"
+      },
+      {
+        "id": "e60e7f2a4c64eb1b610efcc8e875a2b290fa3687",
+        "kind": "merge"
+      },
+      {
+        "id": "6835e683b3809005f81f46637a378de6840c73dc",
+        "kind": "merge"
+      },
+      {
+        "id": "07604dc4514d0cfcbfc1b3cc1783833f4c08c65b",
+        "kind": "merge"
+      },
+      {
+        "id": "b22e14bbff718936d72945687acff4a6466108dc",
+        "kind": "merge"
+      },
+      {
+        "id": "4568a59b59c105253218806ccea77f3e2f32fa44",
+        "kind": "merge"
+      },
+      {
+        "id": "0fa20971f6d20d3f17e6dc58e4fbea5da30bc7f4",
+        "kind": "merge"
+      },
+      {
+        "id": "18e1bc9e885bf16fed402d41b460e0315466359c",
+        "kind": "merge"
+      },
+      {
+        "id": "b6ff38885af5e72a47be9bdbc0989499220bce96",
+        "kind": "merge"
+      },
+      {
+        "id": "e0432c754fbf71624c9c081faa319ebc69193d45",
+        "kind": "merge"
+      }
+    ],
+    "finding_type": "cache_window",
+    "subject_key": "deps-refresh merge"
+  }
+]

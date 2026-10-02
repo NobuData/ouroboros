@@ -1,0 +1,402 @@
+[
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 0,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_BLE_MESH_PROXY",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_BLE_MESH_PROXY"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 1,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_BOOT_BANNER_ASCII",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-0000000004d3",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_BOOT_BANNER_ASCII"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 1,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_CAN_FD_EXPERIMENTAL",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-0000000003b3",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_CAN_FD_EXPERIMENTAL"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 1,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_DEBUG_SHELL_EXT",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000421",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_DEBUG_SHELL_EXT"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 0,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_FLASH_WEAR_LOG",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_FLASH_WEAR_LOG"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 0,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_I2C_BITBANG",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_I2C_BITBANG"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 0,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_LED_MATRIX",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_LED_MATRIX"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 1,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_LEGACY_UART_SHIM",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000355",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_LEGACY_UART_SHIM"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 0,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_MOTOR_SIM_STUB",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_MOTOR_SIM_STUB"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 0,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_OTA_DELTA_V1",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_OTA_DELTA_V1"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 0,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_POWER_TRACE_UART",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_POWER_TRACE_UART"
+  },
+  {
+    "analyzer": "config_usage",
+    "analyzer_version": 1,
+    "confidence": 95,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "config_usage v1: absence over a full read = 95, capped at 60 when sampled or unknown; drift = 100 * (1 - e^(-warnings/2)); over every build whose configuration is known",
+      "sample_size": 1284,
+      "stability": 1.0
+    },
+    "data": {
+      "builds_considered": 1284,
+      "claim": "never_set",
+      "distinct_values": 0,
+      "drift_warnings": 0,
+      "occurrences": 0,
+      "option": "CONFIG_HELIOS_TELEMETRY_CBOR_V1",
+      "qualified": false,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000504",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "config_usage",
+    "subject_key": "CONFIG_HELIOS_TELEMETRY_CBOR_V1"
+  }
+]

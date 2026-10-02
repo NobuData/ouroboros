@@ -1,0 +1,120 @@
+[
+  {
+    "analyzer": "queue_correlation",
+    "analyzer_version": 1,
+    "confidence": 80,
+    "confidence_basis": {
+      "effect_size": 0.786,
+      "method": "queue_correlation v1: days whose longest wait in the window crossed the threshold, against the other pool's idle share; 100 * (days_exceeded / days_observed + idle) / 2",
+      "sample_size": 27,
+      "stability": 0.82
+    },
+    "data": {
+      "days_exceeded": 11,
+      "days_observed": 14,
+      "exceeded_days": [
+        "2026-07-21",
+        "2026-07-22",
+        "2026-07-24",
+        "2026-07-27",
+        "2026-07-28",
+        "2026-07-30",
+        "2026-07-31",
+        "2026-08-03",
+        "2026-08-05",
+        "2026-08-06",
+        "2026-08-07"
+      ],
+      "idle_pool": "pool-b",
+      "idle_share": 0.82,
+      "longest_wait_seconds": [
+        600.0,
+        600.0,
+        600.0,
+        600.0,
+        600.0,
+        600.0,
+        600.0,
+        600.0,
+        600.0,
+        600.0,
+        600.0
+      ],
+      "metric": "queue_wait",
+      "pool": "pool-a",
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      },
+      "threshold_seconds": 300,
+      "window": {
+        "from": "14:00",
+        "to": "16:00"
+      }
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0002-4000-8000-000000000001",
+        "kind": "runner_pool"
+      },
+      {
+        "id": "5eed0512-0002-4000-8000-000000000002",
+        "kind": "runner_pool"
+      },
+      {
+        "id": "5eed0512-0003-4000-8000-000000000005",
+        "kind": "runner"
+      },
+      {
+        "id": "5eed0512-0003-4000-8000-000000000006",
+        "kind": "runner"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000335",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000337",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000033a",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000033c",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000033e",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000341",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000343",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000345",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000348",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000034a",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000034c",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "queue_correlation",
+    "subject_key": "pool-a@14:00-16:00"
+  }
+]

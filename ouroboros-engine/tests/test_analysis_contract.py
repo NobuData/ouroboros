@@ -281,7 +281,29 @@ _SOURCES: dict[str, object] = {
     "rig_telemetry": [
         {"runner_id": UUID, "day": "2026-06-01", "metric": "chamber_c", "value": 41.5}
     ],
+    # BV.3 (#512).
+    "jobs": [
+        {
+            "build_id": UUID,
+            "day": "2026-06-01",
+            "label": "qemu_cortex_m3",
+            "status": "failed",
+            "commit_sha": "3f2a9c1",
+            "git_ref": "refs/heads/gh-readonly-queue/main/pr-1",
+            "title": None,
+            "pool_id": UUID,
+            "queued_at": "2026-06-01T09:00:00Z",
+            "started_at": "2026-06-01T09:05:00Z",
+            "finished_at": "2026-06-01T09:09:00Z",
+            "config": {"CONFIG_HELIOS_OTA": "y"},
+        }
+    ],
+    "pools": [{"pool_id": UUID, "name": "pool-a", "runner_ids": [UUID]}],
+    "config_options": [{"name": "CONFIG_HELIOS_OTA"}],
 }
+
+#: The sources that carry no day — current state, not history.
+_UNDATED = {"flakes", "pools", "config_options"}
 
 
 def test_every_source_has_a_grain_and_a_field() -> None:
@@ -303,11 +325,17 @@ def test_each_new_source_is_absent_by_default_and_available_when_carried() -> No
         assert requirement in _corpus(**{name: empty}).available()
 
 
-@pytest.mark.parametrize("name", sorted(set(_SOURCES) - {"flakes"}))
+@pytest.mark.parametrize("name", sorted(set(_SOURCES) - _UNDATED))
 def test_a_dated_record_outside_the_window_is_refused(name: str) -> None:
     records = json.loads(json.dumps(_SOURCES[name]))
     first = records["build_duration"][0] if name == "series" else records[0]
     first["day"] = "2026-08-06"
+    if name == "jobs":
+        first.update(
+            queued_at="2026-08-06T09:00:00Z",
+            started_at="2026-08-06T09:05:00Z",
+            finished_at="2026-08-06T09:09:00Z",
+        )
 
     with pytest.raises(ValidationError, match="outside the window"):
         _corpus(**{name: records})
@@ -333,3 +361,74 @@ def test_the_full_corpus_round_trips_on_the_wire() -> None:
 
     wire = corpus.model_dump(mode="json", by_alias=True)
     assert Corpus.model_validate(wire) == corpus
+
+
+def _job(**changes: object) -> dict[str, object]:
+    return json.loads(json.dumps(_SOURCES["jobs"]))[0] | changes
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"started_at": "2026-06-01T08:59:00Z"},
+        {"finished_at": "2026-06-01T09:04:00Z"},
+        {"day": "2026-06-02"},
+        {"queued_at": "2026-06-01T09:00:00"},
+        {"commit_sha": "not-a-sha"},
+        {"status": "cancelled"},
+    ],
+)
+def test_a_malformed_job_is_refused(changes: dict[str, object]) -> None:
+    with pytest.raises(ValidationError):
+        _corpus(jobs=[_job(**changes)])
+
+
+def test_a_job_that_never_started_and_unknown_configuration_are_allowed() -> None:
+    corpus = _corpus(jobs=[_job(started_at=None, config=None)])
+    (job,) = corpus.jobs or []
+    assert job.started_at is None and job.config is None
+
+
+def test_the_job_day_is_its_utc_finish_date() -> None:
+    # Finished 23:30 at -05:00 is 04:30 UTC the next day.
+    corpus = _corpus(
+        jobs=[
+            _job(
+                day="2026-06-02",
+                queued_at="2026-06-01T23:00:00-05:00",
+                started_at="2026-06-01T23:10:00-05:00",
+                finished_at="2026-06-01T23:30:00-05:00",
+            )
+        ]
+    )
+    assert (corpus.jobs or [])[0].day.isoformat() == "2026-06-02"
+
+
+def test_the_loop_fields_bv3_reads_are_optional() -> None:
+    loop = json.loads(json.dumps(_SOURCES["loops"]))[0]
+    (bare,) = _corpus(loops=[loop]).loops or []
+    assert (bare.workflow, bare.merge_sha, bare.paths_touched) == (None, None, None)
+    assert bare.stages[0].outcome is None
+
+    loop.update(workflow="standard-fix", merge_sha="3f2a9c1", paths_touched=["a/b.c"])
+    loop["stages"][0]["outcome"] = "flagged"
+    (rich,) = _corpus(loops=[loop]).loops or []
+    assert rich.stages[0].outcome == "flagged" and rich.paths_touched == ["a/b.c"]
+
+
+def test_a_sampling_record_is_keyed_by_source_and_agrees_with_its_rate() -> None:
+    corpus = _corpus(
+        sampling={
+            "log_tails": {"sampled": True, "rate": 0.3, "cap": "max_log_lines"},
+            "jobs": {"sampled": False, "rate": 1},
+        }
+    )
+    assert (corpus.sampling or {})[CorpusSource.LOG_TAILS].rate == 0.3
+    with pytest.raises(ValidationError):
+        _corpus(sampling={"log_tails": {"sampled": True, "rate": 1}})
+    with pytest.raises(ValidationError):
+        _corpus(sampling={"log_tails": {"sampled": False, "rate": 0.5}})
+    with pytest.raises(ValidationError):
+        _corpus(sampling={"not_a_source": {"sampled": False, "rate": 1}})
+    with pytest.raises(ValidationError):
+        _corpus(sampling={"jobs": {"sampled": True, "rate": 0.5, "cap": "max_cpu"}})

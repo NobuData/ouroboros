@@ -23,11 +23,18 @@ identical findings, byte for byte* is an acceptance criterion, and it is only ch
 
 import json
 import re
-from datetime import date
+from datetime import UTC, date
 from enum import StrEnum
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import (
+    AwareDatetime,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 #: An analyzer id, as ``analysis_findings_analyzer_shape`` (``V081``) accepts one.
 ANALYZER_ID_PATTERN = r"^[a-z][a-z0-9_]{0,62}$"
@@ -207,6 +214,13 @@ class CorpusSource(StrEnum):
     WAIVERS = "waivers"
     SERIES = "series"
     RIG_TELEMETRY = "rig_telemetry"
+    #: BV.3 (#512): every finished farm job with its stage label, commit, ref, pool,
+    #: queue times and configuration — what ``builds`` (the duration series) leaves out.
+    JOBS = "jobs"
+    #: BV.3 (#512): the runner pools and the runners in each.
+    POOLS = "pools"
+    #: BV.3 (#512): the build configuration options the repository declares.
+    CONFIG_OPTIONS = "config_options"
 
 
 class Grain(StrEnum):
@@ -228,6 +242,10 @@ class Grain(StrEnum):
     DAY = "day"
     #: One reading per (runner, metric, UTC day).
     READING = "reading"
+    #: One record per runner pool — current membership, not dated.
+    POOL = "pool"
+    #: One record per declared configuration option — not dated.
+    OPTION = "option"
 
 
 #: The grain each source is delivered at. An analyzer requiring a source at another grain
@@ -243,6 +261,9 @@ SOURCE_GRAINS: dict[CorpusSource, Grain] = {
     CorpusSource.WAIVERS: Grain.WAIVER,
     CorpusSource.SERIES: Grain.DAY,
     CorpusSource.RIG_TELEMETRY: Grain.READING,
+    CorpusSource.JOBS: Grain.BUILD,
+    CorpusSource.POOLS: Grain.POOL,
+    CorpusSource.CONFIG_OPTIONS: Grain.OPTION,
 }
 
 
@@ -359,12 +380,22 @@ class FlakeScore(_Strict):
     state: Annotated[str, Field(min_length=1, max_length=64)]
 
 
+#: How a loop stage ended (BV.3, #512): ``failed`` — its own check failed at least once;
+#: ``flagged`` — a review stage found a defect in what came before it.
+StageOutcome = Literal["passed", "failed", "flagged"]
+
+
 class LoopStage(_Strict):
-    """One stage of one loop: its key, how many attempts it took, and their summed time."""
+    """One stage of one loop: its key, how many attempts it took, and their summed time.
+
+    ``outcome`` is optional (#512): a corpus that does not carry stage outcomes leaves it
+    ``None``, and the analyzers reading it count such a stage as unknown, never as passed.
+    """
 
     key: Annotated[str, Field(min_length=1, max_length=120)]
     attempts: Annotated[int, Field(ge=1)]
     seconds: Annotated[float, Field(ge=0)]
+    outcome: StageOutcome | None = None
 
 
 class LoopRecord(_Strict):
@@ -372,6 +403,10 @@ class LoopRecord(_Strict):
 
     The transcript's bodies are never in the corpus — ``events`` and ``event_bytes`` are how
     much of it there was.
+
+    The last four fields are optional (BV.3, #512) and ``None`` when the corpus does not
+    carry them: the workflow slug and the version the loop ran, the commit it merged (absent
+    for an unmerged loop) and the repository paths its change touched.
     """
 
     run_id: _Uuid
@@ -380,6 +415,12 @@ class LoopRecord(_Strict):
     stages: list[LoopStage]
     events: _NonNegativeInt
     event_bytes: _NonNegativeInt
+    workflow: Annotated[str, Field(min_length=1, max_length=120)] | None = None
+    workflow_version_id: _Uuid | None = None
+    merge_sha: Annotated[str, Field(pattern=_SHA.pattern)] | None = None
+    paths_touched: list[Annotated[str, Field(min_length=1, max_length=1024)]] | None = (
+        None
+    )
 
 
 class CacheStat(_Strict):
@@ -427,11 +468,106 @@ class RigReading(_Strict):
     value: float
 
 
+class BuildJob(_Strict):
+    """One finished farm job, as the pattern analyzers read it (BV.3, #512).
+
+    ``builds`` is the duration *series*; this is the job itself — which stage it was
+    (``label``: ``zephyr build``, ``qemu_cortex_m3``, ``HIL test rig``), how it ended, the
+    commit and ref it built, the pool it queued on, when it queued, started and finished,
+    and the configuration it was built with. ``day`` is ``finished_at``'s UTC date.
+
+    ``config`` maps each configuration option the job's build *set* to its value (for a
+    Zephyr build, the ``-DCONFIG_…=`` arguments); ``None`` means the job's configuration is
+    not known, which is different from ``{}`` (known, and nothing set).
+    """
+
+    build_id: _Uuid
+    day: _Day
+    label: _Name
+    status: BuildStatus
+    commit_sha: Annotated[str, Field(pattern=_SHA.pattern)]
+    git_ref: _Name
+    title: Annotated[str, Field(min_length=1, max_length=512)] | None = None
+    pool_id: _Uuid | None = None
+    queued_at: AwareDatetime
+    started_at: AwareDatetime | None = None
+    finished_at: AwareDatetime
+    config: dict[_Name, Annotated[str, Field(max_length=1024)]] | None = None
+
+    @model_validator(mode="after")
+    def _times_in_order(self) -> "BuildJob":
+        """Refuse a job whose instants are out of order or whose day is not its finish's.
+
+        Returns:
+            The job, unchanged.
+
+        Raises:
+            ValueError: ``queued_at`` ≤ ``started_at`` ≤ ``finished_at`` does not hold, or
+                ``day`` is not ``finished_at``'s UTC date.
+        """
+        started = self.started_at or self.queued_at
+        if not self.queued_at <= started <= self.finished_at:
+            raise ValueError("queued_at <= started_at <= finished_at")
+        if self.finished_at.astimezone(UTC).date() != self.day:
+            raise ValueError("day is finished_at's UTC date")
+        return self
+
+
+class RunnerPool(_Strict):
+    """One runner pool and the runners in it now (BV.3, #512) — current, so not dated."""
+
+    pool_id: _Uuid
+    name: _Name
+    runner_ids: list[_Uuid]
+
+
+class ConfigOption(_Strict):
+    """One configuration option the repository declares (BV.3, #512) — e.g. a Kconfig symbol.
+
+    The declared set is what lets ``config_usage`` say *never set*: an option no job set is
+    only visible against the list of options that exist.
+    """
+
+    name: Annotated[str, Field(min_length=1, max_length=255)]
+
+
+class SamplingRecord(_Strict):
+    """How much of one source the corpus read — BV.1's manifest record (V080), mirrored.
+
+    ``rate`` is exactly 1 when the source was read in full and strictly between 0 and 1 when a
+    budget (``cap``) bound it.
+    """
+
+    sampled: bool
+    rate: Annotated[float, Field(gt=0, le=1)]
+    cap: Literal["max_builds", "max_log_lines", "compute_ceiling_seconds"] | None = None
+
+    @model_validator(mode="after")
+    def _rate_agrees(self) -> "SamplingRecord":
+        """Refuse a record whose rate contradicts its flag.
+
+        Returns:
+            The record, unchanged.
+
+        Raises:
+            ValueError: ``sampled`` with a rate of 1, or not sampled with a rate under 1.
+        """
+        if self.sampled == (self.rate == 1):
+            raise ValueError(
+                "a sampled source has a rate under 1; a full read has rate 1"
+            )
+        return self
+
+
 class Corpus(_Strict):
     """One repository's snapshotted history, as an analysis run reads it.
 
     ``None`` means the source is absent from this corpus; ``[]`` means it is present and
     empty. Records outside ``window`` are refused, so an analyzer can trust the bounds.
+
+    ``sampling`` (BV.3, #512) is BV.1's per-source sampling record, keyed by source name. An
+    analyzer making an *absence* claim reads it: a source missing from it — or ``sampling``
+    itself ``None`` — is **unknown**, and is treated as possibly sampled.
     """
 
     repo_ref: Annotated[str, Field(min_length=1, max_length=255)]
@@ -451,12 +587,17 @@ class Corpus(_Strict):
         | None
     ) = None
     rig_telemetry: list[RigReading] | None = None
+    jobs: list[BuildJob] | None = None
+    pools: list[RunnerPool] | None = None
+    config_options: list[ConfigOption] | None = None
+    sampling: dict[CorpusSource, SamplingRecord] | None = None
 
     @model_validator(mode="after")
     def _records_inside_the_window(self) -> "Corpus":
         """Refuse a record dated outside the corpus window.
 
-        Every dated source is checked; ``flakes`` are current scores and carry no day.
+        Every dated source is checked; ``flakes``, ``pools`` and ``config_options`` are
+        current and carry no day.
 
         Returns:
             The corpus, unchanged.
@@ -474,6 +615,7 @@ class Corpus(_Strict):
             *(self.waivers or ()),
             *(point for points in (self.series or {}).values() for point in points),
             *(self.rig_telemetry or ()),
+            *(self.jobs or ()),
         )
         for record in dated:
             if not self.window.from_ <= record.day <= self.window.to:

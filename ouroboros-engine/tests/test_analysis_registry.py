@@ -21,6 +21,17 @@ from ouroboros_engine.analysis.spi import parameters_fingerprint
 
 CHANGE_POINT = "ouroboros_engine.analysis.changepoint:ChangePointAnalyzer"
 
+#: Every built-in analyzer's id, in the registry's (id) order — BV.2's and BV.3's (#512).
+BUILTIN_IDS = [
+    "cache_window",
+    "change_point",
+    "config_usage",
+    "log_signature",
+    "queue_correlation",
+    "waiver_cite",
+    "workflow_outcome",
+]
+
 
 class Retuned(ChangePointAnalyzer):
     """change_point v1 with a different penalty — the silent retune the ledger exists for."""
@@ -141,14 +152,26 @@ def test_an_id_registers_once() -> None:
 def test_the_default_registry_is_the_built_ins_in_id_order() -> None:
     registry = default_registry()
 
-    assert BUILTIN_ANALYZERS == (CHANGE_POINT,)
-    assert [(a.id, a.version, a.path) for a in registry] == [
-        ("change_point", 1, CHANGE_POINT)
+    assert BUILTIN_ANALYZERS[0] == CHANGE_POINT
+    assert [(a.id, a.version) for a in registry] == [
+        (analyzer_id, 1) for analyzer_id in BUILTIN_IDS
     ]
     assert registry.analyzer_set("deterministic analyzers v1") == {
         "label": "deterministic analyzers v1",
-        "analyzers": [{"id": "change_point", "version": 1, "kind": "deterministic"}],
+        "analyzers": [
+            {"id": analyzer_id, "version": 1, "kind": "deterministic"}
+            for analyzer_id in BUILTIN_IDS
+        ],
     }
+
+
+def test_every_built_in_is_pinned_in_the_ledger_at_its_parameters() -> None:
+    # BV.3 (#512): six pattern analyzers beside change_point, each pinned at v1.
+    for registered in default_registry():
+        key = f"{registered.id}@v{registered.version}"
+        assert PARAMETER_LEDGER[key] == parameters_fingerprint(
+            registered.cls.parameters
+        )
 
 
 class _EntryPoint:
@@ -170,7 +193,7 @@ def test_installed_analyzers_are_discovered_and_checked(
     registry = default_registry({**PARAMETER_LEDGER, **ledger_for(RaisesAnalyzer)})
 
     assert seen == [ENTRY_POINT_GROUP]
-    assert [a.id for a in registry] == ["change_point", "fake_raises"]
+    assert [a.id for a in registry] == sorted([*BUILTIN_IDS, "fake_raises"])
 
 
 def test_a_broken_installed_analyzer_fails_loudly(

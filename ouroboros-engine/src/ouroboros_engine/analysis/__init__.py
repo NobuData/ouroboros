@@ -10,8 +10,11 @@
   analyzer, budgets, failure isolation.
 * :mod:`~ouroboros_engine.analysis.sandbox` — the process an analyzer runs in: no network, no
   subprocess, a memory limit, fixed seeds.
+* :mod:`~ouroboros_engine.analysis.common` — the helpers every analyzer shares.
 * :mod:`~ouroboros_engine.analysis.changepoint` — the first analyzer: PELT over daily median
   build durations, with ranked attribution.
+* :mod:`~ouroboros_engine.analysis.patterns` — BV.3's pattern analyzers (#512): log
+  signatures, config usage, cache windows, queue correlation, waiver cites, workflow outcomes.
 
 :mod:`ouroboros_engine.api.analysis` serves the harness to BV.1's run orchestrator in
 ``ouroboros-rest`` (`#510 <https://github.com/NobuData/ouroboros/issues/510>`_), which assembles

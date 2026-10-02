@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.9
+  version: 0.7.10
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -121,7 +121,7 @@ paths:
                 $ref: "#/components/schemas/ServiceIdentity"
               example:
                 service: ouroboros-engine
-                version: 0.7.9
+                version: 0.7.10
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -147,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ServiceStatus"
               example:
                 service: ouroboros-engine
-                version: 0.7.9
+                version: 0.7.10
                 uptime_seconds: 1234.567
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -195,7 +195,7 @@ paths:
                   task_kind: echo
                   payload:
                     note: hello from ouroboros-rest
-                engine_version: 0.7.9
+                engine_version: 0.7.10
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -2412,8 +2412,11 @@ components:
         loops:
           type: [array, "null"]
           description: |-
-            `{run_id, day, status, stages: [{key, attempts, seconds}], events, event_bytes}` —
-            stage timings and transcript statistics, never transcript bodies.
+            `{run_id, day, status, stages: [{key, attempts, seconds, outcome?}], events,
+            event_bytes, workflow?, workflow_version_id?, merge_sha?, paths_touched?}` — stage
+            timings and transcript statistics, never transcript bodies. The optional fields (#512)
+            are `null` when the corpus does not carry them; a stage `outcome` is `passed`,
+            `failed` or `flagged`.
           items: {type: object}
         cache:
           type: [array, "null"]
@@ -2434,6 +2437,36 @@ components:
           type: [array, "null"]
           description: "`{runner_id, day, metric, value}` — absent until AJ.4 lands."
           items: {type: object}
+        jobs:
+          type: [array, "null"]
+          description: |-
+            BV.3 ([#512](https://github.com/NobuData/ouroboros/issues/512)) — every finished farm
+            job: `{build_id, day, label, status, commit_sha, git_ref, title, pool_id, queued_at,
+            started_at, finished_at, config}`. Instants are timezone-aware, `queued_at` ≤
+            `started_at` ≤ `finished_at`, and `day` is `finished_at`'s UTC date. `config` maps each
+            option the build set to its value; `null` is unknown, `{}` is known and empty. Read by
+            `config_usage`, `cache_window`, `queue_correlation` and `workflow_outcome`.
+          items: {type: object}
+        pools:
+          type: [array, "null"]
+          description: "BV.3 — `{pool_id, name, runner_ids}` — the runner pools and their runners now."
+          items: {type: object}
+        config_options:
+          type: [array, "null"]
+          description: |-
+            BV.3 — `{name}` per configuration option the repository declares (a Kconfig symbol):
+            what lets `config_usage` say *never set*.
+          items: {type: object}
+        sampling:
+          type: [object, "null"]
+          description: |-
+            BV.3 — BV.1's per-source sampling record, keyed by source name:
+            `{"log_tails": {sampled, rate, cap}}`. `rate` is 1 for a full read and in (0, 1) when
+            `cap` (`max_builds`, `max_log_lines` or `compute_ceiling_seconds`) bound it. A source
+            missing from it — or `sampling` itself absent — is *unknown*, and an absence claim
+            over it is qualified (`config_usage`).
+          additionalProperties:
+            type: object
 
     AnalysisRequest:
       type: object

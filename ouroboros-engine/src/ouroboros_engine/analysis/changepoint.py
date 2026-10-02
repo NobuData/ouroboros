@@ -57,6 +57,7 @@ from typing import Any, ClassVar
 import numpy as np
 import ruptures
 
+from ouroboros_engine.analysis.common import round_half as _round
 from ouroboros_engine.analysis.contract import (
     BuildSample,
     CandidateEvent,
@@ -100,21 +101,6 @@ CONFIDENCE_METHOD = (
 UNATTRIBUTED_LABEL = "no recorded change within ±{window} days"
 
 _MAD_TO_SIGMA = 1.4826
-
-
-def _round(value: float, places: int) -> float:
-    """Round half away from zero, so emitted numbers do not depend on banker's rounding.
-
-    Args:
-        value: The number.
-        places: Decimal places to keep.
-
-    Returns:
-        The rounded number, with ``-0.0`` folded to ``0.0``.
-    """
-    scale = 10**places
-    rounded = math.floor(abs(value) * scale + 0.5) / scale
-    return math.copysign(rounded, value) + 0.0
 
 
 def _robust_sigma(values: np.ndarray, floor: float) -> float:
