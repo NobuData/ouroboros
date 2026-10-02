@@ -62,12 +62,17 @@ def test_the_change_point_analyzer_completes_in_its_sandbox(corpus: Corpus) -> N
     report = run_analysis(default_registry(), corpus, compute_ceiling_seconds=60)
     elapsed = time.monotonic() - started
 
-    (outcome,) = report.outcomes
-    assert (outcome.analyzer, outcome.status, outcome.error) == (
-        "change_point",
-        "completed",
-        None,
-    )
+    outcome = _outcome(report, "change_point")
+    assert (outcome.status, outcome.error) == ("completed", None)
+    # The pattern analyzers (#512) need sources this duration corpus does not carry.
+    assert {o.analyzer for o in report.outcomes if o.status == "skipped"} == {
+        "cache_window",
+        "config_usage",
+        "log_signature",
+        "queue_correlation",
+        "waiver_cite",
+        "workflow_outcome",
+    }
     assert [f.data["date"] for f in report.findings] == list(PLANTED)
     assert not report.budget_exceeded and report.failed == []
     # The fixture corpus is analysed well inside the run's compute budget.

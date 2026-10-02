@@ -39,6 +39,12 @@ from ouroboros_engine.analysis.spi import (
 #: The analyzers this engine ships.
 BUILTIN_ANALYZERS: tuple[str, ...] = (
     "ouroboros_engine.analysis.changepoint:ChangePointAnalyzer",
+    "ouroboros_engine.analysis.patterns.cache_window:CacheWindowAnalyzer",
+    "ouroboros_engine.analysis.patterns.config_usage:ConfigUsageAnalyzer",
+    "ouroboros_engine.analysis.patterns.log_signature:LogSignatureAnalyzer",
+    "ouroboros_engine.analysis.patterns.queue_correlation:QueueCorrelationAnalyzer",
+    "ouroboros_engine.analysis.patterns.waiver_cite:WaiverCiteAnalyzer",
+    "ouroboros_engine.analysis.patterns.workflow_outcome:WorkflowOutcomeAnalyzer",
 )
 
 #: The entry-point group an installed package registers analyzers under.

@@ -1,0 +1,834 @@
+[
+  {
+    "analyzer": "workflow_outcome",
+    "analyzer_version": 1,
+    "confidence": 71,
+    "confidence_basis": {
+      "effect_size": 0.145,
+      "method": "workflow_outcome v1: failures a stage caught that no other stage of the same commit did; 100 * (1 - e^(-sample/50)) * coverage",
+      "sample_size": 62,
+      "stability": 1.0
+    },
+    "data": {
+      "at_merge_gate": 9,
+      "failures": 11,
+      "metric": "unique_failures",
+      "sample": 62,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      },
+      "scope": "stage HIL test rig",
+      "shared_failures": 2,
+      "unit": "count",
+      "value": 9,
+      "workflow": "build farm"
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001c6",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001c8",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001ca",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001cc",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001ce",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001d0",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001d2",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001d4",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001d6",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001d8",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001da",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "workflow_outcome",
+    "subject_key": "build farm/stage HIL test rig/unique_failures"
+  },
+  {
+    "analyzer": "workflow_outcome",
+    "analyzer_version": 1,
+    "confidence": 99,
+    "confidence_basis": {
+      "effect_size": 0.201,
+      "method": "workflow_outcome v1: failures a stage caught that no other stage of the same commit did; 100 * (1 - e^(-sample/50)) * coverage",
+      "sample_size": 214,
+      "stability": 1.0
+    },
+    "data": {
+      "at_merge_gate": 0,
+      "failures": 55,
+      "metric": "unique_failures",
+      "sample": 214,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      },
+      "scope": "stage native_sim",
+      "shared_failures": 12,
+      "unit": "count",
+      "value": 43,
+      "workflow": "build farm"
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000019",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000001b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000001d",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000001f",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000021",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000023",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000025",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000027",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000029",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000002b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000002d",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000002f",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000031",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000033",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000035",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000037",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000039",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000003b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000003d",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000003f",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000041",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000043",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000045",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000047",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000049",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000004b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000004d",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000004f",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000051",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000053",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000055",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000057",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000059",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000005b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000005d",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000005f",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000061",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000063",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000065",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000067",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000069",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000006b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000006d",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000001",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000003",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000005",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000007",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000009",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000000b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000000d",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000000f",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000011",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000013",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000015",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000017",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "workflow_outcome",
+    "subject_key": "build farm/stage native_sim/unique_failures"
+  },
+  {
+    "analyzer": "workflow_outcome",
+    "analyzer_version": 1,
+    "confidence": 99,
+    "confidence_basis": {
+      "effect_size": 0.0,
+      "method": "workflow_outcome v1: failures a stage caught that no other stage of the same commit did; 100 * (1 - e^(-sample/50)) * coverage",
+      "sample_size": 214,
+      "stability": 1.0
+    },
+    "data": {
+      "at_merge_gate": 0,
+      "failures": 12,
+      "metric": "unique_failures",
+      "sample": 214,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      },
+      "scope": "stage qemu_cortex_m3",
+      "shared_failures": 12,
+      "unit": "count",
+      "value": 0,
+      "workflow": "build farm"
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-000000000002",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000004",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000006",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000008",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000000a",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000000c",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000000e",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000010",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000012",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000014",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000016",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000018",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "workflow_outcome",
+    "subject_key": "build farm/stage qemu_cortex_m3/unique_failures"
+  },
+  {
+    "analyzer": "workflow_outcome",
+    "analyzer_version": 1,
+    "confidence": 8,
+    "confidence_basis": {
+      "effect_size": 0.077,
+      "method": "workflow_outcome v1: failures a stage caught that no other stage of the same commit did; 100 * (1 - e^(-sample/50)) * coverage",
+      "sample_size": 794,
+      "stability": 0.078
+    },
+    "data": {
+      "at_merge_gate": 0,
+      "failures": 63,
+      "metric": "unique_failures",
+      "sample": 794,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      },
+      "scope": "stage zephyr build",
+      "shared_failures": 2,
+      "unit": "count",
+      "value": 61,
+      "workflow": "build farm"
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0001-4000-8000-00000000022a",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000022b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000022c",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000364",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000236",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000237",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000238",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000037b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000392",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000242",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000243",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000244",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000003a9",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000024e",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000024f",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000250",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000003c0",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000025a",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000025b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000025c",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000003d7",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000003ee",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000266",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000267",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000268",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000405",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000272",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000273",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000274",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000041c",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000027e",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000027f",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000280",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000433",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000028a",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000028b",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000028c",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000044a",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000461",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000296",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000297",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000298",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000478",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002a2",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002a3",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002a4",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-00000000048f",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002ae",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002af",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002b0",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000004a6",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002ba",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002bb",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002bc",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000004bd",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000004d4",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002c6",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002c7",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000002c8",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000004eb",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-000000000502",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001d7",
+        "kind": "build"
+      },
+      {
+        "id": "5eed0512-0001-4000-8000-0000000001d9",
+        "kind": "build"
+      }
+    ],
+    "finding_type": "workflow_outcome",
+    "subject_key": "build farm/stage zephyr build/unique_failures"
+  },
+  {
+    "analyzer": "workflow_outcome",
+    "analyzer_version": 1,
+    "confidence": 65,
+    "confidence_basis": {
+      "effect_size": 3.057,
+      "method": "workflow_outcome v1: flake rate within the window of merges touching the path over the other merges (observed association); 100 * (1 - e^(-cases/20)) * min(1, (ratio - 1) / 2), suppressed below minimum support",
+      "sample_size": 21,
+      "stability": 1.0
+    },
+    "data": {
+      "baseline": 0.203,
+      "baseline_flaked": 16,
+      "baseline_sample": 79,
+      "flaked": 13,
+      "metric": "flake_ratio_7d",
+      "rate": 0.619,
+      "sample": 21,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      },
+      "scope": "merges touching drivers/can/",
+      "unit": "ratio",
+      "value": 3.1,
+      "workflow": "standard-fix"
+    },
+    "evidence_refs": [
+      {
+        "id": "54059c9bb2254a09dd80d21ee1cfadb7e71671a0",
+        "kind": "merge"
+      },
+      {
+        "id": "8b4f50408d6c13c02e2383ec8d4cf422f9d45d0a",
+        "kind": "merge"
+      },
+      {
+        "id": "ef5ad8c9c4b7477ca90a5052082ed7cb1ba28b03",
+        "kind": "merge"
+      },
+      {
+        "id": "ebc9f376d9d3d5c3a8461bd0cfb2cadffff3b903",
+        "kind": "merge"
+      },
+      {
+        "id": "50070ead65c8ccaa94a9a884821054002cdf42b6",
+        "kind": "merge"
+      },
+      {
+        "id": "b6a1fb7fd9ea31b3476233b4e13ee3a67983239b",
+        "kind": "merge"
+      },
+      {
+        "id": "61846237c02a8f03467b8cbc5bf380b5ae259b35",
+        "kind": "merge"
+      },
+      {
+        "id": "f5d7fd2ed369ddfa1b536d58fcae3811343546d1",
+        "kind": "merge"
+      },
+      {
+        "id": "82286bc96055b6ac50de60c5dc099c8df8ef3c76",
+        "kind": "merge"
+      },
+      {
+        "id": "6c0e9cfe81af47414b1fd647494e98d8a03b0c51",
+        "kind": "merge"
+      },
+      {
+        "id": "8a3fd03bc757ec24329b20eb6ccfc1f16a7677cf",
+        "kind": "merge"
+      },
+      {
+        "id": "37cc696a979096301d87e8691ecedc889644df08",
+        "kind": "merge"
+      },
+      {
+        "id": "afe27657d35ce474e5e5a94e50b404805aa108cf",
+        "kind": "merge"
+      },
+      {
+        "id": "e6d9e07ccc191a4a6858879d029a09d128754f05",
+        "kind": "merge"
+      },
+      {
+        "id": "572a40ce4981ae5a9e12d9330e1f68b4e6d527c7",
+        "kind": "merge"
+      },
+      {
+        "id": "e5803dbe6b08240767c50eac0c8ee9594df4e116",
+        "kind": "merge"
+      },
+      {
+        "id": "50743dc1c94b58ae4c66fad7c79f9515de5d78f6",
+        "kind": "merge"
+      },
+      {
+        "id": "121b0631f1ba73f2c9a972331183c51d172d4922",
+        "kind": "merge"
+      },
+      {
+        "id": "d5d9cc7f05a227e50b3fe03acf5729c87152fdf9",
+        "kind": "merge"
+      },
+      {
+        "id": "11fa1ab2dab280f56e577964bec260c415878c34",
+        "kind": "merge"
+      },
+      {
+        "id": "4dfd75d1957dbbf18f6331a0a055bede1ba3b55d",
+        "kind": "merge"
+      }
+    ],
+    "finding_type": "workflow_outcome",
+    "subject_key": "standard-fix/drivers/can/flake_ratio_7d"
+  },
+  {
+    "analyzer": "workflow_outcome",
+    "analyzer_version": 1,
+    "confidence": 86,
+    "confidence_basis": {
+      "effect_size": 0.34,
+      "method": "workflow_outcome v1: loops whose failed build stage a later review stage flagged; 100 * (1 - e^(-n/25)), stability 1 - 1.96 * sqrt(p(1-p)/n)",
+      "sample_size": 50,
+      "stability": 0.869
+    },
+    "data": {
+      "flagged": 17,
+      "metric": "failed_builds_flagged_by_review",
+      "sample": 50,
+      "sampling": {
+        "rate": 1.0,
+        "sampled": false
+      },
+      "scope": "stage build → review",
+      "unit": "share",
+      "value": 0.34,
+      "workflow": "standard-fix"
+    },
+    "evidence_refs": [
+      {
+        "id": "5eed0512-0005-4000-8000-000000000001",
+        "kind": "workflow_version"
+      }
+    ],
+    "finding_type": "workflow_outcome",
+    "subject_key": "standard-fix/stage build→review/failed_builds_flagged_by_review"
+  }
+]

@@ -447,7 +447,7 @@ seeds: 90d series w/ 3 planted shifts + attribution anchors · run manifest ·
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BV.1 | #510 ✅ | 🟢 Done | ouroboros-rest: [BV.1] Corpus assembly & run orchestration | Bounded readers, snapshots, budgets, schedule triggers (A2/A7) | mvp, analyzer, rest | N (after BU.1, AJ.4-shape) | Y | L | ouroboros-rest |
 | BV.2 | #511 ✅ | 🟢 Done | ouroboros-engine: [BV.2] Analyzer SPI & statistical core | The engine-side SPI + change-point (ruptures) + attribution | mvp, analyzer, engine | N (after BU.2, #52) | Y | L | ouroboros-engine |
-| BV.3 | #512 | 🟡 Open | ouroboros-engine: [BV.3] Pattern analyzers | Signatures, config-usage, cache-window, queue, waiver-cites, workflow-outcome | mvp, analyzer, engine | N (after BV.2) | Y | L | ouroboros-engine |
+| BV.3 | #512 ✅ | 🟢 Done | ouroboros-engine: [BV.3] Pattern analyzers | Signatures, config-usage, cache-window, queue, waiver-cites, workflow-outcome | mvp, analyzer, engine | N (after BV.2) | Y | L | ouroboros-engine |
 | BV.4 | #513 | 🟡 Open | ouroboros-rest: [BV.4] Suggestion composer | Templates, impact math, confidence scoring, `/v0/synthesize` contract | mvp, analyzer, rest | N (after BV.2/BV.3) | Y | M | ouroboros-rest |
 | BV.5 | #514 | 🟡 Open | ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push | Plane compositions with previews; planning-batch drafting (A4/A5) | mvp, analyzer, rest, workflow, planning | N (after BV.4, WF-P.3, AK/AL) | Y | L | ouroboros-rest |
 | BV.6 | #515 | 🟡 Open | ouroboros-rest: [BV.6] Measurement job & calibration | 14d windows, verdicts, confounds, recalibration (A6); tests | mvp, analyzer, rest, ci | N (after BU.3, BV.5, BI.2) | Y | M | ouroboros-rest |
@@ -554,7 +554,47 @@ attribution(Jun22): [{merge "enable ccache" d=0, .94}, {config Δ d=1, .31}] ─
 
 ### Issue BV.3 — ouroboros-engine: [BV.3] Pattern analyzers
 
-> **GitHub issue:** #512 · **Status:** 🟡 Open · **Parent epic:** #503
+> **GitHub issue:** #512 ✅ · **Status:** 🟢 Done · **Parent epic:** #503
+
+- **Delivered** (`ouroboros-engine` 0.7.10, `src/ouroboros_engine/analysis/patterns/`): six v1
+  analyzers, each pinned in the ledger with a 60 s budget.
+  - `log_signature`: marker lines masked to templates, clustered by sha256 hash; share of the
+    template's family.
+  - `config_usage`: `never_set` / `never_varied` / `drift`. It is **sampling-aware**: over a
+    sampled or unknown read, an absence claim is `qualified` (v1) or suppressed.
+  - `cache_window`: the pooled hit rate in the 6 h after each `deps: refresh` merge. It also
+    carries `trigger_days`, failure rates on and off those days and `failures_cluster`, which
+    is BK.5's #446 line.
+  - `queue_correlation`: each pool's worst 2 h UTC window over the last 14 weekdays against the
+    idlest other pool.
+  - `waiver_cite`: shared-token clusters of waiver reasons in 60 days.
+  - `workflow_outcome`: three findings.
+    - The review-flag share.
+    - A path prefix × 7-day flake ratio that carries its case count and baseline and is
+      suppressed below 10 cases.
+    - **Unique failures per commit**: a failure no other job of the same commit had. These
+      carry the merge-gate count.
+
+  The engine `Corpus` gains the inputs these need, all optional, so an analyzer that lacks one
+  is `skipped`: `jobs`, `pools`, `config_options`, loop `workflow` / `merge_sha` /
+  `paths_touched` and a stage `outcome`, and `sampling` (BV.1's `{sampled, rate, cap}` per
+  source). Goldens are built in code (`tests/analysis_patterns_golden.py`): a 1,284-job corpus
+  plants each mockup line, and the analyzers recompute every number.
+  - 31 builds / 7.2% of 430 OTA lines.
+  - 118 builds.
+  - 12 options × 0 / 1,284 with 4 drift warnings.
+  - 78% → 31% over 14 occurrences.
+  - pool-a 14:00-16:00 on 11 of 14 days, pool-b idle 82%.
+  - 3 thermal-chamber waivers.
+  - 34% of 50.
+  - 3.1× over 21 cases against a baseline of 0.203.
+  - qemu 0 unique in 214; HIL 9, all at gates.
+
+  The goldens include negative, below-support and all-shared fixtures, and stay byte-identical
+  under two hash seeds in the sandboxes.
+
+  *Not here:* filling the new sources in `ouroboros-rest`'s corpus assembly (BV.1's readers),
+  so on a real run these analyzers stay `skipped` until that follow-up lands.
 
 - **Problem Statement:** The remaining five MVP families — each mockup
   evidence line's generator.

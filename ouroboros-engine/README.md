@@ -425,7 +425,13 @@ this module serves them two routes (`api/analysis.py`):
 The corpus (`contract.py`) carries BV.1's sources — `builds`, `events`, `log_tails` (each
 build's line count and only its tail), `tests`, `flakes`, `loops` (stage timings and transcript
 statistics, never bodies), `cache`, `waivers`, `series` (BI rollup rows by metric id) and
-`rig_telemetry` (AJ.4's read shape, #266, absent until it exists). Absent (`None`) is not empty
+`rig_telemetry` (AJ.4's read shape, #266, absent until it exists). BV.3
+([#512](https://github.com/NobuData/ouroboros/issues/512)) adds `jobs` (every finished farm job:
+stage label, status, commit, ref, pool, queue/start/finish instants, configuration), `pools`,
+`config_options` (the declared options), optional loop fields (`workflow`,
+`workflow_version_id`, `merge_sha`, `paths_touched`, a stage `outcome`) and `sampling` (BV.1's
+per-source `{sampled, rate, cap}` record). BV.1 does not assemble those yet, so the analyzers
+that need them are `skipped` until it does. Absent (`None`) is not empty
 (`[]`): an analyzer requiring an absent source is `skipped`. Nothing leaves the tenant — the
 corpus arrives from the deployment's own `ouroboros-rest` and the sandboxes cannot open a socket.
 
@@ -469,9 +475,27 @@ report.findings_json()  # the canonical bytes — identical corpus => identical 
   `100 * stability * (1 - e^(-effect/2)) * coverage`; the module docstring has every term and
   the simulation the penalty was chosen on.
 
-`tests/analysis_golden.py` builds the planted-shift and noise-only corpora; the expected
-findings are committed under `tests/analysis_golden/` and regenerated with
-`uv run python tests/analysis_golden.py` (after a version bump, if the change was intended).
+**The pattern analyzers** (`patterns/`, BV.3 [#512](https://github.com/NobuData/ouroboros/issues/512))
+each generate one kind of mockup 18 evidence line. Every one of them is v1 and pinned in the
+ledger. Each records a `sampling` note (`{sampled, rate}`, `null` when unknown) in every finding,
+emits a stable `subject_key`, and cites evidence that resolves. Each module docstring has its
+rules and its confidence formula.
+
+| Analyzer | Requires | Produces |
+|---|---|---|
+| `log_signature` | `log_tails` | marker lines with variable tokens masked to `<*>`, clustered by template hash (`subject_key`); count, share of the template's family, first/last seen, sample builds — *fixture timeout · 31 builds · 7.2% of OTA fails* |
+| `config_usage` | `jobs`, `config_options` | declared options `never_set` / `never_varied` / `drift` (Kconfig's warning in the tails). **Sampling-aware**: over a sampled or unknown read, an absence claim is `qualified` (v1) or suppressed — `config_usage_findings(corpus, "suppress")` |
+| `cache_window` | `jobs`, `cache` | pooled hit rate inside 6 h after each merge of a class (`deps: refresh`) vs. the rest, with occurrences and recovery. It also carries `trigger_days`, failure rates on and off those days and `failures_cluster`, BK.5's (#446) line |
+| `queue_correlation` | `jobs`, `pools` | for each pool, its worst 2 h UTC window over the last 14 weekdays (longest wait > 300 s) against the idlest other pool's idle share |
+| `waiver_cite` | `waivers` | waivers in 60 days whose normalised reasons share a token (≥ 3); topic = the tokens all share |
+| `workflow_outcome` | `jobs`, `loops` (+ `tests`) | failed builds later flagged by review (share); path prefix × flake within 7 days as a ratio with case count and baseline, **suppressed below 10 cases**; per-stage **unique failures** (no other job of the same commit failed) with the merge-gate count |
+
+`tests/analysis_golden.py` builds the planted-shift and noise-only corpora, and
+`tests/analysis_patterns_golden.py` builds mockup 18's pattern corpus. That corpus is 1,284 jobs
+with every evidence line planted, never stated. The expected findings are committed under
+`tests/analysis_golden/`. To regenerate them, run
+`uv run python tests/analysis_golden.py` or `uv run python tests/analysis_patterns_golden.py`;
+if the change was intended, bump the version first.
 
 ## The simulated-run driver (development only)
 
@@ -800,7 +824,9 @@ ouroboros-engine/
 │   │   ├── registry.py #   discovery and registration
 │   │   ├── harness.py  #   one sandbox per analyzer: budgets, isolation, the report
 │   │   ├── sandbox.py  #   the analyzer's process: no network, RLIMIT_AS, seeds
-│   │   └── changepoint.py# change_point v1: PELT over daily medians, ranked attribution
+│   │   ├── common.py   #   rounding, sampling notes, evidence lists — shared
+│   │   ├── changepoint.py# change_point v1: PELT over daily medians, ranked attribution
+│   │   └── patterns/   #   the six pattern analyzers, one module each           · #512
 │   ├── dev.py          # `uv run dev` entry point; not imported by the application
 │   ├── main.py         # create_app() and the `app` uvicorn serves
 │   ├── openapi.py      # loads the committed spec; `uv run openapi` renders the JSON

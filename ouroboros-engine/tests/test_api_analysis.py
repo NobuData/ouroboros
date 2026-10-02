@@ -111,7 +111,18 @@ def test_the_installed_set_is_reported_in_the_runs_provenance_shape(
     assert response.status_code == 200
     assert response.json() == {
         "label": ANALYZER_SET_LABEL,
-        "analyzers": [{"id": "change_point", "version": 1, "kind": "deterministic"}],
+        "analyzers": [
+            {"id": analyzer_id, "version": 1, "kind": "deterministic"}
+            for analyzer_id in (
+                "cache_window",
+                "change_point",
+                "config_usage",
+                "log_signature",
+                "queue_correlation",
+                "waiver_cite",
+                "workflow_outcome",
+            )
+        ],
     }
 
 
@@ -192,8 +203,15 @@ def test_the_change_point_analyzer_runs_through_the_route(client: TestClient) ->
     # change_point completes with no findings rather than failing.
     events = _events(client, {"run_id": _RUN_ID, "corpus": _corpus(events=True)})
 
-    assert [e["event"] for e in events] == ["started", "outcome", "report"]
-    assert events[1]["outcome"]["status"] == "completed"
+    outcomes = {
+        e["outcome"]["analyzer"]: e["outcome"]["status"]
+        for e in events
+        if e["event"] == "outcome"
+    }
+    assert outcomes.pop("change_point") == "completed"
+    # The pattern analyzers (#512) need sources this corpus does not carry.
+    assert set(outcomes.values()) == {"skipped"} and len(outcomes) == 6
+    assert events[-1]["event"] == "report"
 
 
 def test_a_harness_failure_ends_the_stream_without_a_report(
