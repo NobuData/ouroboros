@@ -368,3 +368,141 @@
 .insights-tip__label:focus-visible ~ .insights-tip__bubble {
   display: block;
 }
+
+/* ---------- the bar cards and the scoreboard (#445) ---------- */
+
+/* The mockup's `c-4`: the interventions and stage-medians cards. */
+.insights-col--4 {
+  grid-column: span 4;
+  min-width: 0;
+}
+
+/* Narrower than the mockup's full row, the two bar cards pair under the chart beside them. */
+@media (max-width: 68.75rem) {
+  .insights-col--4 {
+    grid-column: span 6;
+  }
+}
+
+/* The bar cards' reserved shape while nothing is read — roughly five rows of bars. */
+.insights-series__plot--third {
+  aspect-ratio: 4 / 3;
+}
+
+/* The re-categorize disclosure: a hairline above it, the panel's fields stacked under the button. */
+.insights-recat__frame {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  padding-top: var(--sp-5);
+  border-top: 1px solid var(--line);
+}
+
+.insights-recat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  width: 100%;
+}
+
+.insights-recat__note,
+.insights-recat__status {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.insights-recat__status:empty {
+  display: none;
+}
+
+.insights-recat__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* The scoreboard: the card frame's gap between head, table and suggestion band. */
+.insights-board {
+  gap: var(--sp-6);
+}
+
+.insights-board__task {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* The mockup's `<span class="faint">(fallback)</span>`, with its hop. */
+.insights-board__role {
+  color: var(--ink-faint);
+}
+
+.insights-board__sample {
+  white-space: nowrap;
+}
+
+/* The mockup's `style="width:200px"` on the untouched column, in rem so it follows the type scale. */
+.insights-board__untouched-col {
+  width: 12.5rem;
+}
+
+.insights-board__untouched {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+}
+
+.insights-board__meter {
+  flex: 1;
+}
+
+.insights-board__rate {
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The trend arrow is coloured by goodness — never by which way it points. */
+.insights-board__trend {
+  white-space: nowrap;
+}
+
+.insights-board__trend--good {
+  color: var(--ok);
+}
+
+.insights-board__trend--bad {
+  color: var(--err);
+}
+
+.insights-board__trend--none {
+  color: var(--ink-mut);
+}
+
+/* The mockup's inset suggestion row: AB.3's claim and its deep link. */
+.insights-board__suggestion {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+}
+
+.insights-board__claim {
+  flex: 1;
+  min-width: 16rem;
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/* The table's reserved place while nothing is read. */
+.insights-board__skeleton {
+  height: 12rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}

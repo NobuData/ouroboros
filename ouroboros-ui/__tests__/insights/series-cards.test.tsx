@@ -19,6 +19,10 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 const replace = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace, refresh: vi.fn() }) }));
+vi.mock("@/app/insights/intervention-actions", () => ({
+  listCauseEvents: vi.fn(),
+  recategorizeEvent: vi.fn(),
+}));
 
 const { InsightsScreen } = await import("@/app/insights/insights-screen");
 
@@ -173,7 +177,7 @@ describe("the daily cost card", () => {
     expect(lead).toHaveAccessibleDescription(
       "Linear to date: $147.34 spent over the first 8 of 31 days of this month, scaled to the whole month — not a forecast.",
     );
-    expect(screen.getByRole("tooltip")).toHaveTextContent("Linear to date");
+    expect(within(card(COST)).getByRole("tooltip")).toHaveTextContent("Linear to date");
   });
 
   it("draws no guide without a provider cap, and still states the projection", () => {

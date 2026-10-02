@@ -26,6 +26,10 @@ import { maskIds, renderInBothPalettes } from "../helpers/palettes";
 const replace = vi.fn();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace, refresh: vi.fn() }) }));
+vi.mock("@/app/insights/intervention-actions", () => ({
+  listCauseEvents: vi.fn(),
+  recategorizeEvent: vi.fn(),
+}));
 
 const { InsightsScreen } = await import("@/app/insights/insights-screen");
 

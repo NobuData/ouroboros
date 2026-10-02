@@ -764,7 +764,7 @@ mockup is silent; the mockup remains binding where they differ.
 | BK.1 | #442 ✅ | 🟢 Done | ouroboros-ui: [BK.1] Chart primitives (SVG) | TimeSeries, HBars, Sparkline, StackedVBars — token-driven (I4) | mvp, insights, ui, design | N (after #46, #16) | Y | L | ouroboros-ui |
 | BK.2 | #443 ✅ | 🟢 Done | ouroboros-ui: [BK.2] Insights route, head, range & KPI row | Frame, composed headline, range segment, five KPI cards | mvp, insights, ui, design | N (after #41, BJ.2, BA-D.5) | Y | M | ouroboros-ui |
 | BK.3 | #444 ✅ | 🟢 Done | ouroboros-ui: [BK.3] Time-series cards (throughput & cost) | Line/area charts with tooltip, guide, spike label, projections | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
-| BK.4 | #445 | 🟡 Open | ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards | Table + meters + suggestion slot; two hbar cards + insight lines | mvp, insights, ui, design | N (after BK.1, BJ.3) | Y | M | ouroboros-ui |
+| BK.4 | #445 ✅ | 🟢 Done | ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards | Table + meters + suggestion slot; two hbar cards + insight lines | mvp, insights, ui, design | N (after BK.1, BJ.3) | Y | M | ouroboros-ui |
 | BK.5 | #446 | 🟡 Open | ouroboros-ui: [BK.5] Performance strip, secondary charts & flaky card | Strip, stacked vbars, suite/effort/token hbars, flaky sparklines | mvp, insights, ui, design | N (after BK.1, BK.2) | Y | M | ouroboros-ui |
 | BK.6 | #447 | 🟡 Open | ouroboros-ui: [BK.6] DORA strip, digest controls, states & e2e | Methodology popovers, subscribe flow, cold states, themes, e2e | mvp, insights, ui, ci | N (after BK.3–BK.5, BJ.4) | Y | M | ouroboros-ui, .github |
 
@@ -867,7 +867,7 @@ mockup is silent; the mockup remains binding where they differ.
 
 ### Issue BK.4 — ouroboros-ui: [BK.4] Scoreboard & intervention/stage cards
 
-> **GitHub issue:** #445 · **Status:** 🟡 Open · **Parent epic:** #430
+> **GitHub issue:** #445 ✅ · **Status:** 🟢 Done · **Parent epic:** #430
 
 - **Problem Statement:** The scoreboard table with its suggestion slot,
   and the two explanatory hbar cards with computed insight lines.
@@ -886,6 +886,10 @@ mockup is silent; the mockup remains binding where they differ.
 - **Parallelism/Dependencies:** Needs BK.1, BJ.3, BI.3.
 - **Technical Stack:** React, #46 Table, HBars.
 - **Epic:** BK
+- **Amendment (as built):** the bars carry no event ids, so re-categorizing from a row needed a
+  way to reach the events behind it: `GET /api/v1/insights/interventions?range=&cause=`
+  (ouroboros-rest 0.38.4) lists them, any member. A correction also re-fills its event's rollup
+  day, so the bars and the computed line move at once rather than at the next consolidation.
 
 ```
 implement [claude-fable-5] ▓▓▓▓▓ 84% · $0.87 · ▲

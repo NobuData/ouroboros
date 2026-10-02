@@ -1,6 +1,9 @@
 /**
  * `/api/v1/insights/interventions` — re-categorizing an intervention's cause (BI.3,
- * [#434](https://github.com/NobuData/ouroboros/issues/434), decision **I5**).
+ * [#434](https://github.com/NobuData/ouroboros/issues/434), decision **I5**), and listing the events
+ * behind each bar of the card (BK.4, [#445](https://github.com/NobuData/ouroboros/issues/445)).
+ *
+ * The list is **open to every member**, a `viewer` included: it is what the card already counts.
  *
  * **Member and above** (`@Roles(...CONTRIBUTORS)`): correcting why a loop needed a person changes
  * what the Insights card tells a team to fix, so a `viewer` is refused with the API's one `403` —
@@ -11,19 +14,40 @@
  * workspace's event is a `404`.
  */
 
-import { Body, Controller, HttpCode, HttpStatus, Param, Post } from "@nestjs/common";
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from "@nestjs/common";
 
 import { CONTRIBUTORS, Roles } from "../tenancy/roles.guard";
 import { currentUser, type ActiveMembership } from "../tenancy/tenant.context";
-import { CurrentMember } from "../tenancy/tenant.decorators";
-import { InterventionIdParams, RecategorizeInterventionBody } from "./interventions.dto";
-import type { InterventionResource } from "./interventions.resources";
+import type { Organization } from "../db/schema";
+import { CurrentMember, CurrentTenant } from "../tenancy/tenant.decorators";
+import {
+  InterventionIdParams,
+  InterventionListQuery,
+  RecategorizeInterventionBody,
+} from "./interventions.dto";
+import type { InterventionListResource, InterventionResource } from "./interventions.resources";
 import { InterventionsService } from "./interventions.service";
+import { DEFAULT_INSIGHTS_RANGE } from "./page/page.service";
 
 @Controller("insights/interventions")
 export class InterventionsController {
   /** @param interventions - The service. */
   constructor(private readonly interventions: InterventionsService) {}
+
+  /**
+   * `GET /api/v1/insights/interventions?range=&cause=` — the events behind the card's bars.
+   *
+   * @param tenant - The workspace.
+   * @param query - The range (`30d` when absent) and, optionally, one cause.
+   * @returns The window, the matching total and the newest events.
+   */
+  @Get()
+  list(
+    @CurrentTenant() tenant: Organization,
+    @Query() query: InterventionListQuery,
+  ): Promise<InterventionListResource> {
+    return this.interventions.list(tenant.id, query.range ?? DEFAULT_INSIGHTS_RANGE, query.cause);
+  }
 
   /**
    * `POST /api/v1/insights/interventions/{id}/recategorize` — a person's cause.

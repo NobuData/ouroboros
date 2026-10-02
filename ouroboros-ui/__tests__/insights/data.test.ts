@@ -26,11 +26,28 @@ beforeEach(() => {
 });
 
 describe("readInsights", () => {
+  it.each([
+    [["owner"], true],
+    [["admin"], true],
+    [["member"], true],
+    [["viewer"], false],
+    [[], false],
+  ] as const)("lets %j re-categorize: %s (#445)", async (roles, may) => {
+    const access = { ...ACCESS, membership: { ...membership(), roles: [...roles] } } as typeof ACCESS;
+
+    expect((await readInsights(access, "30d")).mayRecategorize).toBe(may);
+  });
+
   it("reads the page once for the range, and stamps when", async () => {
     const readings = await readInsights(ACCESS, "90d", () => INSIGHTS_READ_AT);
 
     expect(page).toHaveBeenCalledExactlyOnceWith("90d");
-    expect(readings).toEqual({ range: "90d", page: { ok: true, value: seededInsights() }, readAt: INSIGHTS_READ_AT });
+    expect(readings).toEqual({
+      range: "90d",
+      page: { ok: true, value: seededInsights() },
+      readAt: INSIGHTS_READ_AT,
+      mayRecategorize: true,
+    });
   });
 
   it("keeps a refusal as the service's sentence rather than throwing", async () => {

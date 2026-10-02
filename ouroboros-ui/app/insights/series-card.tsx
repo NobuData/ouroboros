@@ -7,22 +7,28 @@ import type { SeriesEmpty } from "./series-view";
 /**
  * The frame both time-series cards share (BK.3, [#444](https://github.com/NobuData/ouroboros/issues/444)):
  * mockup 15's `.card` with its uppercase title and the window's tag at the trailing edge, the
- * chart's designed empty state, and the skeleton that holds the chart's place.
+ * chart's designed empty state, and the skeleton that holds the chart's place. The two bar cards
+ * (BK.4, [#445](https://github.com/NobuData/ouroboros/issues/445)) are the same frame at `c-4`.
  */
 
-/** Which of the mockup's widths a card takes: the throughput card's `c-8` or the cost card's `c-6`. */
-export type SeriesWidth = "wide" | "half";
+/**
+ * Which of the mockup's widths a card takes: the throughput card's `c-8`, the cost card's `c-6`
+ * or the bar cards' `c-4`.
+ */
+export type SeriesWidth = "wide" | "half" | "third";
 
 /** The grid placement each width takes. */
 const WIDTH_CLASS: Record<SeriesWidth, string> = {
   wide: "insights-series insights-col--8",
   half: "insights-series insights-col--6",
+  third: "insights-series insights-col--4",
 };
 
 /** The chart's reserved shape each width takes — the viewBox's aspect, so nothing moves on arrival. */
 const PLOT_CLASS: Record<SeriesWidth, string> = {
   wide: "insights-series__plot insights-series__plot--wide",
   half: "insights-series__plot insights-series__plot--half",
+  third: "insights-series__plot insights-series__plot--third",
 };
 
 /**

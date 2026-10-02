@@ -20,6 +20,10 @@ vi.mock("@/app/insights/data", () => ({
   readInsights: (access: unknown, range: string) => readInsights(access, range),
 }));
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }) }));
+vi.mock("@/app/insights/intervention-actions", () => ({
+  listCauseEvents: vi.fn(),
+  recategorizeEvent: vi.fn(),
+}));
 
 // The route passes the screen no test seam, so the poll it starts is the real one; what it asks
 // is this origin, which answers nothing here — the page under test is the server's.

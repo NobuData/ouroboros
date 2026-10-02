@@ -14,17 +14,24 @@ import {
 } from "../tenancy/tenant.context";
 import { InterventionsController } from "./interventions.controller";
 import {
+  INTERVENTION_LIST_LIMIT,
   InterventionIdParams,
+  InterventionListQuery,
   MAX_RECATEGORIZE_REASON_LENGTH,
   RecategorizeInterventionBody,
 } from "./interventions.dto";
 import { INTERVENTION_ERRORS } from "./interventions.errors";
 import { InterventionRepository, type InterventionStore } from "./interventions.repository";
 import { interventionResource } from "./interventions.resources";
-import { InterventionsService } from "./interventions.service";
+import {
+  INTERVENTIONS_FAMILY,
+  InterventionsService,
+  type InterventionRefill,
+} from "./interventions.service";
 
 /**
- * The intervention re-categorization (BI.3, #434), without a server: the body's shape, the
+ * The intervention re-categorization (BI.3, #434) and the list behind each bar of the card (BK.4,
+ * #445), without a server: the body's shape, the
  * resource, the service's refusals, the repository's statements and the route's role. What the
  * database does with the call — the audit row, the human cause a rule run never undoes — is
  * `tests/constraints.sql`'s V079 section; the route through the guards is
@@ -32,6 +39,9 @@ import { InterventionsService } from "./interventions.service";
  */
 
 const ORG = "org-interventions";
+
+/** The page's clock: 2026-09-10, so a 7-day window is 2026-09-04 … 2026-09-10. */
+const NOW = Date.parse("2026-09-10T12:00:00.000Z");
 const EVENT_ID = "a7920000-0000-4000-8000-0000000e0001";
 
 const EVENT = {
@@ -116,6 +126,25 @@ describe("the re-categorize body", () => {
   });
 });
 
+describe("the list query", () => {
+  it.each([[{}], [{ range: "7d" }], [{ range: "90d", cause: "policy_gate" }]])(
+    "accepts %p",
+    async (query) => {
+      await expect(validate(plainToInstance(InterventionListQuery, query))).resolves.toEqual([]);
+    },
+  );
+
+  it.each([
+    [{ range: "custom" }, "range"],
+    [{ range: "30" }, "range"],
+    [{ cause: "flaky" }, "cause"],
+  ])("refuses %p on %s", async (query, property) => {
+    const errors = await validate(plainToInstance(InterventionListQuery, query));
+
+    expect(errors.map((error) => error.property)).toEqual([property]);
+  });
+});
+
 describe("the intervention resource", () => {
   it("names the event, its origin and the override that set a human cause", () => {
     expect(interventionResource(EVENT, OVERRIDE)).toEqual({
@@ -161,11 +190,87 @@ describe("the intervention resource", () => {
 
 describe("the interventions service", () => {
   let store: jest.Mocked<InterventionStore>;
+  let rollup: jest.Mocked<InterventionRefill>;
   let service: InterventionsService;
 
   beforeEach(() => {
-    store = { recategorize: jest.fn() };
-    service = new InterventionsService(store);
+    store = { list: jest.fn(), recategorize: jest.fn() };
+    rollup = {
+      refillDay: jest.fn().mockResolvedValue({
+        organizationId: ORG,
+        family: INTERVENTIONS_FAMILY,
+        status: "succeeded",
+        backfilledDays: 0,
+      }),
+    };
+    service = new InterventionsService(store, rollup, () => NOW);
+  });
+
+  it("lists one cause over the page's own window, bounded, with the matching total", async () => {
+    store.list.mockResolvedValue({ total: 8, items: [{ event: EVENT, override: OVERRIDE }] });
+
+    await expect(service.list(ORG, "7d", "infra_rig")).resolves.toEqual({
+      range: "7d",
+      window: { from: "2026-09-04", to: "2026-09-10" },
+      cause: "infra_rig",
+      total: 8,
+      interventions: [interventionResource(EVENT, OVERRIDE)],
+    });
+    expect(store.list).toHaveBeenCalledWith(ORG, {
+      from: "2026-09-04",
+      to: "2026-09-10",
+      cause: "infra_rig",
+      limit: INTERVENTION_LIST_LIMIT,
+    });
+  });
+
+  it("lists every cause when none is named, and says so", async () => {
+    store.list.mockResolvedValue({ total: 0, items: [] });
+
+    await expect(service.list(ORG, "30d")).resolves.toMatchObject({
+      cause: null,
+      total: 0,
+      interventions: [],
+      window: { from: "2026-08-12", to: "2026-09-10" },
+    });
+    expect(store.list).toHaveBeenCalledWith(ORG, expect.objectContaining({ cause: undefined }));
+  });
+
+  it("re-fills the interventions family for the day the event was detected", async () => {
+    store.recategorize.mockResolvedValue({ event: EVENT, override: OVERRIDE });
+
+    await service.recategorize(ORG, FIXTURE_USER.id, EVENT_ID, BODY);
+
+    expect(rollup.refillDay).toHaveBeenCalledWith(
+      ORG,
+      INTERVENTIONS_FAMILY,
+      "2026-09-01",
+      new Date(NOW),
+    );
+  });
+
+  it("still answers the committed correction when the re-fill fails", async () => {
+    store.recategorize.mockResolvedValue({ event: EVENT, override: OVERRIDE });
+    rollup.refillDay.mockResolvedValue({
+      organizationId: ORG,
+      family: INTERVENTIONS_FAMILY,
+      status: "failed",
+      backfilledDays: 0,
+      error: "connection reset",
+    });
+
+    await expect(service.recategorize(ORG, FIXTURE_USER.id, EVENT_ID, BODY)).resolves.toEqual(
+      interventionResource(EVENT, OVERRIDE),
+    );
+  });
+
+  it("re-fills nothing when nothing was written", async () => {
+    store.recategorize.mockResolvedValue(undefined);
+
+    await expect(service.recategorize(ORG, FIXTURE_USER.id, EVENT_ID, BODY)).rejects.toBeInstanceOf(
+      NotFoundError,
+    );
+    expect(rollup.refillDay).not.toHaveBeenCalled();
   });
 
   it("re-categorizes in the person's name and answers the event with its override", async () => {
@@ -244,6 +349,53 @@ describe("the interventions repository", () => {
     expect(sqls.at(-1)).toBe("commit");
   });
 
+  it("lists over the card's days and joins, newest first, bounded, with each latest override", async () => {
+    const other = {
+      ...EVENT,
+      id: "a7920000-0000-4000-8000-0000000e0002",
+      cause_origin: "rule",
+    } as const;
+    const older = { ...OVERRIDE, id: "a7920000-0000-4000-8000-0000000f0000", reason: "older" };
+
+    database.answers(
+      { rows: [{ total: "9" }] },
+      { rows: [EVENT, other] },
+      { rows: [OVERRIDE, older] },
+    );
+
+    await expect(
+      repository.list(ORG, { from: "2026-09-04", to: "2026-09-10", cause: "infra_rig", limit: 50 }),
+    ).resolves.toEqual({
+      total: 9,
+      items: [
+        { event: EVENT, override: OVERRIDE },
+        { event: other, override: undefined },
+      ],
+    });
+
+    const [count, select, overrides] = database.statements;
+
+    expect(count.sql).toContain("select count(*) as total");
+    expect(count.sql).toContain("join ouroboros.github_repos gr on gr.id = r.github_repo_id");
+    expect(count.sql).toContain("(e.detected_at at time zone 'UTC')::date between");
+    expect(count.sql).toContain("and e.cause =");
+    expect(count.parameters).toEqual([ORG, "2026-09-04", "2026-09-10", "infra_rig"]);
+    expect(select.sql).toContain("order by e.detected_at desc, e.id desc");
+    expect(select.parameters).toEqual([ORG, "2026-09-04", "2026-09-10", "infra_rig", 50]);
+    expect(overrides.sql).toContain('from "ouroboros"."intervention_overrides"');
+    expect(overrides.parameters).toEqual([EVENT_ID, other.id]);
+  });
+
+  it("lists every cause without a cause filter, and reads no overrides for no events", async () => {
+    database.answers({ rows: [{ total: "0" }] }, { rows: [] });
+
+    await expect(
+      repository.list(ORG, { from: "2026-09-04", to: "2026-09-10", limit: 50 }),
+    ).resolves.toEqual({ total: 0, items: [] });
+    expect(database.statements).toHaveLength(2);
+    expect(database.statements[0].sql).not.toContain("e.cause =");
+  });
+
   it("answers undefined, and reads nothing more, when the event is not the workspace's", async () => {
     await expect(
       repository.recategorize(ORG, EVENT_ID, FIXTURE_USER.id, "other", BODY.reason),
@@ -267,6 +419,7 @@ describe("the interventions controller", () => {
 
   beforeEach(() => {
     service = {
+      list: jest.fn().mockResolvedValue({ total: 0 }),
       recategorize: jest.fn().mockResolvedValue(interventionResource(EVENT, OVERRIDE)),
     } as unknown as jest.Mocked<InterventionsService>;
     controller = new InterventionsController(service);
@@ -280,6 +433,18 @@ describe("the interventions controller", () => {
     });
 
     expect(service.recategorize).toHaveBeenCalledWith(ORG, FIXTURE_USER.id, EVENT_ID, BODY);
+  });
+
+  it("lists in the session's workspace, over 30d unless a range is named", async () => {
+    await controller.list({ id: ORG } as Organization, {});
+    await controller.list({ id: ORG } as Organization, { range: "7d", cause: "other" });
+
+    expect(service.list).toHaveBeenNthCalledWith(1, ORG, "30d", undefined);
+    expect(service.list).toHaveBeenNthCalledWith(2, ORG, "7d", "other");
+  });
+
+  it("lets every member list — a viewer included", () => {
+    expect(new Reflector().get<string[]>(REQUIRED_ROLES, controller.list)).toBeUndefined();
   });
 
   it("refuses a correction nobody can be named for", () => {
