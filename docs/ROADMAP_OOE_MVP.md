@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**338 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
+**339 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12 | **290** |
-| 🟡 **In progress** | P11, P13 | **48** of 70 |
+| 🟡 **In progress** | P11, P13 | **49** of 70 |
 | — **Not started** | P14–P17 | 0 of 94 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -116,7 +116,7 @@ position is not forced by dependencies, one of these decided it.
 | **P10** | Run console & ingestion contract | ✅ 17/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | ✅ 28/28 | 28 | 83 | Mockups 14, 13 |
-| **P13** | Analytics — insights & build analyzer | 🟡 12/32 | 32 | 109 | Mockups 15, 18 |
+| **P13** | Analytics — insights & build analyzer | 🟡 13/32 | 32 | 109 | Mockups 15, 18 |
 | **P14** | Decisions & governance — inbox, settings | — 0/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
@@ -1586,7 +1586,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **32 issues** · 109 complexity points · order **#329–#360** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_15_INSIGHTS.md`, `ROADMAP_MOCKUP_18_BUILD_ANALYZER.md`
-> **Status:** 🟡 **In progress** — 12 of 32 issues closed
+> **Status:** 🟡 **In progress** — 13 of 32 issues closed
 
 **Goal.** Build the metrics service as the single computational truth over every plane — rollups plus live tail, a metric registry carrying formula, sources and caveats — and the deterministic analysis engine that snapshots a corpus, detects change points with ranked attribution, and drafts auditable suggestions.
 
@@ -1610,7 +1610,7 @@ the blockquote above that records what it did and what it did differently.
 | 338 | **BI.3** | ✅ [#434](https://github.com/NobuData/ouroboros/issues/434) | Intervention-cause taxonomy | ouroboros-db, ouroboros-rest | M | AO.4, AT.4 |
 | 339 | **BJ.3** | ✅ [#439](https://github.com/NobuData/ouroboros/issues/439) | Model scoreboard aggregation | ouroboros-rest | M | BJ.1 |
 | 340 | **BJ.4** | ✅ [#440](https://github.com/NobuData/ouroboros/issues/440) | Email digest generation | ouroboros-rest | M | BJ.1 |
-| 341 | **BU.3** | [#508](https://github.com/NobuData/ouroboros/issues/508) | Application measurements & calibration | ouroboros-db | S | BU.2 |
+| 341 | **BU.3** | ✅ [#508](https://github.com/NobuData/ouroboros/issues/508) | Application measurements & calibration | ouroboros-db | S | BU.2 |
 | 342 | **BV.2** | [#511](https://github.com/NobuData/ouroboros/issues/511) | Analyzer SPI & statistical core | ouroboros-engine | L | 6.3, BU.2 |
 | 343 | **BW.1** | [#516](https://github.com/NobuData/ouroboros/issues/516) | Analyzer route, head, schedule & meta strip | ouroboros-ui | M | 5.3, D.5, BV.1 |
 | 344 | **BJ.2** | ✅ [#438](https://github.com/NobuData/ouroboros/issues/438) | Insights read APIs | ouroboros-rest | M | BI.3, BJ.1 |

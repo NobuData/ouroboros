@@ -5978,5 +5978,27 @@ select pg_temp.must_hold(
                             where l.suggestion_id = s.id))),
   'every seeded suggestion cites findings and carries the identity they derive');
 
+-- ===========================================================================
+-- V085 — application measurements and calibration (#508, BU.3)
+-- ===========================================================================
+--
+-- BU.4 (#509) seeds mockup 18's predicted-vs-measured pair and the factor its miss moved. The
+-- probes hold from today so its seed cannot be where a stale factor or a confound that names
+-- nothing first appears.
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.suggestion_measurements m, jsonb_array_elements(m.confounds) c
+               where not ouroboros.suggestion_measurement_confound_resolves(
+                       m.organization_id, m.repo_ref, m.suggestion_id, c)),
+  'every seeded confound names a real application or change-point of its repository');
+
+select pg_temp.must_hold(
+  not exists (
+    select 1 from ouroboros.analyzer_calibration c,
+           ouroboros.analyzer_calibration_inputs(c.organization_id, c.repo_ref, c.analyzer,
+                                                 c.impact_class) i
+     where (c.sample_count, c.factor)
+           is distinct from (i.sample_count, round(i.measured_sum / nullif(i.predicted_sum, 0), 4))),
+  'every seeded calibration factor is the formula over its cell''s cleanly closed measurements');
+
 \o
 \echo 'seed.sql: all assertions passed'
