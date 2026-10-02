@@ -4,31 +4,14 @@
  */
 
 import { insightsResource } from "./page.compose";
-import { barCards, emptyScoreboard, mockupFacts, unpricedFacts } from "./page.fixture";
-
-/**
- * Every key anywhere in a JSON value.
- *
- * @param value - The value.
- * @returns The keys, with repeats.
- */
-function keysOf(value: unknown): string[] {
-  if (Array.isArray(value)) {
-    return value.flatMap(keysOf);
-  }
-
-  if (typeof value !== "object" || value === null) {
-    return [];
-  }
-
-  return Object.entries(value).flatMap(([key, inner]) => [key, ...keysOf(inner)]);
-}
-
-/**
- * Keys that carry dollars: every `…Cents` figure, and the three cost-chart sections that exist
- * only to hold one. (`cost` itself is the chart's name, and holds tokens too.)
- */
-const MONEY_KEY = /cents$|^budget$|^projection$|^spike$/i;
+import {
+  barCards,
+  emptyScoreboard,
+  keysOf,
+  mockupFacts,
+  MONEY_KEY,
+  unpricedFacts,
+} from "./page.fixture";
 
 describe("the insights payload", () => {
   it("is mockup 15: head, five KPIs, three series, five bar cards, the strip, flaky, scoreboard, DORA", () => {

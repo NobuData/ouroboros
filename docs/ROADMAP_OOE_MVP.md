@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**340 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
+**342 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -1618,7 +1618,7 @@ the blockquote above that records what it did and what it did differently.
 | 346 | **BU.4** | [#509](https://github.com/NobuData/ouroboros/issues/509) | Analyzer seeds — mockup-18 parity + probes | ouroboros-db, .github | M | 3.6, BU.3 |
 | 347 | **BV.3** | [#512](https://github.com/NobuData/ouroboros/issues/512) | Pattern analyzers | ouroboros-engine | L | BV.2 |
 | 348 | **BW.2** | [#517](https://github.com/NobuData/ouroboros/issues/517) | Annotated duration chart | ouroboros-ui | M | BK.1, BW.1 |
-| 349 | **BJ.5** | [#441](https://github.com/NobuData/ouroboros/issues/441) | Insights integration tests | ouroboros-rest | M | BJ.2, BJ.4 |
+| 349 | **BJ.5** | ✅ [#441](https://github.com/NobuData/ouroboros/issues/441) | Insights integration tests | ouroboros-rest | M | BJ.2, BJ.4 |
 | 350 | **BK.2** | ✅ [#443](https://github.com/NobuData/ouroboros/issues/443) | Insights route, head, range & KPI row | ouroboros-ui | M | 5.3, D.5, BJ.2 |
 | 351 | **BV.4** | [#513](https://github.com/NobuData/ouroboros/issues/513) | Suggestion composer | ouroboros-rest | M | BV.2, BV.3 |
 | 352 | **BK.3** | ✅ [#444](https://github.com/NobuData/ouroboros/issues/444) | Time-series cards (throughput & cost) | ouroboros-ui | M | BK.1, BK.2 |

@@ -1,7 +1,8 @@
 import { join } from "node:path";
 
 import { GoldenFile } from "../../../testing/golden.fixture";
-import type { DigestAssembly } from "./digest.assembly";
+import { emptyScoreboard, keysOf } from "../page/page.fixture";
+import { assembleDigest, type DigestAssembly } from "./digest.assembly";
 import { DIGEST_PALETTE, renderDigestHtml } from "./digest.html";
 import {
   DIGEST_CONTEXT,
@@ -10,6 +11,7 @@ import {
   unpricedWeekFacts,
   weekDigest,
   weekFacts,
+  weekPage,
   weekWindow,
   withWeekWindows,
 } from "./digest.fixture";
@@ -150,6 +152,47 @@ describe("the rendered digest", () => {
     expect(text).toContain("Human interventions: 12 (▲ 3 vs prior week, worse)");
     expect(html).toContain("▲ 3 vs prior week, worse");
     expect(html).toContain("▼ 2m vs prior week, better");
+  });
+});
+
+describe("the honesty gates, in the mail (BJ.5, #441)", () => {
+  /** The claims the page withholds until #237, #209 and mockup 18 make them — and the money guide. */
+  const GATED_WORD = /alert|suggest|cluster|budget|projected|projection|spike/i;
+
+  it.each(Object.entries(DIGEST_STATES))(
+    "makes none of the gated claims in the %s digest — not in its data, not in either part",
+    (_name, facts) => {
+      const digest = weekDigest(facts());
+      const { subject, html, text } = renderDigest(digest, DIGEST_CONTEXT);
+
+      expect(keysOf(digest).filter((key) => GATED_WORD.test(key))).toEqual([]);
+      expect(`${subject}\n${unescaped(html)}\n${text}`).not.toMatch(GATED_WORD);
+    },
+  );
+
+  it("passes on no suggestion even when AB.3 has given the page one, nor the page's budget guide", () => {
+    const facts = weekFacts();
+    const page = weekPage({
+      ...facts,
+      scoreboard: { ...emptyScoreboard(), suggestion: { text: "Route implement to fable" } },
+    });
+
+    // The page carries both — so the digest's silence below is its own, not the page's.
+    expect(page.scoreboard).toHaveProperty("suggestion");
+    expect(page.series.cost).toHaveProperty("budget");
+
+    const digest = assembleDigest(page);
+    const { html, text } = renderDigest(digest, DIGEST_CONTEXT);
+
+    expect(JSON.stringify(digest)).not.toContain("Route implement");
+    expect(`${html}${text}`).not.toContain("Route implement");
+    expect(`${html}${text}`).not.toMatch(GATED_WORD);
+  });
+
+  it("carries no money field for a workspace nothing prices", () => {
+    const digest = weekDigest(unpricedWeekFacts());
+
+    expect(keysOf(digest).filter((key) => /cents$|dollar|price$/i.test(key))).toEqual([]);
   });
 });
 
