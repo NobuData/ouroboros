@@ -115,7 +115,8 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/insights/digest/preview`              | The digest as it would be sent now (#440) — `{subject, html, text, window, contentVersion}`; any member |
 | `GET POST /api/v1/insights/digest/unsubscribe/{token}` | A digest's unsubscribe link (#440) — **no session**; `GET` renders a confirmation and changes nothing, `POST` unsubscribes; HTML, with a `404` page for a link no mail carried |
 | `GET /api/v1/insights/calibration`                 | [Estimator calibration](#estimator-calibration) (#435) — `?window=7d\|30d\|90d`; within-band headline, unestimated count and per-effort bias direction; any member |
-| `POST /api/v1/insights/interventions/{id}/recategorize` | [Intervention causes](#intervention-causes) (#434) — a person's cause with a reason, audited in `intervention_overrides`; never overwritten by a rule run; `owner`/`admin`/`member` |
+| `GET /api/v1/insights/interventions`               | [Intervention causes](#intervention-causes) (#445) — `?range=7d\|30d\|90d&cause=`; the events behind the interventions card's bars, newest first, at most 50, with `total`; any member |
+| `POST /api/v1/insights/interventions/{id}/recategorize` | [Intervention causes](#intervention-causes) (#434) — a person's cause with a reason, audited in `intervention_overrides`; never overwritten by a rule run; re-fills the event's day (#445); `owner`/`admin`/`member` |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
@@ -5838,14 +5839,24 @@ BI.3 ([#434](https://github.com/NobuData/ouroboros/issues/434)), decision **I5**
 their rule causes are the database's: hooks on runs, failure classifications, waivers and guardrail
 evaluations call `sync_intervention_events(run)`, idempotently, and `intervention_cause_rules` maps
 each event's signals to `infra_rig | ambiguous_ticket | policy_gate | model_disagreement | other`.
-The service's one write is a person's correction.
+The service's one write is a person's correction; BK.4
+([#445](https://github.com/NobuData/ouroboros/issues/445)) adds the list a person reaches an event
+from.
 
 | route | what | who |
 | ----- | ---- | --- |
+| `GET /api/v1/insights/interventions` | `?range=` (`30d` when absent) and optional `?cause=` → `{range, window, cause, total, interventions}`: the events the Insights card counts — detected on one of the page's window's UTC days, on a run with a repository, exactly as `intervention_cause_daily` groups them — newest first, at most 50, each with its latest override | any member, a viewer included |
 | `POST /api/v1/insights/interventions/{id}/recategorize` | `{cause, reason}` → the event with `causeOrigin: "human"` and its `override` (actor, from, to, reason); `recategorize_intervention()` writes the audit row and the change in one transaction. `404 intervention_not_found` for another workspace's event, `409 intervention_cause_unchanged` for the cause it already has | `owner`, `admin`, `member` — a viewer is `403` |
 
 A human cause survives every later rule run (`apply_intervention_rules()`) and replay — the
 database refuses to turn it back into a rule's.
+
+**The card moves with the correction.** The hourly tail re-reads only today and the nightly
+consolidation only a trailing window, so a correction to an older event would otherwise never reach
+the bars. After the write, `RollupService.refillDay` re-fills the `interventions` family for the
+event's UTC day and stamps the family's run, which retires every replica's cached window: the next
+`GET /api/v1/insights` has the bars and the line computed from them already moved. A re-fill that
+fails is recorded on `metric_rollup_state` and logged; it never undoes the committed correction.
 
 ### Insights rollups
 

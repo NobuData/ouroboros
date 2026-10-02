@@ -1,16 +1,21 @@
 import type {
+  InsightsBarCard,
   InsightsKpi,
   InsightsPage,
   InsightsRange,
   MetricMethodology,
+  Scoreboard,
+  ScoreboardRow,
 } from "@/app/api/insights";
 import type { InsightsReadings } from "@/app/insights/data";
 
 /**
  * The insights page as the frame (#443) reads it — mockup 15's head and KPI row.
  *
- * Only what is mounted is built: `range`, `window`, `repo`, `usage`, `head`, `kpis` and — for the
- * time-series cards (#444) — `series.throughput` and `series.cost`. The cards #445–#447 add read
+ * Only what is mounted is built: `range`, `window`, `repo`, `usage`, `head`, `kpis`, — for the
+ * time-series cards (#444) — `series.throughput` and `series.cost`, and — for the scoreboard and
+ * the two bar cards (#445) — `scoreboard`, `hbars.interventions` and `hbars.stages`. The cards
+ * #446–#447 add read
  * the rest of the payload, so the remainder is left out and the object is cast — a later card's
  * suite extends this fixture with its own section rather than this one inventing data nobody
  * asserts on.
@@ -192,6 +197,145 @@ export function seededSeries(): InsightsPage["series"] {
   };
 }
 
+/** The I6 untouched definition's `$ / success` sibling, as BJ.3 registers it. */
+export const COST_PER_SUCCESS_FORMULA =
+  "Priced spend on the row's task kind divided by its merged PRs — a merge is a success; loops that did not merge are paid for by the ones that did.";
+
+/**
+ * One bar card.
+ *
+ * @param bars The bars, as `[key, label, value]`.
+ * @param over What else differs — the line, the unit, the total.
+ * @returns The card.
+ */
+export function barCard(
+  bars: readonly (readonly [string, string, number])[],
+  over: Partial<InsightsBarCard> = {},
+): InsightsBarCard {
+  return {
+    unit: "count",
+    total: bars.reduce((sum, [, , value]) => sum + value, 0),
+    bars: bars.map(([key, label, value]) => ({ key, label, value })),
+    line: null,
+    methodology: methodology({ metricId: "human_interventions", unit: "count", aggregation: "sum" }),
+    ...over,
+  };
+}
+
+/** Mockup 15's *Where loops still need humans* — `30d · 20 total`. */
+export function seededInterventions(): InsightsBarCard {
+  return barCard(
+    [
+      ["infra_rig", "Flaky env / rig", 8],
+      ["ambiguous_ticket", "Ambiguous ticket", 5],
+      ["policy_gate", "Policy gate", 4],
+      ["model_disagreement", "Model disagreement", 2],
+      ["other", "Other", 1],
+    ],
+    { line: "Fix the top row and interventions drop ~40%." },
+  );
+}
+
+/** Mockup 15's *Cycle time by stage · median*, in milliseconds. */
+export function seededStages(): InsightsBarCard {
+  return barCard(
+    [
+      ["analyze", "Analyze", 60_000],
+      ["plan", "Plan", 120_000],
+      ["implement", "Implement", 364_000],
+      ["build", "Build", 120_000],
+      ["test", "Test", 160_000],
+      ["review", "Verify", 40_000],
+    ],
+    {
+      unit: "duration_ms",
+      total: null,
+      line: "Implement dominates the loop — the other five stages sum to 8m 20s.",
+      methodology: methodology({ metricId: "stage_duration", unit: "duration_ms", aggregation: "median" }),
+    },
+  );
+}
+
+/**
+ * One scoreboard row.
+ *
+ * @param over What differs from the seeded primary `implement` row.
+ * @returns The row.
+ */
+export function scoreRow(over: Partial<ScoreboardRow> = {}): ScoreboardRow {
+  return {
+    taskKind: "implement",
+    model: "claude-fable-5",
+    hop: 1,
+    role: "primary",
+    merged: 50,
+    untouched: 42,
+    untouchedRate: 84,
+    cost: { pricing: "priced", cents: 4350, centsPerSuccess: 87 },
+    trend: { direction: "up", prior: 80, delta: 4 },
+    lowSample: false,
+    ...over,
+  };
+}
+
+/**
+ * Mockup 15's scoreboard — the four rows, no suggestion (AB.3 does not exist yet).
+ *
+ * @param over What differs.
+ * @returns The scoreboard.
+ */
+export function seededScoreboard(over: Partial<Scoreboard> = {}): Scoreboard {
+  return {
+    range: "30d",
+    window: { from: "2026-07-10", to: "2026-08-08" },
+    prior: { from: "2026-06-10", to: "2026-07-09" },
+    minSample: 5,
+    rows: [
+      scoreRow(),
+      scoreRow({
+        model: "copilot/gpt-5-codex",
+        hop: 2,
+        role: "fallback",
+        merged: 18,
+        untouched: 11,
+        untouchedRate: 61,
+        cost: { pricing: "priced", cents: 1692, centsPerSuccess: 94 },
+        trend: { direction: "down", prior: 66, delta: -5 },
+      }),
+      scoreRow({
+        taskKind: "docs",
+        model: "ollama/qwen3-coder",
+        merged: 25,
+        untouched: 24,
+        untouchedRate: 96,
+        cost: { pricing: "priced", cents: 0, centsPerSuccess: 0 },
+        trend: { direction: "flat", prior: null, delta: null },
+      }),
+      scoreRow({
+        taskKind: "review",
+        merged: 3,
+        untouched: 3,
+        untouchedRate: 100,
+        cost: { pricing: "unpriced", tokens: 123_600, unpricedTokens: 123_600, tokensPerSuccess: 41_200 },
+        trend: { direction: "up", prior: 88, delta: 12 },
+        lowSample: true,
+      }),
+    ],
+    methodology: {
+      untouched: methodology({ metricId: "merged_untouched_rate", title: "Merged w/o human edits", formula: I6_FORMULA }),
+      costPerSuccess: methodology({
+        metricId: "cost_per_success",
+        title: "$ / success",
+        unit: "cents",
+        formula: COST_PER_SUCCESS_FORMULA,
+      }),
+      trend: methodology({ metricId: "scoreboard_trend", title: "Trend" }),
+      sample: methodology({ metricId: "scoreboard_sample", title: "Sample", unit: "count" }),
+    },
+    ...over,
+  };
+}
+
 /**
  * The seeded page.
  *
@@ -207,6 +351,8 @@ export function seededInsights(over: Partial<InsightsPage> = {}): InsightsPage {
     head: { range: "7d", mergedPrs: 27, interventions: 2 },
     kpis: seededKpis(),
     series: seededSeries(),
+    hbars: { interventions: seededInterventions(), stages: seededStages() },
+    scoreboard: seededScoreboard(),
     ...over,
   } as InsightsPage;
 }
@@ -216,15 +362,18 @@ export function seededInsights(over: Partial<InsightsPage> = {}): InsightsPage {
  *
  * @param page The page, or `null` for a read that failed.
  * @param range The range it was read for. Defaults to the page's own.
+ * @param mayRecategorize Whether the reader is a member or above. Defaults to `true`.
  * @returns The readings.
  */
 export function insightsReadings(
   page: InsightsPage | null = seededInsights(),
   range: InsightsRange = page?.range ?? "30d",
+  mayRecategorize = true,
 ): InsightsReadings {
   return {
     range,
     page: page === null ? { ok: false, reason: "Choose a workspace." } : { ok: true, value: page },
     readAt: INSIGHTS_READ_AT,
+    mayRecategorize,
   };
 }

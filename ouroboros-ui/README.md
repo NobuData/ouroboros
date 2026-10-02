@@ -3919,8 +3919,8 @@ leg 21's shell assertion found.
 `/insights` ([#443](https://github.com/NobuData/ouroboros/issues/443)) is
 [`docs/mockups/15-insights.html`](../docs/mockups/15-insights.html)'s **frame**: the page head with
 its composed headline, the range segment, the three head actions and the five KPI cards, then the
-throughput and daily-cost charts (#444). The scoreboard and the remaining cards (#445–#447) mount
-in its grid as they land. The
+throughput and daily-cost charts (#444), the interventions and stage-medians cards and the model
+scoreboard (#445). The remaining cards (#446–#447) mount in its grid as they land. The
 sidebar's **Insights** entry is live and leads here, which retires the `/insights` placeholder #49
 held; the mockup's topbar is superseded by the shell, and the page adds no chrome of its own.
 
@@ -3989,6 +3989,36 @@ Their four pieces of furniture each encode a claim, and each is built from serve
 - **Empty is not zero.** A range with no merges, or no priced usage, is a designed empty state
   saying which — never a flat line at zero. Before anything is read, each card is a skeleton at
   the chart's own aspect.
+
+### Scoreboard, interventions and stage medians
+
+**Where loops still need humans**, **Cycle time by stage · median** and the **Model scoreboard**
+([#445](https://github.com/NobuData/ouroboros/issues/445)) are the `HBars` primitive over the
+payload's `hbars.interventions` and `hbars.stages`, and the #46 `Table` over `scoreboard`. Their
+decisions are pure functions in [`app/insights/bars-view.ts`](app/insights/bars-view.ts) and
+[`app/insights/scoreboard-view.ts`](app/insights/scoreboard-view.ts).
+
+- **Both insight lines are the server's.** *"Fix the top row and interventions drop ~40%."* and
+  *"the other five stages sum to 8m 20s"* are computed by BJ.2 from the bars; the cards draw `line`
+  verbatim, and nothing when it is `null`. The top cause and the dominant stage are lifted; the
+  smaller causes (a quarter of the top or less) and the other stages recede.
+- **Re-categorization round-trips.** An `owner`, `admin` or `member` opens **Re-categorize…**,
+  picks a bar, one of its events (`GET /api/v1/insights/interventions`) and the cause it really
+  was, with a reason. The write (`POST …/recategorize`, through
+  [`intervention-actions.ts`](app/insights/intervention-actions.ts)) re-fills the event's day on
+  the server, and the page is re-read, so the bars **and** the computed line re-render. A viewer
+  gets no control; the service refuses their direct call with `403`.
+- **The scoreboard is a routing decision surface.** Fallback rows carry their hop
+  (`(fallback · hop 2)`); rows under `minSample` merges carry a **low sample** badge; `$ / success`
+  is dollars only when every token was priced (`$0.00` for a local model), tokens per success when
+  any was not; the trend arrow is coloured by goodness (more untouched merges is good), never by
+  sign. The *Merge-untouched %* and *$ / success* headings open the registry's definition and
+  denominator. The table scrolls inside its own wrapper.
+- **The suggestion band is AB.3's or absent.** It renders `scoreboard.suggestion`
+  ([#209](https://github.com/NobuData/ouroboros/issues/209)) when the payload carries a `claim`
+  — with `monthlySavingCents` as *would save ~$14/mo* and `taskKind` as the
+  `Apply in Models →` deep link (`/models?route=<task>`) — and draws nothing otherwise. No advice is
+  composed on the page.
 
 ## Run console
 

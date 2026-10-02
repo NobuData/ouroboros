@@ -297,3 +297,66 @@ describe("an operator backfill", () => {
     expect(repository.startBackfill).not.toHaveBeenCalled();
   });
 });
+
+describe("a one-day re-fill (#445)", () => {
+  it("fills the day without moving a cursor, and stamps the family so caches retire", async () => {
+    const { repository, filled, runs, states } = memoryRepository({
+      throughput: { lastFilledDay: "2026-08-31", backfillCursor: null, backfillUntil: null },
+    });
+
+    await expect(
+      serviceOver(repository).refillDay(ORG, "throughput", "2026-08-03", NOW),
+    ).resolves.toEqual({
+      organizationId: ORG,
+      family: "throughput",
+      status: "succeeded",
+      backfilledDays: 0,
+    });
+    expect(filled).toEqual([["throughput", "2026-08-03", "tail"]]);
+    expect(runs).toEqual([["throughput", "succeeded", undefined]]);
+    expect(states.get("throughput")).toEqual({
+      lastFilledDay: "2026-08-31",
+      backfillCursor: null,
+      backfillUntil: null,
+    });
+  });
+
+  it("fills today too — a correction to an event detected this morning", async () => {
+    const { repository, filled } = memoryRepository();
+
+    await serviceOver(repository).refillDay(ORG, "throughput", "2026-09-01", NOW);
+
+    expect(filled).toEqual([["throughput", "2026-09-01", "tail"]]);
+  });
+
+  it("records and reports a failed fill rather than rejecting", async () => {
+    const { repository, runs } = memoryRepository();
+
+    repository.fillDay.mockRejectedValueOnce(new Error("connection reset"));
+
+    await expect(
+      serviceOver(repository).refillDay(ORG, "throughput", "2026-08-03", NOW),
+    ).resolves.toMatchObject({ status: "failed", error: "connection reset" });
+    expect(runs).toEqual([["throughput", "failed", "connection reset"]]);
+  });
+
+  it("refuses a family whose registry entry moved", async () => {
+    const { repository, filled } = memoryRepository({}, new Map());
+
+    await expect(
+      serviceOver(repository).refillDay(ORG, "throughput", "2026-08-03", NOW),
+    ).resolves.toMatchObject({ status: "failed" });
+    expect(filled).toEqual([]);
+  });
+
+  it.each([
+    ["nonsense", "2026-08-03", "no rollup family named nonsense"],
+    ["throughput", "2026-09-02", "a re-fill is one whole day up to 2026-09-01"],
+    ["throughput", "2026-02-30", "a re-fill is one whole day"],
+  ])("refuses %s %s", async (family, day, message) => {
+    const { repository } = memoryRepository();
+
+    await expect(serviceOver(repository).refillDay(ORG, family, day, NOW)).rejects.toThrow(message);
+    expect(repository.fillDay).not.toHaveBeenCalled();
+  });
+});

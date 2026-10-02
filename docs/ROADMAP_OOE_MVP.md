@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12 | **290** |
-| 🟡 **In progress** | P11, P13 | **52** of 70 |
+| 🟡 **In progress** | P11, P13 | **53** of 70 |
 | — **Not started** | P14–P17 | 0 of 94 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1586,7 +1586,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **32 issues** · 109 complexity points · order **#329–#360** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_15_INSIGHTS.md`, `ROADMAP_MOCKUP_18_BUILD_ANALYZER.md`
-> **Status:** 🟡 **In progress** — 16 of 32 issues closed
+> **Status:** 🟡 **In progress** — 17 of 32 issues closed
 
 **Goal.** Build the metrics service as the single computational truth over every plane — rollups plus live tail, a metric registry carrying formula, sources and caveats — and the deterministic analysis engine that snapshots a corpus, detects change points with ranked attribution, and drafts auditable suggestions.
 
@@ -1614,7 +1614,7 @@ the blockquote above that records what it did and what it did differently.
 | 342 | **BV.2** | ✅ [#511](https://github.com/NobuData/ouroboros/issues/511) | Analyzer SPI & statistical core | ouroboros-engine | L | 6.3, BU.2 |
 | 343 | **BW.1** | [#516](https://github.com/NobuData/ouroboros/issues/516) | Analyzer route, head, schedule & meta strip | ouroboros-ui | M | 5.3, D.5, BV.1 |
 | 344 | **BJ.2** | ✅ [#438](https://github.com/NobuData/ouroboros/issues/438) | Insights read APIs | ouroboros-rest | M | BI.3, BJ.1 |
-| 345 | **BK.4** | [#445](https://github.com/NobuData/ouroboros/issues/445) | Scoreboard & intervention/stage cards | ouroboros-ui | M | BJ.3, BK.1 |
+| 345 | **BK.4** | ✅ [#445](https://github.com/NobuData/ouroboros/issues/445) | Scoreboard & intervention/stage cards | ouroboros-ui | M | BJ.3, BK.1 |
 | 346 | **BU.4** | [#509](https://github.com/NobuData/ouroboros/issues/509) | Analyzer seeds — mockup-18 parity + probes | ouroboros-db, .github | M | 3.6, BU.3 |
 | 347 | **BV.3** | [#512](https://github.com/NobuData/ouroboros/issues/512) | Pattern analyzers | ouroboros-engine | L | BV.2 |
 | 348 | **BW.2** | [#517](https://github.com/NobuData/ouroboros/issues/517) | Annotated duration chart | ouroboros-ui | M | BK.1, BW.1 |

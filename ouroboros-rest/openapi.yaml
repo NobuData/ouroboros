@@ -7852,6 +7852,101 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/insights/interventions:
+    get:
+      tags: [insights]
+      summary: The intervention events behind the card's bars
+      description: |-
+        BK.4 ([#445](https://github.com/NobuData/ouroboros/issues/445)) — the events behind one bar
+        of mockup 15's *"Where loops still need humans"* card, so a person can reach the event a rule
+        mis-filed and re-categorize it (`POST /api/v1/insights/interventions/{id}/recategorize`).
+
+        **The card's own events.** The window is `GET /api/v1/insights`'s for the same `range` — N
+        whole UTC days ending today — and an event is listed when its `detectedAt` falls on one of
+        those UTC days and its run has a repository, exactly as the card counts it: `total` for a
+        `cause` is that cause's bar.
+
+        Newest first, at most 50; `total` says when there were more. Each event carries its latest
+        override when a person has corrected it.
+
+        **Open to every member**, a `viewer` included — it is what the card already shows. The
+        workspace is the session's: no workspace in this path, the session's active organization or
+        `X-Ouro-Tenant` decides.
+      operationId: listInterventions
+      parameters:
+        - $ref: "#/components/parameters/InsightsRange"
+        - name: cause
+          in: query
+          required: false
+          description: One cause — one bar of the card. Every cause when absent.
+          schema:
+            $ref: "#/components/schemas/InterventionCause"
+          example: infra_rig
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The window, how many events matched and the newest of them.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterventionList"
+              example:
+                range: 30d
+                window: { from: "2026-09-02", to: "2026-10-01" }
+                cause: infra_rig
+                total: 1
+                interventions:
+                  - id: 5eed005c-0000-4000-8000-000000000482
+                    runId: 5eed0009-0000-4000-8000-000000000482
+                    source: classification
+                    sourceRef: 5eed0039-0000-4000-8000-000000000482
+                    detectedAt: "2026-10-01T17:49:30.897Z"
+                    signals: ["class:infra_rig"]
+                    cause: infra_rig
+                    causeOrigin: rule
+                    ruleId: infra-rig-classification
+                    ruleVersion: 1
+                    override: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `range` is not one of `7d`, `30d` or `90d`, or `cause` is not one
+            of the five causes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/insights/interventions/{id}/recategorize:
     post:
       tags: [insights]
@@ -7871,6 +7966,11 @@ paths:
         from-cause, to-cause, reason — in the same transaction as the change, and answers it in
         `override`. The event's `causeOrigin` becomes `human`, and no later rule run or replay of the
         run's records overwrites it.
+
+        **The card moves with it.** The day the event was detected is re-filled at once (#445), so
+        the next `GET /api/v1/insights` draws the bars — and the line computed from them — with the
+        correction. A re-fill that fails is recorded on the rollup's bookkeeping and never undoes
+        the committed correction.
 
         **`owner`, `admin` or `member`** — a `viewer` is refused, on a direct call exactly as in the
         UI.
@@ -34030,6 +34130,33 @@ components:
             - $ref: "#/components/schemas/InterventionOverride"
             - type: "null"
           description: The re-categorization that set a human cause; null for a rule's.
+    InterventionList:
+      type: object
+      title: InterventionList
+      additionalProperties: false
+      description: |-
+        The intervention events behind the Insights card's bars over one range (#445), newest first.
+      required: [range, window, cause, total, interventions]
+      properties:
+        range:
+          type: string
+          enum: [7d, 30d, 90d]
+        window:
+          $ref: "#/components/schemas/InsightsDaySpan"
+        cause:
+          oneOf:
+            - $ref: "#/components/schemas/InterventionCause"
+            - type: "null"
+          description: The cause listed; null for every cause.
+        total:
+          type: integer
+          minimum: 0
+          description: How many events matched — the bar's value — however many are listed.
+        interventions:
+          type: array
+          maxItems: 50
+          items:
+            $ref: "#/components/schemas/Intervention"
     InterventionOverride:
       type: object
       title: InterventionOverride

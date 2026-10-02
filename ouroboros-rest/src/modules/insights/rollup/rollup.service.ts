@@ -126,6 +126,62 @@ export class RollupService {
   }
 
   /**
+   * Re-fill one day of one family now — what a write that changes a filled day calls so the page
+   * reflects it at once (BK.4, [#445](https://github.com/NobuData/ouroboros/issues/445)): a
+   * re-categorized intervention moves a count between two causes on the day it was detected, and
+   * neither the hourly tail (today only) nor the nightly consolidation (a trailing window, only
+   * after midnight) would ever re-read an older day.
+   *
+   * No cursor moves. The family's run is stamped `succeeded`, which moves the metrics cache's
+   * rollup stamp, so every replica's cached window retires with the change.
+   *
+   * @param organizationId - The workspace.
+   * @param family - The family.
+   * @param day - The UTC day, not after today.
+   * @param now - The current instant, for "today".
+   * @returns The family's outcome. Never rejects on a failed fill: it is recorded and reported.
+   * @throws {RangeError} On an unknown family or a day that is not a day up to today.
+   */
+  async refillDay(
+    organizationId: string,
+    family: string,
+    day: Day,
+    now: Date = new Date(),
+  ): Promise<FamilyOutcome> {
+    const extractor = this.extractors.find((candidate) => candidate.family === family);
+
+    if (extractor === undefined) {
+      throw new RangeError(`no rollup family named ${family}`);
+    }
+
+    if (!isDay(day) || day > utcDay(now)) {
+      throw new RangeError(`a re-fill is one whole day up to ${utcDay(now)}: ${day}`);
+    }
+
+    try {
+      const registry = await this.repository.registry();
+      const mismatches = registryMismatches(extractor, registry);
+
+      if (mismatches.length > 0) {
+        throw new Error(`extractor and registry disagree: ${mismatches.join("; ")}`);
+      }
+
+      await this.repository.fillDay(organizationId, extractor, registry, day, "tail");
+      await this.repository.markRun(organizationId, family, "succeeded");
+
+      return { organizationId, family, status: "succeeded", backfilledDays: 0 };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : describeForLog(error);
+
+      await this.repository
+        .markRun(organizationId, family, "failed", message)
+        .catch(() => undefined);
+
+      return { organizationId, family, status: "failed", backfilledDays: 0, error: message };
+    }
+  }
+
+  /**
    * One (workspace, family): check the registry, start a due backfill, step it, fill today.
    *
    * @param organizationId - The workspace.

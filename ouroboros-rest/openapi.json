@@ -8001,13 +8001,129 @@
         }
       }
     },
+    "/api/v1/insights/interventions": {
+      "get": {
+        "tags": [
+          "insights"
+        ],
+        "summary": "The intervention events behind the card's bars",
+        "description": "BK.4 ([#445](https://github.com/NobuData/ouroboros/issues/445)) — the events behind one bar\nof mockup 15's *\"Where loops still need humans\"* card, so a person can reach the event a rule\nmis-filed and re-categorize it (`POST /api/v1/insights/interventions/{id}/recategorize`).\n\n**The card's own events.** The window is `GET /api/v1/insights`'s for the same `range` — N\nwhole UTC days ending today — and an event is listed when its `detectedAt` falls on one of\nthose UTC days and its run has a repository, exactly as the card counts it: `total` for a\n`cause` is that cause's bar.\n\nNewest first, at most 50; `total` says when there were more. Each event carries its latest\noverride when a person has corrected it.\n\n**Open to every member**, a `viewer` included — it is what the card already shows. The\nworkspace is the session's: no workspace in this path, the session's active organization or\n`X-Ouro-Tenant` decides.",
+        "operationId": "listInterventions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/InsightsRange"
+          },
+          {
+            "name": "cause",
+            "in": "query",
+            "required": false,
+            "description": "One cause — one bar of the card. Every cause when absent.",
+            "schema": {
+              "$ref": "#/components/schemas/InterventionCause"
+            },
+            "example": "infra_rig"
+          },
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The window, how many events matched and the newest of them.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InterventionList"
+                },
+                "example": {
+                  "range": "30d",
+                  "window": {
+                    "from": "2026-09-02",
+                    "to": "2026-10-01"
+                  },
+                  "cause": "infra_rig",
+                  "total": 1,
+                  "interventions": [
+                    {
+                      "id": "5eed005c-0000-4000-8000-000000000482",
+                      "runId": "5eed0009-0000-4000-8000-000000000482",
+                      "source": "classification",
+                      "sourceRef": "5eed0039-0000-4000-8000-000000000482",
+                      "detectedAt": "2026-10-01T17:49:30.897Z",
+                      "signals": [
+                        "class:infra_rig"
+                      ],
+                      "cause": "infra_rig",
+                      "causeOrigin": "rule",
+                      "ruleId": "infra-rig-classification",
+                      "ruleVersion": 1,
+                      "override": null
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `range` is not one of `7d`, `30d` or `90d`, or `cause` is not one\nof the five causes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/insights/interventions/{id}/recategorize": {
       "post": {
         "tags": [
           "insights"
         ],
         "summary": "Re-categorize an intervention's cause",
-        "description": "BI.3 ([#434](https://github.com/NobuData/ouroboros/issues/434), decision **I5**) — a person's\ncorrection of why a loop needed a human, for mockup 15's *\"Where loops still need humans\"*\ncard.\n\nEvery intervention event — a needs-human handoff, a human failure classification, a waiver,\nthe first failure of a guardrail or policy-gate check on a loop, a blocking review vote — is\nrecorded by the database from its source record and mapped to a cause (`infra_rig`,\n`ambiguous_ticket`, `policy_gate`, `model_disagreement`, `other`) by a versioned rule. The\nrules will sometimes be wrong; this sets the cause a person says it was.\n\n**Audited, and never undone by a rule.** The correction writes an override row — actor,\nfrom-cause, to-cause, reason — in the same transaction as the change, and answers it in\n`override`. The event's `causeOrigin` becomes `human`, and no later rule run or replay of the\nrun's records overwrites it.\n\n**`owner`, `admin` or `member`** — a `viewer` is refused, on a direct call exactly as in the\nUI.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and another workspace's event is a `404`.",
+        "description": "BI.3 ([#434](https://github.com/NobuData/ouroboros/issues/434), decision **I5**) — a person's\ncorrection of why a loop needed a human, for mockup 15's *\"Where loops still need humans\"*\ncard.\n\nEvery intervention event — a needs-human handoff, a human failure classification, a waiver,\nthe first failure of a guardrail or policy-gate check on a loop, a blocking review vote — is\nrecorded by the database from its source record and mapped to a cause (`infra_rig`,\n`ambiguous_ticket`, `policy_gate`, `model_disagreement`, `other`) by a versioned rule. The\nrules will sometimes be wrong; this sets the cause a person says it was.\n\n**Audited, and never undone by a rule.** The correction writes an override row — actor,\nfrom-cause, to-cause, reason — in the same transaction as the change, and answers it in\n`override`. The event's `causeOrigin` becomes `human`, and no later rule run or replay of the\nrun's records overwrites it.\n\n**The card moves with it.** The day the event was detected is re-filled at once (#445), so\nthe next `GET /api/v1/insights` draws the bars — and the line computed from them — with the\ncorrection. A re-fill that fails is recorded on the rollup's bookkeeping and never undoes\nthe committed correction.\n\n**`owner`, `admin` or `member`** — a `viewer` is refused, on a direct call exactly as in the\nUI.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and another workspace's event is a `404`.",
         "operationId": "recategorizeIntervention",
         "parameters": [
           {
@@ -40525,6 +40641,55 @@
               }
             ],
             "description": "The re-categorization that set a human cause; null for a rule's."
+          }
+        }
+      },
+      "InterventionList": {
+        "type": "object",
+        "title": "InterventionList",
+        "additionalProperties": false,
+        "description": "The intervention events behind the Insights card's bars over one range (#445), newest first.",
+        "required": [
+          "range",
+          "window",
+          "cause",
+          "total",
+          "interventions"
+        ],
+        "properties": {
+          "range": {
+            "type": "string",
+            "enum": [
+              "7d",
+              "30d",
+              "90d"
+            ]
+          },
+          "window": {
+            "$ref": "#/components/schemas/InsightsDaySpan"
+          },
+          "cause": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/InterventionCause"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The cause listed; null for every cause."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many events matched — the bar's value — however many are listed."
+          },
+          "interventions": {
+            "type": "array",
+            "maxItems": 50,
+            "items": {
+              "$ref": "#/components/schemas/Intervention"
+            }
           }
         }
       },

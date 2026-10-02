@@ -124,3 +124,25 @@ describe("the methodology popover", () => {
     expect(rule("\\.insights-kpi__popover")).toMatch(/font-family:\s*var\(--f-ui\)/);
   });
 });
+
+describe("the bar cards and the scoreboard (#445)", () => {
+  it("sit at the mockup's c-4 and c-8, and pair on a narrower pane", () => {
+    expect(rule("\\.insights-col--4")).toMatch(/grid-column:\s*span 4/);
+    expect(COMPONENT).toContain('"insights-series insights-col--4"');
+    expect(COMPONENT).toContain('"insights-board insights-col--8"');
+    expect(CODE).toMatch(/@media \(max-width: 68\.75rem\)\s*\{\s*\.insights-col--4\s*\{\s*grid-column:\s*span 6;/);
+  });
+
+  it("sizes the untouched column in rem, so the 125% step widens it with its type", () => {
+    expect(rule("\\.insights-board__untouched-col")).toMatch(/width:\s*[\d.]+rem/);
+  });
+
+  it("colours the trend by goodness through the status tokens", () => {
+    expect(rule("\\.insights-board__trend--good")).toMatch(/color:\s*var\(--ok\)/);
+    expect(rule("\\.insights-board__trend--bad")).toMatch(/color:\s*var\(--err\)/);
+  });
+
+  it("draws the suggestion band on the inset well, as the mockup's row does", () => {
+    expect(rule("\\.insights-board__suggestion")).toMatch(/background:\s*var\(--inset\)/);
+  });
+});

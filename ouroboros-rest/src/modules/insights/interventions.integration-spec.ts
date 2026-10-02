@@ -3,7 +3,8 @@ import { bodyOf } from "../../testing/integration.fixture";
 import { SCHEMA_NAME } from "../db/schema";
 import type { ErrorEnvelope } from "../errors/error.envelope";
 import { TENANT_HEADER } from "../tenancy/tenant.resolver";
-import type { InterventionResource } from "./interventions.resources";
+import type { InterventionListResource, InterventionResource } from "./interventions.resources";
+import { RollupService } from "./rollup/rollup.service";
 
 /**
  * `/api/v1/insights/interventions/{id}/recategorize`, over a socket and against a migrated database
@@ -12,7 +13,9 @@ import type { InterventionResource } from "./interventions.resources";
  * The criteria only this scale proves: the events come from the source planes' hooks, not from the
  * service; a member re-categorizes and the audit row is written with the change; a viewer is
  * refused on a direct call; another workspace's event is a `404`; and a human cause survives a
- * rule run and a replay of the run's records. The rules' full matrix is
+ * rule run and a replay of the run's records. BK.4 (#445) adds the list behind each bar — open to a
+ * viewer, scoped to the workspace — and the round trip: a correction to an event on an already
+ * rolled-up day moves the page's bars and its computed line at once. The rules' full matrix is
  * `ouroboros-db/tests/constraints.sql`'s V079 section.
  *
  * ```bash
@@ -206,5 +209,97 @@ describe("intervention re-categorization", () => {
       .expect(422);
 
     expect(bodyOf<ErrorEnvelope>(refusal)).toMatchObject({ code: "validation_failed" });
+  });
+  /** The interventions card, as `GET /api/v1/insights` answers it. */
+  interface BarCard {
+    total: number | null;
+    bars: { key: string; value: number }[];
+    line: string | null;
+  }
+
+  it("lists the card's events to any member, a viewer included, by cause and per workspace", async () => {
+    const owner = await api.signIn();
+    const workspace = await api.workspace(owner);
+    const other = await api.workspace(owner);
+    const viewer = await api.signIn();
+    await api.join(workspace.id, viewer, "viewer");
+    const { waiverEvent } = await seed(workspace.id, owner.id);
+
+    const all = bodyOf<InterventionListResource>(
+      await api
+        .as(viewer)("get", `${INTERVENTIONS}?range=7d`)
+        .set(TENANT_HEADER, workspace.slug)
+        .expect(200),
+    );
+
+    expect(all).toMatchObject({ range: "7d", cause: null, total: 2 });
+    expect(all.interventions.map((event) => event.source).sort()).toEqual([
+      "needs_human_run",
+      "waiver",
+    ]);
+
+    const none = bodyOf<InterventionListResource>(
+      await api
+        .as(viewer)("get", `${INTERVENTIONS}?cause=infra_rig`)
+        .set(TENANT_HEADER, workspace.slug)
+        .expect(200),
+    );
+
+    expect(none).toMatchObject({ range: "30d", cause: "infra_rig", total: 0, interventions: [] });
+
+    const elsewhere = bodyOf<InterventionListResource>(
+      await api.as(owner)("get", INTERVENTIONS).set(TENANT_HEADER, other.slug).expect(200),
+    );
+
+    expect(elsewhere.total).toBe(0);
+    expect(all.interventions.map((event) => event.id)).toContain(waiverEvent);
+
+    await api
+      .as(viewer)("get", `${INTERVENTIONS}?range=custom`)
+      .set(TENANT_HEADER, workspace.slug)
+      .expect(422);
+  });
+
+  it("moves the page's bars and computed line at once for an event on a rolled-up day", async () => {
+    const owner = await api.signIn();
+    const workspace = await api.workspace(owner);
+    const { waiverEvent } = await seed(workspace.id, owner.id);
+
+    // Both events two days ago, rolled up as the nightly consolidation would leave them.
+    await api.sql.query(
+      `update ${SCHEMA_NAME}.intervention_events set detected_at = now() - interval '2 days'
+        where organization_id = $1`,
+      [workspace.id],
+    );
+    const day = new Date(Date.now() - 2 * 86_400_000).toISOString().slice(0, 10);
+    await api.nest.get(RollupService).backfill(workspace.id, "interventions", day, day);
+
+    /** @returns The interventions card, read through the page. */
+    const card = async (): Promise<BarCard> =>
+      bodyOf<{ hbars: { interventions: BarCard } }>(
+        await api
+          .as(owner)("get", "/api/v1/insights?range=7d")
+          .set(TENANT_HEADER, workspace.slug)
+          .expect(200),
+      ).hbars.interventions;
+
+    const before = await card();
+
+    expect(before.bars).toEqual([expect.objectContaining({ key: "other", value: 2 })]);
+
+    await api
+      .as(owner)("post", `${INTERVENTIONS}/${waiverEvent}/recategorize`)
+      .set(TENANT_HEADER, workspace.slug)
+      .send({ cause: "infra_rig", reason: "The bench has no thermal chamber." })
+      .expect(200);
+
+    const after = await card();
+
+    expect(after.total).toBe(2);
+    expect(after.bars.map((bar) => [bar.key, bar.value]).sort()).toEqual([
+      ["infra_rig", 1],
+      ["other", 1],
+    ]);
+    expect(after.line).not.toEqual(before.line);
   });
 });

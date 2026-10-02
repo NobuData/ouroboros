@@ -25,6 +25,14 @@
  * There is no workspace in the path and this client sends no `X-Ouro-Tenant`
  * (`app/api/server.ts` says why). Every member may read the page, a `viewer` included.
  *
+ * ### The interventions card's two operations (BK.4, [#445](https://github.com/NobuData/ouroboros/issues/445))
+ *
+ * `GET /api/v1/insights/interventions?range=&cause=` lists the events behind one bar — every
+ * member may read it — and `POST /api/v1/insights/interventions/{id}/recategorize` sets a cause a
+ * person says it was, **`owner`, `admin` or `member`** only: a `viewer` is refused by the service,
+ * whatever the screen draws. The correction re-fills the day it was detected on, so the next read
+ * of the page has the bars and the line computed from them already moved.
+ *
  * Server-side only, by way of `app/api/server.ts`.
  */
 
@@ -47,6 +55,24 @@ export type InsightsKpi = components["schemas"]["InsightsKpi"];
 /** A metric's registry entry — everything its popover prints. */
 export type MetricMethodology = components["schemas"]["MetricMethodology"];
 
+/** One of the five horizontal-bar cards, its computed insight line included. */
+export type InsightsBarCard = components["schemas"]["InsightsBarCard"];
+
+/** The model scoreboard — task kind × serving model, with AB.3's suggestion when it exists. */
+export type Scoreboard = components["schemas"]["Scoreboard"];
+
+/** One scoreboard row. */
+export type ScoreboardRow = components["schemas"]["ScoreboardRow"];
+
+/** Why a loop needed a person — one bar of the interventions card. */
+export type InterventionCause = components["schemas"]["InterventionCause"];
+
+/** One moment a person stepped into a loop, with its cause and any correction of it. */
+export type Intervention = components["schemas"]["Intervention"];
+
+/** The events behind the interventions card over one range. */
+export type InterventionList = components["schemas"]["InterventionList"];
+
 /** The insights operations. */
 export const insights = {
   /**
@@ -66,5 +92,51 @@ export const insights = {
     signal?: AbortSignal,
   ): Promise<InsightsPage> {
     return unwrap(await client.GET("/api/v1/insights", { params: { query: { range } }, signal }));
+  },
+
+  /**
+   * List the intervention events behind the card — one cause's bar, or every bar.
+   *
+   * @param range The page's range, so the list covers the bars' own window.
+   * @param cause One cause, or `undefined` for every cause.
+   * @param client The client to read through. Defaults to the server's own.
+   * @returns The window, how many matched and the newest of them.
+   * @throws {ApiError} When the service refuses.
+   */
+  async interventions(
+    range: InsightsRange,
+    cause?: InterventionCause,
+    client: ApiClient = api(),
+  ): Promise<InterventionList> {
+    return unwrap(
+      await client.GET("/api/v1/insights/interventions", {
+        params: { query: cause === undefined ? { range } : { range, cause } },
+      }),
+    );
+  },
+
+  /**
+   * Re-categorize one intervention event — `owner`, `admin` or `member` only.
+   *
+   * @param id The event.
+   * @param cause The cause the person says it was.
+   * @param reason Why — required and never blank; it is the audit row's reason.
+   * @param client The client to write through. Defaults to the server's own.
+   * @returns The event, now `causeOrigin: "human"`, with the override that set it.
+   * @throws {ApiError} `forbidden` for a viewer, `intervention_not_found`,
+   *   `intervention_cause_unchanged`, or `validation_failed`.
+   */
+  async recategorize(
+    id: string,
+    cause: InterventionCause,
+    reason: string,
+    client: ApiClient = api(),
+  ): Promise<Intervention> {
+    return unwrap(
+      await client.POST("/api/v1/insights/interventions/{id}/recategorize", {
+        params: { path: { id } },
+        body: { cause, reason },
+      }),
+    );
   },
 };

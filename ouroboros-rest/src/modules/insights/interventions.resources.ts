@@ -1,5 +1,6 @@
 /**
- * What the intervention routes answer (BI.3, [#434](https://github.com/NobuData/ouroboros/issues/434)).
+ * What the intervention routes answer (BI.3, [#434](https://github.com/NobuData/ouroboros/issues/434);
+ * the list, BK.4, [#445](https://github.com/NobuData/ouroboros/issues/445)).
  */
 
 import type {
@@ -8,6 +9,8 @@ import type {
   InterventionOverride,
   InterventionSource,
 } from "../db/schema";
+import type { MetricRange } from "./metrics/metrics.window";
+import type { Day } from "./rollup/rollup.types";
 
 /** One re-categorization, as its audit row records it. */
 export interface InterventionOverrideResource {
@@ -38,6 +41,19 @@ export interface InterventionResource {
   readonly ruleVersion: number | null;
   /** The re-categorization that set the cause, when a person did. */
   readonly override: InterventionOverrideResource | null;
+}
+
+/** The events behind the interventions card's bars, over the page's window. */
+export interface InterventionListResource {
+  readonly range: MetricRange;
+  /** The UTC days listed — the page's own window for the range. */
+  readonly window: { readonly from: Day; readonly to: Day };
+  /** The cause listed, or null for every cause. */
+  readonly cause: InterventionCause | null;
+  /** How many events matched — the bar's value — however many are listed. */
+  readonly total: number;
+  /** The newest matching events, newest first, at most `INTERVENTION_LIST_LIMIT`. */
+  readonly interventions: readonly InterventionResource[];
 }
 
 /**
