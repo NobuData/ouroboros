@@ -21,6 +21,12 @@ name: ouroboros-db · ci
 # `ouroboros-db/` — so without it the one pull request that drifts is the one this job never
 # runs on. The file itself rather than `schemas/**`: the check reads `v1.json` and nothing
 # else, and the golden fixtures beside it are ci/rest's and ci/engine's business.
+#
+# The last two are #509's. The Build Analyzer seed is proven by running the engine's own
+# change-point analyzer over the seeded corpus and requiring it to find what the seed stored, so
+# an edit to that analyzer — or to the numpy and ruptures the lock pins under it — can make the
+# seed stop being rediscoverable without touching a file under `ouroboros-db/`. Only the analysis
+# package and the lockfile: the rest of the engine reads nothing this job asserts.
 
 on:
   pull_request:
@@ -33,6 +39,8 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "ouroboros-engine/src/ouroboros_engine/analysis/**"
+      - "ouroboros-engine/uv.lock"
   push:
     branches: [main]
     paths:
@@ -43,6 +51,8 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "ouroboros-engine/src/ouroboros_engine/analysis/**"
+      - "ouroboros-engine/uv.lock"
   workflow_dispatch:
 
 permissions:
@@ -469,6 +479,41 @@ jobs:
             psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
               -v ON_ERROR_STOP=1 -f /tests/insights-invariants.sql
           OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-insights-invariants.sh --runner docker
+
+      # BU.4 (#509): the invariants mockup 18's page trusts, asked of the seeded analysis rows —
+      # the finding-type and suggestion-kind vocabularies, the A4 lifecycle, evidence that
+      # resolves, bounded confidence, predictions frozen at the apply, verdicts and calibration
+      # factors that are their own arithmetic, no LLM cost without an LLM, and identities derived
+      # from findings. Green against R__dev_seed_workspace_metrics_analyzer.sql is half of it.
+      #
+      # The other half is #509's *"every probe is verified red-then-green"*:
+      # verify-analyzer-invariants.sh drops each rule (or switches off the trigger that is it),
+      # writes the row it refused, and requires red naming the invariant each time. Every plant is
+      # rolled back, and the registry step below re-runs seed.sql against this database to say so.
+      - name: Assert the analyzer invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/analyzer-invariants.sql
+          OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-analyzer-invariants.sh --runner docker
+
+      # And #509's deepest criterion: the change-point analyzer, run over the seeded corpus,
+      # rediscovers the three shifts the seed planted — dates, deltas, the anchors ranked above
+      # their near misses, every score, the evidence and the confidence — rather than the page
+      # reading findings somebody typed. It runs the engine's own analyzer, so it needs uv and
+      # ouroboros-engine's locked environment, the same two steps ci/e2e takes for its simulator.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+
+      - name: Prepare the engine the rediscovery runs
+        working-directory: ouroboros-engine
+        run: uv sync --locked
+
+      - name: Assert the change-point analyzer rediscovers the seeded findings
+        run: OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-analyzer-rediscovery.sh --runner docker
 
       # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
       # from #582 without mutating it"*. The registry rules are asserted twice, and this is

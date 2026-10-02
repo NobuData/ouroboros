@@ -1851,10 +1851,13 @@ select pg_temp.must_hold(
 -- ---------------------------------------------------------------------------
 -- Fourteen events, all in the workspace every mockup is drawn in.
 -- ---------------------------------------------------------------------------
+--
+-- Scoped to the audit seed's own ids since #509: the Build Analyzer seed's two applies are
+-- audited too (`analysis_suggestion.applied`, V081's apply record), in the same workspace's trail.
 select pg_temp.must_hold(
   (select count(*) = 14 from ouroboros.audit_events event
      join ouroboros.organization org on org."id" = event.organization_id
-    where org."slug" = 'acme-robotics'),
+    where org."slug" = 'acme-robotics' and event.id::text like '5eed0015-%'),
   'the audit seed put its fourteen events in acme-robotics');
 
 select pg_temp.must_hold(
@@ -1877,7 +1880,7 @@ select pg_temp.must_hold(
                 'provider.rotated', 'provider.tested']
      from ouroboros.audit_events event
      join ouroboros.organization org on org."id" = event.organization_id
-    where org."slug" = 'acme-robotics'),
+    where org."slug" = 'acme-robotics' and event.id::text like '5eed0015-%'),
   'the seeded trail exercises every action the vocabulary has a renderer for');
 
 -- ---------------------------------------------------------------------------
@@ -1910,10 +1913,11 @@ select pg_temp.must_hold(
   (select count(*) = 13 from ouroboros.audit_events event
      join ouroboros.organization org on org."id" = event.organization_id
      join ouroboros."user" person on person."id" = event.actor_id
-    where org."slug" = 'acme-robotics')
+    where org."slug" = 'acme-robotics' and event.id::text like '5eed0015-%')
    and (select count(distinct event.actor_id) = 2 from ouroboros.audit_events event
           join ouroboros.organization org on org."id" = event.organization_id
-         where org."slug" = 'acme-robotics' and event.actor_id is not null),
+         where org."slug" = 'acme-robotics' and event.actor_id is not null
+           and event.id::text like '5eed0015-%'),
   'the other thirteen name a seeded person, and two different ones, so an actor column is worth rendering');
 
 -- ---------------------------------------------------------------------------
@@ -3160,6 +3164,9 @@ select pg_temp.must_hold(
 
 -- ---------------------------------------------------------------------------
 -- Generate Tickets — the OTA batch, `✓ all sized`, `~3 days`, `$14`.
+--
+-- Scoped to the OTA batch's id since #509: the Build Analyzer drafts its BA-1…BA-4 into a batch
+-- of its own in the same workspace, older than this one.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
   (select b.planner = 'outline-v0'
@@ -3173,7 +3180,7 @@ select pg_temp.must_hold(
      join ouroboros.organization org on org."id" = b.organization_id
      join ouroboros.ticket_sources src on src.id = b.target_source_id
      join ouroboros.planning_epics epic on epic.id = b.epic_id
-    where org."slug" = 'acme-robotics'),
+    where org."slug" = 'acme-robotics' and b.id = '5eed0021-0000-4000-8000-000000000001'),
   'the batch is outline-v0''s, sized, bound for GitHub and Helios 2.1, in the OTA hardening lane');
 
 select pg_temp.must_hold(
@@ -3195,7 +3202,7 @@ select pg_temp.must_hold(
                           from ouroboros.ticket_dependencies dep
                           join ouroboros.ticket_drafts blocked on blocked.id = dep.blocked_draft_id
                          where dep.blocker_draft_id = d.id) notes on true
-    where org."slug" = 'acme-robotics'),
+    where org."slug" = 'acme-robotics' and b.id = '5eed0021-0000-4000-8000-000000000001'),
   'the six drafts render the mockup''s keys, effort chips, workflow tags and dependency notes');
 
 select pg_temp.must_hold(
@@ -3209,7 +3216,7 @@ select pg_temp.must_hold(
      from ouroboros.ticket_drafts d
      join ouroboros.draft_batches b on b.id = d.batch_id
      join ouroboros.organization org on org."id" = b.organization_id
-    where org."slug" = 'acme-robotics'),
+    where org."slug" = 'acme-robotics' and b.id = '5eed0021-0000-4000-8000-000000000001'),
   'every draft is selected, pending and sized through issue_estimates.draft_id — so the pill reads all sized');
 
 select pg_temp.must_hold(
@@ -3219,7 +3226,7 @@ select pg_temp.must_hold(
      join ouroboros.organization org on org."id" = b.organization_id
      join lateral (select ie.breakdown from ouroboros.issue_estimates ie
                     where ie.draft_id = d.id order by ie.version desc limit 1) e on true
-    where org."slug" = 'acme-robotics'
+    where org."slug" = 'acme-robotics' and b.id = '5eed0021-0000-4000-8000-000000000001'
       and d.selected),
   'the drafts'' est_minutes sum to three loop-days');
 
@@ -3248,7 +3255,7 @@ select pg_temp.must_hold(
                          order by a.alias
                          limit 1) k on true
      left join lateral ouroboros.model_price(b.organization_id, k.kind, e.routed_model) p on true
-    where org."slug" = 'acme-robotics'
+    where org."slug" = 'acme-robotics' and b.id = '5eed0021-0000-4000-8000-000000000001'
       and d.selected
       and (p.billing_mode is null or p.billing_mode in ('token', 'free'))),
   'every draft is priced by a seeded rate, and the priced subtotal is 1400 cents — the footer''s $14');
@@ -3484,10 +3491,14 @@ select pg_temp.must_hold(
     where o."slug" = 'acme-robotics' and j.queued_at >= date_trunc('day', now())),
   'and the two running, three queued and one reserved job are the near miss: counted by queued_at it reads 31');
 
+-- The near misses are the farm seed's own jobs (`5eed0028…`, #435–#485): since #509 the Build
+-- Analyzer's corpus adds ninety days of helios-firmware history to the same table, and *without
+-- the day window* is a statement about the twenty prior-week jobs, not about that history.
 select pg_temp.must_hold(
   (select count(*) = 45 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
-    where o."slug" = 'acme-robotics' and j.finished_at is not null),
+    where o."slug" = 'acme-robotics' and j.finished_at is not null
+      and j.id::text like '5eed0028-%'),
   'and the prior week''s twenty are the other one: without the day window it reads 45');
 
 -- Each retried attempt has a successor among the nineteen, so a retry is one failure and one
@@ -3546,7 +3557,7 @@ select pg_temp.must_hold(
                     + (j.ccache_stats ->> 'misses')::numeric)) = 74
      from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
-    where o."slug" = 'acme-robotics'
+    where o."slug" = 'acme-robotics' and j.id::text like '5eed0028-%'
       and j.ccache_stats is not null and j.finished_at is not null),
   'and the prior week''s builds are the near miss: without the day window the rate reads 74%');
 
@@ -3604,8 +3615,9 @@ select pg_temp.must_hold(
    and (select count(*) = 7 from ouroboros.build_log_chunks c
           join ouroboros.build_jobs j on j.id = c.job_id
           join ouroboros.organization o on o."id" = j.organization_id
-         where o."slug" = 'acme-robotics'),
-  'the LIVE card''s listing is three chunks of #479, of seven in the whole seed — #484''s and #485''s memory maps are #356''s');
+         where o."slug" = 'acme-robotics'
+           and c.id::text not like '5eed0063-%'),
+  'the LIVE card''s listing is three chunks of #479, of seven in the whole seed — #484''s and #485''s memory maps are #356''s, and the Build Analyzer''s log tails (#509) are counted in its own section');
 
 select pg_temp.must_hold(
   (select (j.ccache_stats ->> 'hits')::int = 412
@@ -3658,7 +3670,8 @@ select pg_temp.must_hold(
 select pg_temp.must_hold(
   (select count(*) = 51 from ouroboros.build_jobs j
      join ouroboros.organization o on o."id" = j.organization_id
-    where o."slug" = 'acme-robotics'),
+    where o."slug" = 'acme-robotics'
+      and j.id::text like '5eed0028-%'),
   'fifty-one build jobs in all — twenty last week, twenty-five today, five in flight and one reserved');
 
 select pg_temp.must_hold(
@@ -5483,8 +5496,11 @@ select pg_temp.must_hold(
      (select count(*) from ouroboros.guardrail_evaluations   where id::text like '5eed005a-%'),
      (select count(*) from ouroboros.intervention_events     where id::text like '5eed005c-%'),
      (select count(*) from ouroboros.intervention_overrides  where id::text like '5eed005d-%'),
+     -- #509's three thermal waivers raise three events of their own, 33–57 days back and so
+     -- outside the card's window; they are the Build Analyzer seed's, counted in its section.
      (select count(*) from ouroboros.intervention_events
-       where organization_id = '5eed0001-0000-4000-8000-000000000001'),
+       where organization_id = '5eed0001-0000-4000-8000-000000000001'
+         and not (source = 'waiver' and source_ref like '5eed006d-%')),
      (select count(*) from ouroboros.intervention_overrides
        where organization_id = '5eed0001-0000-4000-8000-000000000001')]
    = array[11, 11, 11, 11, 3, 1, 1, 20, 1]::bigint[]),
@@ -5949,9 +5965,8 @@ select pg_temp.must_hold(
 -- V080 — the Build Analyzer's run records (#506, BU.1)
 -- ===========================================================================
 --
--- No seed writes an analysis run yet — BU.4 (#509) does. The probe holds from today so that
--- seed cannot be the first place a fabricated `$` appears: no LLM pass exists, so no seeded run
--- carries an LLM cost, and none claims an LLM analyzer it did not run.
+-- BU.4 (#509) writes the two runs mockup 18 draws, and this holds them to decision A3: no LLM pass
+-- exists, so no seeded run carries an LLM cost, and none claims an LLM analyzer it did not run.
 select pg_temp.must_hold(
   not exists (select 1 from ouroboros.analysis_runs where llm_cost_cents is not null)
   and not exists (select 1 from ouroboros.analysis_runs
@@ -5999,6 +6014,328 @@ select pg_temp.must_hold(
      where (c.sample_count, c.factor)
            is distinct from (i.sample_count, round(i.measured_sum / nullif(i.predicted_sum, 0), 4))),
   'every seeded calibration factor is the formula over its cell''s cleanly closed measurements');
+
+-- ===========================================================================
+-- R__dev_seed_workspace_metrics_analyzer.sql — mockup 18's Build Analyzer (#509, BU.4)
+-- ===========================================================================
+--
+-- Every figure the page prints is re-derived here from the corpus — the builds, their log tails,
+-- the merges, the waivers — by a query written for this file rather than copied from the seed's,
+-- and then compared with what the stored finding says. That is #509's *"reproducible from the
+-- seeded substrate, not read from a seeded finding row"*. The three change-points are the
+-- engine's to find; tests/verify-analyzer-rediscovery.sh runs it. What is asserted about them
+-- here is that the shifts are in the data.
+
+create temporary view analyzer_corpus as
+  select job.*, (job.finished_at at time zone 'UTC')::date as day,
+         (now() at time zone 'UTC')::date - (job.finished_at at time zone 'UTC')::date as days_ago
+    from ouroboros.build_jobs job
+    join ouroboros.github_repos repo on repo.id = job.github_repo_id and repo.name = 'helios-firmware'
+    join ouroboros.organization org  on org."id" = job.organization_id and org."slug" = 'acme-robotics'
+   where (job.finished_at at time zone 'UTC')::date
+         between (now() at time zone 'UTC')::date - 90 and (now() at time zone 'UTC')::date - 1;
+
+create temporary view analyzer_lines as
+  select job.id, job.number, job.label, line
+    from analyzer_corpus job
+    join ouroboros.build_log_chunks chunk on chunk.job_id = job.id
+    cross join lateral regexp_split_to_table(convert_from(chunk.content, 'UTF8'), E'\n') line;
+
+create temporary view analyzer_finding as
+  select right(f.id::text, 3)::int as n, f.*
+    from ouroboros.analysis_findings f
+   where f.run_id = '5eed0065-0000-4000-8000-000000000002';
+
+-- --- the ids, and the idempotency test --------------------------------------------------------
+select pg_temp.must_hold(
+  (select array[
+     (select count(*) from ouroboros.build_jobs              where id::text like '5eed0062-%'),
+     (select count(*) from ouroboros.build_log_chunks        where id::text like '5eed0063-%'),
+     (select count(*) from ouroboros.analysis_schedules      where id::text like '5eed0064-%'),
+     (select count(*) from ouroboros.analysis_runs           where id::text like '5eed0065-%'),
+     (select count(*) from ouroboros.analysis_findings       where id::text like '5eed0066-%'),
+     (select count(*) from ouroboros.analysis_suggestions    where id::text like '5eed0067-%'),
+     (select count(*) from ouroboros.analysis_suggestion_findings l
+        join ouroboros.analysis_suggestions s on s.id = l.suggestion_id
+       where s.id::text like '5eed0067-%'),
+     (select count(*) from ouroboros.audit_events            where id::text like '5eed0068-%'),
+     (select count(*) from ouroboros.suggestion_measurements where id::text like '5eed0069-%'),
+     (select count(*) from ouroboros.draft_batches           where id::text like '5eed006a-%'),
+     (select count(*) from ouroboros.ticket_drafts           where id::text like '5eed006b-%'),
+     (select count(*) from ouroboros.issue_estimates         where id::text like '5eed006c-%'),
+     (select count(*) from ouroboros.pr_waivers              where id::text like '5eed006d-%'),
+     (select count(*) from ouroboros.analyzer_calibration_history h
+        join ouroboros.organization o on o."id" = h.organization_id where o."slug" = 'acme-robotics')]
+   = array[1270, 233, 1, 2, 27, 12, 24, 2, 2, 1, 4, 4, 3, 2]::bigint[]),
+  'the analyzer seed wrote its 1,270 builds, 233 tails, two runs, 27 findings, 12 suggestions and the rest — and, applied twice, nothing more');
+
+-- --- the meta strip: the receipt is the rows ---------------------------------------------------
+select pg_temp.must_hold(
+  (select (r.corpus_manifest #>> '{counts,builds}')::int = (select count(*) from analyzer_corpus)
+      and (r.corpus_manifest #>> '{counts,hil_sessions}')::int
+          = (select count(*) from analyzer_corpus where label = 'HIL test rig')
+      and (select count(*) from analyzer_corpus) = 1284
+      and (select count(*) from analyzer_corpus where label = 'HIL test rig') = 62
+      and r.corpus_manifest #> '{counts}' @> '{"loops": 312, "log_lines": 4100000}'
+      and r.corpus_manifest #> '{window,days}' = '90'
+      and (r.corpus_manifest #>> '{window,to}')::date = (now() at time zone 'UTC')::date - 1
+      and r.corpus_manifest #> '{sources,log_lines}' @> '{"sampled": true, "rate": 0.3}'
+     from ouroboros.analysis_runs r where r.id = '5eed0065-0000-4000-8000-000000000002'),
+  'Corpus 1,284 builds · 312 loops · 90 days · 4.1M log lines · 62 HIL sessions — the builds and sessions counted, the log source sampled and saying so');
+
+select pg_temp.must_hold(
+  (select r.status = 'complete' and r.trigger = 'every_n_builds'
+      and r.analyzer_set ->> 'label' = 'deterministic analyzers v1'
+      and jsonb_array_length(r.analyzer_set -> 'analyzers') = 7
+      and not jsonb_path_exists(r.analyzer_set, '$.analyzers[*] ? (@.kind != "deterministic")')
+      and r.llm_cost_cents is null
+      and r.compute_seconds = 41 * 60
+      and now() - r.finished_at between interval '119 minutes' and interval '2 hours 30 minutes'
+      and r.confidence_note = 'high — 90d of stable telemetry'
+     from ouroboros.analysis_runs r where r.id = '5eed0065-0000-4000-8000-000000000002'),
+  'Analyzed by deterministic analyzers v1 · Last run 2h ago · 41 min — and no $, because no model ran');
+
+select pg_temp.must_hold(
+  (select s.enabled and s.weekly_enabled and s.weekly_day = 1 and s.weekly_time = '06:00'
+      and s.every_n_builds = 50
+     from ouroboros.analysis_schedules s where s.id = '5eed0064-0000-4000-8000-000000000001'),
+  'Schedule: weekly + every 50 builds');
+
+-- --- the corpus is the insights ledger's, not a parallel one ----------------------------------
+select pg_temp.must_hold(
+  (select bool_and(b.value = coalesce(c.builds, 0) and f.value = coalesce(c.failed, 0)
+                   and dep.value = coalesce(c.deploys, 0))
+     from ouroboros.metric_daily b
+     join ouroboros.metric_daily f on f.metric_id = 'build_failures' and f.repo_ref = b.repo_ref
+                                  and f.day = b.day
+     join ouroboros.metric_daily dep on dep.metric_id = 'deploy_frequency'
+                                    and dep.repo_ref = b.repo_ref and dep.day = b.day
+     left join (select day, count(*) as builds,
+                       count(*) filter (where status <> 'succeeded') as failed,
+                       count(*) filter (where status = 'succeeded' and git_ref = 'refs/heads/main')
+                         as deploys
+                  from analyzer_corpus group by day) c on c.day = b.day
+    where b.metric_id = 'builds' and b.repo_ref = 'acme-robotics/helios-firmware'
+      and b.day between (now() at time zone 'UTC')::date - 89 and (now() at time zone 'UTC')::date - 1),
+  'every day of helios-firmware''s history is exactly its builds, its failures and its main-branch deploys — the rollup re-deriving a day finds what Insights shows');
+
+-- --- the shifts are in the data ---------------------------------------------------------------
+--
+-- Each day's median of the firmware build, then each segment's median of those: 252, 342, 212,
+-- 252 seconds — the chips' +1m 30s, −2m 10s and +40s, and the curve's 4m 12s endpoint.
+select pg_temp.must_hold(
+  (select array_agg(level order by segment)
+          = array[252, 342, 212, 252]::float8[]
+     from (select segment, percentile_cont(0.5) within group (order by median) as level
+             from (select case when days_ago >= 83 then 1 when days_ago >= 48 then 2
+                               when days_ago >= 10 then 3 else 4 end as segment,
+                          percentile_cont(0.5) within group
+                            (order by extract(epoch from finished_at - started_at)) as median
+                     from analyzer_corpus
+                    where label = 'zephyr build' and status = 'succeeded'
+                    group by days_ago) daily
+            group by segment) levels),
+  'the firmware build''s daily medians sit at 252 s, then 342 s from 82 days ago, 212 s from 47, 252 s from 9');
+
+select pg_temp.must_hold(
+  (select array_agg(first.days_ago || '=' || first.title order by first.days_ago desc, first.title)
+       from (select distinct on (commit_sha) commit_sha, title,
+                    (now() at time zone 'UTC')::date - (queued_at at time zone 'UTC')::date as days_ago
+               from analyzer_corpus where git_ref = 'refs/heads/main'
+              order by commit_sha, queued_at) first
+      where first.days_ago between 79 and 85 or first.days_ago between 44 and 50
+         or first.days_ago between 6 and 12)
+      = array['82=Zephyr 4.1 migration', '79=docs: README typo',
+              '48=can: driver timeout tweak', '47=ccache enabled',
+              '9=twister suite growth',
+              '7=Motor PID: clamp the integral term on saturation',
+              '7=Tune the brown-out threshold for writes during flashing',
+              '6=Publish OTA progress events on the telemetry channel',
+              '6=Refactor the telemetry buffer allocation']::text[],
+  'within three days of each shift the merges are its anchor and the near misses, and nothing else');
+
+-- --- log_signature: the fixture timeout and ccache#1412 ----------------------------------------
+select pg_temp.must_hold(
+  (select (select count(distinct id) from analyzer_lines
+            where line like 'FAIL - ota.fixture.shared_setup: fixture ''ota_image_server'' setup timed out after %s') = 31
+      and (select count(*) from analyzer_lines where line like 'FAIL - ota.%') = 430
+      and f.data @> jsonb_build_object(
+            'count', (select count(distinct id) from analyzer_lines
+                       where line like '%fixture ''ota_image_server'' setup timed out after %'),
+            'share', round((select count(*) from analyzer_lines
+                             where line like '%setup timed out after %')::numeric
+                           / (select count(*) from analyzer_lines where line like 'FAIL - ota.%'), 3))
+      and f.data ->> 'share' = '0.072'
+      and jsonb_array_length(f.evidence_refs) = 31
+     from analyzer_finding f where f.n = 111),
+  '7.2% of OTA suite failures share one fixture timeout signature (31 builds) — 31 of 430 failure lines, and 31 builds cited');
+
+select pg_temp.must_hold(
+  (select (select count(distinct id) from analyzer_lines where line like '%(ccache#1412)') = 118
+      and (f.data ->> 'count')::int = (select count(distinct id) from analyzer_lines where line like '%(ccache#1412)')
+     from analyzer_finding f where f.n = 112),
+  'cache-miss signature matches ccache issue #1412 in 118 builds');
+
+-- --- config_usage: twelve options nobody set ---------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 12
+          and bool_and((f.data ->> 'occurrences')::int = 0
+                       and (f.data ->> 'builds_considered')::int = (select count(*) from analyzer_corpus)
+                       and not exists (select 1 from analyzer_corpus c
+                                        where c.command like '%' || (f.data ->> 'option') || '%'))
+          and count(*) filter (where exists (select 1 from analyzer_lines l
+                                              where l.line like 'warning: ' || (f.data ->> 'option') || ' %'))
+              = 4
+          and count(*) filter (where (f.data ->> 'drift_warnings')::int > 0) = 4
+     from analyzer_finding f where f.finding_type = 'config_usage')
+  and exists (select 1 from analyzer_corpus where command like '%-DCONFIG_%=y%'),
+  '0 of 1,284 builds toggled the twelve, while builds do toggle options; four still cause drift warnings');
+
+-- --- cache_window: 78% → 31% for six hours after each deps refresh -----------------------------
+select pg_temp.must_hold(
+  (with refresh as (
+     select distinct on (commit_sha) commit_sha, queued_at as at
+       from analyzer_corpus where git_ref = 'refs/heads/main' and title = 'deps: refresh west manifest'
+      order by commit_sha, queued_at),
+   cached as (
+     select c.*, exists (select 1 from refresh r
+                          where c.queued_at >= r.at and c.queued_at < r.at + interval '6 hours') as after,
+            (c.ccache_stats ->> 'hits')::numeric as hits,
+            (c.ccache_stats ->> 'hits')::numeric + (c.ccache_stats ->> 'misses')::numeric as objects
+       from analyzer_corpus c where c.ccache_stats is not null)
+   select (select count(*) from refresh) = 14
+      and round(sum(hits) filter (where not after) / sum(objects) filter (where not after), 2) = 0.78
+      and round(sum(hits) filter (where after) / sum(objects) filter (where after), 2) = 0.31
+      and round(count(*) filter (where after)::numeric / count(*), 2) = 0.20
+      and (select f.data @> '{"hit_rate_before": 0.78, "hit_rate_after": 0.31, "window_hours": 6,
+                              "occurrences": 14, "share": 0.20}'
+             from analyzer_finding f where f.n = 141)
+     from cached),
+  'cache hit rate drops 78%→31% for ~6h after every deps-refresh merge (14 occurrences), on ~20% of cached builds');
+
+-- --- queue_correlation: the last fourteen weekdays ----------------------------------------------
+select pg_temp.must_hold(
+  (with weekdays as (
+     select day, (day + time '14:00') at time zone 'UTC' as opens,
+            (day + time '16:00') at time zone 'UTC' as closes
+       from (select (now() at time zone 'UTC')::date - n as day from generate_series(1, 30) n) d
+      where extract(isodow from day) < 6 order by day desc limit 14),
+   longest as (
+     select w.day, max(extract(epoch from j.started_at - j.queued_at)) as wait
+       from weekdays w
+       join ouroboros.build_jobs j on j.queued_at >= w.opens and j.queued_at < w.closes
+       join ouroboros.runner_pools p on p.id = j.pool_id and p.name = 'pool-a'
+      group by w.day),
+   busy as (
+     select sum(extract(epoch from least(j.finished_at, w.closes) - greatest(j.started_at, w.opens))) as s
+       from weekdays w
+       join ouroboros.build_jobs j on j.started_at < w.closes and j.finished_at > w.opens
+       join ouroboros.runner_pools p on p.id = j.pool_id and p.name = 'pool-b')
+   select (select count(*) from longest where wait > 300) = 11
+      and (select count(*) from weekdays) = 14
+      and round(1 - busy.s / (2 * 7200 * 14), 2) = 0.82
+      and (select f.data @> '{"days_exceeded": 11, "days_observed": 14, "idle_share": 0.82,
+                              "threshold_seconds": 300}'
+             from analyzer_finding f where f.n = 151)
+     from busy),
+  'pool-a queue exceeds 5 min in that window on 11 of last 14 weekdays; pool-b sits idle 82% of it');
+
+-- --- waiver_cite and the test stages -----------------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 3
+          and (select (data ->> 'waiver_count')::int = 3 from analyzer_finding where n = 161)
+     from ouroboros.pr_waivers w
+     join ouroboros.runs loop on loop.id = w.run_id
+     join ouroboros.github_repos repo on repo.id = loop.github_repo_id and repo.name = 'helios-firmware'
+    where w.reason ilike '%thermal%'
+      and w.created_at >= now() - interval '60 days' and w.created_at < now() - interval '161 minutes'),
+  '3 verification waivers in 60 days cite missing thermal coverage — the #482 waiver came after the run');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where label = 'qemu_cortex_m3') = 214
+      and count(*) filter (where label = 'qemu_cortex_m3' and status = 'failed'
+                             and not exists (select 1 from analyzer_corpus twin
+                                              where twin.commit_sha = c.commit_sha
+                                                and twin.label = 'native_sim' and twin.status = 'failed')) = 0
+      and count(*) filter (where label = 'HIL test rig' and status = 'failed'
+                             and git_ref like 'refs/heads/gh-readonly-queue/%'
+                             and exists (select 1 from analyzer_corpus twin
+                                          where twin.commit_sha = c.commit_sha and twin.id <> c.id
+                                            and twin.status = 'succeeded')
+                             and not exists (select 1 from analyzer_corpus twin
+                                              where twin.commit_sha = c.commit_sha and twin.id <> c.id
+                                                and twin.status = 'failed')) = 9
+      and count(*) filter (where label = 'HIL test rig' and status = 'failed') = 9
+      and (select bool_and(data @> case n when 171 then '{"value": 0, "sample": 214}'::jsonb
+                                          else '{"value": 9, "at_merge_gate": 9}'::jsonb end)
+             from analyzer_finding where n in (171, 172))
+     from analyzer_corpus c),
+  'qemu_cortex_m3 caught 0 unique failures in 214 builds; HIL caught 9 — all at merge gates, each against a green native_sim and qemu run of the same commit');
+
+-- --- the page's text ---------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(s.kind || '|' || s.status || '|' || s.title || '|' || s.evidence_line || '|'
+                    || s.confidence || '|' || coalesce(s.impact ->> 'estimate', '') || '|'
+                    || s.needs_spike order by s.id)
+          = array[
+            'build_process|open|Split the test gate: native_sim every build, QEMU + HIL only before merge|qemu_cortex_m3 caught 0 unique failures in 214 builds; HIL caught 9 — all at merge gates|91|-220|false',
+            'build_process|open|Re-warm ccache right after deps-refresh merges|cache hit rate drops 78%→31% for ~6h after every deps-refresh merge (14 occurrences)|88|-110|false',
+            'build_process|open|Move forge-02 to pool-a during 14:00–16:00 UTC|pool-a queue exceeds 5 min in that window on 11 of last 14 weekdays; pool-b sits idle 82% of it|84|-240|false',
+            'build_process|open|Link zephyr.elf incrementally (partial link cache)|link step grew from 18% to 42% of build time since v2.3 (LTO enabled)|72|-55|true',
+            'workflow|open|standard-fix: run self-review BEFORE the build stage|34% of failed builds in standard-fix loops contained defects the later self-review flagged anyway — reordering catches them pre-build|89|-125|false',
+            'workflow|open|Loops touching drivers/can/: add a ''flake-retry under load profile'' test stage|merges touching drivers/can are 3.1× more likely to flake the telemetry suite within 7 days (21 cases)|77|-1|false',
+            'ticket_draft|drafted|Refactor tests/ota fixtures — shared setup times out under load|7.2% of OTA suite failures share one fixture timeout signature (31 builds)|86||false',
+            'ticket_draft|drafted|Bump ccache 4.9 → 4.11 — upstream fixes the hash misses in our logs|cache-miss signature matches ccache issue #1412 in 118 builds|90||false',
+            'ticket_draft|drafted|Add thermal chamber to rig helios-rig-02|3 verification waivers in 60 days cite missing thermal coverage|82||false',
+            'ticket_draft|drafted|Delete 12 dead Kconfig options — never set in any build since '
+              || to_char((now() at time zone 'UTC')::date - 90, 'FMMonth')
+              || '|0 of 1,284 builds toggled them; 4 caused config-drift warnings|93||false']
+     from ouroboros.analysis_suggestions s
+    where s.last_run_id = '5eed0065-0000-4000-8000-000000000002'),
+  'the six cards and BA-1…BA-4 read as mockup 18 prints them — titles, evidence lines, impacts, confidences and the spike flag');
+
+-- The −1m 50s is the cache model's calibration applied, not a typed estimate.
+select pg_temp.must_hold(
+  (select (s.impact ->> 'estimate')::numeric = round(-168 * c.factor)
+      and c.factor = round(-72 / -110.0, 4)
+     from ouroboros.analysis_suggestions s
+     join ouroboros.analyzer_calibration c on c.analyzer = 'cache_window'
+                                          and c.organization_id = s.organization_id
+    where s.id = '5eed0067-0000-4000-8000-000000000012'),
+  'the re-warm card''s −1m 50s is its measured −168 s times the 0.6545 the ccache warm-up''s miss produced');
+
+-- --- BA-1…BA-4 and est. total ~1.5 days -------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(d.local_key || '|' || upper(e.effort) order by d.local_key)
+            = array['BA-1|M', 'BA-2|XS', 'BA-3|L', 'BA-4|S']
+      and sum((e.breakdown ->> 'est_minutes')::numeric) / (24 * 60) = 1.5
+      and bool_and(b.planner = 'build-analyzer-v1' and b.status = 'sized'
+                   and d.push_state = 'pending' and d.title = s.title)
+     from ouroboros.ticket_drafts d
+     join ouroboros.draft_batches b on b.id = d.batch_id
+     join ouroboros.issue_estimates e on e.draft_id = d.id
+     join ouroboros.analysis_suggestions s on s.draft_batch_id = b.id and s.title = d.title
+    where b.id = '5eed006a-0000-4000-8000-000000000001'),
+  'BA-1 M · BA-2 XS · BA-3 L · BA-4 S, est. total 1.5 days of loop time — the estimator''s minutes summed, unpushed');
+
+-- --- predicted vs measured ---------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(s.title || '|' || ((now() at time zone 'UTC')::date - m.applied_on) || '|'
+                    || (m.predicted ->> 'delta') || '|' || (m.measured ->> 'delta') || '|' || m.verdict
+                    || '|' || coalesce(m.note, '') order by m.applied_at)
+          = array['Test-suite split|37|-220|-235|delivered|',
+                  'ccache warm-up|30|-110|-72|under|under-delivered — analyzer revised its cache model']
+     from ouroboros.suggestion_measurements m
+     join ouroboros.analysis_suggestions s on s.id = m.suggestion_id
+    where m.id::text like '5eed0069-%'),
+  'Test-suite split predicted −3m 40s, measured −3m 55s ✓; ccache warm-up −1m 50s, −1m 12s, under-delivered');
+
+select pg_temp.must_hold(
+  (select h.from_factor = 1 and h.to_factor = 0.6545
+      and h.added_measurement_ids = array['5eed0069-0000-4000-8000-000000000002']::uuid[]
+     from ouroboros.analyzer_calibration_history h
+    where h.analyzer = 'cache_window' and h.impact_class = 'duration_delta'),
+  'the analyzer revised its cache model: 1 → 0.6545, citing the measurement that moved it');
 
 \o
 \echo 'seed.sql: all assertions passed'

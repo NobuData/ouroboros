@@ -240,7 +240,7 @@ issue assigned. Complexity chips: **XS · S · M · L**.
 | BU.1 | #506 ✅ | 🟢 Done | ouroboros-db: [BU.1] Analysis runs & corpus snapshots | Run records, schedules, budgets, the meta-strip manifest (A2/A7) | mvp, analyzer, db | N (after AH.1, AS.1, AO.1, BI.1) | Y | M | ouroboros-db |
 | BU.2 | #507 ✅ | 🟢 Done | ouroboros-db: [BU.2] Findings & suggestions schema | Typed findings, evidence refs, suggestion lifecycle, confidence (A1/A4) | mvp, analyzer, db | N (after BU.1) | Y | M | ouroboros-db |
 | BU.3 | #508 ✅ | 🟢 Done | ouroboros-db: [BU.3] Application measurements & calibration | Predicted/measured windows, verdicts, confounds, factors (A6) | mvp, analyzer, db | N (after BU.2) | Y | S | ouroboros-db |
-| BU.4 | #509 | 🟡 Open | ouroboros-db: [BU.4] Analyzer seeds — mockup-18 parity + probes | 90d corpus stats, findings, suggestions, measurements; ci checks | mvp, analyzer, db, ci | N (after BU.3, #24) | Y | M | ouroboros-db, .github |
+| BU.4 | #509 ✅ | 🟢 Done | ouroboros-db: [BU.4] Analyzer seeds — mockup-18 parity + probes | 90d corpus stats, findings, suggestions, measurements; ci checks | mvp, analyzer, db, ci | N (after BU.3, #24) | Y | M | ouroboros-db, .github |
 
 ### Issue BU.1 — ouroboros-db: [BU.1] Analysis runs & corpus snapshots
 
@@ -392,7 +392,24 @@ measurement{ccache warm, predicted: −110s, measured: −72s, verdict: under}
 
 ### Issue BU.4 — ouroboros-db: [BU.4] Analyzer seeds — mockup-18 parity + probes
 
-> **GitHub issue:** #509 · **Status:** 🟡 Open · **Parent epic:** #502
+> **GitHub issue:** #509 ✅ · **Status:** 🟢 Done · **Parent epic:** #502
+
+- **Delivered** (`ouroboros-db` `R__dev_seed_workspace_metrics_analyzer.sql`): the **corpus**, not
+  the answers — 1,270 helios-firmware builds over the 89 days before today (the farm's 14 make the
+  strip's 1,284; mockup today = Aug 8, so the shifts are 82, 47 and 9 days back), each day's
+  builds and failures being the insights ledger's extras made rows (that ledger's days 30–87 gained
+  115), with log tails, deps-refresh cache windows, afternoon queue waits, HIL sweeps, three
+  thermal waivers and the merges/image bump/policy versions attribution ranks. Two complete runs
+  (`deterministic analyzers v1`, `llm_cost_cents` null): the earlier one's two applied
+  suggestions and V085 measurements (delivered ✓, under → cache factor 0.6545); the page's run with
+  27 findings across all seven families, six cards and BA-1…BA-4 drafted into a
+  `build-analyzer-v1` batch (estimates sum to 1.5 days). Pattern figures are computed from the
+  rows; 34% · 3.1× · 18→42% and the manifest's loops/log lines are stored (planes not seeded at
+  that scale). `ci/db`: `tests/verify-analyzer-rediscovery.sh` runs BV.2's `ChangePointAnalyzer`
+  over the seeded corpus (`tests/lib/analyzer-corpus.sql`) and requires exactly the stored
+  findings; `tests/analyzer-invariants.sql` + `verify-analyzer-invariants.sh` are ten
+  red-then-green probes (vocabularies, lifecycle, evidence, confidence, write-once predictions,
+  verdicts, factors, no LLM cost, identity).
 
 - **Problem Statement:** Design review needs the mockup's full analysis
   state over the shared seeded universe — including a 90-day duration

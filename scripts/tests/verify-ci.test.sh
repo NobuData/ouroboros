@@ -300,6 +300,8 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "ouroboros-engine/src/ouroboros_engine/analysis/**"
+      - "ouroboros-engine/uv.lock"
   push:
     branches: [main]
     paths:
@@ -310,6 +312,8 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "ouroboros-engine/src/ouroboros_engine/analysis/**"
+      - "ouroboros-engine/uv.lock"
   workflow_dispatch:
 
 permissions:
@@ -409,6 +413,22 @@ jobs:
           docker run --rm --network=host "$POSTGRES_IMAGE" \
             psql -v ON_ERROR_STOP=1 -f /tests/planning-invariants.sql
           ouroboros-db/tests/verify-planning-invariants.sh --runner docker
+
+      - name: Assert the analyzer invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host "$POSTGRES_IMAGE" \
+            psql -v ON_ERROR_STOP=1 -f /tests/analyzer-invariants.sql
+          ouroboros-db/tests/verify-analyzer-invariants.sh --runner docker
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v9.0.0
+
+      - name: Prepare the engine the rediscovery runs
+        working-directory: ouroboros-engine
+        run: uv sync --locked
+
+      - name: Assert the change-point analyzer rediscovers the seeded findings
+        run: ouroboros-db/tests/verify-analyzer-rediscovery.sh --runner docker
 
   publish:
     name: publish/db
@@ -1383,6 +1403,32 @@ check_break 'a pass that never asserts the planning invariants is reported' \
 check_break 'a pass that never plants bad planning rows is reported' \
   'plants bad planning rows' \
   'sed -i "/verify-planning-invariants.sh/d" "$root/.github/workflows/db.yml"'
+
+# The Build Analyzer's (#509): both invariant halves, the engine environment the rediscovery needs,
+# the rediscovery itself, and the two filters that carry the analyzer's own changes into ci/db.
+check_break 'a pass that never asserts the analyzer invariants is reported' \
+  'asserts the analyzer invariants against the seeded database' \
+  'sed -i "s|/tests/analyzer-invariants.sql|/tests/nothing.sql|" "$root/.github/workflows/db.yml"'
+
+check_break 'a pass that never plants bad analysis rows is reported' \
+  'plants bad analysis rows' \
+  'sed -i "/verify-analyzer-invariants.sh/d" "$root/.github/workflows/db.yml"'
+
+check_break 'a rediscovery with no engine environment under it is reported' \
+  'prepares the engine environment the rediscovery runs in' \
+  'sed -i "s|^        run: uv sync --locked$|        run: true|" "$root/.github/workflows/db.yml"'
+
+check_break 'a pass that never runs the analyzer over the seeded corpus is reported' \
+  'runs the change-point analyzer over the seeded corpus' \
+  'sed -i "/verify-analyzer-rediscovery.sh/d" "$root/.github/workflows/db.yml"'
+
+check_break 'a db workflow blind to the analyzer it rediscovers with is reported' \
+  'runs db.yml engine.yml' \
+  'sed -i "/ouroboros_engine\/analysis/d" "$root/.github/workflows/db.yml"'
+
+check_break 'a db workflow blind to the lock pinning the analyzer'"'"'s numerics is reported' \
+  'ouroboros-engine/uv.lock runs db.yml engine.yml' \
+  'sed -i "/ouroboros-engine\/uv.lock/d" "$root/.github/workflows/db.yml"'
 
 check_break 'a drift check with no workspace installed under it is reported' \
   'installs the workspace' \
