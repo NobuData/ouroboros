@@ -181,6 +181,34 @@ export const INSIGHTS_PATH = "/insights";
 export const KNOWLEDGE_PATH = "/knowledge";
 
 /**
+ * One playbook's row on the Knowledge page, as an element id — `playbook-5eed…`
+ * (BK.5, [#446](https://github.com/NobuData/ouroboros/issues/446)).
+ *
+ * Written down here for the reason {@link ROUTING_MATRIX_HASH} is: the playbooks card
+ * (`app/knowledge/playbooks-card.tsx`) renders it on each row, and the insights flaky card's
+ * *Open playbook →* links to it, so the link and its target are one string.
+ *
+ * @param id The playbook's id (a uuid).
+ * @returns The element id.
+ */
+export function playbookAnchor(id: string): string {
+  return `playbook-${id}`;
+}
+
+/**
+ * Where one playbook is opened — its row on the Knowledge page, `/knowledge#playbook-5eed…`.
+ *
+ * A fragment rather than a route: a playbook has no page of its own, and its row on mockup 14's
+ * playbooks card is where it is read and launched.
+ *
+ * @param id The playbook's id. Encoded, for {@link workflowPath}'s reason.
+ * @returns The path.
+ */
+export function playbookPath(id: string): string {
+  return `${KNOWLEDGE_PATH}#${encodeURIComponent(playbookAnchor(id))}`;
+}
+
+/**
  * The workflow studio ([#147](https://github.com/NobuData/ouroboros/issues/147)) — mockup 04.
  *
  * Written down here for the reason every other route in this file is: three modules have to
@@ -406,6 +434,16 @@ export const ROUTING_MATRIX_HASH = "models-matrix-title";
  * `app/models/rules-card.tsx` renders it.
  */
 export const ROUTING_RULES_HASH = "models-rules-title";
+
+/**
+ * The build farm's runners card heading, as an element id — where a rig named on the insights
+ * flaky card goes (BK.5, [#446](https://github.com/NobuData/ouroboros/issues/446)).
+ *
+ * `app/farm/runners-card.tsx` renders it as the card's `aria-labelledby` target, and the flaky
+ * card links to it beneath {@link BUILD_FARM_PATH}. The farm has no per-runner address, so the
+ * fleet's list is the most specific place a rig resolves to.
+ */
+export const FARM_RUNNERS_HASH = "runners-card-title";
 
 /**
  * The dashboard's *Up next in queue* heading, likewise — where the issues screen's toast sends

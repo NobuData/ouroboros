@@ -15,7 +15,7 @@
  * read the same table.
  */
 
-import { BUILD_FARM_PATH, DASHBOARD_PATH, ISSUES_PATH, KNOWLEDGE_PATH, WORKFLOWS_PATH } from "@/app/paths";
+import { BUILD_FARM_PATH, DASHBOARD_PATH, INSIGHTS_PATH, ISSUES_PATH, KNOWLEDGE_PATH, WORKFLOWS_PATH } from "@/app/paths";
 
 /** A module a run console may be opened from. */
 export interface RunOrigin {
@@ -65,12 +65,21 @@ export const KNOWLEDGE_ORIGIN: RunOrigin = Object.freeze({
   route: KNOWLEDGE_PATH,
 });
 
+/**
+ * Insights — the flaky card's *fixed by loop #1847* opens the run that fixed the case (BK.5,
+ * [#446](https://github.com/NobuData/ouroboros/issues/446)).
+ */
+export const INSIGHTS_ORIGIN: RunOrigin = Object.freeze({
+  id: "insights",
+  label: "Insights",
+  route: INSIGHTS_PATH,
+});
+
 /** Every accepted origin, by the id `?from=` carries. */
 const ORIGINS: ReadonlyMap<string, RunOrigin> = new Map(
-  [DASHBOARD_ORIGIN, BUILD_FARM_ORIGIN, ISSUES_ORIGIN, WORKFLOWS_ORIGIN, KNOWLEDGE_ORIGIN].map((origin) => [
-    origin.id,
-    origin,
-  ]),
+  [DASHBOARD_ORIGIN, BUILD_FARM_ORIGIN, ISSUES_ORIGIN, WORKFLOWS_ORIGIN, KNOWLEDGE_ORIGIN, INSIGHTS_ORIGIN].map(
+    (origin) => [origin.id, origin],
+  ),
 );
 
 /**

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { FarmPage } from "@/app/api/farm";
-
+import { FARM_RUNNERS_HASH } from "@/app/paths";
 import { Button, Card, CardHead, Chip, type Column, EmptyState, Table, Tag } from "@/app/ui";
 
 import { FarmFirstRun } from "./farm-first-run";
@@ -254,8 +254,8 @@ export function RunnersCard({ mayAdminister = false }: Readonly<{ mayAdminister?
   );
 }
 
-/** The id the card's `aria-labelledby` points at. */
-const TITLE_ID = "runners-card-title";
+/** The id the card's `aria-labelledby` points at — the insights flaky card links to it. */
+const TITLE_ID = FARM_RUNNERS_HASH;
 
 /**
  * The table's nine columns, in the mockup's order.

@@ -4,7 +4,9 @@ import {
   BUILD_FARM_PATH,
   DASHBOARD_PATH,
   DASHBOARD_QUEUE_HASH,
+  FARM_RUNNERS_HASH,
   FARM_TOKENS_PATH,
+  KNOWLEDGE_PATH,
   POLICIES_PATH,
   ISSUES_PATH,
   LOGIN_PATH,
@@ -23,6 +25,8 @@ import {
   SOURCES_PATH,
   WORKFLOWS_PATH,
   loginPath,
+  playbookAnchor,
+  playbookPath,
   PR_HUNK_PARAM,
   prEvidencePath,
   prPath,
@@ -201,6 +205,19 @@ describe("the paths themselves", () => {
     expect(ROUTING_MATRIX_HASH).not.toBe(ROUTING_RULES_HASH);
     // The dashboard's queue card, where the issues screen's toast sends a reader (#118).
     expect(DASHBOARD_QUEUE_HASH).toBe("dash-up-next-title");
+    // #446: the insights flaky card links a rig to the farm's runner list.
+    expect(FARM_RUNNERS_HASH).toBe("runners-card-title");
+  });
+});
+
+describe("playbookPath", () => {
+  it("opens one playbook at its row on the Knowledge page (#446)", () => {
+    expect(playbookAnchor("5eed")).toBe("playbook-5eed");
+    expect(playbookPath("5eed")).toBe(`${KNOWLEDGE_PATH}#playbook-5eed`);
+  });
+
+  it("encodes the id, so a value cannot end the fragment or add a route", () => {
+    expect(playbookPath("a b/c")).toBe(`${KNOWLEDGE_PATH}#playbook-a%20b%2Fc`);
   });
 });
 
