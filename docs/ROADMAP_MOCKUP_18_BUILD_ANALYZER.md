@@ -445,7 +445,7 @@ seeds: 90d series w/ 3 planted shifts + attribution anchors · run manifest ·
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BV.1 | #510 | 🟡 Open | ouroboros-rest: [BV.1] Corpus assembly & run orchestration | Bounded readers, snapshots, budgets, schedule triggers (A2/A7) | mvp, analyzer, rest | N (after BU.1, AJ.4-shape) | Y | L | ouroboros-rest |
+| BV.1 | #510 ✅ | 🟢 Done | ouroboros-rest: [BV.1] Corpus assembly & run orchestration | Bounded readers, snapshots, budgets, schedule triggers (A2/A7) | mvp, analyzer, rest | N (after BU.1, AJ.4-shape) | Y | L | ouroboros-rest |
 | BV.2 | #511 ✅ | 🟢 Done | ouroboros-engine: [BV.2] Analyzer SPI & statistical core | The engine-side SPI + change-point (ruptures) + attribution | mvp, analyzer, engine | N (after BU.2, #52) | Y | L | ouroboros-engine |
 | BV.3 | #512 | 🟡 Open | ouroboros-engine: [BV.3] Pattern analyzers | Signatures, config-usage, cache-window, queue, waiver-cites, workflow-outcome | mvp, analyzer, engine | N (after BV.2) | Y | L | ouroboros-engine |
 | BV.4 | #513 | 🟡 Open | ouroboros-rest: [BV.4] Suggestion composer | Templates, impact math, confidence scoring, `/v0/synthesize` contract | mvp, analyzer, rest | N (after BV.2/BV.3) | Y | M | ouroboros-rest |
@@ -454,7 +454,29 @@ seeds: 90d series w/ 3 planted shifts + attribution anchors · run manifest ·
 
 ### Issue BV.1 — ouroboros-rest: [BV.1] Corpus assembly & run orchestration
 
-> **GitHub issue:** #510 · **Status:** 🟡 Open · **Parent epic:** #503
+> **GitHub issue:** #510 ✅ · **Status:** 🟢 Done · **Parent epic:** #503
+
+- **Delivered** (`ouroboros-rest` 0.38.6 `src/modules/analyzer/`, `ouroboros-engine` 0.7.9,
+  `ouroboros-db` `V086__analysis_orchestration.sql`): three triggers on one orchestrator —
+  `POST /api/v1/analyzer/runs` (owner/admin, audited `analyzer.run_requested`), a one-minute tick
+  that starts due weekly slots and reaps runs a stopped process left `running`, and an every-N
+  counter on AH.4's `JobCompletions` whose increment, threshold test and reset are one `UPDATE`
+  (a 120-build burst fires exactly twice at 50). The concurrent-run guard is checked before the
+  engine is asked anything and decided by V080's partial unique index; a refusal is `409
+  analysis_already_running` naming the running run. Corpus assembly reads every source a page at
+  a time (`md5(id)` sample order, keyset paging, log **tails** read backwards from the last chunk)
+  within `max_builds`, `max_log_lines` and the compute ceiling, and records a per-source sampling
+  record; the seeded corpus assembles to exactly `1,284 builds · 312 loops · 90 days · 4.1M log
+  lines · 62 HIL sessions` with logs sampled at 0.3 under `max_log_lines`. Rig telemetry (#266) is
+  `null` in the corpus and named in `manifest.absent`. Dispatch is `POST /v0/analysis/runs` on the
+  deployment's own engine, answered as NDJSON (`started` / `outcome` / `report`); each analyzer's
+  progress (V086 `analysis_runs.phase` + `progress`) and findings are written as they arrive, so a
+  `budget_exceeded` run keeps its completed analyzers' findings and names the rest. V086 adds
+  `build_jobs.log_lines` (counted where the bytes land) and the `build_duration` metric family
+  (median per `job_label`), filled by a new rollup extractor. Tenant locality is
+  `docs/SECURITY_MODEL.md` § 6.6, enforced by the `analyzer-corpus-stays-on-tenant` dependency
+  rule. The seed now holds the corpus at scale (log lines and loops counted, not stored).
+  *Not here:* the schedule editor's write API (BW.1's), the suggestion composer (BV.4, #513).
 
 - **Problem Statement:** Analysis must read four planes within budgets,
   snapshot what it read, and run on schedule (A2/A7).
@@ -1000,7 +1022,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 1. **Phase 0 — Prerequisites:** AH, AS/AT.3, AO, AJ.4 shape, AG.5, AS.4,
    BI.1/BI.2, WF-P.3/S, AK/AL, farm config, BK.1, #41/#46.
 2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
-3. **Phase 2 — Pipeline:** BV.1 (#510) ⊕ (→) **BV.2 (#511) ✅** → BV.3 (#512) →
+3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → BV.3 (#512) →
    BV.4 (#513) → BV.5 (#514) → BV.6 (#515)
 4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
    BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*

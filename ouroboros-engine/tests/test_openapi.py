@@ -20,6 +20,13 @@ from openapi_spec_validator import validate
 from pydantic import BaseModel
 
 from ouroboros_engine import __version__, openapi
+from ouroboros_engine.analysis.contract import Corpus
+from ouroboros_engine.analysis.harness import (
+    AnalysisFinished,
+    AnalyzerFinished,
+    AnalyzerStarted,
+)
+from ouroboros_engine.api.analysis import AnalysisRequest, AnalyzerSet, AnalyzerSetEntry
 from ouroboros_engine.api.health import HEALTH_PATH, Liveness
 from ouroboros_engine.api.root import ServiceIdentity
 from ouroboros_engine.api.status import ServiceStatus
@@ -112,6 +119,13 @@ _DOCUMENTED_MODELS: dict[str, type[BaseModel]] = {
     "LearnProvenance": LearnProvenance,
     "LearnCandidate": LearnCandidate,
     "Learned": Learned,
+    "AnalyzerSetEntry": AnalyzerSetEntry,
+    "AnalyzerSet": AnalyzerSet,
+    "Corpus": Corpus,
+    "AnalysisRequest": AnalysisRequest,
+    "AnalyzerStarted": AnalyzerStarted,
+    "AnalyzerFinished": AnalyzerFinished,
+    "AnalysisFinished": AnalysisFinished,
 }
 
 

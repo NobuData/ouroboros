@@ -99,6 +99,21 @@ module.exports = {
       to: { path: "^src/modules/providers/adapters/" },
     },
     {
+      name: "analyzer-corpus-stays-on-tenant",
+      severity: "error",
+      comment:
+        "The Build Analyzer's corpus leaves this process for the deployment's own engine and " +
+        "nowhere else (BV.1, #510; docs/SECURITY_MODEL.md § 6.6). The analyzer module reaches " +
+        "the engine through EngineClient and may import no network client of its own — no " +
+        "http/https/net/tls/dgram, no undici, no WebSocket, no mailer, no tracker or host SDK.",
+      from: { path: "^src/modules/analyzer/" },
+      to: {
+        path:
+          "^(node:)?(http|https|http2|net|tls|dgram)$|(^|node_modules/)(undici|ws|nodemailer|" +
+          "@octokit|axios|got|node-fetch)(/|$)|^src/modules/(github|mail|ticket-sources)/",
+      },
+    },
+    {
       name: "no-octokit-outside-the-seam",
       severity: "error",
       comment:

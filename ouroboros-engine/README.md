@@ -89,6 +89,8 @@ That is the command the image runs, minus the `uv` — see [Container](#containe
 | `POST /v0/workflows/validate` | yes | The engine's findings on a workflow definition — the publish gate's second opinion |
 | `POST /v0/workflows/dry-run` | yes | Walk a definition for one ticket: ordered steps, a verdict per stage, the path to highlight — no model or provider call |
 | `POST /v0/plan` | yes | Draft a batch of tickets: `{narrative, outline?, context}` in, drafts with dependencies and provenance out |
+| `GET /v0/analysis/analyzers` | yes | The installed Build Analyzer set, in `analysis_runs.analyzer_set`'s shape — #510 |
+| `POST /v0/analysis/runs` | yes | Run the analyzers over an assembled corpus, streaming `started`/`outcome`/`report` as NDJSON — #510 |
 | `POST /v0/learn` | yes | Learn candidate facts: a source bundle in, candidates with confidence and typed provenance out — committed for #423; today `unavailable-v0` answers none and says why |
 | `/openapi.json`, `/docs` | yes | The committed specification, served verbatim. A map of the internal surface is not something a misrouted port should hand out |
 
@@ -409,9 +411,23 @@ extractor for PR review cycles and run observations, which REST plugs into that 
 `analysis/` is the engine side of mockup 18's Build Analyzer (BV.2,
 [#511](https://github.com/NobuData/ouroboros/issues/511), decisions **A1/A2**): a versioned
 analyzer SPI, the harness that runs it, and the first analyzer — change-point detection with
-ranked attribution behind the duration chart's chips. Nothing here is served over HTTP yet;
-corpus assembly and the run orchestration that calls the harness are BV.1
-([#510](https://github.com/NobuData/ouroboros/issues/510)).
+ranked attribution behind the duration chart's chips. Corpus assembly and the run
+orchestration are `ouroboros-rest`'s (BV.1, [#510](https://github.com/NobuData/ouroboros/issues/510));
+this module serves them two routes (`api/analysis.py`):
+
+- `GET /v0/analysis/analyzers` — the installed set in `analysis_runs.analyzer_set`'s shape,
+  recorded on the run before assembly.
+- `POST /v0/analysis/runs` — `{run_id, corpus, compute_ceiling_seconds}` in; the run streamed
+  back as `application/x-ndjson`: `started` when an analyzer's sandbox starts, `outcome` (with
+  its findings) when it ends, `report` (`budget_exceeded`, `failed`) last. A stream without a
+  report was cut short. `iter_analysis` is the generator behind it; `run_analysis` collects it.
+
+The corpus (`contract.py`) carries BV.1's sources — `builds`, `events`, `log_tails` (each
+build's line count and only its tail), `tests`, `flakes`, `loops` (stage timings and transcript
+statistics, never bodies), `cache`, `waivers`, `series` (BI rollup rows by metric id) and
+`rig_telemetry` (AJ.4's read shape, #266, absent until it exists). Absent (`None`) is not empty
+(`[]`): an analyzer requiring an absent source is `skipped`. Nothing leaves the tenant — the
+corpus arrives from the deployment's own `ouroboros-rest` and the sandboxes cannot open a socket.
 
 ```python
 from ouroboros_engine.analysis.harness import run_analysis
@@ -742,6 +758,7 @@ ouroboros-engine/
 │   │   ├── workflows.py#   POST /v0/workflows/validate · /dry-run               · #144
 │   │   ├── plan.py     #   POST /v0/plan — draft a batch of tickets             · #277
 │   │   ├── learn.py    #   POST /v0/learn — candidate facts from a bundle       · #412
+│   │   ├── analysis.py #   /v0/analysis — the analyzer set, the streamed run    · #510
 │   │   └── v0.py       #   the versioned prefix and the rule that governs it
 │   ├── core/           # process-wide concerns, not routes
 │   │   ├── errors.py   #   the {code, message, details} envelope, for every failure

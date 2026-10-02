@@ -65,7 +65,8 @@ export type AuditSubjectType =
   | "pr_approval"
   | "pr_thread_entry"
   | "repository"
-  | "org_policy";
+  | "org_policy"
+  | "analysis_run";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -376,6 +377,18 @@ export const KNOWLEDGE_ENV_RECIPE_SAVED_EVENT = "knowledge.env_recipe_saved";
 export const POLICY_DRY_RUN_CHANGED_EVENT = "policy.dry_run_changed";
 
 /**
+ * A person asked for a Build Analyzer run — *Run analysis now* (BV.1,
+ * [#510](https://github.com/NobuData/ouroboros/issues/510), decision **A7**). Subject
+ * `analysis_run`, the run that started; the detail carries the repository and the trigger. Only the
+ * manual trigger is audited: a weekly slot or the fiftieth build is a schedule an administrator
+ * already saved, and the run row records which trigger started it.
+ *
+ * **A family of its own, `analyzer`.** *Who keeps re-running the analysis* is its own question, and
+ * `action like 'analyzer.%'` answers it whole.
+ */
+export const ANALYZER_RUN_REQUESTED_EVENT = "analyzer.run_requested";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -425,6 +438,7 @@ export const AUDIT_ACTIONS = [
   KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
   KNOWLEDGE_ENV_RECIPE_SAVED_EVENT,
   POLICY_DRY_RUN_CHANGED_EVENT,
+  ANALYZER_RUN_REQUESTED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

@@ -31,8 +31,8 @@ import os
 import subprocess
 import sys
 import time
-from collections.abc import Mapping
-from typing import Annotated, Any
+from collections.abc import Iterator, Mapping
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -235,26 +235,73 @@ def _run_one(
     return "failed", [], f"raised {error.type}: {error.message}", error
 
 
-def run_analysis(
+class AnalyzerStarted(BaseModel):
+    """An analyzer's sandbox is about to start — the run's per-analyzer *running* tick.
+
+    Emitted only for an analyzer that actually runs: a ``skipped`` or ``not_run`` analyzer
+    goes straight to its :class:`AnalyzerFinished`.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event: Literal["started"] = "started"
+    analyzer: str
+    version: int
+
+
+class AnalyzerFinished(BaseModel):
+    """One analyzer's outcome, as soon as it is known."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event: Literal["outcome"] = "outcome"
+    outcome: AnalyzerOutcome
+
+
+class AnalysisFinished(BaseModel):
+    """The run's summary — always the last event of a run that was not cut short.
+
+    Attributes:
+        budget_exceeded: The run's compute ceiling bound (the run's ``budget_exceeded``).
+        failed: The analyzers that failed, timed out or ran out of memory.
+    """
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+    event: Literal["report"] = "report"
+    budget_exceeded: bool
+    failed: list[str]
+
+
+#: One event of a streamed run, in the order :func:`iter_analysis` yields them.
+AnalysisEvent = AnalyzerStarted | AnalyzerFinished | AnalysisFinished
+
+
+def iter_analysis(
     registry: AnalyzerRegistry,
     corpus: Corpus,
     *,
     budgets: Mapping[str, AnalyzerBudget] | None = None,
     compute_ceiling_seconds: float | None = None,
     hash_seed: str = DEFAULT_HASH_SEED,
-) -> AnalysisReport:
-    """Run every registered analyzer over a corpus, each isolated and budgeted.
+) -> Iterator[AnalysisEvent]:
+    """Run every registered analyzer over a corpus, yielding progress as it happens.
+
+    The streaming form of :func:`run_analysis`, which is this generator collected — so the two
+    cannot disagree. ``POST /v0/analysis/runs`` (#510) forwards each event as it is yielded,
+    which is what makes the UI's per-analyzer run states real rather than a spinner.
 
     Args:
         registry: The analyzers to run.
         corpus: The run's corpus.
         budgets: Per-analyzer overrides, by id; an analyzer not named uses its own default.
         compute_ceiling_seconds: The run-wide cap on the sum of analyzer time, or ``None``.
-        hash_seed: ``PYTHONHASHSEED`` for every sandbox. Fixed by default; the
-            reproducibility test varies it to prove findings do not depend on it.
+        hash_seed: ``PYTHONHASHSEED`` for every sandbox.
 
-    Returns:
-        One outcome per registered analyzer, in id order.
+    Yields:
+        For each analyzer in id order, an :class:`AnalyzerStarted` when its sandbox starts
+        (only if it runs) and an :class:`AnalyzerFinished` with its outcome; then one
+        :class:`AnalysisFinished`.
     """
     budgets = budgets or {}
     corpus_document = json.loads(
@@ -263,14 +310,18 @@ def run_analysis(
     available = corpus.available()
     spent = 0.0
     budget_exceeded = False
-    outcomes = []
+    outcomes: list[AnalyzerOutcome] = []
+
+    def finished(outcome: AnalyzerOutcome) -> AnalyzerFinished:
+        outcomes.append(outcome)
+        return AnalyzerFinished(outcome=outcome)
 
     for entry in registry:
         missing = sorted(
             f"{r.source.value}@{r.grain.value}" for r in entry.cls.requires - available
         )
         if missing:
-            outcomes.append(
+            yield finished(
                 AnalyzerOutcome(
                     analyzer=entry.id,
                     version=entry.version,
@@ -287,7 +338,7 @@ def run_analysis(
             remaining = compute_ceiling_seconds - spent
             if remaining <= 0:
                 budget_exceeded = True
-                outcomes.append(
+                yield finished(
                     AnalyzerOutcome(
                         analyzer=entry.id,
                         version=entry.version,
@@ -299,6 +350,7 @@ def run_analysis(
             if remaining < timeout:
                 timeout, capped = remaining, True
 
+        yield AnalyzerStarted(analyzer=entry.id, version=entry.version)
         started = time.monotonic()
         status, findings, reason, error = _run_one(
             entry, corpus_document, budget, timeout, hash_seed
@@ -308,7 +360,7 @@ def run_analysis(
         if status == "timed_out" and capped:
             budget_exceeded = True
             reason = "stopped at the run's compute ceiling"
-        outcomes.append(
+        yield finished(
             AnalyzerOutcome(
                 analyzer=entry.id,
                 version=entry.version,
@@ -320,4 +372,44 @@ def run_analysis(
             )
         )
 
+    report = AnalysisReport(outcomes=outcomes, budget_exceeded=budget_exceeded)
+    yield AnalysisFinished(budget_exceeded=budget_exceeded, failed=report.failed)
+
+
+def run_analysis(
+    registry: AnalyzerRegistry,
+    corpus: Corpus,
+    *,
+    budgets: Mapping[str, AnalyzerBudget] | None = None,
+    compute_ceiling_seconds: float | None = None,
+    hash_seed: str = DEFAULT_HASH_SEED,
+) -> AnalysisReport:
+    """Run every registered analyzer over a corpus, each isolated and budgeted.
+
+    :func:`iter_analysis`, collected.
+
+    Args:
+        registry: The analyzers to run.
+        corpus: The run's corpus.
+        budgets: Per-analyzer overrides, by id; an analyzer not named uses its own default.
+        compute_ceiling_seconds: The run-wide cap on the sum of analyzer time, or ``None``.
+        hash_seed: ``PYTHONHASHSEED`` for every sandbox. Fixed by default; the
+            reproducibility test varies it to prove findings do not depend on it.
+
+    Returns:
+        One outcome per registered analyzer, in id order.
+    """
+    outcomes: list[AnalyzerOutcome] = []
+    budget_exceeded = False
+    for event in iter_analysis(
+        registry,
+        corpus,
+        budgets=budgets,
+        compute_ceiling_seconds=compute_ceiling_seconds,
+        hash_seed=hash_seed,
+    ):
+        if isinstance(event, AnalyzerFinished):
+            outcomes.append(event.outcome)
+        elif isinstance(event, AnalysisFinished):
+            budget_exceeded = event.budget_exceeded
     return AnalysisReport(outcomes=outcomes, budget_exceeded=budget_exceeded)

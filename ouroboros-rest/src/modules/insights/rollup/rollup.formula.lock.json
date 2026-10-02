@@ -1,14 +1,23 @@
 {
   "throughput": {
-    "metrics": { "merged_prs": 1, "merge_rate": 1, "merged_untouched_rate": 1 },
+    "metrics": {
+      "merged_prs": 1,
+      "merge_rate": 1,
+      "merged_untouched_rate": 1
+    },
     "fingerprint": "sha256:9e5c45d0f7643761c309b8155dc8a78a62f4d491b2e9c4873ef937c41e32aa34"
   },
   "interventions": {
-    "metrics": { "human_interventions": 2 },
+    "metrics": {
+      "human_interventions": 2
+    },
     "fingerprint": "sha256:4d87aa797ddd6203d40645acfb918293f8600f993cd28b723bc4e1bd621d8802"
   },
   "cycle": {
-    "metrics": { "cycle_time": 1, "stage_duration": 1 },
+    "metrics": {
+      "cycle_time": 1,
+      "stage_duration": 1
+    },
     "fingerprint": "sha256:2ecedb32f38e50233aa9dfcb68cc9f471f304dff74ee567ae561b85b13da6f4f"
   },
   "cost": {
@@ -22,19 +31,40 @@
     "fingerprint": "sha256:abb3c3ebd2e5c0dacf932030c43bd31b719ccd149db22840b3a53f39b1b8a114"
   },
   "builds": {
-    "metrics": { "builds": 1, "build_failures": 1, "build_success_rate": 1 },
+    "metrics": {
+      "builds": 1,
+      "build_failures": 1,
+      "build_success_rate": 1
+    },
     "fingerprint": "sha256:887a5ba87a6a907e2c806dda27a5f7d7ef786d07e39fb815e5671a33477af3d9"
   },
+  "build_duration": {
+    "metrics": {
+      "build_duration": 1
+    },
+    "fingerprint": "sha256:f108491518ba305830a8bd1772151aa0c1b0b3687a216d66c32b90025db0c516"
+  },
   "tests": {
-    "metrics": { "test_cases_run": 1, "test_pass_rate": 1, "test_failures_by_suite": 1 },
+    "metrics": {
+      "test_cases_run": 1,
+      "test_pass_rate": 1,
+      "test_failures_by_suite": 1
+    },
     "fingerprint": "sha256:51fa5fd83bb65517c968132093deb7594da270699b5d9fc1d106443af93d2580"
   },
   "effort": {
-    "metrics": { "completion_time_by_effort": 1 },
+    "metrics": {
+      "completion_time_by_effort": 1
+    },
     "fingerprint": "sha256:8cae17b36c6afa100a98f154ae87c724fb186572339223ceee8a7f5268009b69"
   },
   "dora": {
-    "metrics": { "deploy_frequency": 1, "lead_time": 1, "change_failure_rate": 1, "mttr": 1 },
+    "metrics": {
+      "deploy_frequency": 1,
+      "lead_time": 1,
+      "change_failure_rate": 1,
+      "mttr": 1
+    },
     "fingerprint": "sha256:c30220a9dee4125ce0687297a6110d10e64235c71c9507e13e6687fe322e54f4"
   }
 }

@@ -2455,6 +2455,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analyzer/runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run analysis now
+         * @description BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)) — mockup 18's **Run analysis
+         *     now ⟳**: start a Build Analyzer run of one repository. The run is created `running` in phase
+         *     `assembling` and the answer is a `202`; everything after happens in the background and is
+         *     written to the run as it happens, so `GET /api/v1/analyzer/runs/{id}` is the progress API.
+         *
+         *     **Phases.** `assembling` — the corpus is read within the run's budgets (the repository's
+         *     schedule, or `2000` builds · `5000000` log lines · `3600` s by default): builds and their
+         *     log **tails**, test failures, flake scores, loop stage timings and transcript statistics,
+         *     cache statistics, waivers and the `build_duration` series. The manifest — the meta strip's
+         *     counts, window and a **per-source sampling record** — is stored as soon as it exists.
+         *     `analyzing` — the corpus is dispatched to the deployment's own `ouroboros-engine`; each
+         *     analyzer's entry in `progress` ticks `pending → running → completed` (or how it ended), and
+         *     a completed analyzer's findings are written as it completes. `composing` — the outcome is
+         *     decided and the confidence note computed.
+         *
+         *     **Terminal states.** `complete`; `budget_exceeded` — the compute ceiling was reached during
+         *     assembly or analysis: the completed analyzers' findings are **kept**, and the manifest's
+         *     `analyzers.notRun` and `failureReason` name the ones that did not finish; `failed` — the run
+         *     itself broke (the engine unreachable or its stream cut off), with the reason.
+         *
+         *     **One running analysis per repository.** A start while one runs is a `409
+         *     analysis_already_running` whose `details` name the run that is going (`runId`, `trigger`,
+         *     `phase`, `startedAt`) — the UI follows it rather than queuing a second.
+         *
+         *     **On-tenant.** The corpus is sent to `OURO_ENGINE_URL` and nowhere else
+         *     (`docs/SECURITY_MODEL.md`).
+         *
+         *     **`owner` or `admin`**, audited as `analyzer.run_requested` (subject `analysis_run`). The
+         *     weekly slot and the every-N-builds counter start runs of their own, with `trigger`
+         *     `weekly` and `every_n_builds`.
+         *
+         *     **The workspace is the session's**: the session's active organization or `X-Ouro-Tenant`
+         *     decides; a repository the workspace does not have is a `404`.
+         */
+        post: operations["startAnalysis"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyzer/runs/latest": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A repository's newest analysis run
+         * @description BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)) — what mockup 18's meta
+         *     strip renders: the newest run of one repository, running or finished, or `run: null` before
+         *     the first analysis. Every member, a `viewer` included.
+         */
+        get: operations["getLatestAnalysis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyzer/runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One analysis run — status, phase, progress and manifest
+         * @description BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)) — the progress API BW.1
+         *     polls: `status`, the `phase` a running run is in (`assembling → analyzing → composing`),
+         *     each analyzer's `progress`, and the corpus `manifest` once assembly has stored it — the
+         *     strip's counts, the window, the budget and, per source, whether it was sampled, at what
+         *     rate and under which cap. `absent` names a source the corpus does not carry (rig telemetry
+         *     until AJ.4, #266) rather than zeroing it. Every member, a `viewer` included; another
+         *     workspace's run is a `404`.
+         */
+        get: operations["getAnalysisRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/github-token": {
         parameters: {
             query?: never;
@@ -12767,6 +12867,140 @@ export interface components {
             ruleVersion: number | null;
             /** @description The re-categorization that set a human cause; null for a rule's. */
             override: components["schemas"]["InterventionOverride"] | null;
+        };
+        /**
+         * StartAnalysisBody
+         * @description What `POST /api/v1/analyzer/runs` reads (#510).
+         */
+        StartAnalysisBody: {
+            /** @description The repository to analyze, `owner/name`. */
+            repo: string;
+        };
+        /**
+         * AnalyzerSet
+         * @description The run's provenance (V080, decision **A3**): `label` is what *Analyzed by* renders, and
+         *     `analyzers` the versioned list behind it.
+         */
+        AnalyzerSet: {
+            label: string;
+            analyzers: {
+                id: string;
+                version: number;
+                /** @enum {string} */
+                kind: "deterministic" | "llm";
+            }[];
+        };
+        /**
+         * AnalyzerProgress
+         * @description One analyzer's part of a run (#510) — pending, running, or how it ended.
+         */
+        AnalyzerProgress: {
+            id: string;
+            version: number;
+            /** @enum {string} */
+            status: "pending" | "running" | "completed" | "skipped" | "failed" | "timed_out" | "memory_exceeded" | "not_run";
+            /** @description Findings written, once completed. */
+            findings: number | null;
+            elapsedSeconds: number | null;
+            /** @description Why it did not complete. */
+            reason: string | null;
+        };
+        /**
+         * AnalysisSamplingRecord
+         * @description How much of one source a run read (V080): a full read is `sampled: false, rate: 1, cap:
+         *     null`; a source a budget bound is `sampled: true`, the fraction read (two places, strictly
+         *     between 0 and 1) and the budget that bound it.
+         */
+        AnalysisSamplingRecord: {
+            sampled: boolean;
+            rate: number;
+            /** @enum {string|null} */
+            cap: "maxBuilds" | "maxLogLines" | "computeCeilingSeconds" | null;
+        };
+        /**
+         * AnalysisManifest
+         * @description The corpus receipt mockup 18's meta strip renders (#506, #510) — `Corpus 1,284 builds ·
+         *     312 loops · 90 days · 4.1M log lines · 62 HIL sessions` — with the per-source sampling
+         *     record, the budget the run was assembled under, the duration series' job label, the
+         *     sources the corpus lacks and, once the run has ended, which analyzers completed.
+         */
+        AnalysisManifest: {
+            window: {
+                /** Format: date */
+                from: string;
+                /** Format: date */
+                to: string;
+                days: number;
+            };
+            counts: {
+                builds: number;
+                loops: number;
+                logLines: number;
+                hilSessions: number;
+            };
+            sources: {
+                builds: components["schemas"]["AnalysisSamplingRecord"];
+                loops: components["schemas"]["AnalysisSamplingRecord"];
+                logLines: components["schemas"]["AnalysisSamplingRecord"];
+                hilSessions: components["schemas"]["AnalysisSamplingRecord"];
+            };
+            budget: {
+                maxBuilds: number;
+                maxLogLines: number;
+                computeCeilingSeconds: number;
+            };
+            /** @description The job label whose durations are the duration series. */
+            durationLabel: string | null;
+            /** @description Sources the corpus does not carry, and why — never a zero standing in. */
+            absent: {
+                source: string;
+                reason: string;
+            }[];
+            analyzers: {
+                completed: string[];
+                skipped: string[];
+                failed: string[];
+                notRun: string[];
+            } | null;
+        };
+        /**
+         * AnalysisRun
+         * @description One Build Analyzer run (#506, #510) — its trigger, status, phase, per-analyzer progress,
+         *     manifest and provenance. `llmCostCents` is null unless an LLM pass ran (V080).
+         */
+        AnalysisRun: {
+            /** Format: uuid */
+            id: string;
+            repo: string;
+            /** @enum {string} */
+            trigger: "manual" | "weekly" | "every_n_builds";
+            /** @enum {string} */
+            status: "running" | "complete" | "failed" | "budget_exceeded";
+            /**
+             * @description The phase a running run is in, or the one a finished run ended in.
+             * @enum {string}
+             */
+            phase: "assembling" | "analyzing" | "composing";
+            progress: {
+                analyzers: components["schemas"]["AnalyzerProgress"][];
+            };
+            manifest: components["schemas"]["AnalysisManifest"] | null;
+            analyzerSet: components["schemas"]["AnalyzerSet"];
+            /** Format: date-time */
+            startedAt: string;
+            /** Format: date-time */
+            finishedAt: string | null;
+            computeSeconds: number;
+            llmCostCents: number | null;
+            confidenceNote: string | null;
+            failureReason: string | null;
+        };
+        /**
+         * LatestAnalysis
+         * @description A repository's newest run, or null before the first analysis (#510).
+         */
+        LatestAnalysis: {
+            run: components["schemas"]["AnalysisRun"] | null;
         };
         /**
          * InterventionList
@@ -32109,6 +32343,543 @@ export interface operations {
              * @description `validation_failed` — `cause` is not one of the five causes, `reason` is missing, blank
              *     or over 2 000 characters, or `id` is not a uuid.
              */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    startAnalysis: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "repo": "acme-robotics/helios-firmware"
+                 *     }
+                 */
+                "application/json": components["schemas"]["StartAnalysisBody"];
+            };
+        };
+        responses: {
+            /** @description The run, started. Poll it for progress. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "8c14647a-6139-476d-ba49-76545ffb5aec",
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "trigger": "manual",
+                     *       "status": "running",
+                     *       "phase": "assembling",
+                     *       "progress": {
+                     *         "analyzers": [
+                     *           {
+                     *             "id": "change_point",
+                     *             "version": 1,
+                     *             "status": "pending",
+                     *             "findings": null,
+                     *             "elapsedSeconds": null,
+                     *             "reason": null
+                     *           }
+                     *         ]
+                     *       },
+                     *       "manifest": null,
+                     *       "analyzerSet": {
+                     *         "label": "deterministic analyzers v1",
+                     *         "analyzers": [
+                     *           {
+                     *             "id": "change_point",
+                     *             "version": 1,
+                     *             "kind": "deterministic"
+                     *           }
+                     *         ]
+                     *       },
+                     *       "startedAt": "2026-10-02T20:49:04.886Z",
+                     *       "finishedAt": null,
+                     *       "computeSeconds": 0,
+                     *       "llmCostCents": null,
+                     *       "confidenceNote": null,
+                     *       "failureReason": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AnalysisRun"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_repository_not_found` — this workspace has no such repository.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_already_running` — the repository already has a running analysis. `details`
+             *     names it: `{repo, runId, trigger, phase, startedAt}`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "code": "analysis_already_running",
+                     *       "message": "An analysis of acme-robotics/helios-firmware is already running. Wait for it to finish, or follow its progress.",
+                     *       "details": {
+                     *         "repo": "acme-robotics/helios-firmware",
+                     *         "runId": "8c14647a-6139-476d-ba49-76545ffb5aec",
+                     *         "trigger": "weekly",
+                     *         "phase": "analyzing",
+                     *         "startedAt": "2026-10-02T06:00:31.000Z"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or not `owner/name`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `engine_unavailable` — the analysis engine could not say which analyzers it has, so
+             *     no run was started.
+             */
+            502: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getLatestAnalysis: {
+        parameters: {
+            query: {
+                /** @description The repository, `owner/name`. */
+                repo: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The newest run, or null. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "run": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["LatestAnalysis"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or not `owner/name`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAnalysisRun: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The run's id. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The run. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "8c14647a-6139-476d-ba49-76545ffb5aec",
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "trigger": "every_n_builds",
+                     *       "status": "complete",
+                     *       "phase": "composing",
+                     *       "progress": {
+                     *         "analyzers": [
+                     *           {
+                     *             "id": "change_point",
+                     *             "version": 1,
+                     *             "status": "completed",
+                     *             "findings": 3,
+                     *             "elapsedSeconds": 0.719,
+                     *             "reason": null
+                     *           }
+                     *         ]
+                     *       },
+                     *       "manifest": {
+                     *         "window": {
+                     *           "from": "2026-07-04",
+                     *           "to": "2026-10-01",
+                     *           "days": 90
+                     *         },
+                     *         "counts": {
+                     *           "builds": 1284,
+                     *           "loops": 312,
+                     *           "logLines": 4100000,
+                     *           "hilSessions": 62
+                     *         },
+                     *         "sources": {
+                     *           "builds": {
+                     *             "sampled": false,
+                     *             "rate": 1,
+                     *             "cap": null
+                     *           },
+                     *           "loops": {
+                     *             "sampled": false,
+                     *             "rate": 1,
+                     *             "cap": null
+                     *           },
+                     *           "logLines": {
+                     *             "sampled": true,
+                     *             "rate": 0.3,
+                     *             "cap": "maxLogLines"
+                     *           },
+                     *           "hilSessions": {
+                     *             "sampled": false,
+                     *             "rate": 1,
+                     *             "cap": null
+                     *           }
+                     *         },
+                     *         "budget": {
+                     *           "maxBuilds": 2000,
+                     *           "maxLogLines": 1230000,
+                     *           "computeCeilingSeconds": 3600
+                     *         },
+                     *         "durationLabel": "zephyr build",
+                     *         "absent": [
+                     *           {
+                     *             "source": "rig_telemetry",
+                     *             "reason": "Rig/HIL telemetry export (AJ.4,"
+                     *           }
+                     *         ],
+                     *         "analyzers": {
+                     *           "completed": [
+                     *             "change_point"
+                     *           ],
+                     *           "skipped": [],
+                     *           "failed": [],
+                     *           "notRun": []
+                     *         }
+                     *       },
+                     *       "analyzerSet": {
+                     *         "label": "deterministic analyzers v1",
+                     *         "analyzers": [
+                     *           {
+                     *             "id": "change_point",
+                     *             "version": 1,
+                     *             "kind": "deterministic"
+                     *           }
+                     *         ]
+                     *       },
+                     *       "startedAt": "2026-10-02T18:08:00.000Z",
+                     *       "finishedAt": "2026-10-02T18:49:00.000Z",
+                     *       "computeSeconds": 2460,
+                     *       "llmCostCents": null,
+                     *       "confidenceNote": "high — 90d of stable telemetry",
+                     *       "failureReason": null
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AnalysisRun"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_run_not_found` — no such run in this workspace.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `id` is not a uuid. */
             422: {
                 headers: {
                     [name: string]: unknown;

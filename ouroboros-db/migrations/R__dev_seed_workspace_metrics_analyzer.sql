@@ -85,6 +85,21 @@
 --     says so (tests/lib/analyzer-corpus.sql).
 --
 -- ---------------------------------------------------------------------------
+-- **Seeded to scale** — the strip's four counts are the rows' (#510)
+-- ---------------------------------------------------------------------------
+--
+-- BV.1's corpus assembly counts the page's manifest from the rows, so every count on the strip is
+-- here at full size and the stored manifest is computed with BV.1's definitions:
+--
+--   * **1,284 builds** — the window's finished builds (succeeded, failed or retried).
+--   * **62 HIL sessions** — those of them that ran on a pool tagged `hil`.
+--   * **4.1M log lines** — V086's `build_jobs.log_lines` summed over them: the farm keeps tails,
+--     but it counted every line as it landed, so the volume is a column, not four million rows.
+--     Read under the schedule's 1.23M-line cap it is **sampled** at 0.3, as the manifest says.
+--   * **312 loops** — the repository's runs started in the window: the other seeds' recent loops
+--     and the older `standard-fix` loops below.
+--
+-- ---------------------------------------------------------------------------
 -- **What is stored, and why**
 -- ---------------------------------------------------------------------------
 --
@@ -93,9 +108,8 @@
 --     builds unattributed to loops, so these three are stored as the workflow_outcome analyzer's
 --     output with evidence that resolves (the standard-fix version, the four `can:` merges, the
 --     LTO merge) — not derived.
---   * **312 loops · 4.1M log lines.** The manifest is the run's receipt (V080); this database
---     keeps the tails, not four million lines. The log source is recorded as **sampled** at 0.3
---     under the schedule's cap, as V080's own example has it.
+--   * **The run before's corpus** (271 loops, 2.9M log lines), whose window reaches back past
+--     the ninety days seeded here. The page's run is counted instead — see *Seeded to scale*.
 --   * **The run before** (38 days ago) and its two findings, which proposed the two changes the
 --     Predicted vs Measured card closes. Both were applied a week apart; their predictions and
 --     outcomes are V085 rows, the verdicts V085's arithmetic, and the calibration factors are
@@ -125,6 +139,7 @@
 --   | `ticket_drafts` (4)            | `5eed006b…`      | the BA number                        |
 --   | `issue_estimates` (4)          | `5eed006c…`      | the BA number, then the version      |
 --   | `pr_waivers` (3)               | `5eed006d…`      | the loop's issue number              |
+--   | `runs` (older loops)           | `5eed006e…`      | the loop's issue number less 3000    |
 --
 -- The same properties as every seed: every statement is behind `${ouro_dev_seed}`; every insert
 -- ends `on conflict do nothing`, with a `not exists` guard where a BEFORE trigger would act first
@@ -610,6 +625,169 @@ select ('5eed0063-0000-4000-8000-' || lpad(t.number::text, 12, '0'))::uuid,
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
+-- The log volume — 4.1M lines over the window, counted on the jobs rather than kept (#510).
+--
+-- The farm keeps tails, not four million lines; V086's `build_jobs.log_lines` is the count the
+-- farm took as every chunk landed, and it outlives the retention sweep. The tails above were
+-- counted as they were inserted; the lines the farm logged before keeping only the tails are set
+-- here. The window's finished helios-firmware builds sum to exactly the scale below: the farm
+-- seed's builds keep the lines their own chunks counted, and the remainder is shared out over the
+-- corpus's builds by kind — a twister run says more than a build, a HIL sweep less — floored,
+-- with the last lines going one each to the earliest builds.
+-- ---------------------------------------------------------------------------
+update ouroboros.build_jobs job
+   set log_lines = share.lines
+  from (
+    with scope as (
+      select org."id" as organization_id, repo.id as repo_id,
+             (now() at time zone 'UTC')::date as today
+        from ouroboros.organization org
+        join ouroboros.github_orgs  gh   on gh.organization_id = org."id" and gh.login = 'acme-robotics'
+        join ouroboros.github_repos repo on repo.org_id = gh.id and repo.name = 'helios-firmware'
+       where org."slug" = 'acme-robotics'
+    ),
+    in_window as (
+      select job.id, job.number, job.label, job.log_lines,
+             job.id::text like '5eed0062-%' as corpus
+        from ouroboros.build_jobs job, scope
+       where job.organization_id = scope.organization_id and job.github_repo_id = scope.repo_id
+         and job.status in ('succeeded', 'failed', 'retried')
+         and (job.finished_at at time zone 'UTC')::date between scope.today - 90 and scope.today - 1
+    ),
+    weighted as (
+      select id, number,
+             case label when 'native_sim' then 4 when 'qemu_cortex_m3' then 4
+                        when 'HIL test rig' then 2 else 3 end as weight
+        from in_window
+       where corpus
+    ),
+    budget as (
+      select 4100000 - (select coalesce(sum(log_lines), 0) from in_window where not corpus) as lines,
+             (select sum(weight) from weighted) as weight
+    ),
+    floored as (
+      select w.id, w.number, floor(b.lines * w.weight / b.weight)::bigint as lines
+        from weighted w, budget b
+    )
+    select f.id,
+           f.lines + case when row_number() over (order by f.number)
+                               <= (select b.lines from budget b) - sum(f.lines) over ()
+                          then 1 else 0 end as lines
+      from floored f
+  ) share
+ where job.id = share.id
+   and job.log_lines is distinct from share.lines
+   and ${ouro_dev_seed};
+
+-- ---------------------------------------------------------------------------
+-- The loops — helios-firmware's older loops, so the window holds the strip's 312 (#510).
+--
+-- The dashboard, knowledge and metrics seeds hold the loops of the last few weeks; the analyzer
+-- counts every loop started in its ninety days. The rest are here, 31–89 days back so no
+-- thirty-day page (the dashboard's weeks, #434's interventions, mockup 15's window) counts them:
+-- spread evenly, oldest first, each a `standard-fix` loop that merged — or, one in eight, failed
+-- at the build farm before opening a pull request. None stopped for a person, so no intervention
+-- event is raised; none has a pull-request row or a build job, so no rollup family derived from
+-- those planes moves. Issue numbers from #3001 and loop numbers from 1301 sit below and apart
+-- from every other seed's.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.runs (id, organization_id, github_repo_id, issue_number, issue_title,
+                            loop_seq, workflow_tag, model, status,
+                            stage_label, stage_index, stage_total,
+                            started_at, finished_at, pr_number, checks_passed, checks_total)
+with scope as (
+  select org."id" as organization_id, repo.id as repo_id,
+         (now() at time zone 'UTC')::date as today
+    from ouroboros.organization org
+    join ouroboros.github_orgs  gh   on gh.organization_id = org."id" and gh.login = 'acme-robotics'
+    join ouroboros.github_repos repo on repo.org_id = gh.id and repo.name = 'helios-firmware'
+   where org."slug" = 'acme-robotics'
+),
+others as (
+  select count(*) as loops
+    from ouroboros.runs run, scope
+   where run.organization_id = scope.organization_id and run.github_repo_id = scope.repo_id
+     and (run.started_at at time zone 'UTC')::date between scope.today - 90 and scope.today - 1
+     and run.id::text not like '5eed006e-%'
+),
+plan as (
+  select k, (312 - others.loops)::integer as total
+    from others, generate_series(1, (312 - others.loops)::integer) as k
+),
+titles (n, title) as (
+  values (0, 'OTA: retry the slot erase after a flash timeout'),
+         (1, 'CAN: guard the RX ring against overrun'),
+         (2, 'BLE: re-advertise after a dropped bond'),
+         (3, 'Telemetry: clamp the CBOR frame length'),
+         (4, 'Motor PID: saturate the integral term'),
+         (5, 'Bootloader: check the image header magic first')
+),
+loops as (
+  select plan.k,
+         89 - ((plan.k - 1) * 59) / plan.total as days_back,
+         plan.k % 8 = 0 as failed,
+         titles.title
+    from plan
+    join titles on titles.n = plan.k % 6
+)
+select ('5eed006e-0000-4000-8000-' || lpad(l.k::text, 12, '0'))::uuid,
+       scope.organization_id, scope.repo_id, 3000 + l.k, l.title,
+       1300 + l.k, 'standard-fix',
+       case when l.k % 3 = 0 then 'ollama/qwen3-coder' else 'claude-sonnet-5' end,
+       case when l.failed then 'failed' else 'merged' end,
+       case when l.failed then 'Build farm' else 'Merged' end,
+       case when l.failed then 4 else 6 end, 6,
+       ((scope.today - l.days_back) + time '08:00' + make_interval(mins => (l.k * 37) % 600))
+         at time zone 'UTC',
+       ((scope.today - l.days_back) + time '08:00' + make_interval(mins => (l.k * 37) % 600 + 12 + l.k % 20))
+         at time zone 'UTC',
+       case when l.failed then null else 3400 + l.k end,
+       case when l.failed then null else 13 end,
+       case when l.failed then null else 13 end
+  from loops l, scope
+ where ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
+-- The build-duration series — V086's `build_duration` family, as its rollup derives it (#510).
+--
+-- The duration chart and the corpus read the daily median build duration per job label from the
+-- Insights grain. Like `builds`, the family is derived from the farm plane rather than summarised:
+-- each (repository, label, UTC day) with succeeded builds keeps every build's start-to-finish
+-- milliseconds, ascending, in `meta.samples`, and its `value` is their median — the row
+-- ouroboros-rest's extractor writes for the same day. Ninety days, the same span as every other
+-- family here, and the family is marked filled through yesterday so the first tick does not
+-- backfill over it.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.metric_daily
+  (organization_id, repo_ref, metric_id, is_rate, dimension, day, value, meta)
+select job.organization_id, gh.login || '/' || repo.name, 'build_duration', false, job.label,
+       (job.finished_at at time zone 'UTC')::date,
+       percentile_cont(0.5) within group (
+         order by round(extract(epoch from job.finished_at - job.started_at) * 1000)),
+       jsonb_build_object('samples', jsonb_agg(
+         round(extract(epoch from job.finished_at - job.started_at) * 1000)
+         order by round(extract(epoch from job.finished_at - job.started_at) * 1000)))
+  from ouroboros.build_jobs job
+  join ouroboros.organization org  on org."id" = job.organization_id and org."slug" = 'acme-robotics'
+  join ouroboros.github_repos repo on repo.id = job.github_repo_id
+  join ouroboros.github_orgs  gh   on gh.id = repo.org_id
+ where job.status = 'succeeded'
+   and (job.finished_at at time zone 'UTC')::date
+       between (now() at time zone 'UTC')::date - 89 and (now() at time zone 'UTC')::date
+   and ${ouro_dev_seed}
+ group by job.organization_id, gh.login, repo.name, job.label, (job.finished_at at time zone 'UTC')::date
+on conflict do nothing;
+
+insert into ouroboros.metric_rollup_state (organization_id, family, last_filled_day,
+                                           last_run_status, last_run_at)
+select org."id", 'build_duration', (now() at time zone 'UTC')::date - 1, 'succeeded', now()
+  from ouroboros.organization org
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
 -- Three thermal waivers — on three helios-firmware loops 33–57 days back, each waiving a case the
 -- rig cannot run because helios-rig-02 has no thermal chamber. #482's own waiver says the same
 -- thing, but today, after the run: it is the test-results seed's, and the next run's to count.
@@ -644,7 +822,7 @@ select '5eed0064-0000-4000-8000-000000000001'::uuid, org."id", 'acme-robotics/he
           join ouroboros.github_repos repo on repo.id = job.github_repo_id
          where job.organization_id = org."id" and repo.name = 'helios-firmware'
            and job.finished_at >= now() - interval '161 minutes'),
-       2000, 1500000, 3600, ken."id"
+       2000, 1230000, 3600, ken."id"
   from ouroboros.organization org
   join ouroboros."user" ken on ken."email" = 'ken@acme-robotics.dev'
  where org."slug" = 'acme-robotics'
@@ -680,8 +858,9 @@ select '5eed0065-0000-4000-8000-000000000001'::uuid, scope.organization_id,
                       'log_lines',    jsonb_build_object('sampled', true, 'rate', 0.5,
                                                          'cap', 'max_log_lines'),
                       'hil_sessions', jsonb_build_object('sampled', false, 'rate', 1, 'cap', null)),
+         -- The schedule's cap was higher five weeks ago: 0.5 of 2.9M lines is what it allowed.
          'budget',  jsonb_build_object('max_builds', scope.max_builds,
-                                       'max_log_lines', scope.max_log_lines,
+                                       'max_log_lines', 1450000,
                                        'compute_ceiling_seconds', scope.compute_ceiling_seconds)),
        jsonb_build_object('label', 'deterministic analyzers v1',
                           'analyzers', jsonb_build_array(
@@ -795,7 +974,19 @@ on conflict do nothing;
 
 update ouroboros.analysis_runs
    set status = 'complete', finished_at = started_at + interval '38 minutes', compute_seconds = 2280,
-       confidence_note = 'high — 90d of stable telemetry'
+       confidence_note = 'high — 90d of stable telemetry',
+       -- It ended composing, every analyzer of its set completed with the findings it wrote
+       -- (#510's progress, frozen with the run).
+       phase = 'composing',
+       progress = jsonb_build_object('analyzers', (
+         select coalesce(jsonb_agg(jsonb_build_object(
+                  'id', a ->> 'id', 'version', (a ->> 'version')::integer, 'status', 'completed',
+                  'findings', (select count(*) from ouroboros.analysis_findings finding
+                                where finding.run_id = '5eed0065-0000-4000-8000-000000000001'
+                                  and finding.analyzer = a ->> 'id'
+                                  and finding.analyzer_version = (a ->> 'version')::integer))
+                  order by ordinality), '[]'::jsonb)
+           from jsonb_array_elements(analyzer_set -> 'analyzers') with ordinality as set_entry (a, ordinality)))
  where id = '5eed0065-0000-4000-8000-000000000001'
    and status = 'running'
    and ${ouro_dev_seed};
@@ -899,8 +1090,8 @@ select '5eed0065-0000-4000-8000-000000000002'::uuid, scope.organization_id,
        'acme-robotics/helios-firmware', 'every_n_builds', scope.schedule_id, 'running',
        jsonb_build_object(
          'window',  jsonb_build_object('from', scope.today - 90, 'to', scope.today - 1, 'days', 90),
-         'counts',  jsonb_build_object('builds', counted.builds, 'loops', 312,
-                                       'log_lines', 4100000, 'hil_sessions', counted.hil),
+         'counts',  jsonb_build_object('builds', counted.builds, 'loops', looped.loops,
+                                       'log_lines', counted.log_lines, 'hil_sessions', counted.hil),
          'sources', jsonb_build_object(
                       'builds',       jsonb_build_object('sampled', false, 'rate', 1, 'cap', null),
                       'loops',        jsonb_build_object('sampled', false, 'rate', 1, 'cap', null),
@@ -920,12 +1111,23 @@ select '5eed0065-0000-4000-8000-000000000002'::uuid, scope.organization_id,
                                                        (7, 'workflow_outcome')) as a (n, id))),
        now() - interval '161 minutes'
   from scope
+  -- BV.1's (#510) manifest definitions, counted from the rows: finished builds, the lines they
+  -- logged, the ones that ran on a pool tagged `hil`, and the loops started inside the window.
   cross join lateral (
-    select count(*) as builds, count(*) filter (where job.label = 'HIL test rig') as hil
+    select count(*) as builds, coalesce(sum(job.log_lines), 0) as log_lines,
+           count(*) filter (where pool.tags ? 'hil') as hil
       from ouroboros.build_jobs job
+      join ouroboros.runner_pools pool on pool.id = job.pool_id
      where job.organization_id = scope.organization_id and job.github_repo_id = scope.repo_id
+       and job.status in ('succeeded', 'failed', 'retried')
        and (job.finished_at at time zone 'UTC')::date between scope.today - 90 and scope.today - 1
   ) counted
+  cross join lateral (
+    select count(*) as loops
+      from ouroboros.runs run
+     where run.organization_id = scope.organization_id and run.github_repo_id = scope.repo_id
+       and (run.started_at at time zone 'UTC')::date between scope.today - 90 and scope.today - 1
+  ) looped
  where ${ouro_dev_seed}
 on conflict do nothing;
 
@@ -1620,7 +1822,19 @@ on conflict do nothing;
 
 update ouroboros.analysis_runs
    set status = 'complete', finished_at = started_at + interval '41 minutes', compute_seconds = 2460,
-       confidence_note = 'high — 90d of stable telemetry'
+       confidence_note = 'high — 90d of stable telemetry',
+       -- It ended composing, every analyzer of its set completed with the findings it wrote
+       -- (#510's progress, frozen with the run).
+       phase = 'composing',
+       progress = jsonb_build_object('analyzers', (
+         select coalesce(jsonb_agg(jsonb_build_object(
+                  'id', a ->> 'id', 'version', (a ->> 'version')::integer, 'status', 'completed',
+                  'findings', (select count(*) from ouroboros.analysis_findings finding
+                                where finding.run_id = '5eed0065-0000-4000-8000-000000000002'
+                                  and finding.analyzer = a ->> 'id'
+                                  and finding.analyzer_version = (a ->> 'version')::integer))
+                  order by ordinality), '[]'::jsonb)
+           from jsonb_array_elements(analyzer_set -> 'analyzers') with ordinality as set_entry (a, ordinality)))
  where id = '5eed0065-0000-4000-8000-000000000002'
    and status = 'running'
    and ${ouro_dev_seed};

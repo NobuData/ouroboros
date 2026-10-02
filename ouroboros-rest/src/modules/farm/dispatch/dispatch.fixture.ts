@@ -63,6 +63,7 @@ export function buildJob(overrides: Partial<BuildJob> = {}): BuildJob {
     updated_at: new Date("2026-09-19T12:00:00.000Z"),
     artifact_globs: [],
     test_selection: null,
+    log_lines: "0",
     ...overrides,
   };
 }

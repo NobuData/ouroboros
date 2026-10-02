@@ -191,10 +191,22 @@ class Finding(_Strict):
 
 
 class CorpusSource(StrEnum):
-    """The corpus sources an analyzer can require."""
+    """The corpus sources an analyzer can require.
+
+    ``builds`` and ``events`` are BV.2's; the rest are the planes BV.1 (#510) assembles in
+    ``ouroboros-rest`` — one per bounded reader — for BV.3's pattern analyzers.
+    """
 
     BUILDS = "builds"
     EVENTS = "events"
+    LOG_TAILS = "log_tails"
+    TESTS = "tests"
+    FLAKES = "flakes"
+    LOOPS = "loops"
+    CACHE = "cache"
+    WAIVERS = "waivers"
+    SERIES = "series"
+    RIG_TELEMETRY = "rig_telemetry"
 
 
 class Grain(StrEnum):
@@ -204,6 +216,18 @@ class Grain(StrEnum):
     BUILD = "build"
     #: One record per dated event (a merge, a version, an infrastructure change).
     EVENT = "event"
+    #: One record per test case result.
+    TEST_CASE = "test_case"
+    #: One record per scored test case — the current flake score, not dated.
+    CASE_SCORE = "case_score"
+    #: One record per loop (an ``ouroboros.runs`` row).
+    LOOP = "loop"
+    #: One record per waiver.
+    WAIVER = "waiver"
+    #: One point per (metric, dimension, UTC day) — a BI rollup row.
+    DAY = "day"
+    #: One reading per (runner, metric, UTC day).
+    READING = "reading"
 
 
 #: The grain each source is delivered at. An analyzer requiring a source at another grain
@@ -211,6 +235,14 @@ class Grain(StrEnum):
 SOURCE_GRAINS: dict[CorpusSource, Grain] = {
     CorpusSource.BUILDS: Grain.BUILD,
     CorpusSource.EVENTS: Grain.EVENT,
+    CorpusSource.LOG_TAILS: Grain.BUILD,
+    CorpusSource.TESTS: Grain.TEST_CASE,
+    CorpusSource.FLAKES: Grain.CASE_SCORE,
+    CorpusSource.LOOPS: Grain.LOOP,
+    CorpusSource.CACHE: Grain.BUILD,
+    CorpusSource.WAIVERS: Grain.WAIVER,
+    CorpusSource.SERIES: Grain.DAY,
+    CorpusSource.RIG_TELEMETRY: Grain.READING,
 }
 
 
@@ -278,6 +310,123 @@ class CandidateEvent(_Strict):
     ref: EvidenceRef
 
 
+#: How a finished build ended, as the corpus carries it. ``retried`` is a failure somebody
+#: ran again — a failed build, like the BI ``builds`` family counts it.
+BuildStatus = Literal["succeeded", "failed", "retried"]
+
+_Day = date
+_NonNegativeInt = Annotated[int, Field(ge=0)]
+_Uuid = Annotated[str, Field(pattern=_UUID.pattern)]
+_Name = Annotated[str, Field(min_length=1, max_length=512)]
+
+
+class LogTail(_Strict):
+    """The tail of one build's stored log, and how long the whole log was.
+
+    ``line_count`` is every line the farm stored for the build (``build_jobs.log_lines``);
+    ``lines`` is only its tail — the reader's bounded slice of it, oldest first.
+    """
+
+    build_id: _Uuid
+    day: _Day
+    label: _Name
+    status: BuildStatus
+    line_count: _NonNegativeInt
+    lines: list[str]
+
+
+class CaseResult(_Strict):
+    """One test case's result in one test run (AS.1's ``test_cases`` row, flattened).
+
+    ``build_id`` is the farm job the run came from, when the test plane knows it.
+    """
+
+    test_run_id: _Uuid
+    build_id: _Uuid | None
+    day: _Day
+    suite: _Name
+    platform: _Name | None
+    case_key: _Name
+    status: Literal["passed", "failed", "flaky", "skipped"]
+    failure: str | None
+
+
+class FlakeScore(_Strict):
+    """A test case's current flake score (AT.3's ``flake_scores``) — current, so not dated."""
+
+    case_key: _Name
+    score: Annotated[float, Field(ge=0, le=1)]
+    state: Annotated[str, Field(min_length=1, max_length=64)]
+
+
+class LoopStage(_Strict):
+    """One stage of one loop: its key, how many attempts it took, and their summed time."""
+
+    key: Annotated[str, Field(min_length=1, max_length=120)]
+    attempts: Annotated[int, Field(ge=1)]
+    seconds: Annotated[float, Field(ge=0)]
+
+
+class LoopRecord(_Strict):
+    """One loop (an ``ouroboros.runs`` row): stage timings and transcript *statistics*.
+
+    The transcript's bodies are never in the corpus — ``events`` and ``event_bytes`` are how
+    much of it there was.
+    """
+
+    run_id: _Uuid
+    day: _Day
+    status: Annotated[str, Field(min_length=1, max_length=64)]
+    stages: list[LoopStage]
+    events: _NonNegativeInt
+    event_bytes: _NonNegativeInt
+
+
+class CacheStat(_Strict):
+    """One build's ccache counters (AG.5's ``build_jobs.ccache_stats``)."""
+
+    build_id: _Uuid
+    day: _Day
+    hits: _NonNegativeInt
+    misses: _NonNegativeInt
+
+
+class Waiver(_Strict):
+    """One PR waiver (AS.4's ``pr_waivers``): the loop, the cases it waived, and why."""
+
+    waiver_id: _Uuid
+    run_id: _Uuid
+    day: _Day
+    case_keys: list[_Name]
+    reason: Annotated[str, Field(min_length=1)]
+
+
+class SeriesPoint(_Strict):
+    """One BI rollup row: a metric's value for one dimension on one UTC day.
+
+    ``samples`` carries a median metric's retained observations (``metric_daily.meta``), so
+    an analyzer can pool them rather than average medians; it is empty for any other metric.
+    """
+
+    day: _Day
+    dimension: Annotated[str, Field(max_length=200)]
+    value: float
+    samples: list[float]
+
+
+class RigReading(_Strict):
+    """One rig/HIL telemetry reading — the read shape AJ.4 (#266) must produce.
+
+    Specified here before AJ.4 exists, so BV.1 has a shape to fill and an analyzer has one
+    to require. Until it lands ``rig_telemetry`` is absent from every corpus, never empty.
+    """
+
+    runner_id: _Uuid
+    day: _Day
+    metric: Annotated[str, Field(min_length=1, max_length=120)]
+    value: float
+
+
 class Corpus(_Strict):
     """One repository's snapshotted history, as an analysis run reads it.
 
@@ -289,18 +438,44 @@ class Corpus(_Strict):
     window: DayWindow
     builds: list[BuildSample] | None = None
     events: list[CandidateEvent] | None = None
+    log_tails: list[LogTail] | None = None
+    tests: list[CaseResult] | None = None
+    flakes: list[FlakeScore] | None = None
+    loops: list[LoopRecord] | None = None
+    cache: list[CacheStat] | None = None
+    waivers: list[Waiver] | None = None
+    series: (
+        dict[
+            Annotated[str, Field(pattern=r"^[a-z][a-z0-9_]{0,62}$")], list[SeriesPoint]
+        ]
+        | None
+    ) = None
+    rig_telemetry: list[RigReading] | None = None
 
     @model_validator(mode="after")
     def _records_inside_the_window(self) -> "Corpus":
         """Refuse a record dated outside the corpus window.
 
+        Every dated source is checked; ``flakes`` are current scores and carry no day.
+
         Returns:
             The corpus, unchanged.
 
         Raises:
-            ValueError: A build or event lies outside ``window``.
+            ValueError: A dated record lies outside ``window``.
         """
-        for record in (*(self.builds or ()), *(self.events or ())):
+        dated = (
+            *(self.builds or ()),
+            *(self.events or ()),
+            *(self.log_tails or ()),
+            *(self.tests or ()),
+            *(self.loops or ()),
+            *(self.cache or ()),
+            *(self.waivers or ()),
+            *(point for points in (self.series or {}).values() for point in points),
+            *(self.rig_telemetry or ()),
+        )
+        for record in dated:
             if not self.window.from_ <= record.day <= self.window.to:
                 raise ValueError(f"record dated {record.day} lies outside the window")
         return self
@@ -309,16 +484,13 @@ class Corpus(_Strict):
         """Which sources this corpus carries, at their grains.
 
         Returns:
-            One requirement per present source.
+            One requirement per present source — present meaning not ``None``, so an empty
+            source is available and an absent one is not.
         """
-        present = {
-            CorpusSource.BUILDS: self.builds is not None,
-            CorpusSource.EVENTS: self.events is not None,
-        }
         return frozenset(
             CorpusRequirement(source=source, grain=SOURCE_GRAINS[source])
-            for source, here in present.items()
-            if here
+            for source in CorpusSource
+            if getattr(self, source.value) is not None
         )
 
 

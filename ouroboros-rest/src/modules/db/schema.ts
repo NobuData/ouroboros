@@ -4769,6 +4769,13 @@ export interface BuildJobsTable {
    * Null for every job that is not a re-run.
    */
   test_selection: ColumnType<TestSelection | null, string | null | undefined, never>;
+  /**
+   * Newline-terminated lines the farm stored for this job, counted where the bytes land (V086,
+   * [#510](https://github.com/NobuData/ouroboros/issues/510)) — the Build Analyzer's `log_lines`
+   * without reading a byte. A history count: the retention sweep does not lower it. bigint, so a
+   * string when read.
+   */
+  log_lines: ColumnType<string, never, never>;
 }
 
 /** `build_jobs.test_selection.scope` — which re-run button asked (V061). */
@@ -5665,7 +5672,7 @@ export interface MetricDefinitionsTable {
   /** How a window re-derives the metric (V078): never an average of daily values. */
   aggregation: MetricAggregation;
   /** What `metric_daily.dimension` names for the metric, or null when undimensioned (V078). */
-  dimension_kind: "stage" | "suite" | "effort" | "cause" | "task_kind" | null;
+  dimension_kind: "stage" | "suite" | "effort" | "cause" | "task_kind" | "job_label" | null;
   created_at: Stamped;
   updated_at: Stamped;
 }
@@ -5867,6 +5874,92 @@ export interface InsightsDigestSendsTable {
   settled_at: Date | null;
 }
 
+/** `analysis_runs.trigger` — what started an analysis (V080). */
+export type AnalysisTrigger = "manual" | "weekly" | "every_n_builds";
+
+/** `analysis_runs.status` — how an analysis stands; every value but `running` is terminal (V080). */
+export type AnalysisStatus = "running" | "complete" | "failed" | "budget_exceeded";
+
+/** `analysis_runs.phase` — the step a running analysis is in, or the one a finished one ended in (V086). */
+export type AnalysisPhase = "assembling" | "analyzing" | "composing";
+
+/**
+ * `ouroboros.analysis_schedules` — one Build Analyzer schedule per (workspace, repository) (V080,
+ * [#506](https://github.com/NobuData/ouroboros/issues/506)): the weekly slot, the every-N-builds
+ * threshold with its running counter, and the budgets every run of the repository is held to.
+ */
+export interface AnalysisSchedulesTable {
+  id: Generated<string>;
+  organization_id: string;
+  repo_ref: string;
+  enabled: Generated<boolean>;
+  weekly_enabled: Generated<boolean>;
+  /** ISO day of week, 1 = Monday … 7 = Sunday. */
+  weekly_day: number | null;
+  /** `HH:MM:SS`, UTC; `pg` reads a `time` as a string. */
+  weekly_time: string | null;
+  every_n_builds: number | null;
+  build_counter: Generated<number>;
+  max_builds: Generated<number>;
+  /** bigint, so a string when read. */
+  max_log_lines: ColumnType<string, number | undefined, number>;
+  compute_ceiling_seconds: Generated<number>;
+  updated_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+}
+
+/**
+ * `ouroboros.analysis_runs` — one Build Analyzer run (V080, V086;
+ * [#506](https://github.com/NobuData/ouroboros/issues/506),
+ * [#510](https://github.com/NobuData/ouroboros/issues/510)). The partial unique index
+ * `analysis_runs_one_running` admits one `running` row per (workspace, repository) — the
+ * concurrent-run guard. `corpus_manifest` and `analyzer_set` are held to their contracts by
+ * check functions; the service writes them as JSON text.
+ */
+export interface AnalysisRunsTable {
+  id: Generated<string>;
+  organization_id: string;
+  repo_ref: string;
+  trigger: AnalysisTrigger;
+  schedule_id: string | null;
+  status: Generated<AnalysisStatus>;
+  corpus_manifest: ColumnType<unknown, string | null | undefined, string | null>;
+  analyzer_set: ColumnType<unknown, string, string>;
+  started_at: Generated<Date>;
+  finished_at: Date | null;
+  compute_seconds: Generated<number>;
+  llm_cost_cents: number | null;
+  confidence_note: string | null;
+  failure_reason: string | null;
+  created_at: Stamped;
+  phase: Generated<AnalysisPhase>;
+  progress: ColumnType<unknown, string | undefined, string>;
+}
+
+/**
+ * `ouroboros.analysis_findings` — one analyzer's finding in one run (V081,
+ * [#507](https://github.com/NobuData/ouroboros/issues/507)). Written only into a `running` run, by
+ * an analyzer in its `analyzer_set`, with evidence that resolves; immutable once written.
+ */
+export interface AnalysisFindingsTable {
+  id: Generated<string>;
+  run_id: string;
+  organization_id: string;
+  repo_ref: string;
+  analyzer: string;
+  analyzer_version: number;
+  finding_type: string;
+  subject_key: string;
+  /** Generated: `analyzer@v<version>/<subject_key>`. */
+  identity_key: ColumnType<string, never, never>;
+  data: ColumnType<unknown, string, never>;
+  evidence_refs: ColumnType<unknown, string, never>;
+  confidence: number;
+  confidence_basis: ColumnType<unknown, string, never>;
+  created_at: Stamped;
+}
+
 /**
  * `ouroboros.env_recipes` — a repository's environment recipe, one immutable row per version
  * (V073, [#408](https://github.com/NobuData/ouroboros/issues/408), decision **K7**); served for
@@ -6057,6 +6150,9 @@ export interface Database {
   insights_digest_schedules: InsightsDigestSchedulesTable;
   insights_digest_runs: InsightsDigestRunsTable;
   insights_digest_sends: InsightsDigestSendsTable;
+  analysis_schedules: AnalysisSchedulesTable;
+  analysis_runs: AnalysisRunsTable;
+  analysis_findings: AnalysisFindingsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6824,6 +6920,7 @@ export const TABLE_COLUMNS = {
     "updated_at",
     "artifact_globs",
     "test_selection",
+    "log_lines",
   ],
   build_log_chunks: [
     "id",
@@ -7297,6 +7394,58 @@ export const TABLE_COLUMNS = {
     "error",
     "claimed_at",
     "settled_at",
+  ],
+  analysis_schedules: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "enabled",
+    "weekly_enabled",
+    "weekly_day",
+    "weekly_time",
+    "every_n_builds",
+    "build_counter",
+    "max_builds",
+    "max_log_lines",
+    "compute_ceiling_seconds",
+    "updated_by",
+    "created_at",
+    "updated_at",
+  ],
+  analysis_runs: [
+    "id",
+    "organization_id",
+    "repo_ref",
+    "trigger",
+    "schedule_id",
+    "status",
+    "corpus_manifest",
+    "analyzer_set",
+    "started_at",
+    "finished_at",
+    "compute_seconds",
+    "llm_cost_cents",
+    "confidence_note",
+    "failure_reason",
+    "created_at",
+    "phase",
+    "progress",
+  ],
+  analysis_findings: [
+    "id",
+    "run_id",
+    "organization_id",
+    "repo_ref",
+    "analyzer",
+    "analyzer_version",
+    "finding_type",
+    "subject_key",
+    "identity_key",
+    "data",
+    "evidence_refs",
+    "confidence",
+    "confidence_basis",
+    "created_at",
   ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [

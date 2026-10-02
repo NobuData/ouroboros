@@ -117,6 +117,9 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/insights/calibration`                 | [Estimator calibration](#estimator-calibration) (#435) — `?window=7d\|30d\|90d`; within-band headline, unestimated count and per-effort bias direction; any member |
 | `GET /api/v1/insights/interventions`               | [Intervention causes](#intervention-causes) (#445) — `?range=7d\|30d\|90d&cause=`; the events behind the interventions card's bars, newest first, at most 50, with `total`; any member |
 | `POST /api/v1/insights/interventions/{id}/recategorize` | [Intervention causes](#intervention-causes) (#434) — a person's cause with a reason, audited in `intervention_overrides`; never overwritten by a rule run; re-fills the event's day (#445); `owner`/`admin`/`member` |
+| `POST /api/v1/analyzer/runs`                       | [Build Analyzer runs](#build-analyzer-runs) (#510) — *Run analysis now*: `{repo}`; `202` with the run `running` in `assembling`; `409 analysis_already_running` naming the run that is; audited `analyzer.run_requested`; `owner`/`admin` |
+| `GET /api/v1/analyzer/runs/latest`                 | [Build Analyzer runs](#build-analyzer-runs) (#510) — `?repo=owner/name`; the newest run or `{run: null}`; any member |
+| `GET /api/v1/analyzer/runs/{id}`                   | [Build Analyzer runs](#build-analyzer-runs) (#510) — status, phase, per-analyzer progress, corpus manifest; any member |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
@@ -5873,6 +5876,7 @@ and **UTC day** — from the source planes; nothing here is an endpoint yet
 | `cycle` | `cycle_time`, `stage_duration` (by stage) | loops that finished `merged`; medians |
 | `cost` | `cost_cents`, `tokens`, `unpriced_tokens`, `local_tokens`, `tokens_by_task_kind` (by task kind) | run-attributed usage; no `cost_cents` row on a day with nothing priced (unpriced ≠ $0). `cost_per_merged_pr` is Σ`cost_cents` / Σ`merged_prs` per window, never stored per day. `local_tokens` is the part an `ollama`/`openai_compatible` connection served — where the model ran, not what it cost. Usage with no task kind is in `tokens` and in no `tokens_by_task_kind` row (V083, #438) |
 | `builds` | `builds`, `build_failures`, `build_success_rate` | farm jobs finished `succeeded`/`failed`/`retried` |
+| `build_duration` | `build_duration` (by job label) | farm jobs finished `succeeded`; start-to-finish ms, medians — the Build Analyzer's duration series (V086, #510) |
 | `tests` | `test_cases_run`, `test_pass_rate`, `test_failures_by_suite` (by suite) | finished test runs started that day, from suite counts |
 | `effort` | `completion_time_by_effort` (by effort) | `estimate_outcomes` merged that day; medians |
 | `dora` | `deploy_frequency`, `lead_time`, `change_failure_rate`, `mttr` | green default-branch builds; `lead_time_ms()`; revert detection (`Revert "…"`, `revert:`) over merged PR titles and loop commits, dated by the original merge; loop-scoped red→green recovery |
@@ -6122,6 +6126,45 @@ Slack is #448's.
 yarn test src/modules/insights/digest                # assembly, honesty, renders + golden, runner, routes
 yarn test:integration src/modules/insights/digest    # real SMTP into mailpit, vs GET /insights?range=7d
 OURO_UPDATE_GOLDENS=1 yarn jest src/modules/insights/digest/digest.render   # after changing the template
+```
+
+### Build Analyzer runs
+
+BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)), decisions **A2**/**A7**, in
+[`src/modules/analyzer/`](src/modules/analyzer) over V080/V081/V086's `analysis_runs`,
+`analysis_schedules` and `analysis_findings`. Three triggers, one orchestrator:
+
+| trigger | where | rule |
+| ------- | ----- | ---- |
+| `manual` | `POST /api/v1/analyzer/runs` | `owner`/`admin`, audited |
+| `weekly` | a one-minute tick (`analysis.scheduler.ts`) | the schedule's ISO day + UTC time has passed with no analysis started since, and after the schedule existed |
+| `every_n_builds` | `JobCompletions` (`analysis.counter.ts`) | each `succeeded`/`failed`/`retried` job increments its repository's counter; the increment, the threshold test and the reset are **one `UPDATE`**, so a burst fires once per N; a fire that cannot start is re-armed |
+
+**One running analysis per repository.** A start is refused with `409 analysis_already_running`
+(naming the running run) before the engine is asked anything; V080's partial unique index decides
+any race. The same tick fails runs left `running` past their compute ceiling plus fifteen minutes
+— a process that stopped mid-run — and shutdown fails the runs a process was executing.
+
+**Assembly** (`corpus/`) reads the window — the ninety whole UTC days before the run started —
+within the schedule's budgets (or V080's defaults): builds in `md5(id)` order a page at a time up
+to `max_builds`; each build's log **tail** (the last 200 lines, read backwards a few chunks at a
+time) while the volume it stands for fits `max_log_lines`; failed and flaky test cases; flake
+scores; loop stage timings and transcript statistics; ccache statistics; waivers; and the
+`build_duration` series. Counts are aggregates (`build_jobs.log_lines` is counted where the bytes
+land, V086), so `4.1M log lines` is never read. Every source carries a sampling record
+`{sampled, rate, cap}`; the compute ceiling is checked between pages and an overrun ends the run
+`budget_exceeded` before dispatch. Rig telemetry (#266) is `null` and named in `manifest.absent`.
+
+**Dispatch** goes to `OURO_ENGINE_URL`'s `POST /v0/analysis/runs` and nowhere else
+([`docs/SECURITY_MODEL.md` § 6.6](../docs/SECURITY_MODEL.md#66-the-build-analyzers-corpus-stays-on-the-tenant);
+the `analyzer-corpus-stays-on-tenant` dependency rule). The engine streams NDJSON; each analyzer's
+start and outcome tick `analysis_runs.progress`, and a completed analyzer's findings are written
+as it completes — so `budget_exceeded` keeps them and names the analyzers that did not finish,
+and a database refusal fails only that analyzer. The phases are `assembling → analyzing →
+composing`, then `complete`, `budget_exceeded` or `failed` with its reason.
+
+```bash
+yarn test:integration src/modules/analyzer
 ```
 
 ### Mail
@@ -6436,6 +6479,8 @@ ouroboros-rest/
 │       │                   #   artifact.serving.ts — type, inline or attachment, safe headers
 │       │                   #   artifact.retention.ts — the hourly sweep that leaves tombstones
 │       ├── test-plane/     # suites only: the failing-HIL scenario + isolation     · #334
+│       ├── analyzer/       # Build Analyzer runs: triggers, guard, orchestrator  · #510
+│       │                   #   corpus/ — bounded, paged readers, log tails, the manifest
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
