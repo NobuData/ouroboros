@@ -27,6 +27,7 @@
 
 import type { InsightsHead, InsightsKpi, InsightsRange, MetricMethodology } from "@/app/api/insights";
 import { moneyOfCents, spanOfMs, tokenCount } from "@/app/format";
+import { ANALYZER_PATH } from "@/app/paths";
 import type { StatTone, StatValueTone } from "@/app/ui/stat-card";
 
 import { RANGE_DAYS } from "./range";
@@ -102,15 +103,16 @@ export interface InsightsAction {
    * action that works.
    */
   readonly soonNote: string | null;
+  /** Where it navigates, for an action that is a link; `null` otherwise. */
+  readonly href: string | null;
 }
 
 /**
- * The head's three actions, in the mockup's order — the two not built yet **honestly
+ * The head's three actions, in the mockup's order — the one not built yet **honestly
  * unavailable**.
  *
- * - **✦ Build Analyzer** is mockup 18, whose route is BW.1
- *   ([#516](https://github.com/NobuData/ouroboros/issues/516)); the amendment on #443 turns it
- *   into a link when that route lands.
+ * - **✦ Build Analyzer** links to mockup 18's `/analyzer` (BW.1,
+ *   [#516](https://github.com/NobuData/ouroboros/issues/516)) — the amendment on #443 acted on.
  * - **Email weekly digest** opens BK.6's subscribe sheet
  *   ([#447](https://github.com/NobuData/ouroboros/issues/447)) — it works, so it has no note.
  * - **Send to Slack** is chat-ops' card publisher, BZ.2
@@ -120,9 +122,9 @@ export interface InsightsAction {
  * does nothing when pressed.
  */
 export const INSIGHTS_ACTIONS: readonly InsightsAction[] = [
-  { id: "analyzer", label: "✦ Build Analyzer", soonNote: "The Build Analyzer arrives with #516." },
-  { id: "digest", label: "Email weekly digest", soonNote: null },
-  { id: "slack", label: "Send to Slack", soonNote: "Slack sends arrive with #536." },
+  { id: "analyzer", label: "✦ Build Analyzer", soonNote: null, href: ANALYZER_PATH },
+  { id: "digest", label: "Email weekly digest", soonNote: null, href: null },
+  { id: "slack", label: "Send to Slack", soonNote: "Slack sends arrive with #536.", href: null },
 ];
 
 /* ------------------------------------------------------------------ the KPI row */

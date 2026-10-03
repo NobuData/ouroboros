@@ -1,3 +1,4 @@
+import { ANALYZER_PATH } from "@/app/paths";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -106,11 +107,11 @@ describe("the head's actions", () => {
     ]);
   });
 
-  it("name the issue that builds what the unbuilt one opens, so the tooltip answers when", () => {
-    const notes = Object.fromEntries(FARM_ACTIONS.map(({ id, soonNote }) => [id, soonNote]));
+  it("link Build Analyzer to the analyzer on the commit that builds it (#516), soon no more", () => {
+    const analyzer = FARM_ACTIONS.find(({ id }) => id === "analyzer");
 
-    expect(notes.analyzer).toContain("#516");
-    expect(notes.analyzer).toMatch(/arrives? with/);
+    expect(analyzer?.href).toBe(ANALYZER_PATH);
+    expect(analyzer?.soonNote).toBeNull();
   });
 
   it("stop calling Pool settings soon on the commit that builds the pools sheet (#259)", () => {
@@ -122,8 +123,8 @@ describe("the head's actions", () => {
     expect(FARM_ACTIONS.find(({ id }) => id === "enroll")?.soonNote).toBeNull();
   });
 
-  it("carry no destination at all, so none of them can navigate to a dead route", () => {
-    for (const action of FARM_ACTIONS) expect(Object.keys(action)).not.toContain("href");
+  it("carry a destination only for Build Analyzer — the one that navigates, to a built route", () => {
+    expect(FARM_ACTIONS.filter((action) => action.href !== null).map(({ id }) => id)).toEqual(["analyzer"]);
   });
 });
 

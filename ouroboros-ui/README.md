@@ -2848,11 +2848,9 @@ criterion is a unit test on a small value.
 | **The split is always printed** once there is a build to split (`5 clean · 0 retried · 0 failed` is a good day said out loud); a cancelled build joins the line only when there is one, so the seeded day reads as the mockup does and the line still adds up | `buildsStat` |
 | **The offline note is the service's**, re-aged on every poll by the clock that also decided *offline* | `runnersStat` |
 
-**The three actions are honest.** One has nothing to open yet, so it is an inert button carrying
-a *soon* mark whose tooltip names the issue it waits for: **✦ Build Analyzer** →
-[#516](https://github.com/NobuData/ouroboros/issues/516) (mockup 18 — the mockup links it to a page
-that does not exist; here it navigates nowhere, and becomes a link to `/analyzer` on the commit that
-builds that route). **Pool settings** acts since
+**The three actions act.** **✦ Build Analyzer** links to [the Build Analyzer](#build-analyzer)
+(`/analyzer`, [#516](https://github.com/NobuData/ouroboros/issues/516)), which mounts under this
+page's sidebar entry. **Pool settings** acts since
 [#259](https://github.com/NobuData/ouroboros/issues/259): it opens
 [the pool configuration sheet](#the-pools-card), for every member.
 **+ Enroll runner** acts since [#258](https://github.com/NobuData/ouroboros/issues/258): it moves
@@ -3914,6 +3912,36 @@ inert likewise. The gates are the service's, and e2e leg 21 makes each refused c
 head that could not wrap pushed the whole content pane sideways by the select's own width, which
 leg 21's shell assertion found.
 
+## Build Analyzer
+
+`/analyzer` ([#516](https://github.com/NobuData/ouroboros/issues/516), mockup 18) — the frame:
+the head, *Run analysis now* with real progress, the schedule editor and the meta strip. The cards
+under it are BW.2–BW.5's. The code is [`app/analyzer/`](app/analyzer); every sentence and format is
+a pure function in [`view.ts`](app/analyzer/view.ts).
+
+- **Repo-scoped by the tenant chip.** The page analyses the chip's focus repository; under
+  *All repos* it takes the first enabled one and says how to choose
+  ([`repo.ts`](app/analyzer/repo.ts)). It has no sidebar entry: it publishes **Build Farm** as its
+  origin, so that entry stays lit. The farm's and the insights' **✦ Build Analyzer** link here.
+- **One poll per repository.** `GET /api/analyzer?repo=` on this origin answers the newest run
+  and the schedule together, and asks to be polled every 3 s while a run is in flight.
+- **Honest provenance (decision A3).** `Analyzed by` is the run's analyzer-set label
+  (`deterministic analyzers v1`) opening the analyzers, their versions and outcomes; a model pill
+  appears only beside an analyzer of kind `llm`. `Last run` is compute time; the `$` appears only
+  when `llmCostCents` is non-null. A sampled source carries a *sampled* tag naming the rate and
+  the budget that capped it. The confidence tag opens the stored basis (days with builds, builds
+  a day, and the rule judged against).
+- **The headline is computed** from the manifest's build count; a corpus thinner than one build a
+  day gets *“40 builds in 90 days — early opinions, held loosely.”*
+- **Run analysis now** is an owner's or admin's (inert with the reason for others). The panel
+  shows *assembling corpus → analyzing* (with a tick per analyzer) *→ composing suggestions*, and
+  `failed` and `budget_exceeded` each in their own words and hue. A press while one is running
+  answers *“an analysis is already running”* with a link to its progress; nothing is queued.
+- **Schedule** opens the editor: the weekly day and UTC time, the every-N stepper with the live
+  counter, and the three budgets. Every member may read it; only an owner or admin may save. The
+  form is checked against V080's rules before it is sent, and the service's per-field refusals
+  land on the same fields.
+
 ## Insights
 
 `/insights` ([#443](https://github.com/NobuData/ouroboros/issues/443)) is
@@ -3952,9 +3980,9 @@ what it cost, where humans still step in.
   polarity; `▼ 2m faster` is good news and draws as such.
 - **Every KPI label opens its methodology** — the BI.1 registry entry the payload carries — so
   *Merged w/o human edits* states the I6 definition rather than a copy of it.
-- **The head's actions are honest.** ✦ Build Analyzer (#516) and Send to Slack (#536) are inert
-  buttons whose tooltips name the issue that builds them; **Email weekly digest** opens its
-  subscribe sheet (#447, below).
+- **The head's actions are honest.** ✦ Build Analyzer links to [the Build Analyzer](#build-analyzer)
+  (#516); Send to Slack (#536) is an inert button whose tooltip names the issue that builds it;
+  **Email weekly digest** opens its subscribe sheet (#447, below).
 
 Every judgement is a pure function in [`app/insights/view.ts`](app/insights/view.ts), so each
 acceptance criterion is a unit test on a small value.

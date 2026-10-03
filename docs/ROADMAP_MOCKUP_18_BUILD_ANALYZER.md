@@ -825,7 +825,7 @@ annotated chart — via the #16 tokens (both themes; the mockup is dark-only).
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BW.1 | #516 | 🟡 Open | ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip | Frame, run-now with progress, schedule editor, honest provenance | mvp, analyzer, ui, design | N (after #41, BV.1, BA-D.5) | Y | M | ouroboros-ui |
+| BW.1 | #516 ✅ | 🟢 Done | ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip | Frame, run-now with progress, schedule editor, honest provenance | mvp, analyzer, ui, design | N (after #41, BV.1, BA-D.5) | Y | M | ouroboros-ui |
 | BW.2 | #517 | 🟡 Open | ouroboros-ui: [BW.2] Annotated duration chart | BK.1 TimeSeries + change-point chips/verticals + Details | mvp, analyzer, ui, design | N (after BW.1, BK.1) | Y | M | ouroboros-ui |
 | BW.3 | #518 | 🟡 Open | ouroboros-ui: [BW.3] Suggestion cards & apply flows | Process + workflow suggestions, previews, dismiss, spike flow | mvp, analyzer, ui, design | N (after BW.1, BV.5) | Y | L | ouroboros-ui |
 | BW.4 | #519 | 🟡 Open | ouroboros-ui: [BW.4] Drafted-tickets card | Checkbox drafts, evidence, edit, push-to-backlog flow | mvp, analyzer, ui | N (after BW.1, BV.5) | Y | M | ouroboros-ui |
@@ -834,7 +834,7 @@ annotated chart — via the #16 tokens (both themes; the mockup is dark-only).
 
 ### Issue BW.1 — ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip
 
-> **GitHub issue:** #516 · **Status:** 🟡 Open · **Parent epic:** #504
+> **GitHub issue:** #516 ✅ · **Status:** 🟢 Done · **Parent epic:** #504
 
 - **Problem Statement:** The frame: the corpus-composed headline, real
   run/schedule controls, and the A3-honest meta strip.
@@ -858,6 +858,24 @@ annotated chart — via the #16 tokens (both themes; the mockup is dark-only).
 Your last 1,284 builds have opinions.   [Schedule: weekly + every 50 ▾][Run analysis now ⟳]
 Corpus 1,284 builds · … · Analyzed by [deterministic analyzers v1 ⓘ] · Last run 2h · 41 min
 ```
+
+- **Delivered**: `ouroboros-ui` 0.123.0 (`app/analyzer/`, `/analyzer`), `ouroboros-rest` 0.38.10
+  and the dev seed. Two choices were made with the user.
+  - **Schedule API built here** (as BV.1's entry said it would be): `GET /api/v1/analyzer/schedule?repo=`
+    (members; V080's defaults with `saved: false` when none was saved) and `PUT` (owner/admin,
+    the whole configuration, audited `analyzer.schedule_updated`). A save never touches the live
+    `buildCounter`.
+  - **Confidence basis persisted.** The orchestrator stores `corpus_manifest.confidence` — level,
+    builds, days with builds, window days, coverage, builds a day and the rule it was judged
+    against — beside the note, and `AnalysisManifest.confidence` publishes it (null on an older
+    run). The seed's run carries it (89 of 90 days, 14.27 a day ⇒ high).
+  - **Repo scope.** The page analyses the tenant chip's focus repository, else the first enabled
+    one with a hint to choose; it publishes `build-farm` as its sidebar origin.
+  - **Progress.** The page's poll (`/api/analyzer?repo=`: latest run + schedule) runs every 3 s
+    while a run is in flight; the panel shows the phases, per-analyzer ticks, and `failed` /
+    `budget_exceeded` distinctly. A `409` draws the concurrent-run state with a link; nothing is
+    queued.
+  - **Inbound links.** The farm's and insights' **✦ Build Analyzer** are links to `/analyzer`.
 
 ### Issue BW.2 — ouroboros-ui: [BW.2] Annotated duration chart
 
@@ -1156,7 +1174,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
 3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → **BV.3 (#512) ✅** →
    **BV.4 (#513) ✅** → **BV.5 (#514) ✅** → **BV.6 (#515) ✅**
-4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
+4. **Phase 3 — UI:** **BW.1 (#516) ✅** → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
    BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
 5. **v2:** BX.1 (#522) after AF.2 (#235); BX.2 (#523) ⊕ BX.3 (#524) ⊕
    BX.4 (#525) ⊕ BX.5 (#526) after their dependencies.
@@ -1240,7 +1258,7 @@ Issue-level impact:
 
 | Issue | Amendment |
 |---|---|
-| BW.1 | #516 | 🟡 Open | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
+| BW.1 | #516 ✅ | 🟢 Done | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
 | BW.2, BW.3, BW.4, BW.5 | rem-based type, shell tokens; internal wide/tall regions (gantt, matrices, long lists) scroll in their own wrappers |
 | BW.6 | #521 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 

@@ -160,6 +160,16 @@ export const PLANNING_PATH = "/planning";
 export const BUILD_FARM_PATH = "/build-farm";
 
 /**
+ * The Build Analyzer ([#516](https://github.com/NobuData/ouroboros/issues/516)) — mockup 18.
+ *
+ * It has no sidebar entry of its own: it mounts under **Build Farm**, which stays lit here
+ * because the screen publishes that entry as its origin (`setNavOrigin`, `app/shell/nav-registry.ts`).
+ * The farm's and the insights' **✦ Build Analyzer** buttons link here. This retires the
+ * `/analyzer` placeholder #49 held for it.
+ */
+export const ANALYZER_PATH = "/analyzer";
+
+/**
  * Insights ([#443](https://github.com/NobuData/ouroboros/issues/443)) — mockup 15.
  *
  * Written down here for the reason every route in this file is: the sidebar's registry entry

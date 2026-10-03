@@ -2588,6 +2588,42 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analyzer/schedule": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A repository's analysis schedule and live build counter
+         * @description BW.1 ([#516](https://github.com/NobuData/ouroboros/issues/516)) — mockup 18's **Schedule:
+         *     weekly + every 50 builds ▾**: the weekly slot (ISO weekday and `HH:MM`, UTC), the
+         *     every-N-builds threshold with `buildCounter`, the builds finished since that trigger last
+         *     fired, and the budgets every run of the repository is held to. A repository with no saved
+         *     schedule answers V080's defaults with `saved: false` (every trigger off; `2000` builds ·
+         *     `5000000` log lines · `3600` s). Every member, a `viewer` included.
+         */
+        get: operations["getAnalysisSchedule"];
+        /**
+         * Save a repository's analysis schedule
+         * @description BW.1 ([#516](https://github.com/NobuData/ouroboros/issues/516)) — the schedule editor's
+         *     save: the **whole** configuration, every field stated. The weekly slot is required while
+         *     the weekly trigger is on and kept (so the picker remembers it) while it is off;
+         *     `everyNBuilds` is at least `1`, or `null` for off; every budget is at least `1`. The live
+         *     `buildCounter` is never changed by a save.
+         *
+         *     **`owner` or `admin`**, audited as `analyzer.schedule_updated` (subject
+         *     `analysis_schedule`, the saved values in the detail).
+         */
+        put: operations["putAnalysisSchedule"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analyzer/suggestions/{id}/preview": {
         parameters: {
             query?: never;
@@ -13403,6 +13439,76 @@ export interface components {
                 failed: string[];
                 notRun: string[];
             } | null;
+            /**
+             * @description What produced the confidence note (#516); null on a run with no note, or one finished
+             *     before the basis was recorded.
+             */
+            confidence: components["schemas"]["AnalysisConfidenceBasis"] | null;
+        };
+        /**
+         * AnalysisSchedule
+         * @description A repository's Build Analyzer schedule (#506, #516) — the triggers, the live every-N
+         *     counter and the budgets. `saved: false` means none was ever saved and these are V080's
+         *     defaults.
+         */
+        AnalysisSchedule: {
+            repo: string;
+            saved: boolean;
+            /** @description The master switch; off, no scheduled run starts. Manual runs still may. */
+            enabled: boolean;
+            weeklyEnabled: boolean;
+            /** @description ISO day of week, 1 = Monday … 7 = Sunday. */
+            weeklyDay: number | null;
+            /** @description Time of day, `HH:MM`, UTC. */
+            weeklyTime: string | null;
+            /** @description Run every this many finished builds; null when that trigger is off. */
+            everyNBuilds: number | null;
+            /** @description Builds finished since the every-N trigger last fired. */
+            buildCounter: number;
+            maxBuilds: number;
+            maxLogLines: number;
+            computeCeilingSeconds: number;
+        };
+        /**
+         * PutAnalysisScheduleBody
+         * @description The schedule editor's save (#516) — the whole configuration.
+         */
+        PutAnalysisScheduleBody: {
+            repo: string;
+            enabled: boolean;
+            weeklyEnabled: boolean;
+            weeklyDay: number | null;
+            weeklyTime: string | null;
+            everyNBuilds: number | null;
+            maxBuilds: number;
+            maxLogLines: number;
+            computeCeilingSeconds: number;
+        };
+        /** AnalysisConfidenceThreshold */
+        AnalysisConfidenceThreshold: {
+            /** @description The share of the window's days that must have a build. */
+            coverage: number;
+            /** @description The builds a day, on average, the level needs. */
+            perDay: number;
+        };
+        /**
+         * AnalysisConfidenceBasis
+         * @description What produced the run's confidence note (#516): the level reached, the inputs, the ratios
+         *     (rounded to four places) and the rule they were judged against — **high** needs both of
+         *     `rule.high`, **medium** both of `rule.medium`, anything thinner is **low**.
+         */
+        AnalysisConfidenceBasis: {
+            /** @enum {string} */
+            level: "high" | "medium" | "low";
+            windowDays: number;
+            builds: number;
+            daysWithBuilds: number;
+            coverage: number;
+            perDay: number;
+            rule: {
+                high: components["schemas"]["AnalysisConfidenceThreshold"];
+                medium: components["schemas"]["AnalysisConfidenceThreshold"];
+            };
         };
         /**
          * AnalysisRun
@@ -33533,6 +33639,24 @@ export interface operations {
                      *           "skipped": [],
                      *           "failed": [],
                      *           "notRun": []
+                     *         },
+                     *         "confidence": {
+                     *           "level": "high",
+                     *           "windowDays": 90,
+                     *           "builds": 1284,
+                     *           "daysWithBuilds": 90,
+                     *           "coverage": 1,
+                     *           "perDay": 14.2667,
+                     *           "rule": {
+                     *             "high": {
+                     *               "coverage": 0.9,
+                     *               "perDay": 5
+                     *             },
+                     *             "medium": {
+                     *               "coverage": 0.6,
+                     *               "perDay": 1
+                     *             }
+                     *           }
                      *         }
                      *       },
                      *       "analyzerSet": {
@@ -33594,6 +33718,282 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — `id` is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getAnalysisSchedule: {
+        parameters: {
+            query: {
+                /** @description The repository, `owner/name`. */
+                repo: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The schedule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "saved": true,
+                     *       "enabled": true,
+                     *       "weeklyEnabled": true,
+                     *       "weeklyDay": 1,
+                     *       "weeklyTime": "06:00",
+                     *       "everyNBuilds": 50,
+                     *       "buildCounter": 12,
+                     *       "maxBuilds": 2000,
+                     *       "maxLogLines": 1230000,
+                     *       "computeCeilingSeconds": 3600
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AnalysisSchedule"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_repository_not_found` — this workspace has no such repository.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or not `owner/name`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    putAnalysisSchedule: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "repo": "acme-robotics/helios-firmware",
+                 *       "enabled": true,
+                 *       "weeklyEnabled": true,
+                 *       "weeklyDay": 1,
+                 *       "weeklyTime": "06:00",
+                 *       "everyNBuilds": 50,
+                 *       "maxBuilds": 2000,
+                 *       "maxLogLines": 1230000,
+                 *       "computeCeilingSeconds": 3600
+                 *     }
+                 */
+                "application/json": components["schemas"]["PutAnalysisScheduleBody"];
+            };
+        };
+        responses: {
+            /** @description The saved schedule. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisSchedule"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_repository_not_found` — this workspace has no such repository.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a field is missing or out of range: `repo` not `owner/name`, a
+             *     weekday outside 1–7 or a time not `HH:MM` (or either missing while `weeklyEnabled`),
+             *     `everyNBuilds` below 1, a budget below 1. `details` names each field.
+             */
             422: {
                 headers: {
                     [name: string]: unknown;

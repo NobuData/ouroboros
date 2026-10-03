@@ -115,7 +115,8 @@ export const SEEDED_NAV_ENTRIES: readonly NavEntry[] = [
   },
   // Live since #256: the farm route is built (`app/(app)/build-farm/page.tsx`), so the row that
   // named the roadmap it was waiting for is a link — the amendment the build farm roadmap
-  // recorded on #49, acted on. The Build Analyzer (#516) mounts under this entry when it lands.
+  // recorded on #49, acted on. The Build Analyzer (#516, `/analyzer`) mounts under this entry: it
+  // has no row of its own and keeps this one lit by publishing it as its origin.
   {
     id: "build-farm",
     label: "Build Farm",

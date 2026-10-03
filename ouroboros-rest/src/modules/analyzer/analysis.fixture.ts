@@ -21,6 +21,7 @@ import type {
   InsertedRun,
   NewRun,
   RunEnding,
+  ScheduleConfig,
   WeeklySchedule,
 } from "./analysis.repository";
 import type { CorpusManifest } from "./corpus/corpus.manifest";
@@ -79,6 +80,46 @@ export class FakeRunStore {
         (row) => row.organization_id === organizationId && row.repo_ref === repoRef,
       ),
     );
+  }
+
+  /**
+   * Upsert a schedule as V080's unique key would, keeping its counter (#516).
+   *
+   * @param organizationId - The workspace.
+   * @param config - The configuration.
+   * @param actorId - Who saved it.
+   * @returns The saved row.
+   */
+  saveSchedule(
+    organizationId: string,
+    config: ScheduleConfig,
+    actorId: string,
+  ): Promise<AnalysisScheduleRow> {
+    const existing = this.schedules.find(
+      (row) => row.organization_id === organizationId && row.repo_ref === config.repoRef,
+    );
+    const row: AnalysisScheduleRow = {
+      id:
+        existing?.id ??
+        `5c000000-0000-4000-8000-${String(this.schedules.length + 1).padStart(12, "0")}`,
+      organization_id: organizationId,
+      repo_ref: config.repoRef,
+      enabled: config.enabled,
+      weekly_enabled: config.weeklyEnabled,
+      weekly_day: config.weeklyDay,
+      weekly_time: config.weeklyTime === null ? null : `${config.weeklyTime}:00`,
+      every_n_builds: config.everyNBuilds,
+      build_counter: existing?.build_counter ?? 0,
+      max_builds: config.maxBuilds,
+      max_log_lines: String(config.maxLogLines),
+      compute_ceiling_seconds: config.computeCeilingSeconds,
+      updated_by: actorId,
+      created_at: existing?.created_at ?? new Date("2026-08-08T13:00:00Z"),
+      updated_at: new Date("2026-08-08T13:05:00Z"),
+    };
+    this.schedules = [...this.schedules.filter((other) => other !== existing), row];
+
+    return Promise.resolve(row);
   }
 
   insertRun(run: NewRun): Promise<InsertedRun> {

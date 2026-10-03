@@ -93,6 +93,15 @@ describe("reading runs", () => {
     // No schedule: V080's default 5,000,000-line cap holds all 4.1M, so the logs are read in full.
     expect(run.manifest?.sources.logLines).toEqual({ sampled: false, rate: 1, cap: null });
     expect(run.manifest?.budget.maxLogLines).toBe(5_000_000);
+    expect(run.manifest?.confidence).toEqual({
+      level: "high",
+      windowDays: 90,
+      builds: 1284,
+      daysWithBuilds: 90,
+      coverage: 1,
+      perDay: 14.2667,
+      rule: { high: { coverage: 0.9, perDay: 5 }, medium: { coverage: 0.6, perDay: 1 } },
+    });
     expect(run.progress.analyzers.map((entry) => entry.status)).toEqual([
       "completed",
       "completed",
@@ -163,6 +172,7 @@ describe("the run resource", () => {
         durationLabel: null,
         absent: [],
         analyzers: null,
+        confidence: null,
       },
       progress: {
         analyzers: [

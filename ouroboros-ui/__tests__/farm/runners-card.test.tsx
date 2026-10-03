@@ -492,8 +492,8 @@ describe("what cannot act yet", () => {
     expect(control).toHaveAttribute("title", HEALTH_HISTORY_SOON);
     expect(HEALTH_HISTORY_SOON).toContain("#266");
     expect(control).not.toHaveAttribute("href");
-    // No link on the page at all: nothing here can navigate to a dead route.
-    expect(container.querySelector("a")).toBeNull();
+    // No link but the head's ✦ Build Analyzer (#516, a built route): nothing navigates to a dead one.
+    expect(container.querySelector('a:not([href="/analyzer"])')).toBeNull();
   });
 
   it("no longer counts a row's ⋯ among them: it acts, is named for its machine, and is a tab stop", () => {

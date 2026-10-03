@@ -92,14 +92,19 @@ describe("organization isolation, on every analyzer route", () => {
   });
 
   /** A request as me, in my workspace. */
-  function as(method: "get" | "post", path: string) {
+  function as(method: "get" | "post" | "put", path: string) {
     return api.as(me)(method, path).set(TENANT_HEADER, mine.slug);
   }
 
   /** A refusal's code, having asserted its status. */
-  async function refused(method: "get" | "post", path: string, body: object = {}, status = 404) {
+  async function refused(
+    method: "get" | "post" | "put",
+    path: string,
+    body: object = {},
+    status = 404,
+  ) {
     const request = as(method, path);
-    const response = await (method === "post" ? request.send(body) : request).expect(status);
+    const response = await (method === "get" ? request : request.send(body)).expect(status);
     return bodyOf<{ code: string }>(response).code;
   }
 
@@ -110,6 +115,16 @@ describe("organization isolation, on every analyzer route", () => {
       [id],
     );
     return rows[0].status;
+  }
+
+  /** Every schedule row of the bench repository, across workspaces — a refused save adds none. */
+  async function schedules(): Promise<unknown[]> {
+    const { rows } = await api.sql.query<Record<string, unknown>>(
+      `select organization_id, enabled, every_n_builds, max_builds from ${SCHEMA_NAME}.analysis_schedules
+        where repo_ref = $1 order by organization_id`,
+      [BENCH_REPO],
+    );
+    return rows;
   }
 
   const CASES: Readonly<Record<string, IsolationCase>> = {
@@ -180,6 +195,34 @@ describe("organization isolation, on every analyzer route", () => {
         expect(await refused("post", `${ANALYZER}/batches/${theirBatch}/push`)).toBe(
           "analysis_batch_not_found",
         );
+      },
+    },
+    [`GET ${ANALYZER}/schedule`]: {
+      about: "cannot read another workspace's schedule or its build counter",
+      check: async () => {
+        expect(await refused("get", `${ANALYZER}/schedule?repo=${BENCH_REPO}`)).toBe(
+          "analysis_repository_not_found",
+        );
+      },
+    },
+    [`PUT ${ANALYZER}/schedule`]: {
+      about: "cannot save a schedule for another workspace's repository, changing nothing",
+      check: async () => {
+        const before = await schedules();
+        expect(
+          await refused("put", `${ANALYZER}/schedule`, {
+            repo: BENCH_REPO,
+            enabled: false,
+            weeklyEnabled: false,
+            weeklyDay: null,
+            weeklyTime: null,
+            everyNBuilds: null,
+            maxBuilds: 1,
+            maxLogLines: 1,
+            computeCeilingSeconds: 1,
+          }),
+        ).toBe("analysis_repository_not_found");
+        expect(await schedules()).toEqual(before);
       },
     },
     [`GET ${ANALYZER}/measurements`]: {

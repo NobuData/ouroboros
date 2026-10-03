@@ -1203,7 +1203,7 @@ the #16 tokens (both themes; the mockup is dark-only).
     the mockup does and the line still adds up.
   - **All three head actions are honest *soon* controls**: inert, marked, tooltip naming the issue —
     **✦ Build Analyzer** → #516 (the amendment on #256 makes it a link to `/analyzer` on the commit
-    that builds that route; #516 is still open, so it navigates nowhere), **Pool settings** → #259,
+    that builds that route — done: since #516 it links to `/analyzer`), **Pool settings** → #259,
     **+ Enroll runner** → #258. Both of the latter depend on this issue and do not exist yet. No role
     is decided on the page for that reason; **BA-D.5 is still unfiled**, and the admin gate arrives
     with the flows it guards, through the existing `requireWorkspace` + `mayAdminister`.

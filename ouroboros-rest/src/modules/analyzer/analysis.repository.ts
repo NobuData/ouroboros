@@ -83,6 +83,21 @@ export interface WeeklySchedule {
   lastStartedAt: Date | null;
 }
 
+/** A repository's whole schedule configuration, as an administrator saves it (#516). */
+export interface ScheduleConfig {
+  repoRef: string;
+  enabled: boolean;
+  weeklyEnabled: boolean;
+  /** ISO weekday 1–7, or null. */
+  weeklyDay: number | null;
+  /** `HH:MM` UTC, or null. */
+  weeklyTime: string | null;
+  everyNBuilds: number | null;
+  maxBuilds: number;
+  maxLogLines: number;
+  computeCeilingSeconds: number;
+}
+
 /** What one build's completion did to its repository's counter. */
 export interface CountedBuild {
   scheduleId: string;
@@ -112,6 +127,44 @@ export class AnalysisRepository {
       .where("organization_id", "=", organizationId)
       .where("repo_ref", "=", repoRef)
       .executeTakeFirst();
+  }
+
+  /**
+   * Save a repository's schedule — insert it, or replace its configuration (BW.1, #516).
+   *
+   * The live `build_counter` is never written: a save changes when the every-N trigger fires,
+   * not how many builds have finished since it last did.
+   *
+   * @param organizationId - The workspace.
+   * @param schedule - The whole configuration.
+   * @param actorId - The administrator saving it.
+   * @returns The saved row.
+   */
+  async saveSchedule(
+    organizationId: string,
+    schedule: ScheduleConfig,
+    actorId: string,
+  ): Promise<AnalysisScheduleRow> {
+    const values = {
+      enabled: schedule.enabled,
+      weekly_enabled: schedule.weeklyEnabled,
+      weekly_day: schedule.weeklyDay,
+      weekly_time: schedule.weeklyTime,
+      every_n_builds: schedule.everyNBuilds,
+      max_builds: schedule.maxBuilds,
+      max_log_lines: schedule.maxLogLines,
+      compute_ceiling_seconds: schedule.computeCeilingSeconds,
+      updated_by: actorId,
+    };
+
+    return this.database.db
+      .insertInto("analysis_schedules")
+      .values({ organization_id: organizationId, repo_ref: schedule.repoRef, ...values })
+      .onConflict((conflict) =>
+        conflict.columns(["organization_id", "repo_ref"]).doUpdateSet(values),
+      )
+      .returningAll()
+      .executeTakeFirstOrThrow();
   }
 
   /**

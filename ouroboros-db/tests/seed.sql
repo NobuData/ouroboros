@@ -6213,6 +6213,20 @@ select pg_temp.must_hold(
      from ouroboros.analysis_runs r where r.id = '5eed0065-0000-4000-8000-000000000002'),
   'Analyzed by deterministic analyzers v1 · Last run 2h ago · 41 min — and no $, because no model ran');
 
+-- BW.1 (#516): the confidence tag's popover shows the basis stored with the note, and that basis
+-- is the run's own manifest — its builds, its window — judged by BV.1's rule.
+select pg_temp.must_hold(
+  (select c ->> 'level' = 'high'
+      and (c ->> 'builds')::integer = (r.corpus_manifest #>> '{counts,builds}')::integer
+      and (c ->> 'window_days')::integer = (r.corpus_manifest #>> '{window,days}')::integer
+      and (c ->> 'days_with_builds')::integer between 81 and 90
+      and (c ->> 'coverage')::numeric >= 0.9 and (c ->> 'per_day')::numeric >= 5
+      and c -> 'rule' = '{"high": {"coverage": 0.9, "per_day": 5}, "medium": {"coverage": 0.6, "per_day": 1}}'::jsonb
+     from ouroboros.analysis_runs r
+     cross join lateral (select r.corpus_manifest -> 'confidence') as basis (c)
+    where r.id = '5eed0065-0000-4000-8000-000000000002'),
+  'Confidence: high — 90d of stable telemetry, with the basis that produced it');
+
 select pg_temp.must_hold(
   (select s.enabled and s.weekly_enabled and s.weekly_day = 1 and s.weekly_time = '06:00'
       and s.every_n_builds = 50

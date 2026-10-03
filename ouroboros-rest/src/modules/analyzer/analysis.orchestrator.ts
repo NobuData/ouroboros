@@ -52,6 +52,7 @@ import {
 import { AnalysisRepository, type AnalysisRunRow } from "./analysis.repository";
 import { AssemblyOverrun, CorpusAssembler } from "./corpus/corpus.assembler";
 import {
+  confidenceBasis,
   confidenceNote,
   corpusWindow,
   DEFAULT_BUDGET,
@@ -441,7 +442,9 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
       stoppedEarly ? RUN_REASONS.ceilingReached : RUN_REASONS.unreported,
     );
     const summary = analyzerSummary(progress);
-    const note = confidenceNote({ window: manifest.window, ...stability });
+    const stable = { window: manifest.window, ...stability };
+    const note = confidenceNote(stable);
+    const confidence = confidenceBasis(stable);
     await this.suggest(run, manifest);
 
     if (stoppedEarly) {
@@ -449,7 +452,7 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
       await this.end(run, {
         status: "budget_exceeded",
         phase: "composing",
-        manifest: { ...manifest, analyzers: summary },
+        manifest: { ...manifest, analyzers: summary, confidence },
         progress,
         computeSeconds,
         confidenceNote: note,
@@ -464,7 +467,7 @@ export class AnalysisOrchestrator implements OnApplicationShutdown {
     await this.end(run, {
       status: "complete",
       phase: "composing",
-      manifest: { ...manifest, analyzers: summary },
+      manifest: { ...manifest, analyzers: summary, confidence },
       progress,
       computeSeconds,
       confidenceNote: note,

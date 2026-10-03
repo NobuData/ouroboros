@@ -252,6 +252,15 @@ describe("a run that completes", () => {
       not_run: [],
     });
     expect(row?.confidence_note).toBe("high — 90d of stable telemetry");
+    // The note's basis is stored beside it, so the strip's popover can show what produced it.
+    expect(manifest.confidence).toMatchObject({
+      level: "high",
+      window_days: 90,
+      builds: 1284,
+      days_with_builds: 90,
+      coverage: 1,
+      rule: { high: { coverage: 0.9, per_day: 5 }, medium: { coverage: 0.6, per_day: 1 } },
+    });
     // Seven events, 41 × 6 s each: the strip's `41 min`.
     expect(row?.compute_seconds).toBe(Math.round((7 * 41 * 6_000) / 1000));
     expect(row?.failure_reason).toBeNull();

@@ -15,6 +15,9 @@ import type { AnalysisRunRow } from "./analysis.repository";
 import {
   COUNT_KEYS,
   type BudgetKey,
+  type ConfidenceBasis,
+  type ConfidenceLevel,
+  type ConfidenceThreshold,
   type CorpusManifest,
   type CountKey,
   type SamplingRecord,
@@ -46,6 +49,25 @@ export interface CorpusManifestResource {
   absent: { source: string; reason: string }[];
   /** Present once the run has ended. */
   analyzers: { completed: string[]; skipped: string[]; failed: string[]; notRun: string[] } | null;
+  /** What produced the confidence note (#516); null on a run with no note or one older than it. */
+  confidence: ConfidenceBasisResource | null;
+}
+
+/** One confidence level's bar, in the API's names. */
+export interface ConfidenceThresholdResource {
+  coverage: number;
+  perDay: number;
+}
+
+/** The confidence note's computed basis — the strip's popover (BW.1, #516). */
+export interface ConfidenceBasisResource {
+  level: ConfidenceLevel;
+  windowDays: number;
+  builds: number;
+  daysWithBuilds: number;
+  coverage: number;
+  perDay: number;
+  rule: { high: ConfidenceThresholdResource; medium: ConfidenceThresholdResource };
 }
 
 /** One analyzer's progress. */
@@ -114,6 +136,37 @@ function samplingResource(record: SamplingRecord): SamplingRecordResource {
 }
 
 /**
+ * A confidence threshold, renamed.
+ *
+ * @param bar - The stored bar.
+ * @returns It in the API's names.
+ */
+function thresholdResource(bar: ConfidenceThreshold): ConfidenceThresholdResource {
+  return { coverage: bar.coverage, perDay: bar.per_day };
+}
+
+/**
+ * The stored confidence basis, renamed.
+ *
+ * @param basis - `corpus_manifest.confidence`.
+ * @returns It in the API's names.
+ */
+export function confidenceBasisResource(basis: ConfidenceBasis): ConfidenceBasisResource {
+  return {
+    level: basis.level,
+    windowDays: basis.window_days,
+    builds: basis.builds,
+    daysWithBuilds: basis.days_with_builds,
+    coverage: basis.coverage,
+    perDay: basis.per_day,
+    rule: {
+      high: thresholdResource(basis.rule.high),
+      medium: thresholdResource(basis.rule.medium),
+    },
+  };
+}
+
+/**
  * The stored manifest, renamed.
  *
  * @param manifest - `analysis_runs.corpus_manifest`.
@@ -151,6 +204,8 @@ export function manifestResource(manifest: CorpusManifest): CorpusManifestResour
             failed: manifest.analyzers.failed,
             notRun: manifest.analyzers.not_run,
           },
+    confidence:
+      manifest.confidence === undefined ? null : confidenceBasisResource(manifest.confidence),
   };
 }
 

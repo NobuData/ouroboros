@@ -1,4 +1,5 @@
 import {
+  confidenceBasis,
   confidenceNote,
   corpusWindow,
   FULL_READ,
@@ -82,5 +83,47 @@ describe("the confidence note", () => {
 
   it("is not high for many builds crowded into a few days", () => {
     expect(confidenceNote({ window, builds: 5000, daysWithBuilds: 40 })).toMatch(/^low/);
+  });
+});
+
+describe("the confidence basis", () => {
+  const window = { from: "2026-05-10", to: "2026-08-07", days: 90 };
+
+  it("states the level, the inputs, the ratios and the rule that judged them", () => {
+    expect(confidenceBasis({ window, builds: 1284, daysWithBuilds: 90 })).toEqual({
+      level: "high",
+      window_days: 90,
+      builds: 1284,
+      days_with_builds: 90,
+      coverage: 1,
+      per_day: 14.2667,
+      rule: { high: { coverage: 0.9, per_day: 5 }, medium: { coverage: 0.6, per_day: 1 } },
+    });
+  });
+
+  it("reaches the same level as the note, for every band", () => {
+    for (const [builds, daysWithBuilds] of [
+      [1284, 90],
+      [120, 60],
+      [30, 20],
+      [5000, 40],
+    ]) {
+      const basis = confidenceBasis({ window, builds, daysWithBuilds });
+      expect(confidenceNote({ window, builds, daysWithBuilds })).toMatch(
+        new RegExp(`^${basis.level} `),
+      );
+    }
+  });
+
+  it("judges on the exact ratio, so a bar is met exactly at its edge", () => {
+    // 81 of 90 days is exactly 0.9; 450 builds is exactly five a day.
+    expect(confidenceBasis({ window, builds: 450, daysWithBuilds: 81 }).level).toBe("high");
+    expect(confidenceBasis({ window, builds: 449, daysWithBuilds: 81 }).level).toBe("medium");
+  });
+
+  it("hands out copies of the rule, so a stored basis cannot alter it", () => {
+    const basis = confidenceBasis({ window, builds: 1, daysWithBuilds: 1 });
+    basis.rule.high.coverage = 0;
+    expect(confidenceBasis({ window, builds: 1, daysWithBuilds: 1 }).rule.high.coverage).toBe(0.9);
   });
 });

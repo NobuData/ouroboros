@@ -1,3 +1,4 @@
+import { ANALYZER_PATH } from "@/app/paths";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -120,18 +121,11 @@ describe("the head", () => {
     );
   });
 
-  it("draws the one unbuilt action as soon — labelled, inert, and saying what it waits for", () => {
+  it("draws no head action as soon now that the analyzer is built (#516)", () => {
     render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
 
-    const soon = FARM_ACTIONS.filter((action) => action.soonNote !== null);
-
-    expect(soon.map(({ id }) => id)).toEqual(["analyzer"]);
-    for (const action of soon) {
-      const control = screen.getByRole("button", { name: `${action.label} ${SOON_MARK}` });
-
-      expect(control).toHaveAttribute("aria-disabled", "true");
-      expect(control).toHaveAttribute("title", action.soonNote);
-    }
+    expect(FARM_ACTIONS.filter((action) => action.soonNote !== null)).toEqual([]);
+    expect(screen.queryByRole("button", { name: new RegExp(`Build Analyzer ${SOON_MARK}`) })).toBeNull();
   });
 
   it("opens the pool configuration sheet from Pool settings, for every member (#259)", () => {
@@ -173,13 +167,11 @@ describe("the head", () => {
     expect(control).toHaveAttribute("title", ENROLL_MEMBER_REASON);
   });
 
-  it("navigates nowhere from Build Analyzer — there is no link on the page, to a dead route or any other", () => {
+  it("links Build Analyzer to the analyzer route, and nothing else in the head to anywhere", () => {
     const { container } = render(<FarmScreen poll={QUIET} reader={MEMBER_READER} readings={farmReadings()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Build Analyzer/ }));
-
-    expect(screen.queryAllByRole("link")).toHaveLength(0);
-    expect(container.innerHTML).not.toContain("href");
+    expect(screen.getByRole("link", { name: "✦ Build Analyzer" })).toHaveAttribute("href", ANALYZER_PATH);
+    expect(screen.getAllByRole("link")).toHaveLength(1);
     expect(container.innerHTML).not.toContain("analyzer.html");
   });
 });
@@ -413,8 +405,8 @@ describe("a page that could not be read", () => {
 
   it("keeps the head, the actions and four named tiles holding em-dashes", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(FARM_HEADLINE_UNREAD);
-    // The head's one unbuilt action, and the runners card's *Health history* (#257).
-    expect(screen.getAllByRole("button", { name: new RegExp(SOON_MARK) })).toHaveLength(2);
+    // The runners card's *Health history* (#257) — the head has no unbuilt action since #516.
+    expect(screen.getAllByRole("button", { name: new RegExp(SOON_MARK) })).toHaveLength(1);
     expect(screen.getByRole("button", { name: "+ Enroll runner" })).toBeInTheDocument();
     expect(screen.getAllByRole("region").filter((region) => region.hasAttribute("aria-label"))).toHaveLength(4);
     expect(screen.getAllByText(NOT_READ)).toHaveLength(4);

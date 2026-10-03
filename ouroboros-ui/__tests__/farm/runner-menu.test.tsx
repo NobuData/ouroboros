@@ -713,6 +713,7 @@ describe("the details sheet", () => {
     choose("forge-01", VIEW_DETAILS);
 
     expect(screen.getByRole("dialog").querySelector("a")).toBeNull();
-    expect(container.querySelector("a")).toBeNull();
+    // The head's ✦ Build Analyzer is the page's one link (#516), to a built route.
+    expect(container.querySelector('a:not([href="/analyzer"])')).toBeNull();
   });
 });
