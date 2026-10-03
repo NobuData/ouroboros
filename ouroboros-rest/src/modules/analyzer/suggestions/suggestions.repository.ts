@@ -37,6 +37,38 @@ export const CARD_KINDS = ["build_process", "workflow"] as const;
 /** A kind one of the two cards draws. */
 export type CardKind = (typeof CARD_KINDS)[number];
 
+/**
+ * The currency rule (see the file header) as a predicate — for a statement that reads a
+ * suggestion as `s`, joined to the analysis that last composed it as `r`. Shared with the
+ * drafted-tickets card's read (BW.4, `tickets/tickets.repository.ts`), so both cards agree on what
+ * an analysis still stands behind.
+ *
+ * `coverage` counts, for one suggestion and one later run, the findings the suggestion cites and
+ * how many of them came from an analyzer that completed in that later run. The suggestion is
+ * superseded only when every one did (and it cites any at all). Every analysis that composed a
+ * suggestion cited the same analyzers — its identity is derived from them — so counting its
+ * findings across those analyses asks the same question as counting its last one's.
+ */
+export const STILL_CURRENT = sql<boolean>`
+  not exists (
+        select 1
+          from ouroboros.analysis_runs later
+         cross join lateral (
+               select count(*) as cited,
+                      count(*) filter (
+                        where coalesce(later.progress -> 'analyzers', '[]'::jsonb)
+                              @> jsonb_build_array(jsonb_build_object(
+                                   'id', f.analyzer, 'status', 'completed'))) as looked
+                 from ouroboros.analysis_suggestion_findings l
+                 join ouroboros.analysis_findings f on f.id = l.finding_id
+                where l.suggestion_id = s.id) coverage
+         where later.organization_id = s.organization_id
+           and later.repo_ref = s.repo_ref
+           and later.status in ('complete', 'budget_exceeded')
+           and later.started_at > r.started_at
+           and coverage.cited > 0
+           and coverage.looked = coverage.cited)`;
+
 /** The newest analysis that composed a suggestion. */
 export interface ComposedRun {
   id: string;
@@ -114,13 +146,7 @@ export class SuggestionsRepository {
 
   /**
    * The cards' suggestions: every build-process and workflow suggestion that is still current —
-   * see the file header — in every status, most confident first.
-   *
-   * `coverage` counts, for one suggestion and one later run, the findings the suggestion cites
-   * and how many of them came from an analyzer that completed in that later run. The suggestion
-   * is superseded only when every one did (and it cites any at all). Every analysis that composed
-   * a suggestion cited the same analyzers — its identity is derived from them — so counting its
-   * findings across those analyses asks the same question as counting its last one's.
+   * {@link STILL_CURRENT} — in every status, most confident first.
    *
    * @param organizationId - The workspace.
    * @param repoRef - The repository.
@@ -142,24 +168,7 @@ export class SuggestionsRepository {
          and w.slug = s.action_binding #>> '{change,workflow}'
        where s.organization_id = ${organizationId} and s.repo_ref = ${repoRef}
          and s.kind = any(${[...CARD_KINDS]}::text[])
-         and not exists (
-               select 1
-                 from ouroboros.analysis_runs later
-                cross join lateral (
-                      select count(*) as cited,
-                             count(*) filter (
-                               where coalesce(later.progress -> 'analyzers', '[]'::jsonb)
-                                     @> jsonb_build_array(jsonb_build_object(
-                                          'id', f.analyzer, 'status', 'completed'))) as looked
-                        from ouroboros.analysis_suggestion_findings l
-                        join ouroboros.analysis_findings f on f.id = l.finding_id
-                       where l.suggestion_id = s.id) coverage
-                where later.organization_id = s.organization_id
-                  and later.repo_ref = s.repo_ref
-                  and later.status in ('complete', 'budget_exceeded')
-                  and later.started_at > r.started_at
-                  and coverage.cited > 0
-                  and coverage.looked = coverage.cited)
+         and ${STILL_CURRENT}
        order by s.confidence desc, s.title, s.id`.execute(this.database.db);
 
     return rows;

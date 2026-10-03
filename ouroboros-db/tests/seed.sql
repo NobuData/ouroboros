@@ -6513,6 +6513,30 @@ select pg_temp.must_hold(
     where b.id = '5eed006a-0000-4000-8000-000000000001'),
   'BA-1 M · BA-2 XS · BA-3 L · BA-4 S, est. total 1.5 days of loop time — the estimator''s minutes summed, unpushed');
 
+-- Each body is the one the composer writes (#514): the evidence line, one reference line per
+-- distinct reference the cited findings carry, and the provenance line — because the
+-- drafted-tickets card (#519) reads a draft's evidence back out of its body, and a push files it.
+select pg_temp.must_hold(
+  (select array_agg(listed.n order by d.local_key) = array[31, 118, 3, 5]::bigint[]
+      and bool_and(listed.n = cited.n)
+      and bool_and(starts_with(d.body, '**Evidence:** ' || s.evidence_line || E'\n\n**References:**\n- '))
+      and bool_and(right(d.body, length(tail.line)) = tail.line)
+     from ouroboros.ticket_drafts d
+     join ouroboros.analysis_suggestions s
+       on s.id = ('5eed0067-0000-4000-8000-' || lpad((20 + right(d.local_key, 1)::int)::text, 12, '0'))::uuid
+    cross join lateral (select count(*) as n
+                          from regexp_matches(d.body, '^- [a-z_]+ `[0-9a-f-]+`$', 'gn')) listed
+    cross join lateral (select count(distinct ref) as n
+                          from ouroboros.analysis_suggestion_findings l
+                          join ouroboros.analysis_findings f on f.id = l.finding_id
+                         cross join lateral jsonb_array_elements(f.evidence_refs) ref
+                         where l.suggestion_id = s.id) cited
+    cross join lateral (select E'\n\nDrafted by the Build Analyzer from suggestion `' || s.id::text
+                               || '` (confidence ' || s.confidence::text || '%) over ' || s.repo_ref
+                               || ', analysis run `' || s.last_run_id::text || '`.' as line) tail
+    where d.batch_id = '5eed006a-0000-4000-8000-000000000001'),
+  'each drafted ticket''s body carries its evidence line, every reference its findings cite — 31, 118, 3 and 5 — and the suggestion and run it came from');
+
 -- --- predicted vs measured ---------------------------------------------------------------------
 select pg_temp.must_hold(
   (select array_agg(s.title || '|' || ((now() at time zone 'UTC')::date - m.applied_on) || '|'

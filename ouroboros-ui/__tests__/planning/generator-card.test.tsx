@@ -25,6 +25,7 @@ import {
   PROMPT_LABEL,
   PUSH_ROLE_REASON,
   QUEUE_SMALL_NOTE,
+  COMPOSED_REGENERATE_REASON,
   REGENERATE_LABEL,
   RESUME_LABEL,
   SIZING_MARK,
@@ -373,6 +374,21 @@ describe("regenerate", () => {
     render(<GeneratorCard {...props({ batch: { ok: true, value: planningBatch({ status: "pushed" }) } })} />);
 
     expect(screen.getByRole("button", { name: REGENERATE_LABEL })).toHaveAttribute("aria-disabled", "true");
+  });
+
+  it("is closed, with why, for a batch the Build Analyzer drafted — its drafts are edited, never re-planned (#519)", () => {
+    render(<GeneratorCard {...props({ batch: { ok: true, value: planningBatch({ planner: "analyzer-v1" }) } })} />);
+
+    const regenerate = screen.getByRole("button", { name: REGENERATE_LABEL });
+
+    expect(regenerate).toHaveAttribute("aria-disabled", "true");
+    expect(regenerate).toHaveAttribute("title", COMPOSED_REGENERATE_REASON);
+
+    fireEvent.click(regenerate);
+    expect(actions.regenerateBatch).not.toHaveBeenCalled();
+    // Everything else about the batch is the planning page's as usual: its rows can be edited and pushed.
+    expect(screen.getByRole("button", { name: "Push 6 tickets to GitHub →" })).not.toHaveAttribute("aria-disabled");
+    expect(screen.getByRole("button", { name: "Edit OTA-1" })).not.toHaveAttribute("aria-disabled");
   });
 });
 

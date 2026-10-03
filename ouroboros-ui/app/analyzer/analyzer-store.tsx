@@ -3,6 +3,7 @@
 import { type ReactNode, createContext, useCallback, useContext, useMemo, useState } from "react";
 
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
+import type { TrackerOption } from "@/app/planning/generator";
 import { useFocusRepo } from "@/app/shell/focus-repo";
 
 import { type StartOutcome, dismissSuggestion, startAnalysis } from "./analyzer-actions";
@@ -10,6 +11,7 @@ import { type AnalyzerPage, type AnalyzerPollOptions, analyzerUrl, createAnalyze
 import type { AnalyzerReadings } from "./data";
 import { type ChosenRepo, chooseRepo } from "./repo";
 import type { LocalResolution } from "./suggestions-view";
+import type { AnalyzerToast } from "./tickets-view";
 
 /**
  * The Build Analyzer page's store (BW.1, [#516](https://github.com/NobuData/ouroboros/issues/516))
@@ -33,12 +35,23 @@ import type { LocalResolution } from "./suggestions-view";
  * with the service's reason if it refuses. An apply and a spike draft are not: their dialogs wait
  * for the answer and then {@link AnalyzerView.resolveLocally | record} it, so the row does not sit
  * open between the answer and the next poll.
+ *
+ * Since BW.4 ([#519](https://github.com/NobuData/ouroboros/issues/519)) it carries what the
+ * drafted-tickets card needs beside the page: the workspace's trackers, whether this person may
+ * tick a draft, and the page's one **toast** — what a push did and where its tickets went — held
+ * per repository like a press's outcome, so it is never read under another repository's name.
  */
 
 /** A press's outcome, with the repository it was about. */
 interface HeldOutcome {
   readonly repo: string;
   readonly outcome: StartOutcome;
+}
+
+/** A toast, with the repository it was about. */
+interface HeldToast {
+  readonly repo: string;
+  readonly toast: AnalyzerToast;
 }
 
 /** What every region of the analyzer screen reads. */
@@ -74,7 +87,22 @@ export interface AnalyzerView {
   readonly dismiss: (id: string, reason: string | null) => void;
   /** Record a resolution the service has answered — an apply, a spike's draft — and read again. */
   readonly resolveLocally: (id: string, resolution: LocalResolution) => void;
+  /** Whether this person may select and deselect a drafted ticket — `owner`, `admin` or `member`. */
+  readonly mayContribute: boolean;
+  /** The workspace's trackers, as the planning page's segment draws them; none when unread. */
+  readonly trackers: readonly TrackerOption[];
+  /** Why the trackers could not be read, as a sentence, or `null`. */
+  readonly trackersFailure: string | null;
+  /** What the page last announced about this repository — a push's outcome — or `null`. */
+  readonly toast: AnalyzerToast | null;
+  /** Announce something that just happened; it stays until dismissed. */
+  readonly announce: (toast: AnalyzerToast) => void;
+  /** Dismiss the toast. */
+  readonly dismissToast: () => void;
 }
+
+/** No trackers — a stable value for a workspace whose trackers could not be read. */
+const NO_TRACKERS: readonly TrackerOption[] = Object.freeze([]);
 
 /** What is read outside a provider: nothing is known, and pressing does nothing. */
 const NO_ANALYZER: AnalyzerView = Object.freeze({
@@ -92,6 +120,12 @@ const NO_ANALYZER: AnalyzerView = Object.freeze({
   refusals: new Map(),
   dismiss: () => {},
   resolveLocally: () => {},
+  mayContribute: false,
+  trackers: NO_TRACKERS,
+  trackersFailure: null,
+  toast: null,
+  announce: () => {},
+  dismissToast: () => {},
 });
 
 const AnalyzerContext = createContext<AnalyzerView>(NO_ANALYZER);
@@ -183,6 +217,21 @@ export function AnalyzerProvider({ readings, children, poll }: AnalyzerProviderP
     [readings.mayDismiss, refresh, now],
   );
 
+  const [heldToast, setHeldToast] = useState<HeldToast | null>(null);
+  const toast = heldToast !== null && heldToast.repo === repo ? heldToast.toast : null;
+
+  const announce = useCallback(
+    (next: AnalyzerToast) => {
+      if (repo !== null) setHeldToast({ repo, toast: next });
+    },
+    [repo],
+  );
+  const dismissToast = useCallback(() => setHeldToast(null), []);
+
+  const { trackers: read } = readings;
+  const trackers = read.ok ? read.value : NO_TRACKERS;
+  const trackersFailure = read.ok ? null : read.reason;
+
   const view = useMemo<AnalyzerView>(
     () => ({
       chosen,
@@ -199,6 +248,12 @@ export function AnalyzerProvider({ readings, children, poll }: AnalyzerProviderP
       refusals,
       dismiss,
       resolveLocally,
+      mayContribute: readings.mayContribute,
+      trackers,
+      trackersFailure,
+      toast,
+      announce,
+      dismissToast,
     }),
     [
       chosen,
@@ -215,6 +270,12 @@ export function AnalyzerProvider({ readings, children, poll }: AnalyzerProviderP
       refusals,
       dismiss,
       resolveLocally,
+      readings.mayContribute,
+      trackers,
+      trackersFailure,
+      toast,
+      announce,
+      dismissToast,
     ],
   );
 

@@ -3293,7 +3293,8 @@ est. total ~3 days of loop time · $14 est. spend   [Regenerate] [Push 6 tickets
 | `✓ all sized` only when **every** draft has an estimate; `sizing…` per row, `sized N of M` until then | `allSized`, `rowSizing` |
 | A tracker nobody connected, or one the catalog cannot write to, is **disabled with its reason** — never a push that fails on click | `trackerOptions`, `pushReason` |
 | The push button's count is the **live** selection — a click moves it before the service answers, and a refusal puts it back | `selectedCount`, the card's pending map |
-| The footer's `$` exists only when `summary.spend` does (N10); a partial price is a floor, `$14+` | `footerText` |
+| The footer's `$` exists only when `summary.spend` does (N10); a partial price is a floor, `$14+` | `footerText` (the loop time alone is `loopTimeText`) |
+| A batch the Build Analyzer composed is **edited, never regenerated** — **Regenerate** is inert with why, and the service refuses it too (`batch_not_regenerable`, #519) | `isAnalyzerBatch`, `regenerateReason` |
 | Each draft says what its push did — `pushed ✓ #612` (a link), `failed — reason` — and **Resume push** appears exactly while something selected did not land | `rowPush`, `pushMode` |
 | Narrative-only input's `notes` render as a hint whose action opens and focuses the outline | the card's guidance aside |
 
@@ -3918,18 +3919,20 @@ leg 21's shell assertion found.
 the head, *Run analysis now* with real progress, the schedule editor and the meta strip — and, in
 the mockup's main column, the annotated duration chart
 ([#517](https://github.com/NobuData/ouroboros/issues/517)) and the two suggestion cards
-([#518](https://github.com/NobuData/ouroboros/issues/518)). The side column's cards are BW.4's and
-BW.5's. The code is [`app/analyzer/`](app/analyzer); every sentence and format is a pure function
-in [`view.ts`](app/analyzer/view.ts), [`duration-view.ts`](app/analyzer/duration-view.ts) and
-[`suggestions-view.ts`](app/analyzer/suggestions-view.ts).
+([#518](https://github.com/NobuData/ouroboros/issues/518)); the side column opens with the
+drafted-tickets card ([#519](https://github.com/NobuData/ouroboros/issues/519)), and BW.5's
+follows. The code is [`app/analyzer/`](app/analyzer); every sentence and format is a pure function
+in [`view.ts`](app/analyzer/view.ts), [`duration-view.ts`](app/analyzer/duration-view.ts),
+[`suggestions-view.ts`](app/analyzer/suggestions-view.ts) and
+[`tickets-view.ts`](app/analyzer/tickets-view.ts).
 
 - **Repo-scoped by the tenant chip.** The page analyses the chip's focus repository; under
   *All repos* it takes the first enabled one and says how to choose
   ([`repo.ts`](app/analyzer/repo.ts)). It has no sidebar entry: it publishes **Build Farm** as its
   origin, so that entry stays lit. The farm's and the insights' **✦ Build Analyzer** link here.
 - **One poll per repository.** `GET /api/analyzer?repo=` on this origin answers the newest run,
-  the schedule, the duration chart and the suggestion cards together, and asks to be polled every
-  3 s while a run is in flight.
+  the schedule, the duration chart, the suggestion cards and the drafted tickets together, and
+  asks to be polled every 3 s while a run is in flight or a drafted batch is still being sized.
 - **Honest provenance (decision A3).** `Analyzed by` is the run's analyzer-set label
   (`deterministic analyzers v1`) opening the analyzers, their versions and outcomes; a model pill
   appears only beside an analyzer of kind `llm`. `Last run` is compute time; the `$` appears only
@@ -4046,6 +4049,61 @@ EVIDENCE qemu_cortex_m3 caught 0 unique failures in 214 builds; HIL caught 9 —
 - **Accessible.** Each row is an article named by its title; its controls are real buttons
   described by that title (an inert one by its reason). When a row resolves under the control
   that had focus, focus moves to the row.
+
+**Drafted tickets — from patterns, not people** ([`tickets-card.tsx`](app/analyzer/tickets-card.tsx),
+#519) is the side column's first card, and **a view onto ordinary planning batches** — not a
+second drafting, sizing, editing or push path. Its rules are the planning page's own, called from
+[`tickets-view.ts`](app/analyzer/tickets-view.ts) rather than restated.
+
+```
+☑ ALL DRAFTS
+☑ BA-1  Refactor tests/ota fixtures — shared setup times out under load           [M]
+        7.2% of OTA suite failures share one fixture timeout signature (31 builds) ↗
+☑ BA-2  Bump ccache 4.9 → 4.11 …                                                  [XS]
+        cache-miss signature matches ccache issue #1412 in 118 builds ↗
+est. total ~1.5 days of loop time            [Push 4 tickets to backlog →] [Edit drafts]
+```
+
+- **What it lists.** The ticket suggestions nobody has drafted yet, then each planning batch a
+  still-current ticket suggestion was drafted into, newest first — every draft a batch holds,
+  because a push files every selected one. One batch and nothing un-drafted is the mockup; a
+  second group brings captions (*Drafted Oct 2 for GitHub Issues*).
+- **The effort chip and the total are the estimator's.** The chip is the draft's own estimate
+  (`sizing…` until it has one); `est. total` is the service's sum over the ticked drafts in the
+  planning footer's words (`loopTimeText`: `~`, and `so far` while a ticked draft is unsized).
+  **No number is computed in the browser** — a tick moves the push button's count at once and the
+  total when the service answers the tick.
+- **Selection is the batch's stored `selected`**, sent through `selectTicket` — planning's own
+  route, behind a hop that can change nothing else about a draft. A refused tick is put back with
+  why. **All drafts** is a real checkbox, mixed when some are ticked; it never counts or changes
+  a draft already pushed.
+- **The evidence line is a button** opening the references behind it
+  ([`ticket-evidence-sheet.tsx`](app/analyzer/ticket-evidence-sheet.tsx)) — each a link to the
+  build farm, a loop's test results or the pull request a waiver was recorded on. The line and
+  the references are **read from the draft's body**, which is what a push files: an edit made in
+  the planning editor is what the card shows, and a body rewritten without its evidence says
+  *no evidence line in this draft's body* instead of showing the analyzer's line beside a ticket
+  that will not carry it.
+- **Edit drafts** is a link to the planning page's editor on the batch (`/planning?batch=…`) —
+  one editor, one set of validation rules. There, **Regenerate** is inert for an analyzer batch.
+- **Push N tickets to backlog →** is the service's idempotent push of the ticked drafts
+  (`pushTickets`); the tooltip names the tracker. While it runs the page is read every 2 s, so
+  each row's state appears as it lands: `pushed ✓ #621` linking to the tracker, or `failed —
+  reason` with **Retry**, which is the same push — it files only what did not land — as is the
+  footer's **Resume push**.
+- **The toast** ([`analyzer-toast.tsx`](app/analyzer/analyzer-toast.tsx)) says what the push did
+  in the planning page's words and stays until dismissed. It links to **Issues** only when
+  something landed in a GitHub tracker, and says *they appear there once the backlog has synced*:
+  intake lists the GitHub backlog as last synced, and nothing else yet.
+- **A closed batch is a summary, not an empty box**: *3 of 4 drafts were pushed to GitHub. BA-3
+  was left out.*, each pushed ticket's tracker link, and **Open the batch →**. With nothing to
+  show at all, the card says whether an analysis has yet to run or found nothing to draft.
+- **Draft N tickets** ([`draft-tickets-dialog.tsx`](app/analyzer/draft-tickets-dialog.tsx)) turns
+  the un-drafted suggestions into a batch for the tracker chosen in the planning page's own
+  segment — fixed once drafted — and the batch then stands on the card, `sizing…`.
+- **Roles.** Everyone reads the card and every evidence sheet. Ticking is an owner's, admin's or
+  member's — the planning page's rule for the same checkbox; drafting and pushing are an owner's
+  or admin's, each inert control carrying its reason.
 
 ## Insights
 

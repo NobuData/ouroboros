@@ -62,6 +62,7 @@ import {
 } from "./planning.dto";
 import {
   batchNotEditable,
+  batchNotRegenerable,
   draftNotFound,
   draftPushed,
   epicNotFound,
@@ -110,6 +111,24 @@ export const PLANNER_PATTERN = /^[a-z0-9][a-z0-9-]*-v[0-9]+$/;
 
 /** The longest planner name the column stores. */
 export const MAX_PLANNER_LENGTH = 64;
+
+/**
+ * The planner families of the planes that **compose** batches rather than ask the engine to plan
+ * them — today the Build Analyzer (`analyzer-v1`). {@link BatchesService.compose} stores a batch
+ * under one of these only, which is what lets {@link BatchesService.regenerate} tell such a batch
+ * apart: its `prompt` is the composing plane's filing line, not a question any planner was asked.
+ */
+export const COMPOSING_PLANNER_FAMILIES: readonly string[] = Object.freeze(["analyzer"]);
+
+/**
+ * Whether a planner name is a composing plane's.
+ *
+ * @param planner - The batch's planner, `name-vN`.
+ * @returns True when another plane composed the batch's drafts; false when the engine planned them.
+ */
+export function isComposedPlanner(planner: string): boolean {
+  return COMPOSING_PLANNER_FAMILIES.some((family) => planner.startsWith(`${family}-v`));
+}
 
 /**
  * The statuses whose drafts may still change.
@@ -231,7 +250,8 @@ export class BatchesService {
    *   selected draft has an estimate, then `sized`.
    * @throws {NotFoundError} `planning_source_not_found`.
    * @throws {ConflictError} `planning_target_read_only`.
-   * @throws {Error} When `planner` is not a versioned name — a caller's bug, not a request's.
+   * @throws {Error} When `planner` is not a versioned name of a composing family
+   *   ({@link COMPOSING_PLANNER_FAMILIES}) — a caller's bug, not a request's.
    */
   async compose(
     organizationId: string,
@@ -240,6 +260,11 @@ export class BatchesService {
   ): Promise<BatchResource> {
     if (!PLANNER_PATTERN.test(input.planner) || input.planner.length > MAX_PLANNER_LENGTH) {
       throw new Error(`planner ${input.planner} is not a versioned name (name-vN)`);
+    }
+    if (!isComposedPlanner(input.planner)) {
+      throw new Error(
+        `planner ${input.planner} is not a composing plane's (see batches.service.ts)`,
+      );
     }
 
     const source = await this.repository.source(organizationId, input.targetSourceId);
@@ -300,16 +325,26 @@ export class BatchesService {
   /**
    * Regenerate a batch — **Regenerate**.
    *
+   * A batch another plane composed ({@link compose}) is refused: no planner was ever asked for its
+   * drafts, so re-planning it would replace them — the Build Analyzer's evidence-carrying tickets —
+   * with whatever the engine makes of the line the batch was filed under.
+   *
    * @param organizationId - The workspace.
    * @param batchId - The batch.
    * @returns The batch as it now stands, and the planner's notes.
    * @throws {NotFoundError} `planning_batch_not_found`.
-   * @throws {ConflictError} `batch_not_editable`, `planning_target_read_only`.
+   * @throws {ConflictError} `batch_not_editable`, `batch_not_regenerable`,
+   *   `planning_target_read_only`.
    * @throws {InvalidRequestError} `dependency_cycle`, naming it.
    * @throws {UpstreamError} `engine_unavailable`, `planner_unversioned`.
    */
   async regenerate(organizationId: string, batchId: string): Promise<GeneratedBatchResource> {
     const batch = await this.editableBatch(organizationId, batchId);
+
+    if (isComposedPlanner(batch.planner)) {
+      throw batchNotRegenerable(batchId, batch.planner);
+    }
+
     const provider = this.writerFor(batch.source);
     const current = await this.repository.drafts(organizationId, batchId);
     const prefix = prefixOf(current.map((draft) => draft.localKey));

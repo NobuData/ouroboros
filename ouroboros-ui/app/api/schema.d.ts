@@ -2688,9 +2688,9 @@ export interface paths {
          *     and still did not compose it again. So a run that did not look — one in flight, a failed
          *     one, one whose pattern analyzers were skipped — never blanks the cards, a suggestion an
          *     analysis looked for and no longer finds leaves them, and a dismissed one a re-analysis
-         *     finds again is still listed, still dismissed. Ticket drafts are not listed here. `runId`
-         *     is the newest ended run that composed any suggestion — `null`, with no suggestions,
-         *     before one has.
+         *     finds again is still listed, still dismissed. Ticket drafts are not listed here —
+         *     `GET /api/v1/analyzer/tickets` answers them. `runId` is the newest ended run that composed
+         *     any suggestion — `null`, with no suggestions, before one has.
          *
          *     Nothing is recomputed. Beside each number is what produced it: `confidenceBasis` is the
          *     composer's formula with every input it read; `impact.basis` is the method, the formula's
@@ -2825,6 +2825,49 @@ export interface paths {
          *     `owner` or `admin`, audited as `analysis_suggestion.drafted` per suggestion.
          */
         post: operations["draftSuggestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyzer/tickets": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A repository's drafted tickets
+         * @description BW.4 ([#519](https://github.com/NobuData/ouroboros/issues/519)) — mockup 18's **Drafted
+         *     tickets — from patterns, not people** card. It is a view onto ordinary planning batches,
+         *     not a second drafting system.
+         *
+         *     `undrafted` are the repository's `ticket_draft` suggestions that are still `open` and
+         *     **still current** (the rule `GET /api/v1/analyzer/suggestions` states), most confident
+         *     first — what `POST /api/v1/analyzer/suggestions/draft` turns into a batch. `batches` are
+         *     the planning batches the current ticket suggestions were already drafted into, newest
+         *     first. Each `batch` is exactly what `GET /api/v1/planning/batches/{batch}` answers — every
+         *     draft it holds, with its checkbox, its estimate and its push state, and the footer the
+         *     estimator's sizing sums to — because a push files every selected draft, whichever
+         *     suggestion it came from.
+         *
+         *     **A draft's evidence is read from its body**, which is what a push files and what a person
+         *     may have edited: `drafts[].evidenceLine` is the body's `**Evidence:**` line and
+         *     `drafts[].evidence` the references listed under its `**References:**` heading, each
+         *     resolved in this workspace as `GET /api/v1/analyzer/duration` resolves them. A body
+         *     rewritten without them answers `null` and none. Only the first 25 references are answered;
+         *     `evidenceTotal` says how many the body lists. An un-drafted suggestion answers the line
+         *     and the references its draft will carry.
+         *
+         *     Selecting and editing a draft are `PATCH /api/v1/planning/batches/{batch}/drafts/{key}`;
+         *     pushing is `POST /api/v1/analyzer/batches/{id}/push`. Every member may read. **The
+         *     workspace is the session's.**
+         */
+        get: operations["listDraftedTickets"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -13553,6 +13596,61 @@ export interface components {
             /** @description The first 25 references it cites, in their stored order, resolved. */
             evidence: components["schemas"]["AnalysisEvidence"][];
             /** @description How many references it cites in all. */
+            evidenceTotal: number;
+        };
+        /**
+         * AnalysisTickets
+         * @description A repository's drafted-tickets card (BW.4, #519) — the ticket suggestions nobody has
+         *     drafted yet, and the planning batches the rest were drafted into.
+         */
+        AnalysisTickets: {
+            repo: string;
+            /** @description The open, still-current ticket suggestions, most confident first. */
+            undrafted: components["schemas"]["AnalysisUndraftedTicket"][];
+            /** @description The batches the current ticket suggestions were drafted into, newest first. */
+            batches: components["schemas"]["AnalysisTicketBatch"][];
+        };
+        /**
+         * AnalysisUndraftedTicket
+         * @description A ticket suggestion an analysis composed and nobody has drafted yet.
+         */
+        AnalysisUndraftedTicket: {
+            /**
+             * Format: uuid
+             * @description The suggestion — what `POST /api/v1/analyzer/suggestions/draft` takes.
+             */
+            id: string;
+            title: string;
+            evidenceLine: string;
+            confidence: number;
+            /** @description The first 25 references its draft will list, in the draft's order, resolved. */
+            evidence: components["schemas"]["AnalysisEvidence"][];
+            /** @description How many references its draft will list in all. */
+            evidenceTotal: number;
+        };
+        /**
+         * AnalysisTicketBatch
+         * @description One planning batch on the card: the batch as planning answers it, and what each draft's
+         *     body says its evidence is.
+         */
+        AnalysisTicketBatch: {
+            batch: components["schemas"]["PlanningBatch"];
+            /** @description One entry per draft of `batch`, in the same order. */
+            drafts: components["schemas"]["AnalysisDraftedTicket"][];
+        };
+        /**
+         * AnalysisDraftedTicket
+         * @description What one draft's body says its evidence is — read from the body as it stands, so an edit
+         *     made in the planning editor is what is answered.
+         */
+        AnalysisDraftedTicket: {
+            /** @description The draft's key within its batch — `BA-2`. */
+            localKey: string;
+            /** @description The body's `**Evidence:**` line. Null when the body states none. */
+            evidenceLine: string | null;
+            /** @description The first 25 references the body lists, in its order, resolved. */
+            evidence: components["schemas"]["AnalysisEvidence"][];
+            /** @description How many references the body lists in all. */
             evidenceTotal: number;
         };
         /**
@@ -35602,6 +35700,204 @@ export interface operations {
             };
         };
     };
+    listDraftedTickets: {
+        parameters: {
+            query: {
+                /** @description The repository, `owner/name`. */
+                repo: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The un-drafted ticket suggestions and the batches the rest were drafted into. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "undrafted": [],
+                     *       "batches": [
+                     *         {
+                     *           "batch": {
+                     *             "id": "5eed006a-0000-4000-8000-000000000001",
+                     *             "status": "sized",
+                     *             "planner": "analyzer-v1",
+                     *             "prompt": "Build Analyzer: tickets drafted from the patterns in acme-robotics/helios-firmware's last 90 days of builds",
+                     *             "outline": null,
+                     *             "targetSourceId": "5eed001a-0000-4000-8000-000000000001",
+                     *             "milestone": null,
+                     *             "epicId": null,
+                     *             "autoSize": true,
+                     *             "queueSmall": false,
+                     *             "createdAt": "2026-08-08T10:41:00.000Z",
+                     *             "updatedAt": "2026-08-08T10:42:20.000Z",
+                     *             "drafts": [
+                     *               {
+                     *                 "id": "5eed006b-0000-4000-8000-000000000003",
+                     *                 "localKey": "BA-3",
+                     *                 "title": "Add thermal chamber to rig helios-rig-02",
+                     *                 "body": "**Evidence:** 3 verification waivers in 60 days cite missing thermal coverage\n\n**References:**\n- waiver `5eed006d-0000-4000-8000-000000000471`\n\nDrafted by the Build Analyzer from suggestion `5eed0067-0000-4000-8000-000000000023` (confidence 82%) over acme-robotics/helios-firmware, analysis run `5eed0065-0000-4000-8000-000000000002`.",
+                     *                 "selected": true,
+                     *                 "suggestedWorkflow": "feature-loop",
+                     *                 "provenance": "planned",
+                     *                 "dependencies": [],
+                     *                 "blockedByTicketIds": [],
+                     *                 "pushState": "pending",
+                     *                 "pushedTicketId": null,
+                     *                 "pushedTicket": null,
+                     *                 "pushError": null,
+                     *                 "estimate": {
+                     *                   "effort": "l",
+                     *                   "confidence": 71,
+                     *                   "estMinutes": 1020,
+                     *                   "estTokens": 500000,
+                     *                   "routedModel": "claude-fable-5",
+                     *                   "estimator": "heuristic-v0",
+                     *                   "version": 1
+                     *                 }
+                     *               }
+                     *             ],
+                     *             "summary": {
+                     *               "draftCount": 1,
+                     *               "selectedCount": 1,
+                     *               "sizedCount": 1,
+                     *               "allSized": true,
+                     *               "estimators": [
+                     *                 "heuristic-v0"
+                     *               ],
+                     *               "estMinutes": 1020,
+                     *               "loopDays": 0.7
+                     *             }
+                     *           },
+                     *           "drafts": [
+                     *             {
+                     *               "localKey": "BA-3",
+                     *               "evidenceLine": "3 verification waivers in 60 days cite missing thermal coverage",
+                     *               "evidence": [
+                     *                 {
+                     *                   "kind": "waiver",
+                     *                   "id": "5eed006d-0000-4000-8000-000000000471",
+                     *                   "label": "Thermal chamber booked through the release window",
+                     *                   "surface": "test_results",
+                     *                   "pullRequestId": null,
+                     *                   "workflowSlug": null,
+                     *                   "runId": "5eed0009-0000-4000-8000-000000000471",
+                     *                   "attempt": null,
+                     *                   "suiteName": null,
+                     *                   "caseName": null
+                     *                 }
+                     *               ],
+                     *               "evidenceTotal": 1
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AnalysisTickets"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or not `owner/name`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     pushAnalyzerBatch: {
         parameters: {
             query?: never;
@@ -55264,7 +55560,9 @@ export interface operations {
             };
             /**
              * @description `batch_not_editable` — the batch is being pushed, was pushed, or was abandoned. Or
-             *     `planning_target_read_only`.
+             *     `planning_target_read_only`. Or `batch_not_regenerable` — another plane composed the
+             *     batch's drafts (the Build Analyzer's `analyzer-v1`), so no planner was ever asked for
+             *     them and there is nothing to plan them again from; nothing is changed.
              */
             409: {
                 headers: {

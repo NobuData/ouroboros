@@ -4,15 +4,19 @@ import "server-only";
  * What the Build Analyzer page reads on the server (BW.1,
  * [#516](https://github.com/NobuData/ouroboros/issues/516)).
  *
- * Only what the server can know: the workspace's enabled repositories and the reader's roles. The
- * repository the page analyses is the tenant chip's choice, which lives in the browser, so the
- * run and the schedule are read by the page's poll once it has chosen (`analyzer-store.tsx`).
+ * Only what the server can know: the workspace's enabled repositories, the reader's roles, and
+ * the workspace's trackers (BW.4, [#519](https://github.com/NobuData/ouroboros/issues/519)) — what
+ * a drafted batch is pushed to, and what a new one may be drafted for. The repository the page
+ * analyses is the tenant chip's choice, which lives in the browser, so the run and the schedule
+ * are read by the page's poll once it has chosen (`analyzer-store.tsx`).
  */
 
 import type { Workspace } from "@/app/api/access";
 import { enabledRepos, readEnablement } from "@/app/api/enablement";
 import { mayAdminister, mayContribute } from "@/app/api/membership";
 import { type Reading, attempt } from "@/app/api/reading";
+import { sources } from "@/app/api/sources";
+import { type TrackerOption, trackerOptions } from "@/app/planning/generator";
 
 import { type AnalyzerRepo, analyzerRepos } from "./repo";
 
@@ -33,6 +37,17 @@ export interface AnalyzerReadings {
    * only what the page draws.
    */
   readonly mayDismiss: boolean;
+  /**
+   * Whether this person may select and deselect a drafted ticket — `owner`, `admin` or `member`,
+   * the planning page's rule for the same checkbox (BW.4,
+   * [#519](https://github.com/NobuData/ouroboros/issues/519)).
+   */
+  readonly mayContribute: boolean;
+  /**
+   * The workspace's trackers as the planning page's segment draws them — each connected source,
+   * and why one cannot be written to — or why they could not be read.
+   */
+  readonly trackers: Reading<readonly TrackerOption[]>;
   /** When the read was made, in epoch milliseconds — the strip's clock until the first poll. */
   readonly readAt: number;
 }
@@ -47,13 +62,19 @@ export interface AnalyzerReadings {
  */
 export async function readAnalyzer(access: Workspace, now: () => number = Date.now): Promise<AnalyzerReadings> {
   const { membership } = access;
-  const repos = await attempt(async () => analyzerRepos(enabledRepos(await readEnablement(membership.id))));
+  const [repos, connected, catalog] = await Promise.all([
+    attempt(async () => analyzerRepos(enabledRepos(await readEnablement(membership.id)))),
+    attempt(() => sources.list()),
+    attempt(() => sources.catalog()),
+  ]);
 
   return {
     repos,
     workspaceId: membership.id,
     mayAdminister: mayAdminister(membership.roles),
     mayDismiss: mayContribute(membership.roles),
+    mayContribute: mayContribute(membership.roles),
+    trackers: connected.ok ? { ok: true, value: trackerOptions(connected.value.items, catalog) } : connected,
     readAt: now(),
   };
 }

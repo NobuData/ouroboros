@@ -1,6 +1,7 @@
 /**
- * What the analyzer leg ([#518](https://github.com/NobuData/ouroboros/issues/518)) arranges, reads
- * and puts back — mockup 18's two suggestion cards against
+ * What the analyzer legs ([#518](https://github.com/NobuData/ouroboros/issues/518),
+ * [#519](https://github.com/NobuData/ouroboros/issues/519)) arrange, read and put back — mockup
+ * 18's two suggestion cards and its drafted-tickets card against
  * `R__dev_seed_workspace_metrics_analyzer.sql`.
  *
  * ## The repository is the tenant chip's
@@ -20,6 +21,8 @@
  * | two suggestions `applied`, one `dismissed` | nothing | a resolution is terminal by design (V081) — that it cannot be undone is the product's promise |
  * | two measurement rows, their audit events | nothing | append-only |
  * | one analysis run | nothing | a run is history |
+ * | a drafted ticket's checkbox (leg 23) | **ticked again** in teardown | the push leg pushes what is ticked |
+ * | the seeded analyzer batch, edited and **pushed** (leg 24) | nothing | a pushed batch is closed by design; its tracker issues are reset with the sandbox |
  *
  * So the leg is **green from a cold volume only**, as the planning, knowledge and PR legs are: a
  * second run finds the rows already resolved. Its first block's `beforeAll` says so in words.
@@ -354,4 +357,150 @@ export async function applyStatusFor(context: BrowserContext, id: string): Promi
   });
 
   return response.status;
+}
+
+/* ------------------------------------------------------------------ the drafted-tickets card (#519) */
+
+/** The drafted-tickets card, by the name its region carries. */
+export const TICKETS_CARD = "Drafted tickets — from patterns, not people";
+
+/** `R__dev_seed_workspace_metrics_analyzer.sql`'s `analyzer-v1` batch — `BA-1…BA-4`. */
+export const SEEDED_TICKET_BATCH_ID = "5eed006a-0000-4000-8000-000000000001";
+
+/** One seeded draft, as mockup 18 draws it. */
+export interface SeededTicket {
+  /** The batch-local key. */
+  readonly key: string;
+  /**
+   * The title — a pattern for the one draft whose title names a month the seed computes from the
+   * day it is applied (the corpus window's first month; the mockup's `May`).
+   */
+  readonly title: string | RegExp;
+  /** The effort chip, as the estimator sized it. */
+  readonly effort: string;
+  /** The mono evidence line. */
+  readonly evidence: string;
+}
+
+/** The four seeded drafts, in the order the card draws them. */
+export const TICKETS: readonly SeededTicket[] = [
+  {
+    key: "BA-1",
+    title: "Refactor tests/ota fixtures — shared setup times out under load",
+    effort: "M",
+    evidence: "7.2% of OTA suite failures share one fixture timeout signature (31 builds)",
+  },
+  {
+    key: "BA-2",
+    title: "Bump ccache 4.9 → 4.11 — upstream fixes the hash misses in our logs",
+    effort: "XS",
+    evidence: "cache-miss signature matches ccache issue #1412 in 118 builds",
+  },
+  {
+    key: "BA-3",
+    title: "Add thermal chamber to rig helios-rig-02",
+    effort: "L",
+    evidence: "3 verification waivers in 60 days cite missing thermal coverage",
+  },
+  {
+    key: "BA-4",
+    title: /^Delete 12 dead Kconfig options — never set in any build since [A-Z][a-z]+$/,
+    effort: "S",
+    evidence: "0 of 1,284 builds toggled them; 4 caused config-drift warnings",
+  },
+];
+
+/**
+ * The card's footer for the seeded batch — 660 + 120 + 1,020 + 360 estimator minutes, and what is
+ * left of them once `BA-3` (1,020) is unticked.
+ */
+export const TICKET_TOTALS = {
+  all: "est. total ~1.5 days of loop time",
+  withoutChamber: "est. total ~0.8 days of loop time",
+} as const;
+
+/** What a stack whose seeded batch has already been pushed is told. */
+export const TICKETS_NOT_COLD =
+  "This stack is not cold: the seeded analyzer batch has already been pushed or changed, and a " +
+  "pushed batch is closed for good. Run it against a fresh volume (`docker compose down -v`).";
+
+/** One draft of a batch on the card, as `GET /api/v1/analyzer/tickets` answers it. */
+export interface DraftRow {
+  readonly localKey: string;
+  readonly title: string;
+  readonly selected: boolean;
+  readonly pushState: "pending" | "pushed" | "failed";
+}
+
+/** One batch on the card — the fields the legs read. */
+export interface TicketBatch {
+  readonly id: string;
+  readonly status: string;
+  readonly drafts: readonly DraftRow[];
+}
+
+/**
+ * The seeded analyzer batch, as the drafted-tickets card's read answers it.
+ *
+ * @param context - A signed-in context.
+ * @returns The batch, or `undefined` when the card no longer holds it.
+ */
+export async function seededTicketBatch(context: BrowserContext): Promise<TicketBatch | undefined> {
+  const answer = await requestAs<{ batches: { batch: TicketBatch }[] }>(
+    context,
+    "GET",
+    `/api/v1/analyzer/tickets?repo=${encodeURIComponent(HELIOS.ref)}`,
+    null,
+    "reading the analyzer's drafted tickets",
+  );
+
+  return answer?.batches.find((entry) => entry.batch.id === SEEDED_TICKET_BATCH_ID)?.batch;
+}
+
+/**
+ * Tick every draft of the seeded batch again — what the selection test unticked.
+ *
+ * @param context - The context to act for. Its person must be a member or above.
+ * @returns When the restore has been attempted. It never throws — see `support/rest.ts`.
+ */
+export function retickSeededTickets(context: BrowserContext): Promise<void> {
+  return quietly(async () => {
+    const batch = await seededTicketBatch(context);
+
+    for (const draft of batch?.drafts ?? []) {
+      if (draft.selected || draft.pushState === "pushed") continue;
+
+      await requestAs(
+        context,
+        "PATCH",
+        `/api/v1/planning/batches/${SEEDED_TICKET_BATCH_ID}/drafts/${draft.localKey}`,
+        { selected: true },
+        `ticking ${draft.localKey} again`,
+      );
+    }
+  }, "a seeded analyzer draft was left unticked — the card's parity and the push leg both count four ticked drafts.");
+}
+
+/**
+ * Ask the service to push the seeded analyzer batch with this context's session, and report its
+ * answer.
+ *
+ * **Not a helper that insists** — the member test and the idempotency check call it to observe a
+ * refusal, so the status is the result rather than a reason to throw.
+ *
+ * @param context - The context to act for.
+ * @returns The HTTP status the push route answered, and the refusal's code when it refused.
+ */
+export async function pushSeededTickets(
+  context: BrowserContext,
+): Promise<{ status: number; code: string | null }> {
+  const token = await sessionTokenOf(context, "pushing the analyzer's batch");
+
+  const response = await fetch(
+    `${REST_URL}/api/v1/analyzer/batches/${SEEDED_TICKET_BATCH_ID}/push`,
+    { method: "POST", headers: { cookie: `${SESSION_COOKIE}=${token}` } },
+  );
+  const body = (await response.json().catch(() => null)) as { code?: string } | null;
+
+  return { status: response.status, code: response.ok ? null : (body?.code ?? null) };
 }

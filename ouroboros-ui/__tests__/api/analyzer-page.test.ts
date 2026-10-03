@@ -13,11 +13,13 @@ import {
   seededSchedule,
 } from "../helpers/analyzer";
 import { seededSuggestions } from "../helpers/analyzer-suggestions";
+import { seededBatch, seededTickets, ticketsWith } from "../helpers/analyzer-tickets";
 
 /**
- * The analyzer page, read for the screen's poll (#516) — and its hop, `GET /api/analyzer`: four
- * reads (the run, the schedule, since #517 the duration chart and since #518 the suggestion
- * cards) under the poll family's deadline, polled fast while a run is in flight.
+ * The analyzer page, read for the screen's poll (#516) — and its hop, `GET /api/analyzer`: five
+ * reads (the run, the schedule, since #517 the duration chart, since #518 the suggestion cards and
+ * since #519 the drafted-tickets card) under the poll family's deadline, polled fast while a run
+ * is in flight or a drafted batch is still being sized.
  */
 
 vi.mock("server-only", () => ({}));
@@ -43,6 +45,27 @@ describe("readAnalyzerPage", () => {
     const answer = await readAnalyzerPage(HELIOS, vi.fn().mockResolvedValue(analyzerPage({ run: runningRun() })));
 
     expect(answer).toMatchObject({ state: "fresh", pollAfterSeconds: RUNNING_POLL_SECONDS });
+  });
+
+  it("asks as often while a drafted batch is still being sized, so `sizing…` turns into chips (#519)", async () => {
+    const sizing = ticketsWith(seededBatch((draft) => (draft.localKey === "BA-2" ? { estimate: null } : undefined)));
+
+    expect(await readAnalyzerPage(HELIOS, vi.fn().mockResolvedValue(analyzerPage({ tickets: sizing })))).toMatchObject({
+      state: "fresh",
+      pollAfterSeconds: RUNNING_POLL_SECONDS,
+    });
+  });
+
+  it("goes back to the family's interval once every draft is sized, and for a batch that will never be", async () => {
+    // Auto-size off: nothing will size it, so nothing is waited for.
+    const unsized = ticketsWith(seededBatch(() => ({ estimate: null }), { autoSize: false }));
+
+    for (const tickets of [seededTickets(), unsized]) {
+      expect(await readAnalyzerPage(HELIOS, vi.fn().mockResolvedValue(analyzerPage({ tickets })))).toMatchObject({
+        state: "fresh",
+        pollAfterSeconds: null,
+      });
+    }
   });
 
   it("reads a 401 as gone, a refusal as the service's sentence, and a dropped read as unreachable", async () => {
@@ -72,6 +95,7 @@ describe("the page's own read", () => {
   const schedule = vi.fn();
   const duration = vi.fn();
   const suggestions = vi.fn();
+  const tickets = vi.fn();
   const CLIENT = { name: "the anonymous client" };
 
   beforeEach(() => {
@@ -80,7 +104,8 @@ describe("the page's own read", () => {
     schedule.mockReset().mockResolvedValue(seededSchedule());
     duration.mockReset().mockResolvedValue(seededDuration());
     suggestions.mockReset().mockResolvedValue(seededSuggestions());
-    vi.doMock("@/app/api/analyzer", () => ({ analyzer: { latest, schedule, duration, suggestions } }));
+    tickets.mockReset().mockResolvedValue(seededTickets());
+    vi.doMock("@/app/api/analyzer", () => ({ analyzer: { latest, schedule, duration, suggestions, tickets } }));
     vi.doMock("@/app/api/server", () => ({ anonymousApi: () => CLIENT }));
   });
 
@@ -89,19 +114,30 @@ describe("the page's own read", () => {
     vi.doUnmock("@/app/api/server");
   });
 
-  it("makes the run, schedule, duration and suggestion reads together, through one client, under the deadline", async () => {
+  it("makes the run, schedule, duration, suggestion and ticket reads together, through one client, under the deadline", async () => {
     const page = await import("@/app/api/analyzer-page");
 
     const answer = await page.readAnalyzerPage(HELIOS);
 
     expect(answer).toEqual(freshPage());
-    for (const read of [latest, schedule, duration, suggestions]) {
+    for (const read of [latest, schedule, duration, suggestions, tickets]) {
       expect(read).toHaveBeenCalledExactlyOnceWith(HELIOS, CLIENT, expect.any(AbortSignal));
     }
   });
 
   it("fails the whole page when the suggestion cards cannot be read, rather than drawing half of it", async () => {
     suggestions.mockRejectedValue(new TypeError("fetch failed"));
+    const page = await import("@/app/api/analyzer-page");
+
+    expect(await page.readAnalyzerPage(HELIOS)).toEqual({
+      state: "failed",
+      reason: UNREACHABLE_ANALYZER,
+      pollAfterSeconds: null,
+    });
+  });
+
+  it("fails the whole page when the drafted tickets cannot be read, rather than drawing half of it", async () => {
+    tickets.mockRejectedValue(new TypeError("fetch failed"));
     const page = await import("@/app/api/analyzer-page");
 
     expect(await page.readAnalyzerPage(HELIOS)).toEqual({

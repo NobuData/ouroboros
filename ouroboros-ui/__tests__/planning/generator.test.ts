@@ -13,6 +13,7 @@ import {
   PUSH_ROLE_REASON,
   PUSH_RUNNING_REASON,
   BATCH_CLOSED_REASON,
+  COMPOSED_REGENERATE_REASON,
   type GeneratorForm,
   type TrackerOption,
   allPushedReason,
@@ -28,7 +29,9 @@ import {
   formatDays,
   generateBody,
   initialTracker,
+  isAnalyzerBatch,
   isSelected,
+  loopTimeText,
   milestoneValue,
   notConnectedReason,
   parseBatchParam,
@@ -330,6 +333,31 @@ describe("push states", () => {
     // A push that stopped short leaves `pushing`, and may still be re-planned.
     expect(regenerateReason(planningBatch({ status: "pushing" }), true, null)).toBeUndefined();
   });
+
+  it("closes regenerate for a batch the Build Analyzer composed — there is no prompt to re-plan it from (#519)", () => {
+    const composed = planningBatch({ planner: "analyzer-v1" });
+
+    expect(regenerateReason(composed, true, null)).toBe(COMPOSED_REGENERATE_REASON);
+    // Whatever else is true of it: it is never something to regenerate.
+    expect(regenerateReason(composed, true, "Pushing…")).toBe(COMPOSED_REGENERATE_REASON);
+    expect(regenerateReason(planningBatch({ planner: "analyzer-v1", status: "pushing" }), true, null)).toBe(
+      COMPOSED_REGENERATE_REASON,
+    );
+    // …but a viewer hears first that drafting is not theirs.
+    expect(regenerateReason(composed, false, null)).toBe(DRAFT_ROLE_REASON);
+  });
+
+  it.each([
+    ["analyzer-v1", true],
+    ["analyzer-v12", true],
+    ["outline-v0", false],
+    ["llm-v3", false],
+    ["analyzer-lite-v1", false],
+    ["analyzer-v", false],
+    ["my-analyzer-v1", false],
+  ])("tells an analyzer batch by its planner: %s → %s", (planner, composed) => {
+    expect(isAnalyzerBatch({ planner })).toBe(composed);
+  });
 });
 
 describe("the footer", () => {
@@ -357,6 +385,24 @@ describe("the footer", () => {
     expect(footerText(planningBatch({ summary: { ...planningBatch().summary, selectedCount: 0 } }))).toBe(
       NOTHING_SELECTED_FOOTER,
     );
+  });
+
+  it("has the loop time on its own — the line the analyzer's drafted-tickets card draws (#519)", () => {
+    // The same batch, the same words, without the spend.
+    expect(loopTimeText(planningBatch())).toBe("est. total ~3 days of loop time");
+    expect(footerText(planningBatch()).startsWith(loopTimeText(planningBatch()))).toBe(true);
+
+    const drafts = [...seededDrafts().slice(0, 5), planningDraft({ localKey: "OTA-6", estimate: null })];
+
+    expect(loopTimeText(planningBatch({ drafts }))).toBe("est. total ~3 days of loop time so far");
+    expect(loopTimeText(planningBatch({ summary: { ...planningBatch().summary, selectedCount: 0 } }))).toBe(
+      NOTHING_SELECTED_FOOTER,
+    );
+  });
+
+  it("never prices a selection of nothing", () => {
+    // `spend` present, nothing selected: the line says nothing is selected, and no `$`.
+    expect(footerText(planningBatch({ summary: { ...planningBatch().summary, selectedCount: 0 } }))).not.toContain("$");
   });
 
   it("writes days to one decimal, and one day singular", () => {

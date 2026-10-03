@@ -5,6 +5,7 @@ import { analyzerRepos, chooseRepo } from "@/app/analyzer/repo";
 
 import { ANALYZER_REPOS, HELIOS, analyzerPage, emptyDuration, seededSchedule } from "../helpers/analyzer";
 import { emptySuggestions } from "../helpers/analyzer-suggestions";
+import { emptyTickets } from "../helpers/analyzer-tickets";
 
 /** The analyzer page's poll and its repository (#516): one address per repository, a guard on what answered. */
 
@@ -60,7 +61,13 @@ describe("isAnalyzerPage", () => {
   });
 
   it("refuses a page with no duration chart, or one missing its series or its change-points (#517)", () => {
-    const page = { repo: HELIOS, run: null, schedule: seededSchedule(), suggestions: emptySuggestions() };
+    const page = {
+      repo: HELIOS,
+      run: null,
+      schedule: seededSchedule(),
+      suggestions: emptySuggestions(),
+      tickets: emptyTickets(),
+    };
 
     expect(isAnalyzerPage(page)).toBe(false);
     expect(isAnalyzerPage({ ...page, duration: null })).toBe(false);
@@ -74,13 +81,39 @@ describe("isAnalyzerPage", () => {
   });
 
   it("refuses a page with no suggestion cards, or ones missing their rows or their calibration (#518)", () => {
-    const page = { repo: HELIOS, run: null, schedule: seededSchedule(), duration: emptyDuration() };
+    const page = {
+      repo: HELIOS,
+      run: null,
+      schedule: seededSchedule(),
+      duration: emptyDuration(),
+      tickets: emptyTickets(),
+    };
 
     expect(isAnalyzerPage(page)).toBe(false);
     expect(isAnalyzerPage({ ...page, suggestions: null })).toBe(false);
     expect(isAnalyzerPage({ ...page, suggestions: { suggestions: [] } })).toBe(false);
     expect(isAnalyzerPage({ ...page, suggestions: { suggestions: "none", calibration: [] } })).toBe(false);
     expect(isAnalyzerPage({ ...page, suggestions: { suggestions: [], calibration: [] } })).toBe(true);
+  });
+
+  it("accepts a page whose drafted-tickets card is empty — no analysis has composed a ticket", () => {
+    expect(isAnalyzerPage(analyzerPage({ tickets: emptyTickets() }))).toBe(true);
+  });
+
+  it("refuses a page with no drafted-tickets card, or one missing either of its lists (#519)", () => {
+    const page = {
+      repo: HELIOS,
+      run: null,
+      schedule: seededSchedule(),
+      duration: emptyDuration(),
+      suggestions: emptySuggestions(),
+    };
+
+    expect(isAnalyzerPage(page)).toBe(false);
+    expect(isAnalyzerPage({ ...page, tickets: null })).toBe(false);
+    expect(isAnalyzerPage({ ...page, tickets: { undrafted: [] } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, tickets: { undrafted: [], batches: "none" } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, tickets: { undrafted: [], batches: [] } })).toBe(true);
   });
 });
 

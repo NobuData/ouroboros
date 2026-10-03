@@ -1904,7 +1904,7 @@ Jul 30 are **82, 47 and 9 days ago**.
 | `11 of last 14 weekdays`, `idle 82%` | pool-a's longest wait queued 14:00–16:00 each weekday; pool-b's HIL sweeps' overlap with it |
 | `0 unique failures in 214 builds; HIL caught 9` | per commit, a stage's failure no other stage shared — all nine on merge-queue refs |
 | `3 verification waivers in 60 days` | three thermal `pr_waivers` on helios-firmware loops, 33–57 days back |
-| BA-1…BA-4, `est. total ~1.5 days` | four `ticket_draft` suggestions drafted into an `analyzer-v1` batch (BV.5's planner name), sized by `heuristic-v0`: 660 + 120 + 1 020 + 360 minutes |
+| BA-1…BA-4, `est. total ~1.5 days` | four `ticket_draft` suggestions drafted into an `analyzer-v1` batch (BV.5's planner name), sized by `heuristic-v0`: 660 + 120 + 1 020 + 360 minutes. Each body is the one BV.5's composer writes — the evidence line, every reference its findings cite (31, 118, 3 and 5) and the suggestion and run it came from — because the drafted-tickets card (#519) reads a draft's evidence back out of its body, and a push files it |
 | Predicted vs measured | the run before (38 days ago) proposed *Test-suite split* and *ccache warm-up*; both were applied, measured (V085's verdicts: delivered, under) and `recalibrate_analyzer()` turned the miss into the cache model's **0.6545** — which is why the re-warm card's raw −168 s reads −1m 50s |
 
 `tests/seed.sql` re-derives every figure above from the rows by its own queries and compares it

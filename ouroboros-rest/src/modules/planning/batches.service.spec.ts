@@ -12,7 +12,7 @@ import type {
 import type { TicketSourceRegistry } from "../ticket-sources/ticket-source.registry";
 import type { TicketSourcesService } from "../ticket-sources/ticket-sources.service";
 import type { WorkflowRegistryService } from "../workflows/registry.service";
-import { BatchesService, prefixOf } from "./batches.service";
+import { BatchesService, isComposedPlanner, prefixOf } from "./batches.service";
 import type { CreateBatchBody } from "./planning.dto";
 import { PLANNING_ERRORS } from "./planning.errors";
 import { OTHER_ORG, PlanningStore, STORE_ORG, STORE_SOURCE } from "./planning.store.fixture";
@@ -354,6 +354,45 @@ describe("composing a batch another plane drafted (#514)", () => {
     await expect(
       build().service.compose(STORE_ORG, null, { ...input, planner: "analyzer" }),
     ).rejects.toThrow("not a versioned name");
+  });
+
+  it("stores a batch only under a composing plane's planner, so regeneration can tell it apart", async () => {
+    // The engine's own planner name: a batch composed under it would be re-planned as if planned.
+    await expect(
+      build().service.compose(STORE_ORG, null, { ...input, planner: "outline-v0" }),
+    ).rejects.toThrow("not a composing plane's");
+  });
+
+  it("refuses to regenerate it: no planner was asked, so its drafts would be replaced (#519)", async () => {
+    const { service, plans } = build();
+    const batch = await service.compose(STORE_ORG, "user-1", input);
+
+    await expect(
+      refusal(async () => service.regenerate(STORE_ORG, batch.id)),
+    ).resolves.toMatchObject({
+      status: 409,
+      code: PLANNING_ERRORS.batchNotRegenerable,
+      details: { batchId: batch.id, planner: "analyzer-v1" },
+    });
+    // Nothing was asked of the engine, and both drafts are as composed.
+    expect(plans).toEqual([]);
+    expect((await service.read(STORE_ORG, batch.id)).drafts.map((draft) => draft.localKey)).toEqual(
+      ["BA-1", "BA-2"],
+    );
+  });
+});
+
+describe("telling a composed batch from a planned one", () => {
+  it.each([
+    ["analyzer-v1", true],
+    ["analyzer-v12", true],
+    ["outline-v0", false],
+    ["llm-v3", false],
+    // A family is the whole name before `-vN`, not a prefix of another planner's.
+    ["analyzer-lite-v1", false],
+    ["analyzerx-v1", false],
+  ])("%s → %s", (planner, composed) => {
+    expect(isComposedPlanner(planner)).toBe(composed);
   });
 });
 

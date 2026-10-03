@@ -4,6 +4,7 @@ import { ApiError } from "@/app/api/errors";
 
 import { HELIOS, emptyDuration, seededDuration } from "../helpers/analyzer";
 import { SUGGESTION, emptySuggestions, seededSuggestions } from "../helpers/analyzer-suggestions";
+import { TICKETS_BATCH_ID, emptyTickets, pushReport, seededBatch, seededTickets } from "../helpers/analyzer-tickets";
 import { STUB_BASE_URL, clientAnswering } from "../helpers/api";
 
 // The facade sits on the server-side client — see `server.test.ts` for what each of these
@@ -17,9 +18,9 @@ vi.mock("next/navigation", () => ({ redirect: () => {} }));
 const { analyzer } = await import("@/app/api/analyzer");
 
 /**
- * The Build Analyzer facade's duration read (#517) and its suggestion operations (#518): each by
- * repository or by suggestion, naming no workspace, and the service's refusals left as
- * `ApiError`s for the caller to word.
+ * The Build Analyzer facade's duration read (#517), its suggestion operations (#518) and the
+ * drafted-tickets card's read and push (#519): each by repository, by suggestion or by batch,
+ * naming no workspace, and the service's refusals left as `ApiError`s for the caller to word.
  */
 
 describe("analyzer.duration", () => {
@@ -137,6 +138,59 @@ describe("what a suggestion may be done with", () => {
       const { client } = clientAnswering({ code, message: "refused", details: {} }, status);
 
       const error = await analyzer.apply(SUGGESTION.move, FINGERPRINT, client).catch((thrown: unknown) => thrown);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({ status, code });
+    }
+  });
+});
+
+describe("the drafted-tickets card (#519)", () => {
+  it("asks for the repository's tickets, naming no workspace", async () => {
+    const { client, requests } = clientAnswering(seededTickets());
+
+    expect(await analyzer.tickets(HELIOS, client)).toEqual(seededTickets());
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/analyzer/tickets?repo=${encodeURIComponent(HELIOS)}`);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.headers.get("x-ouro-tenant")).toBeNull();
+  });
+
+  it("answers a repository no analysis has composed a ticket for as an empty card, not an error", async () => {
+    const { client } = clientAnswering(emptyTickets());
+
+    expect(await analyzer.tickets(HELIOS, client)).toEqual({ repo: HELIOS, undrafted: [], batches: [] });
+  });
+
+  it("carries the poll's deadline to the request", async () => {
+    const { client, requests } = clientAnswering(seededTickets());
+    const deadline = new AbortController();
+
+    await analyzer.tickets(HELIOS, client, deadline.signal);
+    deadline.abort();
+
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
+  it("pushes a batch by its id, with no body — what is pushed is what is ticked", async () => {
+    const report = pushReport(seededBatch());
+    const { client, requests } = clientAnswering(report);
+
+    expect(await analyzer.push(TICKETS_BATCH_ID, client)).toEqual(report);
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/analyzer/batches/${TICKETS_BATCH_ID}/push`);
+    expect(requests[0]?.method).toBe("POST");
+    expect(await requests[0]?.text()).toBe("");
+  });
+
+  it("leaves a push in progress, a batch already pushed and a forbidden call as the service's own errors", async () => {
+    for (const [status, code] of [
+      [409, "push_in_progress"],
+      [409, "batch_not_pushable"],
+      [403, "forbidden"],
+      [404, "analysis_batch_not_found"],
+    ] as const) {
+      const { client } = clientAnswering({ code, message: "refused", details: {} }, status);
+
+      const error = await analyzer.push(TICKETS_BATCH_ID, client).catch((thrown: unknown) => thrown);
 
       expect(error).toBeInstanceOf(ApiError);
       expect(error).toMatchObject({ status, code });
