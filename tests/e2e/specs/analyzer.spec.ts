@@ -1,8 +1,10 @@
 /**
  * Leg 23 — **the Build Analyzer's suggestion cards**
  * ([#518](https://github.com/NobuData/ouroboros/issues/518), amending
- * [#56](https://github.com/NobuData/ouroboros/issues/56)) — **and its drafted-tickets card as the
- * seed composes it** ([#519](https://github.com/NobuData/ouroboros/issues/519)).
+ * [#56](https://github.com/NobuData/ouroboros/issues/56)) — **its drafted-tickets card as the
+ * seed composes it** ([#519](https://github.com/NobuData/ouroboros/issues/519)) **and its
+ * predicted-vs-measured and how-it-works cards**
+ * ([#520](https://github.com/NobuData/ouroboros/issues/520)).
  *
  * Mockup 18's **Suggested build-process changes** and **Suggested workflow changes** against
  * `R__dev_seed_workspace_metrics_analyzer.sql`. The UI's own suites draw every state of both cards
@@ -30,6 +32,13 @@
  *     resolve; and a member, who may tick and may not push. **The push itself is leg 24's**
  *     (`specs/tickets.spec.ts`), which has to run after the planning leg — it files canonical
  *     tickets that leg's seeded parity counts.
+ *   * **Predicted vs measured, and how it works** (#520) — mockup 18's pair with the miss drawn
+ *     as plainly as the delivery (three distinct hues, in both palettes), the caption's
+ *     *retrains* opening the service's own formula and calibration cells, and the three steps
+ *     with the tenant-locality link. Then, through the writers: **the apply's measurement is a
+ *     row on the card** — `day 0 of 14`, naming its metric — which the applied row's link lands
+ *     on; and after the real re-analysis **the ingest line no longer claims rig telemetry**: the
+ *     live corpus has no export of it, and the card says *not read*, with the manifest's reason.
  *
  * ## One honest limit of the dismissal assertion
  *
@@ -58,8 +67,14 @@ import { type BrowserContext, type Locator, type Page, expect, test } from "@pla
 import {
   ANALYZER_PATH,
   CARDS,
+  HOW_IT_WORKS,
+  HOW_IT_WORKS_CARD,
+  LOCALITY,
+  MEASUREMENTS,
+  MEASUREMENTS_CARD,
   MOVE_PREVIEW,
   NOT_COLD,
+  RECALIBRATION,
   ROWS,
   SEEDED_TICKET_BATCH_ID,
   TICKETS,
@@ -68,8 +83,10 @@ import {
   TICKET_TOTALS,
   TITLES,
   applyStatusFor,
+  dayLabel,
   focusHelios,
   latestRun,
+  measurements,
   moveWindows,
   poolWindows,
   pushSeededTickets,
@@ -83,6 +100,7 @@ import {
 import { SEED_MEMBER, SEED_OWNER, SEED_TENANT } from "../support/seed";
 import { signIn } from "../support/session";
 import { STANDARD_FIX, restoreStandardFixDraft } from "../support/studio";
+import { THEMES, pinTheme } from "../support/theme";
 import { selectWorkspace } from "../support/workspace";
 
 /** How long a real analysis is given to run to its end — assemble, dispatch, analyze, compose. */
@@ -144,6 +162,61 @@ function ticketRow(page: Page, key: string): Locator {
   return ticketsCard(page)
     .getByRole("listitem")
     .filter({ has: page.getByRole("checkbox", { name: `Include ${key}` }) });
+}
+
+/**
+ * The predicted-vs-measured card.
+ *
+ * @param page The page.
+ * @returns Its region.
+ */
+function measurementsCard(page: Page): Locator {
+  return page.locator("main.analyzer").getByRole("region", { name: MEASUREMENTS_CARD });
+}
+
+/**
+ * A measurement's row, by its suggestion's name.
+ *
+ * @param page The page.
+ * @param title The name.
+ * @returns The row's list item.
+ */
+function measurementRow(page: Page, title: string): Locator {
+  return measurementsCard(page).locator(".analyzer-pv__row").filter({ hasText: title });
+}
+
+/**
+ * One of a row's two figures.
+ *
+ * @param element The row.
+ * @param line Which line.
+ * @returns The figure's element.
+ */
+function figure(element: Locator, line: "predicted" | "measured"): Locator {
+  return element
+    .locator(".analyzer-pv__line")
+    .filter({ has: element.page().getByText(line, { exact: true }) })
+    .locator(".analyzer-pv__value");
+}
+
+/**
+ * The colour an element is actually painted in — what only a browser with the sheet applied knows.
+ *
+ * @param element The element.
+ * @returns Its computed colour.
+ */
+function hue(element: Locator): Promise<string> {
+  return element.evaluate((node) => getComputedStyle(node).color);
+}
+
+/**
+ * The how-it-works card.
+ *
+ * @param page The page.
+ * @returns Its region.
+ */
+function howItWorksCard(page: Page): Locator {
+  return page.locator("main.analyzer").getByRole("region", { name: HOW_IT_WORKS_CARD });
 }
 
 /**
@@ -426,6 +499,125 @@ test.describe("analyzer suggestions — the seeded cards (#518)", () => {
 
   // The selection test's tick is the batch's stored one, so a failure between its two presses
   // would leave leg 24 pushing three drafts instead of the four it states.
+  test("predicted vs measured: the pair as the seed measured it, against mockup 18 (#520)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    await openAnalyzer(page);
+
+    const measured = measurementsCard(page);
+    const held = await measurements(context);
+
+    // The side column, in the mockup's order.
+    await expect(page.locator(".analyzer__side > *").nth(1)).toHaveAccessibleName(
+      MEASUREMENTS_CARD,
+    );
+    await expect(page.locator(".analyzer__side > *").nth(2)).toHaveAccessibleName(
+      HOW_IT_WORKS_CARD,
+    );
+    await expect(measured.getByText("applied earlier", { exact: true })).toBeVisible();
+
+    // Oldest apply first; the dates are the seed's, the figures the mockup's.
+    await expect(measured.locator(".analyzer-pv__name")).toHaveText(
+      MEASUREMENTS.map((seeded) => {
+        const applied = held.measurements.find((entry) => entry.title === seeded.title);
+
+        return `${seeded.title} (applied ${dayLabel(applied?.appliedOn ?? "")})`;
+      }),
+    );
+
+    for (const seeded of MEASUREMENTS) {
+      const element = measurementRow(page, seeded.title);
+
+      await expect(figure(element, "predicted")).toHaveText(seeded.predicted);
+      await expect(figure(element, "measured")).toContainText(seeded.measured);
+      await expect(element.locator(".analyzer-pv__note")).toHaveText(
+        seeded.note === null ? [] : [seeded.note],
+      );
+    }
+
+    // The miss is drawn as plainly as the delivery: same face, same size, same weight — and a hue
+    // of its own, in both palettes. Only a browser with the sheet applied can say so.
+    const [delivered, under] = MEASUREMENTS.map((seeded) => measurementRow(page, seeded.title));
+    const face = (element: Locator) =>
+      element.evaluate((node) => {
+        const style = getComputedStyle(node);
+
+        return [style.fontFamily, style.fontSize, style.fontWeight, style.opacity].join("|");
+      });
+
+    expect(await face(figure(under, "measured"))).toBe(await face(figure(delivered, "measured")));
+
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+
+      const hues = [
+        await hue(figure(delivered, "measured")),
+        await hue(figure(under, "measured")),
+        await hue(figure(under, "predicted")),
+      ];
+
+      expect(new Set(hues).size, `${theme}: delivered, missed and predicted are three hues`).toBe(
+        3,
+      );
+    }
+
+    // The caption, and what its *retrains* means: the service's formula and the cells it moved.
+    await expect(measured.locator(".analyzer-pv__caption")).toContainText(
+      "Every applied suggestion is re-measured for 14 days. The analyzer's model retrains",
+    );
+    await measured.getByRole("button", { name: /^retrains/ }).click();
+
+    const popover = measured.getByRole("group", { name: "How the analyzer recalibrates" });
+
+    await expect(popover.locator(".analyzer-pv__formula")).toHaveText(held.formula);
+    expect(held.formula).toMatch(/^factor = /);
+
+    for (const [index, cell] of RECALIBRATION.entries()) {
+      const drawn = popover.locator(".analyzer-pv__cell").nth(index);
+
+      await expect(drawn).toContainText(cell.cell);
+      await expect(drawn).toContainText(cell.factor);
+      await expect(drawn).toContainText(cell.movedBy);
+    }
+
+    // It opens inside the card rather than off the page's edge.
+    const [panel, frame] = [await popover.boundingBox(), await measured.boundingBox()];
+
+    expect(panel!.x).toBeGreaterThanOrEqual(frame!.x);
+    expect(panel!.x + panel!.width).toBeLessThanOrEqual(frame!.x + frame!.width + 1);
+
+    await page.keyboard.press("Escape");
+    await expect(popover).toBeHidden();
+  });
+
+  test("how it works: the three steps over the seeded corpus, and where the locality claim is argued (#520)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    await openAnalyzer(page);
+
+    const how = howItWorksCard(page);
+
+    // The seeded run read all four classes, so the first line is the mockup's.
+    expect((await latestRun(context))?.manifest?.absent).toEqual([]);
+    await expect(how.locator(".analyzer-hiw__label")).toHaveText(
+      HOW_IT_WORKS.map((step) => step.label),
+    );
+    await expect(how.locator(".analyzer-hiw__desc")).toHaveText(
+      HOW_IT_WORKS.map((step) => step.line),
+    );
+    await expect(how.locator(".analyzer-hiw__absent")).toHaveCount(0);
+
+    await expect(how.locator(".analyzer-hiw__foot")).toContainText(LOCALITY.note);
+    await expect(how.getByRole("link", { name: LOCALITY.link })).toHaveAttribute(
+      "href",
+      LOCALITY.href,
+    );
+  });
+
   test.afterEach(async ({ browser }) => {
     const context = await browser.newContext();
 
@@ -474,6 +666,34 @@ test.describe("analyzer suggestions — the flows that write (#518)", () => {
       );
       await expect(applied.getByRole("button", { name: "Apply", exact: true })).toHaveCount(0);
       await expect(card(page, "process").getByText("3 open", { exact: true })).toBeVisible();
+
+      // …and that card now holds the measurement the apply opened (#520): a third row, last,
+      // counting its days and naming the metric it is taken on — no verdict, and no check.
+      const opened = (await measurements(context)).measurements.find(
+        (entry) => entry.title === TITLES.move,
+      );
+      const pending = measurementRow(page, TITLES.move);
+
+      expect(opened).toMatchObject({ verdict: "pending", windowDays: 14 });
+      await expect(measurementsCard(page).locator(".analyzer-pv__row")).toHaveCount(3);
+      await expect(measurementsCard(page).locator(".analyzer-pv__row").last()).toContainText(
+        TITLES.move,
+      );
+      await expect(pending.locator(".analyzer-pv__name")).toContainText(
+        `(applied ${dayLabel(opened!.appliedOn)})`,
+      );
+      await expect(figure(pending, "measured")).toContainText(
+        `day ${String(opened!.day)} of ${String(opened!.windowDays)}`,
+      );
+      await expect(pending.locator(".analyzer-pv__note")).toHaveText(
+        `measuring queue wait (p95, pool-a) until ${dayLabel(opened!.windowEndsOn)}`,
+      );
+      await expect(pending).not.toContainText("✓");
+
+      // The applied row's link lands on that card.
+      await applied.getByRole("link", { name: "Predicted vs measured" }).click();
+      await expect(page).toHaveURL(/#predicted-vs-measured$/);
+      await expect(measurementsCard(page).getByRole("heading", { level: 2 })).toBeInViewport();
 
       // The effect is the preview: one window, with the preview's own fields, in the farm's table.
       const made = moveWindows(await poolWindows(context));
@@ -613,5 +833,18 @@ test.describe("analyzer suggestions — the flows that write (#518)", () => {
     );
     await expect(row(page, TITLES.flake).getByRole("button", { name: /Draft as/ })).toHaveCount(0);
     await expect(card(page, "workflow").getByRole("article")).toHaveCount(2);
+
+    // The run that just finished read a live corpus, and this deployment exports no rig telemetry
+    // (#520): the explainer stops listing it as ingested and says it was not read, with the
+    // manifest's own reason.
+    const absent = (await latestRun(context))?.manifest?.absent ?? [];
+    const ingest = howItWorksCard(page).getByRole("listitem").first();
+
+    expect(absent.map((entry) => entry.source)).toEqual(["rig_telemetry"]);
+    await expect(ingest.locator(".analyzer-hiw__desc")).toContainText("build logs");
+    await expect(ingest.locator(".analyzer-hiw__desc")).not.toContainText("rig telemetry");
+    await expect(ingest.locator(".analyzer-hiw__absent")).toHaveText(
+      `not read rig telemetry — ${absent[0].reason}`,
+    );
   });
 });

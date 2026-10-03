@@ -1544,3 +1544,294 @@
   color: var(--err);
   font-size: var(--t-sm);
 }
+
+/* ---------- the predicted-vs-measured card (#520) ---------- */
+
+.analyzer-pv {
+  min-width: 0;
+}
+
+/* The rows' place while the page is unread. */
+.analyzer-pv__skeleton {
+  height: 9rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/*
+ * The rows scroll in their own wrapper (CQ.1): every measurement is kept, so a long history is
+ * read here and never pushes the caption and the explainer off the page. The ceiling clears a
+ * dozen plain rows, so the mockup's pair and a season of applies never scroll.
+ */
+.analyzer-pv__rows {
+  max-height: 56rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+/* The mockup's `.pv`, on hairlines. A miss and a win are the same row. */
+.analyzer-pv__row {
+  padding: var(--sp-5) 0;
+}
+
+.analyzer-pv__row + .analyzer-pv__row {
+  border-top: 1px solid var(--line);
+}
+
+/* A row a confound's link landed on: a wash, since the scroll wrapper would clip an outline. */
+.analyzer-pv__row:target {
+  background: var(--accent-wash);
+}
+
+/* The mockup's `.pv-name`. */
+.analyzer-pv__name {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* `(applied Jul 2)` — the mockup's muted, unweighted aside. */
+.analyzer-pv__applied {
+  color: var(--ink-mut);
+  font-weight: 400;
+}
+
+/* The mockup's `.pv-line`: label left, figure right, mono and tabular so the two figures align. */
+.analyzer-pv__line {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-6);
+  margin: 0;
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--lh-body);
+}
+
+.analyzer-pv__key {
+  color: var(--ink-faint);
+}
+
+.analyzer-pv__value {
+  color: var(--ink);
+  text-align: right;
+}
+
+/* Delivered: the success hue (the check is in the text). */
+.analyzer-pv__value--ok {
+  color: var(--ok);
+}
+
+/* Under or over: the warning hue, at the same weight as a success — never muted. */
+.analyzer-pv__value--warn {
+  color: var(--warn);
+}
+
+/* Confounded: neither hue — the figure is not a verdict on the suggestion. */
+.analyzer-pv__value--confounded {
+  color: var(--ink-dim);
+}
+
+/* Pending: no figure yet, so no figure's ink. */
+.analyzer-pv__value--pending {
+  color: var(--ink-mut);
+}
+
+/* The mark beside a confounded figure: an outlined word, unlike either clean outcome. */
+.analyzer-pv__flag {
+  margin-left: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border: 1px dashed var(--line-control);
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* The mockup's `.pv-note`. */
+.analyzer-pv__note {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+/* The line over what interfered. */
+.analyzer-pv__interfering {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.analyzer-pv__confounds {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  margin: var(--sp-2) 0 0;
+  padding: 0 0 0 var(--sp-8);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.analyzer-pv__confound {
+  overflow-wrap: anywhere;
+}
+
+/* A destination on this page, not decoration. */
+.analyzer-pv__link {
+  color: var(--accent);
+}
+
+/*
+ * The mockup's `.caption`. Its popover opens under the whole sentence and takes the card's
+ * width: the side column is too narrow for a panel hung from one word near its edge.
+ */
+.analyzer-pv__caption {
+  position: relative;
+  margin: var(--sp-5) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.analyzer-pv__caption .analyzer-pop {
+  position: static;
+  display: inline;
+}
+
+.analyzer-pv__caption .analyzer-pop__panel {
+  right: 0;
+  width: auto;
+  max-width: 100%;
+}
+
+/* `retrains ⓘ` — the sentence's own word, underlined because it opens something. */
+.analyzer-pv__retrains {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-dim);
+  font: inherit;
+  text-decoration: underline dotted;
+  text-underline-offset: var(--sp-1);
+  cursor: pointer;
+}
+
+.analyzer-pv__retrains:hover {
+  color: var(--ink);
+}
+
+/* The service's formula, as it states it. */
+.analyzer-pv__formula {
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-sm);
+  background: var(--inset);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+/* One calibration cell: its name, its factor, what moved it. */
+.analyzer-pv__cell {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--line);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-pv__cell-name {
+  color: var(--ink);
+  font-family: var(--f-mono);
+}
+
+/* ---------- the how-it-works card (#520) ---------- */
+
+.analyzer-hiw {
+  min-width: 0;
+}
+
+.analyzer-hiw__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analyzer-hiw__step {
+  min-width: 0;
+}
+
+/* The mockup's `.h-lbl`: uppercase mono in the accent. */
+.analyzer-hiw__label {
+  margin: 0;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
+}
+
+/* The step's number, faint; a real space parts it from the name, so the two are read as two. */
+.analyzer-hiw__number {
+  color: var(--ink-faint);
+}
+
+/* The mockup's `.h-desc`. */
+.analyzer-hiw__desc {
+  margin: var(--sp-1) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+/* A source the run did not read: said under the line, never inside it. */
+.analyzer-hiw__absent {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-hiw__flag {
+  margin-right: var(--sp-2);
+  padding: 0 var(--sp-3);
+  border: 1px dashed var(--line-control);
+  border-radius: var(--r-sm);
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* The ingest line's place while the page is unread. */
+.analyzer-hiw__skeleton {
+  height: 1.25rem;
+  margin-top: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
+/* The mockup's divider and its small muted line. */
+.analyzer-hiw__foot {
+  margin: var(--sp-7) 0 0;
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.analyzer-hiw__link {
+  color: var(--accent);
+  white-space: nowrap;
+}

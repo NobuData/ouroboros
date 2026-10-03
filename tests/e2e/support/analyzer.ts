@@ -1,8 +1,9 @@
 /**
  * What the analyzer legs ([#518](https://github.com/NobuData/ouroboros/issues/518),
- * [#519](https://github.com/NobuData/ouroboros/issues/519)) arrange, read and put back — mockup
- * 18's two suggestion cards and its drafted-tickets card against
- * `R__dev_seed_workspace_metrics_analyzer.sql`.
+ * [#519](https://github.com/NobuData/ouroboros/issues/519),
+ * [#520](https://github.com/NobuData/ouroboros/issues/520)) arrange, read and put back — mockup
+ * 18's two suggestion cards, its drafted-tickets card and its predicted-vs-measured and
+ * how-it-works cards against `R__dev_seed_workspace_metrics_analyzer.sql`.
  *
  * ## The repository is the tenant chip's
  *
@@ -316,16 +317,22 @@ export async function standardFixDraft(
   };
 }
 
+/** An analysis run, as far as these legs read one. */
+export interface AnalysisRunRow {
+  readonly id: string;
+  readonly status: string;
+  /** The corpus it assembled — and the sources the deployment could not give it. */
+  readonly manifest: { readonly absent: readonly { source: string; reason: string }[] } | null;
+}
+
 /**
  * The repository's newest analysis run.
  *
  * @param context - A signed-in context.
- * @returns Its id and status, or `null` before any.
+ * @returns Its id, status and corpus manifest, or `null` before any.
  */
-export async function latestRun(
-  context: BrowserContext,
-): Promise<{ id: string; status: string } | null> {
-  const answer = await requestAs<{ run: { id: string; status: string } | null }>(
+export async function latestRun(context: BrowserContext): Promise<AnalysisRunRow | null> {
+  const answer = await requestAs<{ run: AnalysisRunRow | null }>(
     context,
     "GET",
     `/api/v1/analyzer/runs/latest?repo=${encodeURIComponent(HELIOS.ref)}`,
@@ -503,4 +510,125 @@ export async function pushSeededTickets(
   const body = (await response.json().catch(() => null)) as { code?: string } | null;
 
   return { status: response.status, code: response.ok ? null : (body?.code ?? null) };
+}
+
+/* ------------------------------------------------------------------ predicted vs measured, how it works (#520) */
+
+/** The predicted-vs-measured card's accessible name. */
+export const MEASUREMENTS_CARD = "Predicted vs measured";
+
+/** The how-it-works card's accessible name. */
+export const HOW_IT_WORKS_CARD = "How it works";
+
+/** A seeded measurement, as mockup 18 draws it. */
+export interface SeededMeasurement {
+  /** The applied suggestion's name. */
+  readonly title: string;
+  /** The mockup's predicted figure. */
+  readonly predicted: string;
+  /** The mockup's measured figure, with its check where it delivered. */
+  readonly measured: string;
+  /** Which hue the measured figure wears. */
+  readonly tone: "ok" | "warn";
+  /** The composed note under the row, or `null` for the one that delivered. */
+  readonly note: string | null;
+}
+
+/**
+ * Mockup 18's pair, oldest apply first. The figures are the mockup's; the *applied* dates are the
+ * seed's (37 and 30 days before the day it ran) and are read from the service.
+ */
+export const MEASUREMENTS: readonly SeededMeasurement[] = [
+  {
+    title: "Test-suite split",
+    predicted: "−3m 40s",
+    measured: "−3m 55s ✓",
+    tone: "ok",
+    note: null,
+  },
+  {
+    title: "ccache warm-up",
+    predicted: "−1m 50s",
+    measured: "−1m 12s",
+    tone: "warn",
+    note: "under-delivered — analyzer revised its cache model",
+  },
+];
+
+/** The calibration cells those two closes moved, as the popover states them. */
+export const RECALIBRATION: readonly { cell: string; factor: string; movedBy: string }[] = [
+  {
+    cell: "cache_window · duration_delta",
+    factor: "× 0.6545 now, from 1 closed measurement",
+    movedBy: "moved by ccache warm-up",
+  },
+  {
+    cell: "workflow_outcome · duration_delta",
+    factor: "× 1.0682 now, from 1 closed measurement",
+    movedBy: "moved by Test-suite split",
+  },
+];
+
+/** Mockup 18's three steps, as the seeded run's corpus has the first one read. */
+export const HOW_IT_WORKS: readonly { label: string; line: string }[] = [
+  { label: "01 Ingest", line: "build logs, test results, loop transcripts, rig telemetry" },
+  { label: "02 Correlate", line: "change-points ↔ merges, configs, infra events" },
+  {
+    label: "03 Synthesize",
+    line: "process changes, workflow drafts, tickets — with evidence attached",
+  },
+];
+
+/** The footer's sentence, and where its link must land. */
+export const LOCALITY = {
+  note: "Runs on your build farm's data. Nothing leaves the tenant.",
+  link: "How that is enforced ↗",
+  href: /\/docs\/SECURITY_MODEL\.md#66-the-build-analyzers-corpus-stays-on-the-tenant$/,
+} as const;
+
+/** A measurement, as far as this leg reads one. */
+export interface MeasurementRow {
+  readonly id: string;
+  readonly suggestionId: string;
+  readonly title: string;
+  readonly appliedOn: string;
+  readonly windowEndsOn: string;
+  readonly day: number;
+  readonly windowDays: number;
+  readonly verdict: string;
+}
+
+/**
+ * The repository's measurements and the formula that recalibrates on them, as the service answers.
+ *
+ * @param context - A signed-in context.
+ * @returns The measurements, newest apply first, and the formula.
+ */
+export async function measurements(
+  context: BrowserContext,
+): Promise<{ formula: string; measurements: readonly MeasurementRow[] }> {
+  const answer = await requestAs<{ formula: string; measurements: MeasurementRow[] }>(
+    context,
+    "GET",
+    `/api/v1/analyzer/measurements?repo=${encodeURIComponent(HELIOS.ref)}`,
+    null,
+    "reading the analyzer's measurements",
+  );
+
+  return answer ?? { formula: "", measurements: [] };
+}
+
+/** The months, as the cards abbreviate them. */
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/**
+ * A UTC day as the cards write it.
+ *
+ * @param day - An ISO date — `2026-08-27`.
+ * @returns `Aug 27`.
+ */
+export function dayLabel(day: string): string {
+  const [, month, date] = day.split("-").map(Number);
+
+  return `${MONTHS[(month ?? 1) - 1] ?? ""} ${String(date ?? "")}`;
 }

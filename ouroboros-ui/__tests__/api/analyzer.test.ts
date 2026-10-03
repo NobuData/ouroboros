@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import { ApiError } from "@/app/api/errors";
 
 import { HELIOS, emptyDuration, seededDuration } from "../helpers/analyzer";
+import { noMeasurements, seededMeasurements } from "../helpers/analyzer-measurements";
 import { SUGGESTION, emptySuggestions, seededSuggestions } from "../helpers/analyzer-suggestions";
 import { TICKETS_BATCH_ID, emptyTickets, pushReport, seededBatch, seededTickets } from "../helpers/analyzer-tickets";
 import { STUB_BASE_URL, clientAnswering } from "../helpers/api";
@@ -18,9 +19,10 @@ vi.mock("next/navigation", () => ({ redirect: () => {} }));
 const { analyzer } = await import("@/app/api/analyzer");
 
 /**
- * The Build Analyzer facade's duration read (#517), its suggestion operations (#518) and the
- * drafted-tickets card's read and push (#519): each by repository, by suggestion or by batch,
- * naming no workspace, and the service's refusals left as `ApiError`s for the caller to word.
+ * The Build Analyzer facade's duration read (#517), its suggestion operations (#518), the
+ * drafted-tickets card's read and push (#519) and the measurements read (#520): each by
+ * repository, by suggestion or by batch, naming no workspace, and the service's refusals left as
+ * `ApiError`s for the caller to word.
  */
 
 describe("analyzer.duration", () => {
@@ -195,5 +197,42 @@ describe("the drafted-tickets card (#519)", () => {
       expect(error).toBeInstanceOf(ApiError);
       expect(error).toMatchObject({ status, code });
     }
+  });
+});
+
+describe("the predicted-vs-measured card (#520)", () => {
+  it("asks for the repository's measurements, naming no workspace", async () => {
+    const { client, requests } = clientAnswering(seededMeasurements());
+
+    expect(await analyzer.measurements(HELIOS, client)).toEqual(seededMeasurements());
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/analyzer/measurements?repo=${encodeURIComponent(HELIOS)}`);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.headers.get("x-ouro-tenant")).toBeNull();
+  });
+
+  it("answers a repository nothing was applied in as an empty answer with the formula, not an error", async () => {
+    const { client } = clientAnswering(noMeasurements());
+
+    expect(await analyzer.measurements(HELIOS, client)).toMatchObject({ measurements: [], calibration: [] });
+    expect((await analyzer.measurements(HELIOS, client)).formula).toMatch(/^factor = /);
+  });
+
+  it("carries the poll's deadline to the request", async () => {
+    const { client, requests } = clientAnswering(seededMeasurements());
+    const deadline = new AbortController();
+
+    await analyzer.measurements(HELIOS, client, deadline.signal);
+    deadline.abort();
+
+    expect(requests[0]?.signal.aborted).toBe(true);
+  });
+
+  it("leaves a refusal as the service's own error", async () => {
+    const { client } = clientAnswering({ code: "analysis_repository_not_found", message: "No such repository." }, 404);
+
+    const error = await analyzer.measurements("acme-robotics/gone", client).catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ status: 404, code: "analysis_repository_not_found" });
   });
 });

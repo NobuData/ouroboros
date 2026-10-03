@@ -6259,7 +6259,12 @@ suggestion is re-measured for 14 days; the analyzer's model retrains on its own 
   `round(Σ clamp(measured ÷ raw, 0, 2) × raw ÷ Σ raw, 4)`. The composer applies the new factor at
   the next composition.
 - **Read.** `GET /api/v1/analyzer/measurements?repo=` returns every measurement with day N of its
-  window, plus the calibration cells with their history and the formula.
+  window, plus the calibration cells with their history and the formula. Since 0.38.14 the
+  contract documents what a measurement's three objects hold (#520, which draws them):
+  `MeasurementBaseline` (the window, its value, and the statistic and slice where BV.5 stored
+  them), `MeasurementPrediction` (the delta, its unit, its basis and the calibration it was made
+  under) and `MeasurementResult` (the window, its value and the delta from the baseline).
+  `measurement.contract.spec.ts` holds the schemas to what V085 writes.
 - **Suite.** `measurement.integration-spec.ts`, `analyzer.isolation.integration-spec.ts` (every
   analyzer route) and `actions/draft.integration-spec.ts` (draft, size, push to a recorded
   GitHub). Removing confound detection, calibration application or dismissal persistence turns one

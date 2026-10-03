@@ -10,6 +10,8 @@ import type { AnalyzerPollOptions } from "./analyzer-poll";
 import { AnalyzerProvider, useAnalyzer } from "./analyzer-store";
 import type { AnalyzerReadings } from "./data";
 import { DurationCard } from "./duration-card";
+import { HowItWorksCard } from "./how-it-works-card";
+import { MeasurementsCard } from "./measurements-card";
 import { MetaStrip } from "./meta-strip";
 import { RunProgress } from "./run-progress";
 import { ProcessSuggestionsCard, WorkflowSuggestionsCard } from "./suggestion-cards";
@@ -29,8 +31,9 @@ const UNREAD_HEADLINE = "The Build Analyzer could not be read.";
  * strip. Below it the mockup's two columns begin: the main one holds the annotated duration chart
  * (BW.2, [#517](https://github.com/NobuData/ouroboros/issues/517)) and, under it, the two
  * suggestion cards (BW.3, [#518](https://github.com/NobuData/ouroboros/issues/518)); the side
- * one opens with the drafted tickets (BW.4,
- * [#519](https://github.com/NobuData/ouroboros/issues/519)), and the measurements (BW.5) follow.
+ * one holds the drafted tickets (BW.4, [#519](https://github.com/NobuData/ouroboros/issues/519)),
+ * then the predicted-vs-measured card and the how-it-works explainer (BW.5,
+ * [#520](https://github.com/NobuData/ouroboros/issues/520)).
  *
  * It has no sidebar entry of its own; it lives under **Build Farm**, which it publishes as its
  * origin so that entry stays lit (`setNavOrigin`, `app/shell/nav-registry.ts`).
@@ -80,8 +83,9 @@ function AnalyzerMain() {
 }
 
 /**
- * The mockup's side column (`c-4`) — what the analysis turned into work: the drafted tickets. Like
- * the main column it is one repository's, so it is not drawn where there is none to analyse.
+ * The mockup's side column (`c-4`) — what the analysis turned into work, how its predictions held
+ * up, and how it works. Like the main column it is one repository's, so it is not drawn where
+ * there is none to analyse.
  *
  * @returns The column, or nothing.
  */
@@ -91,6 +95,8 @@ function AnalyzerSide() {
   return chosen === null ? null : (
     <div className="analyzer__side">
       <TicketsCard />
+      <MeasurementsCard />
+      <HowItWorksCard />
     </div>
   );
 }

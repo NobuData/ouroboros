@@ -3919,20 +3919,24 @@ leg 21's shell assertion found.
 the head, *Run analysis now* with real progress, the schedule editor and the meta strip — and, in
 the mockup's main column, the annotated duration chart
 ([#517](https://github.com/NobuData/ouroboros/issues/517)) and the two suggestion cards
-([#518](https://github.com/NobuData/ouroboros/issues/518)); the side column opens with the
-drafted-tickets card ([#519](https://github.com/NobuData/ouroboros/issues/519)), and BW.5's
-follows. The code is [`app/analyzer/`](app/analyzer); every sentence and format is a pure function
-in [`view.ts`](app/analyzer/view.ts), [`duration-view.ts`](app/analyzer/duration-view.ts),
-[`suggestions-view.ts`](app/analyzer/suggestions-view.ts) and
-[`tickets-view.ts`](app/analyzer/tickets-view.ts).
+([#518](https://github.com/NobuData/ouroboros/issues/518)); the side column holds the
+drafted-tickets card ([#519](https://github.com/NobuData/ouroboros/issues/519)), then the
+predicted-vs-measured card and the how-it-works explainer
+([#520](https://github.com/NobuData/ouroboros/issues/520)). The code is
+[`app/analyzer/`](app/analyzer); every sentence and format is a pure function in
+[`view.ts`](app/analyzer/view.ts), [`duration-view.ts`](app/analyzer/duration-view.ts),
+[`suggestions-view.ts`](app/analyzer/suggestions-view.ts),
+[`tickets-view.ts`](app/analyzer/tickets-view.ts) and
+[`measurements-view.ts`](app/analyzer/measurements-view.ts).
 
 - **Repo-scoped by the tenant chip.** The page analyses the chip's focus repository; under
   *All repos* it takes the first enabled one and says how to choose
   ([`repo.ts`](app/analyzer/repo.ts)). It has no sidebar entry: it publishes **Build Farm** as its
   origin, so that entry stays lit. The farm's and the insights' **✦ Build Analyzer** link here.
 - **One poll per repository.** `GET /api/analyzer?repo=` on this origin answers the newest run,
-  the schedule, the duration chart, the suggestion cards and the drafted tickets together, and
-  asks to be polled every 3 s while a run is in flight or a drafted batch is still being sized.
+  the schedule, the duration chart, the suggestion cards, the drafted tickets and the
+  measurements together, and asks to be polled every 3 s while a run is in flight or a drafted
+  batch is still being sized.
 - **Honest provenance (decision A3).** `Analyzed by` is the run's analyzer-set label
   (`deterministic analyzers v1`) opening the analyzers, their versions and outcomes; a model pill
   appears only beside an analyzer of kind `llm`. `Last run` is compute time; the `$` appears only
@@ -4104,6 +4108,72 @@ est. total ~1.5 days of loop time            [Push 4 tickets to backlog →] [Ed
 - **Roles.** Everyone reads the card and every evidence sheet. Ticking is an owner's, admin's or
   member's — the planning page's rule for the same checkbox; drafting and pushing are an owner's
   or admin's, each inert control carrying its reason.
+
+### Predicted vs measured, and how it works
+
+**Predicted vs measured** ([`measurements-card.tsx`](app/analyzer/measurements-card.tsx), #520) is
+the accountability card: what each applied suggestion predicted, beside what was then measured.
+It is drawn from `GET /api/v1/analyzer/measurements` — the page's sixth read — and computes
+nothing: every figure, verdict, note and factor is the service's.
+
+```
+PREDICTED VS MEASURED                                    [applied earlier]
+Test-suite split (applied Aug 27)
+  predicted                                                       −3m 40s
+  measured                                                      −3m 55s ✓
+ccache warm-up (applied Sep 3)
+  predicted                                                       −1m 50s
+  measured                                                        −1m 12s
+  under-delivered — analyzer revised its cache model
+Every applied suggestion is re-measured for 14 days. The analyzer's model retrains ⓘ on its own misses.
+```
+
+- **A miss is drawn exactly like a win.** Every measurement is a row, oldest apply first — the
+  same name, the same two mono lines, the same weight. Only the measured figure's hue and the
+  line under the row differ. Nothing is filtered, collapsed or muted, and a long history scrolls
+  in the rows' own wrapper rather than being cut.
+
+  | verdict | measured line | under the row |
+  |---|---|---|
+  | `delivered` | the measured change, success hue, `✓` | — |
+  | `under`, `over` | the measured change, warning hue | the service's composed note |
+  | `confounded` | the measured change, marked `CONFOUNDED` — neither hue | the note, then what interfered |
+  | `pending` | `day N of 14` | `measuring queue wait (p95, pool-a) until Oct 17` |
+
+  The verdict is also in the text — a check, a mark, and a word a screen reader hears — so the
+  hue is never the only signal.
+- **Confounds are listed, dated and linked.** Another suggestion applied inside the window is
+  named by its own row and links to it (`#measurement-<id>`); a change-point detected inside it
+  is named by the duration chart's chip for that day and links to the chart (`#build-duration`).
+  One the page no longer holds keeps its date and links nowhere. A pending measurement already
+  lists what has landed in its window.
+- **The pending line names what is being measured** — the target metric with the statistic and
+  the slice the baseline was taken on — and until when.
+- **`retrains` opens the recalibration popover**: what the word means here (one multiplier per
+  analyzer and kind of impact), the formula **as the service states it**, and each calibration
+  cell — `cache_window · duration_delta`, `× 0.6545 now, from 1 closed measurement` — with every
+  update that moved it and the measurements that update added
+  (`Sep 18 · × 1 → × 0.6545 = −72 ÷ −110 over 1 measurement — moved by ccache warm-up`; on the
+  dev seed the update is dated the day the seed ran, because the seed goes through the real
+  writer).
+- **With nothing applied** the card says so, and what will appear there — without the
+  *applied earlier* tag, which describes rows; while the page is unread it holds the rows' place
+  and claims neither.
+- **Its heading answers to `#predicted-vs-measured`** — where an applied suggestion's row links.
+
+**How it works** ([`how-it-works-card.tsx`](app/analyzer/how-it-works-card.tsx), #520) is the
+mockup's three steps, each a statement about the pipeline as it ran.
+
+- **01 Ingest is written from the newest run's corpus manifest**: `build logs` (its log lines),
+  `test results` (read with the builds), `loop transcripts` (its loops) and `rig telemetry` (its
+  HIL sessions). A class the window held none of says *(none in this window)*. A source the
+  manifest lists as **absent** is not in the line at all: it is shown under it as
+  `NOT READ rig telemetry — <the manifest's reason>`. Before any run, the line says no corpus
+  has been assembled.
+- **02 Correlate** and **03 Synthesize** are the mockup's sentences.
+- **The footer** — *Runs on your build farm's data. Nothing leaves the tenant.* — links to the
+  section of [`docs/SECURITY_MODEL.md`](../docs/SECURITY_MODEL.md) that argues it (§ 6.6); a
+  test holds the link's anchor to that heading.
 
 ## Insights
 

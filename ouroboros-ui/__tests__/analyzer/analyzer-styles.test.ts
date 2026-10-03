@@ -8,7 +8,8 @@ import { describe, expect, it } from "vitest";
  * is a token — what *both themes* and *CQ.1's rem type* can be verified as, since jsdom applies no
  * stylesheet — and the page adds no chrome to the shell. Since #517 it also dresses the duration
  * chart's card and the Details sheet behind each chip, since #518 the two suggestion cards with
- * the surfaces their rows open, and since #519 the drafted-tickets card in the side column.
+ * the surfaces their rows open, since #519 the drafted-tickets card in the side column, and since
+ * #520 the predicted-vs-measured and how-it-works cards under it.
  */
 
 const ANALYZER = join(import.meta.dirname, "..", "..", "app", "analyzer");
@@ -301,6 +302,103 @@ describe("the drafted-tickets card (#519)", () => {
   it("leaves the checkbox, the chip and the buttons to the platform and the design system", () => {
     expect(COMPONENT).toContain("<EffortChip");
     expect(COMPONENT).toContain('type="checkbox"');
+    expect(CODE).not.toMatch(/\.ou-/);
+  });
+});
+
+describe("the predicted-vs-measured card (#520)", () => {
+  it("draws the mockup's row: a weighted name, two mono tabular lines with faint labels, on hairlines", () => {
+    expect(rule("\\.analyzer-pv__row \\+ \\.analyzer-pv__row")).toMatch(/border-top:\s*1px solid var\(--line\)/);
+    expect(rule("\\.analyzer-pv__name")).toMatch(/font-weight:\s*600/);
+    expect(rule("\\.analyzer-pv__name")).toMatch(/font-size:\s*var\(--t-sm\)/);
+    expect(rule("\\.analyzer-pv__line")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-pv__line")).toMatch(/font-variant-numeric:\s*tabular-nums/);
+    expect(rule("\\.analyzer-pv__line")).toMatch(/justify-content:\s*space-between/);
+    expect(rule("\\.analyzer-pv__key")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.analyzer-pv__note")).toMatch(/color:\s*var\(--ink-mut\)/);
+  });
+
+  it("tells a delivery from a miss by hue alone — a miss is the warning hue, never a muted one", () => {
+    expect(rule("\\.analyzer-pv__value--ok")).toMatch(/^\s*color:\s*var\(--ok\);\s*$/);
+    expect(rule("\\.analyzer-pv__value--warn")).toMatch(/^\s*color:\s*var\(--warn\);\s*$/);
+  });
+
+  it("mutes, shrinks and fades nothing about a row: no modifier of the row itself exists", () => {
+    expect([...DECLARED].filter((name) => name.startsWith("analyzer-pv__row--"))).toEqual([]);
+    expect(CODE).not.toMatch(/\.analyzer-pv[a-z_-]*\s*\{[^}]*opacity/);
+  });
+
+  it("gives a confounded figure neither clean hue, and marks it with an outlined word", () => {
+    expect(rule("\\.analyzer-pv__value--confounded")).not.toMatch(/--ok|--warn/);
+    expect(rule("\\.analyzer-pv__flag")).toMatch(/border:\s*1px dashed var\(--line-control\)/);
+    expect(rule("\\.analyzer-pv__flag")).toMatch(/text-transform:\s*uppercase/);
+    expect(rule("\\.analyzer-pv__value--pending")).not.toMatch(/--ok|--warn/);
+  });
+
+  it("scrolls a long history in the rows' own wrapper — down only", () => {
+    expect(rule("\\.analyzer-pv__rows")).toMatch(/overflow-y:\s*auto/);
+    expect(rule("\\.analyzer-pv__rows")).toMatch(/max-height:\s*[\d.]+rem/);
+    expect(rule("\\.analyzer-pv")).toMatch(/min-width:\s*0/);
+  });
+
+  it("draws the mockup's faint caption, and its retrains as a control inside the sentence", () => {
+    expect(rule("\\.analyzer-pv__caption")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.analyzer-pv__caption")).toMatch(/font-size:\s*var\(--t-xs\)/);
+    expect(rule("\\.analyzer-pv__retrains")).toMatch(/cursor:\s*pointer/);
+    expect(rule("\\.analyzer-pv__retrains")).toMatch(/text-decoration:\s*underline/);
+    expect(rule("\\.analyzer-pv__retrains")).toMatch(/font:\s*inherit/);
+  });
+
+  it("opens the popover under the whole caption at the card's width — the column is too narrow to hang it from a word", () => {
+    expect(rule("\\.analyzer-pv__caption")).toMatch(/position:\s*relative/);
+    expect(rule("\\.analyzer-pv__caption \\.analyzer-pop")).toMatch(/position:\s*static/);
+    expect(rule("\\.analyzer-pv__caption \\.analyzer-pop__panel")).toMatch(/right:\s*0/);
+    expect(rule("\\.analyzer-pv__caption \\.analyzer-pop__panel")).toMatch(/width:\s*auto/);
+  });
+
+  it("wraps a long name, note, confound and formula rather than widening the column", () => {
+    for (const selector of [
+      "\\.analyzer-pv__name",
+      "\\.analyzer-pv__note",
+      "\\.analyzer-pv__confound",
+      "\\.analyzer-pv__formula",
+      "\\.analyzer-pv__cell",
+    ]) {
+      expect(rule(selector), selector).toMatch(/overflow-wrap:\s*anywhere/);
+    }
+  });
+
+  it("draws a confound's link in the accent, and shows the row it lands on", () => {
+    expect(rule("\\.analyzer-pv__link")).toMatch(/color:\s*var\(--accent\)/);
+    expect(rule("\\.analyzer-pv__row:target")).toMatch(/background:\s*var\(--accent-wash\)/);
+  });
+});
+
+describe("the how-it-works card (#520)", () => {
+  it("draws the mockup's step: an accent uppercase mono label, a faint number, a muted line", () => {
+    expect(rule("\\.analyzer-hiw__label")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-hiw__label")).toMatch(/text-transform:\s*uppercase/);
+    expect(rule("\\.analyzer-hiw__label")).toMatch(/color:\s*var\(--accent\)/);
+    expect(rule("\\.analyzer-hiw__number")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.analyzer-hiw__desc")).toMatch(/color:\s*var\(--ink-mut\)/);
+  });
+
+  it("rules the footer off, as the mockup's divider does, and links it in the accent", () => {
+    expect(rule("\\.analyzer-hiw__foot")).toMatch(/border-top:\s*1px solid var\(--line\)/);
+    expect(rule("\\.analyzer-hiw__foot")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.analyzer-hiw__link")).toMatch(/color:\s*var\(--accent\)/);
+  });
+
+  it("marks a source that was not read with the confounded mark's outline — a statement, not an alarm", () => {
+    expect(rule("\\.analyzer-hiw__flag")).toMatch(/border:\s*1px dashed var\(--line-control\)/);
+    expect(rule("\\.analyzer-hiw__flag")).not.toMatch(/--err|--warn/);
+    expect(rule("\\.analyzer-hiw__absent")).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it("leaves both cards' frames, heads, tags and empty states to the design system", () => {
+    expect(COMPONENT).toContain('className="analyzer-pv"');
+    expect(COMPONENT).toContain('className="analyzer-hiw"');
+    expect(COMPONENT).toContain("<EmptyState note={NO_MEASUREMENTS.note}");
     expect(CODE).not.toMatch(/\.ou-/);
   });
 });

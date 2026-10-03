@@ -219,6 +219,12 @@ export function chipDescription(point: ChangePoint): string {
   return `${changeSentence(point)}. ${candidate} Opens the details.`;
 }
 
+/**
+ * The id the chart card's heading answers to — where a measurement that a detected shift
+ * confounded links (BW.5, [#520](https://github.com/NobuData/ouroboros/issues/520)).
+ */
+export const DURATION_ANCHOR = "build-duration";
+
 /* ------------------------------------------------------------------ the chart */
 
 /**

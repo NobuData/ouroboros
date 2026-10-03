@@ -13695,12 +13695,10 @@ export interface components {
             /** Format: date */
             windowEndsOn: string;
             targetMetric: string;
-            /** @description {window, value, statistic?, dimension?} — frozen at apply. */
-            baseline: Record<string, never>;
-            /** @description {delta, unit, basis, calibration} — frozen at apply. */
-            predicted: Record<string, never>;
-            /** @description {window, value, delta} — null while pending. */
-            measured: Record<string, never> | null;
+            baseline: components["schemas"]["MeasurementBaseline"];
+            predicted: components["schemas"]["MeasurementPrediction"];
+            /** @description Null while pending. */
+            measured: components["schemas"]["MeasurementResult"] | null;
             /** @enum {string} */
             verdict: "pending" | "delivered" | "under" | "over" | "confounded";
             confounds: {
@@ -13714,6 +13712,73 @@ export interface components {
             note: string | null;
             /** Format: date-time */
             closedAt: string | null;
+        };
+        /**
+         * MeasurementWindow
+         * @description A span of UTC days, both inclusive.
+         */
+        MeasurementWindow: {
+            /** Format: date */
+            from: string;
+            /** Format: date */
+            to: string;
+        };
+        /**
+         * MeasurementBaseline
+         * @description The target metric over the window before the apply, frozen when it was applied (V085), in
+         *     the prediction's unit.
+         */
+        MeasurementBaseline: {
+            window: components["schemas"]["MeasurementWindow"];
+            value: number;
+            /** @description How the window's rows became one number — `median`, `p95`, `weekly_sum`. Absent on older rows. */
+            statistic?: string;
+            /** @description The slice of the metric measured — a pool's name, say. Absent when it is the whole metric. */
+            dimension?: string;
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * MeasurementPrediction
+         * @description What the suggestion predicted, frozen when it was applied (V085) — the change in the target
+         *     metric, how it was arrived at, and the calibration factor it was made with.
+         */
+        MeasurementPrediction: {
+            /** @description The predicted change — negative is a saving. */
+            delta: number;
+            /** @enum {string} */
+            unit: "seconds" | "interventions" | "count";
+            basis: {
+                /** @enum {string} */
+                method: "measured" | "extrapolated";
+                description: string;
+                sample_size?: number;
+            } & {
+                [key: string]: unknown;
+            };
+            /** @description The calibration cell the composer read, and the factor it applied (1 when the cell had no row). */
+            calibration: {
+                analyzer: string;
+                impact_class: string;
+                factor: number;
+            } & {
+                [key: string]: unknown;
+            };
+        } & {
+            [key: string]: unknown;
+        };
+        /**
+         * MeasurementResult
+         * @description The target metric over the measured window and its change from the baseline, written when
+         *     the window closes (V085), in the prediction's unit.
+         */
+        MeasurementResult: {
+            window: components["schemas"]["MeasurementWindow"];
+            value: number;
+            /** @description `value` minus the baseline's — what was measured against `predicted.delta`. */
+            delta: number;
+        } & {
+            [key: string]: unknown;
         };
         /**
          * CalibrationCell
@@ -33622,6 +33687,11 @@ export interface operations {
                      *           "predicted": {
                      *             "delta": -110,
                      *             "unit": "seconds",
+                     *             "basis": {
+                     *               "method": "measured",
+                     *               "description": "9 runner starts, cold against warm",
+                     *               "sample_size": 9
+                     *             },
                      *             "calibration": {
                      *               "analyzer": "cache_window",
                      *               "impact_class": "duration_delta",

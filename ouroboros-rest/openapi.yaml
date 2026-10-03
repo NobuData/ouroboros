@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.13"
+  version: "0.38.14"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -8227,6 +8227,7 @@ paths:
                     predicted:
                       delta: -110
                       unit: seconds
+                      basis: { method: measured, description: "9 runner starts, cold against warm", sample_size: 9 }
                       calibration: { analyzer: cache_window, impact_class: duration_delta, factor: 1 }
                     measured: { window: { from: "2026-07-10", to: "2026-07-23" }, value: 308, delta: -72 }
                     verdict: under
@@ -37052,11 +37053,13 @@ components:
         windowDays: { type: integer, minimum: 1 }
         windowEndsOn: { type: string, format: date }
         targetMetric: { type: string }
-        baseline: { type: object, description: "{window, value, statistic?, dimension?} — frozen at apply." }
-        predicted: { type: object, description: "{delta, unit, basis, calibration} — frozen at apply." }
+        baseline: { $ref: "#/components/schemas/MeasurementBaseline" }
+        predicted: { $ref: "#/components/schemas/MeasurementPrediction" }
         measured:
-          type: [object, "null"]
-          description: "{window, value, delta} — null while pending."
+          description: Null while pending.
+          oneOf:
+            - $ref: "#/components/schemas/MeasurementResult"
+            - type: "null"
         verdict: { type: string, enum: [pending, delivered, under, over, confounded] }
         confounds:
           type: array
@@ -37070,6 +37073,76 @@ components:
               date: { type: string, format: date }
         note: { type: [string, "null"] }
         closedAt: { type: [string, "null"], format: date-time }
+
+    MeasurementWindow:
+      type: object
+      title: MeasurementWindow
+      description: A span of UTC days, both inclusive.
+      additionalProperties: false
+      required: [from, to]
+      properties:
+        from: { type: string, format: date }
+        to: { type: string, format: date }
+
+    MeasurementBaseline:
+      type: object
+      title: MeasurementBaseline
+      description: |-
+        The target metric over the window before the apply, frozen when it was applied (V085), in
+        the prediction's unit.
+      additionalProperties: true
+      required: [window, value]
+      properties:
+        window: { $ref: "#/components/schemas/MeasurementWindow" }
+        value: { type: number }
+        statistic:
+          type: string
+          description: How the window's rows became one number — `median`, `p95`, `weekly_sum`. Absent on older rows.
+        dimension:
+          type: string
+          description: The slice of the metric measured — a pool's name, say. Absent when it is the whole metric.
+
+    MeasurementPrediction:
+      type: object
+      title: MeasurementPrediction
+      description: |-
+        What the suggestion predicted, frozen when it was applied (V085) — the change in the target
+        metric, how it was arrived at, and the calibration factor it was made with.
+      additionalProperties: true
+      required: [delta, unit, basis, calibration]
+      properties:
+        delta: { type: number, description: The predicted change — negative is a saving. }
+        unit: { type: string, enum: [seconds, interventions, count] }
+        basis:
+          type: object
+          additionalProperties: true
+          required: [method, description]
+          properties:
+            method: { type: string, enum: [measured, extrapolated] }
+            description: { type: string }
+            sample_size: { type: integer, minimum: 1 }
+        calibration:
+          type: object
+          description: The calibration cell the composer read, and the factor it applied (1 when the cell had no row).
+          additionalProperties: true
+          required: [analyzer, impact_class, factor]
+          properties:
+            analyzer: { type: string }
+            impact_class: { type: string }
+            factor: { type: number }
+
+    MeasurementResult:
+      type: object
+      title: MeasurementResult
+      description: |-
+        The target metric over the measured window and its change from the baseline, written when
+        the window closes (V085), in the prediction's unit.
+      additionalProperties: true
+      required: [window, value, delta]
+      properties:
+        window: { $ref: "#/components/schemas/MeasurementWindow" }
+        value: { type: number }
+        delta: { type: number, description: "`value` minus the baseline's — what was measured against `predicted.delta`." }
 
     CalibrationCell:
       type: object

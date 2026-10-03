@@ -12,14 +12,15 @@ import {
   seededRun,
   seededSchedule,
 } from "../helpers/analyzer";
+import { seededMeasurements } from "../helpers/analyzer-measurements";
 import { seededSuggestions } from "../helpers/analyzer-suggestions";
 import { seededBatch, seededTickets, ticketsWith } from "../helpers/analyzer-tickets";
 
 /**
- * The analyzer page, read for the screen's poll (#516) — and its hop, `GET /api/analyzer`: five
- * reads (the run, the schedule, since #517 the duration chart, since #518 the suggestion cards and
- * since #519 the drafted-tickets card) under the poll family's deadline, polled fast while a run
- * is in flight or a drafted batch is still being sized.
+ * The analyzer page, read for the screen's poll (#516) — and its hop, `GET /api/analyzer`: six
+ * reads (the run, the schedule, since #517 the duration chart, since #518 the suggestion cards,
+ * since #519 the drafted-tickets card and since #520 the measurements) under the poll family's
+ * deadline, polled fast while a run is in flight or a drafted batch is still being sized.
  */
 
 vi.mock("server-only", () => ({}));
@@ -96,6 +97,7 @@ describe("the page's own read", () => {
   const duration = vi.fn();
   const suggestions = vi.fn();
   const tickets = vi.fn();
+  const measurements = vi.fn();
   const CLIENT = { name: "the anonymous client" };
 
   beforeEach(() => {
@@ -105,7 +107,10 @@ describe("the page's own read", () => {
     duration.mockReset().mockResolvedValue(seededDuration());
     suggestions.mockReset().mockResolvedValue(seededSuggestions());
     tickets.mockReset().mockResolvedValue(seededTickets());
-    vi.doMock("@/app/api/analyzer", () => ({ analyzer: { latest, schedule, duration, suggestions, tickets } }));
+    measurements.mockReset().mockResolvedValue(seededMeasurements());
+    vi.doMock("@/app/api/analyzer", () => ({
+      analyzer: { latest, schedule, duration, suggestions, tickets, measurements },
+    }));
     vi.doMock("@/app/api/server", () => ({ anonymousApi: () => CLIENT }));
   });
 
@@ -114,13 +119,13 @@ describe("the page's own read", () => {
     vi.doUnmock("@/app/api/server");
   });
 
-  it("makes the run, schedule, duration, suggestion and ticket reads together, through one client, under the deadline", async () => {
+  it("makes the run, schedule, duration, suggestion, ticket and measurement reads together, through one client, under the deadline", async () => {
     const page = await import("@/app/api/analyzer-page");
 
     const answer = await page.readAnalyzerPage(HELIOS);
 
     expect(answer).toEqual(freshPage());
-    for (const read of [latest, schedule, duration, suggestions, tickets]) {
+    for (const read of [latest, schedule, duration, suggestions, tickets, measurements]) {
       expect(read).toHaveBeenCalledExactlyOnceWith(HELIOS, CLIENT, expect.any(AbortSignal));
     }
   });
@@ -138,6 +143,17 @@ describe("the page's own read", () => {
 
   it("fails the whole page when the drafted tickets cannot be read, rather than drawing half of it", async () => {
     tickets.mockRejectedValue(new TypeError("fetch failed"));
+    const page = await import("@/app/api/analyzer-page");
+
+    expect(await page.readAnalyzerPage(HELIOS)).toEqual({
+      state: "failed",
+      reason: UNREACHABLE_ANALYZER,
+      pollAfterSeconds: null,
+    });
+  });
+
+  it("fails the whole page when the measurements cannot be read, rather than drawing half of it", async () => {
+    measurements.mockRejectedValue(new TypeError("fetch failed"));
     const page = await import("@/app/api/analyzer-page");
 
     expect(await page.readAnalyzerPage(HELIOS)).toEqual({
