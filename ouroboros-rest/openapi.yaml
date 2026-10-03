@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.15"
+  version: "0.38.16"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -657,6 +657,13 @@ tags:
       decision **O1**) — one surface that derives the four-step rail from subsystem truth,
       stores the wizard's choices per repository, guards completion, and offers an honest
       import-skip.
+  - name: lifecycle
+    description: |-
+      **The workspace lifecycle** (mockup 17's Danger zone, issue
+      [#489](https://github.com/NobuData/ouroboros/issues/489)) — pause all loops (in-flight
+      stages finish, nothing new starts), disconnect GitHub with a live consequence preview, and
+      delete with a 30-day recovery window that ends in a purge destroying the workspace's
+      data-encryption key. Every transition is audited and queued for the `audit.*` webhook family.
   - name: policies
     description: |-
       **Org-level policies the PR plane enforces** (mockup 13, issue
@@ -6380,6 +6387,575 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/settings/lifecycle:
+    get:
+      tags: [lifecycle]
+      summary: Where the workspace stands in its lifecycle
+      description: |-
+        Mockup 17's Danger zone state ([#489](https://github.com/NobuData/ouroboros/issues/489)):
+        `active`, `paused` or `pending_delete`, with **the banner the shell renders app-wide**
+        while the workspace is not `active` — a paused workspace says so on every page, so
+        silence never looks like a malfunction.
+
+        Any member may read it. While the workspace is `pending_delete` every other route is
+        frozen behind the recovery screen (`403 workspace_pending_delete`); an **owner** may
+        still read this and restore.
+      operationId: readWorkspaceLifecycle
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceLifecycle"
+              example:
+                state: paused
+                changedAt: "2026-10-03T09:00:00.000Z"
+                changedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+                purgeAfter: null
+                recoveryWindowDays: 30
+                banner:
+                  kind: paused
+                  message: All loops are paused. Running loops finish their stage; queued issues stay queued.
+                  since: "2026-10-03T09:00:00.000Z"
+                  actionLabel: Resume
+                  actionPath: "/settings#danger"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `workspace_pending_delete` — the workspace is pending deletion and you are not an\nowner; `details.restorable` is `false`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/lifecycle/pause:
+    post:
+      tags: [lifecycle]
+      summary: Pause all loops
+      description: |-
+        *"Queued issues stay queued; running loops finish their stage."* A **graceful hold**,
+        not a kill switch: work in flight completes its current stage, and every dispatch point
+        that would start something new declines —
+
+        - **queue pulls**: the engine's `POST /internal/runs` answers `409 workspace_paused`;
+        - **stage advancement**: a stage moving to `active` answers `409 workspace_paused`,
+          while `succeeded`, `failed` and `skipped` still land;
+        - **build dispatch**: the farm offers nothing new; a pass runs at most every
+          `DISPATCH_INTERVAL_MS` (2 s, jittered), which is the documented interval the hold
+          takes effect within.
+
+        `owner` or `admin`, with an explicit `confirm: true`. Audited as `workspace.paused` and
+        queued for the `audit.*` webhook family as `audit.workspace.paused`.
+      operationId: pauseWorkspace
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LifecycleConfirm"
+            example:
+              confirm: true
+      responses:
+        "200":
+          description: The result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceLifecycle"
+              example:
+                state: paused
+                changedAt: "2026-10-03T09:00:00.000Z"
+                changedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+                purgeAfter: null
+                recoveryWindowDays: 30
+                banner:
+                  kind: paused
+                  message: All loops are paused. Running loops finish their stage; queued issues stay queued.
+                  since: "2026-10-03T09:00:00.000Z"
+                  actionLabel: Resume
+                  actionPath: "/settings#danger"
+        "400":
+          description: |-
+            `confirmation_required` — the body did not carry `confirm: true`.\n`organization_required` — this session is acting in no workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —
+            the workspace is pending deletion and frozen behind the recovery screen;
+            `details.restorable` says whether you are an owner who may restore it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `workspace_state_conflict` — the state machine has no such move from where the
+            workspace stands (`details.move`, `details.state`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/lifecycle/resume:
+    post:
+      tags: [lifecycle]
+      summary: Resume all loops
+      description: |-
+        Return a paused workspace to `active`: the queue is released and the next stage may
+        start. Nothing was lost while paused — queued work stayed queued, and every stage that
+        finished was recorded. `owner` or `admin`; audited as `workspace.resumed`.
+      operationId: resumeWorkspace
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceLifecycle"
+              example:
+                state: paused
+                changedAt: "2026-10-03T09:00:00.000Z"
+                changedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+                purgeAfter: null
+                recoveryWindowDays: 30
+                banner:
+                  kind: paused
+                  message: All loops are paused. Running loops finish their stage; queued issues stay queued.
+                  since: "2026-10-03T09:00:00.000Z"
+                  actionLabel: Resume
+                  actionPath: "/settings#danger"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —
+            the workspace is pending deletion and frozen behind the recovery screen;
+            `details.restorable` says whether you are an owner who may restore it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `workspace_state_conflict` — the state machine has no such move from where the
+            workspace stands (`details.move`, `details.state`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/lifecycle/disconnect-preview:
+    get:
+      tags: [lifecycle]
+      summary: What disconnecting GitHub would do
+      description: |-
+        *"Open PRs remain, loops stop."* The consequence preview, **computed from live state**:
+        open pull requests (left untouched), runs not yet finished (they finish their stage,
+        then hold), GitHub sources and enabled repositories that stop syncing, and whether a
+        stored token will be deleted. `owner` or `admin`.
+      operationId: previewWorkspaceDisconnect
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisconnectPreview"
+              example:
+                openPullRequests: 3
+                activeRuns: 2
+                syncingSources: 1
+                enabledRepositories: 4
+                tokenStored: true
+                consequences:
+                  - 3 open pull requests remain on GitHub, untouched.
+                  - 2 running loops finish their current stage, then stop.
+                  - 1 GitHub source and 4 repositories stop syncing.
+                  - The stored GitHub token is deleted.
+                  - All loops are paused until you resume them.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —
+            the workspace is pending deletion and frozen behind the recovery screen;
+            `details.restorable` says whether you are an owner who may restore it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/lifecycle/disconnect:
+    post:
+      tags: [lifecycle]
+      summary: Disconnect GitHub
+      description: |-
+        Pause all loops (so they halt cleanly rather than failing mid-stage), pause every
+        active GitHub ticket source, and delete the stored GitHub token (audited as
+        `github.token_cleared`, exactly as a manual clear is). **Open pull requests are not
+        touched.** Answers with the preview's counts as they stood when the disconnect ran.
+
+        `owner` or `admin`, with `confirm: true`. Audited as `workspace.disconnected`.
+      operationId: disconnectWorkspace
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LifecycleConfirm"
+            example:
+              confirm: true
+      responses:
+        "200":
+          description: The result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DisconnectPreview"
+              example:
+                openPullRequests: 3
+                activeRuns: 2
+                syncingSources: 1
+                enabledRepositories: 4
+                tokenStored: true
+                consequences:
+                  - 3 open pull requests remain on GitHub, untouched.
+                  - 2 running loops finish their current stage, then stop.
+                  - 1 GitHub source and 4 repositories stop syncing.
+                  - The stored GitHub token is deleted.
+                  - All loops are paused until you resume them.
+        "400":
+          description: |-
+            `confirmation_required` — the body did not carry `confirm: true`.\n`organization_required` — this session is acting in no workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —
+            the workspace is pending deletion and frozen behind the recovery screen;
+            `details.restorable` says whether you are an owner who may restore it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `workspace_state_conflict` — the workspace is pending deletion.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/lifecycle/delete:
+    post:
+      tags: [lifecycle]
+      summary: Delete the workspace (30-day recovery window)
+      description: |-
+        *"Type the workspace name to confirm · 30-day recovery window."* **Owner only**, with
+        the workspace's name typed exactly (byte for byte) and a **recent step-up** — the
+        session was created within five minutes, or `password` is supplied and verified.
+
+        The workspace becomes `pending_delete`: every non-owner session acting in it is revoked,
+        every surface is frozen behind the recovery screen, and all dispatch stops. An owner may
+        restore it at any point until `purgeAfter`. After that a scheduled purge destroys the
+        workspace's data-encryption key first — the crypto-shred — then deletes its artifact
+        objects and every row, and keeps a tombstone. Audited as `workspace.delete_requested`.
+      operationId: deleteWorkspace
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkspaceDeleteRequest"
+            example:
+              confirmName: acme-robotics
+              password: correct horse battery staple
+      responses:
+        "200":
+          description: The result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceLifecycle"
+              example:
+                state: paused
+                changedAt: "2026-10-03T09:00:00.000Z"
+                changedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+                purgeAfter: null
+                recoveryWindowDays: 30
+                banner:
+                  kind: paused
+                  message: All loops are paused. Running loops finish their stage; queued issues stay queued.
+                  since: "2026-10-03T09:00:00.000Z"
+                  actionLabel: Resume
+                  actionPath: "/settings#danger"
+        "400":
+          description: |-
+            `organization_required`, or `validation_failed` for a malformed body.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `step_up_required` — no recent re-authentication on this session; `details.methods`\nand `details.maxAgeSeconds` say how to provide one. `unauthenticated` — no session.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner` may do this. `workspace_pending_delete` — the
+            workspace is frozen behind the recovery screen (`details.purgeAfter`, `details.restorable`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `workspace_state_conflict` — the state machine has no such move from where the
+            workspace stands (`details.move`, `details.state`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `workspace_name_mismatch` — the typed name is not exactly the workspace's name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/lifecycle/restore:
+    post:
+      tags: [lifecycle]
+      summary: Restore a workspace pending deletion
+      description: |-
+        Return a `pending_delete` workspace to `active` at any point in its recovery window.
+        **Owner only**, and reachable while every other surface is frozen. Audited as
+        `workspace.restored`. Sessions revoked by the deletion stay revoked; their owners sign
+        in again.
+      operationId: restoreWorkspace
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The result.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkspaceLifecycle"
+              example:
+                state: paused
+                changedAt: "2026-10-03T09:00:00.000Z"
+                changedBy: aBcD1234eFgH5678iJkL9012mNoP3456
+                purgeAfter: null
+                recoveryWindowDays: 30
+                banner:
+                  kind: paused
+                  message: All loops are paused. Running loops finish their stage; queued issues stay queued.
+                  since: "2026-10-03T09:00:00.000Z"
+                  actionLabel: Resume
+                  actionPath: "/settings#danger"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — only an `owner` may restore. `workspace_pending_delete` — you are not\nan owner of this frozen workspace.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `workspace_state_conflict` — the state machine has no such move from where the
+            workspace stands (`details.move`, `details.state`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/policies/dry-run:
     get:
       tags: [policies]
@@ -42002,6 +42578,123 @@ components:
           $ref: "#/components/schemas/EscalationWhen"
         then:
           $ref: "#/components/schemas/EscalationThen"
+
+    WorkspaceLifecycleState:
+      type: string
+      title: WorkspaceLifecycleState
+      description: |-
+        The organization state (#489): `active`; `paused` — work in flight finishes its stage,
+        nothing new starts; `pending_delete` — frozen, recoverable by an owner until the purge.
+      enum: [active, paused, pending_delete]
+
+    LifecycleBanner:
+      type: object
+      title: LifecycleBanner
+      description: The banner the shell renders on every page while the workspace is not `active`.
+      additionalProperties: false
+      required: [kind, message, since, actionLabel, actionPath]
+      properties:
+        kind:
+          type: string
+          enum: [paused, pending_delete]
+        message:
+          type: string
+        since:
+          type: [string, "null"]
+          format: date-time
+        actionLabel:
+          type: string
+          description: "`Resume` or `Restore`."
+        actionPath:
+          type: string
+          description: Where the action lives — the settings page's Danger zone card.
+
+    WorkspaceLifecycle:
+      type: object
+      title: WorkspaceLifecycle
+      description: Where the workspace stands, and the app-wide banner (#489).
+      additionalProperties: false
+      required: [state, changedAt, changedBy, purgeAfter, recoveryWindowDays, banner]
+      properties:
+        state:
+          $ref: "#/components/schemas/WorkspaceLifecycleState"
+        changedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When the state last changed; null for a workspace that never left `active`.
+        changedBy:
+          type: [string, "null"]
+          description: Who changed it — `"user".id` — or null.
+        purgeAfter:
+          type: [string, "null"]
+          format: date-time
+          description: When the recovery window closes; non-null exactly while `pending_delete`.
+        recoveryWindowDays:
+          type: integer
+          const: 30
+        banner:
+          oneOf:
+            - $ref: "#/components/schemas/LifecycleBanner"
+            - type: "null"
+
+    DisconnectPreview:
+      type: object
+      title: DisconnectPreview
+      description: What disconnecting GitHub does, computed from live state (#489).
+      additionalProperties: false
+      required:
+        [openPullRequests, activeRuns, syncingSources, enabledRepositories, tokenStored, consequences]
+      properties:
+        openPullRequests:
+          type: integer
+          minimum: 0
+          description: Pull requests still open. They remain on GitHub, untouched.
+        activeRuns:
+          type: integer
+          minimum: 0
+          description: Runs not yet finished. They finish their current stage, then hold.
+        syncingSources:
+          type: integer
+          minimum: 0
+          description: Active GitHub ticket sources. They are paused.
+        enabledRepositories:
+          type: integer
+          minimum: 0
+          description: Enabled repositories, whose issues stop syncing.
+        tokenStored:
+          type: boolean
+          description: Whether a GitHub token is stored. It is deleted.
+        consequences:
+          type: array
+          items:
+            type: string
+          description: The same facts as sentences, in the order the confirm dialog lists them.
+
+    LifecycleConfirm:
+      type: object
+      title: LifecycleConfirm
+      additionalProperties: false
+      properties:
+        confirm:
+          type: boolean
+          description: The confirm dialog's explicit yes. Anything but `true` is `400 confirmation_required`.
+
+    WorkspaceDeleteRequest:
+      type: object
+      title: WorkspaceDeleteRequest
+      additionalProperties: false
+      required: [confirmName]
+      properties:
+        confirmName:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: The workspace's name, typed exactly.
+        password:
+          type: string
+          minLength: 1
+          maxLength: 1024
+          description: The step-up, when the session is older than five minutes.
 
     AuditAction:
       type: string

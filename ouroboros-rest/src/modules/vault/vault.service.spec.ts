@@ -438,3 +438,32 @@ describe("re-wrapping the key-encryption key", () => {
     );
   });
 });
+
+describe("destroying a workspace's key — the crypto-shred (#489)", () => {
+  it("leaves every value the workspace sealed undecryptable, across key versions", async () => {
+    const { vault, keys } = inMemoryVault();
+    const before = await vault.encryptText(WORKSPACE, RECORD, "ghp_example_secret");
+    await vault.rotate(WORKSPACE);
+    const after = await vault.encryptText(WORKSPACE, RECORD, "ghp_example_secret_2");
+
+    await expect(vault.destroy(WORKSPACE)).resolves.toBe(2);
+
+    expect(keys.all().filter((row) => row.organization_id === WORKSPACE)).toEqual([]);
+    await expect(vault.decryptText(WORKSPACE, RECORD, before)).rejects.toThrow(VaultKeyError);
+    await expect(vault.decryptText(WORKSPACE, RECORD, after)).rejects.toThrow(VaultKeyError);
+  });
+
+  it("touches no other workspace's key", async () => {
+    const { vault } = inMemoryVault();
+    const theirs = await vault.encryptText(OTHER_WORKSPACE, RECORD, "theirs");
+    await vault.encryptText(WORKSPACE, RECORD, "ours");
+
+    await vault.destroy(WORKSPACE);
+
+    await expect(vault.decryptText(OTHER_WORKSPACE, RECORD, theirs)).resolves.toBe("theirs");
+  });
+
+  it("is a successful shred for a workspace that never stored a secret", async () => {
+    await expect(inMemoryVault().vault.destroy(WORKSPACE)).resolves.toBe(0);
+  });
+});

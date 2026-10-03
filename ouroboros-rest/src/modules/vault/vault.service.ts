@@ -441,4 +441,20 @@ export class VaultService {
 
     return converted;
   }
+
+  /**
+   * Destroy a workspace's data-encryption key, every version of it — the crypto-shred (BR.5,
+   * [#489](https://github.com/NobuData/ouroboros/issues/489)).
+   *
+   * After this, {@link decrypt} on anything the workspace ever sealed throws
+   * {@link VaultKeyError}: there is no key cache to outlive the rows (see this file's header), so
+   * the destruction is effective the moment the statement commits. Irreversible by design — the
+   * only caller is the workspace purge, at the end of the 30-day recovery window.
+   *
+   * @param organizationId - The workspace being purged.
+   * @returns How many key versions were destroyed.
+   */
+  async destroy(organizationId: string): Promise<number> {
+    return this.keys.destroyKeys(organizationId);
+  }
 }

@@ -452,7 +452,11 @@ describe("TABLE_COLUMNS", () => {
     // BJ.4 (#440) — who asked for the weekly email, when a workspace's goes out, and the audit of
     // what was sent to whom. BV.1 (#510) — the Build Analyzer's schedules, runs and findings, which
     // its orchestrator reads and writes.
-    expect(TABLE_NAMES).toHaveLength(119);
+    //
+    // The hundred-and-twentieth to twenty-second are V090's `workspace_lifecycle`,
+    // `audit_event_outbox` and `workspace_tombstones` (BR.5, #489) — the organization state every
+    // dispatch point consults, the `audit.*` events awaiting delivery, and what a purge leaves.
+    expect(TABLE_NAMES).toHaveLength(122);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

@@ -10,6 +10,12 @@ import {
   ANALYZER_RUN_REQUESTED_EVENT,
   ANALYZER_SCHEDULE_UPDATED_EVENT,
   AUDIT_ACTIONS,
+  WORKSPACE_DELETE_REQUESTED_EVENT,
+  WORKSPACE_DISCONNECTED_EVENT,
+  WORKSPACE_PAUSED_EVENT,
+  WORKSPACE_PURGED_EVENT,
+  WORKSPACE_RESTORED_EVENT,
+  WORKSPACE_RESUMED_EVENT,
   auditDetail,
   GITHUB_TOKEN_CLEARED_EVENT,
   RUNNER_CERT_RENEWED_EVENT,
@@ -104,6 +110,9 @@ describe("the vocabulary", () => {
     // farm configuration the Build Analyzer composes — pool windows and job hooks — and the
     // analyzer's own actions on a suggestion. `analysis_suggestion.applied` is spelled as V081
     // requires of the event an applied suggestion names.
+    //
+    // The last six are BR.5's ([#489](https://github.com/NobuData/ouroboros/issues/489)): the
+    // Danger zone's transitions — pause, resume, disconnect, delete, restore and the purge.
     expect([...AUDIT_ACTIONS]).toEqual([
       "provider.added",
       "provider.revealed",
@@ -156,6 +165,12 @@ describe("the vocabulary", () => {
       "analysis_suggestion.drafted",
       "analyzer.batch_pushed",
       "analyzer.schedule_updated",
+      "workspace.paused",
+      "workspace.resumed",
+      "workspace.disconnected",
+      "workspace.delete_requested",
+      "workspace.restored",
+      "workspace.purged",
     ]);
   });
 
@@ -180,7 +195,8 @@ describe("the vocabulary", () => {
     // about who resolved a review-thread entry (#368), and one about who flipped the dry-run
     // policy (#382), under `policy.` so every org-policy change is one question, and one about
     // who asked for a Build Analyzer run (#510), under `analyzer.`, and `analysis_suggestion.`
-    // for what was done with a suggestion (#514) — V081 spells the apply event that way. The
+    // for what was done with a suggestion (#514) — V081 spells the apply event that way — and
+    // `workspace.` for the Danger zone's lifecycle (#489). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -200,6 +216,7 @@ describe("the vocabulary", () => {
       "provider",
       "runner",
       "triage",
+      "workspace",
     ]);
   });
 
@@ -259,6 +276,12 @@ describe("the vocabulary", () => {
       ANALYSIS_SUGGESTION_DRAFTED_EVENT,
       ANALYZER_BATCH_PUSHED_EVENT,
       ANALYZER_SCHEDULE_UPDATED_EVENT,
+      WORKSPACE_PAUSED_EVENT,
+      WORKSPACE_RESUMED_EVENT,
+      WORKSPACE_DISCONNECTED_EVENT,
+      WORKSPACE_DELETE_REQUESTED_EVENT,
+      WORKSPACE_RESTORED_EVENT,
+      WORKSPACE_PURGED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

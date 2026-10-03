@@ -439,6 +439,22 @@ export const MIN_RUN_CONTROL_SWEEP_SECONDS = 5;
 export const MAX_RUN_CONTROL_SWEEP_SECONDS = 3600;
 
 /**
+ * Seconds between workspace-purge sweeps when `OURO_LIFECYCLE_PURGE_SWEEP_SECONDS` is not set —
+ * one hour (BR.5, #489).
+ *
+ * The sweep purges every workspace whose 30-day recovery window has closed. A window is measured
+ * in days, so an hour's lateness is invisible to it; what the cadence buys is that a purge never
+ * waits a day for a restart.
+ */
+export const DEFAULT_LIFECYCLE_PURGE_SWEEP_SECONDS = 3600;
+
+/** Shortest the purge sweep may be set to — one minute. */
+export const MIN_LIFECYCLE_PURGE_SWEEP_SECONDS = 60;
+
+/** Longest the purge sweep may be set to — one day. */
+export const MAX_LIFECYCLE_PURGE_SWEEP_SECONDS = 86_400;
+
+/**
  * How many days without a tracker update make an open ticket *stale* on the Backlog Health card,
  * when `OURO_BACKLOG_STALE_DAYS` is not set — thirty, mockup 09's `Stale > 30d`.
  *
@@ -977,6 +993,11 @@ export interface Configuration {
    */
   readonly runControlSweepSeconds: number;
   /**
+   * Seconds between workspace-purge sweeps. From `OURO_LIFECYCLE_PURGE_SWEEP_SECONDS`,
+   * {@link DEFAULT_LIFECYCLE_PURGE_SWEEP_SECONDS} when unset (BR.5, #489). Jittered ±25%.
+   */
+  readonly lifecyclePurgeSweepSeconds: number;
+  /**
    * Days without a tracker update after which an open ticket counts as stale on the Backlog Health
    * card. From `OURO_BACKLOG_STALE_DAYS`, {@link DEFAULT_BACKLOG_STALE_DAYS} when unset.
    */
@@ -1161,6 +1182,7 @@ export const VARIABLES = {
   runControlTtlSeconds: "OURO_RUN_CONTROL_TTL_SECONDS",
   runSteerTtlSeconds: "OURO_RUN_STEER_TTL_SECONDS",
   runControlSweepSeconds: "OURO_RUN_CONTROL_SWEEP_SECONDS",
+  lifecyclePurgeSweepSeconds: "OURO_LIFECYCLE_PURGE_SWEEP_SECONDS",
   backlogStaleDays: "OURO_BACKLOG_STALE_DAYS",
   reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
   reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
@@ -1726,6 +1748,13 @@ const environmentShape = z.object({
     MAX_RUN_CONTROL_SWEEP_SECONDS,
   ),
 
+  // BR.5's (#489) purge sweep: how often a workspace past its recovery window is purged.
+  OURO_LIFECYCLE_PURGE_SWEEP_SECONDS: cadenceSeconds(
+    MIN_LIFECYCLE_PURGE_SWEEP_SECONDS,
+    DEFAULT_LIFECYCLE_PURGE_SWEEP_SECONDS,
+    MAX_LIFECYCLE_PURGE_SWEEP_SECONDS,
+  ),
+
   // AL.5's (#281) four: the Backlog Health card's stale threshold, and the nightly job's hour,
   // jitter window and batch bound.
   OURO_BACKLOG_STALE_DAYS: boundedWhole(
@@ -2065,6 +2094,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     runControlTtlSeconds: values.OURO_RUN_CONTROL_TTL_SECONDS,
     runSteerTtlSeconds: values.OURO_RUN_STEER_TTL_SECONDS,
     runControlSweepSeconds: values.OURO_RUN_CONTROL_SWEEP_SECONDS,
+    lifecyclePurgeSweepSeconds: values.OURO_LIFECYCLE_PURGE_SWEEP_SECONDS,
     backlogStaleDays: values.OURO_BACKLOG_STALE_DAYS,
     reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
     reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,

@@ -52,6 +52,7 @@
 
 import { Module } from "@nestjs/common";
 
+import { LifecycleStateModule } from "../lifecycle/lifecycle-state.module";
 import { DbModule } from "../db/db.module";
 import { GuardrailsModule } from "../guardrails/guardrails.module";
 import { GatesModule } from "../pull-requests/gates/gates.module";
@@ -60,7 +61,7 @@ import { IngestRepository } from "./ingest.repository";
 import { IngestService } from "./ingest.service";
 
 @Module({
-  imports: [DbModule, GuardrailsModule, GatesModule],
+  imports: [DbModule, GuardrailsModule, GatesModule, LifecycleStateModule],
   controllers: [IngestController],
   providers: [IngestRepository, IngestService],
 })

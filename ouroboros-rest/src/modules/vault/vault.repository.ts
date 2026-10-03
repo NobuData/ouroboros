@@ -223,6 +223,30 @@ export class VaultRepository {
   }
 
   /**
+   * Destroy every version of one workspace's DEK — the crypto-shred (BR.5,
+   * [#489](https://github.com/NobuData/ouroboros/issues/489)).
+   *
+   * Once these rows are gone the live database can no longer open the workspace's ciphertext.
+   * A backup taken earlier still holds a copy of these rows, sealed under the KEK, so the
+   * shred reaches backups once the KEK that sealed them is retired (the re-wrap,
+   * docs/SECURITY_MODEL.md §3.5) or those backups age out — §2.6 states the full claim. Called
+   * by the workspace purge before it deletes any other row, so an interrupted purge never
+   * leaves the live data readable.
+   *
+   * @param organizationId - The workspace being purged.
+   * @returns How many key versions were destroyed. Zero for a workspace that never stored a
+   *   secret — which is still a successful shred.
+   */
+  async destroyKeys(organizationId: string): Promise<number> {
+    const deleted = await this.database.db
+      .deleteFrom("tenant_keys")
+      .where("organization_id", "=", organizationId)
+      .executeTakeFirst();
+
+    return Number(deleted.numDeletedRows);
+  }
+
+  /**
    * Every workspace in the installation, oldest first.
    *
    * Read by the one-time migration job, which has to visit workspaces that have *no* key

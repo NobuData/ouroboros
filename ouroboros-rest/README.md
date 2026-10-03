@@ -311,6 +311,7 @@ service never starts half-configured.
 | `OURO_RUN_CONTROL_TTL_SECONDS` | How long a pause, resume or abort is worth delivering before it is [expired](#run-controls) ([#306](https://github.com/NobuData/ouroboros/issues/306)) |     no — 120      | a whole number of seconds, 10–3600 |
 | `OURO_RUN_STEER_TTL_SECONDS` | How long a steer is worth delivering — longer, because it lands at the executor's next point of context injection |     no — 300      | a whole number of seconds, 10–3600 |
 | `OURO_RUN_CONTROL_SWEEP_SECONDS` | Seconds between control-expiry sweeps — jittered ±25%; the routes sweep their own run first, so this decides only how soon an expiry is audited for a run nobody is watching |     no — 15       | a whole number of seconds, 5–3600 |
+| `OURO_LIFECYCLE_PURGE_SWEEP_SECONDS` | Seconds between [workspace-purge](#workspace-lifecycle) sweeps — jittered ±25%; a workspace past its 30-day recovery window is purged on the next one ([#489](https://github.com/NobuData/ouroboros/issues/489)) |    no — 3600      | a whole number of seconds, 60–86400 |
 | `OURO_BACKLOG_STALE_DAYS` | Days without a tracker update after which an open ticket counts as stale on the [Backlog Health card](#backlog-health-and-nightly-re-estimation) ([#281](https://github.com/NobuData/ouroboros/issues/281)) |      no — 30      | a whole number of days, 1–3650 |
 | `OURO_REESTIMATION_HOUR_UTC` | The UTC hour the [nightly re-estimation job](#backlog-health-and-nightly-re-estimation) is scheduled at |      no — 2       | a whole number, 0–23 |
 | `OURO_REESTIMATION_JITTER_MINUTES` | The window after that hour a night's run is jittered across, so installations do not all run on the hour |      no — 30      | a whole number of minutes, 1–180 |
@@ -4179,7 +4180,7 @@ only offers to runners whose socket it holds.
 | `FarmJobsService.submitForRun` | AJ.3 ([#265](https://github.com/NobuData/ouroboros/issues/265)) — **defined, documented, not wired** | the internal submission surface for a workflow's build stage: the route's request plus the loop run, written to `build_jobs.run_id` (decision **B6**) |
 | `FarmJobsService.queueDepth` | AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)) | a runner's accepted-not-started count — the runners table's `q:N` |
 | `JobCompletions.subscribe` | BV.1 ([#510](https://github.com/NobuData/ouroboros/issues/510)) | every move into a terminal status, announced after it commits and off its path; a subscriber that fails never affects the job |
-| `FARM_DISPATCH_GATE` | BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) | asked once per workspace per pass before anything is offered; bound to an open gate until #489 makes a pause an organization state |
+| `FARM_DISPATCH_GATE` | BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) | asked once per workspace per pass before anything is offered; bound to `LifecycleDispatchGate`, which admits only an `active` workspace ([workspace lifecycle](#workspace-lifecycle)) |
 
 **Known limits.** Today's agent declines any offer that names a repository (source checkout is
 not built yet), so a real runner answers every submitted build `unsupported_executor` and it
@@ -4189,6 +4190,61 @@ forgets a job while its runner never goes offline is not detected. Agents older 
 0.6.0 end their session on a `job.cancel` or an offer's `attempt`; `OURO_FARM_MIN_AGENT_VERSION`
 is the lever. In a development database the seeded fleet never connects, so a few minutes after
 REST starts its seeded in-flight builds are taken back like any lost runner's.
+
+## Workspace lifecycle
+
+**Mockup 17's Danger zone as mechanism — pause, disconnect, delete**
+([#489](https://github.com/NobuData/ouroboros/issues/489), BR.5). `src/modules/lifecycle/` owns
+`ouroboros.workspace_lifecycle` (V090): `active | paused | pending_delete`, where no row means
+`active`.
+
+```
+GET  /api/v1/settings/lifecycle                     any member · the app-wide banner payload
+POST /api/v1/settings/lifecycle/pause               owner/admin · { confirm: true }
+POST /api/v1/settings/lifecycle/resume              owner/admin
+GET  /api/v1/settings/lifecycle/disconnect-preview  owner/admin · counts from live state
+POST /api/v1/settings/lifecycle/disconnect          owner/admin · pause + clear token + pause sources
+POST /api/v1/settings/lifecycle/delete              owner · typed name · step-up → 30 days
+POST /api/v1/settings/lifecycle/restore             owner · reachable while frozen
+```
+
+**A pause is a graceful hold, not a kill switch.** Work in flight finishes its stage; every point
+that would start something new declines:
+
+| Dispatch point | Where | While not `active` | Takes effect |
+|---|---|---|---|
+| Queue pull | `POST /internal/runs` | `409 workspace_paused` / `workspace_pending_delete`; a replay still answers | the engine's next request |
+| Stage advancement | a transition *into* `active` | the same `409`; `succeeded`, `failed` and `skipped` always land | the engine's next request |
+| Build dispatch | `FARM_DISPATCH_GATE` → `LifecycleDispatchGate` | nothing new is offered; offered and running builds are untouched | the next pass, ≤ `DISPATCH_INTERVAL_MS` (2 s, jittered) |
+
+The state is read per request and never cached, so those intervals are the whole delay.
+`LifecycleStateModule` is the read-only half that ingest, dispatch and tenancy import.
+
+**Delete** needs the owner role, the workspace's name typed exactly, and AD.2's step-up (a session
+created within five minutes, or `password`; `StepUpModule` is shared with provider reveal).
+`pending_delete` revokes every non-owner session whose `activeOrganizationId` is the workspace,
+through BetterAuth's adapter. A third global guard (`WorkspaceFreezeGuard`, after the tenant and
+roles guards) answers `403 workspace_pending_delete` everywhere, which also covers sessions acting
+by `X-Ouro-Tenant` and the five-minute cookie cache. An owner may still reach the read and restore
+routes (`@LifecycleExempt()`).
+
+**The purge** runs every `OURO_LIFECYCLE_PURGE_SWEEP_SECONDS` (`LifecyclePurgeScheduler`). It
+destroys the DEK first (`VaultService.destroy`), then the artifact objects, then the organization
+(through the library; every tenant table cascades). It then counts every table naming the
+workspace (asserted zero) and writes `workspace_tombstones` plus `audit.workspace.purged`
+(actor `system`). See `docs/SECURITY_MODEL.md` §2.6 for exactly what the shred does and does not
+reach in a backup.
+
+**Every transition is audited and queued for webhooks.** `workspace.paused | resumed |
+disconnected | delete_requested | restored` are written to `audit_events` (subject `workspace`).
+Each is also written to `audit_event_outbox` as `audit.workspace.*`, in the transaction that moves
+the state; BR.3 ([#487](https://github.com/NobuData/ouroboros/issues/487)) delivers from there.
+The purge's own audit row would cascade away with the workspace, so the tombstone and the outbox
+event are its record.
+
+**The rehearsal.** `lifecycle.integration-spec.ts` runs pause → stage finishes → holds → resume,
+disconnect, delete → restore, and delete → day 30 → purge on a fixture tenant in `ci/rest`. It
+asserts that a value sealed before the purge no longer decrypts after it.
 
 ## Build logs
 

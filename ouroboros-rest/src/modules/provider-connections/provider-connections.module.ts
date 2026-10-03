@@ -76,7 +76,7 @@ import { ProviderConnectionsRepository } from "./provider-connections.repository
 import { ProviderConnectionsService } from "./provider-connections.service";
 import { ProviderModelsRepository } from "./provider-models.repository";
 import { RevealLimiter } from "./reveal.limiter";
-import { StepUpRegistry, StepUpService } from "./step-up";
+import { StepUpModule } from "./step-up.module";
 
 @Module({
   imports: [
@@ -86,6 +86,7 @@ import { StepUpRegistry, StepUpService } from "./step-up";
     RegistryModule,
     AuditModule,
     ProviderHealthModule,
+    StepUpModule,
   ],
   controllers: [ProviderConnectionsController],
   providers: [
@@ -94,8 +95,6 @@ import { StepUpRegistry, StepUpService } from "./step-up";
     ProviderModelsRepository,
     ProviderAudit,
     RevealLimiter,
-    StepUpRegistry,
-    StepUpService,
     // Z.5's aggregation, registered here as well as in `RoutingModule` so the cards' monthly
     // meters (#228) are computed by the one statement that computes the routing card's — see
     // `spend.ts`. A second class here would be a second `sum(cost_cents)` about one invoice;

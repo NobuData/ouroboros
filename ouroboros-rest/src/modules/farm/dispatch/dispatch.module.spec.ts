@@ -1,3 +1,4 @@
+import { LifecycleDispatchGate } from "../../lifecycle/lifecycle.state";
 import { FarmArtifactsModule } from "../artifacts/artifacts.module";
 import { FarmAudit } from "../farm.audit";
 import { FARM_DISPATCH_GATE, OPEN_GATE } from "./dispatch.gate";
@@ -18,6 +19,7 @@ describe("the dispatch module", () => {
       "AuditModule",
       "FarmGatewayModule",
       "FarmArtifactsModule",
+      "LifecycleStateModule",
     ]);
     expect(
       (Reflect.getMetadata("imports", FarmArtifactsModule) as { name?: string }[]).map(
@@ -46,10 +48,13 @@ describe("the dispatch module", () => {
     ]);
   });
 
-  it("binds the open gate until #489 makes a pause an organization state", async () => {
+  it("binds the lifecycle gate, so a paused workspace is offered nothing new (#489)", async () => {
     const providers = Reflect.getMetadata("providers", FarmDispatchModule) as unknown[];
 
-    expect(providers).toContainEqual({ provide: FARM_DISPATCH_GATE, useValue: OPEN_GATE });
+    expect(providers).toContainEqual({
+      provide: FARM_DISPATCH_GATE,
+      useExisting: LifecycleDispatchGate,
+    });
     await expect(OPEN_GATE.admits("any-workspace")).resolves.toBe(true);
   });
 });

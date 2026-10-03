@@ -5939,6 +5939,71 @@ export interface AnalysisRunsTable {
 }
 
 /**
+ * `ouroboros.workspace_lifecycle.state` — the organization state (V090,
+ * [#489](https://github.com/NobuData/ouroboros/issues/489)). A workspace with no row is `active`.
+ */
+export type WorkspaceLifecycleState = "active" | "paused" | "pending_delete";
+
+/**
+ * `ouroboros.workspace_lifecycle` — where a workspace stands in the Danger zone's state machine
+ * (V090, [#489](https://github.com/NobuData/ouroboros/issues/489)).
+ *
+ * One row per workspace that has ever left `active`; `src/modules/lifecycle/` is its only writer.
+ * Farm dispatch, stage advancement and run opening read it.
+ */
+export interface WorkspaceLifecycleTable {
+  /** The workspace, and the key. `on delete cascade`. */
+  organization_id: string;
+  /** `active`, `paused` or `pending_delete`. */
+  state: WorkspaceLifecycleState;
+  /** Who moved it last — `"user".id`, or null once they are removed. */
+  changed_by: string | null;
+  /** When it was moved last. Written by the service, so it is updateable. */
+  changed_at: ColumnType<Date, Date | undefined, Date>;
+  /** When the recovery window closes. Non-null exactly while `pending_delete`. */
+  purge_after: Date | null;
+}
+
+/**
+ * `ouroboros.audit_event_outbox` — `audit.*` events awaiting outbound delivery (V090,
+ * [#489](https://github.com/NobuData/ouroboros/issues/489)). BR.3
+ * ([#487](https://github.com/NobuData/ouroboros/issues/487)) delivers from it.
+ *
+ * `organization_id` is deliberately not a foreign key: the purge event outlives its workspace.
+ */
+export interface AuditEventOutboxTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** `audit.workspace.paused` and its siblings. */
+  event_type: string;
+  /** The event body, as delivered. */
+  payload: ColumnType<Record<string, unknown>, string, string>;
+  occurred_at: Stamped;
+  /** Set by the deliverer once every subscriber has the event. */
+  delivered_at: Date | null;
+}
+
+/**
+ * `ouroboros.workspace_tombstones` — the completion record a purge leaves behind (V090,
+ * [#489](https://github.com/NobuData/ouroboros/issues/489)). No foreign key: the workspace is gone.
+ */
+export interface WorkspaceTombstonesTable {
+  organization_id: string;
+  name: string;
+  slug: string | null;
+  /** Who asked for the deletion. A copy of an id rather than a reference. */
+  requested_by: string | null;
+  requested_at: Date;
+  purged_at: Stamped;
+  /** How many versions of the tenant's DEK were destroyed. */
+  dek_versions_destroyed: number;
+  /** How many artifact-store objects were deleted. */
+  artifacts_deleted: number;
+  /** Rows still naming the workspace after the purge — asserted to be zero. */
+  rows_remaining: number;
+}
+
+/**
  * `ouroboros.analysis_findings` — one analyzer's finding in one run (V081,
  * [#507](https://github.com/NobuData/ouroboros/issues/507)). Written only into a `running` run, by
  * an analyzer in its `analyzer_set`, with evidence that resolves; immutable once written.
@@ -6154,6 +6219,9 @@ export interface Database {
   analysis_schedules: AnalysisSchedulesTable;
   analysis_runs: AnalysisRunsTable;
   analysis_findings: AnalysisFindingsTable;
+  workspace_lifecycle: WorkspaceLifecycleTable;
+  audit_event_outbox: AuditEventOutboxTable;
+  workspace_tombstones: WorkspaceTombstonesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -7448,6 +7516,26 @@ export const TABLE_COLUMNS = {
     "confidence_basis",
     "created_at",
   ],
+  workspace_lifecycle: ["organization_id", "state", "changed_by", "changed_at", "purge_after"],
+  audit_event_outbox: [
+    "id",
+    "organization_id",
+    "event_type",
+    "payload",
+    "occurred_at",
+    "delivered_at",
+  ],
+  workspace_tombstones: [
+    "organization_id",
+    "name",
+    "slug",
+    "requested_by",
+    "requested_at",
+    "purged_at",
+    "dek_versions_destroyed",
+    "artifacts_deleted",
+    "rows_remaining",
+  ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [
     "id",
@@ -8075,3 +8163,8 @@ export type EstimateOutcome = Selectable<EstimateOutcomesTable>;
 export type InterventionEvent = Selectable<InterventionEventsTable>;
 /** A row of `ouroboros.intervention_overrides`, as a `select` returns it. */
 export type InterventionOverride = Selectable<InterventionOverridesTable>;
+
+/** A row of `ouroboros.workspace_lifecycle`, as a `select` returns it. */
+export type WorkspaceLifecycle = Selectable<WorkspaceLifecycleTable>;
+/** A row of `ouroboros.workspace_tombstones`, as a `select` returns it. */
+export type WorkspaceTombstone = Selectable<WorkspaceTombstonesTable>;

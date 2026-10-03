@@ -36,6 +36,7 @@ import { ProvidersModule } from "../providers/providers.module";
 import { RegistryReadModule } from "../registry-read/registry-read.module";
 import { RegistryModule } from "../registry/registry.module";
 import { RoutingModule } from "../routing/routing.module";
+import { LifecycleModule } from "../lifecycle/lifecycle.module";
 import { SettingsModule } from "../settings/settings.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { InsightsModule } from "../insights/insights.module";
@@ -332,6 +333,10 @@ export class AppModule {
         // cannot collide with `SettingsModule`'s `/settings/auto-merge`, so its position
         // among the tenant-required modules carries no routing rule of its own.
         GithubModule,
+        // BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) — the Danger zone under
+        // `/api/v1/settings/lifecycle`. After `GithubModule`, whose token a disconnect clears; a
+        // distinct literal segment beside `/settings/auto-merge` and `/settings/github-token`.
+        LifecycleModule,
         // K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) — the poller that
         // fills `github_issues`. After `GithubModule`, which it imports for the client and
         // for the *which workspaces have a token* question; it declares no route at all, so

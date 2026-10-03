@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.38.15",
+    "version": "0.38.16",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -133,6 +133,10 @@
     {
       "name": "onboarding",
       "description": "**The Get Started wizard** (mockup 13, [#385](https://github.com/NobuData/ouroboros/issues/385),\ndecision **O1**) — one surface that derives the four-step rail from subsystem truth,\nstores the wizard's choices per repository, guards completion, and offers an honest\nimport-skip."
+    },
+    {
+      "name": "lifecycle",
+      "description": "**The workspace lifecycle** (mockup 17's Danger zone, issue\n[#489](https://github.com/NobuData/ouroboros/issues/489)) — pause all loops (in-flight\nstages finish, nothing new starts), disconnect GitHub with a live consequence preview, and\ndelete with a 30-day recovery window that ends in a purge destroying the workspace's\ndata-encryption key. Every transition is audited and queued for the `audit.*` webhook family."
     },
     {
       "name": "policies",
@@ -6185,6 +6189,743 @@
           },
           "500": {
             "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/lifecycle": {
+      "get": {
+        "tags": [
+          "lifecycle"
+        ],
+        "summary": "Where the workspace stands in its lifecycle",
+        "description": "Mockup 17's Danger zone state ([#489](https://github.com/NobuData/ouroboros/issues/489)):\n`active`, `paused` or `pending_delete`, with **the banner the shell renders app-wide**\nwhile the workspace is not `active` — a paused workspace says so on every page, so\nsilence never looks like a malfunction.\n\nAny member may read it. While the workspace is `pending_delete` every other route is\nfrozen behind the recovery screen (`403 workspace_pending_delete`); an **owner** may\nstill read this and restore.",
+        "operationId": "readWorkspaceLifecycle",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceLifecycle"
+                },
+                "example": {
+                  "state": "paused",
+                  "changedAt": "2026-10-03T09:00:00.000Z",
+                  "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                  "purgeAfter": null,
+                  "recoveryWindowDays": 30,
+                  "banner": {
+                    "kind": "paused",
+                    "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                    "since": "2026-10-03T09:00:00.000Z",
+                    "actionLabel": "Resume",
+                    "actionPath": "/settings#danger"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`workspace_pending_delete` — the workspace is pending deletion and you are not an\\nowner; `details.restorable` is `false`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/lifecycle/pause": {
+      "post": {
+        "tags": [
+          "lifecycle"
+        ],
+        "summary": "Pause all loops",
+        "description": "*\"Queued issues stay queued; running loops finish their stage.\"* A **graceful hold**,\nnot a kill switch: work in flight completes its current stage, and every dispatch point\nthat would start something new declines —\n\n- **queue pulls**: the engine's `POST /internal/runs` answers `409 workspace_paused`;\n- **stage advancement**: a stage moving to `active` answers `409 workspace_paused`,\n  while `succeeded`, `failed` and `skipped` still land;\n- **build dispatch**: the farm offers nothing new; a pass runs at most every\n  `DISPATCH_INTERVAL_MS` (2 s, jittered), which is the documented interval the hold\n  takes effect within.\n\n`owner` or `admin`, with an explicit `confirm: true`. Audited as `workspace.paused` and\nqueued for the `audit.*` webhook family as `audit.workspace.paused`.",
+        "operationId": "pauseWorkspace",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LifecycleConfirm"
+              },
+              "example": {
+                "confirm": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceLifecycle"
+                },
+                "example": {
+                  "state": "paused",
+                  "changedAt": "2026-10-03T09:00:00.000Z",
+                  "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                  "purgeAfter": null,
+                  "recoveryWindowDays": 30,
+                  "banner": {
+                    "kind": "paused",
+                    "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                    "since": "2026-10-03T09:00:00.000Z",
+                    "actionLabel": "Resume",
+                    "actionPath": "/settings#danger"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`confirmation_required` — the body did not carry `confirm: true`.\\n`organization_required` — this session is acting in no workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —\nthe workspace is pending deletion and frozen behind the recovery screen;\n`details.restorable` says whether you are an owner who may restore it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workspace_state_conflict` — the state machine has no such move from where the\nworkspace stands (`details.move`, `details.state`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/lifecycle/resume": {
+      "post": {
+        "tags": [
+          "lifecycle"
+        ],
+        "summary": "Resume all loops",
+        "description": "Return a paused workspace to `active`: the queue is released and the next stage may\nstart. Nothing was lost while paused — queued work stayed queued, and every stage that\nfinished was recorded. `owner` or `admin`; audited as `workspace.resumed`.",
+        "operationId": "resumeWorkspace",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceLifecycle"
+                },
+                "example": {
+                  "state": "paused",
+                  "changedAt": "2026-10-03T09:00:00.000Z",
+                  "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                  "purgeAfter": null,
+                  "recoveryWindowDays": 30,
+                  "banner": {
+                    "kind": "paused",
+                    "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                    "since": "2026-10-03T09:00:00.000Z",
+                    "actionLabel": "Resume",
+                    "actionPath": "/settings#danger"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —\nthe workspace is pending deletion and frozen behind the recovery screen;\n`details.restorable` says whether you are an owner who may restore it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workspace_state_conflict` — the state machine has no such move from where the\nworkspace stands (`details.move`, `details.state`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/lifecycle/disconnect-preview": {
+      "get": {
+        "tags": [
+          "lifecycle"
+        ],
+        "summary": "What disconnecting GitHub would do",
+        "description": "*\"Open PRs remain, loops stop.\"* The consequence preview, **computed from live state**:\nopen pull requests (left untouched), runs not yet finished (they finish their stage,\nthen hold), GitHub sources and enabled repositories that stop syncing, and whether a\nstored token will be deleted. `owner` or `admin`.",
+        "operationId": "previewWorkspaceDisconnect",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisconnectPreview"
+                },
+                "example": {
+                  "openPullRequests": 3,
+                  "activeRuns": 2,
+                  "syncingSources": 1,
+                  "enabledRepositories": 4,
+                  "tokenStored": true,
+                  "consequences": [
+                    "3 open pull requests remain on GitHub, untouched.",
+                    "2 running loops finish their current stage, then stop.",
+                    "1 GitHub source and 4 repositories stop syncing.",
+                    "The stored GitHub token is deleted.",
+                    "All loops are paused until you resume them."
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —\nthe workspace is pending deletion and frozen behind the recovery screen;\n`details.restorable` says whether you are an owner who may restore it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/lifecycle/disconnect": {
+      "post": {
+        "tags": [
+          "lifecycle"
+        ],
+        "summary": "Disconnect GitHub",
+        "description": "Pause all loops (so they halt cleanly rather than failing mid-stage), pause every\nactive GitHub ticket source, and delete the stored GitHub token (audited as\n`github.token_cleared`, exactly as a manual clear is). **Open pull requests are not\ntouched.** Answers with the preview's counts as they stood when the disconnect ran.\n\n`owner` or `admin`, with `confirm: true`. Audited as `workspace.disconnected`.",
+        "operationId": "disconnectWorkspace",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LifecycleConfirm"
+              },
+              "example": {
+                "confirm": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisconnectPreview"
+                },
+                "example": {
+                  "openPullRequests": 3,
+                  "activeRuns": 2,
+                  "syncingSources": 1,
+                  "enabledRepositories": 4,
+                  "tokenStored": true,
+                  "consequences": [
+                    "3 open pull requests remain on GitHub, untouched.",
+                    "2 running loops finish their current stage, then stop.",
+                    "1 GitHub source and 4 repositories stop syncing.",
+                    "The stored GitHub token is deleted.",
+                    "All loops are paused until you resume them."
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`confirmation_required` — the body did not carry `confirm: true`.\\n`organization_required` — this session is acting in no workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —\nthe workspace is pending deletion and frozen behind the recovery screen;\n`details.restorable` says whether you are an owner who may restore it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workspace_state_conflict` — the workspace is pending deletion.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/lifecycle/delete": {
+      "post": {
+        "tags": [
+          "lifecycle"
+        ],
+        "summary": "Delete the workspace (30-day recovery window)",
+        "description": "*\"Type the workspace name to confirm · 30-day recovery window.\"* **Owner only**, with\nthe workspace's name typed exactly (byte for byte) and a **recent step-up** — the\nsession was created within five minutes, or `password` is supplied and verified.\n\nThe workspace becomes `pending_delete`: every non-owner session acting in it is revoked,\nevery surface is frozen behind the recovery screen, and all dispatch stops. An owner may\nrestore it at any point until `purgeAfter`. After that a scheduled purge destroys the\nworkspace's data-encryption key first — the crypto-shred — then deletes its artifact\nobjects and every row, and keeps a tombstone. Audited as `workspace.delete_requested`.",
+        "operationId": "deleteWorkspace",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkspaceDeleteRequest"
+              },
+              "example": {
+                "confirmName": "acme-robotics",
+                "password": "correct horse battery staple"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceLifecycle"
+                },
+                "example": {
+                  "state": "paused",
+                  "changedAt": "2026-10-03T09:00:00.000Z",
+                  "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                  "purgeAfter": null,
+                  "recoveryWindowDays": 30,
+                  "banner": {
+                    "kind": "paused",
+                    "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                    "since": "2026-10-03T09:00:00.000Z",
+                    "actionLabel": "Resume",
+                    "actionPath": "/settings#danger"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required`, or `validation_failed` for a malformed body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`step_up_required` — no recent re-authentication on this session; `details.methods`\\nand `details.maxAgeSeconds` say how to provide one. `unauthenticated` — no session.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — only an `owner` may do this. `workspace_pending_delete` — the\nworkspace is frozen behind the recovery screen (`details.purgeAfter`, `details.restorable`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workspace_state_conflict` — the state machine has no such move from where the\nworkspace stands (`details.move`, `details.state`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`workspace_name_mismatch` — the typed name is not exactly the workspace's name.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/lifecycle/restore": {
+      "post": {
+        "tags": [
+          "lifecycle"
+        ],
+        "summary": "Restore a workspace pending deletion",
+        "description": "Return a `pending_delete` workspace to `active` at any point in its recovery window.\n**Owner only**, and reachable while every other surface is frozen. Audited as\n`workspace.restored`. Sessions revoked by the deletion stay revoked; their owners sign\nin again.",
+        "operationId": "restoreWorkspace",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The result.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceLifecycle"
+                },
+                "example": {
+                  "state": "paused",
+                  "changedAt": "2026-10-03T09:00:00.000Z",
+                  "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                  "purgeAfter": null,
+                  "recoveryWindowDays": 30,
+                  "banner": {
+                    "kind": "paused",
+                    "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                    "since": "2026-10-03T09:00:00.000Z",
+                    "actionLabel": "Resume",
+                    "actionPath": "/settings#danger"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — only an `owner` may restore. `workspace_pending_delete` — you are not\\nan owner of this frozen workspace.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`workspace_state_conflict` — the state machine has no such move from where the\nworkspace stands (`details.move`, `details.state`).",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
             "content": {
               "application/json": {
                 "schema": {
@@ -51679,6 +52420,192 @@
           },
           "then": {
             "$ref": "#/components/schemas/EscalationThen"
+          }
+        }
+      },
+      "WorkspaceLifecycleState": {
+        "type": "string",
+        "title": "WorkspaceLifecycleState",
+        "description": "The organization state (#489): `active`; `paused` — work in flight finishes its stage,\nnothing new starts; `pending_delete` — frozen, recoverable by an owner until the purge.",
+        "enum": [
+          "active",
+          "paused",
+          "pending_delete"
+        ]
+      },
+      "LifecycleBanner": {
+        "type": "object",
+        "title": "LifecycleBanner",
+        "description": "The banner the shell renders on every page while the workspace is not `active`.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "message",
+          "since",
+          "actionLabel",
+          "actionPath"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "paused",
+              "pending_delete"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "since": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "actionLabel": {
+            "type": "string",
+            "description": "`Resume` or `Restore`."
+          },
+          "actionPath": {
+            "type": "string",
+            "description": "Where the action lives — the settings page's Danger zone card."
+          }
+        }
+      },
+      "WorkspaceLifecycle": {
+        "type": "object",
+        "title": "WorkspaceLifecycle",
+        "description": "Where the workspace stands, and the app-wide banner (#489).",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "changedAt",
+          "changedBy",
+          "purgeAfter",
+          "recoveryWindowDays",
+          "banner"
+        ],
+        "properties": {
+          "state": {
+            "$ref": "#/components/schemas/WorkspaceLifecycleState"
+          },
+          "changedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the state last changed; null for a workspace that never left `active`."
+          },
+          "changedBy": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Who changed it — `\"user\".id` — or null."
+          },
+          "purgeAfter": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the recovery window closes; non-null exactly while `pending_delete`."
+          },
+          "recoveryWindowDays": {
+            "type": "integer",
+            "const": 30
+          },
+          "banner": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/LifecycleBanner"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        }
+      },
+      "DisconnectPreview": {
+        "type": "object",
+        "title": "DisconnectPreview",
+        "description": "What disconnecting GitHub does, computed from live state (#489).",
+        "additionalProperties": false,
+        "required": [
+          "openPullRequests",
+          "activeRuns",
+          "syncingSources",
+          "enabledRepositories",
+          "tokenStored",
+          "consequences"
+        ],
+        "properties": {
+          "openPullRequests": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Pull requests still open. They remain on GitHub, untouched."
+          },
+          "activeRuns": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Runs not yet finished. They finish their current stage, then hold."
+          },
+          "syncingSources": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Active GitHub ticket sources. They are paused."
+          },
+          "enabledRepositories": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Enabled repositories, whose issues stop syncing."
+          },
+          "tokenStored": {
+            "type": "boolean",
+            "description": "Whether a GitHub token is stored. It is deleted."
+          },
+          "consequences": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The same facts as sentences, in the order the confirm dialog lists them."
+          }
+        }
+      },
+      "LifecycleConfirm": {
+        "type": "object",
+        "title": "LifecycleConfirm",
+        "additionalProperties": false,
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "description": "The confirm dialog's explicit yes. Anything but `true` is `400 confirmation_required`."
+          }
+        }
+      },
+      "WorkspaceDeleteRequest": {
+        "type": "object",
+        "title": "WorkspaceDeleteRequest",
+        "additionalProperties": false,
+        "required": [
+          "confirmName"
+        ],
+        "properties": {
+          "confirmName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256,
+            "description": "The workspace's name, typed exactly."
+          },
+          "password": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 1024,
+            "description": "The step-up, when the session is older than five minutes."
           }
         }
       },

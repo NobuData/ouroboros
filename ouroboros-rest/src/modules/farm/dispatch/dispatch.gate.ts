@@ -8,13 +8,13 @@
  * dispatch point must consult it: while `paused` no new build is offered, work already in flight
  * finishes, and `pending_delete` stops dispatch entirely.
  *
- * That state does not exist yet, so this is the question and not the answer. The dispatcher asks
+ * This file is the question; `lifecycle/lifecycle.state.ts`'s `LifecycleDispatchGate` is the
+ * answer `dispatch.module.ts` binds. The dispatcher asks
  * {@link DispatchGate.admits} once per workspace per pass, **before** it offers anything, and
  * skips a workspace that is refused — its jobs stay `queued`, and nothing already offered,
  * accepted or running is touched. Passes are at most `DISPATCH_INTERVAL_MS` apart
  * (`dispatch.policy.ts`), which is the one documented poll interval #489's hold has to take
- * effect within. Until #489 binds its own provider to {@link FARM_DISPATCH_GATE},
- * {@link OPEN_GATE} admits everybody.
+ * effect within. {@link OPEN_GATE} admits everybody, and stays for tests that need no state.
  */
 
 /** The injection token for the gate — #489 overrides the provider bound to it. */
@@ -29,7 +29,7 @@ export interface DispatchGate {
   admits(organizationId: string): Promise<boolean>;
 }
 
-/** The gate until #489: every workspace is `active`. */
+/** A gate that admits every workspace — for tests; production binds the lifecycle gate. */
 export const OPEN_GATE: DispatchGate = {
   admits: () => Promise.resolve(true),
 };

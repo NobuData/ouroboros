@@ -108,6 +108,9 @@ GUARDRAIL_CHECKS: tuple[str, ...] = (
 #: What the ingestion operations can refuse with, beyond the boundary's ``unauthenticated``.
 #: ``events_out_of_order`` and ``stage_transition_invalid`` carry what the store already
 #: holds in ``details``, which is how a caller tells a lost response from a bug.
+#: ``workspace_paused`` and ``workspace_pending_delete`` (BR.5, #489) are holds, not failures:
+#: a run may not open and a stage may not start while the workspace is not ``active``, so the
+#: caller keeps its ticket queued (or its stage pending) and asks again later.
 INGEST_ERRORS: tuple[str, ...] = (
     "unauthenticated",
     "validation_failed",
@@ -125,6 +128,8 @@ INGEST_ERRORS: tuple[str, ...] = (
     "events_out_of_order",
     "build_job_not_found",
     "idempotency_key_reused",
+    "workspace_paused",
+    "workspace_pending_delete",
 )
 
 #: The idempotency key every write carries: the caller's name for one submission. Replaying

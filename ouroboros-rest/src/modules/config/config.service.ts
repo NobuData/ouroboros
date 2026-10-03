@@ -346,6 +346,15 @@ export class AppConfigService {
   }
 
   /**
+   * Seconds between workspace-purge sweeps — `OURO_LIFECYCLE_PURGE_SWEEP_SECONDS` (#489).
+   *
+   * The nominal interval; `src/modules/lifecycle/` jitters it by ±25%, as every loop here does.
+   */
+  get lifecyclePurgeSweepSeconds(): number {
+    return this.config.getOrThrow<number>("lifecyclePurgeSweepSeconds");
+  }
+
+  /**
    * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
    *
    * The Backlog Health card's third meter (AL.5, #281); configurable rather than mockup 09's fixed
@@ -532,6 +541,7 @@ export class AppConfigService {
       runControlTtlSeconds: this.runControlTtlSeconds,
       runSteerTtlSeconds: this.runSteerTtlSeconds,
       runControlSweepSeconds: this.runControlSweepSeconds,
+      lifecyclePurgeSweepSeconds: this.lifecyclePurgeSweepSeconds,
       backlogStaleDays: this.backlogStaleDays,
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,

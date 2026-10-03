@@ -24,7 +24,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest (internal)
-  version: "0.38.15"
+  version: "0.38.16"
   summary: What ouroboros-engine may ask the control plane for — and what it is never given.
   description: |-
     The **engine-facing** surface of
@@ -512,6 +512,9 @@ paths:
             `ticket_ambiguous` — that key names more than one ticket in that source —
             `ticket_not_numbered` — the source's identifiers are not numbers and
             `runs.issue_number` is — `workflow_pin_unreadable`, or `idempotency_key_reused`.
+            `workspace_paused` / `workspace_pending_delete` — the ticket's workspace is not
+            `active` (#489): the queue holds, so keep the ticket queued and ask again later. A
+            replay of a run already opened still answers with its receipt.
           content:
             application/json:
               schema:
@@ -636,6 +639,9 @@ paths:
           description: |-
             `stage_transition_invalid` — the machine forbids the move — `attempt_limit_exceeded`,
             `stage_not_in_pin`, `stage_return_not_a_retry`, or `idempotency_key_reused`.
+            `workspace_paused` / `workspace_pending_delete` — a stage may not *start* (move to
+            `active`) while the run's workspace is not `active` (#489). Finishing the stage in
+            flight (`succeeded`, `failed`) or skipping one is never refused for this reason.
           content:
             application/json:
               schema:

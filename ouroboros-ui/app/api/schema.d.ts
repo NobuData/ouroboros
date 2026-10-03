@@ -2080,6 +2080,186 @@ export interface paths {
         patch: operations["patchAutoMergeSetting"];
         trace?: never;
     };
+    "/api/v1/settings/lifecycle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Where the workspace stands in its lifecycle
+         * @description Mockup 17's Danger zone state ([#489](https://github.com/NobuData/ouroboros/issues/489)):
+         *     `active`, `paused` or `pending_delete`, with **the banner the shell renders app-wide**
+         *     while the workspace is not `active` — a paused workspace says so on every page, so
+         *     silence never looks like a malfunction.
+         *
+         *     Any member may read it. While the workspace is `pending_delete` every other route is
+         *     frozen behind the recovery screen (`403 workspace_pending_delete`); an **owner** may
+         *     still read this and restore.
+         */
+        get: operations["readWorkspaceLifecycle"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/lifecycle/pause": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pause all loops
+         * @description *"Queued issues stay queued; running loops finish their stage."* A **graceful hold**,
+         *     not a kill switch: work in flight completes its current stage, and every dispatch point
+         *     that would start something new declines —
+         *
+         *     - **queue pulls**: the engine's `POST /internal/runs` answers `409 workspace_paused`;
+         *     - **stage advancement**: a stage moving to `active` answers `409 workspace_paused`,
+         *       while `succeeded`, `failed` and `skipped` still land;
+         *     - **build dispatch**: the farm offers nothing new; a pass runs at most every
+         *       `DISPATCH_INTERVAL_MS` (2 s, jittered), which is the documented interval the hold
+         *       takes effect within.
+         *
+         *     `owner` or `admin`, with an explicit `confirm: true`. Audited as `workspace.paused` and
+         *     queued for the `audit.*` webhook family as `audit.workspace.paused`.
+         */
+        post: operations["pauseWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/lifecycle/resume": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resume all loops
+         * @description Return a paused workspace to `active`: the queue is released and the next stage may
+         *     start. Nothing was lost while paused — queued work stayed queued, and every stage that
+         *     finished was recorded. `owner` or `admin`; audited as `workspace.resumed`.
+         */
+        post: operations["resumeWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/lifecycle/disconnect-preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What disconnecting GitHub would do
+         * @description *"Open PRs remain, loops stop."* The consequence preview, **computed from live state**:
+         *     open pull requests (left untouched), runs not yet finished (they finish their stage,
+         *     then hold), GitHub sources and enabled repositories that stop syncing, and whether a
+         *     stored token will be deleted. `owner` or `admin`.
+         */
+        get: operations["previewWorkspaceDisconnect"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/lifecycle/disconnect": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Disconnect GitHub
+         * @description Pause all loops (so they halt cleanly rather than failing mid-stage), pause every
+         *     active GitHub ticket source, and delete the stored GitHub token (audited as
+         *     `github.token_cleared`, exactly as a manual clear is). **Open pull requests are not
+         *     touched.** Answers with the preview's counts as they stood when the disconnect ran.
+         *
+         *     `owner` or `admin`, with `confirm: true`. Audited as `workspace.disconnected`.
+         */
+        post: operations["disconnectWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/lifecycle/delete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Delete the workspace (30-day recovery window)
+         * @description *"Type the workspace name to confirm · 30-day recovery window."* **Owner only**, with
+         *     the workspace's name typed exactly (byte for byte) and a **recent step-up** — the
+         *     session was created within five minutes, or `password` is supplied and verified.
+         *
+         *     The workspace becomes `pending_delete`: every non-owner session acting in it is revoked,
+         *     every surface is frozen behind the recovery screen, and all dispatch stops. An owner may
+         *     restore it at any point until `purgeAfter`. After that a scheduled purge destroys the
+         *     workspace's data-encryption key first — the crypto-shred — then deletes its artifact
+         *     objects and every row, and keeps a tombstone. Audited as `workspace.delete_requested`.
+         */
+        post: operations["deleteWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/lifecycle/restore": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Restore a workspace pending deletion
+         * @description Return a `pending_delete` workspace to `active` at any point in its recovery window.
+         *     **Owner only**, and reachable while every other surface is frozen. Audited as
+         *     `workspace.restored`. Sessions revoked by the deletion stay revoked; their owners sign
+         *     in again.
+         */
+        post: operations["restoreWorkspace"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/policies/dry-run": {
         parameters: {
             query?: never;
@@ -17344,6 +17524,80 @@ export interface components {
             then?: components["schemas"]["EscalationThen"];
         };
         /**
+         * WorkspaceLifecycleState
+         * @description The organization state (#489): `active`; `paused` — work in flight finishes its stage,
+         *     nothing new starts; `pending_delete` — frozen, recoverable by an owner until the purge.
+         * @enum {string}
+         */
+        WorkspaceLifecycleState: "active" | "paused" | "pending_delete";
+        /**
+         * LifecycleBanner
+         * @description The banner the shell renders on every page while the workspace is not `active`.
+         */
+        LifecycleBanner: {
+            /** @enum {string} */
+            kind: "paused" | "pending_delete";
+            message: string;
+            /** Format: date-time */
+            since: string | null;
+            /** @description `Resume` or `Restore`. */
+            actionLabel: string;
+            /** @description Where the action lives — the settings page's Danger zone card. */
+            actionPath: string;
+        };
+        /**
+         * WorkspaceLifecycle
+         * @description Where the workspace stands, and the app-wide banner (#489).
+         */
+        WorkspaceLifecycle: {
+            state: components["schemas"]["WorkspaceLifecycleState"];
+            /**
+             * Format: date-time
+             * @description When the state last changed; null for a workspace that never left `active`.
+             */
+            changedAt: string | null;
+            /** @description Who changed it — `"user".id` — or null. */
+            changedBy: string | null;
+            /**
+             * Format: date-time
+             * @description When the recovery window closes; non-null exactly while `pending_delete`.
+             */
+            purgeAfter: string | null;
+            /** @constant */
+            recoveryWindowDays: 30;
+            banner: components["schemas"]["LifecycleBanner"] | null;
+        };
+        /**
+         * DisconnectPreview
+         * @description What disconnecting GitHub does, computed from live state (#489).
+         */
+        DisconnectPreview: {
+            /** @description Pull requests still open. They remain on GitHub, untouched. */
+            openPullRequests: number;
+            /** @description Runs not yet finished. They finish their current stage, then hold. */
+            activeRuns: number;
+            /** @description Active GitHub ticket sources. They are paused. */
+            syncingSources: number;
+            /** @description Enabled repositories, whose issues stop syncing. */
+            enabledRepositories: number;
+            /** @description Whether a GitHub token is stored. It is deleted. */
+            tokenStored: boolean;
+            /** @description The same facts as sentences, in the order the confirm dialog lists them. */
+            consequences: string[];
+        };
+        /** LifecycleConfirm */
+        LifecycleConfirm: {
+            /** @description The confirm dialog's explicit yes. Anything but `true` is `400 confirmation_required`. */
+            confirm?: boolean;
+        };
+        /** WorkspaceDeleteRequest */
+        WorkspaceDeleteRequest: {
+            /** @description The workspace's name, typed exactly. */
+            confirmName: string;
+            /** @description The step-up, when the session is older than five minutes. */
+            password?: string;
+        };
+        /**
          * AuditAction
          * @description What an audit event records — `family.event`, lower snake on both sides.
          *
@@ -31210,6 +31464,962 @@ export interface operations {
              * @description `internal_error` — the service itself failed. The message is a constant and
              *     `details` is empty, deliberately.
              */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readWorkspaceLifecycle: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "state": "paused",
+                     *       "changedAt": "2026-10-03T09:00:00.000Z",
+                     *       "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                     *       "purgeAfter": null,
+                     *       "recoveryWindowDays": 30,
+                     *       "banner": {
+                     *         "kind": "paused",
+                     *         "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                     *         "since": "2026-10-03T09:00:00.000Z",
+                     *         "actionLabel": "Resume",
+                     *         "actionPath": "/settings#danger"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkspaceLifecycle"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workspace_pending_delete` — the workspace is pending deletion and you are not an\nowner; `details.restorable` is `false`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    pauseWorkspace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "confirm": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["LifecycleConfirm"];
+            };
+        };
+        responses: {
+            /** @description The result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "state": "paused",
+                     *       "changedAt": "2026-10-03T09:00:00.000Z",
+                     *       "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                     *       "purgeAfter": null,
+                     *       "recoveryWindowDays": 30,
+                     *       "banner": {
+                     *         "kind": "paused",
+                     *         "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                     *         "since": "2026-10-03T09:00:00.000Z",
+                     *         "actionLabel": "Resume",
+                     *         "actionPath": "/settings#danger"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkspaceLifecycle"];
+                };
+            };
+            /** @description `confirmation_required` — the body did not carry `confirm: true`.\n`organization_required` — this session is acting in no workspace. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —
+             *     the workspace is pending deletion and frozen behind the recovery screen;
+             *     `details.restorable` says whether you are an owner who may restore it.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workspace_state_conflict` — the state machine has no such move from where the
+             *     workspace stands (`details.move`, `details.state`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    resumeWorkspace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "state": "paused",
+                     *       "changedAt": "2026-10-03T09:00:00.000Z",
+                     *       "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                     *       "purgeAfter": null,
+                     *       "recoveryWindowDays": 30,
+                     *       "banner": {
+                     *         "kind": "paused",
+                     *         "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                     *         "since": "2026-10-03T09:00:00.000Z",
+                     *         "actionLabel": "Resume",
+                     *         "actionPath": "/settings#danger"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkspaceLifecycle"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —
+             *     the workspace is pending deletion and frozen behind the recovery screen;
+             *     `details.restorable` says whether you are an owner who may restore it.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workspace_state_conflict` — the state machine has no such move from where the
+             *     workspace stands (`details.move`, `details.state`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    previewWorkspaceDisconnect: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "openPullRequests": 3,
+                     *       "activeRuns": 2,
+                     *       "syncingSources": 1,
+                     *       "enabledRepositories": 4,
+                     *       "tokenStored": true,
+                     *       "consequences": [
+                     *         "3 open pull requests remain on GitHub, untouched.",
+                     *         "2 running loops finish their current stage, then stop.",
+                     *         "1 GitHub source and 4 repositories stop syncing.",
+                     *         "The stored GitHub token is deleted.",
+                     *         "All loops are paused until you resume them."
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DisconnectPreview"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —
+             *     the workspace is pending deletion and frozen behind the recovery screen;
+             *     `details.restorable` says whether you are an owner who may restore it.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    disconnectWorkspace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "confirm": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["LifecycleConfirm"];
+            };
+        };
+        responses: {
+            /** @description The result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "openPullRequests": 3,
+                     *       "activeRuns": 2,
+                     *       "syncingSources": 1,
+                     *       "enabledRepositories": 4,
+                     *       "tokenStored": true,
+                     *       "consequences": [
+                     *         "3 open pull requests remain on GitHub, untouched.",
+                     *         "2 running loops finish their current stage, then stop.",
+                     *         "1 GitHub source and 4 repositories stop syncing.",
+                     *         "The stored GitHub token is deleted.",
+                     *         "All loops are paused until you resume them."
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DisconnectPreview"];
+                };
+            };
+            /** @description `confirmation_required` — the body did not carry `confirm: true`.\n`organization_required` — this session is acting in no workspace. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `unauthenticated`. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — your role is not `owner` or `admin`. `workspace_pending_delete` —
+             *     the workspace is pending deletion and frozen behind the recovery screen;
+             *     `details.restorable` says whether you are an owner who may restore it.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workspace_state_conflict` — the workspace is pending deletion. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteWorkspace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "confirmName": "acme-robotics",
+                 *       "password": "correct horse battery staple"
+                 *     }
+                 */
+                "application/json": components["schemas"]["WorkspaceDeleteRequest"];
+            };
+        };
+        responses: {
+            /** @description The result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "state": "paused",
+                     *       "changedAt": "2026-10-03T09:00:00.000Z",
+                     *       "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                     *       "purgeAfter": null,
+                     *       "recoveryWindowDays": 30,
+                     *       "banner": {
+                     *         "kind": "paused",
+                     *         "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                     *         "since": "2026-10-03T09:00:00.000Z",
+                     *         "actionLabel": "Resume",
+                     *         "actionPath": "/settings#danger"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkspaceLifecycle"];
+                };
+            };
+            /** @description `organization_required`, or `validation_failed` for a malformed body. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `step_up_required` — no recent re-authentication on this session; `details.methods`\nand `details.maxAgeSeconds` say how to provide one. `unauthenticated` — no session. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — only an `owner` may do this. `workspace_pending_delete` — the
+             *     workspace is frozen behind the recovery screen (`details.purgeAfter`, `details.restorable`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workspace_state_conflict` — the state machine has no such move from where the
+             *     workspace stands (`details.move`, `details.state`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `workspace_name_mismatch` — the typed name is not exactly the workspace's name. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    restoreWorkspace: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The result. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "state": "paused",
+                     *       "changedAt": "2026-10-03T09:00:00.000Z",
+                     *       "changedBy": "aBcD1234eFgH5678iJkL9012mNoP3456",
+                     *       "purgeAfter": null,
+                     *       "recoveryWindowDays": 30,
+                     *       "banner": {
+                     *         "kind": "paused",
+                     *         "message": "All loops are paused. Running loops finish their stage; queued issues stay queued.",
+                     *         "since": "2026-10-03T09:00:00.000Z",
+                     *         "actionLabel": "Resume",
+                     *         "actionPath": "/settings#danger"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkspaceLifecycle"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — only an `owner` may restore. `workspace_pending_delete` — you are not\nan owner of this frozen workspace. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `workspace_state_conflict` — the state machine has no such move from where the
+             *     workspace stands (`details.move`, `details.state`).
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
             500: {
                 headers: {
                     [name: string]: unknown;
