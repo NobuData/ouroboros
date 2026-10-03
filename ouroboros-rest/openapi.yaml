@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.8"
+  version: "0.38.9"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -8158,6 +8158,123 @@ paths:
           description: |-
             `validation_failed` — `cause` is not one of the five causes, `reason` is missing, blank
             or over 2 000 characters, or `id` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/measurements:
+    get:
+      tags: [analyzer]
+      summary: A repository's measurements and calibration
+      description: |-
+        BV.6 ([#515](https://github.com/NobuData/ouroboros/issues/515)) — mockup 18's **Predicted vs
+        Measured** card and its recalibration popover. Every applied suggestion's measurement, newest
+        apply first: its frozen baseline and prediction, `day` N of `windowDays` while it is
+        `pending`, and once the measurement job closes it the measured value, the verdict
+        (`delivered`, `under`, `over`, or `confounded` with the interfering applications and
+        change-points listed) and the composed `note` — *"under-delivered — analyzer revised its
+        cache model"*.
+
+        `calibration` is each analyzer and impact class's current factor with every update that
+        moved it and the measurements it cites; `formula` states the arithmetic, so the factor
+        reproduces by hand.
+
+        Every member may read. **The workspace is the session's**: a repository it has none of reads
+        as empty.
+      operationId: listMeasurements
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: repo
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 255
+          description: The repository, `owner/name`.
+      responses:
+        "200":
+          description: The measurements and the calibration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Measurements"
+              example:
+                repo: acme-robotics/helios-firmware
+                formula: >-
+                  factor = round(Σ clamp(measured ÷ raw, 0, 2) × raw ÷ Σ raw, 4), raw = predicted ÷
+                  the factor it was made with, over the analyzer's delivered, under and over
+                  measurements of this impact class
+                measurements:
+                  - id: 5eed0069-0000-4000-8000-000000000002
+                    suggestionId: 5eed0067-0000-4000-8000-000000000002
+                    title: Re-warm ccache right after deps-refresh merges
+                    appliedAt: "2026-07-09T10:00:00.000Z"
+                    appliedOn: "2026-07-09"
+                    day: 14
+                    windowDays: 14
+                    windowEndsOn: "2026-07-23"
+                    targetMetric: stage_duration
+                    baseline: { window: { from: "2026-06-25", to: "2026-07-08" }, value: 380 }
+                    predicted:
+                      delta: -110
+                      unit: seconds
+                      calibration: { analyzer: cache_window, impact_class: duration_delta, factor: 1 }
+                    measured: { window: { from: "2026-07-10", to: "2026-07-23" }, value: 308, delta: -72 }
+                    verdict: under
+                    confounds: []
+                    note: under-delivered — analyzer revised its cache model
+                    closedAt: "2026-07-24T03:00:00.000Z"
+                calibration:
+                  - analyzer: cache_window
+                    impactClass: duration_delta
+                    factor: 0.6545
+                    sampleCount: 1
+                    updatedAt: "2026-07-24T03:00:00.000Z"
+                    history:
+                      - fromFactor: 1
+                        toFactor: 0.6545
+                        sampleCount: 1
+                        measuredSum: -72
+                        predictedSum: -110
+                        measurementIds: [5eed0069-0000-4000-8000-000000000002]
+                        addedMeasurementIds: [5eed0069-0000-4000-8000-000000000002]
+                        createdAt: "2026-07-24T03:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or not `owner/name`.
           content:
             application/json:
               schema:
@@ -35823,6 +35940,89 @@ components:
       properties:
         batch: { $ref: "#/components/schemas/PlanningBatch" }
         suggestionIds: { type: array, items: { type: string, format: uuid } }
+
+    Measurements:
+      type: object
+      title: Measurements
+      description: A repository's measurements and calibration (BV.6, #515).
+      additionalProperties: false
+      required: [repo, formula, measurements, calibration]
+      properties:
+        repo: { type: string }
+        formula: { type: string, description: The calibration arithmetic, stated. }
+        measurements:
+          type: array
+          items: { $ref: "#/components/schemas/Measurement" }
+        calibration:
+          type: array
+          items: { $ref: "#/components/schemas/CalibrationCell" }
+
+    Measurement:
+      type: object
+      title: Measurement
+      description: One applied suggestion, predicted and — once its window closes — measured.
+      additionalProperties: false
+      required:
+        [id, suggestionId, title, appliedAt, appliedOn, day, windowDays, windowEndsOn, targetMetric,
+         baseline, predicted, measured, verdict, confounds, note, closedAt]
+      properties:
+        id: { type: string, format: uuid }
+        suggestionId: { type: string, format: uuid }
+        title: { type: string }
+        appliedAt: { type: string, format: date-time }
+        appliedOn: { type: string, format: date }
+        day: { type: integer, minimum: 0, description: Day N of the window — the pending card's progress. }
+        windowDays: { type: integer, minimum: 1 }
+        windowEndsOn: { type: string, format: date }
+        targetMetric: { type: string }
+        baseline: { type: object, description: "{window, value, statistic?, dimension?} — frozen at apply." }
+        predicted: { type: object, description: "{delta, unit, basis, calibration} — frozen at apply." }
+        measured:
+          type: [object, "null"]
+          description: "{window, value, delta} — null while pending."
+        verdict: { type: string, enum: [pending, delivered, under, over, confounded] }
+        confounds:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [kind, id, date]
+            properties:
+              kind: { type: string, enum: [application, change_point] }
+              id: { type: string, format: uuid }
+              date: { type: string, format: date }
+        note: { type: [string, "null"] }
+        closedAt: { type: [string, "null"], format: date-time }
+
+    CalibrationCell:
+      type: object
+      title: CalibrationCell
+      description: One analyzer and impact class's factor, and every update that moved it.
+      additionalProperties: false
+      required: [analyzer, impactClass, factor, sampleCount, updatedAt, history]
+      properties:
+        analyzer: { type: string }
+        impactClass: { type: string }
+        factor: { type: number }
+        sampleCount: { type: integer, minimum: 1 }
+        updatedAt: { type: string, format: date-time }
+        history:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+              [fromFactor, toFactor, sampleCount, measuredSum, predictedSum, measurementIds,
+               addedMeasurementIds, createdAt]
+            properties:
+              fromFactor: { type: number }
+              toFactor: { type: number }
+              sampleCount: { type: integer }
+              measuredSum: { type: number }
+              predictedSum: { type: number }
+              measurementIds: { type: array, items: { type: string, format: uuid } }
+              addedMeasurementIds: { type: array, items: { type: string, format: uuid } }
+              createdAt: { type: string, format: date-time }
 
     StartAnalysisBody:
       type: object

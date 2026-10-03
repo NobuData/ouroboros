@@ -363,8 +363,9 @@ suggestion{build_process, "Re-warm ccache after deps-refresh merges",
   over the cell's cleanly closed measurements, written by `recalibrate_analyzer()` with an
   append-only `analyzer_calibration_history` row citing every input measurement and the ones
   that moved it; a factor without that row is refused at commit.
-  *Left to BV.6 (#515):* deciding **which** in-window events are confounds — the schema records
-  and enforces them but does not detect them (the mockup's own pair is applied a week apart).
+  *Left to BV.6 (#515), and decided there:* **which** in-window events are confounds. The schema
+  records and enforces them but does not detect them (the mockup's own pair is applied a week
+  apart); BV.6 counts applications on the same target metric and change-points in that metric.
 
 - **Problem Statement:** The predicted-vs-measured card and the
   recalibration loop need rows (decision A6).
@@ -450,7 +451,7 @@ seeds: 90d series w/ 3 planted shifts + attribution anchors · run manifest ·
 | BV.3 | #512 ✅ | 🟢 Done | ouroboros-engine: [BV.3] Pattern analyzers | Signatures, config-usage, cache-window, queue, waiver-cites, workflow-outcome | mvp, analyzer, engine | N (after BV.2) | Y | L | ouroboros-engine |
 | BV.4 | #513 ✅ | 🟢 Done | ouroboros-rest: [BV.4] Suggestion composer | Templates, impact math, confidence scoring, `/v0/synthesize` contract | mvp, analyzer, rest | N (after BV.2/BV.3) | Y | M | ouroboros-rest |
 | BV.5 | #514 ✅ | 🟢 Done | ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push | Plane compositions with previews; planning-batch drafting (A4/A5) | mvp, analyzer, rest, workflow, planning | N (after BV.4, WF-P.3, AK/AL) | Y | L | ouroboros-rest |
-| BV.6 | #515 | 🟡 Open | ouroboros-rest: [BV.6] Measurement job & calibration | 14d windows, verdicts, confounds, recalibration (A6); tests | mvp, analyzer, rest, ci | N (after BU.3, BV.5, BI.2) | Y | M | ouroboros-rest |
+| BV.6 | #515 ✅ | 🟢 Done | ouroboros-rest: [BV.6] Measurement job & calibration | 14d windows, verdicts, confounds, recalibration (A6); tests | mvp, analyzer, rest, ci | N (after BU.3, BV.5, BI.2) | Y | M | ouroboros-rest |
 
 ### Issue BV.1 — ouroboros-rest: [BV.1] Corpus assembly & run orchestration
 
@@ -756,7 +757,7 @@ draft(BA-1..4) ─▶ AK batch(analyzer-v1) ─▶ sized ─▶ push → sandbox
 
 ### Issue BV.6 — ouroboros-rest: [BV.6] Measurement job & calibration
 
-> **GitHub issue:** #515 · **Status:** 🟡 Open · **Parent epic:** #503
+> **GitHub issue:** #515 ✅ · **Status:** 🟢 Done · **Parent epic:** #503
 
 - **Problem Statement:** The accountability loop (A6): measure every
   application for 14 days, verdict it, recalibrate transparently —
@@ -783,6 +784,35 @@ draft(BA-1..4) ─▶ AK batch(analyzer-v1) ─▶ sized ─▶ push → sandbox
 day 14: measured −72s vs predicted −110s ─▶ under · note composed · calibration 0.65
 confound: second apply in window ─▶ verdict: confounded (flagged, never silently counted)
 ```
+
+- **Delivered**: `ouroboros-rest` 0.38.9 `src/modules/analyzer/measurement/`,
+  `ouroboros-db` `V089__calibration_bounded.sql`, and `ouroboros-engine` 0.7.13. Three choices were
+  made with the user.
+  - **Job.** It runs hourly over pending measurements and is idempotent.
+    - A window closes on the first pass after its last day is over **and** the metric's rollup is
+      filled through that day.
+    - The measured value is day 1…N, read with the baseline's statistic, unit and pool.
+    - A window with no data stays pending.
+  - **Confounds.** Two kinds count: another application on the **same target metric** applied
+    inside the window, and a change-point detected in that metric inside the window.
+    - The mockup pair (`cycle_time` and `stage_duration`) therefore stays clean.
+    - Interference is recorded as it lands; a confounded row is never a calibration input.
+  - **Verdict and note.** The verdict is V085's band arithmetic. The note is composed from the
+    verdict and what recalibration actually did: the close runs once inside a savepoint to learn the
+    new factor exactly, then again for real.
+  - **Bounded calibration (V089).** Each measurement contributes
+    `clamp(measured ÷ raw, 0, 2) × raw`, and `factor = round(Σ ÷ Σ raw, 4)`. The seeded 0.6545 is
+    unchanged; the history row cites the measurements.
+  - **Read.** `GET /api/v1/analyzer/measurements?repo=` returns day N of 14, verdicts, confounds,
+    notes and the calibration cells with their history, for BW.5.
+  - **Suite.**
+    - `measurement.integration-spec`: the mockup pair, the confound cases, cross-workspace
+      isolation, day N, and the next composition using the new factor.
+    - `analyzer.isolation.integration-spec`: every analyzer route claimed.
+    - `draft.integration-spec`: draft, size, then push to the recorded GitHub, idempotent.
+    - Engine `test_analysis_dispatch_golden.py`: every golden through `POST /v0/analysis/runs`.
+    - Removing confound detection, calibration application or dismissal persistence each turned
+      the suite red (verified during development). It adds about 10 s.
 
 ---
 
@@ -1125,7 +1155,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BI.1/BI.2, WF-P.3/S, AK/AL, farm config, BK.1, #41/#46.
 2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
 3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → **BV.3 (#512) ✅** →
-   **BV.4 (#513) ✅** → **BV.5 (#514) ✅** → BV.6 (#515)
+   **BV.4 (#513) ✅** → **BV.5 (#514) ✅** → **BV.6 (#515) ✅**
 4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
    BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
 5. **v2:** BX.1 (#522) after AF.2 (#235); BX.2 (#523) ⊕ BX.3 (#524) ⊕

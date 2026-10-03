@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**351 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
+**352 of 454 ordered issues are closed** — P0 through P10 and P12 are complete, and P11 and P13 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12 | **290** |
-| 🟡 **In progress** | P11, P13 | **61** of 70 |
+| 🟡 **In progress** | P11, P13 | **62** of 70 |
 | — **Not started** | P14–P17 | 0 of 94 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -116,12 +116,12 @@ position is not forced by dependencies, one of these decided it.
 | **P10** | Run console & ingestion contract | ✅ 17/17 | 17 | 55 | Mockup 10 |
 | **P11** | Evidence — tests & PR verification | 🟡 36/38 | 38 | 119 | Mockups 11, 12 |
 | **P12** | Knowledge & onboarding mechanism | ✅ 28/28 | 28 | 83 | Mockups 14, 13 |
-| **P13** | Analytics — insights & build analyzer | 🟡 25/32 | 32 | 109 | Mockups 15, 18 |
+| **P13** | Analytics — insights & build analyzer | 🟡 26/32 | 32 | 109 | Mockups 15, 18 |
 | **P14** | Decisions & governance — inbox, settings | — 0/31 | 31 | 102 | Mockups 16, 17 |
 | **P15** | Onboarding experience | — 0/6 | 6 | 18 | Mockup 13 |
 | **P16** | Intelligence — research & copilot | — 0/42 | 42 | 147 | Mockups 22, 20 |
 | **P17** | ChatOps — Slack integration | — 0/15 | 15 | 50 | Mockup 19 |
-| | **Total** | **277/454** | **454** | **1,404** | |
+| | **Total** | **278/454** | **454** | **1,404** | |
 
 ```mermaid
 flowchart TD
@@ -1586,7 +1586,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **32 issues** · 109 complexity points · order **#329–#360** · 11 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_15_INSIGHTS.md`, `ROADMAP_MOCKUP_18_BUILD_ANALYZER.md`
-> **Status:** 🟡 **In progress** — 25 of 32 issues closed
+> **Status:** 🟡 **In progress** — 26 of 32 issues closed
 
 **Goal.** Build the metrics service as the single computational truth over every plane — rollups plus live tail, a metric registry carrying formula, sources and caveats — and the deterministic analysis engine that snapshots a corpus, detects change points with ranked attribution, and drafts auditable suggestions.
 
@@ -1625,7 +1625,7 @@ the blockquote above that records what it did and what it did differently.
 | 353 | **BK.5** | ✅ [#446](https://github.com/NobuData/ouroboros/issues/446) | Performance strip, secondary charts & flaky card | ouroboros-ui | M | BK.1, BK.2 |
 | 354 | **BV.5** | ✅ [#514](https://github.com/NobuData/ouroboros/issues/514) | Actions — apply, dismiss, draft & push | ouroboros-rest | L | P.3, BV.4 |
 | 355 | **BK.6** | ✅ [#447](https://github.com/NobuData/ouroboros/issues/447) | DORA strip, digest controls, states & e2e | ouroboros-ui, .github | M | BJ.4, BK.3, BK.5 |
-| 356 | **BV.6** | [#515](https://github.com/NobuData/ouroboros/issues/515) | Measurement job & calibration | ouroboros-rest | M | BI.2, BU.3, BV.5 |
+| 356 | **BV.6** | ✅ [#515](https://github.com/NobuData/ouroboros/issues/515) | Measurement job & calibration | ouroboros-rest | M | BI.2, BU.3, BV.5 |
 | 357 | **BW.3** | [#518](https://github.com/NobuData/ouroboros/issues/518) | Suggestion cards & apply flows | ouroboros-ui | L | BV.5, BW.1 |
 | 358 | **BW.4** | [#519](https://github.com/NobuData/ouroboros/issues/519) | Drafted-tickets card | ouroboros-ui | M | BV.5, BW.1 |
 | 359 | **BW.5** | [#520](https://github.com/NobuData/ouroboros/issues/520) | Predicted-vs-measured & how-it-works cards | ouroboros-ui | S | BV.6, BW.1 |

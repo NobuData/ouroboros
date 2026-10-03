@@ -511,6 +511,12 @@ with every evidence line planted, never stated. The expected findings are commit
 `uv run python tests/analysis_golden.py` or `uv run python tests/analysis_patterns_golden.py`;
 if the change was intended, bump the version first.
 
+Every golden is also reproduced through the real dispatch path
+(`tests/test_analysis_dispatch_golden.py`, [#515](https://github.com/NobuData/ouroboros/issues/515)).
+The corpus is serialised as ouroboros-rest sends it, validated by `POST /v0/analysis/runs`, run in
+each analyzer's sandbox and streamed back. An analyzer that stopped running there would otherwise
+pass every in-process golden with a shorter list.
+
 ## The simulated-run driver (development only)
 
 [#307](https://github.com/NobuData/ouroboros/issues/307) (AP.5). The Run Console is fed by

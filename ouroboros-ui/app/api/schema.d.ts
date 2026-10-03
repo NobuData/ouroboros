@@ -2455,6 +2455,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analyzer/measurements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A repository's measurements and calibration
+         * @description BV.6 ([#515](https://github.com/NobuData/ouroboros/issues/515)) — mockup 18's **Predicted vs
+         *     Measured** card and its recalibration popover. Every applied suggestion's measurement, newest
+         *     apply first: its frozen baseline and prediction, `day` N of `windowDays` while it is
+         *     `pending`, and once the measurement job closes it the measured value, the verdict
+         *     (`delivered`, `under`, `over`, or `confounded` with the interfering applications and
+         *     change-points listed) and the composed `note` — *"under-delivered — analyzer revised its
+         *     cache model"*.
+         *
+         *     `calibration` is each analyzer and impact class's current factor with every update that
+         *     moved it and the measurements it cites; `formula` states the arithmetic, so the factor
+         *     reproduces by hand.
+         *
+         *     Every member may read. **The workspace is the session's**: a repository it has none of reads
+         *     as empty.
+         */
+        get: operations["listMeasurements"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analyzer/runs": {
         parameters: {
             query?: never;
@@ -13201,6 +13234,80 @@ export interface components {
         DraftedSuggestions: {
             batch: components["schemas"]["PlanningBatch"];
             suggestionIds: string[];
+        };
+        /**
+         * Measurements
+         * @description A repository's measurements and calibration (BV.6,
+         */
+        Measurements: {
+            repo: string;
+            /** @description The calibration arithmetic */
+            formula: string;
+            measurements: components["schemas"]["Measurement"][];
+            calibration: components["schemas"]["CalibrationCell"][];
+        };
+        /**
+         * Measurement
+         * @description One applied suggestion, predicted and — once its window closes — measured.
+         */
+        Measurement: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            suggestionId: string;
+            title: string;
+            /** Format: date-time */
+            appliedAt: string;
+            /** Format: date */
+            appliedOn: string;
+            /** @description Day N of the window — the pending card's progress. */
+            day: number;
+            windowDays: number;
+            /** Format: date */
+            windowEndsOn: string;
+            targetMetric: string;
+            /** @description {window, value, statistic?, dimension?} — frozen at apply. */
+            baseline: Record<string, never>;
+            /** @description {delta, unit, basis, calibration} — frozen at apply. */
+            predicted: Record<string, never>;
+            /** @description {window, value, delta} — null while pending. */
+            measured: Record<string, never> | null;
+            /** @enum {string} */
+            verdict: "pending" | "delivered" | "under" | "over" | "confounded";
+            confounds: {
+                /** @enum {string} */
+                kind: "application" | "change_point";
+                /** Format: uuid */
+                id: string;
+                /** Format: date */
+                date: string;
+            }[];
+            note: string | null;
+            /** Format: date-time */
+            closedAt: string | null;
+        };
+        /**
+         * CalibrationCell
+         * @description One analyzer and impact class's factor, and every update that moved it.
+         */
+        CalibrationCell: {
+            analyzer: string;
+            impactClass: string;
+            factor: number;
+            sampleCount: number;
+            /** Format: date-time */
+            updatedAt: string;
+            history: {
+                fromFactor: number;
+                toFactor: number;
+                sampleCount: number;
+                measuredSum: number;
+                predictedSum: number;
+                measurementIds: string[];
+                addedMeasurementIds: string[];
+                /** Format: date-time */
+                createdAt: string;
+            }[];
         };
         /**
          * StartAnalysisBody
@@ -32762,6 +32869,194 @@ export interface operations {
              * @description `validation_failed` — `cause` is not one of the five causes, `reason` is missing, blank
              *     or over 2 000 characters, or `id` is not a uuid.
              */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listMeasurements: {
+        parameters: {
+            query: {
+                /** @description The repository, `owner/name`. */
+                repo: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The measurements and the calibration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "formula": "factor = round(Σ clamp(measured ÷ raw, 0, 2) × raw ÷ Σ raw, 4), raw = predicted ÷ the factor it was made with, over the analyzer's delivered, under and over measurements of this impact class",
+                     *       "measurements": [
+                     *         {
+                     *           "id": "5eed0069-0000-4000-8000-000000000002",
+                     *           "suggestionId": "5eed0067-0000-4000-8000-000000000002",
+                     *           "title": "Re-warm ccache right after deps-refresh merges",
+                     *           "appliedAt": "2026-07-09T10:00:00.000Z",
+                     *           "appliedOn": "2026-07-09",
+                     *           "day": 14,
+                     *           "windowDays": 14,
+                     *           "windowEndsOn": "2026-07-23",
+                     *           "targetMetric": "stage_duration",
+                     *           "baseline": {
+                     *             "window": {
+                     *               "from": "2026-06-25",
+                     *               "to": "2026-07-08"
+                     *             },
+                     *             "value": 380
+                     *           },
+                     *           "predicted": {
+                     *             "delta": -110,
+                     *             "unit": "seconds",
+                     *             "calibration": {
+                     *               "analyzer": "cache_window",
+                     *               "impact_class": "duration_delta",
+                     *               "factor": 1
+                     *             }
+                     *           },
+                     *           "measured": {
+                     *             "window": {
+                     *               "from": "2026-07-10",
+                     *               "to": "2026-07-23"
+                     *             },
+                     *             "value": 308,
+                     *             "delta": -72
+                     *           },
+                     *           "verdict": "under",
+                     *           "confounds": [],
+                     *           "note": "under-delivered — analyzer revised its cache model",
+                     *           "closedAt": "2026-07-24T03:00:00.000Z"
+                     *         }
+                     *       ],
+                     *       "calibration": [
+                     *         {
+                     *           "analyzer": "cache_window",
+                     *           "impactClass": "duration_delta",
+                     *           "factor": 0.6545,
+                     *           "sampleCount": 1,
+                     *           "updatedAt": "2026-07-24T03:00:00.000Z",
+                     *           "history": [
+                     *             {
+                     *               "fromFactor": 1,
+                     *               "toFactor": 0.6545,
+                     *               "sampleCount": 1,
+                     *               "measuredSum": -72,
+                     *               "predictedSum": -110,
+                     *               "measurementIds": [
+                     *                 "5eed0069-0000-4000-8000-000000000002"
+                     *               ],
+                     *               "addedMeasurementIds": [
+                     *                 "5eed0069-0000-4000-8000-000000000002"
+                     *               ],
+                     *               "createdAt": "2026-07-24T03:00:00.000Z"
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["Measurements"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or not `owner/name`. */
             422: {
                 headers: {
                     [name: string]: unknown;

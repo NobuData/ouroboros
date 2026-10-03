@@ -1241,6 +1241,14 @@
 >   payload, the preview the person confirmed, where it landed (`target {kind, id}`) and the
 >   `reversal {action, target}` that undoes it, for BX.3. `applied_event_id` names the audit event.
 >
+> `V089` ([#515](https://github.com/NobuData/ouroboros/issues/515), BV.6) bounds the calibration
+> formula against a single outlier. Each measurement contributes
+> `analyzer_calibration_contribution(measured, raw) = clamp(measured ÷ raw, 0, 2) × raw`: a
+> wrong-direction result counts as nothing, and an over-delivery counts at most double. The factor
+> is `round(Σ contribution ÷ Σ raw, 4)`. Within the band this is V085's formula exactly, so the
+> seeded 0.6545 is unchanged. History rows written before V089 keep the sums they were computed
+> with.
+>
 > [#509](https://github.com/NobuData/ouroboros/issues/509) (BU.4) seeds the page those three built
 > for, and plants the **corpus** rather than the answers:
 > [`R__dev_seed_workspace_metrics_analyzer.sql`](migrations/R__dev_seed_workspace_metrics_analyzer.sql)
@@ -2814,6 +2822,7 @@ ouroboros-db/
 │   ├── V086__analysis_orchestration.sql     # build_jobs.log_lines (counted where chunks land), analysis_runs.phase + progress (forward-only, frozen when terminal), the build_duration family (median per job_label) — #510
 │   ├── V087__analysis_suggestion_confidence_basis.sql # analysis_suggestions.confidence_basis {formula, inputs, value = confidence}, frozen when resolved; record_analysis_suggestion takes it — #513
 │   ├── V088__analyzer_actions.sql           # drafts may carry a proposed change_note, the queue_wait family (median per pool), farm_job_hooks, analysis_suggestion_applications (payload, preview, target, reversal) — #514
+│   ├── V089__calibration_bounded.sql        # analyzer_calibration_contribution(): each measurement's ratio held to [0, 2] before the factor's ratio of sums — #515
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)

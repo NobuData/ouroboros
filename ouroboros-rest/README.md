@@ -6218,6 +6218,31 @@ analyzer never mutates another plane: each apply hands its change to the owning 
   forbids importing another plane's repository. `actions.boundary.spec.ts` checks that every write
   in the analyzer's source targets its own tables.
 
+**Measuring** (BV.6, [#515](https://github.com/NobuData/ouroboros/issues/515),
+[`measurement/`](src/modules/analyzer/measurement)) keeps the page's promise: *"every applied
+suggestion is re-measured for 14 days; the analyzer's model retrains on its own misses."*
+- **The job.** `MeasurementScheduler` ticks hourly; `MeasurementService.pass()` is idempotent.
+  For each pending measurement it records interference as it lands. It closes the window once its
+  last day is over and the target metric's rollup family is filled through it.
+- **Measured value.** Day 1…N of the target metric, read the way the baseline was: same statistic,
+  unit and pool. A window with no data stays pending.
+- **Confounds.** Another application on the **same target metric** applied inside the window, or a
+  change-point the analyzer detected in that metric inside it. Either closes the row `confounded`,
+  lists them, and keeps it out of calibration.
+- **Verdict and note.** The verdict is V085's band arithmetic over the stored numbers. The note,
+  *"under-delivered — analyzer revised its cache model"*, is composed from what recalibration
+  actually did: the close runs once inside a savepoint to learn the new factor exactly, then again
+  for real.
+- **Calibration.** `recalibrate_analyzer()` applies V089's bounded formula,
+  `round(Σ clamp(measured ÷ raw, 0, 2) × raw ÷ Σ raw, 4)`. The composer applies the new factor at
+  the next composition.
+- **Read.** `GET /api/v1/analyzer/measurements?repo=` returns every measurement with day N of its
+  window, plus the calibration cells with their history and the formula.
+- **Suite.** `measurement.integration-spec.ts`, `analyzer.isolation.integration-spec.ts` (every
+  analyzer route) and `actions/draft.integration-spec.ts` (draft, size, push to a recorded
+  GitHub). Removing confound detection, calibration application or dismissal persistence turns one
+  of them red.
+
 ```bash
 yarn test:integration src/modules/analyzer
 ```
@@ -6537,7 +6562,8 @@ ouroboros-rest/
 │       ├── test-plane/     # suites only: the failing-HIL scenario + isolation     · #334
 │       ├── analyzer/       # Build Analyzer runs: triggers, guard, orchestrator  · #510
 │       │   ├── composer/   #   findings → suggestions: templates, impact, confidence · #513
-│       │   └── actions/    #   preview · apply · dismiss · draft · push, through the planes · #514
+│       │   ├── actions/    #   preview · apply · dismiss · draft · push, through the planes · #514
+│       │   └── measurement/ #  the 14-day job, confounds, bounded calibration, the read · #515
 │       │                   #   corpus/ — bounded, paged readers, log tails, the manifest
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract

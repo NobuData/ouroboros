@@ -1,6 +1,6 @@
 import type { Impact } from "../composer/composer.types";
 import {
-  baselineValue,
+  windowValue,
   baselineWindow,
   MEASUREMENT_TARGETS,
   percentile,
@@ -49,7 +49,7 @@ describe("the baseline window", () => {
 
 describe("the baseline value", () => {
   it("pools a median's samples across days and converts milliseconds to seconds", () => {
-    const value = baselineValue(
+    const value = windowValue(
       MEASUREMENT_TARGETS.duration_delta,
       [point(250_000, [240_000, 260_000]), point(300_000, [300_000])],
       14,
@@ -60,18 +60,18 @@ describe("the baseline value", () => {
 
   it("reads a p95 from the same samples, as percentile_cont does", () => {
     expect(percentile([1, 2, 3, 4], 0.95)).toBeCloseTo(3.85);
-    expect(baselineValue(MEASUREMENT_TARGETS.queue_wait, [point(0, [60_000, 600_000])], 14)).toBe(
+    expect(windowValue(MEASUREMENT_TARGETS.queue_wait, [point(0, [60_000, 600_000])], 14)).toBe(
       573,
     );
   });
 
   it("states interventions as a weekly rate", () => {
-    expect(baselineValue(MEASUREMENT_TARGETS.interventions, [point(10), point(4)], 14)).toBe(7);
+    expect(windowValue(MEASUREMENT_TARGETS.interventions, [point(10), point(4)], 14)).toBe(7);
   });
 
   it("has no median of nothing, but a sum of nothing is zero", () => {
-    expect(baselineValue(MEASUREMENT_TARGETS.duration_delta, [], 14)).toBeUndefined();
-    expect(baselineValue(MEASUREMENT_TARGETS.interventions, [], 14)).toBe(0);
+    expect(windowValue(MEASUREMENT_TARGETS.duration_delta, [], 14)).toBeUndefined();
+    expect(windowValue(MEASUREMENT_TARGETS.interventions, [], 14)).toBe(0);
   });
 });
 
