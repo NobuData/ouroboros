@@ -4,6 +4,7 @@ import { analyzerUrl, isAnalyzerPage, requestAnalyzer, UNREADABLE_ANALYZER } fro
 import { analyzerRepos, chooseRepo } from "@/app/analyzer/repo";
 
 import { ANALYZER_REPOS, HELIOS, analyzerPage, emptyDuration, seededSchedule } from "../helpers/analyzer";
+import { emptySuggestions } from "../helpers/analyzer-suggestions";
 
 /** The analyzer page's poll and its repository (#516): one address per repository, a guard on what answered. */
 
@@ -59,13 +60,27 @@ describe("isAnalyzerPage", () => {
   });
 
   it("refuses a page with no duration chart, or one missing its series or its change-points (#517)", () => {
-    const page = { repo: HELIOS, run: null, schedule: seededSchedule() };
+    const page = { repo: HELIOS, run: null, schedule: seededSchedule(), suggestions: emptySuggestions() };
 
     expect(isAnalyzerPage(page)).toBe(false);
     expect(isAnalyzerPage({ ...page, duration: null })).toBe(false);
     expect(isAnalyzerPage({ ...page, duration: { series: [] } })).toBe(false);
     expect(isAnalyzerPage({ ...page, duration: { series: [], changePoints: "none" } })).toBe(false);
     expect(isAnalyzerPage({ ...page, duration: { series: [], changePoints: [] } })).toBe(true);
+  });
+
+  it("accepts a page whose suggestion cards are empty — no analysis has composed one", () => {
+    expect(isAnalyzerPage(analyzerPage({ suggestions: emptySuggestions() }))).toBe(true);
+  });
+
+  it("refuses a page with no suggestion cards, or ones missing their rows or their calibration (#518)", () => {
+    const page = { repo: HELIOS, run: null, schedule: seededSchedule(), duration: emptyDuration() };
+
+    expect(isAnalyzerPage(page)).toBe(false);
+    expect(isAnalyzerPage({ ...page, suggestions: null })).toBe(false);
+    expect(isAnalyzerPage({ ...page, suggestions: { suggestions: [] } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, suggestions: { suggestions: "none", calibration: [] } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, suggestions: { suggestions: [], calibration: [] } })).toBe(true);
   });
 });
 

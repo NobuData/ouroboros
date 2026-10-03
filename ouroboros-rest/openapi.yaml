@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.11"
+  version: "0.38.12"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -8385,24 +8385,40 @@ paths:
                         surface: pull_request
                         pullRequestId: 5eed0052-0000-4000-8000-000000000482
                         workflowSlug: null
+                        runId: null
+                        attempt: null
+                        suiteName: null
+                        caseName: null
                       - kind: workflow_version
                         id: 5eed0031-0000-4000-8000-000000000009
                         label: standard-fix v9
                         surface: workflow
                         pullRequestId: null
                         workflowSlug: standard-fix
+                        runId: null
+                        attempt: null
+                        suiteName: null
+                        caseName: null
                       - kind: build
                         id: 5eed0061-0000-4000-8000-000000000641
                         label: "#641 · zephyr build"
                         surface: farm
                         pullRequestId: null
                         workflowSlug: null
+                        runId: null
+                        attempt: null
+                        suiteName: null
+                        caseName: null
                       - kind: build
                         id: 5eed0061-0000-4000-8000-000000000655
                         label: null
                         surface: null
                         pullRequestId: null
                         workflowSlug: null
+                        runId: null
+                        attempt: null
+                        suiteName: null
+                        caseName: null
         "400":
           description: |-
             `organization_required` — this session is not acting in any workspace and this
@@ -8953,6 +8969,232 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/suggestions:
+    get:
+      tags: [analyzer]
+      summary: A repository's build-process and workflow suggestions
+      description: |-
+        BW.3 ([#518](https://github.com/NobuData/ouroboros/issues/518)) — mockup 18's **Suggested
+        build-process changes** and **Suggested workflow changes** cards, their scoring popovers
+        and the Details sheet behind each row.
+
+        `suggestions` are the repository's `build_process` and `workflow` suggestions that are
+        **still current**, in every status, most confident first: an `open` one to act on, an
+        `applied` one with the `measurement` its apply opened (day N of its window), a `dismissed`
+        one with its `resolution`. A suggestion stays current until a later run that ended
+        (`complete` or `budget_exceeded`) had **every analyzer its findings came from complete**
+        and still did not compose it again. So a run that did not look — one in flight, a failed
+        one, one whose pattern analyzers were skipped — never blanks the cards, a suggestion an
+        analysis looked for and no longer finds leaves them, and a dismissed one a re-analysis
+        finds again is still listed, still dismissed. Ticket drafts are not listed here. `runId`
+        is the newest ended run that composed any suggestion — `null`, with no suggestions,
+        before one has.
+
+        Nothing is recomputed. Beside each number is what produced it: `confidenceBasis` is the
+        composer's formula with every input it read; `impact.basis` is the method, the formula's
+        id, its inputs, the corpus window, the calibration applied and the estimate before it
+        (`estimate = round(raw × factor)`); `findings` are the cited findings as their analyzers
+        wrote them, each with its own confidence basis. A finding answers with its first 25
+        evidence references, resolved in this workspace as `GET /api/v1/analyzer/duration`
+        resolves them, and `evidenceTotal` says how many it cites. `workflow.nextVersion` is the
+        version a draft becomes when a person publishes it. `calibration` is the repository's
+        cells with their history, as `GET /api/v1/analyzer/measurements` answers them.
+
+        What a suggestion may be done with is the routes below: preview, apply, dismiss, draft.
+        Every member may read. **The workspace is the session's.**
+      operationId: listSuggestions
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: repo
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 255
+          description: The repository, `owner/name`.
+      responses:
+        "200":
+          description: The current suggestions and the repository's calibration.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisSuggestions"
+              example:
+                repo: acme-robotics/helios-firmware
+                runId: 5eed0065-0000-4000-8000-000000000002
+                analyzedAt: "2026-08-08T10:41:00.000Z"
+                suggestions:
+                  - id: 5eed0067-0000-4000-8000-000000000013
+                    kind: build_process
+                    title: Move forge-02 to pool-a during 14:00–16:00 UTC
+                    evidenceLine: >-
+                      pool-a queue exceeds 5 min in that window on 11 of last 14 weekdays; pool-b
+                      sits idle 82% of it
+                    confidence: 84
+                    confidenceBasis:
+                      formula: "composer v1: round(100 * (1 - e^(-n/scale)) * stability * min(1, |effect|/target))"
+                      inputs:
+                        template: runner_move
+                        n: 14
+                        scale: 5
+                        support: 0.9392
+                        stability: 0.895
+                        effectSize: 0.786
+                        effectTarget: 0.75
+                        effect: 1
+                    impact:
+                      estimate: -240
+                      unit: seconds
+                      appliesTo: queue p95
+                      share: null
+                      basis:
+                        method: extrapolated
+                        description: pool-a's window waits with forge-02 taking the backlog
+                        sampleSize: null
+                        formula: "runner_move v1: -wait_reduction_seconds"
+                        inputs: { wait_reduction_seconds: 240 }
+                        window: { from: "2026-05-10", to: "2026-08-07", days: 90 }
+                        calibration: { analyzer: queue_correlation, impactClass: queue_wait, factor: 1 }
+                        raw: -240
+                    needsSpike: false
+                    plane: farm_config
+                    workflow: null
+                    status: open
+                    resolution: null
+                    measurement: null
+                    findings:
+                      - id: 5eed0066-0000-4000-8000-000000000151
+                        analyzer: queue_correlation
+                        analyzerVersion: 1
+                        findingType: queue_correlation
+                        subjectKey: pool-a@14:00-16:00
+                        data:
+                          window: { from: "14:00", to: "16:00" }
+                          metric: queue_wait
+                          threshold_seconds: 300
+                          days_exceeded: 11
+                          days_observed: 14
+                          idle_share: 0.82
+                        confidence: 84
+                        confidenceBasis:
+                          method: >-
+                            queue_correlation v1 — weekdays whose longest pool-a wait in the window
+                            crossed the threshold, against the other pool's idle share
+                          sampleSize: 14
+                          effectSize: 0.786
+                          stability: 0.895
+                        evidence:
+                          - kind: runner_pool
+                            id: 5eed0024-0000-4000-8000-000000000001
+                            label: pool-a
+                            surface: farm
+                            pullRequestId: null
+                            workflowSlug: null
+                            runId: null
+                            attempt: null
+                            suiteName: null
+                            caseName: null
+                          - kind: runner
+                            id: 5eed0025-0000-4000-8000-000000000002
+                            label: forge-02
+                            surface: farm
+                            pullRequestId: null
+                            workflowSlug: null
+                            runId: null
+                            attempt: null
+                            suiteName: null
+                            caseName: null
+                        evidenceTotal: 14
+                  - id: 5eed0067-0000-4000-8000-000000000015
+                    kind: workflow
+                    title: "standard-fix: run self-review BEFORE the build stage"
+                    evidenceLine: >-
+                      34% of failed builds in standard-fix loops contained defects the later
+                      self-review flagged anyway — reordering catches them pre-build
+                    confidence: 89
+                    confidenceBasis: null
+                    impact:
+                      estimate: -125
+                      unit: seconds
+                      appliesTo: per failed attempt
+                      share: null
+                      basis:
+                        method: extrapolated
+                        description: >-
+                          a failed build attempt's wall-clock, for the share review would have
+                          caught first
+                        sampleSize: null
+                        formula: null
+                        inputs: null
+                        window: null
+                        calibration: null
+                        raw: null
+                    needsSpike: false
+                    plane: workflow
+                    workflow: { slug: standard-fix, nextVersion: 16, studioPath: /workflows/standard-fix }
+                    status: dismissed
+                    resolution:
+                      at: "2026-08-08T12:00:00.000Z"
+                      by: Ken Suenobu
+                      reason: Review is the slow stage here; revisit after the model change.
+                      draftBatchId: null
+                    measurement: null
+                    findings: []
+                calibration:
+                  - analyzer: cache_window
+                    impactClass: duration_delta
+                    factor: 0.6545
+                    sampleCount: 1
+                    updatedAt: "2026-07-24T03:00:00.000Z"
+                    history:
+                      - fromFactor: 1
+                        toFactor: 0.6545
+                        sampleCount: 1
+                        measuredSum: -72
+                        predictedSum: -110
+                        measurementIds: [5eed0069-0000-4000-8000-000000000002]
+                        addedMeasurementIds: [5eed0069-0000-4000-8000-000000000002]
+                        createdAt: "2026-07-24T03:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or not `owner/name`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/analyzer/suggestions/{id}/preview:
     get:
       tags: [analyzer]
@@ -9003,6 +9245,7 @@ paths:
                   startsAt: "14:00"
                   endsAt: "16:00"
                 studioPath: null
+                delta: null
                 fingerprint: sha256:4f9c2b1d0e7a6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d
         "400":
           description: |-
@@ -36180,7 +36423,8 @@ components:
         Apply executes.
       additionalProperties: false
       required:
-        [suggestionId, plane, appliable, draftable, summary, lands, reason, change, studioPath, fingerprint]
+        [suggestionId, plane, appliable, draftable, summary, lands, reason, change, studioPath, delta,
+         fingerprint]
       properties:
         suggestionId: { type: string, format: uuid }
         plane: { type: string, enum: [farm_config, job_hook, workflow, test_gate, planning] }
@@ -36190,9 +36434,21 @@ components:
         lands: { type: string, description: Where it lands. }
         reason: { type: [string, "null"], description: Why it cannot be applied, when it cannot. }
         change:
-          description: The exact payload Apply hands the plane; null when nothing would be applied.
+          description: |-
+            The exact payload Apply hands the plane; null when nothing would be applied. A pool move
+            is `{runner, pool, daysOfWeek, startsAt, endsAt}`, a job hook `{repo, pool, event,
+            titleContains, label, title, command}`, a workflow draft `{workflowId, slug, ifMatch,
+            nextVersion, changeNote, definition}`.
           type: [object, "null"]
+          additionalProperties: true
         studioPath: { type: [string, "null"], description: The studio path a workflow draft opens at. }
+        delta:
+          oneOf:
+            - $ref: "#/components/schemas/WorkflowDeltaSummary"
+            - type: "null"
+          description: |-
+            For a workflow draft, the stages and connections it adds to and removes from the
+            document it is built on. Null for every other plane.
         fingerprint: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
 
     ApplySuggestionBody:
@@ -36273,6 +36529,253 @@ components:
       properties:
         batch: { $ref: "#/components/schemas/PlanningBatch" }
         suggestionIds: { type: array, items: { type: string, format: uuid } }
+
+    AnalysisSuggestions:
+      type: object
+      title: AnalysisSuggestions
+      description: |-
+        A repository's current build-process and workflow suggestions (BW.3, #518) — mockup 18's
+        two suggestion cards — and the calibration their impacts were scaled by.
+      additionalProperties: false
+      required: [repo, runId, analyzedAt, suggestions, calibration]
+      properties:
+        repo: { type: string }
+        runId:
+          type: [string, "null"]
+          format: uuid
+          description: The newest analysis that composed a suggestion. Null before any has.
+        analyzedAt:
+          type: [string, "null"]
+          format: date-time
+          description: When that analysis ended.
+        suggestions:
+          type: array
+          description: Most confident first.
+          items: { $ref: "#/components/schemas/AnalysisSuggestion" }
+        calibration:
+          type: array
+          description: The repository's calibration cells with their history.
+          items: { $ref: "#/components/schemas/CalibrationCell" }
+
+    AnalysisSuggestion:
+      type: object
+      title: AnalysisSuggestion
+      description: |-
+        One suggestion — a row of a card — as the composer stored it (V081, V087), with what
+        produced each of its numbers and what has been done with it.
+      additionalProperties: false
+      required:
+        [id, kind, title, evidenceLine, confidence, confidenceBasis, impact, needsSpike, plane,
+         workflow, status, resolution, measurement, findings]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [build_process, workflow] }
+        title: { type: string }
+        evidenceLine: { type: string }
+        confidence: { type: integer, minimum: 0, maximum: 100 }
+        confidenceBasis:
+          oneOf:
+            - $ref: "#/components/schemas/AnalysisSuggestionConfidence"
+            - type: "null"
+          description: Null on a suggestion composed before the basis was stored.
+        impact:
+          oneOf:
+            - $ref: "#/components/schemas/AnalysisSuggestionImpact"
+            - type: "null"
+        needsSpike:
+          type: boolean
+          description: Drafted as an investigation ticket rather than applied.
+        plane: { type: string, enum: [farm_config, job_hook, workflow, test_gate, planning] }
+        workflow:
+          type: [object, "null"]
+          description: |-
+            For a `workflow` plane whose workflow the workspace still has: the workflow, the version
+            a draft becomes when a person publishes it, and the studio path that opens it.
+          additionalProperties: false
+          required: [slug, nextVersion, studioPath]
+          properties:
+            slug: { type: string }
+            nextVersion: { type: integer, minimum: 1 }
+            studioPath: { type: string }
+        status: { type: string, enum: [open, applied, dismissed, drafted] }
+        resolution:
+          type: [object, "null"]
+          description: Null while `open`.
+          additionalProperties: false
+          required: [at, by, reason, draftBatchId]
+          properties:
+            at: { type: string, format: date-time }
+            by:
+              type: [string, "null"]
+              description: Who, by display name. Null once that person is removed.
+            reason:
+              type: [string, "null"]
+              description: A dismissal's reason. Null when none was given.
+            draftBatchId:
+              type: [string, "null"]
+              format: uuid
+              description: The planning batch a spike was drafted into.
+        measurement:
+          type: [object, "null"]
+          description: The measurement an apply opened. Null unless `applied`.
+          additionalProperties: false
+          required: [id, appliedOn, day, windowDays, windowEndsOn, verdict]
+          properties:
+            id: { type: string, format: uuid }
+            appliedOn: { type: string, format: date }
+            day: { type: integer, minimum: 0, description: Day N of the window. }
+            windowDays: { type: integer, minimum: 1 }
+            windowEndsOn: { type: string, format: date }
+            verdict: { type: string, enum: [pending, delivered, under, over, confounded] }
+        findings:
+          type: array
+          description: |-
+            The findings it cites, from the analysis that last composed it. Empty once retention
+            has removed them.
+          items: { $ref: "#/components/schemas/AnalysisSuggestionFinding" }
+
+    AnalysisSuggestionConfidence:
+      type: object
+      title: AnalysisSuggestionConfidence
+      description: |-
+        How a suggestion's confidence was computed (V087): `round(100 × support × stability ×
+        effect)`, with every input the composer read.
+      additionalProperties: false
+      required: [formula, inputs]
+      properties:
+        formula: { type: string }
+        inputs:
+          type: object
+          additionalProperties: false
+          required: [template, n, scale, support, stability, effectSize, effectTarget, effect]
+          properties:
+            template:
+              type: [string, "null"]
+              description: The template that composed it, whose constants `scale` and `effectTarget` are.
+            n:
+              type: [number, "null"]
+              description: The smallest sample among the cited findings.
+            scale: { type: [number, "null"] }
+            support:
+              type: [number, "null"]
+              description: 1 − e^(−n / scale).
+            stability:
+              type: [number, "null"]
+              description: The smallest stability among the cited findings.
+            effectSize:
+              type: [number, "null"]
+              description: Null for an absence claim, which has no effect size to weigh.
+            effectTarget: { type: [number, "null"] }
+            effect:
+              type: [number, "null"]
+              description: min(1, |effectSize| / effectTarget); 1 for an absence claim.
+
+    AnalysisSuggestionImpact:
+      type: object
+      title: AnalysisSuggestionImpact
+      description: A suggestion's impact (V081) and the basis it was arrived at by.
+      additionalProperties: false
+      required: [estimate, unit, appliesTo, share, basis]
+      properties:
+        estimate:
+          type: [number, "null"]
+          description: Signed, in `unit`. Null exactly when the basis is `unquantified`.
+        unit: { type: string, description: "`seconds`, `interventions` or `count`." }
+        appliesTo: { type: string, description: "What the estimate is per — `per loop`, `queue p95`." }
+        share:
+          type: [number, "null"]
+          description: The share of builds it applies to, 0–1, when it is not all of them.
+        basis:
+          type: object
+          additionalProperties: false
+          required: [method, description, sampleSize, formula, inputs, window, calibration, raw]
+          properties:
+            method: { type: string, description: "`measured`, `extrapolated` or `unquantified`." }
+            description: { type: string }
+            sampleSize:
+              type: [number, "null"]
+              description: The sample a `measured` basis was measured over.
+            formula:
+              type: [string, "null"]
+              description: The formula's id. Null on a suggestion composed before it was stored.
+            inputs:
+              type: [object, "null"]
+              additionalProperties: true
+              description: Every number the formula read, by name.
+            window:
+              type: [object, "null"]
+              description: The corpus window the inputs were measured over.
+              additionalProperties: false
+              required: [from, to, days]
+              properties:
+                from: { type: string, format: date }
+                to: { type: string, format: date }
+                days: { type: integer, minimum: 1 }
+            calibration:
+              type: [object, "null"]
+              description: The calibration applied when the suggestion was composed.
+              additionalProperties: false
+              required: [analyzer, impactClass, factor]
+              properties:
+                analyzer: { type: string }
+                impactClass: { type: string }
+                factor: { type: number }
+            raw:
+              type: [number, "null"]
+              description: The estimate before calibration — `estimate = round(raw × factor)`.
+
+    AnalysisSuggestionFinding:
+      type: object
+      title: AnalysisSuggestionFinding
+      description: One finding a suggestion cites, as its analyzer wrote it (V081).
+      additionalProperties: false
+      required:
+        [id, analyzer, analyzerVersion, findingType, subjectKey, data, confidence, confidenceBasis,
+         evidence, evidenceTotal]
+      properties:
+        id: { type: string, format: uuid }
+        analyzer: { type: string }
+        analyzerVersion: { type: integer, minimum: 1 }
+        findingType: { type: string }
+        subjectKey: { type: string }
+        data:
+          type: object
+          additionalProperties: true
+          description: The analyzer's typed data, in the shape V081 holds this finding type to.
+        confidence: { type: integer, minimum: 0, maximum: 100 }
+        confidenceBasis:
+          type: object
+          description: What the finding's confidence was computed from, under the analyzer's rule.
+          additionalProperties: false
+          required: [method, sampleSize, effectSize, stability]
+          properties:
+            method: { type: [string, "null"] }
+            sampleSize: { type: [number, "null"] }
+            effectSize: { type: [number, "null"] }
+            stability: { type: [number, "null"] }
+        evidence:
+          type: array
+          maxItems: 25
+          description: The first 25 references it cites, in their stored order, resolved.
+          items: { $ref: "#/components/schemas/AnalysisEvidence" }
+        evidenceTotal:
+          type: integer
+          minimum: 0
+          description: How many references it cites in all.
+
+    WorkflowDeltaSummary:
+      type: object
+      title: WorkflowDeltaSummary
+      description: |-
+        What a proposed workflow draft adds to and removes from the document it is built on (BW.3,
+        #518) — stages as `` `id` (Title) ``, connections as `from → to`.
+      additionalProperties: false
+      required: [nodesAdded, nodesRemoved, edgesAdded, edgesRemoved]
+      properties:
+        nodesAdded: { type: array, items: { type: string } }
+        nodesRemoved: { type: array, items: { type: string } }
+        edgesAdded: { type: array, items: { type: string } }
+        edgesRemoved: { type: array, items: { type: string } }
 
     Measurements:
       type: object
@@ -36507,7 +37010,8 @@ components:
         One evidence reference of a finding (V081), resolved in the workspace: what it names and
         which surface it opens on.
       additionalProperties: false
-      required: [kind, id, label, surface, pullRequestId, workflowSlug]
+      required:
+        [kind, id, label, surface, pullRequestId, workflowSlug, runId, attempt, suiteName, caseName]
       properties:
         kind:
           type: string
@@ -36518,12 +37022,17 @@ components:
         label:
           type: [string, "null"]
           description: |-
-            What it names. Null when the row is no longer there, or for a kind this read does not
-            open.
+            What it names — a build's number and label, a merge's title, a workflow version, a
+            pool or runner, `Build 3` for a test run, a test case's name, a waiver's reason. Null
+            when the row is no longer there.
         surface:
           type: [string, "null"]
-          enum: [farm, pull_request, workflow, null]
-          description: Where it opens. Null when it names nothing that can be opened.
+          enum: [farm, pull_request, workflow, test_results, null]
+          description: |-
+            Where it opens. A build, pool or runner on the **farm**; a merge on its mirrored
+            **pull request**, else the farm; a workflow version in the **workflow** studio; a test
+            run or case on its loop's **test results**; a waiver on the pull request its loop
+            opened, else that loop's test results. Null when it names nothing that can be opened.
         pullRequestId:
           type: [string, "null"]
           format: uuid
@@ -36531,6 +37040,20 @@ components:
         workflowSlug:
           type: [string, "null"]
           description: The workflow — exactly when `surface` is `workflow`.
+        runId:
+          type: [string, "null"]
+          format: uuid
+          description: The loop whose test results it opens — exactly when `surface` is `test_results`.
+        attempt:
+          type: [integer, "null"]
+          minimum: 1
+          description: The attempt of that loop, by its ordinal, for a test run or case.
+        suiteName:
+          type: [string, "null"]
+          description: The suite to select there, by name, for a test case.
+        caseName:
+          type: [string, "null"]
+          description: The case to select there, by name, for a test case.
 
     StartAnalysisBody:
       type: object

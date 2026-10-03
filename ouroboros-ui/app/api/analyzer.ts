@@ -1,9 +1,11 @@
 /**
  * The Build Analyzer's operations (BV.1, [#510](https://github.com/NobuData/ouroboros/issues/510);
  * BW.1, [#516](https://github.com/NobuData/ouroboros/issues/516); BW.2,
- * [#517](https://github.com/NobuData/ouroboros/issues/517)) — the runs mockup 18's head and meta
+ * [#517](https://github.com/NobuData/ouroboros/issues/517); BW.3,
+ * [#518](https://github.com/NobuData/ouroboros/issues/518)) — the runs mockup 18's head and meta
  * strip render, *Run analysis now*, the schedule behind **Schedule: weekly + every 50 builds ▾**,
- * and the duration series with the change-points detected on it.
+ * the duration series with the change-points detected on it, and the suggestion cards with what
+ * a suggestion may be done with: previewed, applied, dismissed, drafted.
  *
  * Thin by design, like every module here: one function per operation, the client injectable so a
  * suite can stub `fetch`, and the service's refusals left as `ApiError`s for the caller to word.
@@ -51,6 +53,36 @@ export type ChangePointCandidate = components["schemas"]["ChangePointCandidate"]
 
 /** One evidence reference of a finding, resolved to what it names and where it opens. */
 export type AnalysisEvidence = components["schemas"]["AnalysisEvidence"];
+
+/** A repository's current build-process and workflow suggestions, with its calibration. */
+export type AnalysisSuggestions = components["schemas"]["AnalysisSuggestions"];
+
+/** One suggestion — a row of a card, with its bases, its resolution and the findings it cites. */
+export type AnalysisSuggestion = components["schemas"]["AnalysisSuggestion"];
+
+/** How a suggestion's confidence was computed — the scoring popover. */
+export type AnalysisSuggestionConfidence = components["schemas"]["AnalysisSuggestionConfidence"];
+
+/** A suggestion's impact, with the basis it was arrived at by. */
+export type AnalysisSuggestionImpact = components["schemas"]["AnalysisSuggestionImpact"];
+
+/** One finding a suggestion cites, as its analyzer wrote it. */
+export type AnalysisSuggestionFinding = components["schemas"]["AnalysisSuggestionFinding"];
+
+/** One analyzer and impact class's calibration factor, with every update that moved it. */
+export type CalibrationCell = components["schemas"]["CalibrationCell"];
+
+/** What applying a suggestion would change, and where — the consequence preview. */
+export type SuggestionPreview = components["schemas"]["SuggestionPreview"];
+
+/** What an apply did: the resolution, the preview it executed, where it landed, the measurement. */
+export type AppliedSuggestion = components["schemas"]["AppliedSuggestion"];
+
+/** A suggestion's resolution, as an action answers it. */
+export type SuggestionResolution = components["schemas"]["SuggestionResolution"];
+
+/** A drafted planning batch, and the suggestions drafted into it. */
+export type DraftedSuggestions = components["schemas"]["DraftedSuggestions"];
 
 /** The analyzer operations. */
 export const analyzer = {
@@ -109,6 +141,104 @@ export const analyzer = {
    */
   async duration(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<DurationChart> {
     return unwrap(await client.GET("/api/v1/analyzer/duration", { params: { query: { repo } }, signal }));
+  },
+
+  /**
+   * `GET /api/v1/analyzer/suggestions?repo=` — the build-process and workflow suggestions still
+   * current, in every status, most confident first. One stays current until an analysis that ran
+   * its analyzers no longer finds it.
+   *
+   * @param repo The repository, `owner/name`.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Abandons the request — the poll's deadline.
+   * @returns The suggestions; `runId: null` and none before an analysis has composed one.
+   * @throws {ApiError} What the service answered.
+   */
+  async suggestions(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<AnalysisSuggestions> {
+    return unwrap(await client.GET("/api/v1/analyzer/suggestions", { params: { query: { repo } }, signal }));
+  },
+
+  /**
+   * `GET /api/v1/analyzer/suggestions/{id}/preview` — what applying it would change, and where.
+   * No side effects; every member may read.
+   *
+   * @param id The suggestion.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The preview, with the fingerprint an apply may be held to.
+   * @throws {ApiError} `analysis_suggestion_not_found`, `workflow_not_found`.
+   */
+  async preview(id: string, client: ApiClient = api()): Promise<SuggestionPreview> {
+    return unwrap(
+      await client.GET("/api/v1/analyzer/suggestions/{id}/preview", { params: { path: { id } } }),
+    );
+  },
+
+  /**
+   * `POST /api/v1/analyzer/suggestions/{id}/apply` — apply it through the plane that owns the
+   * change. `owner`/`admin` only.
+   *
+   * @param id The suggestion.
+   * @param fingerprint The preview's fingerprint: the apply is refused unless it does exactly that.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns What was applied, where it landed and the measurement row it opened.
+   * @throws {ApiError} `analysis_preview_stale`, `analysis_suggestion_resolved`,
+   *   `analysis_baseline_unavailable` (409s), `analysis_plane_unavailable` (422), `forbidden`,
+   *   `analysis_suggestion_not_found`, or the plane's own refusal.
+   */
+  async apply(id: string, fingerprint: string, client: ApiClient = api()): Promise<AppliedSuggestion> {
+    return unwrap(
+      await client.POST("/api/v1/analyzer/suggestions/{id}/apply", {
+        params: { path: { id } },
+        body: { fingerprint },
+      }),
+    );
+  },
+
+  /**
+   * `POST /api/v1/analyzer/suggestions/{id}/dismiss` — dismiss it, for good. `owner`, `admin` or
+   * `member`.
+   *
+   * @param id The suggestion.
+   * @param reason Why, or `undefined` for a dismissal without a reason.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The resolution.
+   * @throws {ApiError} `analysis_suggestion_resolved` (409), `forbidden`,
+   *   `analysis_suggestion_not_found`, `validation_failed`.
+   */
+  async dismiss(
+    id: string,
+    reason: string | undefined,
+    client: ApiClient = api(),
+  ): Promise<SuggestionResolution> {
+    return unwrap(
+      await client.POST("/api/v1/analyzer/suggestions/{id}/dismiss", {
+        params: { path: { id } },
+        body: reason === undefined ? {} : { reason },
+      }),
+    );
+  },
+
+  /**
+   * `POST /api/v1/analyzer/suggestions/draft` — draft ticket and spike suggestions into one
+   * planning batch. `owner`/`admin` only. Nothing reaches a tracker until the batch is pushed.
+   *
+   * @param suggestionIds The suggestions, in the batch's order.
+   * @param targetSourceId The write-capable ticket source the batch will push to.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns The batch and the suggestions drafted into it.
+   * @throws {ApiError} `analysis_suggestion_not_draftable` (422), `analysis_suggestion_resolved`,
+   *   `planning_target_read_only` (409s), `planning_source_not_found`, `forbidden`.
+   */
+  async draft(
+    suggestionIds: readonly string[],
+    targetSourceId: string,
+    client: ApiClient = api(),
+  ): Promise<DraftedSuggestions> {
+    return unwrap(
+      await client.POST("/api/v1/analyzer/suggestions/draft", {
+        body: { suggestionIds: [...suggestionIds], targetSourceId },
+      }),
+    );
   },
 
   /**

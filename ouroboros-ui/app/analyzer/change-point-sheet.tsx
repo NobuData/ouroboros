@@ -1,15 +1,14 @@
 "use client";
 
-import Link from "next/link";
 import { useId } from "react";
 
 import type { ChangePoint } from "@/app/api/analyzer";
 import { ShellOverlay } from "@/app/shell/overlay";
 import { Eyebrow } from "@/app/ui";
 
+import { EvidenceList, Reference } from "./evidence-list";
 import {
   ATTRIBUTED_HEADING,
-  type EvidenceLink,
   RANKING_NOTE,
   SHEET_HEADINGS,
   UNATTRIBUTED_NOTE,
@@ -151,36 +150,8 @@ function ChangePointDetails({ point }: Readonly<{ point: ChangePoint }>) {
         <h3 className="analyzer-cp__heading" id={`${id}-evidence`}>
           {SHEET_HEADINGS.evidence}
         </h3>
-        <ul className="analyzer-cp__evidence">
-          {evidenceLinks(point).map((link) => (
-            <li className="analyzer-cp__ref" key={link.key}>
-              <span className="analyzer-cp__kind">{link.kind}</span>
-              <Reference label={link.name} link={link} />
-              {link.detail !== null && <span className="analyzer-cp__mono">{link.detail}</span>}
-              <span className="analyzer-cp__where">
-                {link.href === null ? link.destination : `opens in ${link.destination}`}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <EvidenceList links={evidenceLinks(point)} />
       </section>
     </div>
-  );
-}
-
-/**
- * A reference's name — a link to the surface it resolves on, or plain text when it opens nothing.
- *
- * @param props.label What to call it.
- * @param props.link Where it opens, if anywhere.
- * @returns The link, or the text.
- */
-function Reference({ label, link }: Readonly<{ label: string; link: EvidenceLink | null }>) {
-  return link === null || link.href === null ? (
-    <span>{label}</span>
-  ) : (
-    <Link className="analyzer-cp__link" href={link.href}>
-      {label}
-    </Link>
   );
 }

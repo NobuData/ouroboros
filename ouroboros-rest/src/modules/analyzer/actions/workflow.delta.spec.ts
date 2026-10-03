@@ -1,7 +1,13 @@
 import type { WorkflowDocument } from "../../workflows/dsl.schema";
 import { readFixture } from "../../workflows/dsl.golden.fixture";
 import { validateWorkflowDocument } from "../../workflows/dsl.validator";
-import { addPathStage, DeltaRefusal, moveStageBefore, resolveStage } from "./workflow.delta";
+import {
+  addPathStage,
+  DeltaRefusal,
+  moveStageBefore,
+  resolveStage,
+  summarizeDelta,
+} from "./workflow.delta";
 
 /**
  * The workflow deltas (BV.5, #514) over mockup 04's committed canvas — `standard-fix` v14, the
@@ -124,5 +130,59 @@ describe("adding a path-conditioned stage (flake-retry)", () => {
       "test",
       "test-2",
     ]);
+  });
+});
+
+describe("the delta summary (the preview's stage and connection delta)", () => {
+  it("is a re-wiring for review-first: no stage added or removed, three connections each way", () => {
+    const base = standardFix();
+    const summary = summarizeDelta(base, moveStageBefore(base, "self-review", "build").document);
+
+    expect(summary.nodesAdded).toEqual([]);
+    expect(summary.nodesRemoved).toEqual([]);
+    expect([...summary.edgesAdded].sort()).toEqual([
+      "implement → review",
+      "review → build",
+      "test → checks-green",
+    ]);
+    expect([...summary.edgesRemoved].sort()).toEqual([
+      "implement → build",
+      "review → checks-green",
+      "test → review",
+    ]);
+  });
+
+  it("names the two stages and four connections flake-retry adds, branches with their labels", () => {
+    const base = standardFix();
+    const summary = summarizeDelta(
+      base,
+      addPathStage(base, ["drivers/can/**"], "flake-retry under load profile").document,
+    );
+
+    expect(summary.nodesAdded).toEqual([
+      "`touches-drivers-can` (Touches drivers/can/**?)",
+      "`flake-retry-under-load-profile` (flake-retry under load profile)",
+    ]);
+    expect(summary.nodesRemoved).toEqual([]);
+    expect(summary.edgesRemoved).toEqual(["test → review"]);
+    expect([...summary.edgesAdded].sort()).toEqual([
+      "flake-retry-under-load-profile → review",
+      "test → touches-drivers-can",
+      "touches-drivers-can → flake-retry-under-load-profile (branch: touches paths)",
+      "touches-drivers-can → review (branch: elsewhere)",
+    ]);
+  });
+
+  it("is empty for a document that did not change, and names a stage that was removed", () => {
+    const base = standardFix();
+    const without = { ...base, nodes: base.nodes.filter((node) => node.id !== "review") };
+
+    expect(summarizeDelta(base, standardFix())).toEqual({
+      nodesAdded: [],
+      nodesRemoved: [],
+      edgesAdded: [],
+      edgesRemoved: [],
+    });
+    expect(summarizeDelta(base, without).nodesRemoved).toEqual(["`review` (Self-review diff)"]);
   });
 });

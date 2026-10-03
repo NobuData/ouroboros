@@ -12,6 +12,8 @@ import type { AnalyzerReadings } from "@/app/analyzer/data";
 import type { AnalyzerRepo } from "@/app/analyzer/repo";
 import type { PollAnswer } from "@/app/poll";
 
+import { seededSuggestions } from "./analyzer-suggestions";
+
 /**
  * The Build Analyzer's fixtures (#516) — the dev seed's run and schedule for
  * `acme-robotics/helios-firmware` (`R__dev_seed_workspace_metrics_analyzer.sql`): 1,284 builds,
@@ -226,6 +228,10 @@ export function evidenceOf(
     surface: label === null ? null : "farm",
     pullRequestId: null,
     workflowSlug: null,
+    runId: null,
+    attempt: null,
+    suiteName: null,
+    caseName: null,
     ...over,
   };
 }
@@ -437,6 +443,7 @@ export function analyzerPage(over: Partial<AnalyzerPage> = {}): AnalyzerPage {
     run: seededRun(),
     schedule: seededSchedule(),
     duration: seededDuration(),
+    suggestions: seededSuggestions(),
     ...over,
   };
 }
@@ -462,6 +469,7 @@ export function analyzerReadings(over: Partial<AnalyzerReadings> = {}): Analyzer
     repos: { ok: true, value: ANALYZER_REPOS },
     workspaceId: ANALYZER_WORKSPACE,
     mayAdminister: true,
+    mayDismiss: true,
     readAt: ANALYZER_NOW,
     ...over,
   };

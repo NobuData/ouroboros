@@ -5,6 +5,7 @@
 import type { ActionBinding } from "../composer/composer.types";
 import type { ActionPlan } from "./bindings";
 import { planFingerprint } from "./bindings";
+import type { DeltaSummary } from "./workflow.delta";
 
 /** A consequence preview — what Apply would change, and where. */
 export interface SuggestionPreviewResource {
@@ -23,6 +24,11 @@ export interface SuggestionPreviewResource {
   change: unknown;
   /** The studio path a workflow draft opens at — `/workflows/standard-fix`. */
   studioPath: string | null;
+  /**
+   * For a workflow draft: the stages and connections the draft adds to and removes from the
+   * document it is built on. Null for every other plane.
+   */
+  delta: DeltaSummary | null;
   /** Pass back to Apply to insist it executes this preview and nothing else. */
   fingerprint: string;
 }
@@ -84,6 +90,7 @@ export function previewResource(
     reason: plan.kind === "unavailable" ? plan.reason : null,
     change: plan.kind === "unavailable" ? null : plan.change,
     studioPath: plan.kind === "workflow_draft" ? studioPath(plan.change.slug) : null,
+    delta: plan.kind === "workflow_draft" ? plan.delta : null,
     fingerprint: planFingerprint(plan),
   };
 }

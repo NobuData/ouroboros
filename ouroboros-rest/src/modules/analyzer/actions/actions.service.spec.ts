@@ -268,16 +268,20 @@ describe("the preview", () => {
       draftable: false,
       summary: expect.stringContaining("forge-02 joins pool-a between 14:00–16:00 UTC") as string,
       lands: "Build farm · pool windows",
+      // Only a workflow draft has stages and connections to differ by.
+      delta: null,
     });
     expect(world.log).toEqual([]);
   });
 
-  it("opens a workflow plan at the studio, without proposing anything", async () => {
+  it("opens a workflow plan at the studio with its stage delta, without proposing anything", async () => {
     const world = build();
 
     const preview = await world.service.preview(ORG, "s-review");
 
     expect(preview.studioPath).toBe("/workflows/standard-fix");
+    expect(preview.delta).toMatchObject({ nodesAdded: [], nodesRemoved: [] });
+    expect(preview.delta?.edgesAdded).toContain("review → build");
     expect(world.log).toEqual([]);
   });
 });

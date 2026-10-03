@@ -5,10 +5,11 @@ import { type ReactNode, createContext, useCallback, useContext, useMemo, useSta
 import { useKeyedPoll } from "@/app/issues/use-keyed-poll";
 import { useFocusRepo } from "@/app/shell/focus-repo";
 
-import { type StartOutcome, startAnalysis } from "./analyzer-actions";
+import { type StartOutcome, dismissSuggestion, startAnalysis } from "./analyzer-actions";
 import { type AnalyzerPage, type AnalyzerPollOptions, analyzerUrl, createAnalyzerPoll } from "./analyzer-poll";
 import type { AnalyzerReadings } from "./data";
 import { type ChosenRepo, chooseRepo } from "./repo";
+import type { LocalResolution } from "./suggestions-view";
 
 /**
  * The Build Analyzer page's store (BW.1, [#516](https://github.com/NobuData/ouroboros/issues/516))
@@ -19,6 +20,19 @@ import { type ChosenRepo, chooseRepo } from "./repo";
  * answers are never drawn under the new one's name. *Run analysis now* is a server action whose
  * outcome is held per repository; a started run, or one that was already running, refreshes the
  * poll at once so the progress panel appears without waiting out an interval.
+ *
+ * Since BW.3 ([#518](https://github.com/NobuData/ouroboros/issues/518)) it also holds the page's
+ * own resolutions of suggestions, laid over the poll's answer until the poll confirms them:
+ *
+ * ```
+ * dismiss ──▶ row resolves at once ──▶ service accepts ──▶ the poll confirms it
+ *                                  └─▶ service refuses ──▶ rolled back: open again, with why
+ * ```
+ *
+ * A dismissal is **optimistic** — the row resolves before the service answers — and is rolled back
+ * with the service's reason if it refuses. An apply and a spike draft are not: their dialogs wait
+ * for the answer and then {@link AnalyzerView.resolveLocally | record} it, so the row does not sit
+ * open between the answer and the next poll.
  */
 
 /** A press's outcome, with the repository it was about. */
@@ -47,6 +61,19 @@ export interface AnalyzerView {
   readonly start: () => void;
   /** Read the page again now — after a save, or from the concurrent-run link. */
   readonly refresh: () => void;
+  /** Whether this person may dismiss a suggestion — `owner`, `admin` or `member`. */
+  readonly mayDismiss: boolean;
+  /** The page's own resolutions of suggestions, by suggestion, until the poll confirms them. */
+  readonly local: ReadonlyMap<string, LocalResolution>;
+  /** Why a dismissal was rolled back, by suggestion — the service's reason, as a sentence. */
+  readonly refusals: ReadonlyMap<string, string>;
+  /**
+   * Dismiss a suggestion: its row resolves at once, and is put back open — with why — if the
+   * service refuses.
+   */
+  readonly dismiss: (id: string, reason: string | null) => void;
+  /** Record a resolution the service has answered — an apply, a spike's draft — and read again. */
+  readonly resolveLocally: (id: string, resolution: LocalResolution) => void;
 }
 
 /** What is read outside a provider: nothing is known, and pressing does nothing. */
@@ -60,6 +87,11 @@ const NO_ANALYZER: AnalyzerView = Object.freeze({
   outcome: null,
   start: () => {},
   refresh: () => {},
+  mayDismiss: false,
+  local: new Map(),
+  refusals: new Map(),
+  dismiss: () => {},
+  resolveLocally: () => {},
 });
 
 const AnalyzerContext = createContext<AnalyzerView>(NO_ANALYZER);
@@ -110,6 +142,47 @@ export function AnalyzerProvider({ readings, children, poll }: AnalyzerProviderP
     });
   }, [starting, repo, readings.mayAdminister, refresh]);
 
+  const [local, setLocal] = useState<ReadonlyMap<string, LocalResolution>>(() => new Map());
+  const [refusals, setRefusals] = useState<ReadonlyMap<string, string>>(() => new Map());
+
+  const resolveLocally = useCallback(
+    (id: string, resolution: LocalResolution) => {
+      setLocal((current) => new Map(current).set(id, resolution));
+      setRefusals((current) => without(current, id));
+      refresh();
+    },
+    [refresh],
+  );
+
+  const dismiss = useCallback(
+    (id: string, reason: string | null) => {
+      if (!readings.mayDismiss) return;
+
+      // Optimistic: the row resolves now. The service's answer confirms it or rolls it back.
+      // Dated by the page's own clock, so it agrees with every other date the page draws.
+      setLocal((current) =>
+        new Map(current).set(id, {
+          status: "dismissed",
+          at: now.toISOString(),
+          reason,
+          draftBatchId: null,
+          windowDays: null,
+        }),
+      );
+      setRefusals((current) => without(current, id));
+
+      void dismissSuggestion(id, reason).then((answer) => {
+        if (!answer.ok) {
+          setLocal((current) => without(current, id));
+          setRefusals((current) => new Map(current).set(id, answer.reason));
+        }
+        // Either way the page is read again: to confirm it, or to show who got there first.
+        if (answer.ok || answer.resolved) refresh();
+      });
+    },
+    [readings.mayDismiss, refresh, now],
+  );
+
   const view = useMemo<AnalyzerView>(
     () => ({
       chosen,
@@ -121,11 +194,47 @@ export function AnalyzerProvider({ readings, children, poll }: AnalyzerProviderP
       outcome,
       start,
       refresh,
+      mayDismiss: readings.mayDismiss,
+      local,
+      refusals,
+      dismiss,
+      resolveLocally,
     }),
-    [chosen, page, failure, now, readings.mayAdminister, starting, outcome, start, refresh],
+    [
+      chosen,
+      page,
+      failure,
+      now,
+      readings.mayAdminister,
+      readings.mayDismiss,
+      starting,
+      outcome,
+      start,
+      refresh,
+      local,
+      refusals,
+      dismiss,
+      resolveLocally,
+    ],
   );
 
   return <AnalyzerContext.Provider value={view}>{children}</AnalyzerContext.Provider>;
+}
+
+/**
+ * A map without one of its keys.
+ *
+ * @param map The map.
+ * @param key The key to leave out.
+ * @returns The same map when it never held the key; a copy without it otherwise.
+ */
+function without<V>(map: ReadonlyMap<string, V>, key: string): ReadonlyMap<string, V> {
+  if (!map.has(key)) return map;
+
+  const copy = new Map(map);
+  copy.delete(key);
+
+  return copy;
 }
 
 /**

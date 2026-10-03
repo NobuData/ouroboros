@@ -1,7 +1,9 @@
 /*
  * The Build Analyzer (#516) — mockup 18's page frame, head, run progress, meta strip and schedule
- * editor — and its annotated duration chart with the Details sheet behind each chip (#517). The
- * chart's own marks are app/charts/charts.css's; what is here is the card around them.
+ * editor — its annotated duration chart with the Details sheet behind each chip (#517), and the
+ * two suggestion cards with the surfaces their rows open: the consequence preview, the dismissal,
+ * the spike draft and the Details sheet (#518). The chart's own marks are app/charts/charts.css's;
+ * what is here is the card around them.
  *
  * The mockup is docs/mockups/18-build-analyzer.html over docs/mockups/assets/ouroboros.css. What
  * is taken from it is the anatomy every module page has (docs/DESIGN_SYSTEM_APP_SHELL.md § 2):
@@ -415,7 +417,7 @@
 }
 
 .analyzer-cp__candidates,
-.analyzer-cp__evidence {
+.analyzer-ev {
   display: flex;
   flex-direction: column;
   gap: var(--sp-4);
@@ -489,7 +491,10 @@
   overflow-wrap: anywhere;
 }
 
-.analyzer-cp__ref {
+/* ---------- a finding's evidence, in either Details sheet ---------- */
+
+/* One reference per line: its kind, what it names, a merge's sha, and where it opens. */
+.analyzer-ev__ref {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -498,7 +503,7 @@
   overflow-wrap: anywhere;
 }
 
-.analyzer-cp__kind {
+.analyzer-ev__kind {
   color: var(--ink-faint);
   font-family: var(--f-mono);
   font-size: var(--t-2xs);
@@ -506,12 +511,534 @@
   text-transform: uppercase;
 }
 
-.analyzer-cp__link {
+/* A destination, not decoration — and the same on a ranked candidate that cites one. */
+.analyzer-ev__link {
   color: var(--accent);
   font-weight: 600;
 }
 
-.analyzer-cp__where {
+.analyzer-ev__detail {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-ev__where {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+/* ---------- the suggestion cards ---------- */
+
+.analyzer-sugg {
+  min-width: 0;
+}
+
+/* The header link — the mockup's `.card-link`. */
+.analyzer-sugg__studio {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.analyzer-sugg__rows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* The mockup's `.sugg`: padded rows on hairlines. */
+.analyzer-sugg__row {
+  padding: var(--sp-6) 0;
+}
+
+.analyzer-sugg__row + .analyzer-sugg__row {
+  border-top: 1px solid var(--line);
+}
+
+.analyzer-sugg__row:first-child {
+  padding-top: 0;
+}
+
+.analyzer-sugg__row:last-child {
+  padding-bottom: 0;
+}
+
+/* Focus lands here when a row resolves under the control that had it. */
+.analyzer-sugg__body:focus-visible {
+  outline: 1px solid var(--accent-line);
+  outline-offset: var(--sp-2);
+}
+
+/* The mockup's `.s-title`: the body face at weight, not the display face a heading defaults to. */
+.analyzer-sugg__title {
+  margin: 0;
+  font-family: var(--f-ui);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* A resolved row keeps its title and gives up its weight. */
+.analyzer-sugg__title--resolved {
+  color: var(--ink-mut);
+  font-weight: 500;
+}
+
+/* The mockup's `.evidence`: muted mono, under the title. */
+.analyzer-sugg__evidence {
+  margin: var(--sp-2) 0 var(--sp-4);
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The mockup's `.e-lbl`: the faint uppercase word before the line. */
+.analyzer-sugg__label {
+  margin-right: var(--sp-3);
+  color: var(--ink-faint);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+/* The mockup's `.s-foot`: pills on the left, controls pushed right, wrapping when narrow. */
+.analyzer-sugg__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.analyzer-sugg__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+  margin-left: auto;
+}
+
+/* The impact pill is a button: it opens what produced the figure. */
+.analyzer-sugg__impact {
+  font-family: var(--f-ui);
+  cursor: pointer;
+}
+
+/* The mockup's `.conf`: faint mono — and a button, for the same reason. */
+.analyzer-sugg__conf {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.analyzer-sugg__conf:hover {
+  color: var(--ink-dim);
+}
+
+/* The mark an unbuilt control carries, as the insights head's does. */
+.analyzer-sugg__soon {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+/* How a resolved row was resolved, and what follows from it. */
+.analyzer-sugg__state {
+  margin: var(--sp-2) 0 var(--sp-4);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.analyzer-sugg__headline {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+/* A dismissal's reason, as written. */
+.analyzer-sugg__reason {
+  margin: 0 0 var(--sp-4);
+  padding-left: var(--sp-5);
+  border-left: 1px solid var(--line-strong);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-sugg__link {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+/* A dismissal the service refused: the row is open again, and says why. */
+.analyzer-sugg__refusal {
+  margin: var(--sp-4) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+}
+
+/* The rows' place while the page is unread. */
+.analyzer-sugg__skeleton {
+  height: 12rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* ---------- the consequence preview ---------- */
+
+.analyzer-apply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/* The concrete change, as one sentence — the thing a reader can recognise as wrong. */
+.analyzer-apply__summary {
+  margin: 0;
+  padding: var(--sp-6);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-apply__facts {
+  display: grid;
+  gap: var(--sp-5);
+  margin: 0;
+}
+
+.analyzer-apply__fact {
+  display: grid;
+  grid-template-columns: 9rem 1fr;
+  align-items: baseline;
+  gap: var(--sp-5);
+}
+
+.analyzer-apply__label {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 400;
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+.analyzer-apply__value {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-apply__value--mono {
+  color: var(--ink);
+  font-family: var(--f-mono);
+}
+
+/* A workflow draft's stages and connections, added and removed. */
+.analyzer-apply__delta {
+  margin: var(--sp-3) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-apply__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The preview moved under the reader: a warning, not a failure — nothing was applied. */
+.analyzer-apply__moved,
+.analyzer-apply__blocked {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.analyzer-apply__reason {
+  margin: var(--sp-3) 0 0;
+}
+
+.analyzer-apply__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+.analyzer-apply__actions,
+.analyzer-dismiss__actions,
+.analyzer-spike__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--sp-5);
+}
+
+/* ---------- the dismissal ---------- */
+
+.analyzer-dismiss {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+.analyzer-dismiss__subject {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* What cannot be undone, said before it is done. */
+.analyzer-dismiss__guarantee {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the spike draft ---------- */
+
+.analyzer-spike {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+.analyzer-spike__lede,
+.analyzer-spike__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.analyzer-spike__parts {
+  display: grid;
+  gap: var(--sp-6);
+  margin: 0;
+}
+
+.analyzer-spike__label {
+  margin: 0 0 var(--sp-2);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+.analyzer-spike__value {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-spike__value--mono {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.analyzer-spike__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+/* Drafted: good news, and where the draft is. */
+.analyzer-spike__done {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--ok-line);
+  border-radius: var(--r-md);
+  background: var(--ok-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.analyzer-spike__link {
+  color: var(--accent);
+  font-size: var(--t-sm);
+  font-weight: 600;
+}
+
+/* ---------- a suggestion's Details sheet ---------- */
+
+.analyzer-sd {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-9);
+}
+
+.analyzer-sd__evidence {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+/* The mockup's `.lbl`: faint uppercase mono, over each part. */
+.analyzer-sd__heading {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 400;
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+.analyzer-sd__subheading {
+  margin: var(--sp-5) 0 var(--sp-2);
+  color: var(--ink-faint);
+  font-family: var(--f-ui);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+/* The figure a section is about — the pill's text, the confidence. */
+.analyzer-sd__figure {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.analyzer-sd__flag {
+  color: var(--warn);
+  font-size: var(--t-sm);
+}
+
+.analyzer-sd__line {
+  margin: 0 0 var(--sp-2);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-sd__quote {
+  margin: 0;
+  padding-left: var(--sp-5);
+  border-left: 1px solid var(--line-strong);
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-sd__history,
+.analyzer-sd__findings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analyzer-sd__history {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.analyzer-sd__findings {
+  gap: var(--sp-6);
+}
+
+.analyzer-sd__finding {
+  padding: var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.analyzer-sd__subject {
+  margin: 0 0 var(--sp-2);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.analyzer-sd__mono {
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+/* A finding's data: the analyzer's own keys, in words, beside their values. */
+.analyzer-sd__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+  gap: var(--sp-2) var(--sp-6);
+  margin: var(--sp-5) 0 0;
+}
+
+.analyzer-sd__fact {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  font-size: var(--t-xs);
+}
+
+.analyzer-sd__key {
+  color: var(--ink-faint);
+}
+
+.analyzer-sd__val {
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+/* How many references a finding cites beyond the ones listed. */
+.analyzer-sd__more {
+  margin: var(--sp-3) 0 0;
   color: var(--ink-mut);
   font-size: var(--t-xs);
 }

@@ -11,7 +11,12 @@ import { SCHEMA_NAME } from "../db/schema";
 import type { EngineFinding } from "../engine/engine.analysis";
 import { readFixture } from "../workflows/dsl.golden.fixture";
 import { WorkflowsService } from "../workflows/workflows.service";
-import { analyzerEnded, pendingProgress, remainingNotRun } from "./analysis.progress";
+import {
+  analyzerEnded,
+  pendingProgress,
+  remainingNotRun,
+  type RunProgress,
+} from "./analysis.progress";
 import { AnalysisRepository } from "./analysis.repository";
 import { FORGE_02_ID, POOL_A_ID, SEEDED_FINDINGS } from "./composer/composer.seed.fixture";
 import { SuggestionComposer } from "./composer/composer.service";
@@ -78,19 +83,98 @@ export async function seedSeededIdsWorkspace(api: ApiHarness, workspace: Workspa
   });
 }
 
+/** How {@link analyze} leaves its run, and which of the seeded findings it stores. */
+export interface AnalyzeOptions {
+  /**
+   * How the run ends. `failed` (the default) is the cheapest ending that lets the next run start;
+   * `complete` is a run the suggestion cards read (BW.3, #518) — it carries a manifest, a
+   * confidence note and each analyzer's outcome; `running` leaves it in its composing phase for
+   * the caller to end with {@link completeRun}.
+   */
+  ending?: "failed" | "complete" | "running";
+  /** Which analyzers' seeded findings to store — every one when omitted. */
+  only?: (analyzer: string) => boolean;
+  /**
+   * Analyzers that did not look at all — recorded `skipped`, as a live run records one whose
+   * corpus lacks its inputs. Every other analyzer of the set is recorded `completed`, with
+   * however many findings it stored: none means it looked and found nothing.
+   */
+  skipped?: readonly string[];
+}
+
+/**
+ * The progress a bench run ends with: each analyzer `completed` with the findings it stored, or
+ * `skipped` when the bench said it did not look.
+ *
+ * @param written - Findings stored, by analyzer.
+ * @param skipped - The analyzers that did not look.
+ * @returns The document.
+ */
+function endedProgress(
+  written: ReadonlyMap<string, number>,
+  skipped: readonly string[],
+): RunProgress {
+  return BENCH_ANALYZER_SET.analyzers.reduce<RunProgress>(
+    (progress, analyzer) =>
+      analyzerEnded(
+        progress,
+        skipped.includes(analyzer.id)
+          ? {
+              analyzer: analyzer.id,
+              version: 1,
+              status: "skipped",
+              reason: "the bench's corpus lacks its inputs",
+              elapsedSeconds: 0,
+            }
+          : {
+              analyzer: analyzer.id,
+              version: 1,
+              status: "completed",
+              reason: null,
+              elapsedSeconds: 1,
+            },
+        written.get(analyzer.id) ?? 0,
+      ),
+    pendingProgress(BENCH_ANALYZER_SET),
+  );
+}
+
+/**
+ * End a run {@link analyze} left `running`, as a complete one. Each analyzer's outcome is the one
+ * the run recorded when it entered its composing phase.
+ *
+ * @param api - The harness.
+ * @param runId - The run.
+ */
+export async function completeRun(api: ApiHarness, runId: string): Promise<void> {
+  await api.nest.get(AnalysisRepository).finish(runId, {
+    status: "complete",
+    phase: "composing",
+    manifest: null,
+    progress: null,
+    computeSeconds: 1,
+    confidenceNote: "medium — the bench's corpus",
+    failureReason: null,
+  });
+}
+
 /**
  * Start a run over the seeded findings (and any extra), compose it, and end it.
  *
  * @param api - The harness.
  * @param workspace - The workspace — one {@link seedSeededIdsWorkspace} prepared.
  * @param extra - More findings to store with the run (a change-point, say).
+ * @param options - How the run ends, which seeded findings it stores, and which analyzers it
+ *   records as not having looked.
  * @returns The run's id.
  */
 export async function analyze(
   api: ApiHarness,
   workspace: Workspace,
   extra: EngineFinding[] = [],
+  options: AnalyzeOptions = {},
 ): Promise<string> {
+  const { ending = "failed", only = () => true, skipped = [] } = options;
   const runs = api.nest.get(AnalysisRepository);
   const inserted = await runs.insertRun({
     organizationId: workspace.id,
@@ -102,28 +186,60 @@ export async function analyze(
   });
   if (!inserted.started) throw new Error("the run did not start");
   const evidence = [{ kind: "runner_pool", id: POOL_A_ID }];
+  const written = new Map<string, number>();
+
+  if (ending !== "failed") {
+    await runs.analyzing(inserted.run.id, {
+      window: WINDOW,
+      counts: { builds: 1284, loops: 312, log_lines: 0, hil_sessions: 0 },
+      sources: {
+        builds: FULL_READ,
+        loops: FULL_READ,
+        log_lines: FULL_READ,
+        hil_sessions: FULL_READ,
+      },
+      budget: manifestBudget(DEFAULT_BUDGET),
+      duration_label: null,
+    });
+  }
 
   for (const analyzer of BENCH_ANALYZER_SET.analyzers) {
+    const stores = only(analyzer.id) && !skipped.includes(analyzer.id);
     const findings: EngineFinding[] = [
-      ...PERSISTABLE.filter((finding) => finding.analyzer === analyzer.id).map((finding) => ({
-        analyzer: finding.analyzer,
-        analyzer_version: 1,
-        finding_type: finding.findingType,
-        subject_key: finding.subjectKey,
-        data:
-          finding.findingType === "log_signature"
-            ? { ...finding.data, sample_refs: evidence }
-            : { ...finding.data },
-        evidence_refs: evidence,
-        confidence: finding.confidence,
-        confidence_basis: { ...finding.confidenceBasis },
-      })),
+      ...PERSISTABLE.filter((finding) => finding.analyzer === analyzer.id && stores).map(
+        (finding) => ({
+          analyzer: finding.analyzer,
+          analyzer_version: 1,
+          finding_type: finding.findingType,
+          subject_key: finding.subjectKey,
+          data:
+            finding.findingType === "log_signature"
+              ? { ...finding.data, sample_refs: evidence }
+              : { ...finding.data },
+          evidence_refs: evidence,
+          confidence: finding.confidence,
+          confidence_basis: { ...finding.confidenceBasis },
+        }),
+      ),
       ...extra.filter((finding) => finding.analyzer === analyzer.id),
     ];
+    written.set(analyzer.id, findings.length);
     if (findings.length > 0) await runs.writeFindings(inserted.run, findings);
   }
 
+  if (ending !== "failed") {
+    // As the orchestrator leaves a run on entering its last phase: every analyzer's outcome known.
+    await runs.progress(inserted.run.id, endedProgress(written, skipped), "composing");
+  }
+
   await api.nest.get(SuggestionComposer).compose(inserted.run, WINDOW);
+  if (ending === "running") return inserted.run.id;
+
+  if (ending === "complete") {
+    await completeRun(api, inserted.run.id);
+    return inserted.run.id;
+  }
+
   await runs.finish(inserted.run.id, {
     status: "failed",
     phase: "composing",

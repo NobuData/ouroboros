@@ -36,6 +36,9 @@ import type { DurationChartResource } from "./duration.resources";
 const MIRRORED_SHA = "0c5eed47a1b2c3d4e5f60718293a4b5c6d7e8f90";
 const FARM_ONLY_SHA = "1ad1ba5cb805810baf727abc1e6c7d0eb94300eb";
 
+/** What every reference of these kinds answers for the test-results fields: none opens there. */
+const NOT_TEST_RESULTS = { runId: null, attempt: null, suiteName: null, caseName: null };
+
 describe("the duration chart read", () => {
   let api: ApiHarness;
   let owner: Person;
@@ -243,6 +246,7 @@ describe("the duration chart read", () => {
         surface: "pull_request",
         pullRequestId: prId,
         workflowSlug: null,
+        ...NOT_TEST_RESULTS,
       },
       {
         kind: "merge",
@@ -251,6 +255,7 @@ describe("the duration chart read", () => {
         surface: "farm",
         pullRequestId: null,
         workflowSlug: null,
+        ...NOT_TEST_RESULTS,
       },
       {
         kind: "runner_pool",
@@ -259,6 +264,7 @@ describe("the duration chart read", () => {
         surface: "farm",
         pullRequestId: null,
         workflowSlug: null,
+        ...NOT_TEST_RESULTS,
       },
       {
         kind: "workflow_version",
@@ -267,6 +273,7 @@ describe("the duration chart read", () => {
         surface: "workflow",
         pullRequestId: null,
         workflowSlug: "standard-fix",
+        ...NOT_TEST_RESULTS,
       },
       {
         kind: "runner",
@@ -275,6 +282,7 @@ describe("the duration chart read", () => {
         surface: "farm",
         pullRequestId: null,
         workflowSlug: null,
+        ...NOT_TEST_RESULTS,
       },
       {
         kind: "build",
@@ -283,6 +291,7 @@ describe("the duration chart read", () => {
         surface: "farm",
         pullRequestId: null,
         workflowSlug: null,
+        ...NOT_TEST_RESULTS,
       },
       {
         kind: "build",
@@ -291,6 +300,7 @@ describe("the duration chart read", () => {
         surface: "farm",
         pullRequestId: null,
         workflowSlug: null,
+        ...NOT_TEST_RESULTS,
       },
     ]);
   });
@@ -308,6 +318,7 @@ describe("the duration chart read", () => {
       surface: null,
       pullRequestId: null,
       workflowSlug: null,
+      ...NOT_TEST_RESULTS,
     });
     // The farm-only merge was known through that build alone, so it no longer opens either.
     expect(point.evidence.find((entry) => entry.id === FARM_ONLY_SHA)).toMatchObject({
