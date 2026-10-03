@@ -2077,6 +2077,16 @@ expect_red "a run may be launched through another workspace's playbook" \
      foreign key (playbook_id) references ouroboros.playbooks (id) on delete set null;'
 
 
+expect_red "an applied suggestion's application record may be revised" \
+  'what was applied is what was applied' \
+  'drop trigger analysis_suggestion_applications_frozen
+     on ouroboros.analysis_suggestion_applications;'
+
+expect_red 'the same job hook may be registered twice' \
+  'registering the same hook twice is one hook' \
+  'drop index ouroboros.farm_job_hooks_identity_idx;'
+
+
 printf '\n'
 if check_summary; then
   rm -rf "$LOG_DIR"

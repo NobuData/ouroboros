@@ -1,0 +1,62 @@
+{
+  "dsl_version": "1.0",
+  "trigger": { "event": "ticket_queued", "conditions": {} },
+  "nodes": [
+    {
+      "id": "start",
+      "type": "trigger",
+      "title": "Issue queued",
+      "position": { "x": 0, "y": 0 },
+      "config": {}
+    },
+    {
+      "id": "touches-can",
+      "type": "flow",
+      "title": "Touches drivers/can/?",
+      "position": { "x": 240, "y": 0 },
+      "config": {
+        "kind": "decision",
+        "predicate": { "kind": "paths", "op": "any", "globs": ["drivers/can/**"] }
+      }
+    },
+    {
+      "id": "flake-retry",
+      "type": "infra",
+      "title": "Flake-retry under load",
+      "position": { "x": 480, "y": 0 },
+      "config": { "runner_pool": "hil-can", "command": "make test-can-load RETRIES=3" }
+    },
+    {
+      "id": "merge",
+      "type": "term",
+      "title": "Merge",
+      "position": { "x": 720, "y": 120 },
+      "config": {
+        "action": "open_pr_automerge",
+        "options": { "merge_method": "squash", "delete_branch": true }
+      }
+    }
+  ],
+  "edges": [
+    { "from": "start", "to": "touches-can", "kind": "default" },
+    {
+      "from": "touches-can",
+      "to": "flake-retry",
+      "kind": "branch",
+      "label": "touches CAN",
+      "condition": { "kind": "paths", "op": "any", "globs": ["drivers/can/**"] }
+    },
+    {
+      "from": "touches-can",
+      "to": "merge",
+      "kind": "branch",
+      "label": "elsewhere",
+      "condition": {
+        "kind": "paths",
+        "op": "none",
+        "globs": ["drivers/can/**", ".github/workflows/can-*.yml"]
+      }
+    },
+    { "from": "flake-retry", "to": "merge", "kind": "default" }
+  ]
+}

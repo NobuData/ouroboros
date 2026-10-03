@@ -287,6 +287,7 @@ the dry-run simulator needs one evaluator.
 | `labels` | `{ "kind": "labels", "op": "any"\|"all"\|"none", "values": [label, …] }` |
 | `source` | `{ "kind": "source", "op": "in"\|"not_in", "values": [source, …] }` |
 | `checks` | `{ "kind": "checks", "op": "all_passed"\|"any_failed", "names"?: [check, …] }` |
+| `paths` | `{ "kind": "paths", "op": "any"\|"none", "globs": [glob, …] }` |
 
 Each kind is closed to its own members: `{"kind": "always", "value": "m"}` is an error, not a
 value that is ignored.
@@ -301,8 +302,16 @@ For a `checks` predicate, **an absent `names` means every check the run produced
 pins — a workflow that hard-coded fourteen names would be wrong the first time a repository
 added one.
 
-**How a dry run evaluates a predicate** — without a run, so on the green path for `checks` and with
-an unsized ticket satisfying no effort comparison — is `ouroboros-engine`'s simulator
+A `paths` predicate ([#514](https://github.com/NobuData/ouroboros/issues/514)) tests the loop's
+**change** rather than its ticket: `any` holds when at least one changed path matches one of its
+1–32 globs, `none` when no changed path does — *loops touching `drivers/can/` run a flake-retry
+stage*. A glob (`$defs/path_glob`) is 1–256 characters, relative to the repository root (no
+leading `/`), never climbs out of it (no `..` segment) and holds no whitespace. It is a flow-node
+predicate and a branch condition only, never a trigger condition: a ticket that has just been
+queued has changed nothing yet.
+
+**How a dry run evaluates a predicate** — without a run, so on the green path for `checks`, with
+no changed paths for `paths`, and with an unsized ticket satisfying no effort comparison — is `ouroboros-engine`'s simulator
 ([#144](https://github.com/NobuData/ouroboros/issues/144)), documented in
 [`ouroboros-engine/README.md`](../ouroboros-engine/README.md#validating-and-simulating-a-workflow).
 

@@ -24,6 +24,7 @@ from ouroboros_engine.workflows.dsl import (
     InfraConfig,
     LlmConfig,
     NodeShape,
+    PathsPredicate,
     PinnedAlias,
     Position,
     SourcePredicate,
@@ -126,8 +127,15 @@ def test_a_condition_the_schema_does_not_declare_is_refused() -> None:
     )
 
 
-def test_the_predicate_grammar_is_the_five_kinds_the_dsl_publishes() -> None:
-    assert list(PREDICATE_MODELS) == ["always", "effort", "labels", "source", "checks"]
+def test_the_predicate_grammar_is_the_six_kinds_the_dsl_publishes() -> None:
+    assert list(PREDICATE_MODELS) == [
+        "always",
+        "effort",
+        "labels",
+        "source",
+        "checks",
+        "paths",
+    ]
     for kind, model in PREDICATE_MODELS.items():
         assert accepts(model, {"kind": kind}) is (kind == "always")
 
@@ -155,6 +163,57 @@ def test_a_source_outside_the_trackers_the_intake_model_knows_is_refused() -> No
     assert not accepts(
         SourcePredicate, {"kind": "source", "op": "in", "values": ["bugzilla"]}
     )
+
+
+def test_a_paths_predicate_tests_one_to_32_globs_with_any_or_none() -> None:
+    def paths(op: str, globs: object) -> bool:
+        return accepts(PathsPredicate, {"kind": "paths", "op": op, "globs": globs})
+
+    assert paths("any", ["drivers/can/**"])
+    assert paths("none", [f"src/{n}/**" for n in range(32)])
+    assert not paths("all", ["drivers/can/**"])
+    assert not paths("any", [])
+    assert not paths("any", [f"src/{n}/**" for n in range(33)])
+    assert not accepts(PathsPredicate, {"kind": "paths", "op": "any"})
+
+
+@pytest.mark.parametrize(
+    "glob",
+    [
+        "drivers/can/**",
+        "**/*.c",
+        "*.md",
+        ".github/workflows/*.yml",
+        "docs/",
+        "a//b",
+        "./src/**",
+        ".../x",
+        "..rc/x",
+        "x" * 256,
+    ],
+)
+def test_a_glob_may_be_relative_and_contained(glob: str) -> None:
+    assert accepts(PathsPredicate, {"kind": "paths", "op": "any", "globs": [glob]})
+
+
+@pytest.mark.parametrize(
+    "glob",
+    [
+        "",
+        "x" * 257,
+        "/drivers/can/**",
+        "/",
+        "../secrets/**",
+        "drivers/../secrets",
+        "drivers/..",
+        "..",
+        "drivers/can bus/**",
+        "drivers/\tcan",
+        "drivers/can/**\n",
+    ],
+)
+def test_a_glob_may_not_be_rooted_climb_out_or_hold_whitespace(glob: str) -> None:
+    assert not accepts(PathsPredicate, {"kind": "paths", "op": "any", "globs": [glob]})
 
 
 def test_a_predicate_refuses_a_member_another_kind_declares() -> None:

@@ -510,13 +510,14 @@ function flowErrors(config: ConfigRecord, root: JsonSchema, errors: Record<strin
 /**
  * A structured predicate's errors (decision **P8**) — a flow node's `predicate`, or an edge's
  * `condition` (S.5, [#151](https://github.com/NobuData/ouroboros/issues/151)): no kind chosen, or a
- * kind that needs a list with none given.
+ * kind that needs a list with none given. A `paths` predicate's globs (#514) are also held to the
+ * schema's `path_glob` pattern, as a pinned alias is to `alias_name`'s.
  *
  * @param predicate The predicate, as the draft holds it.
  * @param schema The predicate's schema.
  * @param root The document its references resolve against.
  * @param field The key the messages are filed under — `predicate`, `condition`.
- * @param errors Where to write them, as `<field>.kind` and `<field>.values`.
+ * @param errors Where to write them, as `<field>.kind`, `<field>.values` and `<field>.globs`.
  */
 export function predicateErrors(
   predicate: unknown,
@@ -535,6 +536,17 @@ export function predicateErrors(
   if (requiredProperties(branch, root).includes("values")) {
     if (!Array.isArray(value.values) || value.values.length === 0) {
       errors[`${field}.values`] = VALUES_REQUIRED;
+    }
+  }
+  if (requiredProperties(branch, root).includes("globs")) {
+    const globs = Array.isArray(value.globs) ? value.globs : [];
+    const pattern = resolveSchema({ $ref: "#/$defs/path_glob" }, root).pattern;
+    if (globs.length === 0) errors[`${field}.globs`] = GLOBS_REQUIRED;
+    else if (
+      typeof pattern === "string" &&
+      globs.some((glob) => typeof glob !== "string" || !new RegExp(pattern).test(glob))
+    ) {
+      errors[`${field}.globs`] = GLOB_INVALID;
     }
   }
 }
@@ -812,6 +824,8 @@ export const VALUE_LABEL = "Value";
 export const VALUES_LABEL = "Values";
 export const LIST_HINT = "Comma-separated.";
 export const CHECK_NAMES_HINT = "Comma-separated. Leave empty for every check the run produces.";
+export const GLOBS_LABEL = "Globs";
+export const GLOBS_HINT = "Comma-separated, from the repository root — like drivers/can/**.";
 
 /** The footer. */
 export const DELETE_LABEL = "Delete stage";
@@ -875,6 +889,8 @@ export const ROUTING_REQUIRED = "Choose how this stage is routed.";
 export const BUDGET_INVALID = "Enter a whole number of tokens, like 400k.";
 export const PREDICATE_REQUIRED = "Choose what the predicate tests.";
 export const VALUES_REQUIRED = "Name at least one value.";
+export const GLOBS_REQUIRED = "Name at least one glob.";
+export const GLOB_INVALID = "A glob starts inside the repository: no leading /, no .. segment, no spaces.";
 
 /**
  * A length error.

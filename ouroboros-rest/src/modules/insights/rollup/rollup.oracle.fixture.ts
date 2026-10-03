@@ -331,6 +331,20 @@ export const ORACLES: Readonly<Record<string, Oracle>> = {
       [org, from, to],
     ),
 
+  queue_wait: (sql, org, from, to) =>
+    grouped(
+      sql,
+      `select ${REPO} as repo_ref, p.name as dimension,
+              percentile_cont(0.5) within group (
+                order by greatest(round(extract(epoch from (b.started_at - b.queued_at)) * 1000), 0)) as value
+         from ouroboros.build_jobs b
+         ${JOB_REPO}
+         join ouroboros.runner_pools p on p.id = b.pool_id
+        where b.organization_id = $1 and b.started_at >= $2 and b.started_at < $3
+        group by 1, p.name`,
+      [org, from, to],
+    ),
+
   build_success_rate: (sql, org, from, to) =>
     grouped(
       sql,

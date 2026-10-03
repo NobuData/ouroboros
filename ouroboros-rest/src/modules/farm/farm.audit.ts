@@ -37,10 +37,14 @@ import {
   RUNNER_CERT_REVOKED_EVENT,
   RUNNER_DRAINED_EVENT,
   RUNNER_ENROLLED_EVENT,
+  RUNNER_JOB_HOOK_REGISTERED_EVENT,
+  RUNNER_JOB_HOOK_REMOVED_EVENT,
   RUNNER_JOB_SUBMITTED_EVENT,
   RUNNER_POOL_CREATED_EVENT,
   RUNNER_POOL_DELETED_EVENT,
   RUNNER_POOL_UPDATED_EVENT,
+  RUNNER_POOL_WINDOW_ADDED_EVENT,
+  RUNNER_POOL_WINDOW_REMOVED_EVENT,
   RUNNER_REMOVED_EVENT,
   RUNNER_TOKEN_MINTED_EVENT,
   RUNNER_TOKEN_REVOKED_EVENT,
@@ -408,6 +412,8 @@ export class FarmAudit {
       ref: string;
       commit: string;
       runId: string | null;
+      /** The job hook that submitted it (#514), when one did. */
+      hookId?: string | null;
     },
   ): Promise<void> {
     await this.audit.record({
@@ -426,7 +432,120 @@ export class FarmAudit {
         // Only when a run submitted it: the detail stays flat scalars, and a key holding
         // `null` on every build a person submitted would be a fact about nothing.
         ...(job.runId === null ? {} : { runId: job.runId }),
+        ...(job.hookId === undefined || job.hookId === null ? {} : { hookId: job.hookId }),
       },
+    });
+  }
+
+  /**
+   * A runner was given a time-windowed pool assignment (#514).
+   *
+   * @param actor - Who, where and when.
+   * @param window - The window, by id, with the names and times it reads as.
+   * @returns When the event is written.
+   */
+  async poolWindowAdded(
+    actor: FarmActor,
+    window: {
+      id: string;
+      runner: string;
+      pool: string;
+      daysOfWeek: readonly number[];
+      startsAt: string;
+      endsAt: string;
+    },
+  ): Promise<void> {
+    await this.audit.record({
+      organizationId: actor.organizationId,
+      actorId: actor.actorId,
+      action: RUNNER_POOL_WINDOW_ADDED_EVENT,
+      subjectType: "runner_pool_window",
+      subjectId: window.id,
+      at: actor.at,
+      detail: {
+        runner: window.runner,
+        pool: window.pool,
+        days: window.daysOfWeek.join(","),
+        starts_at: window.startsAt,
+        ends_at: window.endsAt,
+      },
+    });
+  }
+
+  /**
+   * A time-windowed pool assignment was removed (#514).
+   *
+   * @param actor - Who, where and when.
+   * @param window - The window's id and the names it read as.
+   * @returns When the event is written.
+   */
+  async poolWindowRemoved(
+    actor: FarmActor,
+    window: { id: string; runner: string; pool: string },
+  ): Promise<void> {
+    await this.audit.record({
+      organizationId: actor.organizationId,
+      actorId: actor.actorId,
+      action: RUNNER_POOL_WINDOW_REMOVED_EVENT,
+      subjectType: "runner_pool_window",
+      subjectId: window.id,
+      at: actor.at,
+      detail: { runner: window.runner, pool: window.pool },
+    });
+  }
+
+  /**
+   * A job hook was registered (#514). **Never the command** — see {@link jobSubmitted}.
+   *
+   * @param actor - Who, where and when.
+   * @param hook - The hook: its repository, pool, event and title filter.
+   * @returns When the event is written.
+   */
+  async jobHookRegistered(
+    actor: FarmActor,
+    hook: {
+      id: string;
+      repository: string;
+      pool: string;
+      event: string;
+      titleContains: string | null;
+    },
+  ): Promise<void> {
+    await this.audit.record({
+      organizationId: actor.organizationId,
+      actorId: actor.actorId,
+      action: RUNNER_JOB_HOOK_REGISTERED_EVENT,
+      subjectType: "farm_job_hook",
+      subjectId: hook.id,
+      at: actor.at,
+      detail: {
+        repository: hook.repository,
+        pool: hook.pool,
+        event: hook.event,
+        title_contains: hook.titleContains,
+      },
+    });
+  }
+
+  /**
+   * A job hook was removed (#514).
+   *
+   * @param actor - Who, where and when.
+   * @param hook - The hook's id, repository and pool.
+   * @returns When the event is written.
+   */
+  async jobHookRemoved(
+    actor: FarmActor,
+    hook: { id: string; repository: string; pool: string },
+  ): Promise<void> {
+    await this.audit.record({
+      organizationId: actor.organizationId,
+      actorId: actor.actorId,
+      action: RUNNER_JOB_HOOK_REMOVED_EVENT,
+      subjectType: "farm_job_hook",
+      subjectId: hook.id,
+      at: actor.at,
+      detail: { repository: hook.repository, pool: hook.pool },
     });
   }
 }

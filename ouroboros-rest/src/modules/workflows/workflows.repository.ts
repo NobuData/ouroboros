@@ -345,6 +345,8 @@ export class WorkflowsRepository {
    * @param editedIn - Which editor is writing it (V033), or `null` for a draft neither editor
    *   wrote — the one {@link create} starts a workflow with.
    * @param trx - The transaction to write in, when the caller is inside one.
+   * @param changeNote - A proposed change note (#514 — the Build Analyzer citing its finding), or
+   *   `null` for none.
    * @returns The draft as it was stored.
    */
   async insertDraft(
@@ -352,6 +354,7 @@ export class WorkflowsRepository {
     definition: unknown,
     editedIn: DraftEditor | null,
     trx?: Transaction<Database>,
+    changeNote: string | null = null,
   ): Promise<WorkflowVersion> {
     return queryOn(this.database, trx)
       .insertInto("workflow_versions")
@@ -361,7 +364,7 @@ export class WorkflowsRepository {
         definition: JSON.stringify(definition),
         published_at: null,
         published_by: null,
-        change_note: null,
+        change_note: changeNote,
         edited_in: editedIn,
       })
       .returningAll()
@@ -380,6 +383,8 @@ export class WorkflowsRepository {
    * @param definition - The document to store.
    * @param editedIn - Which editor is writing it — what the next stale save's `409` names (V033).
    * @param trx - The transaction to write in, when the caller is inside one.
+   * @param changeNote - A proposed change note to set (#514); `undefined` leaves the draft's
+   *   note as it is, so an ordinary save keeps a proposal somebody else wrote.
    * @returns The draft after the write — stamped by `workflow_versions_touch_updated_at`,
    *   which is where the mockup's *Last edited* comes from. `undefined` when the row is no
    *   longer a draft.
@@ -389,10 +394,15 @@ export class WorkflowsRepository {
     definition: unknown,
     editedIn: DraftEditor,
     trx?: Transaction<Database>,
+    changeNote?: string,
   ): Promise<WorkflowVersion | undefined> {
     return queryOn(this.database, trx)
       .updateTable("workflow_versions")
-      .set({ definition: JSON.stringify(definition), edited_in: editedIn })
+      .set({
+        definition: JSON.stringify(definition),
+        edited_in: editedIn,
+        ...(changeNote === undefined ? {} : { change_note: changeNote }),
+      })
       .where("id", "=", draftId)
       .where("version", "is", null)
       .returningAll()

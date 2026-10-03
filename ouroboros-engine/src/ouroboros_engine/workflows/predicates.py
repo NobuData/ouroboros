@@ -19,6 +19,9 @@ nothing else. Three rules follow from that, and each is stated where a caller ca
   and a dry run does not run anything. The simulator assumes the green path — every check
   passes, so ``all_passed`` holds and ``any_failed`` does not — and says so: the evaluation is
   marked :attr:`Evaluation.assumed`, and its explanation names the assumption.
+* **A ``paths`` predicate cannot be evaluated either**, because a dry run has no change and so
+  no changed paths. The simulator assumes the change touches nothing — ``any`` does not hold and
+  ``none`` does — and marks that assumed in the same way.
 
 This module performs no I/O and imports nothing that could. ``tests/test_workflows_simulate.py``
 asserts that of the whole package.
@@ -40,6 +43,7 @@ from .dsl import (
     Effort,
     EffortPredicate,
     LabelsPredicate,
+    PathsPredicate,
     SourcePredicate,
     Trigger,
 )
@@ -67,6 +71,9 @@ _EFFORT_OPERATORS: Final[dict[str, Callable[[int, int], bool]]] = {
 
 #: The sentence every assumed check result starts from.
 _NO_CHECK_RESULTS: Final = "a dry run has no check results"
+
+#: The sentence every assumed changed-path result starts from.
+_NO_CHANGED_PATHS: Final = "a dry run has no changed paths"
 
 
 @dataclass(frozen=True, slots=True)
@@ -238,6 +245,24 @@ def _checks(predicate: ChecksPredicate) -> Evaluation:
     )
 
 
+def _paths(predicate: PathsPredicate) -> Evaluation:
+    """State the no-change assumption for a predicate over the change's paths.
+
+    Args:
+        predicate: The paths predicate.
+
+    Returns:
+        An evaluation marked assumed: no changed path matches, so ``any`` does not hold and
+        ``none`` does.
+    """
+    globs = _names(predicate.globs)
+    return Evaluation(
+        holds=predicate.op == "none",
+        assumed=True,
+        clause=f"{_NO_CHANGED_PATHS}, so it assumes no changed path matches {globs}",
+    )
+
+
 def evaluate_predicate(predicate: BaseModel, ticket: DryRunTicket) -> Evaluation:
     """Test one predicate against a ticket.
 
@@ -266,6 +291,8 @@ def evaluate_predicate(predicate: BaseModel, ticket: DryRunTicket) -> Evaluation
             return _source(predicate, ticket)
         case ChecksPredicate():
             return _checks(predicate)
+        case PathsPredicate():
+            return _paths(predicate)
         case _:
             message = f"{type(predicate).__name__} is not a workflow predicate"
             raise TypeError(message)
@@ -367,6 +394,11 @@ def describe_predicate(predicate: BaseModel) -> str:
                 if names is None
                 else f"a failure among the checks {_names(names)}"
             )
+        case PathsPredicate():
+            globs = _names(predicate.globs)
+            if predicate.op == "any":
+                return f"a change touching {globs}"
+            return f"a change touching none of {globs}"
         case _:
             message = f"{type(predicate).__name__} is not a workflow predicate"
             raise TypeError(message)

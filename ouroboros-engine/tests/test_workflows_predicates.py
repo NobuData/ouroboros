@@ -17,6 +17,7 @@ from ouroboros_engine.workflows.dsl import (
     ChecksPredicate,
     EffortPredicate,
     LabelsPredicate,
+    PathsPredicate,
     SourcePredicate,
     Trigger,
 )
@@ -248,6 +249,39 @@ def test_a_checks_predicate_is_the_green_path_and_says_it_is_an_assumption(
     )
 
 
+@pytest.mark.parametrize(
+    ("op", "globs", "holds", "clause"),
+    [
+        (
+            "any",
+            ["drivers/can/**"],
+            False,
+            "a dry run has no changed paths, so it assumes no changed path matches "
+            "`drivers/can/**`",
+        ),
+        (
+            "none",
+            ["drivers/can/**", "docs/**"],
+            True,
+            "a dry run has no changed paths, so it assumes no changed path matches "
+            "`drivers/can/**`, `docs/**`",
+        ),
+    ],
+)
+def test_a_paths_predicate_assumes_an_untouched_change_and_says_it_is_an_assumption(
+    op: str, globs: list[str], holds: bool, clause: str
+) -> None:
+    evaluation = evaluate_predicate(
+        _predicate(kind="paths", op=op, globs=globs), _ticket()
+    )
+
+    assert (evaluation.holds, evaluation.assumed, evaluation.clause) == (
+        holds,
+        True,
+        clause,
+    )
+
+
 def test_an_always_predicate_holds() -> None:
     evaluation = evaluate_predicate(AlwaysPredicate(kind="always"), _ticket(None))
 
@@ -266,7 +300,9 @@ def test_an_always_predicate_holds() -> None:
     ],
     ids=lambda predicate: predicate.kind,
 )
-def test_only_a_checks_predicate_is_ever_an_assumption(predicate: BaseModel) -> None:
+def test_only_a_checks_or_paths_predicate_is_ever_an_assumption(
+    predicate: BaseModel,
+) -> None:
     assert evaluate_predicate(predicate, _ticket()).assumed is False
 
 
@@ -409,6 +445,14 @@ def test_a_source_condition_reads_exactly_as_a_source_in_predicate(source: str) 
             {"kind": "checks", "op": "any_failed", "names": ["test"]},
             "a failure among the checks `test`",
         ),
+        (
+            {"kind": "paths", "op": "any", "globs": ["drivers/can/**"]},
+            "a change touching `drivers/can/**`",
+        ),
+        (
+            {"kind": "paths", "op": "none", "globs": ["docs/**", "*.md"]},
+            "a change touching none of `docs/**`, `*.md`",
+        ),
     ],
 )
 def test_a_predicate_describes_what_it_requires(
@@ -437,10 +481,12 @@ def test_the_checks_predicate_model_is_the_one_the_evaluator_dispatches() -> Non
         "labels": {"kind": "labels", "op": "any", "values": ["bug"]},
         "source": {"kind": "source", "op": "in", "values": ["github"]},
         "checks": {"kind": "checks", "op": "all_passed"},
+        "paths": {"kind": "paths", "op": "any", "globs": ["drivers/can/**"]},
     }
 
     assert set(samples) == set(PREDICATE_MODELS)
     assert isinstance(_predicate(**samples["checks"]), ChecksPredicate)
+    assert isinstance(_predicate(**samples["paths"]), PathsPredicate)
     for fields in samples.values():
         assert evaluate_predicate(_predicate(**fields), _ticket()).clause
         assert describe_predicate(_predicate(**fields))

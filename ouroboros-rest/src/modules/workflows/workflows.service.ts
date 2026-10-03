@@ -34,6 +34,7 @@ import type { Database, DraftEditor, Workflow, WorkflowVersion } from "../db/sch
 import { pageOf, windowOf, type Page, type PageQuery } from "../tenancy/pagination";
 import { DatabaseService } from "../db/db.service";
 import { draftEtag, ifMatchAdmits } from "./draft.etag";
+import { validateWorkflowDocument } from "./dsl.validator";
 import { WorkflowPublishGate } from "./publish.gate";
 import { nextFreeSlug, slugify } from "./slug";
 import { WorkflowStatsService } from "./stats.service";
@@ -57,6 +58,7 @@ import {
   versionNotFound,
   violates,
   workflowNotFound,
+  workflowSlugNotFound,
 } from "./workflows.errors";
 import { WorkflowsRepository } from "./workflows.repository";
 import {
@@ -113,6 +115,20 @@ export interface InstantiatedWorkflow {
   readonly workflow: WorkflowSummary;
   /** Its v1. */
   readonly version: WorkflowVersionResource;
+}
+
+/** The document a proposed change is built on — see {@link WorkflowsService.draftBase}. */
+export interface DraftBase {
+  /** The workflow. */
+  readonly workflow: Workflow;
+  /** The base document, or `null` for a workflow with neither a draft nor a version. */
+  readonly definition: unknown;
+  /** Where it came from. */
+  readonly from: "draft" | "version" | "none";
+  /** The version number when it came from one. */
+  readonly version: number | null;
+  /** The draft slot's etag at the read — the `If-Match` a proposal is written with. */
+  readonly etag: string;
 }
 
 @Injectable()
@@ -371,6 +387,8 @@ export class WorkflowsService {
    *   first, as `workflow_draft_etag_required`, because it is a different mistake from a stale one.
    * @param definition - The whole document to store.
    * @param editedIn - Which editor is writing.
+   * @param changeNote - A proposed change note to set on the draft (#514); `undefined` leaves the
+   *   draft's note as it is.
    * @returns The draft row after the write.
    * @throws {ConflictError} `workflow_draft_conflict` when the draft moved — including when
    *   another request created one between this one's read and its insert.
@@ -380,6 +398,7 @@ export class WorkflowsService {
     ifMatch: string,
     definition: unknown,
     editedIn: DraftEditor,
+    changeNote?: string,
   ): Promise<WorkflowVersion> {
     return this.database.transaction(async (trx) => {
       const existing = await this.workflows.draftOf(workflow.id, trx, true);
@@ -389,10 +408,16 @@ export class WorkflowsService {
       }
 
       if (existing === undefined) {
-        return this.insertFirstDraft(workflow.id, definition, editedIn, trx);
+        return this.insertFirstDraft(workflow.id, definition, editedIn, trx, changeNote);
       }
 
-      const written = await this.workflows.writeDraft(existing.id, definition, editedIn, trx);
+      const written = await this.workflows.writeDraft(
+        existing.id,
+        definition,
+        editedIn,
+        trx,
+        changeNote,
+      );
 
       // The locked read found a draft and the keyed update found none, which means the row
       // stopped being a draft between them. Under the lock that cannot happen; the check is
@@ -402,6 +427,88 @@ export class WorkflowsService {
 
       return written;
     });
+  }
+
+  /**
+   * The document a proposed change is built on (#514): the draft when there is one, else the
+   * version in force — the one the studio would open — and the etag a proposal must be checked
+   * against, so a proposal never overwrites a draft somebody saved after it was read.
+   *
+   * Read-only: the Build Analyzer's preview calls it, and a preview has no side effects.
+   *
+   * @param organizationId - The workspace.
+   * @param slug - The workflow's slug — `standard-fix`.
+   * @returns The workflow, the base document (`null` for a workflow with neither), where it came
+   *   from, and the draft slot's etag.
+   * @throws {NotFoundError} `workflow_not_found` naming the slug.
+   */
+  async draftBase(organizationId: string, slug: string): Promise<DraftBase> {
+    const workflow = await this.workflows.findBySlug(organizationId, slug);
+
+    if (workflow === undefined) throw workflowSlugNotFound(slug);
+
+    const draft = await this.workflows.draftOf(workflow.id);
+    const etag = draftEtag(draft);
+
+    if (draft !== undefined) {
+      return { workflow, definition: draft.definition, from: "draft", version: null, etag };
+    }
+
+    const current = await this.versionToShow(workflow.id, workflow.current_version);
+
+    return current === undefined
+      ? { workflow, definition: null, from: "none", version: null, etag }
+      : {
+          workflow,
+          definition: current.definition,
+          from: "version",
+          version: current.version,
+          etag,
+        };
+  }
+
+  /**
+   * Write a proposed draft — a whole document and the change note that says why (#514, decision
+   * A4: the Build Analyzer proposes, a person publishes). **It never publishes.**
+   *
+   * The document is held to P.2's grammar before anything is written — unlike a person's save,
+   * which may be half-finished, a proposal that does not parse would be a draft nobody can open
+   * — and is then written through {@link writeGuarded} with the etag its base was read at.
+   *
+   * @param organizationId - The workspace.
+   * @param workflowId - The workflow, from {@link draftBase}.
+   * @param ifMatch - The draft slot's etag when the base was read.
+   * @param definition - The whole proposed document.
+   * @param changeNote - The proposal's note, at most 500 characters (V029).
+   * @returns The draft slot after the write.
+   * @throws {NotFoundError} `workflow_not_found`.
+   * @throws {InvalidRequestError} `workflow_definition_invalid` when the document does not parse.
+   * @throws {ConflictError} `workflow_draft_conflict` when the draft moved since the base was read.
+   */
+  async proposeDraft(
+    organizationId: string,
+    workflowId: string,
+    ifMatch: string,
+    definition: unknown,
+    changeNote: string,
+  ): Promise<WorkflowDraft> {
+    const workflow = await this.require(organizationId, workflowId);
+    const verdict = validateWorkflowDocument(definition);
+
+    if (!verdict.valid) {
+      throw definitionInvalid(
+        verdict.errors.map((error) => ({
+          source: "dsl" as const,
+          code: error.code,
+          message: error.message,
+          path: error.path,
+        })),
+      );
+    }
+
+    return workflowDraft(
+      await this.writeGuarded(workflow, ifMatch, definition, "visual", changeNote),
+    );
   }
 
   /**
@@ -476,7 +583,9 @@ export class WorkflowsService {
           workflow.id,
           {
             definition: current.definition,
-            changeNote: body.changeNote ?? null,
+            // The publisher's own note replaces a proposed one; with none, the proposal the
+            // draft carries (#514 — the Build Analyzer's citation) is what the version keeps.
+            changeNote: body.changeNote ?? current.change_note ?? null,
             publishedBy,
             publishedAt: now,
           },
@@ -570,6 +679,7 @@ export class WorkflowsService {
    * @param definition - The document to store.
    * @param editedIn - Which editor is writing it.
    * @param trx - The transaction the caller's guard was checked in.
+   * @param changeNote - A proposed change note (#514), when the writer brings one.
    * @returns The draft as it was stored.
    * @throws {ConflictError} `workflow_draft_conflict` when another request created the draft
    *   first. `workflow_versions_one_draft_idx` is where the two meet — V029: *"where two
@@ -581,9 +691,16 @@ export class WorkflowsService {
     definition: unknown,
     editedIn: DraftEditor,
     trx: Transaction<Database>,
+    changeNote?: string,
   ) {
     try {
-      return await this.workflows.insertDraft(workflowId, definition, editedIn, trx);
+      return await this.workflows.insertDraft(
+        workflowId,
+        definition,
+        editedIn,
+        trx,
+        changeNote ?? null,
+      );
     } catch (error) {
       if (violates(error, WORKFLOW_CONSTRAINTS.oneDraft)) {
         throw draftConflict(draftEtag(undefined));

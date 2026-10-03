@@ -252,6 +252,8 @@ describe("a predicate in a chip's words", () => {
     [{ kind: "checks", op: "all_passed" }, "all checks passed"],
     [{ kind: "checks", op: "any_failed", names: ["build"] }, "failed checks: any of 1"],
     [{ kind: "checks", op: "any_failed" }, "any check failed"],
+    [{ kind: "paths", op: "any", globs: ["drivers/can/**"] }, "paths any: drivers/can/**"],
+    [{ kind: "paths", op: "none", globs: ["docs/**", "*.md"] }, "paths none: docs/**, *.md"],
   ])("reads %j as %s", (predicate, words) => {
     expect(predicateWords(predicate)).toBe(words);
   });
@@ -269,6 +271,9 @@ describe("a predicate in a chip's words", () => {
       { kind: "source", op: "in" },
       { kind: "checks", op: "some_passed" },
       { kind: "checks" },
+      { kind: "paths", op: "any", globs: [] },
+      { kind: "paths", op: "all", globs: ["drivers/can/**"] },
+      { kind: "paths", op: "any" },
     ]) {
       expect(predicateWords(predicate), JSON.stringify(predicate)).toBeNull();
     }
@@ -295,6 +300,7 @@ describe("an edge's label", () => {
     expect(labelTone(connection("branch", { kind: "effort", op: "eq", value: "s" }))).toBe("accent");
     expect(labelTone(connection("branch", { kind: "effort", op: "lt", value: "s" }))).toBe("accent");
     expect(labelTone(connection("branch", { kind: "labels", op: "any", values: ["docs"] }))).toBe("plain");
+    expect(labelTone(connection("branch", { kind: "paths", op: "any", globs: ["drivers/can/**"] }))).toBe("plain");
     expect(labelTone(connection("branch", { kind: "checks", op: "unknown" }))).toBe("plain");
     expect(labelTone(connection("default", null))).toBe("plain");
   });

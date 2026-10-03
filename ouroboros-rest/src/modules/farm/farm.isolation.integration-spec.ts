@@ -646,7 +646,148 @@ describe("organization isolation, on every farm route", () => {
         expect(ours.text).toBe(yours.text);
       },
     },
+
+    // ------------------------------------------- the analyzer's farm configuration (#514)
+    [`GET ${FARM}/pool-windows`]: {
+      about: "lists only the caller's own pool windows",
+      check: async (self, other) => {
+        const theirs = await windowOf(other);
+        const windows = bodyOf<{ id: string }[]>(
+          await as(self)("get", `${FARM}/pool-windows`).expect(200),
+        );
+
+        expect(windows.map((window) => window.id)).not.toContain(theirs);
+      },
+    },
+
+    [`POST ${FARM}/pool-windows`]: {
+      about: "refuses a window for another workspace's runner, writing nothing",
+      check: async (self, other) => {
+        const before = await windowCount();
+        const code = await refused(self, "post", `${FARM}/pool-windows`, {
+          runner: await runnerName(other),
+          pool: self.poolName,
+          daysOfWeek: [1, 2, 3, 4, 5],
+          startsAt: "14:00",
+          endsAt: "16:00",
+        });
+
+        expect(code).toBe("farm_runner_not_found");
+        expect(await windowCount()).toBe(before);
+      },
+    },
+
+    [`DELETE ${FARM}/pool-windows/:id`]: {
+      about: "cannot remove another workspace's pool window",
+      check: async (self, other) => {
+        const theirs = await windowOf(other);
+        const before = await windowCount();
+
+        expect(await refused(self, "delete", `${FARM}/pool-windows/${theirs}`)).toBe(
+          "farm_pool_window_not_found",
+        );
+        expect(await windowCount()).toBe(before);
+      },
+    },
+
+    [`GET ${FARM}/job-hooks`]: {
+      about: "lists only the caller's own job hooks",
+      check: async (self, other) => {
+        const theirs = await hookOf(other);
+        const hooks = bodyOf<{ id: string }[]>(
+          await as(self)("get", `${FARM}/job-hooks`).expect(200),
+        );
+
+        expect(hooks.map((hook) => hook.id)).not.toContain(theirs);
+      },
+    },
+
+    [`POST ${FARM}/job-hooks`]: {
+      about: "refuses a hook on another workspace's repository, writing nothing",
+      check: async (self, other) => {
+        const before = await hookCount();
+        const code = await refused(self, "post", `${FARM}/job-hooks`, {
+          repo: other.repository,
+          pool: self.poolName,
+          event: "merge",
+          label: "post-merge hook",
+          title: "Re-warm ccache",
+          command: ["west", "build", "-t", "ccache-warm"],
+        });
+
+        expect(code).toBe("farm_repository_not_found");
+        expect(await hookCount()).toBe(before);
+      },
+    },
+
+    [`DELETE ${FARM}/job-hooks/:id`]: {
+      about: "cannot remove another workspace's job hook",
+      check: async (self, other) => {
+        const theirs = await hookOf(other);
+        const before = await hookCount();
+
+        expect(await refused(self, "delete", `${FARM}/job-hooks/${theirs}`)).toBe(
+          "farm_job_hook_not_found",
+        );
+        expect(await hookCount()).toBe(before);
+      },
+    },
   };
+
+  /** A tenant's runner's name. */
+  async function runnerName(context: Tenant): Promise<string> {
+    const { rows } = await api.sql.query<{ name: string }>(
+      "select name from ouroboros.runners where id = $1",
+      [context.runnerId],
+    );
+    return rows[0].name;
+  }
+
+  /** A pool window in a tenant's workspace, written as the farm would — the same one each time. */
+  async function windowOf(context: Tenant): Promise<string> {
+    const { rows } = await api.sql.query<{ id: string }>(
+      `insert into ouroboros.runner_pool_windows
+         (organization_id, runner_id, pool_id, days_of_week, starts_at, ends_at)
+       values ($1, $2, $3, '[1, 2, 3, 4, 5]', '14:00', '16:00')
+       on conflict (runner_id, pool_id, starts_at, ends_at) do update set enabled = true
+       returning id`,
+      [context.workspace.id, context.runnerId, context.poolId],
+    );
+    return rows[0].id;
+  }
+
+  /** A job hook on a tenant's repository — the same one each time. */
+  async function hookOf(context: Tenant): Promise<string> {
+    const { rows } = await api.sql.query<{ id: string }>(
+      `insert into ouroboros.farm_job_hooks
+         (organization_id, github_repo_id, pool_id, label, title, command)
+       select $1, r.id, $2, 'post-merge hook', 'Re-warm ccache', 'west build -t ccache-warm'
+         from ouroboros.github_repos r
+         join ouroboros.github_orgs o on o.id = r.org_id
+        where o.organization_id = $1
+       on conflict (organization_id, github_repo_id, pool_id, event, command,
+                    coalesce(title_contains, '')) do update set enabled = true
+       returning id`,
+      [context.workspace.id, context.poolId],
+    );
+    return rows[0].id;
+  }
+
+  /** Every pool window, in either workspace. */
+  async function windowCount(): Promise<number> {
+    const { rows } = await api.sql.query<{ n: string }>(
+      "select count(*)::text as n from ouroboros.runner_pool_windows",
+    );
+    return Number(rows[0].n);
+  }
+
+  /** Every job hook, in either workspace. */
+  async function hookCount(): Promise<number> {
+    const { rows } = await api.sql.query<{ n: string }>(
+      "select count(*)::text as n from ouroboros.farm_job_hooks",
+    );
+    return Number(rows[0].n);
+  }
 
   it("HAS A CLAIM FOR EVERY FARM ROUTE THE APPLICATION REGISTERS", () => {
     // The assertion that makes the rest of the file a specification rather than a sample. A farm

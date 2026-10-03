@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.7"
+  version: "0.38.8"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -8503,6 +8503,472 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/suggestions/{id}/preview:
+    get:
+      tags: [analyzer]
+      summary: What applying a suggestion would change, and where
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514), decision A4) — the
+        consequence preview. It names the **concrete** change — the runner, pool and UTC window; the
+        repository, title filter, command and pool; the workflow, the stage delta and the version a
+        draft becomes — and where it lands, generated from the same payload Apply hands the owning
+        plane (`change`). **No side effects.**
+
+        A test-gate split (no plane owns per-stage PR and merge gates yet), a ticket and a spike
+        preview with `appliable: false` and the `reason`; a ticket or spike is `draftable`.
+
+        Pass `fingerprint` to Apply to insist it executes this preview and nothing else. Every
+        member may read.
+      operationId: previewSuggestion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The suggestion.
+      responses:
+        "200":
+          description: The preview.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestionPreview"
+              example:
+                suggestionId: 5eed0067-0000-4000-8000-000000000013
+                plane: farm_config
+                appliable: true
+                draftable: false
+                summary: >-
+                  forge-02 joins pool-a between 14:00–16:00 UTC on weekdays (Mon–Fri); outside that
+                  window it stays in its own pool.
+                lands: Build farm · pool windows
+                reason: null
+                change:
+                  runner: forge-02
+                  pool: pool-a
+                  daysOfWeek: [1, 2, 3, 4, 5]
+                  startsAt: "14:00"
+                  endsAt: "16:00"
+                studioPath: null
+                fingerprint: sha256:4f9c2b1d0e7a6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `analysis_suggestion_not_found` — no such suggestion in this workspace.
+            `workflow_not_found` — the workflow the suggestion names no longer exists.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/suggestions/{id}/apply:
+    post:
+      tags: [analyzer]
+      summary: Apply a suggestion through the plane that owns the change
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514), decision A4) — mockup 18's
+        **Apply** and **Draft as v16 →**. The analyzer never mutates another plane: a pool move is
+        `POST /api/v1/farm/pool-windows`'s service, a cache re-warm `POST /api/v1/farm/job-hooks`'s,
+        a workflow suggestion a **draft** through the studio's draft service with a change note citing
+        the suggestion and its evidence — **publishing stays a person's act** (`target.studioPath`
+        opens it).
+
+        **Everything that can refuse, refuses first** — nothing is written by a refused apply.
+        Then the plane changes, the apply is audited as `analysis_suggestion.applied` (subject
+        `analysis_suggestion`, with the plane, the preview and the payload), and one transaction
+        marks the suggestion `applied`, keeps the application record with its **reversal** (the call
+        that would undo it) and writes BU.3's measurement row: the target metric, the **baseline**
+        over the window before today and the **prediction** with its calibration, frozen now.
+
+        `owner` or `admin`.
+      operationId: applySuggestion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The suggestion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplySuggestionBody"
+            example:
+              fingerprint: sha256:4f9c2b1d0e7a6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d
+      responses:
+        "200":
+          description: Applied — what changed, where, the audit event and the measurement row.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AppliedSuggestion"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `analysis_suggestion_not_found` — no such suggestion in this workspace.
+            `farm_runner_not_found`, `farm_pool_not_found`, `farm_repository_not_found`,
+            `workflow_not_found` — the plane no longer has what the binding names.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `analysis_suggestion_resolved` — already applied, dismissed or drafted; `details.status`.
+            `analysis_preview_stale` — the plan changed since the `fingerprint` the caller confirmed.
+            `analysis_baseline_unavailable` — the target metric has no rollup for the window before
+            today yet; nothing was applied.
+            `workflow_draft_conflict` — the workflow's draft moved since the preview read it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `analysis_plane_unavailable` — no plane can take this change (a test-gate split, a ticket
+            or spike, a delta the workflow cannot carry, an impact with nothing to measure);
+            `details.reason` says why.
+            `workflow_definition_invalid` — the proposed document did not parse.
+            `validation_failed` — the id or `fingerprint` is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/suggestions/{id}/dismiss:
+    post:
+      tags: [analyzer]
+      summary: Dismiss a suggestion
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — mockup 18's **Dismiss**,
+        with an optional reason. Remembered against the suggestion's **stable identity**: re-analysis
+        updates the same row and it stays dismissed. A dismissal without a reason is recorded as
+        *Dismissed without a reason.*
+
+        `owner`, `admin` or `member`, audited as `analysis_suggestion.dismissed`.
+      operationId: dismissSuggestion
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The suggestion.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DismissSuggestionBody"
+            example:
+              reason: QEMU caught a real regression last month; keep it on PRs.
+      responses:
+        "200":
+          description: Dismissed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SuggestionResolution"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is a `viewer`; dismissing needs `owner`, `admin` or `member`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `analysis_suggestion_not_found` — no such suggestion in this workspace.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `analysis_suggestion_resolved` — already applied, dismissed or drafted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id or `reason` is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/suggestions/draft:
+    post:
+      tags: [analyzer]
+      summary: Draft ticket and spike suggestions into a planning batch
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514), decision A5) — mockup 18's
+        drafted-tickets card and **Draft spike ticket**. The suggestions become one ordinary AK draft
+        batch with `planner: analyzer-v1`, each draft's body carrying its evidence line and every
+        evidence reference its findings cite; a spike drafts an investigation that states what is
+        uncertain and asserts no estimate. The estimator sizes every draft, so the batch's
+        `summary.estMinutes` — the card's *est. total* — is real. The standard edit flow and
+        `POST /api/v1/analyzer/batches/{id}/push` do the rest.
+
+        `owner` or `admin`, audited as `analysis_suggestion.drafted` per suggestion.
+      operationId: draftSuggestions
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DraftSuggestionsBody"
+            example:
+              suggestionIds: [5eed0067-0000-4000-8000-000000000021, 5eed0067-0000-4000-8000-000000000014]
+              targetSourceId: 5eed0003-0000-4000-8000-000000000001
+      responses:
+        "201":
+          description: The batch, `drafting` until every draft is sized.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DraftedSuggestions"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `analysis_suggestion_not_found` — no such suggestion in this workspace.
+            `planning_source_not_found` — no such ticket source.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `analysis_suggestion_resolved` — a suggestion is already resolved.
+            `planning_target_read_only` — the source cannot take writes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `analysis_suggestion_not_draftable` — a suggestion is applied, not drafted.
+            `validation_failed` — the body is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/batches/{id}/push:
+    post:
+      tags: [analyzer]
+      summary: Push an analyzer-drafted batch to its tracker
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — mockup 18's **Push 4
+        tickets to backlog →**: AL.3's push of the batch's **selected** drafts to any write-capable
+        tracker. **Idempotent**: a pushed draft is not pushed again, and each create carries the
+        SPI's idempotency key, so a retried push makes no duplicate.
+
+        `owner` or `admin`, audited as `analyzer.batch_pushed` (subject `draft_batch`).
+      operationId: pushAnalyzerBatch
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The batch.
+      responses:
+        "200":
+          description: What the push did.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PlanningPushReport"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `analysis_batch_not_found` — no batch the analyzer drafted has that id here.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `batch_not_pushable` — the batch cannot be pushed in its state.
+            `push_in_progress` — a push of this batch is already running.
+            `push_nothing_selected` — no draft is selected.
+            `push_target_read_only` — the target source cannot take writes.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/settings/github-token:
     get:
       tags: [github]
@@ -15168,6 +15634,7 @@ paths:
                   etag: 2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0
                   definition: {}
                   updatedAt: "2026-09-12T10:00:00.000Z"
+                  changeNote: null
                 version: null
         "400":
           description: |-
@@ -15853,6 +16320,7 @@ paths:
                     nodes: []
                     edges: []
                   updatedAt: "2026-09-12T08:30:00.000Z"
+                  changeNote: null
                 version:
                   version: 14
                   definition:
@@ -16093,6 +16561,7 @@ paths:
                   nodes: []
                   edges: []
                 updatedAt: "2026-09-12T10:07:31.412Z"
+                changeNote: null
         "400":
           description: |-
             `workflow_draft_etag_required` — the request carried no `If-Match`. Read the
@@ -23775,6 +24244,434 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/farm/pool-windows:
+    get:
+      tags: [farm]
+      summary: Time-windowed pool assignments
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — every *"forge-02 joins
+        pool-a between 14:00–16:00 UTC on weekdays"* the workspace has, newest first. Dispatch
+        offers a pool's jobs to its own runners and to any runner with an enabled window on that
+        pool open at the instant of the offer. Every member may read.
+      operationId: listPoolWindows
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The windows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolWindowList"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [farm]
+      summary: Give a runner a time window in a pool
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — a runner joins a pool for
+        a window of the UTC day, on some weekdays; outside it the runner is in its own pool. The
+        Build Analyzer's pool-move apply composes this route's service; it never writes the farm's
+        tables.
+
+        **Idempotent.** A window with the same runner, pool and times is the same window: `201`
+        when this call created it, `200` with the one already there — and no second audit event.
+
+        `owner` or `admin`, audited as `runner.pool_window_added` (subject `runner_pool_window`).
+      operationId: addPoolWindow
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreatePoolWindowBody"
+            example:
+              runner: forge-02
+              pool: pool-a
+              daysOfWeek: [1, 2, 3, 4, 5]
+              startsAt: "14:00"
+              endsAt: "16:00"
+      responses:
+        "200":
+          description: An identical window was already there; this is it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolWindow"
+        "201":
+          description: The window, created.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PoolWindow"
+              example:
+                id: 7f000006-0000-4000-8000-000000000001
+                runner: { id: 7f000002-0000-4000-8000-000000000001, name: forge-02 }
+                pool: { id: 7f000001-0000-4000-8000-000000000002, name: pool-a }
+                daysOfWeek: [1, 2, 3, 4, 5]
+                startsAt: "14:00"
+                endsAt: "16:00"
+                enabled: true
+                createdBy: user_maya
+                createdAt: "2026-10-02T18:00:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_runner_not_found` — no runner by that name.
+            `farm_pool_not_found` — no pool by that name.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `farm_pool_window_unordered` — `endsAt` is not after `startsAt`: a window lies inside one
+            UTC day; split one across midnight into two.
+            `validation_failed` — a field is missing or malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/farm/pool-windows/{id}:
+    delete:
+      tags: [farm]
+      summary: Remove a time-windowed pool assignment
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — the reversal of adding
+        one. `owner` or `admin`, audited as `runner.pool_window_removed`.
+      operationId: removePoolWindow
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The window.
+      responses:
+        "204":
+          description: Removed.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_pool_window_not_found` — no such window in this workspace.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/farm/job-hooks:
+    get:
+      tags: [farm]
+      summary: Job hooks
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — every job the farm
+        submits on a repository event, newest first. Every member may read.
+      operationId: listJobHooks
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The hooks.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobHookList"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [farm]
+      summary: Register a job hook
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — *"re-warm ccache right
+        after deps-refresh merges"*: on every merge into `repo` whose pull-request title contains
+        `titleContains` (case-insensitively; every merge when absent), the farm submits `command`
+        in `pool`, at the base branch and the merged head commit. Each fired job is an ordinary
+        build submission, audited as `runner.job_submitted` with no actor and the hook's id.
+
+        **Idempotent.** The same repository, pool, event, command and filter is the same hook:
+        `201` when created, `200` with the one already there.
+
+        `owner` or `admin`, audited as `runner.job_hook_registered` (subject `farm_job_hook`) —
+        never with the command, which is where a pasted token would ride.
+      operationId: registerJobHook
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobHookBody"
+            example:
+              repo: acme-robotics/helios-firmware
+              pool: pool-a
+              event: merge
+              titleContains: deps-refresh
+              label: post-merge hook
+              title: Re-warm ccache right after deps-refresh merges
+              command: [west, build, -t, ccache-warm]
+      responses:
+        "200":
+          description: An identical hook was already registered; this is it.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobHook"
+        "201":
+          description: The hook, registered.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobHook"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_repository_not_found` — this workspace mirrors no such repository.
+            `farm_pool_not_found` — no pool by that name.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a field is missing or malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/farm/job-hooks/{id}:
+    delete:
+      tags: [farm]
+      summary: Remove a job hook
+      description: |-
+        BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — the reversal of
+        registering one. `owner` or `admin`, audited as `runner.job_hook_removed`.
+      operationId: removeJobHook
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The hook.
+      responses:
+        "204":
+          description: Removed.
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `farm_job_hook_not_found` — no such hook in this workspace.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/farm/runners/{id}/drain:
     post:
       tags: [farm]
@@ -34825,6 +35722,108 @@ components:
             - $ref: "#/components/schemas/InterventionOverride"
             - type: "null"
           description: The re-categorization that set a human cause; null for a rule's.
+    SuggestionPreview:
+      type: object
+      title: SuggestionPreview
+      description: |-
+        What applying a suggestion would change and where (BV.5, #514) — generated from the payload
+        Apply executes.
+      additionalProperties: false
+      required:
+        [suggestionId, plane, appliable, draftable, summary, lands, reason, change, studioPath, fingerprint]
+      properties:
+        suggestionId: { type: string, format: uuid }
+        plane: { type: string, enum: [farm_config, job_hook, workflow, test_gate, planning] }
+        appliable: { type: boolean }
+        draftable: { type: boolean, description: A ticket draft or a spike — drafted, not applied. }
+        summary: { type: string, description: The concrete change, as one sentence. }
+        lands: { type: string, description: Where it lands. }
+        reason: { type: [string, "null"], description: Why it cannot be applied, when it cannot. }
+        change:
+          description: The exact payload Apply hands the plane; null when nothing would be applied.
+          type: [object, "null"]
+        studioPath: { type: [string, "null"], description: The studio path a workflow draft opens at. }
+        fingerprint: { type: string, pattern: "^sha256:[0-9a-f]{64}$" }
+
+    ApplySuggestionBody:
+      type: object
+      title: ApplySuggestionBody
+      additionalProperties: false
+      properties:
+        fingerprint:
+          type: string
+          pattern: "^sha256:[0-9a-f]{64}$"
+          description: The preview's fingerprint, to refuse anything but that plan.
+
+    AppliedSuggestion:
+      type: object
+      title: AppliedSuggestion
+      additionalProperties: false
+      required: [suggestion, preview, target, eventId, measurement]
+      properties:
+        suggestion: { $ref: "#/components/schemas/SuggestionResolution" }
+        preview: { $ref: "#/components/schemas/SuggestionPreview" }
+        target:
+          type: object
+          description: Where it landed — `{kind, id, …}`; a workflow draft carries `studioPath`.
+          required: [kind, id]
+          properties:
+            kind: { type: string, enum: [runner_pool_window, farm_job_hook, workflow_draft] }
+            id: { type: string }
+        eventId: { type: string, format: uuid, description: The `analysis_suggestion.applied` event. }
+        measurement:
+          type: object
+          description: BU.3's measurement row, frozen at apply.
+          additionalProperties: false
+          required: [id, targetMetric, windowDays, baseline, predicted]
+          properties:
+            id: { type: string, format: uuid }
+            targetMetric: { type: string }
+            windowDays: { type: integer }
+            baseline: { type: object }
+            predicted: { type: object }
+
+    DismissSuggestionBody:
+      type: object
+      title: DismissSuggestionBody
+      additionalProperties: false
+      properties:
+        reason: { type: string, minLength: 1, maxLength: 4096 }
+
+    SuggestionResolution:
+      type: object
+      title: SuggestionResolution
+      additionalProperties: false
+      required: [id, status, resolvedAt, reason]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [applied, dismissed, drafted] }
+        resolvedAt: { type: string, format: date-time }
+        reason: { type: [string, "null"] }
+
+    DraftSuggestionsBody:
+      type: object
+      title: DraftSuggestionsBody
+      additionalProperties: false
+      required: [suggestionIds, targetSourceId]
+      properties:
+        suggestionIds:
+          type: array
+          minItems: 1
+          maxItems: 50
+          uniqueItems: true
+          items: { type: string, format: uuid }
+        targetSourceId: { type: string, format: uuid }
+
+    DraftedSuggestions:
+      type: object
+      title: DraftedSuggestions
+      additionalProperties: false
+      required: [batch, suggestionIds]
+      properties:
+        batch: { $ref: "#/components/schemas/PlanningBatch" }
+        suggestionIds: { type: array, items: { type: string, format: uuid } }
+
     StartAnalysisBody:
       type: object
       title: StartAnalysisBody
@@ -42293,7 +43292,7 @@ components:
         for a workflow with no draft at all; `etag` is present either way, so a client's first
         write is the same three lines as its hundredth — read, edit, `If-Match`.
       additionalProperties: false
-      required: [etag, definition, updatedAt]
+      required: [etag, definition, updatedAt, changeNote]
       properties:
         etag:
           type: string
@@ -42313,6 +43312,13 @@ components:
           format: date-time
           description: The mockup's *Last edited*, or `null` when there is no draft.
           examples: ["2026-09-12T08:30:00.000Z"]
+        changeNote:
+          type: [string, "null"]
+          maxLength: 500
+          description: |-
+            The draft's proposed change note (#514) — the Build Analyzer's draft cites the suggestion
+            and evidence it came from. Publishing keeps it unless the publisher writes their own;
+            `null` when there is none.
 
     WorkflowVersion:
       type: object
@@ -47620,6 +48626,109 @@ components:
             parseWarnings:
               type: integer
               description: How many `test_runs.parse_warnings` the parse left.
+
+    PoolWindow:
+      type: object
+      title: PoolWindow
+      description: |-
+        A time-windowed pool assignment (BV.5, #514): a runner joins a pool between two UTC times
+        on some ISO weekdays.
+      additionalProperties: false
+      required: [id, runner, pool, daysOfWeek, startsAt, endsAt, enabled, createdBy, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        runner:
+          type: object
+          additionalProperties: false
+          required: [id, name]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        pool:
+          type: object
+          additionalProperties: false
+          required: [id, name]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        daysOfWeek:
+          type: array
+          description: ISO weekdays, 1 = Monday.
+          items: { type: integer, minimum: 1, maximum: 7 }
+        startsAt: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$", description: "HH:MM, UTC." }
+        endsAt: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$", description: "HH:MM, UTC." }
+        enabled: { type: boolean }
+        createdBy: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    PoolWindowList:
+      type: array
+      title: PoolWindowList
+      items:
+        $ref: "#/components/schemas/PoolWindow"
+
+    CreatePoolWindowBody:
+      type: object
+      title: CreatePoolWindowBody
+      additionalProperties: false
+      required: [runner, pool, daysOfWeek, startsAt, endsAt]
+      properties:
+        runner: { type: string, minLength: 1, maxLength: 128, description: The runner, by name. }
+        pool: { type: string, minLength: 1, maxLength: 128, description: The pool, by name. }
+        daysOfWeek:
+          type: array
+          minItems: 1
+          maxItems: 7
+          uniqueItems: true
+          items: { type: integer, minimum: 1, maximum: 7 }
+        startsAt: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+        endsAt: { type: string, pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$" }
+
+    JobHook:
+      type: object
+      title: JobHook
+      description: A job the farm submits on every matching merge into a repository (BV.5, #514).
+      additionalProperties: false
+      required:
+        [id, repo, pool, event, titleContains, label, title, command, enabled, createdBy, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        repo: { type: string, description: "`owner/name`." }
+        pool:
+          type: object
+          additionalProperties: false
+          required: [id, name]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+        event: { type: string, enum: [merge] }
+        titleContains: { type: [string, "null"] }
+        label: { type: string }
+        title: { type: string }
+        command: { type: array, items: { type: string } }
+        enabled: { type: boolean }
+        createdBy: { type: [string, "null"] }
+        createdAt: { type: string, format: date-time }
+
+    JobHookList:
+      type: array
+      title: JobHookList
+      items:
+        $ref: "#/components/schemas/JobHook"
+
+    CreateJobHookBody:
+      type: object
+      title: CreateJobHookBody
+      additionalProperties: false
+      required: [repo, pool, event, label, title, command]
+      properties:
+        repo: { type: string, minLength: 3, maxLength: 255 }
+        pool: { type: string, minLength: 1, maxLength: 128 }
+        event: { type: string, enum: [merge] }
+        titleContains: { type: string, minLength: 1, maxLength: 256 }
+        label: { type: string, minLength: 1, maxLength: 128 }
+        title: { type: string, minLength: 1, maxLength: 512 }
+        command: { type: array, minItems: 1, items: { type: string } }
 
     RunnerPool:
       type: object

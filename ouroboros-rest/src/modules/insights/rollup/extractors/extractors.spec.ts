@@ -6,6 +6,7 @@ import { cycleExtractor } from "./cycle.extractor";
 import { doraExtractor, isReverted, recoveries } from "./dora.extractor";
 import { effortExtractor } from "./effort.extractor";
 import { interventionsExtractor } from "./interventions.extractor";
+import { queueWaitExtractor } from "./queue_wait.extractor";
 import { testsExtractor } from "./tests.extractor";
 import { throughputExtractor } from "./throughput.extractor";
 
@@ -248,6 +249,43 @@ describe("the extractors", () => {
     database.answers({ rows: [] });
 
     expect(await buildDurationExtractor.extract(database.service.db, ORG, DAY)).toEqual([]);
+  });
+
+  it("queue_wait: a median row per repository and pool, every started job a sample", async () => {
+    database.answers({
+      rows: [
+        { repo_ref: HELIOS, pool: "pool-a", ms: "540000" },
+        { repo_ref: HELIOS, pool: "pool-b", ms: "12000" },
+        { repo_ref: HELIOS, pool: "pool-a", ms: "300000" },
+      ],
+    });
+
+    expect(await queueWaitExtractor.extract(database.service.db, ORG, DAY)).toEqual([
+      {
+        repoRef: HELIOS,
+        metricId: "queue_wait",
+        dimension: "pool-a",
+        value: 420_000,
+        samples: [300_000, 540_000],
+      },
+      {
+        repoRef: HELIOS,
+        metricId: "queue_wait",
+        dimension: "pool-b",
+        value: 12_000,
+        samples: [12_000],
+      },
+    ]);
+    expectScoped();
+    // The wait is queued → started, never negative, and only a job that started is timed.
+    expect(database.statements[0].sql).toContain("b.started_at - b.queued_at");
+    expect(database.statements[0].sql).toContain("b.started_at >=");
+  });
+
+  it("queue_wait: writes nothing for a day on which no job started", async () => {
+    database.answers({ rows: [] });
+
+    expect(await queueWaitExtractor.extract(database.service.db, ORG, DAY)).toEqual([]);
   });
 
   it("tests: suite rows only for failing suites; cases and pass rate per repository", async () => {

@@ -14,6 +14,7 @@ import { cycleExtractor } from "./extractors/cycle.extractor";
 import { doraExtractor } from "./extractors/dora.extractor";
 import { effortExtractor } from "./extractors/effort.extractor";
 import { interventionsExtractor } from "./extractors/interventions.extractor";
+import { queueWaitExtractor } from "./extractors/queue_wait.extractor";
 import { testsExtractor } from "./extractors/tests.extractor";
 import { throughputExtractor } from "./extractors/throughput.extractor";
 import type { FamilyExtractor } from "./rollup.types";
@@ -26,6 +27,7 @@ export const ROLLUP_EXTRACTORS: readonly FamilyExtractor[] = Object.freeze([
   costExtractor,
   buildsExtractor,
   buildDurationExtractor,
+  queueWaitExtractor,
   testsExtractor,
   effortExtractor,
   doraExtractor,

@@ -125,6 +125,27 @@ export class FarmJobsService {
   }
 
   /**
+   * Submit the job a farm job hook names, because the event it waits for happened (BV.5,
+   * [#514](https://github.com/NobuData/ouroboros/issues/514)) — a merge into its repository.
+   *
+   * No person authorised this submission: whoever registered the hook did, once, and that is its
+   * own event. The submission is audited with no actor and the hook's id in the detail.
+   *
+   * @param organizationId - The hook's workspace.
+   * @param hookId - The hook that fired.
+   * @param request - As {@link submit}.
+   * @returns The job, `queued`.
+   * @throws As {@link submit}.
+   */
+  submitForHook(
+    organizationId: string,
+    hookId: string,
+    request: BuildJobRequest,
+  ): Promise<BuildJobResource> {
+    return this.enqueue(organizationId, null, request, null, hookId);
+  }
+
+  /**
    * Re-run an earlier build's test cases as a new build attempt — the test-results page's
    * *Re-run failed* and *Re-run full suite*, and the routing service's flake and infra re-runs
    * (AT.4, [#332](https://github.com/NobuData/ouroboros/issues/332), decision **T6**).
@@ -309,6 +330,7 @@ export class FarmJobsService {
     actorId: string | null,
     request: BuildJobRequest,
     runId: string | null,
+    hookId: string | null = null,
   ): Promise<BuildJobResource> {
     const pool = await this.repository.pool(organizationId, request.pool);
     if (!pool) throw poolNotFound(request.pool);
@@ -357,6 +379,7 @@ export class FarmJobsService {
         ref: request.ref,
         commit: request.commit,
         runId,
+        hookId,
       },
     );
 

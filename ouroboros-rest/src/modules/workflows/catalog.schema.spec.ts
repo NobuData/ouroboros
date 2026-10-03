@@ -120,8 +120,9 @@ describe("the node types of the committed schema", () => {
       trigger: [],
       llm: ["reference", "alias_name"],
       infra: ["reference"],
-      // `predicate` is reached from `flow_config`, and `effort`, `source_kind` and `label` from it.
-      flow: ["effort", "source_kind", "label", "predicate"],
+      // `predicate` is reached from `flow_config`, and `effort`, `source_kind`, `label` and
+      // `path_glob` from it.
+      flow: ["effort", "source_kind", "label", "path_glob", "predicate"],
       term: [],
     });
   });

@@ -108,6 +108,14 @@
       "warnings": []
     },
     {
+      "name": "change-paths",
+      "about": "#514's shape: a decision on the paths a loop's change touches, and branches on any and none of its globs.",
+      "document": "valid/change-paths.json",
+      "valid": true,
+      "errors": [],
+      "warnings": []
+    },
+    {
       "name": "document-not-object",
       "about": "A JSON array is not a workflow, and the validator says so rather than throwing.",
       "document": "invalid/document-not-object.json",
@@ -364,6 +372,30 @@
         {
           "code": "schema.unknown_property",
           "path": "/nodes/1/config/predicate/value",
+          "node": "stage"
+        }
+      ],
+      "warnings": []
+    },
+    {
+      "name": "predicate-paths-bad-glob",
+      "about": "Changed-path globs that start with a slash, climb out with a .. segment, or hold whitespace.",
+      "document": "invalid/predicate-paths-bad-glob.json",
+      "valid": false,
+      "errors": [
+        {
+          "code": "schema.pattern",
+          "path": "/nodes/1/config/predicate/globs/0",
+          "node": "stage"
+        },
+        {
+          "code": "schema.pattern",
+          "path": "/nodes/1/config/predicate/globs/1",
+          "node": "stage"
+        },
+        {
+          "code": "schema.pattern",
+          "path": "/nodes/1/config/predicate/globs/2",
           "node": "stage"
         }
       ],

@@ -65,6 +65,14 @@
       "maxLength": 64
     },
 
+    "path_glob": {
+      "description": "A glob over the paths a loop's change touches, relative to the repository root: `drivers/can/**`. It may not start with `/`, no segment may be `..`, and it holds no whitespace. The pattern is written without lookaheads so every validator of this language can compile it.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 256,
+      "pattern": "^(?:\\.|\\.\\.[^/\\s]+|\\.[^/\\s.][^/\\s]*|[^/\\s.][^/\\s]*)(?:/(?:\\.|\\.\\.[^/\\s]+|\\.[^/\\s.][^/\\s]*|[^/\\s.][^/\\s]*)?)*$"
+    },
+
     "position": {
       "description": "Where the node sits on the canvas. Carried in the document because the canvas is the authored artifact: a re-layout is an edit, and two people opening the same workflow must see the same picture.",
       "type": "object",
@@ -106,7 +114,7 @@
       "type": "object",
       "required": ["kind"],
       "properties": {
-        "kind": { "enum": ["always", "effort", "labels", "source", "checks"] }
+        "kind": { "enum": ["always", "effort", "labels", "source", "checks", "paths"] }
       },
       "allOf": [
         {
@@ -161,6 +169,25 @@
                 "minItems": 1,
                 "maxItems": 64,
                 "items": { "type": "string", "minLength": 1, "maxLength": 128 }
+              }
+            }
+          }
+        },
+        {
+          "if": { "required": ["kind"], "properties": { "kind": { "const": "paths" } } },
+          "then": {
+            "required": ["op", "globs"],
+            "properties": {
+              "op": {
+                "description": "`any` holds when at least one path the loop's change touches matches a glob; `none` holds when no changed path does.",
+                "enum": ["any", "none"]
+              },
+              "globs": {
+                "description": "The globs a changed path is tested against. A flow-node predicate and a branch condition only, never a trigger condition: a queued ticket has changed nothing yet.",
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 32,
+                "items": { "$ref": "#/$defs/path_glob" }
               }
             }
           }

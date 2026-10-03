@@ -89,6 +89,19 @@ Label = Annotated[str, Field(min_length=1, max_length=64)]
 #: One node's id.
 NodeId = Annotated[str, Field(pattern=NODE_ID_PATTERN)]
 
+#: One path segment of a glob that is not ``..``: ``.``, ``..`` with more after it, ``.`` with a
+#: non-dot after it, or anything starting with neither — never a ``/`` or whitespace.
+_GLOB_SEGMENT: Final = r"(?:\.|\.\.[^/\s]+|\.[^/\s.][^/\s]*|[^/\s.][^/\s]*)"
+
+#: A changed-path glob — ``v1.json``'s ``path_glob``. Relative to the repository root (no leading
+#: ``/``), never climbing out of it (no ``..`` segment), and holding no whitespace. Written
+#: without lookaheads because pydantic compiles patterns with Rust's ``regex``, which has none;
+#: the first segment is required, which is what refuses a leading ``/``.
+GLOB_PATTERN: Final = rf"^{_GLOB_SEGMENT}(?:/{_GLOB_SEGMENT}?)*$"
+
+#: One changed-path glob, as a ``paths`` predicate lists it.
+Glob = Annotated[str, Field(min_length=1, max_length=256, pattern=GLOB_PATTERN)]
+
 
 class _Model(BaseModel):
     """The configuration every model in this file shares.
@@ -174,6 +187,19 @@ class ChecksPredicate(_Model):
     ) = None
 
 
+class PathsPredicate(_Model):
+    """A test on the paths the loop's change touches (#514) — ``drivers/can/**``.
+
+    ``any`` holds when at least one changed path matches a glob, ``none`` when no changed path
+    does. A flow-node predicate and a branch condition only, never a trigger condition: a ticket
+    that has just been queued has changed nothing yet.
+    """
+
+    kind: Literal["paths"]
+    op: Literal["any", "none"]
+    globs: Annotated[list[Glob], Field(min_length=1, max_length=32)]
+
+
 #: One structured test. Flat by design: composition would need recursion in three validators,
 #: and the canvas draws branches rather than boolean trees.
 Predicate = (
@@ -182,6 +208,7 @@ Predicate = (
     | LabelsPredicate
     | SourcePredicate
     | ChecksPredicate
+    | PathsPredicate
 )
 
 #: The predicate models, by ``kind`` — the table the hand-written dispatch reads.
@@ -191,6 +218,7 @@ PREDICATE_MODELS: Final[dict[str, type[BaseModel]]] = {
     "labels": LabelsPredicate,
     "source": SourcePredicate,
     "checks": ChecksPredicate,
+    "paths": PathsPredicate,
 }
 
 

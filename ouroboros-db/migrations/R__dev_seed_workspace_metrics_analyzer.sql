@@ -797,6 +797,43 @@ select org."id", 'build_duration', (now() at time zone 'UTC')::date - 1, 'succee
 on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
+-- The queue-wait series — V088's `queue_wait` family, as its rollup derives it (#514).
+--
+-- What the runner-move suggestion's apply measures: per (repository, pool, UTC day) of started
+-- jobs, every job's queued-to-started milliseconds, ascending, in `meta.samples`, and their median
+-- as `value` — the row ouroboros-rest's extractor writes. The apply reads the window's p95 for the
+-- moved-to pool from the same samples. Marked filled through yesterday like build_duration.
+-- ---------------------------------------------------------------------------
+insert into ouroboros.metric_daily
+  (organization_id, repo_ref, metric_id, is_rate, dimension, day, value, meta)
+select job.organization_id, gh.login || '/' || repo.name, 'queue_wait', false, pool.name,
+       (job.started_at at time zone 'UTC')::date,
+       percentile_cont(0.5) within group (
+         order by greatest(round(extract(epoch from job.started_at - job.queued_at) * 1000), 0)),
+       jsonb_build_object('samples', jsonb_agg(
+         greatest(round(extract(epoch from job.started_at - job.queued_at) * 1000), 0)
+         order by greatest(round(extract(epoch from job.started_at - job.queued_at) * 1000), 0)))
+  from ouroboros.build_jobs job
+  join ouroboros.organization org  on org."id" = job.organization_id and org."slug" = 'acme-robotics'
+  join ouroboros.runner_pools pool on pool.id = job.pool_id
+  join ouroboros.github_repos repo on repo.id = job.github_repo_id
+  join ouroboros.github_orgs  gh   on gh.id = repo.org_id
+ where job.started_at is not null
+   and (job.started_at at time zone 'UTC')::date
+       between (now() at time zone 'UTC')::date - 89 and (now() at time zone 'UTC')::date
+   and ${ouro_dev_seed}
+ group by job.organization_id, gh.login, repo.name, pool.name, (job.started_at at time zone 'UTC')::date
+on conflict do nothing;
+
+insert into ouroboros.metric_rollup_state (organization_id, family, last_filled_day,
+                                           last_run_status, last_run_at)
+select org."id", 'queue_wait', (now() at time zone 'UTC')::date - 1, 'succeeded', now()
+  from ouroboros.organization org
+ where org."slug" = 'acme-robotics'
+   and ${ouro_dev_seed}
+on conflict do nothing;
+
+-- ---------------------------------------------------------------------------
 -- Three thermal waivers — on three helios-firmware loops 33–57 days back, each waiving a case the
 -- rig cannot run because helios-rig-02 has no thermal chamber. #482's own waiver says the same
 -- thing, but today, after the run: it is the test-results seed's, and the next run's to count.
@@ -1970,7 +2007,7 @@ insert into ouroboros.draft_batches
 select '5eed006a-0000-4000-8000-000000000001'::uuid, run.organization_id,
        'Build Analyzer: tickets drafted from the patterns in ' || run.repo_ref
          || '''s last ' || (run.corpus_manifest #>> '{window,days}') || ' days of builds',
-       null, 'build-analyzer-v1', src.id, null, true, false, 'sized', null, run.finished_at
+       null, 'analyzer-v1', src.id, null, true, false, 'sized', null, run.finished_at
   from ouroboros.analysis_runs run
   join ouroboros.ticket_sources src on src.organization_id = run.organization_id
                                    and src.kind = 'github'

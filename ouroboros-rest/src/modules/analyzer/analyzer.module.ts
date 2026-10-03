@@ -19,6 +19,10 @@
  * In the `composing` phase the suggestion composer (`composer/`, BV.4,
  * [#513](https://github.com/NobuData/ouroboros/issues/513)) turns the run's findings into
  * suggestions through typed templates, with calibrated impact and documented confidence.
+ *
+ * The suggestion actions (`actions/`, BV.5, [#514](https://github.com/NobuData/ouroboros/issues/514))
+ * preview, apply, dismiss, draft and push them — composing the farm, workflow and planning planes
+ * through their own services and writing only the analyzer's tables.
  */
 
 import { Module } from "@nestjs/common";
@@ -27,7 +31,13 @@ import { ScheduleModule } from "@nestjs/schedule";
 import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
 import { EngineModule } from "../engine/engine.module";
+import { FarmConfigModule } from "../farm/config/farm-config.module";
 import { FarmDispatchModule } from "../farm/dispatch/dispatch.module";
+import { PlanningModule } from "../planning/planning.module";
+import { WorkflowsModule } from "../workflows/workflows.module";
+import { SuggestionActionsController } from "./actions/actions.controller";
+import { ActionsRepository } from "./actions/actions.repository";
+import { SuggestionActionsService } from "./actions/actions.service";
 import { AnalysisController } from "./analysis.controller";
 import { AnalysisBuildCounter } from "./analysis.counter";
 import { AnalysisOrchestrator } from "./analysis.orchestrator";
@@ -41,8 +51,17 @@ import { CorpusAssembler } from "./corpus/corpus.assembler";
 import { CorpusRepository } from "./corpus/corpus.repository";
 
 @Module({
-  imports: [DbModule, AuditModule, EngineModule, FarmDispatchModule, ScheduleModule.forRoot()],
-  controllers: [AnalysisController],
+  imports: [
+    DbModule,
+    AuditModule,
+    EngineModule,
+    FarmDispatchModule,
+    FarmConfigModule,
+    WorkflowsModule,
+    PlanningModule,
+    ScheduleModule.forRoot(),
+  ],
+  controllers: [AnalysisController, SuggestionActionsController],
   providers: [
     CorpusRepository,
     CorpusAssembler,
@@ -54,6 +73,8 @@ import { CorpusRepository } from "./corpus/corpus.repository";
     ComposerRepository,
     SuggestionComposer,
     { provide: SYNTHESIZER, useClass: UnavailableSynthesizer },
+    ActionsRepository,
+    SuggestionActionsService,
   ],
   exports: [AnalysisOrchestrator],
 })

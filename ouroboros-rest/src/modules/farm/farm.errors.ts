@@ -95,6 +95,12 @@ export const FARM_ERRORS = {
   enrollCommandUnavailable: "farm_enroll_command_unavailable",
   /** A pool write would leave a container pool imageless, or a shell pool with one (#254). */
   poolImageMismatch: "farm_pool_image_mismatch",
+  /** No such time-windowed pool assignment in this workspace (#514). */
+  poolWindowNotFound: "farm_pool_window_not_found",
+  /** A pool window that does not lie inside one UTC day (#514). */
+  poolWindowUnordered: "farm_pool_window_unordered",
+  /** No such job hook in this workspace (#514). */
+  jobHookNotFound: "farm_job_hook_not_found",
 } as const;
 
 /** One of {@link FARM_ERRORS}' values. */
@@ -542,5 +548,39 @@ export function imageNotAllowed(): InvalidRequestError {
     FARM_ERRORS.poolImageMismatch,
     "A shell pool runs on the machine itself and cannot pin an image; clear `image`.",
     { field: "image", executor: "shell" },
+  );
+}
+
+/**
+ * `404` — the workspace has no such time-windowed pool assignment (#514).
+ *
+ * @returns The error.
+ */
+export function poolWindowNotFound(): NotFoundError {
+  return new NotFoundError(FARM_ERRORS.poolWindowNotFound, "No such pool window.");
+}
+
+/**
+ * `404` — the workspace has no such job hook (#514).
+ *
+ * @returns The error.
+ */
+export function jobHookNotFound(): NotFoundError {
+  return new NotFoundError(FARM_ERRORS.jobHookNotFound, "No such job hook.");
+}
+
+/**
+ * `422` — a pool window must end after it starts, inside one UTC day (#514; V040's
+ * `runner_pool_windows_ordered`). A window across midnight is two windows.
+ *
+ * @param startsAt - The opening time asked for.
+ * @param endsAt - The closing time asked for.
+ * @returns The error.
+ */
+export function poolWindowUnordered(startsAt: string, endsAt: string): InvalidRequestError {
+  return new InvalidRequestError(
+    FARM_ERRORS.poolWindowUnordered,
+    `A pool window lies inside one UTC day: ${endsAt} is not after ${startsAt}. Split a window across midnight into two.`,
+    { startsAt, endsAt },
   );
 }

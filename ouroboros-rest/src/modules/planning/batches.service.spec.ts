@@ -300,6 +300,63 @@ describe("generating a batch", () => {
   });
 });
 
+describe("composing a batch another plane drafted (#514)", () => {
+  /** The Build Analyzer's two drafts. */
+  const input = {
+    prompt: "Build Analyzer: tickets drafted from acme-robotics/helios-firmware",
+    planner: "analyzer-v1",
+    targetSourceId: STORE_SOURCE.sourceId,
+    drafts: [
+      { localKey: "BA-1", title: "Refactor tests/ota fixtures", body: "Evidence: 61.8% …" },
+      { localKey: "BA-2", title: "Spike: partial link cache", body: "Impact unquantified …" },
+    ],
+  };
+
+  it("stores the drafts as an ordinary batch under the caller's versioned planner, without a planner call", async () => {
+    const { service, plans } = build();
+
+    const batch = await service.compose(STORE_ORG, "user-1", input);
+
+    expect(plans).toEqual([]);
+    expect(batch.planner).toBe("analyzer-v1");
+    expect(batch.status).toBe("drafting");
+    expect(batch.drafts.map((draft) => [draft.localKey, draft.body, draft.selected])).toEqual([
+      ["BA-1", "Evidence: 61.8% …", true],
+      ["BA-2", "Impact unquantified …", true],
+    ]);
+  });
+
+  it("sizes every draft through the one estimator, so the card's total is real", async () => {
+    const { service, store, sized } = build();
+    const batch = await service.compose(STORE_ORG, null, input);
+
+    expect(sized.map((entry) => entry.request.draftId)).toEqual(
+      batch.drafts.map((draft) => draft.id),
+    );
+    for (const entry of sized) {
+      store.estimates.set(entry.request.draftId, { effort: "m", estMinutes: 1080 });
+      await entry.listener?.(entry.request.draftId, "sized");
+    }
+
+    const read = await service.read(STORE_ORG, batch.id);
+
+    expect(read.status).toBe("sized");
+    expect(read.summary).toMatchObject({ allSized: true, estMinutes: 2160 });
+  });
+
+  it("refuses a read-only target and an unversioned planner", async () => {
+    const readOnly = build({ writable: false });
+
+    expect(await refusal(() => readOnly.service.compose(STORE_ORG, null, input))).toMatchObject({
+      status: 409,
+      code: PLANNING_ERRORS.targetReadOnly,
+    });
+    await expect(
+      build().service.compose(STORE_ORG, null, { ...input, planner: "analyzer" }),
+    ).rejects.toThrow("not a versioned name");
+  });
+});
+
 describe("regenerating a batch", () => {
   it("preserves selections by local key and leaves pushed drafts untouched", async () => {
     const { service, store } = build();

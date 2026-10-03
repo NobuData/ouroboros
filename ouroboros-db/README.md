@@ -1225,6 +1225,22 @@
 > The stored findings' stabilities are tuned so that the documented confidence formula lands on
 > mockup 18's figures.
 >
+> `V088` ([#514](https://github.com/NobuData/ouroboros/issues/514), BV.5) holds what the analyzer's
+> **Apply** composes. The analyzer never writes another plane's tables; the planes gain what was
+> missing:
+> * **A draft may carry a proposed `change_note`.** `workflow_versions_draft_unattributed` now
+>   forbids only a publisher on a draft. The analyzer's draft cites its suggestion, and publishing
+>   keeps the note unless the publisher writes one.
+> * **The `queue_wait` family.** A **median** per **`pool`** (a new dimension kind) of farm jobs'
+>   queued-to-started `duration_ms`. The runner-move apply measures its p95 from the retained
+>   samples. The analyzer seed fills it from the seeded jobs.
+> * **`farm_job_hooks`.** A job the farm submits on every merge into a repository whose title
+>   contains `title_contains`, in a pool of the same workspace. It is unique on its identity
+>   (`farm_job_hooks_identity_idx`), so a retried apply is one hook.
+> * **`analysis_suggestion_applications`.** One immutable row per apply: the plane, the resolved
+>   payload, the preview the person confirmed, where it landed (`target {kind, id}`) and the
+>   `reversal {action, target}` that undoes it, for BX.3. `applied_event_id` names the audit event.
+>
 > [#509](https://github.com/NobuData/ouroboros/issues/509) (BU.4) seeds the page those three built
 > for, and plants the **corpus** rather than the answers:
 > [`R__dev_seed_workspace_metrics_analyzer.sql`](migrations/R__dev_seed_workspace_metrics_analyzer.sql)
@@ -1880,7 +1896,7 @@ Jul 30 are **82, 47 and 9 days ago**.
 | `11 of last 14 weekdays`, `idle 82%` | pool-a's longest wait queued 14:00–16:00 each weekday; pool-b's HIL sweeps' overlap with it |
 | `0 unique failures in 214 builds; HIL caught 9` | per commit, a stage's failure no other stage shared — all nine on merge-queue refs |
 | `3 verification waivers in 60 days` | three thermal `pr_waivers` on helios-firmware loops, 33–57 days back |
-| BA-1…BA-4, `est. total ~1.5 days` | four `ticket_draft` suggestions drafted into a `build-analyzer-v1` batch, sized by `heuristic-v0`: 660 + 120 + 1 020 + 360 minutes |
+| BA-1…BA-4, `est. total ~1.5 days` | four `ticket_draft` suggestions drafted into an `analyzer-v1` batch (BV.5's planner name), sized by `heuristic-v0`: 660 + 120 + 1 020 + 360 minutes |
 | Predicted vs measured | the run before (38 days ago) proposed *Test-suite split* and *ccache warm-up*; both were applied, measured (V085's verdicts: delivered, under) and `recalibrate_analyzer()` turned the miss into the cache model's **0.6545** — which is why the re-warm card's raw −168 s reads −1m 50s |
 
 `tests/seed.sql` re-derives every figure above from the rows by its own queries and compares it
@@ -2797,6 +2813,7 @@ ouroboros-db/
 │   ├── V085__suggestion_measurements_calibration.sql # suggestion_measurements (prediction frozen at apply, per-row window + verdict bands, verdict as arithmetic, confounds) + analyzer_calibration and its history (the documented factor formula, traced to measurements), recalibrate_analyzer(), analyzer_measurement_policies (window + verdict bands per workspace) — #508
 │   ├── V086__analysis_orchestration.sql     # build_jobs.log_lines (counted where chunks land), analysis_runs.phase + progress (forward-only, frozen when terminal), the build_duration family (median per job_label) — #510
 │   ├── V087__analysis_suggestion_confidence_basis.sql # analysis_suggestions.confidence_basis {formula, inputs, value = confidence}, frozen when resolved; record_analysis_suggestion takes it — #513
+│   ├── V088__analyzer_actions.sql           # drafts may carry a proposed change_note, the queue_wait family (median per pool), farm_job_hooks, analysis_suggestion_applications (payload, preview, target, reversal) — #514
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)

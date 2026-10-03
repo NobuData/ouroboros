@@ -1,4 +1,12 @@
 import {
+  RUNNER_POOL_WINDOW_ADDED_EVENT,
+  RUNNER_POOL_WINDOW_REMOVED_EVENT,
+  RUNNER_JOB_HOOK_REGISTERED_EVENT,
+  RUNNER_JOB_HOOK_REMOVED_EVENT,
+  ANALYSIS_SUGGESTION_APPLIED_EVENT,
+  ANALYSIS_SUGGESTION_DISMISSED_EVENT,
+  ANALYSIS_SUGGESTION_DRAFTED_EVENT,
+  ANALYZER_BATCH_PUSHED_EVENT,
   ANALYZER_RUN_REQUESTED_EVENT,
   AUDIT_ACTIONS,
   auditDetail,
@@ -90,6 +98,11 @@ describe("the vocabulary", () => {
     // The last three are AX.3's ([#359](https://github.com/NobuData/ouroboros/issues/359)): a
     // criterion's status changes on mockup 12's matrix — verified, unverified, waived — each a
     // judgement about whether the PR does what the ticket said.
+    //
+    // The last eight are BV.5's ([#514](https://github.com/NobuData/ouroboros/issues/514)): the
+    // farm configuration the Build Analyzer composes — pool windows and job hooks — and the
+    // analyzer's own actions on a suggestion. `analysis_suggestion.applied` is spelled as V081
+    // requires of the event an applied suggestion names.
     expect([...AUDIT_ACTIONS]).toEqual([
       "provider.added",
       "provider.revealed",
@@ -133,6 +146,14 @@ describe("the vocabulary", () => {
       "knowledge.env_recipe_saved",
       "policy.dry_run_changed",
       "analyzer.run_requested",
+      "runner.pool_window_added",
+      "runner.pool_window_removed",
+      "runner.job_hook_registered",
+      "runner.job_hook_removed",
+      "analysis_suggestion.applied",
+      "analysis_suggestion.dismissed",
+      "analysis_suggestion.drafted",
+      "analyzer.batch_pushed",
     ]);
   });
 
@@ -156,7 +177,8 @@ describe("the vocabulary", () => {
     // whether a PR does what its ticket said (#359), three about who approved a PR (#361), and one
     // about who resolved a review-thread entry (#368), and one about who flipped the dry-run
     // policy (#382), under `policy.` so every org-policy change is one question, and one about
-    // who asked for a Build Analyzer run (#510), under `analyzer.`. The
+    // who asked for a Build Analyzer run (#510), under `analyzer.`, and `analysis_suggestion.`
+    // for what was done with a suggestion (#514) — V081 spells the apply event that way. The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -164,6 +186,7 @@ describe("the vocabulary", () => {
     const families = new Set(AUDIT_ACTIONS.map((action) => action.split(".")[0]));
 
     expect([...families].sort()).toEqual([
+      "analysis_suggestion",
       "analyzer",
       "credential",
       "github",
@@ -225,6 +248,14 @@ describe("the vocabulary", () => {
       KNOWLEDGE_ENV_RECIPE_SAVED_EVENT,
       POLICY_DRY_RUN_CHANGED_EVENT,
       ANALYZER_RUN_REQUESTED_EVENT,
+      RUNNER_POOL_WINDOW_ADDED_EVENT,
+      RUNNER_POOL_WINDOW_REMOVED_EVENT,
+      RUNNER_JOB_HOOK_REGISTERED_EVENT,
+      RUNNER_JOB_HOOK_REMOVED_EVENT,
+      ANALYSIS_SUGGESTION_APPLIED_EVENT,
+      ANALYSIS_SUGGESTION_DISMISSED_EVENT,
+      ANALYSIS_SUGGESTION_DRAFTED_EVENT,
+      ANALYZER_BATCH_PUSHED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

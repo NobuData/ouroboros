@@ -133,6 +133,7 @@ const PREDICATE_FORMS = [
   "(i) => i.labels.",
   "(i) => i.source.",
   "(i) => i.checks.",
+  "(i) => i.paths.",
 ];
 
 describe("the grammar's schema pointers", () => {
@@ -348,7 +349,13 @@ describe("completions — every predicate form", () => {
   );
 
   it("offers the subjects after `i.`", () => {
-    expect(offered(TABLE, "predicate.subjects")).toEqual(["effort", "labels", "source", "checks"]);
+    expect(offered(TABLE, "predicate.subjects")).toEqual([
+      "effort",
+      "labels",
+      "source",
+      "checks",
+      "paths",
+    ]);
   });
 
   it.each(Object.entries(PREDICATE_METHODS))("offers every %s method", (kind, methods) => {

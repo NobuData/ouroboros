@@ -104,7 +104,14 @@ describe("the draft slot", () => {
       etag: draftEtag(row),
       definition: { dsl_version: "1.0", nodes: [] },
       updatedAt: "2026-09-12T08:30:00.000Z",
+      changeNote: null,
     });
+  });
+
+  it("carries a proposed change note (#514)", () => {
+    expect(workflowDraft(draft({ change_note: "Cites finding 171." })).changeNote).toBe(
+      "Cites finding 171.",
+    );
   });
 
   it("has an etag even when there is no draft", () => {
@@ -113,6 +120,7 @@ describe("the draft slot", () => {
       etag: NO_DRAFT,
       definition: null,
       updatedAt: null,
+      changeNote: null,
     });
   });
 });

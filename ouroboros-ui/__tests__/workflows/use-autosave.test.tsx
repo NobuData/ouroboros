@@ -39,7 +39,7 @@ function moved(by: number): WorkflowDefinition {
  * @returns The outcome.
  */
 function took(etag: string, definition: WorkflowDefinition) {
-  return { ok: true as const, value: { etag, definition, updatedAt: "2026-09-13T12:00:00.000Z" } satisfies WorkflowDraft };
+  return { ok: true as const, value: { etag, definition, updatedAt: "2026-09-13T12:00:00.000Z", changeNote: null } satisfies WorkflowDraft };
 }
 
 /** Render the hook with a spy for every seam. */

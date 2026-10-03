@@ -43,6 +43,7 @@ import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 import type { TicketSourceKind } from "../db/schema";
 import { describeForLog } from "../errors/failure";
 import { FACT_COMMIT_OBSERVER, type FactCommitObserver } from "../facts/facts.observer";
+import { FARM_MERGE_OBSERVER, type FarmMergeObserver } from "../farm/config/merge.observer";
 import {
   CALIBRATION_MERGE_OBSERVER,
   type CalibrationMergeObserver,
@@ -100,6 +101,8 @@ export class PrSyncService {
    *   in a context without it, where every PR opens as a draft.
    * @param calibration - The estimator calibration fill, told about every merge this sync is the
    *   first to see (BI.4, #435); absent in a context without it.
+   * @param farm - The farm's job hooks, told about every merge this sync is the first to see
+   *   (BV.5, #514); absent in a context without it.
    */
   constructor(
     @Inject(PrMirrorRepository) private readonly store: PrMirrorStore,
@@ -111,6 +114,7 @@ export class PrSyncService {
     @Optional()
     @Inject(CALIBRATION_MERGE_OBSERVER)
     private readonly calibration?: CalibrationMergeObserver,
+    @Optional() @Inject(FARM_MERGE_OBSERVER) private readonly farm?: FarmMergeObserver,
   ) {}
 
   /**
@@ -182,9 +186,9 @@ export class PrSyncService {
   }
 
   /**
-   * Tell the fact staleness sweep and the estimator calibration fill a PR merged. The sync has
-   * committed; either one failing is logged and costs only its own record, never the sync or the
-   * other.
+   * Tell the fact staleness sweep, the estimator calibration fill and the farm's job hooks a PR
+   * merged. The sync has committed; any one failing is logged and costs only its own record, never
+   * the sync or the others.
    *
    * @param organizationId - The workspace.
    * @param prId - The PR.
@@ -206,6 +210,12 @@ export class PrSyncService {
         `Estimator calibration for merged PR ${prId} failed; a replay of the merge records it.`,
         describeForLog(error),
       );
+    }
+
+    try {
+      await this.farm?.mergeObserved(organizationId, prId);
+    } catch (error) {
+      this.logger.error(`Farm job hooks for merged PR ${prId} failed.`, describeForLog(error));
     }
   }
 

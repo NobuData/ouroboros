@@ -114,6 +114,21 @@ module.exports = {
       },
     },
     {
+      name: "analyzer-composes-planes-through-their-services",
+      severity: "error",
+      comment:
+        "The Build Analyzer never mutates another plane (BV.5, #514, decision A4): an apply hands " +
+        "its change to the farm, workflow or planning plane's own service, which validates, " +
+        "audits and stores it. So the analyzer may not import another plane's repository — the " +
+        "way to its tables — only its services.",
+      from: { path: "^src/modules/analyzer/", pathNot: "spec\\.ts$|\\.fixture\\.ts$" },
+      to: {
+        path:
+          "^src/modules/(farm|workflows|planning|ticket-sources|backlog|estimation)/.*" +
+          "\\.repository\\.ts$",
+      },
+    },
+    {
       name: "no-octokit-outside-the-seam",
       severity: "error",
       comment:

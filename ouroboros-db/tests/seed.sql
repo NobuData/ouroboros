@@ -5557,13 +5557,13 @@ $$;
 -- Ninety days, every family, one workspace — and the grain once each, which is also the
 -- idempotency test: a second application that wrote anything would collide or add.
 select pg_temp.must_hold(
-  (select count(distinct metric_id) = 23
+  (select count(distinct metric_id) = 24
           and min(day) = (now() at time zone 'UTC')::date - 89
           and count(distinct day) = 90
           and count(*) = count(distinct (repo_ref, metric_id, dimension, day))
      from ouroboros.metric_daily
     where organization_id = '5eed0001-0000-4000-8000-000000000001'),
-  'the insights seed fills ninety days of all twenty-three daily metrics for acme-robotics (the analyzer seed the build-duration family, #510), each grain once');
+  'the insights seed fills ninety days of all twenty-four daily metrics for acme-robotics (the analyzer seed the build-duration family, #510, and the queue-wait family, #514), each grain once');
 
 select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.metric_daily
@@ -5934,7 +5934,7 @@ select pg_temp.must_hold(
 -- --- the rollup's bookkeeping, and what is not written ------------------------------------------
 select pg_temp.must_hold(
   (select array_agg(family order by family)
-            = '{build_duration,builds,cost,cycle,dora,effort,interventions,tests,throughput}'
+            = '{build_duration,builds,cost,cycle,dora,effort,interventions,queue_wait,tests,throughput}'
           and bool_and(last_filled_day = (now() at time zone 'UTC')::date - 1
                        and last_run_status = 'succeeded' and backfill_cursor is null)
      from ouroboros.metric_rollup_state
@@ -6468,7 +6468,7 @@ select pg_temp.must_hold(
   (select array_agg(d.local_key || '|' || upper(e.effort) order by d.local_key)
             = array['BA-1|M', 'BA-2|XS', 'BA-3|L', 'BA-4|S']
       and sum((e.breakdown ->> 'est_minutes')::numeric) / (24 * 60) = 1.5
-      and bool_and(b.planner = 'build-analyzer-v1' and b.status = 'sized'
+      and bool_and(b.planner = 'analyzer-v1' and b.status = 'sized'
                    and d.push_state = 'pending' and d.title = s.title)
      from ouroboros.ticket_drafts d
      join ouroboros.draft_batches b on b.id = d.batch_id

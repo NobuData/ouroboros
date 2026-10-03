@@ -189,7 +189,9 @@ const EFFORT_SYMBOLS: Readonly<Record<string, string>> = {
  * One grammar serves a flow node's `predicate` and an edge's `condition`
  * (`docs/WORKFLOW_DSL.md` § 5), so one reader serves both. For `checks`, a predicate naming its
  * checks is printed as their count — the mockup's `required checks: N` — and one that names none
- * means *every check the run produced*, which is what it says.
+ * means *every check the run produced*, which is what it says. `paths` (#514) prints its globs
+ * the way `labels` prints its labels — `paths any: drivers/can/**` — since a glob, unlike a
+ * check, is the thing an author needs to read.
  *
  * @param predicate The predicate, or `null`.
  * @returns The words, or `null` for a predicate the canvas cannot read.
@@ -219,6 +221,11 @@ export function predicateWords(predicate: Config | null): string | null {
       return (op === "in" || op === "not_in") && values.length > 0
         ? `source ${op === "in" ? "in" : "not in"}: ${values.join(", ")}`
         : null;
+    }
+    case "paths": {
+      const globs = asTexts(predicate.globs);
+      const { op } = predicate;
+      return (op === "any" || op === "none") && globs.length > 0 ? `paths ${op}: ${globs.join(", ")}` : null;
     }
     case "checks": {
       const names = Array.isArray(predicate.names) ? asTexts(predicate.names) : null;
@@ -396,7 +403,7 @@ export type LabelTone = "plain" | "accent" | "warn" | "ok" | "err";
  * err; an effort *within* a bound (`<`, `≤`, `=`) keeps the ticket on the loop's main line and is
  * the accent, and one *past* it (`>`, `≥`) is the case worth a second look and is warn. A loop
  * whose condition says neither is still a return to an earlier stage after something did not
- * hold, and is err. Anything else — labels, source, `always`, a default edge — reports no
+ * hold, and is err. Anything else — labels, source, paths, `always`, a default edge — reports no
  * outcome and is plain.
  *
  * @param connection The edge's kind and condition.

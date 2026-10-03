@@ -12,6 +12,7 @@
  * | `(i) => i.labels.<op>([...])` | `{kind: "labels", op, values}` |
  * | `(i) => i.source.<in \| notIn>([...])` | `{kind: "source", op, values}` |
  * | `(i) => i.checks.<allPassed \| anyFailed>([...]?)` | `{kind: "checks", op, names?}` |
+ * | `(i) => i.paths.<any \| none>([...])` | `{kind: "paths", op, globs}` |
  *
  * A trigger's `when` is the same reading applied to each side of `&&`.
  *
@@ -51,6 +52,7 @@ const PREDICATE_USAGE = {
   labels: 'one list of labels, like i.labels.any(["regression"])',
   source: 'one list of sources, like i.source.in(["github"])',
   checks: 'no argument, or one list of check names, like i.checks.allPassed(["build"])',
+  paths: 'one list of globs, like i.paths.any(["drivers/can/**"])',
 } as const satisfies Record<keyof typeof PREDICATE_METHODS, string>;
 
 /** How each trigger condition is called, for the arity message. */
@@ -146,6 +148,10 @@ export function readPredicate(reader: CodeReader, node: ts.Expression): ReadValu
       if (call.args.length === 0) return { kind, op };
       const names = reader.strings(call.args[0], `the checks \`${call.path}\` names`);
       return names === undefined ? undefined : { kind, op, names };
+    }
+    case "paths": {
+      const globs = reader.strings(call.args[0], `the globs \`${call.path}\` tests`);
+      return globs === undefined ? undefined : { kind, op, globs };
     }
   }
 }

@@ -53,6 +53,7 @@ const PREDICATE_FORMS = [
   "(i) => i.labels.",
   "(i) => i.source.",
   "(i) => i.checks.",
+  "(i) => i.paths.",
 ];
 
 /** The effort constants, in the schema's order. */
@@ -149,11 +150,12 @@ describe("fixtures — every predicate form", () => {
     ["the forms in a branch", 'decision("d", {\n      branches: [\n        { to: "a", when: ¦', PREDICATE_FORMS],
     ["the forms in onFail", 'gate("g", {\n      onFail: [\n        { to: "a", when: ¦', PREDICATE_FORMS],
     ["an edge entry's keys", 'gate("g", {\n      branches: [\n        { ¦', ["to", "when"]],
-    ["the subjects", 'decision("d", {\n      when: (i) => i.¦', ["effort", "labels", "source", "checks"]],
+    ["the subjects", 'decision("d", {\n      when: (i) => i.¦', ["effort", "labels", "source", "checks", "paths"]],
     ["the effort methods", 'decision("d", {\n      when: (i) => i.effort.¦', ["lt", "lte", "eq", "gte", "gt"]],
     ["the labels methods", 'decision("d", {\n      when: (i) => i.labels.¦', ["any", "all", "none"]],
     ["the source methods", 'decision("d", {\n      when: (i) => i.source.¦', ["in", "notIn"]],
     ["the checks methods", 'gate("g", {\n      when: (i) => i.checks.¦', ["allPassed", "anyFailed"]],
+    ["the paths methods", 'decision("d", {\n      when: (i) => i.paths.¦', ["any", "none"]],
     ["an effort constant", 'decision("d", {\n      when: (i) => i.effort.gt(effort.¦', EFFORT],
     ["a tracker in a list", 'decision("d", {\n      when: (i) => i.source.in(["github", "¦', TRACKERS],
   ])("offers %s", (_case, call, expected) => {

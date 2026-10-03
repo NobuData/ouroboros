@@ -108,13 +108,16 @@ export const EFFORT_CONSTANTS = {
  * The method each predicate operator is called as, by predicate kind.
  *
  * `in` is a reserved word in TypeScript but a legal property name, so `i.source.in([...])`
- * parses; `not_in` and the two check operators are camel-cased like every other key.
+ * parses; `not_in` and the two check operators are camel-cased like every other key. `paths`
+ * (#514) reads the loop's change rather than its ticket — `i.paths.any(["drivers/can/**"])` —
+ * and is never a trigger condition, so it has no row in {@link TRIGGER_CONDITION_METHODS}.
  */
 export const PREDICATE_METHODS = {
   effort: { lt: "lt", lte: "lte", eq: "eq", gte: "gte", gt: "gt" },
   labels: { any: "any", all: "all", none: "none" },
   source: { in: "in", not_in: "notIn" },
   checks: { all_passed: "allPassed", any_failed: "anyFailed" },
+  paths: { any: "any", none: "none" },
 } as const;
 
 /**

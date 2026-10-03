@@ -66,7 +66,11 @@ export type AuditSubjectType =
   | "pr_thread_entry"
   | "repository"
   | "org_policy"
-  | "analysis_run";
+  | "analysis_run"
+  | "runner_pool_window"
+  | "farm_job_hook"
+  | "analysis_suggestion"
+  | "draft_batch";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -389,6 +393,51 @@ export const POLICY_DRY_RUN_CHANGED_EVENT = "policy.dry_run_changed";
 export const ANALYZER_RUN_REQUESTED_EVENT = "analyzer.run_requested";
 
 /**
+ * A runner was given a time-windowed pool assignment — *"forge-02 joins pool-a between
+ * 14:00–16:00 UTC on weekdays"* (BV.5, [#514](https://github.com/NobuData/ouroboros/issues/514)).
+ * Subject `runner_pool_window`; the detail names the runner, the pool, the days and the window.
+ * The `runner` family, because it changes what a machine of the workspace builds, and when.
+ */
+export const RUNNER_POOL_WINDOW_ADDED_EVENT = "runner.pool_window_added";
+
+/** A time-windowed pool assignment was removed (#514). Subject `runner_pool_window`. */
+export const RUNNER_POOL_WINDOW_REMOVED_EVENT = "runner.pool_window_removed";
+
+/**
+ * A job hook was registered — *"re-warm ccache right after deps-refresh merges"* (#514). Subject
+ * `farm_job_hook`; the detail names the repository, the pool, the event and its title filter,
+ * **never the command**, for {@link RUNNER_JOB_SUBMITTED_EVENT}'s reason: argv is where a pasted
+ * token would ride. Each job a hook submits is audited as a submission with no actor.
+ */
+export const RUNNER_JOB_HOOK_REGISTERED_EVENT = "runner.job_hook_registered";
+
+/** A job hook was removed (#514). Subject `farm_job_hook`. */
+export const RUNNER_JOB_HOOK_REMOVED_EVENT = "runner.job_hook_removed";
+
+/**
+ * A Build Analyzer suggestion was applied (BV.5, #514, decision A4) — the owning plane accepted the
+ * change. Subject `analysis_suggestion`; the detail carries the repository, the plane, the preview
+ * the person confirmed, the resolved payload (as JSON text) and where it landed. The spelling is
+ * V081's: the suggestion's `applied_event_id` must name an event of exactly this action.
+ */
+export const ANALYSIS_SUGGESTION_APPLIED_EVENT = "analysis_suggestion.applied";
+
+/** A suggestion was dismissed, with its reason (#514). Subject `analysis_suggestion`. */
+export const ANALYSIS_SUGGESTION_DISMISSED_EVENT = "analysis_suggestion.dismissed";
+
+/**
+ * A ticket-draft or spike suggestion was drafted into a planning batch (#514). Subject
+ * `analysis_suggestion`; the detail names the batch.
+ */
+export const ANALYSIS_SUGGESTION_DRAFTED_EVENT = "analysis_suggestion.drafted";
+
+/**
+ * An analyzer-drafted batch was pushed to its tracker (#514). Subject `draft_batch`; the detail
+ * carries the outcome and how many drafts landed this run.
+ */
+export const ANALYZER_BATCH_PUSHED_EVENT = "analyzer.batch_pushed";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -439,6 +488,14 @@ export const AUDIT_ACTIONS = [
   KNOWLEDGE_ENV_RECIPE_SAVED_EVENT,
   POLICY_DRY_RUN_CHANGED_EVENT,
   ANALYZER_RUN_REQUESTED_EVENT,
+  RUNNER_POOL_WINDOW_ADDED_EVENT,
+  RUNNER_POOL_WINDOW_REMOVED_EVENT,
+  RUNNER_JOB_HOOK_REGISTERED_EVENT,
+  RUNNER_JOB_HOOK_REMOVED_EVENT,
+  ANALYSIS_SUGGESTION_APPLIED_EVENT,
+  ANALYSIS_SUGGESTION_DISMISSED_EVENT,
+  ANALYSIS_SUGGESTION_DRAFTED_EVENT,
+  ANALYZER_BATCH_PUSHED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

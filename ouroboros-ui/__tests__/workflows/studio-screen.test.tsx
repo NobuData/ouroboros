@@ -209,7 +209,7 @@ describe("the rail and the canvas", () => {
             entry: railEntry(),
             detail: {
               ok: true,
-              value: workflowDetail({ draft: { etag: "none", definition: null, updatedAt: null } }),
+              value: workflowDetail({ draft: { etag: "none", definition: null, updatedAt: null, changeNote: null } }),
             },
           },
         })}

@@ -10,6 +10,8 @@ import {
   BUDGET_LABEL,
   DECLARED_NOTE,
   DELETE_LABEL,
+  GLOBS_REQUIRED,
+  GLOB_INVALID,
   type JsonSchema,
   MANY_SELECTED_NOTE,
   MODE_WORDS,
@@ -120,6 +122,7 @@ describe("reading the catalog's schema", () => {
       "labels",
       "source",
       "checks",
+      "paths",
     ]);
     const effort = branchSchema(predicate, "kind", "effort", FLOW);
     expect(schemaChoices(propertySchema(effort, "op", FLOW), FLOW)).toEqual(["lt", "lte", "eq", "gte", "gt"]);
@@ -303,6 +306,18 @@ describe("what blocks Apply", () => {
     expect(
       draftErrors("flow", { kind: "decision", predicate: { kind: "labels", op: "any", values: [] } }, FLOW, ""),
     ).toHaveProperty("predicate.values", VALUES_REQUIRED);
+  });
+
+  it("requires a paths predicate's globs, each one the schema's path_glob (#514)", () => {
+    const paths = (globs: unknown) =>
+      draftErrors("flow", { kind: "decision", predicate: { kind: "paths", op: "any", globs } }, FLOW, "");
+
+    expect(paths(["drivers/can/**", "*.md"])).toEqual({});
+    expect(paths([])).toHaveProperty("predicate.globs", GLOBS_REQUIRED);
+    expect(paths(undefined)).toHaveProperty("predicate.globs", GLOBS_REQUIRED);
+    for (const glob of ["/drivers/can/**", "drivers/../secrets", "can bus/**"]) {
+      expect(paths(["docs/**", glob]), glob).toHaveProperty("predicate.globs", GLOB_INVALID);
+    }
   });
 
   it("holds a generated text field to its length", () => {
