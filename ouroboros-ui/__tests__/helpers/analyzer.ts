@@ -2,6 +2,7 @@ import type {
   AnalysisEvidence,
   AnalysisRun,
   AnalysisSchedule,
+  AnalyzerCorpus,
   AnalyzerProgress,
   ChangePoint,
   ChangePointCandidate,
@@ -436,6 +437,54 @@ export function emptyDuration(repo: string = HELIOS): DurationChart {
   };
 }
 
+/** The floor the service states: builds on at least this many days (#521). */
+export const CORPUS_FLOOR = 10;
+
+/**
+ * A corpus's history, judged against {@link CORPUS_FLOOR} as the service judges it.
+ *
+ * @param builds Builds inside the window.
+ * @param daysWithBuilds Days of it with a build.
+ * @returns Both, and the verdict.
+ */
+function history(builds: number, daysWithBuilds: number) {
+  return { builds, daysWithBuilds, sufficient: daysWithBuilds >= CORPUS_FLOOR };
+}
+
+/**
+ * A repository's corpus state (#521) — what `GET /api/v1/analyzer/corpus` answers.
+ *
+ * @param current The window as it stands: `[builds, days with builds]`.
+ * @param analyzed What the newest ended analysis read, the same way — `null` before one has ended.
+ * @param repo The repository.
+ * @returns The state.
+ */
+export function corpusOf(
+  current: readonly [builds: number, daysWithBuilds: number],
+  analyzed: readonly [builds: number, daysWithBuilds: number] | null = null,
+  repo: string = HELIOS,
+): AnalyzerCorpus {
+  return {
+    repo,
+    window: { from: "2026-07-04", to: "2026-10-01", days: 90 },
+    ...history(...current),
+    minimumDaysWithBuilds: CORPUS_FLOOR,
+    analyzed:
+      analyzed === null
+        ? null
+        : { runId: seededRun().id, analyzedAt: seededRun().finishedAt ?? "", ...history(...analyzed) },
+  };
+}
+
+/**
+ * The seeded corpus: 1,284 builds on 89 of the 90 days, analysed by the seeded run.
+ *
+ * @returns The state.
+ */
+export function seededCorpus(): AnalyzerCorpus {
+  return corpusOf([1284, 89], [1284, 89]);
+}
+
 /**
  * One repository's page.
  *
@@ -451,6 +500,7 @@ export function analyzerPage(over: Partial<AnalyzerPage> = {}): AnalyzerPage {
     suggestions: seededSuggestions(),
     tickets: seededTickets(),
     measurements: seededMeasurements(),
+    corpus: seededCorpus(),
     ...over,
   };
 }

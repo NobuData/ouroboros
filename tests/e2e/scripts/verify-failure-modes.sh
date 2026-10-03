@@ -95,6 +95,17 @@
 #   engine    knowledge.spec.ts   the fact reaches the estimator *through the engine call*: with
 #             (the chain)         the engine stopped the sandbox issue is never sized, and the
 #                                 leg stops at that hop (#422)
+#   db        analyzer.spec.ts    mockup 18's seven regions, the corpus state and every read the
+#                                 leg makes beneath the browser come out of the analyzer's
+#                                 tables: with the database stopped nobody can sign in to read
+#                                 them (#521)
+#   db        tickets.spec.ts     the push chain reads a planning batch and writes canonical
+#                                 tickets: with the database stopped it stops at sign-in, before
+#                                 the tracker is asked anything (#519)
+#   engine    analyzer.spec.ts    Run analysis now really asks the engine: with it stopped the
+#             (the run)           start is refused before a run exists, and the leg says the
+#                                 analysis could not be started — the page's own words — rather
+#                                 than waiting out a run that never begins (#521)
 #
 # ## The issues pairs, and the service each one takes down (#121)
 #
@@ -329,6 +340,48 @@
 # A control plane's housekeeping is unscoped by design, so **two of them on one database are
 # one fleet with two sweepers**. Nothing in CI can produce that; on a laptop, publish the
 # database on a port nothing else knows (`OURO_DB_PORT`) before trusting a spot check.
+#
+# ## The analyzer pairs, and the three breakages done by hand (#521)
+#
+# #521 asks for the analyzer leg to be verified "by deliberately breaking each [layer] once: break
+# the change-point analyzer → the chips leg fails; break the farm composition → the apply leg
+# fails; break suggestion identity → the dismissal-persistence leg fails". The first is a code
+# path inside the engine and the other two inside `rest`, and this script's lever is a container,
+# so they were done by hand at the ticket — each stubbed, the image rebuilt into the stack, the
+# database put back to cold, the one test run, the source restored — and the result is recorded
+# here rather than automated, for the routing pair's reason. What each stub took down:
+#
+#   change-point detection returning nothing (changepoint.py's `_detect`)
+#                            -> only "run analysis: a real run reproduces the seeded findings",
+#                               at *the change-point analyzer reproduces the seeded findings*:
+#                               the real run completed, the chart was redrawn from it, and it
+#                               carried no chip where the seed plants three. A parameter was not
+#                               the thing to change: the ledger refuses a retuned analyzer at
+#                               registration, which fails as a dead engine instead
+#   the farm plane handed four of the preview's five days (actions.service.ts's `execute`)
+#                            -> only "apply: the pool move's preview names the change", at the
+#                               farm's own route: the dialog had said Mon–Fri and the window the
+#                               farm then held was Mon–Thu — an apply whose effect is not its
+#                               preview, which is the one thing that flow promises
+#   the fixture-timeout ticket citing every log signature instead of its own
+#   (composer.templates.ts) — a different set of findings is a different identity
+#                            -> only "dismiss: a dismissed row stays dismissed across two real
+#                               analyses", at *nothing was composed again under a new identity*:
+#                               the first real run composed the ticket the seed had drafted a
+#                               second time, open, and it stood under *Not drafted yet* beside
+#                               its drafted twin
+#
+# The third is where the leg's assertion sits, and why: no suggestion a person can dismiss is
+# re-found by a live run today (their analyzers lack inputs the corpus assembler does not fill
+# yet), so identity across real runs is asserted on the one suggestion a live run does meet again.
+# The leg's header says so; what a dismissal does when its suggestion *is* re-found is the REST
+# integration suites'.
+#
+# The registered pairs are the two services the leg stands on. `db` takes the whole leg down at
+# sign-in, before a single write, so it leaves the stack cold. `engine` is aimed at the one test
+# that starts an analysis and writes nothing either: the service asks the engine for its analyzer
+# set before it inserts a run, so a stopped engine is a refused start, and the leg reports the
+# refusal in the page's words.
 #
 # `rest` is not in the table, and the reason is a property of the stack rather than an
 # oversight: `ui` shares `rest`'s network namespace (see docker-compose.yml), so stopping
@@ -674,6 +727,17 @@ expect_red farm-gateway test-results.spec.ts "the upload arrived" "live: failing
 # here, for the routing pair's reason.
 expect_red db pr-verification.spec.ts "sign-in for .* answered 5[0-9][0-9]"
 expect_red tracker-stub pr-verification.spec.ts "the PR was mirrored" "live: sandbox PR"
+
+# The analyzer legs (#518–#521) — see the header. `db` takes each down at sign-in, before a single
+# write, so both leave the stack cold; the three layer breakages inside the engine and `rest` were
+# done by hand and are recorded there.
+expect_red db analyzer.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+expect_red db tickets.spec.ts "sign-in for .* answered 5[0-9][0-9]"
+
+# …and against the engine. Only the test that starts an analysis: the service asks the engine for
+# its analyzers before a run exists, so the start is refused, nothing is written, and the leg says
+# so in the page's own words.
+expect_red engine analyzer.spec.ts "the analysis could not be started" "run analysis: a real run reproduces"
 
 # The knowledge leg (#422) — see the header. `db` takes the whole leg down at sign-in, before a
 # single write, so it leaves the stack cold.

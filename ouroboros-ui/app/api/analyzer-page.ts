@@ -4,11 +4,12 @@ import "server-only";
  * One read of a repository's Build Analyzer page, for the poll's hop (BW.1,
  * [#516](https://github.com/NobuData/ouroboros/issues/516)).
  *
- * Six service reads made together — the newest run, the schedule, the duration chart (BW.2,
+ * Seven service reads made together — the newest run, the schedule, the duration chart (BW.2,
  * [#517](https://github.com/NobuData/ouroboros/issues/517)), the suggestion cards (BW.3,
  * [#518](https://github.com/NobuData/ouroboros/issues/518)), the drafted-tickets card (BW.4,
- * [#519](https://github.com/NobuData/ouroboros/issues/519)) and the measurements (BW.5,
- * [#520](https://github.com/NobuData/ouroboros/issues/520)) — under the poll family's deadline,
+ * [#519](https://github.com/NobuData/ouroboros/issues/519)), the measurements (BW.5,
+ * [#520](https://github.com/NobuData/ouroboros/issues/520)) and the corpus state (BW.6,
+ * [#521](https://github.com/NobuData/ouroboros/issues/521)) — under the poll family's deadline,
  * answered as a `PollAnswer`. A page whose run is in flight asks to be read again every
  * {@link RUNNING_POLL_SECONDS} seconds, which is what makes the progress panel tick; so does one
  * with a drafted batch the estimator is still sizing, which is what turns `sizing…` into chips.
@@ -28,7 +29,7 @@ export const ANALYZER_UNAVAILABLE_CODE = "analyzer_unavailable";
  * Read one repository's page.
  *
  * @param repo The repository, `owner/name`.
- * @param read How to read it. Defaults to the six service reads; a suite passes a stub.
+ * @param read How to read it. Defaults to the seven service reads; a suite passes a stub.
  * @returns The page — with a short interval while a run is in flight or a drafted batch is still
  *   being sized — or why it could not be read.
  */
@@ -36,16 +37,17 @@ export async function readAnalyzerPage(
   repo: string,
   read: (repo: string, signal: AbortSignal) => Promise<AnalyzerPage> = async (asked, signal) => {
     const client = anonymousApi();
-    const [run, schedule, duration, suggestions, tickets, measurements] = await Promise.all([
+    const [run, schedule, duration, suggestions, tickets, measurements, corpus] = await Promise.all([
       analyzer.latest(asked, client, signal),
       analyzer.schedule(asked, client, signal),
       analyzer.duration(asked, client, signal),
       analyzer.suggestions(asked, client, signal),
       analyzer.tickets(asked, client, signal),
       analyzer.measurements(asked, client, signal),
+      analyzer.corpus(asked, client, signal),
     ]);
 
-    return { repo: asked, run, schedule, duration, suggestions, tickets, measurements };
+    return { repo: asked, run, schedule, duration, suggestions, tickets, measurements, corpus };
   },
 ): Promise<PollAnswer<AnalyzerPage>> {
   const answer = await readForPoll((signal) => read(repo, signal), UNREACHABLE_ANALYZER);

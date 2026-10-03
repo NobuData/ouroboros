@@ -830,7 +830,7 @@ annotated chart — via the #16 tokens (both themes; the mockup is dark-only).
 | BW.3 | #518 ✅ | 🟢 Done | ouroboros-ui: [BW.3] Suggestion cards & apply flows | Process + workflow suggestions, previews, dismiss, spike flow | mvp, analyzer, ui, design | N (after BW.1, BV.5) | Y | L | ouroboros-ui |
 | BW.4 | #519 ✅ | 🟢 Done | ouroboros-ui: [BW.4] Drafted-tickets card | Checkbox drafts, evidence, edit, push-to-backlog flow | mvp, analyzer, ui | N (after BW.1, BV.5) | Y | M | ouroboros-ui |
 | BW.5 | #520 ✅ | 🟢 Done | ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards | Verdict rows + notes; the three-step explainer with A2 truth | mvp, analyzer, ui, design | N (after BW.1, BV.6) | Y | S | ouroboros-ui |
-| BW.6 | #521 | 🟡 Open | ouroboros-ui: [BW.6] Analyzer states & e2e leg | Cold/insufficient-corpus/running states; full-chain e2e | mvp, analyzer, ui, ci | N (after BW.2–BW.5) | Y | M | ouroboros-ui, .github |
+| BW.6 | #521 ✅ | 🟢 Done | ouroboros-ui: [BW.6] Analyzer states & e2e leg | Cold/insufficient-corpus/running states; full-chain e2e | mvp, analyzer, ui, ci | N (after BW.2–BW.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BW.1 — ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip
 
@@ -1179,7 +1179,7 @@ ccache warm-up: −1m50s / −1m12s ⚠ "under-delivered — cache model factor 
 
 ### Issue BW.6 — ouroboros-ui: [BW.6] Analyzer states & e2e leg
 
-> **GitHub issue:** #521 · **Status:** 🟡 Open · **Parent epic:** #504
+> **GitHub issue:** #521 ✅ · **Status:** 🟢 Done · **Parent epic:** #504
 
 - **Problem Statement:** Cold repos (no corpus), insufficient history,
   running states, and the full-chain certification.
@@ -1203,6 +1203,64 @@ ccache warm-up: −1m50s / −1m12s ⚠ "under-delivered — cache model factor 
 ```
 e2e: run→findings ✓ · apply→farm ✓ · draft→studio ✓ · push→tracker ✓ · dismiss-persist ✓
 ```
+
+- **Delivered** (`ouroboros-ui` 0.128.0 `app/analyzer/state-view.ts`, `corpus-state.tsx`;
+  `ouroboros-rest` 0.38.15 `src/modules/analyzer/corpus/corpus.controller.ts`; `tests/e2e` 0.30.0
+  leg 23; `.github/workflows/rest.yml`). Three things were decided with the user where the issue
+  and the codebase disagreed.
+  - **"The analyzer's minimum history" did not exist — decided with the user: builds on at least
+    10 days.** No layer defined a floor: a repository with three builds got a complete run and a
+    three-point chart. The floor is the change-point analyzer's own — it compares two segments of
+    at least `min_segment_days` (5) observed days — stated by the service as
+    `MINIMUM_DAYS_WITH_BUILDS` and held to the engine's source by a test that reads it. A thin
+    but sufficient corpus keeps BW.1's *early opinions, held loosely* headline. It is a proxy and
+    says so: it counts days with any finished build, the analyzer days with a successful build of
+    the timed label; the chart holds the same rule itself for that gap.
+  - **The read.** `GET /api/v1/analyzer/corpus?repo=` (any member) — the BW cards' precedent. The
+    current window's builds and days with builds, counted not assembled; the floor; and `analyzed`,
+    the same numbers for the newest run that *ended having judged its corpus* — the population the
+    result reads draw from.
+  - **An analysis may still be started on a thin corpus — decided with the user.** Starting and
+    scheduling are unchanged; the page withholds the results. The state is one pure rule over the
+    corpus read: results when the newest ended analysis read enough; otherwise **insufficient**
+    (the count, the floor, what is read — no chart, no suggestion, not an empty one either) or,
+    where today's corpus is sufficient, **never run** (what a first analysis produces, and a call
+    to action that is the head's own). A drafted batch and an applied suggestion's measurement
+    stay on the page in a cold state: work somebody made does not vanish with the chart.
+  - **Running, failed and budget-exceeded are overlays, not states.** BW.1's progress panel
+    already drew them; the result reads already ignore running and failed runs, so prior results
+    were already readable. What was missing was saying so: the panel now states whose results
+    the cards below hold. Three claims the page made that were not true are gone — *No analysis
+    has run here yet* before the page was read, *Reading your build history…* for ever after a
+    first run failed, and a budget line that said its count twice.
+  - **Member view and skeletons** existed card by card; the head and the strip gained a real
+    unread state, and the suites now assert all seven regions' skeletons and a member's page.
+  - **e2e.** Leg 23 gains the seven regions as screenshots in both themes **on the mockup's
+    calendar** (the seed is dated from the day it ran and a chip's width follows its date's text,
+    so the page's answer is pinned to the mockup's day for the pictures and the real dates are
+    asserted as text); provenance that claims no model and no `$`; the chips on the planted
+    shifts; the shell assertions; a member's page; insufficient corpus **for real** on the two
+    seeded repositories that are that thin; and never-run, running, failed and budget-exceeded
+    drawn by rewriting the page's own poll over the service's real answer. Its writers: **a real
+    analysis reproduces the seeded findings** — the chart redrawn from the new run carries the
+    same three chips — apply → farm, draft → studio, the dismissal, and a real analysis of a thin
+    repository that leaves the page insufficient. Push → tracker → intake is leg 24 (BW.4).
+    Added wall-clock: about 26 s of the 3 minutes allowed.
+  - **The dismissal leg — decided with the user.** It now runs the analyzer **twice**, once on
+    each side of the dismissal. But no suggestion a person can dismiss is re-found by a live run:
+    their analyzers are skipped until the corpus assembler fills `jobs`, `pools` and
+    `config_options`. So identity across real runs is asserted on the one suggestion a live run
+    does meet again — the drafted fixture-timeout ticket, which must stay one suggestion — and
+    the limit is written in the leg's header.
+  - **Each layer was broken once, by hand**, and the matching test went red: change-point
+    detection returning nothing → the run test; the farm plane handed four of the preview's five
+    days → the apply test; the ticket template citing a different set of findings → the dismissal
+    test. Recorded in `verify-failure-modes.sh` and the e2e README, with `db` and `engine` pairs
+    registered for the script.
+  - *Not here:* filling the live corpus's missing inputs so the four skipped analyzers run (the
+    dismissed row would then be re-found for real), refusing or skipping an analysis of a thin
+    corpus, and per-card provenance (a card's `analyzedAt` is the newest run that composed
+    *anything*, which would print the wrong date after a partial re-analysis).
 
 ---
 
@@ -1453,7 +1511,7 @@ Issue-level impact:
 |---|---|
 | BW.1 | #516 ✅ | 🟢 Done | Mounts in the shell content pane; navigation reached via the sidebar registry entry, not a topbar link |
 | BW.2, BW.3, BW.4, BW.5 | rem-based type, shell tokens; internal wide/tall regions (gantt, matrices, long lists) scroll in their own wrappers |
-| BW.6 | #521 | 🟡 Open | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
+| BW.6 | #521 ✅ | 🟢 Done | Gains shell assertions: header/sidebar fixed during content scroll, correct sidebar active state, font-scale render check at 125% |
 
 ## Next Step
 

@@ -250,7 +250,7 @@ check_route schemas/workflow-dsl/v1.json 'db.yml engine.yml rest.yml ui.yml'
 # Analyzer seed by running the engine's change-point analyzer over the seeded corpus, so the
 # analysis package and the lock that pins numpy and ruptures under it reach ci/db as well as
 # ci/engine. The rest of the engine does not: an API handler cannot change what the seed means.
-check_route ouroboros-engine/src/ouroboros_engine/analysis/changepoint.py 'db.yml engine.yml'
+check_route ouroboros-engine/src/ouroboros_engine/analysis/changepoint.py 'db.yml engine.yml rest.yml'
 check_route ouroboros-engine/uv.lock 'db.yml engine.yml'
 check_route schemas/workflow-dsl/fixtures/expected.json 'engine.yml rest.yml ui.yml'
 check_route schemas/workflow-dsl/fixtures/invalid/two-triggers.json 'engine.yml rest.yml ui.yml'
@@ -304,6 +304,13 @@ check_route schemas/triage/fixtures/expected.json 'rest.yml'
 # ahead of BX.1 (#522); ci/rest's unit suite is its drift check, as for triage.
 check_route schemas/synthesize-findings/v0.json 'rest.yml'
 check_route schemas/synthesize-findings/fixtures/expected.json 'rest.yml'
+
+# The twelfth (#521), and the first engine source file ci/rest reads. It holds the analyzer's corpus
+# floor to the change-point analyzer's minimum segment, read from changepoint.py at test time, so a
+# change to that minimum has to run the suite that would notice — which is why that file's route
+# above names ci/rest beside ci/db and ci/engine. The file, not the directory: its neighbours stay
+# out of ci/rest.
+check_route ouroboros-engine/src/ouroboros_engine/analysis/harness.py 'db.yml engine.yml'
 
 # …and no further. The rest of the module is ci/rest's business alone, which is what
 # keeps the data tier out of every controller change.

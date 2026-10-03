@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { ApiError } from "@/app/api/errors";
 
-import { HELIOS, emptyDuration, seededDuration } from "../helpers/analyzer";
+import { HELIOS, corpusOf, emptyDuration, seededCorpus, seededDuration } from "../helpers/analyzer";
 import { noMeasurements, seededMeasurements } from "../helpers/analyzer-measurements";
 import { SUGGESTION, emptySuggestions, seededSuggestions } from "../helpers/analyzer-suggestions";
 import { TICKETS_BATCH_ID, emptyTickets, pushReport, seededBatch, seededTickets } from "../helpers/analyzer-tickets";
@@ -20,9 +20,9 @@ const { analyzer } = await import("@/app/api/analyzer");
 
 /**
  * The Build Analyzer facade's duration read (#517), its suggestion operations (#518), the
- * drafted-tickets card's read and push (#519) and the measurements read (#520): each by
- * repository, by suggestion or by batch, naming no workspace, and the service's refusals left as
- * `ApiError`s for the caller to word.
+ * drafted-tickets card's read and push (#519), the measurements read (#520) and the corpus read
+ * (#521): each by repository, by suggestion or by batch, naming no workspace, and the service's
+ * refusals left as `ApiError`s for the caller to word.
  */
 
 describe("analyzer.duration", () => {
@@ -234,5 +234,37 @@ describe("the predicted-vs-measured card (#520)", () => {
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ status: 404, code: "analysis_repository_not_found" });
+  });
+});
+
+describe("the corpus state (#521)", () => {
+  it("asks for the repository's corpus, naming no workspace", async () => {
+    const { client, requests } = clientAnswering(seededCorpus());
+
+    expect(await analyzer.corpus(HELIOS, client)).toEqual(seededCorpus());
+    expect(requests[0]?.url).toBe(`${STUB_BASE_URL}/api/v1/analyzer/corpus?repo=${encodeURIComponent(HELIOS)}`);
+    expect(requests[0]?.method).toBe("GET");
+    expect(requests[0]?.headers.get("x-ouro-tenant")).toBeNull();
+  });
+
+  it("answers a repository with no builds as an empty corpus nothing analysed, not an error", async () => {
+    const { client } = clientAnswering(corpusOf([0, 0]));
+
+    expect(await analyzer.corpus(HELIOS, client)).toMatchObject({
+      builds: 0,
+      daysWithBuilds: 0,
+      sufficient: false,
+      analyzed: null,
+    });
+  });
+
+  it("carries the poll's deadline to the request", async () => {
+    const { client, requests } = clientAnswering(seededCorpus());
+    const deadline = new AbortController();
+
+    await analyzer.corpus(HELIOS, client, deadline.signal);
+    deadline.abort();
+
+    expect(requests[0]?.signal.aborted).toBe(true);
   });
 });

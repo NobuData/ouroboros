@@ -3926,17 +3926,19 @@ predicted-vs-measured card and the how-it-works explainer
 [`app/analyzer/`](app/analyzer); every sentence and format is a pure function in
 [`view.ts`](app/analyzer/view.ts), [`duration-view.ts`](app/analyzer/duration-view.ts),
 [`suggestions-view.ts`](app/analyzer/suggestions-view.ts),
-[`tickets-view.ts`](app/analyzer/tickets-view.ts) and
-[`measurements-view.ts`](app/analyzer/measurements-view.ts).
+[`tickets-view.ts`](app/analyzer/tickets-view.ts),
+[`measurements-view.ts`](app/analyzer/measurements-view.ts) and — for which of its pictures the
+page draws at all — [`state-view.ts`](app/analyzer/state-view.ts)
+([#521](https://github.com/NobuData/ouroboros/issues/521)).
 
 - **Repo-scoped by the tenant chip.** The page analyses the chip's focus repository; under
   *All repos* it takes the first enabled one and says how to choose
   ([`repo.ts`](app/analyzer/repo.ts)). It has no sidebar entry: it publishes **Build Farm** as its
   origin, so that entry stays lit. The farm's and the insights' **✦ Build Analyzer** link here.
 - **One poll per repository.** `GET /api/analyzer?repo=` on this origin answers the newest run,
-  the schedule, the duration chart, the suggestion cards, the drafted tickets and the
-  measurements together, and asks to be polled every 3 s while a run is in flight or a drafted
-  batch is still being sized.
+  the schedule, the duration chart, the suggestion cards, the drafted tickets, the measurements
+  and the corpus state together, and asks to be polled every 3 s while a run is in flight or a
+  drafted batch is still being sized.
 - **Honest provenance (decision A3).** `Analyzed by` is the run's analyzer-set label
   (`deterministic analyzers v1`) opening the analyzers, their versions and outcomes; a model pill
   appears only beside an analyzer of kind `llm`. `Last run` is compute time; the `$` appears only
@@ -4174,6 +4176,53 @@ mockup's three steps, each a statement about the pipeline as it ran.
 - **The footer** — *Runs on your build farm's data. Nothing leaves the tenant.* — links to the
   section of [`docs/SECURITY_MODEL.md`](../docs/SECURITY_MODEL.md) that argues it (§ 6.6); a
   test holds the link's anchor to that heading.
+
+### The states the mockup does not draw
+
+Mockup 18 is the page with ninety days of history analysed. Most repositories do not start there
+(#521), so the page first asks one question of the service's corpus read
+(`GET /api/v1/analyzer/corpus`): **was the newest analysis that ended derived from enough
+history?** [`state-view.ts`](app/analyzer/state-view.ts) is the whole rule:
+
+| newest ended run's corpus | current corpus | the page draws |
+|---|---|---|
+| at or above the floor | any | **results** — the seven regions |
+| none, or below | below | **insufficient** — the count, the floor, what is read |
+| none, or below | at or above | **never run** — the explainer and a call to action |
+
+```
+THE ANALYZER NEEDS MORE HISTORY
+3 builds on 3 days in the last 90.
+It needs builds on at least 10 days before it can tell a shift from noise.
+An analysis can still be run, but its chart and suggestions are shown only once that history exists.
+WHAT IT READS  Every build's log and test results, and every loop's transcript — and rig telemetry …
+```
+
+- **The floor is the service's** (`minimumDaysWithBuilds`); nothing in the UI restates it.
+- **Insufficient** ([`corpus-state.tsx`](app/analyzer/corpus-state.tsx)) replaces the chart, both
+  suggestion cards and the tickets with one panel — no empty chart either. A thin analysis that
+  came before is named (*The last analysis read 3 builds on 3 days — too little…*), so nobody
+  wonders where its chart went. **Nothing derived from too little data is drawn**: the state
+  withholds a thin run's results, and the chart holds the same rule itself (`durationEmpty`'s
+  floor) for a run whose corpus cleared it while the build it times ran on fewer days.
+- **Never run** is the same panel with what a first analysis produces and **Run the first
+  analysis** — the head's own action, inert for the same reasons — beside the how-it-works card.
+  Where a thin analysis came before and the history has since grown, it says so and offers
+  **Run a new analysis**.
+- **Drafted tickets and measurements stay only where they hold something** in a cold state: a
+  drafted batch, possibly half pushed, must not vanish with the chart.
+- **A run in flight, a failed run and a budget stop are not states**: they are the progress
+  panel, over whichever state holds. The cards under it keep the last finished analysis's
+  results (the result reads ignore running and failed runs), and the panel says whose they are:
+  *The results below are the last finished analysis's, from 2h ago — they stay until this one
+  ends.* A budget stop's line is the service's sentence — what was kept, and which analyzers did
+  not finish — with each analyzer's own outcome listed above it.
+- **Unread, every region holds its place and claims nothing**: the head reads *Reading the
+  analyzer…* rather than *No analysis has run here yet*, the strip is a skeleton, and *Run
+  analysis now* is inert until the page knows what it would run over. A run that ended before it
+  assembled a corpus says so, instead of *being assembled…* for ever.
+- **A member** reads all of it; running and scheduling are an owner's or admin's (inert, with
+  why), dismissing is a member's.
 
 ## Insights
 

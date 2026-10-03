@@ -15,6 +15,7 @@ import {
   suggestionId,
 } from "./analyzer.integration.fixture";
 import { POOL_A_ID } from "./composer/composer.seed.fixture";
+import type { CorpusStateResource } from "./corpus/corpus.resources";
 import type { DurationChartResource } from "./duration/duration.resources";
 import type { MeasurementsResource } from "./measurement/measurement.resources";
 import type { SuggestionsResource } from "./suggestions/suggestions.resources";
@@ -23,8 +24,8 @@ import type { TicketsResource } from "./tickets/tickets.resources";
 /**
  * Organization isolation on every Build Analyzer route (BV.6,
  * [#515](https://github.com/NobuData/ouroboros/issues/515)) — runs, findings, suggestions,
- * batches, measurements, the duration chart, the suggestion cards (BW.3, #518) and the
- * drafted-tickets card (BW.4, #519).
+ * batches, measurements, the duration chart, the suggestion cards (BW.3, #518), the
+ * drafted-tickets card (BW.4, #519) and the corpus state (BW.6, #521).
  *
  * Their workspace holds one of everything: a complete run with findings, composed suggestions, an applied
  * one with its measurement, an analyzer-drafted batch a ticket suggestion was drafted into (and
@@ -291,6 +292,22 @@ describe("organization isolation, on every analyzer route", () => {
         );
         expect(body.measurements).toEqual([]);
         expect(body.calibration).toEqual([]);
+      },
+    },
+    [`GET ${ANALYZER}/corpus`]: {
+      about:
+        "counts none of another workspace's builds, and none of its analyses, for the same repository",
+      check: async () => {
+        const body = bodyOf<CorpusStateResource>(
+          await as("get", `${ANALYZER}/corpus?repo=${BENCH_REPO}`).expect(200),
+        );
+        expect(body).toMatchObject({
+          repo: BENCH_REPO,
+          builds: 0,
+          daysWithBuilds: 0,
+          sufficient: false,
+          analyzed: null,
+        });
       },
     },
     [`GET ${ANALYZER}/duration`]: {

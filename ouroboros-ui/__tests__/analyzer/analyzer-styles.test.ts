@@ -8,8 +8,9 @@ import { describe, expect, it } from "vitest";
  * is a token — what *both themes* and *CQ.1's rem type* can be verified as, since jsdom applies no
  * stylesheet — and the page adds no chrome to the shell. Since #517 it also dresses the duration
  * chart's card and the Details sheet behind each chip, since #518 the two suggestion cards with
- * the surfaces their rows open, since #519 the drafted-tickets card in the side column, and since
- * #520 the predicted-vs-measured and how-it-works cards under it.
+ * the surfaces their rows open, since #519 the drafted-tickets card in the side column, since
+ * #520 the predicted-vs-measured and how-it-works cards under it, and since #521 the cold states'
+ * panel and the unread strip.
  */
 
 const ANALYZER = join(import.meta.dirname, "..", "..", "app", "analyzer");
@@ -400,5 +401,38 @@ describe("the how-it-works card (#520)", () => {
     expect(COMPONENT).toContain('className="analyzer-hiw"');
     expect(COMPONENT).toContain("<EmptyState note={NO_MEASUREMENTS.note}");
     expect(CODE).not.toMatch(/\.ou-/);
+  });
+});
+
+describe("the cold states and the unread page (#521)", () => {
+  it("states the count in the strip's mono, at body size — the fact the state turns on", () => {
+    expect(rule("\\.analyzer-state__count")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-state__count")).toMatch(/color:\s*var\(--ink\)/);
+    expect(rule("\\.analyzer-state__count")).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it("sets the explanation as muted prose of a readable measure", () => {
+    expect(rule("\\.analyzer-state__text")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.analyzer-state__text")).toMatch(/max-width:\s*[\d.]+rem/);
+    expect(rule("\\.analyzer-state__text")).toMatch(/line-height:\s*var\(--lh-body\)/);
+  });
+
+  it("rules what the analyzer reads off from what the state says, under a faint uppercase label", () => {
+    expect(rule("\\.analyzer-state__reads")).toMatch(/border-top:\s*1px solid var\(--line\)/);
+    expect(rule("\\.analyzer-state__label")).toMatch(/text-transform:\s*uppercase/);
+    expect(rule("\\.analyzer-state__label")).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+
+  it("lets the call to action wrap, and leaves the button itself to the design system", () => {
+    expect(rule("\\.analyzer-state__actions")).toMatch(/flex-wrap:\s*wrap/);
+    expect(COMPONENT).toContain('<Button onClick={start} reason={reason} tone="primary">');
+    expect(rule("\\.analyzer-state")).toMatch(/min-width:\s*0/);
+  });
+
+  it("holds the strip's place while the page is unread, and says whose results a run sits over in muted type", () => {
+    expect(rule("\\.analyzer-strip__skeleton")).toMatch(/height:\s*[\d.]+rem/);
+    expect(rule("\\.analyzer-strip__skeleton")).toMatch(/background:\s*var\(--raised\)/);
+    expect(rule("\\.analyzer-progress__below")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.analyzer-progress__below")).toMatch(/font-size:\s*var\(--t-xs\)/);
   });
 });

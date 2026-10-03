@@ -1,9 +1,10 @@
 /**
  * What the analyzer legs ([#518](https://github.com/NobuData/ouroboros/issues/518),
  * [#519](https://github.com/NobuData/ouroboros/issues/519),
- * [#520](https://github.com/NobuData/ouroboros/issues/520)) arrange, read and put back — mockup
- * 18's two suggestion cards, its drafted-tickets card and its predicted-vs-measured and
- * how-it-works cards against `R__dev_seed_workspace_metrics_analyzer.sql`.
+ * [#520](https://github.com/NobuData/ouroboros/issues/520),
+ * [#521](https://github.com/NobuData/ouroboros/issues/521)) arrange, read and put back — mockup
+ * 18's seven regions against `R__dev_seed_workspace_metrics_analyzer.sql`, and the states of the
+ * page that mockup does not draw.
  *
  * ## The repository is the tenant chip's
  *
@@ -21,7 +22,7 @@
  * | `standard-fix`'s draft, re-wired | **restored** to the seeded document in teardown | the studio and code-editor legs open that document; the proposed change note stays on the draft, and both of those legs publish with a note of their own |
  * | two suggestions `applied`, one `dismissed` | nothing | a resolution is terminal by design (V081) — that it cannot be undone is the product's promise |
  * | two measurement rows, their audit events | nothing | append-only |
- * | one analysis run | nothing | a run is history |
+ * | analysis runs — two of `helios-firmware` around the dismissal, one more that reproduces the chips, one of `helios-telemetry` | nothing | a run is history |
  * | a drafted ticket's checkbox (leg 23) | **ticked again** in teardown | the push leg pushes what is ticked |
  * | the seeded analyzer batch, edited and **pushed** (leg 24) | nothing | a pushed batch is closed by design; its tracker issues are reset with the sandbox |
  *
@@ -35,9 +36,27 @@
  * window the preview named, that the workflow's draft **cites the suggestion** in its change
  * note, and that a dismissal is still a dismissal after a real re-analysis. Each is read after the
  * browser has done its half, and none of them replaces what the page is asserted to show.
+ *
+ * ## What is intercepted, and why that is honest (#521)
+ *
+ * A seeded stack cannot hold every state of the page: an analysis takes two seconds, so *running*
+ * is over before a browser can look; nothing seeded has failed or stopped at its budget; and no
+ * seeded repository has ninety days of builds and no analysis. {@link rewriteAnalyzerPoll} — leg
+ * 20's method — answers the page's own poll with **the service's real answer, changed**: every
+ * field the change does not name is what the stack holds, and anything but a `200` passes through
+ * untouched. Those tests prove what the *page* draws for such an answer. That the service produces
+ * such answers — a run's phases, a failure's reason, what a budget stop kept — is asserted where
+ * it can be made to happen: the REST suites. The **insufficient** state needs no rewrite: two
+ * seeded repositories really are that thin.
+ *
+ * {@link onMockupDay} is the same tool used for a different reason: the seed is dated relative to
+ * the day it ran, and a chip's width and row follow from its date's text, so a screenshot of
+ * today's page would differ from tomorrow's. For the parity screenshots only, the answer's day
+ * strings are shifted so the seed day reads as the mockup's — and the real dates are asserted, as
+ * text, by the test beside it.
  */
 
-import type { BrowserContext } from "@playwright/test";
+import type { BrowserContext, Page, Route } from "@playwright/test";
 
 import { quietly, requestAs } from "./rest";
 import { SEED_TENANT } from "./seed";
@@ -57,6 +76,22 @@ export const HELIOS = {
   /** `owner/name` — what the analyzer routes take. */
   ref: "acme-robotics/helios-firmware",
 } as const;
+
+/**
+ * A seeded repository with builds on three days and no analysis: the *insufficient corpus* state,
+ * for real (#521).
+ */
+export const TELEMETRY = {
+  id: "5eed0006-0000-4000-8000-000000000003",
+  name: "helios-telemetry",
+  ref: "acme-robotics/helios-telemetry",
+} as const;
+
+/**
+ * The workspace's first enabled repository — what the page opens on when the chip has no focus —
+ * and one with no build at all (#521).
+ */
+export const ATLAS = { name: "atlas-scheduler", ref: "acme-robotics/atlas-scheduler" } as const;
 
 /** `app/shell/focus-repo.ts`'s storage key — the chip's choice, by workspace. */
 const FOCUS_REPO_STORAGE_KEY = "ouro-focus-repo";
@@ -194,19 +229,33 @@ export interface PoolWindow {
 }
 
 /**
+ * Have the page open on a repository, as the tenant chip's menu would leave it.
+ *
+ * @param context - The context whose pages should open on it. Call it before the first `goto`.
+ * @param repo - The repository: its `github_repos.id` and its name.
+ * @returns When every later page of the context will start with the choice made.
+ */
+export async function focusRepo(
+  context: BrowserContext,
+  repo: { readonly id: string; readonly name: string },
+): Promise<void> {
+  await context.addInitScript(
+    ([key, choices]) => window.localStorage.setItem(key, choices),
+    [
+      FOCUS_REPO_STORAGE_KEY,
+      JSON.stringify({ [SEED_TENANT.id]: { id: repo.id, name: repo.name } }),
+    ],
+  );
+}
+
+/**
  * Have the page open on `helios-firmware`, as the tenant chip's menu would leave it.
  *
  * @param context - The context whose pages should open on it. Call it before the first `goto`.
  * @returns When every later page of the context will start with the choice made.
  */
-export async function focusHelios(context: BrowserContext): Promise<void> {
-  await context.addInitScript(
-    ([key, choices]) => window.localStorage.setItem(key, choices),
-    [
-      FOCUS_REPO_STORAGE_KEY,
-      JSON.stringify({ [SEED_TENANT.id]: { id: HELIOS.id, name: HELIOS.name } }),
-    ],
-  );
+export function focusHelios(context: BrowserContext): Promise<void> {
+  return focusRepo(context, HELIOS);
 }
 
 /**
@@ -321,21 +370,36 @@ export async function standardFixDraft(
 export interface AnalysisRunRow {
   readonly id: string;
   readonly status: string;
+  /** Why it failed or stopped, when it did. */
+  readonly failureReason: string | null;
+  /** Each analyzer's outcome in it. */
+  readonly progress: {
+    readonly analyzers: readonly {
+      readonly id: string;
+      readonly status: string;
+      readonly findings: number | null;
+      readonly reason: string | null;
+    }[];
+  };
   /** The corpus it assembled — and the sources the deployment could not give it. */
   readonly manifest: { readonly absent: readonly { source: string; reason: string }[] } | null;
 }
 
 /**
- * The repository's newest analysis run.
+ * A repository's newest analysis run.
  *
  * @param context - A signed-in context.
- * @returns Its id, status and corpus manifest, or `null` before any.
+ * @param repo - The repository, `owner/name`. Defaults to `helios-firmware`.
+ * @returns Its id, status, progress and corpus manifest, or `null` before any.
  */
-export async function latestRun(context: BrowserContext): Promise<AnalysisRunRow | null> {
+export async function latestRun(
+  context: BrowserContext,
+  repo: string = HELIOS.ref,
+): Promise<AnalysisRunRow | null> {
   const answer = await requestAs<{ run: AnalysisRunRow | null }>(
     context,
     "GET",
-    `/api/v1/analyzer/runs/latest?repo=${encodeURIComponent(HELIOS.ref)}`,
+    `/api/v1/analyzer/runs/latest?repo=${encodeURIComponent(repo)}`,
     null,
     "reading the newest analysis run",
   );
@@ -631,4 +695,477 @@ export function dayLabel(day: string): string {
   const [, month, date] = day.split("-").map(Number);
 
   return `${MONTHS[(month ?? 1) - 1] ?? ""} ${String(date ?? "")}`;
+}
+
+/* ------------------------------------------------------------------ the page's states and the chart (#521) */
+
+/** The meta strip's accessible name. */
+export const STRIP_REGION = "Analysis summary";
+
+/** The duration chart's accessible name over the seeded ninety-day window. */
+export const CHART_REGION = "Build duration · 90 days, with detected change-points";
+
+/** The progress panel's accessible name. */
+export const PROGRESS_REGION = "Analysis progress";
+
+/** The insufficient-corpus panel's accessible name. */
+export const INSUFFICIENT_REGION = "The analyzer needs more history";
+
+/** The never-run panel's accessible name. */
+export const NEVER_RUN_REGION = "No analysis has run here yet";
+
+/** The never-run panel's call to action. */
+export const FIRST_RUN_ACTION = "Run the first analysis";
+
+/** The mockup's seven regions, in page order — what the parity screenshots are taken of. */
+export const REGIONS: readonly { readonly slug: string; readonly name: string }[] = [
+  { slug: "strip", name: STRIP_REGION },
+  { slug: "chart", name: CHART_REGION },
+  { slug: "process", name: CARDS.process },
+  { slug: "workflow", name: CARDS.workflow },
+  { slug: "tickets", name: TICKETS_CARD },
+  { slug: "measured", name: MEASUREMENTS_CARD },
+  { slug: "how", name: HOW_IT_WORKS_CARD },
+];
+
+/**
+ * The three shifts the seed plants in `zephyr build`'s daily medians, oldest first, as mockup 18
+ * draws their chips: how many days before the corpus window's last day each one lands, its top
+ * candidate and its delta. The dates themselves are the seed day's and are read from the service.
+ */
+export const PLANTED_SHIFTS: readonly {
+  readonly daysBeforeWindowEnd: number;
+  readonly candidate: string;
+  readonly delta: string;
+  readonly deltaSeconds: number;
+}[] = [
+  {
+    daysBeforeWindowEnd: 81,
+    candidate: "Zephyr 4.1 migration",
+    delta: "+1m 30s",
+    deltaSeconds: 90,
+  },
+  { daysBeforeWindowEnd: 46, candidate: "ccache enabled", delta: "−2m 10s", deltaSeconds: -130 },
+  { daysBeforeWindowEnd: 8, candidate: "twister suite growth", delta: "+40s", deltaSeconds: 40 },
+];
+
+/** The seven analyzers of `deterministic analyzers v1`, in the set's order. */
+export const ANALYZERS: readonly string[] = [
+  "cache_window",
+  "change_point",
+  "config_usage",
+  "log_signature",
+  "queue_correlation",
+  "waiver_cite",
+  "workflow_outcome",
+];
+
+/** The analyzers a live corpus has the inputs for; the other four are skipped, saying which it lacks. */
+export const LIVE_ANALYZERS: readonly string[] = ["change_point", "log_signature", "waiver_cite"];
+
+/** A repository's corpus state, as `GET /api/v1/analyzer/corpus` answers it. */
+export interface CorpusState {
+  readonly builds: number;
+  readonly daysWithBuilds: number;
+  readonly sufficient: boolean;
+  readonly minimumDaysWithBuilds: number;
+  readonly window: { readonly from: string; readonly to: string; readonly days: number };
+  readonly analyzed: {
+    readonly runId: string;
+    readonly builds: number;
+    readonly daysWithBuilds: number;
+    readonly sufficient: boolean;
+  } | null;
+}
+
+/**
+ * A repository's corpus state.
+ *
+ * @param context - A signed-in context.
+ * @param repo - The repository, `owner/name`. Defaults to `helios-firmware`.
+ * @returns How much history it holds, the floor, and what the newest ended analysis read.
+ * @throws {Error} If the service answers nothing.
+ */
+export async function corpus(
+  context: BrowserContext,
+  repo: string = HELIOS.ref,
+): Promise<CorpusState> {
+  const answer = await requestAs<CorpusState>(
+    context,
+    "GET",
+    `/api/v1/analyzer/corpus?repo=${encodeURIComponent(repo)}`,
+    null,
+    "reading the analyzer's corpus state",
+  );
+
+  if (answer === null) throw new Error("the analyzer answered no corpus state");
+
+  return answer;
+}
+
+/** One change-point of the duration chart, as far as these legs read one. */
+export interface ChangePointRow {
+  readonly date: string;
+  readonly deltaSeconds: number;
+  readonly candidates: readonly { readonly label: string }[];
+}
+
+/** The duration chart's read, as far as these legs read it. */
+export interface DurationRead {
+  /** The run whose findings annotate the series. */
+  readonly runId: string | null;
+  readonly window: { readonly from: string; readonly to: string; readonly days: number } | null;
+  readonly series: readonly unknown[];
+  readonly changePoints: readonly ChangePointRow[];
+}
+
+/**
+ * The duration chart, as the service answers it.
+ *
+ * @param context - A signed-in context.
+ * @param repo - The repository, `owner/name`. Defaults to `helios-firmware`.
+ * @returns The annotated run, its window, its series and its change-points, oldest first.
+ * @throws {Error} If the service answers nothing.
+ */
+export async function durationChart(
+  context: BrowserContext,
+  repo: string = HELIOS.ref,
+): Promise<DurationRead> {
+  const answer = await requestAs<DurationRead>(
+    context,
+    "GET",
+    `/api/v1/analyzer/duration?repo=${encodeURIComponent(repo)}`,
+    null,
+    "reading the analyzer's duration chart",
+  );
+
+  if (answer === null) throw new Error("the analyzer answered no duration chart");
+
+  return answer;
+}
+
+/**
+ * What the chart's chips must say for these change-points, in the chart's own words.
+ *
+ * @param chart - The duration read.
+ * @returns One line per change-point — `Jul 13 · Zephyr 4.1 migration +1m 30s`.
+ */
+export function chipTexts(chart: DurationRead): string[] {
+  return chart.changePoints.map((point, index) => {
+    const planted = PLANTED_SHIFTS[index];
+
+    return `${dayLabel(point.date)} · ${point.candidates[0]?.label ?? ""} ${planted?.delta ?? ""}`;
+  });
+}
+
+/**
+ * Whole days from one UTC day to a later one.
+ *
+ * @param from - The earlier day, `YYYY-MM-DD`.
+ * @param to - The later day.
+ * @returns The difference in days.
+ */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+/**
+ * The ticket suggestions of the drafted-tickets card, as titles: the ones nobody has drafted, and
+ * the drafts of every batch on the card.
+ *
+ * @param context - A signed-in context.
+ * @returns Both lists. A suggestion composed twice — under two identities — would be in the first
+ *   while its drafted twin is in the second.
+ */
+export async function ticketTitles(
+  context: BrowserContext,
+): Promise<{ undrafted: string[]; drafted: string[] }> {
+  const answer = await requestAs<{
+    undrafted: { title: string }[];
+    batches: { batch: { drafts: { title: string }[] } }[];
+  }>(
+    context,
+    "GET",
+    `/api/v1/analyzer/tickets?repo=${encodeURIComponent(HELIOS.ref)}`,
+    null,
+    "reading the analyzer's drafted tickets",
+  );
+
+  return {
+    undrafted: (answer?.undrafted ?? []).map((entry) => entry.title),
+    drafted: (answer?.batches ?? []).flatMap((entry) =>
+      entry.batch.drafts.map((draft) => draft.title),
+    ),
+  };
+}
+
+/** One analyzer's progress entry in a page payload. */
+interface ProgressPayload {
+  id: string;
+  version: number;
+  status: string;
+  findings: number | null;
+  elapsedSeconds: number | null;
+  reason: string | null;
+}
+
+/** The analyzer page's poll payload — the fields these legs change; the rest rides along. */
+export interface AnalyzerPagePayload {
+  repo: string;
+  run:
+    | ({
+        id: string;
+        trigger: string;
+        status: string;
+        phase: string;
+        progress: { analyzers: ProgressPayload[] };
+        finishedAt: string | null;
+        computeSeconds: number | null;
+        confidenceNote: string | null;
+        failureReason: string | null;
+      } & Record<string, unknown>)
+    | null;
+  duration: Record<string, unknown>;
+  suggestions: Record<string, unknown>;
+  tickets: Record<string, unknown>;
+  measurements: Record<string, unknown>;
+  corpus: Record<string, unknown> & { analyzed: Record<string, unknown> | null };
+  [region: string]: unknown;
+}
+
+/** The page's own poll, on the UI's origin. A regular expression: the query is part of the address. */
+const ANALYZER_POLL = /\/api\/analyzer\?repo=/;
+
+/**
+ * Answer the browser's poll for one repository with the service's own page, changed.
+ *
+ * `if-none-match` is dropped so the hop always answers with a body — a `304` has nothing to
+ * rewrite. Anything but a `200` is passed through untouched, and so is **another repository's**
+ * page: before the chip's focus applies the screen may ask for the workspace's first repository,
+ * and that answer is not the one being changed.
+ *
+ * @param page - The page about to open the analyzer.
+ * @param change - What to change. It is handed a fresh copy of what the service answered.
+ * @param repo - The repository whose page is changed. Defaults to `helios-firmware`.
+ * @returns When the route is installed — before the navigation, so the first poll is caught.
+ */
+export async function rewriteAnalyzerPoll(
+  page: Page,
+  change: (payload: AnalyzerPagePayload) => AnalyzerPagePayload,
+  repo: string = HELIOS.ref,
+): Promise<void> {
+  await page.route(ANALYZER_POLL, async (route: Route) => {
+    const headers = { ...route.request().headers() };
+    delete headers["if-none-match"];
+
+    const response = await route.fetch({ headers });
+    if (response.status() !== 200) return route.fulfill({ response });
+
+    const body = (await response.json()) as AnalyzerPagePayload;
+    await route.fulfill({
+      response,
+      json: body.repo === repo ? change(structuredClone(body)) : body,
+    });
+  });
+}
+
+/** The day mockup 18 is drawn on — its corpus window ends the day before. */
+const MOCKUP_WINDOW_END = "2026-08-07";
+
+/** A UTC calendar day, and nothing else. */
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A month's name, as the seed writes one into a ticket's title. */
+const SINCE_MONTH =
+  /since (January|February|March|April|May|June|July|August|September|October|November|December)/g;
+
+/**
+ * Move a UTC day by whole days.
+ *
+ * @param day - `YYYY-MM-DD`.
+ * @param days - How far, in days.
+ * @returns The moved day.
+ */
+function shiftDay(day: string, days: number): string {
+  return new Date(Date.parse(`${day}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
+}
+
+/**
+ * The page's answer with its calendar pinned to the mockup's: every UTC **day** in it is moved by
+ * the distance from the chart's own window to the mockup's, so the chips read May 18, Jun 22 and
+ * Jul 30 and the two measurements Jul 2 and Jul 9 whatever day the stack was seeded on — and the
+ * one month the seed writes into a ticket's title (*…since July*) reads as the mockup's.
+ *
+ * Instants are left alone: nothing drawn from one is in a screenshot unmasked. Used for the
+ * parity screenshots only; the real dates are asserted as text.
+ *
+ * @param payload - The page's answer.
+ * @returns It, pinned.
+ */
+export function onMockupDay(payload: AnalyzerPagePayload): AnalyzerPagePayload {
+  const window = payload.duration.window as { to: string } | null;
+  if (window === null) return payload;
+
+  const days = daysBetween(window.to, MOCKUP_WINDOW_END);
+  const pin = (value: unknown): unknown => {
+    if (typeof value === "string") {
+      return DAY.test(value) ? shiftDay(value, days) : value.replace(SINCE_MONTH, "since May");
+    }
+    if (Array.isArray(value)) return value.map(pin);
+    if (typeof value === "object" && value !== null) {
+      return Object.fromEntries(Object.entries(value).map(([key, entry]) => [key, pin(entry)]));
+    }
+
+    return value;
+  };
+
+  return pin(payload) as AnalyzerPagePayload;
+}
+
+/**
+ * A repository with its history and no analysis of it: no run, nothing any card could hold, and a
+ * corpus nothing has analysed. No seeded repository is in this state — the one with ninety days
+ * of builds was analysed by the seed.
+ *
+ * @param payload - The page's answer.
+ * @returns It, as before the first analysis.
+ */
+export function asNeverRun(payload: AnalyzerPagePayload): AnalyzerPagePayload {
+  const { repo } = payload;
+
+  return {
+    ...payload,
+    run: null,
+    duration: {
+      repo,
+      runId: null,
+      analyzedAt: null,
+      durationLabel: null,
+      window: null,
+      series: [],
+      changePoints: [],
+    },
+    suggestions: { repo, runId: null, analyzedAt: null, suggestions: [], calibration: [] },
+    tickets: { repo, undrafted: [], batches: [] },
+    measurements: { ...payload.measurements, measurements: [], calibration: [] },
+    corpus: { ...payload.corpus, analyzed: null },
+  };
+}
+
+/** The id the rewritten runs carry — not the seeded run's, so the cards are plainly another run's. */
+const REWRITTEN_RUN_ID = "0e2e0521-0000-4000-8000-000000000001";
+
+/** The service's reason for a run whose engine went away (`RUN_REASONS.engineUnavailable`). */
+export const ENGINE_UNAVAILABLE =
+  "The analysis engine could not be reached, or its answer broke off.";
+
+/** The service's reason for a budget stop that kept five analyzers' findings. */
+export const BUDGET_REASON =
+  "The compute ceiling of 60 s was reached. Kept the findings of 5 analyzer(s); did not finish: waiver_cite, workflow_outcome.";
+
+/**
+ * A newer run in flight over the page's results: analyzing, two analyzers done, one running, the
+ * rest waiting. Everything but the run is what the service answered.
+ *
+ * @param payload - The page's answer, with a run.
+ * @returns It, with an analysis running.
+ */
+export function asRunning(payload: AnalyzerPagePayload): AnalyzerPagePayload {
+  const { run } = payload;
+  if (run === null) return payload;
+
+  return {
+    ...payload,
+    run: {
+      ...run,
+      id: REWRITTEN_RUN_ID,
+      trigger: "manual",
+      status: "running",
+      phase: "analyzing",
+      finishedAt: null,
+      computeSeconds: 0,
+      confidenceNote: null,
+      failureReason: null,
+      progress: {
+        analyzers: run.progress.analyzers.map((entry, index) => ({
+          ...entry,
+          status: index < 2 ? "completed" : index === 2 ? "running" : "pending",
+          findings: index < 2 ? entry.findings : null,
+          reason: null,
+        })),
+      },
+    },
+  };
+}
+
+/**
+ * A newer run that failed over the page's results: the engine went away after two analyzers, and
+ * the rest never ran — as the orchestrator records it.
+ *
+ * @param payload - The page's answer, with a run.
+ * @returns It, with the newest analysis failed.
+ */
+export function asFailed(payload: AnalyzerPagePayload): AnalyzerPagePayload {
+  const running = asRunning(payload).run;
+  if (running === null) return payload;
+
+  return {
+    ...payload,
+    run: {
+      ...running,
+      status: "failed",
+      phase: "composing",
+      finishedAt: new Date().toISOString(),
+      failureReason: ENGINE_UNAVAILABLE,
+      progress: {
+        analyzers: running.progress.analyzers.map((entry) =>
+          entry.status === "completed"
+            ? entry
+            : { ...entry, status: "not_run", findings: null, reason: ENGINE_UNAVAILABLE },
+        ),
+      },
+    },
+  };
+}
+
+/**
+ * The page's own run, stopped at its budget: five analyzers' findings kept, one stopped at the
+ * ceiling and one never started — the engine's and the orchestrator's own reasons.
+ *
+ * @param payload - The page's answer, with a run.
+ * @returns It, with the newest analysis stopped at its budget.
+ */
+export function asBudgetExceeded(payload: AnalyzerPagePayload): AnalyzerPagePayload {
+  const { run } = payload;
+  if (run === null) return payload;
+
+  const last = run.progress.analyzers.length - 1;
+
+  return {
+    ...payload,
+    run: {
+      ...run,
+      status: "budget_exceeded",
+      failureReason: BUDGET_REASON,
+      progress: {
+        analyzers: run.progress.analyzers.map((entry, index) =>
+          index < last - 1
+            ? entry
+            : index === last - 1
+              ? {
+                  ...entry,
+                  status: "timed_out",
+                  findings: null,
+                  reason: "stopped at the run's compute ceiling",
+                }
+              : {
+                  ...entry,
+                  status: "not_run",
+                  findings: null,
+                  reason: "the run's compute ceiling was reached",
+                },
+        ),
+      },
+    },
+  };
 }

@@ -1,18 +1,24 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  NO_CORPUS_HEADLINE,
+  RUN_MEMBER_REASON,
+  RUN_STARTING_REASON,
+  RUN_UNREAD_REASON,
   alreadyRunningLine,
   analyzerEyebrow,
   analyzerHeadline,
   analyzerLines,
   basisLines,
   computeDuration,
+  corpusHeadline,
   corpusLine,
   counterLine,
   lastRunLine,
   modelAnalyzers,
   phaseState,
   repoTitle,
+  runBlock,
   runStatusLine,
   samplingNotes,
   scheduleForm,
@@ -63,6 +69,29 @@ describe("the head", () => {
   it("says what it knows before the first run and before the manifest", () => {
     expect(analyzerHeadline(null)).toBe("No analysis has run here yet.");
     expect(analyzerHeadline(runningRun({ phase: "assembling", manifest: null }))).toBe("Reading your build history…");
+  });
+
+  it("never says it is reading the history for a run that has ended without a manifest (#521)", () => {
+    for (const status of ["failed", "budget_exceeded"] as const) {
+      expect(analyzerHeadline(seededRun({ status, manifest: null, failureReason: "It stopped." }))).toBe(
+        NO_CORPUS_HEADLINE,
+      );
+    }
+  });
+
+  it("writes the headline from a corpus's own size, for a page whose newest run carries none", () => {
+    expect(corpusHeadline(1284, 90)).toBe("Your last 1,284 builds have opinions.");
+    expect(corpusHeadline(40, 90)).toBe("40 builds in 90 days — early opinions, held loosely.");
+    expect(corpusHeadline(0, 90)).toBe("No builds in the last 90 days to learn from yet.");
+  });
+
+  it("says why Run analysis now is inert — the role first, then a press on its way, then an unread page", () => {
+    const live = { mayAdminister: true, starting: false, unread: false };
+
+    expect(runBlock(live)).toBeUndefined();
+    expect(runBlock({ ...live, mayAdminister: false, starting: true, unread: true })).toBe(RUN_MEMBER_REASON);
+    expect(runBlock({ ...live, starting: true, unread: true })).toBe(RUN_STARTING_REASON);
+    expect(runBlock({ ...live, unread: true })).toBe(RUN_UNREAD_REASON);
   });
 });
 
@@ -185,10 +214,35 @@ describe("run progress", () => {
       seededRun({ status: "failed", failureReason: "The engine stream was cut off.", progress: { analyzers: [] } }),
     );
 
-    expect(budget).toBe(
-      "Stopped at its budget; the findings of 1 analyzer were kept. The compute ceiling of 3600 s was reached.",
+    expect(budget).toBe("Stopped at its budget. The compute ceiling of 3600 s was reached.");
+    expect(failed).toBe("The analysis failed, and nothing from it is shown. The engine stream was cut off.");
+  });
+
+  it("lets the service's sentence say what a budget stop kept and what did not finish — once", () => {
+    const reason =
+      "The compute ceiling of 60 s was reached. Kept the findings of 2 analyzer(s); did not finish: cache_window, waiver_cite.";
+    const line = runStatusLine(
+      seededRun({
+        status: "budget_exceeded",
+        failureReason: reason,
+        progress: { analyzers: [progressOf("change_point", "completed"), progressOf("log_signature", "completed")] },
+      }),
     );
-    expect(failed).toBe("The analysis failed and kept no findings. The engine stream was cut off.");
+
+    expect(line).toBe(`Stopped at its budget. ${reason}`);
+    expect(line.match(/findings of/g)).toHaveLength(1);
+  });
+
+  it("still says what was kept when a budget stop carries no reason", () => {
+    expect(
+      runStatusLine(
+        seededRun({
+          status: "budget_exceeded",
+          failureReason: null,
+          progress: { analyzers: [progressOf("change_point", "completed"), progressOf("waiver_cite", "not_run")] },
+        }),
+      ),
+    ).toBe("Stopped at its budget; the findings of 1 analyzer were kept.");
   });
 
   it("names the running analysis in the concurrent-run state, and that nothing was queued", () => {

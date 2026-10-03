@@ -1,9 +1,14 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import {
   confidenceBasis,
   confidenceNote,
+  corpusSufficient,
   corpusWindow,
   FULL_READ,
   manifestBudget,
+  MINIMUM_DAYS_WITH_BUILDS,
   samplingRecord,
 } from "./corpus.manifest";
 
@@ -125,5 +130,33 @@ describe("the confidence basis", () => {
     const basis = confidenceBasis({ window, builds: 1, daysWithBuilds: 1 });
     basis.rule.high.coverage = 0;
     expect(confidenceBasis({ window, builds: 1, daysWithBuilds: 1 }).rule.high.coverage).toBe(0.9);
+  });
+});
+
+describe("the floor below which an analysis is not shown (#521)", () => {
+  it("is cleared on the floor, and not a day under it", () => {
+    expect(corpusSufficient(MINIMUM_DAYS_WITH_BUILDS)).toBe(true);
+    expect(corpusSufficient(MINIMUM_DAYS_WITH_BUILDS - 1)).toBe(false);
+    expect(corpusSufficient(0)).toBe(false);
+    expect(corpusSufficient(89)).toBe(true);
+  });
+
+  it("is the change-point analyzer's own: two segments of its minimum length", () => {
+    // Read from the engine's source rather than restated: a change to the analyzer's minimum
+    // segment is a change to what this service tells people they need.
+    const source = readFileSync(
+      join(
+        __dirname,
+        ...["..", "..", "..", "..", ".."],
+        ...["ouroboros-engine", "src", "ouroboros_engine", "analysis", "changepoint.py"],
+      ),
+      "utf8",
+    );
+    const minimum = /"min_segment_days":\s*(\d+)/.exec(source)?.[1];
+
+    expect(minimum).toBeDefined();
+    // The analyzer's own guard, as it is written: nothing is detected under two segments.
+    expect(source).toMatch(/if medians\.size < 2 \* min_size:\s*\n\s*return \[\]/);
+    expect(MINIMUM_DAYS_WITH_BUILDS).toBe(2 * Number(minimum));
   });
 });

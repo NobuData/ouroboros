@@ -7,7 +7,6 @@ import { useAnalyzer } from "./analyzer-store";
 import { StripPopover } from "./strip-popover";
 import {
   ANALYZERS_HEADING,
-  ASSEMBLING_CORPUS,
   BASIS_HEADING,
   NO_BASIS,
   NO_CONFIDENCE,
@@ -18,6 +17,7 @@ import {
   basisLines,
   corpusLine,
   lastRunLine,
+  missingCorpusLine,
   modelAnalyzers,
   samplingNotes,
 } from "./view";
@@ -46,8 +46,15 @@ export function MetaStrip() {
   const run = page?.run ?? null;
 
   return (
-    <Card aria-label="Analysis summary" as="section" className="analyzer-strip">
-      {run === null ? <p className="analyzer-strip__empty">{NO_RUN_STRIP}</p> : <StripRow now={now} run={run} />}
+    <Card aria-busy={page === null || undefined} aria-label="Analysis summary" as="section" className="analyzer-strip">
+      {page === null ? (
+        // Unread: the strip's place, and no claim that nothing has run.
+        <div aria-hidden="true" className="analyzer-strip__skeleton" />
+      ) : run === null ? (
+        <p className="analyzer-strip__empty">{NO_RUN_STRIP}</p>
+      ) : (
+        <StripRow now={now} run={run} />
+      )}
     </Card>
   );
 }
@@ -70,7 +77,7 @@ function StripRow({ run, now }: Readonly<{ run: AnalysisRun; now: Date }>) {
       <div className="analyzer-strip__slot">
         <dt className="analyzer-strip__label">{STRIP_LABELS.corpus}</dt>
         <dd className="analyzer-strip__value">
-          {manifest === null ? ASSEMBLING_CORPUS : corpusLine(manifest)}
+          {manifest === null ? missingCorpusLine(run) : corpusLine(manifest)}
           {sampled.length > 0 && (
             <Tag className="analyzer-strip__sampled" title={sampled.join("; ")}>
               <span>

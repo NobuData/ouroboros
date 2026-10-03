@@ -8,6 +8,7 @@ import {
   analyzerPage,
   freshPage,
   runningRun,
+  seededCorpus,
   seededDuration,
   seededRun,
   seededSchedule,
@@ -17,10 +18,11 @@ import { seededSuggestions } from "../helpers/analyzer-suggestions";
 import { seededBatch, seededTickets, ticketsWith } from "../helpers/analyzer-tickets";
 
 /**
- * The analyzer page, read for the screen's poll (#516) — and its hop, `GET /api/analyzer`: six
+ * The analyzer page, read for the screen's poll (#516) — and its hop, `GET /api/analyzer`: seven
  * reads (the run, the schedule, since #517 the duration chart, since #518 the suggestion cards,
- * since #519 the drafted-tickets card and since #520 the measurements) under the poll family's
- * deadline, polled fast while a run is in flight or a drafted batch is still being sized.
+ * since #519 the drafted-tickets card, since #520 the measurements and since #521 the corpus
+ * state) under the poll family's deadline, polled fast while a run is in flight or a drafted
+ * batch is still being sized.
  */
 
 vi.mock("server-only", () => ({}));
@@ -98,6 +100,7 @@ describe("the page's own read", () => {
   const suggestions = vi.fn();
   const tickets = vi.fn();
   const measurements = vi.fn();
+  const corpus = vi.fn();
   const CLIENT = { name: "the anonymous client" };
 
   beforeEach(() => {
@@ -108,8 +111,9 @@ describe("the page's own read", () => {
     suggestions.mockReset().mockResolvedValue(seededSuggestions());
     tickets.mockReset().mockResolvedValue(seededTickets());
     measurements.mockReset().mockResolvedValue(seededMeasurements());
+    corpus.mockReset().mockResolvedValue(seededCorpus());
     vi.doMock("@/app/api/analyzer", () => ({
-      analyzer: { latest, schedule, duration, suggestions, tickets, measurements },
+      analyzer: { latest, schedule, duration, suggestions, tickets, measurements, corpus },
     }));
     vi.doMock("@/app/api/server", () => ({ anonymousApi: () => CLIENT }));
   });
@@ -119,13 +123,13 @@ describe("the page's own read", () => {
     vi.doUnmock("@/app/api/server");
   });
 
-  it("makes the run, schedule, duration, suggestion, ticket and measurement reads together, through one client, under the deadline", async () => {
+  it("makes the run, schedule, duration, suggestion, ticket, measurement and corpus reads together, through one client, under the deadline", async () => {
     const page = await import("@/app/api/analyzer-page");
 
     const answer = await page.readAnalyzerPage(HELIOS);
 
     expect(answer).toEqual(freshPage());
-    for (const read of [latest, schedule, duration, suggestions, tickets, measurements]) {
+    for (const read of [latest, schedule, duration, suggestions, tickets, measurements, corpus]) {
       expect(read).toHaveBeenCalledExactlyOnceWith(HELIOS, CLIENT, expect.any(AbortSignal));
     }
   });
@@ -143,6 +147,17 @@ describe("the page's own read", () => {
 
   it("fails the whole page when the drafted tickets cannot be read, rather than drawing half of it", async () => {
     tickets.mockRejectedValue(new TypeError("fetch failed"));
+    const page = await import("@/app/api/analyzer-page");
+
+    expect(await page.readAnalyzerPage(HELIOS)).toEqual({
+      state: "failed",
+      reason: UNREACHABLE_ANALYZER,
+      pollAfterSeconds: null,
+    });
+  });
+
+  it("fails the whole page when the corpus cannot be read — without it the page cannot choose what to draw", async () => {
+    corpus.mockRejectedValue(new TypeError("fetch failed"));
     const page = await import("@/app/api/analyzer-page");
 
     expect(await page.readAnalyzerPage(HELIOS)).toEqual({

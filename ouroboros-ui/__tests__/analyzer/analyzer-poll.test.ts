@@ -3,7 +3,15 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { analyzerUrl, isAnalyzerPage, requestAnalyzer, UNREADABLE_ANALYZER } from "@/app/analyzer/analyzer-poll";
 import { analyzerRepos, chooseRepo } from "@/app/analyzer/repo";
 
-import { ANALYZER_REPOS, HELIOS, analyzerPage, emptyDuration, seededSchedule } from "../helpers/analyzer";
+import {
+  ANALYZER_REPOS,
+  HELIOS,
+  analyzerPage,
+  corpusOf,
+  emptyDuration,
+  seededCorpus,
+  seededSchedule,
+} from "../helpers/analyzer";
 import { noMeasurements } from "../helpers/analyzer-measurements";
 import { emptySuggestions } from "../helpers/analyzer-suggestions";
 import { emptyTickets } from "../helpers/analyzer-tickets";
@@ -69,6 +77,7 @@ describe("isAnalyzerPage", () => {
       suggestions: emptySuggestions(),
       tickets: emptyTickets(),
       measurements: noMeasurements(),
+      corpus: seededCorpus(),
     };
 
     expect(isAnalyzerPage(page)).toBe(false);
@@ -90,6 +99,7 @@ describe("isAnalyzerPage", () => {
       duration: emptyDuration(),
       tickets: emptyTickets(),
       measurements: noMeasurements(),
+      corpus: seededCorpus(),
     };
 
     expect(isAnalyzerPage(page)).toBe(false);
@@ -111,6 +121,7 @@ describe("isAnalyzerPage", () => {
       duration: emptyDuration(),
       suggestions: emptySuggestions(),
       measurements: noMeasurements(),
+      corpus: seededCorpus(),
     };
 
     expect(isAnalyzerPage(page)).toBe(false);
@@ -132,6 +143,7 @@ describe("isAnalyzerPage", () => {
       duration: emptyDuration(),
       suggestions: emptySuggestions(),
       tickets: emptyTickets(),
+      corpus: seededCorpus(),
     };
 
     expect(isAnalyzerPage(page)).toBe(false);
@@ -141,6 +153,36 @@ describe("isAnalyzerPage", () => {
     expect(isAnalyzerPage({ ...page, measurements: { measurements: "none", calibration: [], formula: "f" } })).toBe(false);
     expect(isAnalyzerPage({ ...page, measurements: { measurements: [], calibration: [], formula: 4 } })).toBe(false);
     expect(isAnalyzerPage({ ...page, measurements: { measurements: [], calibration: [], formula: "f" } })).toBe(true);
+  });
+
+  it("accepts a corpus nothing has analysed, and an empty one", () => {
+    expect(isAnalyzerPage(analyzerPage({ corpus: corpusOf([1284, 89]) }))).toBe(true);
+    expect(isAnalyzerPage(analyzerPage({ corpus: corpusOf([0, 0]) }))).toBe(true);
+  });
+
+  it("refuses a page with no corpus, or one it could not choose a state from (#521)", () => {
+    const page = {
+      repo: HELIOS,
+      run: null,
+      schedule: seededSchedule(),
+      duration: emptyDuration(),
+      suggestions: emptySuggestions(),
+      tickets: emptyTickets(),
+      measurements: noMeasurements(),
+    };
+    const corpus = seededCorpus();
+
+    expect(isAnalyzerPage(page)).toBe(false);
+    expect(isAnalyzerPage({ ...page, corpus: null })).toBe(false);
+    // The verdict, the floor and the analysed corpus are each what the rule reads.
+    expect(isAnalyzerPage({ ...page, corpus: { ...corpus, sufficient: "yes" } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, corpus: { ...corpus, daysWithBuilds: undefined } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, corpus: { ...corpus, builds: "1284" } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, corpus: { ...corpus, minimumDaysWithBuilds: undefined } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, corpus: { ...corpus, analyzed: undefined } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, corpus: { ...corpus, analyzed: { runId: "r" } } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, corpus })).toBe(true);
+    expect(isAnalyzerPage({ ...page, corpus: { ...corpus, analyzed: null } })).toBe(true);
   });
 });
 

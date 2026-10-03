@@ -6334,6 +6334,29 @@ sheet behind each row: `GET /api/v1/analyzer/suggestions?repo=`, any member.
   `evidence.integration-spec.ts` (test runs, cases and waivers, none of them resolved from another
   workspace). Each clause of the currency rule was removed in turn and turned the suite red.
 
+**The corpus state** (BW.6, [#521](https://github.com/NobuData/ouroboros/issues/521),
+[`corpus/corpus.controller.ts`](src/modules/analyzer/corpus/corpus.controller.ts)) is the read
+behind the analyzer page's *needs more history* and *no analysis yet* states:
+`GET /api/v1/analyzer/corpus?repo=`, any member.
+- **The floor.** `MINIMUM_DAYS_WITH_BUILDS` (`corpus.manifest.ts`) is **10**: the change-point
+  analyzer compares two segments of at least `min_segment_days` (5) observed days, so under ten
+  it can detect nothing. `corpus.manifest.spec.ts` reads the engine's source and holds the
+  constant to twice that parameter. It is a proxy and says so — it counts days with any finished
+  build, the analyzer days with a successful build of the timed label.
+- **Counted, never assembled.** `builds` and `daysWithBuilds` are `CorpusRepository.counts` over
+  the window a run started now would read (today excluded) — the statement a manifest is filled
+  from — and `sufficient` is that count against the floor.
+- **`analyzed`** is the same for the newest run that **ended having judged its corpus**
+  (`AnalysisRepository.latestJudged`: `complete` or `budget_exceeded`, with #516's confidence
+  basis in its manifest) — the population the result reads draw from — or `null`. A run in
+  flight, a failed one and one that stored no basis are not counted.
+- **Nothing is refused on account of it.** An analysis may be started on a corpus below the
+  floor; the page withholds its results. A repository the workspace has none of reads as an empty
+  corpus nothing analysed.
+- **Suite.** `corpus.service.spec.ts`, `corpus.contract.spec.ts`, and against real rows
+  `corpus.state.integration-spec.ts` (what is and is not inside the window, the tenth day, which
+  runs count as judged, a viewer's read) and the isolation suite's claim.
+
 **The drafted-tickets card** (BW.4, [#519](https://github.com/NobuData/ouroboros/issues/519),
 [`tickets/`](src/modules/analyzer/tickets)) is the read behind mockup 18's **Drafted tickets — from
 patterns, not people**: `GET /api/v1/analyzer/tickets?repo=`, any member. It is a view onto
@@ -6684,7 +6707,8 @@ ouroboros-rest/
 │       │   ├── actions/    #   preview · apply · dismiss · draft · push, through the planes · #514
 │       │   ├── measurement/ #  the 14-day job, confounds, bounded calibration, the read · #515
 │       │   └── duration/   #   the annotated chart's read: series, change-points, evidence · #517
-│       │                   #   corpus/ — bounded, paged readers, log tails, the manifest
+│       │                   #   corpus/ — bounded, paged readers, log tails, the manifest,
+│       │                   #   and the corpus-state read (the floor an analysis needs) · #521
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract
 ├── Dockerfile              # the production image — built from the *repo root*
