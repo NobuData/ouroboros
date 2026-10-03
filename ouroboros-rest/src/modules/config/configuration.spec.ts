@@ -7,6 +7,7 @@ import {
   DEFAULT_ESTIMATION_STALE_SECONDS,
   DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
   DEFAULT_RUN_CONTROL_SWEEP_SECONDS,
+  DEFAULT_LIFECYCLE_PURGE_SWEEP_SECONDS,
   DEFAULT_RUN_CONTROL_TTL_SECONDS,
   DEFAULT_RUN_STEER_TTL_SECONDS,
   DEFAULT_BACKLOG_STALE_DAYS,
@@ -141,6 +142,8 @@ describe("the development defaults", () => {
       runControlTtlSeconds: DEFAULT_RUN_CONTROL_TTL_SECONDS,
       runSteerTtlSeconds: DEFAULT_RUN_STEER_TTL_SECONDS,
       runControlSweepSeconds: DEFAULT_RUN_CONTROL_SWEEP_SECONDS,
+      // BR.5's (#489) purge sweep, written out in the template at its default.
+      lifecyclePurgeSweepSeconds: DEFAULT_LIFECYCLE_PURGE_SWEEP_SECONDS,
       // AL.5's (#281) four, written out in the template at their defaults for the same reason.
       backlogStaleDays: DEFAULT_BACKLOG_STALE_DAYS,
       reestimationHourUtc: DEFAULT_REESTIMATION_HOUR_UTC,

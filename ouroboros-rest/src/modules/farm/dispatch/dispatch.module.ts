@@ -14,7 +14,7 @@
  * the rules      job.states.ts          the state machine; an illegal move throws
  *                dispatch.policy.ts     every number, once
  *                command.ts · offer.ts  argv ⇄ stored text · a row as its job.offer
- * the seams      dispatch.gate.ts       #489's pause (open until then)
+ * the seams      dispatch.gate.ts       #489's pause (bound to the lifecycle state)
  *                job.completions.ts     #510's build counter (non-blocking)
  * ```
  *
@@ -30,7 +30,8 @@
  * `submitForRun`, and for AH.6 ([#254](https://github.com/NobuData/ouroboros/issues/254)), whose
  * runners table reads `queueDepth`; `JobCompletions` for BV.1
  * ([#510](https://github.com/NobuData/ouroboros/issues/510)); and the `FARM_DISPATCH_GATE` token
- * for BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) to bind its own gate to.
+ * that BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) binds to
+ * `LifecycleDispatchGate`, so a paused workspace's builds stay queued.
  *
  * **`FarmAudit` is provided here, not imported with `FarmModule`** — `fleet.module.ts`'s
  * arrangement. It is a thin writer over `AuditService` with no state of its own, so a second
@@ -42,10 +43,12 @@ import { Module } from "@nestjs/common";
 
 import { AuditModule } from "../../audit/audit.module";
 import { DbModule } from "../../db/db.module";
+import { LifecycleDispatchGate } from "../../lifecycle/lifecycle.state";
+import { LifecycleStateModule } from "../../lifecycle/lifecycle-state.module";
 import { FarmArtifactsModule } from "../artifacts/artifacts.module";
 import { FarmAudit } from "../farm.audit";
 import { FarmGatewayModule } from "../gateway/gateway.module";
-import { FARM_DISPATCH_GATE, OPEN_GATE } from "./dispatch.gate";
+import { FARM_DISPATCH_GATE } from "./dispatch.gate";
 import { DispatchRepository } from "./dispatch.repository";
 import { DispatchService } from "./dispatcher";
 import { JobCompletions } from "./job.completions";
@@ -53,7 +56,7 @@ import { FarmJobsController } from "./jobs.controller";
 import { FarmJobsService } from "./jobs.service";
 
 @Module({
-  imports: [DbModule, AuditModule, FarmGatewayModule, FarmArtifactsModule],
+  imports: [DbModule, AuditModule, FarmGatewayModule, FarmArtifactsModule, LifecycleStateModule],
   controllers: [FarmJobsController],
   providers: [
     DispatchRepository,
@@ -61,8 +64,8 @@ import { FarmJobsService } from "./jobs.service";
     FarmJobsService,
     JobCompletions,
     FarmAudit,
-    // Open until BR.5 (#489) makes a workspace's pause an organization state.
-    { provide: FARM_DISPATCH_GATE, useValue: OPEN_GATE },
+    // BR.5 (#489): a paused or pending-deletion workspace is offered nothing new.
+    { provide: FARM_DISPATCH_GATE, useExisting: LifecycleDispatchGate },
   ],
   exports: [FarmJobsService, JobCompletions, FARM_DISPATCH_GATE],
 })

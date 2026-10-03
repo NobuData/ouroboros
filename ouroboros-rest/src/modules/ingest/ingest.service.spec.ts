@@ -2,6 +2,8 @@ import type { Transaction } from "kysely";
 
 import type { Database, Run, RunStage } from "../db/schema";
 import { DomainError } from "../errors/error.envelope";
+import { LIFECYCLE_ERRORS } from "../lifecycle/lifecycle.errors";
+import { ACTIVE_STATES, statesOf } from "../lifecycle/lifecycle.fixture";
 import type { GuardrailCheck } from "../db/schema";
 import type { GuardrailRequest, GuardrailScheduler } from "./ingest.guardrails";
 import { INGEST_ERRORS } from "./ingest.errors";
@@ -285,7 +287,7 @@ describe("opening a run", () => {
   it("resolves the workspace from the ticket and never from the body", async () => {
     const { repository, spy } = stubRepository();
 
-    await new IngestService(repository, stubGuardrails()).openRun(OPEN, false);
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(OPEN, false);
 
     // The workspace the run is written with is the ticket's, and the request never named one.
     expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ organization_id: WORKSPACE });
@@ -294,7 +296,7 @@ describe("opening a run", () => {
 
   it("takes simulated from the principal, not from anything the caller sent", async () => {
     const { repository, spy } = stubRepository();
-    const service = new IngestService(repository, stubGuardrails());
+    const service = new IngestService(repository, stubGuardrails(), ACTIVE_STATES);
 
     await service.openRun(OPEN, true);
     expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ simulated: true });
@@ -308,7 +310,7 @@ describe("opening a run", () => {
     // none of them entered, and as many as the document draws.
     const { repository, spy } = stubRepository();
 
-    await new IngestService(repository, stubGuardrails()).openRun(OPEN, false);
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(OPEN, false);
 
     expect(spy.insertRun.mock.calls[0][1]).toMatchObject({
       stage_label: "Issue queued",
@@ -322,7 +324,7 @@ describe("opening a run", () => {
     const { repository, spy } = stubRepository();
     spy.queuedPlaybook.mockResolvedValueOnce("5eed0046-0000-4000-8000-000000000001");
 
-    await new IngestService(repository, stubGuardrails()).openRun(OPEN, false);
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(OPEN, false);
 
     expect(spy.queuedPlaybook.mock.calls[0][1]).toMatchObject({
       organizationId: WORKSPACE,
@@ -336,7 +338,7 @@ describe("opening a run", () => {
   it("opens an ordinary run with no playbook when no queued row names one", async () => {
     const { repository, spy } = stubRepository();
 
-    await new IngestService(repository, stubGuardrails()).openRun(OPEN, false);
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(OPEN, false);
 
     expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ playbook_id: null });
   });
@@ -346,7 +348,12 @@ describe("opening a run", () => {
     spy.ticketsByKey.mockResolvedValueOnce([]);
 
     expect(
-      await codeOf(new IngestService(repository, stubGuardrails()).openRun(OPEN as never, false)),
+      await codeOf(
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+          OPEN as never,
+          false,
+        ),
+      ),
     ).toBe(INGEST_ERRORS.ticketNotFound);
   });
 
@@ -358,7 +365,12 @@ describe("opening a run", () => {
     ]);
 
     expect(
-      await codeOf(new IngestService(repository, stubGuardrails()).openRun(OPEN as never, false)),
+      await codeOf(
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+          OPEN as never,
+          false,
+        ),
+      ),
     ).toBe(INGEST_ERRORS.ticketAmbiguous);
   });
 
@@ -371,7 +383,12 @@ describe("opening a run", () => {
     ]);
 
     expect(
-      await codeOf(new IngestService(repository, stubGuardrails()).openRun(OPEN as never, false)),
+      await codeOf(
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+          OPEN as never,
+          false,
+        ),
+      ),
     ).toBe(INGEST_ERRORS.ticketNotNumbered);
   });
 
@@ -380,7 +397,12 @@ describe("opening a run", () => {
     spy.repositoryBelongsTo.mockResolvedValueOnce(false);
 
     expect(
-      await codeOf(new IngestService(repository, stubGuardrails()).openRun(OPEN as never, false)),
+      await codeOf(
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+          OPEN as never,
+          false,
+        ),
+      ),
     ).toBe(INGEST_ERRORS.repositoryNotFound);
   });
 
@@ -389,7 +411,10 @@ describe("opening a run", () => {
     missing.spy.pinnedDefinition.mockResolvedValueOnce(undefined);
     expect(
       await codeOf(
-        new IngestService(missing.repository, stubGuardrails()).openRun(OPEN as never, false),
+        new IngestService(missing.repository, stubGuardrails(), ACTIVE_STATES).openRun(
+          OPEN as never,
+          false,
+        ),
       ),
     ).toBe(INGEST_ERRORS.workflowPinNotFound);
 
@@ -397,7 +422,10 @@ describe("opening a run", () => {
     unreadable.spy.pinnedDefinition.mockResolvedValueOnce({ definition: { nodes: 3 } });
     expect(
       await codeOf(
-        new IngestService(unreadable.repository, stubGuardrails()).openRun(OPEN as never, false),
+        new IngestService(unreadable.repository, stubGuardrails(), ACTIVE_STATES).openRun(
+          OPEN as never,
+          false,
+        ),
       ),
     ).toBe(INGEST_ERRORS.workflowPinUnreadable);
   });
@@ -415,7 +443,10 @@ describe("replaying a key", () => {
       response: stored,
     });
 
-    const answer = await new IngestService(repository, stubGuardrails()).openRun(OPEN, false);
+    const answer = await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+      OPEN,
+      false,
+    );
 
     expect(answer).toEqual(stored);
     expect(spy.insertRun).not.toHaveBeenCalled();
@@ -432,7 +463,12 @@ describe("replaying a key", () => {
     });
 
     expect(
-      await codeOf(new IngestService(repository, stubGuardrails()).openRun(OPEN as never, false)),
+      await codeOf(
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+          OPEN as never,
+          false,
+        ),
+      ),
     ).toBe(INGEST_ERRORS.idempotencyKeyReused);
   });
 
@@ -453,7 +489,10 @@ describe("replaying a key", () => {
       .mockResolvedValueOnce({ request_digest: requestDigest(OPEN), response: stored });
 
     expect(
-      await new IngestService(repository, stubGuardrails()).openRun(OPEN as never, false),
+      await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(
+        OPEN as never,
+        false,
+      ),
     ).toEqual(stored);
   });
 
@@ -464,13 +503,13 @@ describe("replaying a key", () => {
     );
 
     await expect(
-      new IngestService(repository, stubGuardrails()).openRun(OPEN as never, false),
+      new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(OPEN as never, false),
     ).rejects.toThrow("nope");
   });
 
   it("records a receipt for every operation, in the same transaction", async () => {
     const { repository, spy, written } = stubRepository();
-    const service = new IngestService(repository, stubGuardrails());
+    const service = new IngestService(repository, stubGuardrails(), ACTIVE_STATES);
 
     await service.openRun(OPEN, false);
     await service.transitionStage(RUN, {
@@ -513,7 +552,7 @@ describe("a stage transition", () => {
 
     expect(
       await codeOf(
-        new IngestService(repository, stubGuardrails()).transitionStage(RUN, {
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).transitionStage(RUN, {
           ...MOVE,
           stageKey: "deploy",
         } as never),
@@ -527,7 +566,7 @@ describe("a stage transition", () => {
     spy.stageAttempt.mockResolvedValueOnce({ status: "pending", started_at: null });
 
     try {
-      await new IngestService(repository, stubGuardrails()).transitionStage(RUN, {
+      await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).transitionStage(RUN, {
         ...MOVE,
         status: "succeeded",
       } as never);
@@ -547,7 +586,7 @@ describe("a stage transition", () => {
 
     expect(
       await codeOf(
-        new IngestService(repository, stubGuardrails()).transitionStage(RUN, {
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).transitionStage(RUN, {
           ...MOVE,
           attempt: 4,
         } as never),
@@ -558,7 +597,7 @@ describe("a stage transition", () => {
   it("does not refuse an attempt on a stage the pin gives no limit", async () => {
     const { repository, spy } = stubRepository();
 
-    await new IngestService(repository, stubGuardrails()).transitionStage(RUN, {
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).transitionStage(RUN, {
       ...MOVE,
       stageKey: "queued",
     } as never);
@@ -576,7 +615,7 @@ describe("a stage transition", () => {
 
     expect(
       await codeOf(
-        new IngestService(repository, stubGuardrails()).transitionStage(RUN, {
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).transitionStage(RUN, {
           ...MOVE,
           returnedFrom: { stageKey: "queued", kind: "gate", reason: "failed_tests" },
         } as never),
@@ -587,7 +626,10 @@ describe("a stage transition", () => {
   it("writes the pin's label, position and limits onto the row", async () => {
     const { repository, spy } = stubRepository();
 
-    await new IngestService(repository, stubGuardrails()).transitionStage(RUN, MOVE as never);
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).transitionStage(
+      RUN,
+      MOVE as never,
+    );
 
     expect(spy.insertStage.mock.calls[0][1]).toMatchObject({
       stage_label: "Code the change",
@@ -603,7 +645,7 @@ describe("a stage transition", () => {
     const { repository, spy } = stubRepository();
     const at = "2026-09-22T14:30:00.000Z";
 
-    await new IngestService(repository, stubGuardrails()).transitionStage(RUN, {
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).transitionStage(RUN, {
       ...MOVE,
       status: "pending",
       at,
@@ -613,7 +655,7 @@ describe("a stage transition", () => {
       finished_at: null,
     });
 
-    await new IngestService(repository, stubGuardrails()).transitionStage(RUN, {
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).transitionStage(RUN, {
       ...MOVE,
       status: "active",
       at,
@@ -632,7 +674,7 @@ describe("a stage transition", () => {
     spy.stageState.mockResolvedValueOnce({ attempt: 1, status: "active" });
     spy.stageAttempt.mockResolvedValueOnce({ status: "active", started_at: began });
 
-    await new IngestService(repository, stubGuardrails()).transitionStage(RUN, {
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).transitionStage(RUN, {
       ...MOVE,
       status: "succeeded",
       at: "2026-09-22T14:40:00.000Z",
@@ -657,7 +699,11 @@ describe("a stage transition", () => {
       }),
     );
 
-    const answer = await new IngestService(repository, stubGuardrails()).transitionStage(RUN, {
+    const answer = await new IngestService(
+      repository,
+      stubGuardrails(),
+      ACTIVE_STATES,
+    ).transitionStage(RUN, {
       ...MOVE,
       attempt: 2,
       returnedFrom: { stageKey: "queued", kind: "gate", reason: "failed_tests" },
@@ -679,7 +725,7 @@ describe("appending to the transcript", () => {
 
     expect(
       await codeOf(
-        new IngestService(repository, stubGuardrails()).appendEvents(RUN, {
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).appendEvents(RUN, {
           idempotencyKey: "k",
           events: [{ hint: 20, actor: "system", body: "x" }],
         } as never),
@@ -694,7 +740,7 @@ describe("appending to the transcript", () => {
 
     expect(
       await codeOf(
-        new IngestService(repository, stubGuardrails()).appendEvents(RUN, {
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).appendEvents(RUN, {
           idempotencyKey: "k",
           events: [
             { hint: 21, actor: "system", body: "a" },
@@ -709,7 +755,7 @@ describe("appending to the transcript", () => {
     const { repository, written } = stubRepository();
 
     await codeOf(
-      new IngestService(repository, stubGuardrails()).appendEvents(RUN, {
+      new IngestService(repository, stubGuardrails(), ACTIVE_STATES).appendEvents(RUN, {
         idempotencyKey: "k",
         events: [{ hint: 1, actor: "system", body: "x" }],
       } as never),
@@ -721,7 +767,11 @@ describe("appending to the transcript", () => {
   it("reports the store's sequence numbers, not the caller's hints", async () => {
     const { repository } = stubRepository();
 
-    const answer = await new IngestService(repository, stubGuardrails()).appendEvents(RUN, {
+    const answer = await new IngestService(
+      repository,
+      stubGuardrails(),
+      ACTIVE_STATES,
+    ).appendEvents(RUN, {
       idempotencyKey: "k",
       events: [
         { hint: 21, actor: "system", body: "a" },
@@ -749,7 +799,11 @@ describe("appending to the transcript", () => {
     ]);
     spy.eventCounters.mockResolvedValueOnce({ hint: 22, elided: true });
 
-    const answer = await new IngestService(repository, stubGuardrails()).appendEvents(RUN, {
+    const answer = await new IngestService(
+      repository,
+      stubGuardrails(),
+      ACTIVE_STATES,
+    ).appendEvents(RUN, {
       idempotencyKey: "k",
       events: [
         { hint: 21, actor: "system", body: "a" },
@@ -772,7 +826,7 @@ describe("reporting a change-set", () => {
     const { repository, spy } = stubRepository();
     const guardrails = stubGuardrails();
 
-    const answer = await new IngestService(repository, guardrails).reportFiles(RUN, {
+    const answer = await new IngestService(repository, guardrails, ACTIVE_STATES).reportFiles(RUN, {
       idempotencyKey: "k",
       files: [{ path: "a.c", status: "modified", additions: 3 }],
     } as never);
@@ -798,7 +852,7 @@ describe("reporting a change-set", () => {
     const guardrails = stubGuardrails();
     const hunks = [{ newStart: 10, lines: [{ kind: "add", text: "int x = 1;" }] }];
 
-    await new IngestService(repository, guardrails).reportFiles(RUN, {
+    await new IngestService(repository, guardrails, ACTIVE_STATES).reportFiles(RUN, {
       idempotencyKey: "k",
       files: [
         { path: "a.c", status: "modified", additions: 1, hunks },
@@ -825,6 +879,7 @@ describe("reporting a change-set", () => {
     const answer = await new IngestService(
       repository,
       stubGuardrails(["secrets", "ci_config"]),
+      ACTIVE_STATES,
     ).reportFiles(RUN, {
       idempotencyKey: "k",
       files: [{ path: "a.c", status: "modified", additions: 3 }],
@@ -840,7 +895,7 @@ describe("reporting a change-set", () => {
     const { repository, spy } = stubRepository();
     const guardrails = stubGuardrails();
 
-    const answer = await new IngestService(repository, guardrails).reportFiles(RUN, {
+    const answer = await new IngestService(repository, guardrails, ACTIVE_STATES).reportFiles(RUN, {
       idempotencyKey: "k",
       files: [],
     });
@@ -856,7 +911,7 @@ describe("reporting a change-set", () => {
   it("tells the gate engine the run was judged, once the report has committed", async () => {
     const { repository } = stubRepository();
     const gates = { notify: jest.fn().mockResolvedValue(undefined) };
-    const service = new IngestService(repository, stubGuardrails(), gates);
+    const service = new IngestService(repository, stubGuardrails(), ACTIVE_STATES, gates);
 
     await service.reportFiles(RUN, {
       idempotencyKey: "k",
@@ -876,7 +931,7 @@ describe("reporting a change-set", () => {
     // A run that reverted everything it did has an empty change-set, not a stale one.
     const { repository, spy } = stubRepository();
 
-    await new IngestService(repository, stubGuardrails()).reportFiles(RUN, {
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).reportFiles(RUN, {
       idempotencyKey: "k",
       files: [],
     });
@@ -887,7 +942,7 @@ describe("reporting a change-set", () => {
   it("defaults a file's counts to zero rather than leaving them absent", async () => {
     const { repository, spy } = stubRepository();
 
-    await new IngestService(repository, stubGuardrails()).reportFiles(RUN, {
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).reportFiles(RUN, {
       idempotencyKey: "k",
       files: [{ path: "gone.c", status: "deleted" }],
     } as never);
@@ -903,7 +958,11 @@ describe("reporting commits", () => {
     const { repository, spy } = stubRepository();
     spy.knownCommitShas.mockResolvedValueOnce(new Set(["a41c9e2"]));
 
-    const answer = await new IngestService(repository, stubGuardrails()).reportCommits(RUN, {
+    const answer = await new IngestService(
+      repository,
+      stubGuardrails(),
+      ACTIVE_STATES,
+    ).reportCommits(RUN, {
       idempotencyKey: "k",
       commits: [
         { sha: "a41c9e2", message: "m", committedAt: "2026-09-22T14:30:12.000Z" },
@@ -922,7 +981,7 @@ describe("reporting commits", () => {
     // and a number handed to a row that is never written is a gap in the card's ordering.
     const { repository, spy } = stubRepository();
 
-    await new IngestService(repository, stubGuardrails()).reportCommits(RUN, {
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).reportCommits(RUN, {
       idempotencyKey: "k",
       commits: [
         { sha: "7f03b8d", message: "n", committedAt: "2026-09-22T14:34:47.000Z" },
@@ -938,7 +997,7 @@ describe("reporting resources", () => {
   it("attributes spend to the run's own workspace", async () => {
     const { repository, spy } = stubRepository();
 
-    await new IngestService(repository, stubGuardrails()).reportResources(RUN, {
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).reportResources(RUN, {
       idempotencyKey: "k",
       spend: { provider: "anthropic", model: "claude-fable-5", tokensIn: 10, tokensOut: 2 },
     });
@@ -952,7 +1011,7 @@ describe("reporting resources", () => {
 
   it("takes a reservation, releases one on null, and says nothing when absent", async () => {
     const { repository, spy } = stubRepository();
-    const service = new IngestService(repository, stubGuardrails());
+    const service = new IngestService(repository, stubGuardrails(), ACTIVE_STATES);
 
     await service.reportResources(RUN, {
       idempotencyKey: "a",
@@ -973,7 +1032,7 @@ describe("reporting resources", () => {
 
     expect(
       await codeOf(
-        new IngestService(repository, stubGuardrails()).reportResources(RUN, {
+        new IngestService(repository, stubGuardrails(), ACTIVE_STATES).reportResources(RUN, {
           idempotencyKey: "k",
           reservedBuildJob: "job",
         }),
@@ -985,7 +1044,7 @@ describe("reporting resources", () => {
     const { repository } = stubRepository();
 
     expect(
-      await new IngestService(repository, stubGuardrails()).reportResources(RUN, {
+      await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).reportResources(RUN, {
         idempotencyKey: "k",
         spend: { provider: "anthropic", model: "m", tokensIn: 10, tokensOut: 2 },
       }),
@@ -1038,7 +1097,7 @@ describe("a run that is not there", () => {
     const { repository, spy } = stubRepository();
     spy.lockRun.mockResolvedValueOnce(undefined);
 
-    expect(await codeOf(call(new IngestService(repository, stubGuardrails())))).toBe(
+    expect(await codeOf(call(new IngestService(repository, stubGuardrails(), ACTIVE_STATES)))).toBe(
       INGEST_ERRORS.runNotFound,
     );
   });
@@ -1053,5 +1112,85 @@ describe("mapping a stage row", () => {
     expect(answer.startedAt).toBe("2026-09-22T14:30:00.000Z");
     expect(answer.finishedAt).toBeNull();
     expect(answer.returnedFrom).toBeNull();
+  });
+});
+
+describe("a workspace that is not active (#489)", () => {
+  /** A service whose one workspace stands where the test says. */
+  function serviceIn(state: "paused" | "pending_delete", repository: IngestRepository) {
+    return new IngestService(repository, stubGuardrails(), statesOf(new Map([[WORKSPACE, state]])));
+  }
+
+  it("opens no run while paused — the queue does not advance", async () => {
+    const { repository, spy } = stubRepository();
+
+    expect(await codeOf(serviceIn("paused", repository).openRun(OPEN, false))).toBe(
+      LIFECYCLE_ERRORS.workspacePaused,
+    );
+    expect(spy.insertRun).not.toHaveBeenCalled();
+  });
+
+  it("opens no run while pending deletion", async () => {
+    const { repository, spy } = stubRepository();
+
+    expect(await codeOf(serviceIn("pending_delete", repository).openRun(OPEN, false))).toBe(
+      LIFECYCLE_ERRORS.workspacePendingDelete,
+    );
+    expect(spy.insertRun).not.toHaveBeenCalled();
+  });
+
+  it("still answers a replay, which opens nothing new", async () => {
+    const { repository, spy } = stubRepository();
+    const stored = { id: RUN, loopSeq: 1847 };
+    spy.findReceipt.mockResolvedValueOnce({
+      request_digest: requestDigest(OPEN),
+      response: stored,
+    });
+
+    await expect(serviceIn("paused", repository).openRun(OPEN, false)).resolves.toEqual(stored);
+  });
+
+  it("starts no stage while paused — the next stage holds", async () => {
+    const { repository, spy } = stubRepository();
+
+    expect(
+      await codeOf(
+        serviceIn("paused", repository).transitionStage(RUN, {
+          idempotencyKey: "k",
+          stageKey: "implement",
+          status: "active",
+        } as never),
+      ),
+    ).toBe(LIFECYCLE_ERRORS.workspacePaused);
+    expect(spy.insertStage).not.toHaveBeenCalled();
+    expect(spy.updateStage).not.toHaveBeenCalled();
+  });
+
+  it("lets the stage in flight finish while paused", async () => {
+    const { repository, spy } = stubRepository();
+    spy.stageState.mockResolvedValueOnce({ attempt: 1, status: "active" });
+    spy.stageAttempt.mockResolvedValueOnce({ status: "active", started_at: new Date() });
+
+    await serviceIn("paused", repository).transitionStage(RUN, {
+      idempotencyKey: "k",
+      stageKey: "implement",
+      status: "succeeded",
+    } as never);
+
+    expect(spy.updateStage).toHaveBeenCalledTimes(1);
+  });
+
+  it("lets a pending stage be skipped while paused — skipping starts nothing", async () => {
+    const { repository, spy } = stubRepository();
+    spy.stageState.mockResolvedValueOnce({ attempt: 1, status: "pending" });
+    spy.stageAttempt.mockResolvedValueOnce({ status: "pending", started_at: null });
+
+    await serviceIn("paused", repository).transitionStage(RUN, {
+      idempotencyKey: "k",
+      stageKey: "implement",
+      status: "skipped",
+    } as never);
+
+    expect(spy.updateStage).toHaveBeenCalledTimes(1);
   });
 });

@@ -71,7 +71,8 @@ export type AuditSubjectType =
   | "runner_pool_window"
   | "farm_job_hook"
   | "analysis_suggestion"
-  | "draft_batch";
+  | "draft_batch"
+  | "workspace";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -403,6 +404,27 @@ export const ANALYZER_RUN_REQUESTED_EVENT = "analyzer.run_requested";
 export const ANALYZER_SCHEDULE_UPDATED_EVENT = "analyzer.schedule_updated";
 
 /**
+ * The Danger zone's six transitions (BR.5, [#489](https://github.com/NobuData/ouroboros/issues/489)),
+ * all subject `workspace` with the workspace id as `subjectId`. Each is also written to the
+ * `audit_event_outbox` as `audit.<action>`, for BR.3's webhook delivery.
+ *
+ * `workspace.purged` is the one whose `audit_events` row cannot survive: the trail cascades with
+ * its workspace (V022), so the purge's record is the `workspace_tombstones` row and its outbox
+ * event, both of which outlive the workspace on purpose. Its actor is `null` — the system.
+ */
+export const WORKSPACE_PAUSED_EVENT = "workspace.paused";
+/** All loops resumed: the workspace returned from `paused` to `active` (#489). */
+export const WORKSPACE_RESUMED_EVENT = "workspace.resumed";
+/** The GitHub source was disconnected: token cleared, sources paused, loops paused (#489). */
+export const WORKSPACE_DISCONNECTED_EVENT = "workspace.disconnected";
+/** The owner asked for deletion: the workspace is `pending_delete` for 30 days (#489). */
+export const WORKSPACE_DELETE_REQUESTED_EVENT = "workspace.delete_requested";
+/** The owner restored a workspace pending deletion to `active` (#489). */
+export const WORKSPACE_RESTORED_EVENT = "workspace.restored";
+/** The scheduled purge ran: DEK destroyed, data deleted, tombstone written (#489). */
+export const WORKSPACE_PURGED_EVENT = "workspace.purged";
+
+/**
  * A runner was given a time-windowed pool assignment — *"forge-02 joins pool-a between
  * 14:00–16:00 UTC on weekdays"* (BV.5, [#514](https://github.com/NobuData/ouroboros/issues/514)).
  * Subject `runner_pool_window`; the detail names the runner, the pool, the days and the window.
@@ -507,6 +529,12 @@ export const AUDIT_ACTIONS = [
   ANALYSIS_SUGGESTION_DRAFTED_EVENT,
   ANALYZER_BATCH_PUSHED_EVENT,
   ANALYZER_SCHEDULE_UPDATED_EVENT,
+  WORKSPACE_PAUSED_EVENT,
+  WORKSPACE_RESUMED_EVENT,
+  WORKSPACE_DISCONNECTED_EVENT,
+  WORKSPACE_DELETE_REQUESTED_EVENT,
+  WORKSPACE_RESTORED_EVENT,
+  WORKSPACE_PURGED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

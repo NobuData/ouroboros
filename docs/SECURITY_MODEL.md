@@ -226,10 +226,46 @@ cannot exist whatever writes the table.
 
 ### 2.6 Deleting a workspace destroys its credentials
 
-`tenant_keys` cascades from `organization`. Deleting a workspace destroys its DEK, and
-every ciphertext that DEK sealed becomes unopenable — **including the copies in every
-backup taken while it existed**, because a backup holds the rows and does not hold the
-key. That is a stronger deletion guarantee than deleting rows can give.
+> **Shipped** — BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)): the workspace
+> lifecycle that invokes this.
+
+**Crypto-shredding is the deletion guarantee**, and it is the only deletion claim this
+architecture can make truthfully. Deleting rows cannot reach a backup. Destroying the key that
+sealed the rows can.
+
+Deleting a workspace is a lifecycle rather than a statement. The owner types the workspace's name
+exactly and passes a step-up ([§6.2](#62-reveal-is-privileged-audited-and-rate-limited)'s). The
+workspace is then `pending_delete` for **30 days**: every non-owner session acting in it is
+revoked, every surface is frozen behind a recovery screen, and nothing new is dispatched. An owner
+may restore it until the window closes. Then a scheduled purge runs, as actor `system`:
+
+1. **destroys every version of the workspace's DEK** (`tenant_keys`), first, so an interrupted
+   purge has already made the live ciphertext unreadable;
+2. deletes the workspace's artifact objects from the object store;
+3. removes the organization, from which every tenant table cascades, and counts the rows that
+   still name it (asserted zero);
+4. keeps a tombstone (`workspace_tombstones`) and queues `audit.workspace.purged`, both of which
+   outlive the workspace on purpose.
+
+After step 1, every ciphertext that DEK sealed is unopenable by the live system. The purge
+rehearsal (`lifecycle.integration-spec.ts`) asserts that in CI: a value sealed before the purge
+fails to decrypt after it.
+
+**What this does and does not reach in a backup, stated exactly.** A backup taken while the
+workspace existed holds its ciphertext *and* its `tenant_keys` rows, which are sealed under the
+KEK. Neither is readable from the backup alone, which is encryption at rest. After the purge, the
+backup's copy of the DEK is still openable by anyone who holds both that backup and the KEK that
+sealed it. The shred therefore reaches a backup when either:
+
+- the KEK that sealed those rows is retired, by the custody re-wrap
+  ([§3.5](#35-upgrading-custody-is-a-re-wrap)) of every surviving workspace followed by destroying
+  the old KEK; or
+- every backup taken before the purge has aged out of retention.
+
+Until one of those happens, the deletion claim for backups is bounded by the KEK's custody
+([§3](#3-key-custody-per-deployment-mode)), not by the purge. Under a per-tenant KMS key
+(AF.3, [#236](https://github.com/NobuData/ouroboros/issues/236)), destroying that key would make
+the purge reach every backup at once. That is Planned, not true today.
 
 It holds only because the key lives in one place. **The vault keeps no key cache**, and
 that is a decision rather than an omission: a DEK held in a process after its row was
@@ -1228,16 +1264,17 @@ never leave your deployment.** That one is true of every installation today, and
 
 Later roadmaps filed four additions against this document — three amendment comments on
 [#226](https://github.com/NobuData/ouroboros/issues/226), carrying four items between them.
-**Two of the four have landed**: the build-farm CA is now
-[§7](#7-the-build-farms-certificate-authority) and the Build Analyzer's tenant locality is
-[§6.6](#66-the-build-analyzers-corpus-stays-on-the-tenant) rather than lines in this table, which
-is what §10 means by a section moving from Planned to Shipped. The two below are still **Planned**;
-each becomes a section of its own when the work it describes lands. They are listed rather than
+**Three of the four have landed**: the build-farm CA is now
+[§7](#7-the-build-farms-certificate-authority), the Build Analyzer's tenant locality is
+[§6.6](#66-the-build-analyzers-corpus-stays-on-the-tenant), and crypto-shredding as the deletion
+guarantee (BR.5, [#489](https://github.com/NobuData/ouroboros/issues/489)) is
+[§2.6](#26-deleting-a-workspace-destroys-its-credentials), rather than lines in this table. That is
+what §10 means by a section moving from Planned to Shipped. The one below is still **Planned**,
+and it becomes a section of its own when the work it describes lands. They are listed rather than
 written up as though they were true, which is the same rule the rest of this document follows.
 
 | Coming | From | What this document will gain |
 |---|---|---|
-| **Crypto-shredding as the deletion guarantee** | BR.5 ([#489](https://github.com/NobuData/ouroboros/issues/489)) | Workspace deletion — typed confirmation and step-up, then `pending_delete`, then a 30-day recovery window, then a scheduled purge that deletes tenant data across planes **and destroys the tenant DEK**. That last clause is what makes residual ciphertext in backups permanently unreadable; row deletion alone cannot reach a backup. [§2.6](#26-deleting-a-workspace-destroys-its-credentials) is the mechanism, and #489 is the lifecycle that invokes it. |
 | **Deployment truth in Settings** | BQ.4 ([#483](https://github.com/NobuData/ouroboros/issues/483)), roadmap decision **S6** | The settings page renders what is true of *this* deployment: a self-hosted install shows its region read-only rather than offering a chooser it cannot honour, and states plainly that this deployment never trains on your data. The residency documentation that card links to is this document. |
 
 ---

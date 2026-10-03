@@ -416,7 +416,7 @@ seeds: policy v7(+v6) · 5 members (owner/admin/viewer/service/pending) ·
 | BR.2 | #486 | 🟡 Open | ouroboros-rest: [BR.2] Audit plane — viewer, export & retention | Filterable queries, streamed CSV, 400d tier (delivers #26) | mvp, settings, rest | N (after AD.4 shape, BQ.3) | Y | M | ouroboros-rest |
 | BR.3 | #487 | 🟡 Open | ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming | Endpoint CRUD, signed deliveries, retries+DLQ, audit fan-out | mvp, settings, rest | N (after AD.4, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
 | BR.4 | #488 | 🟡 Open | ouroboros-rest: [BR.4] Integrations status hub & org notification routes | Composed connection truth; org-level routes (weekly report etc.) | mvp, settings, rest | N (after BN.3, BJ.4) | Y | M | ouroboros-rest |
-| BR.5 | #489 | 🟡 Open | ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete | Org states, dispatch gating, recovery window, DEK shred (S9) | mvp, settings, rest | N (after AD.1, AP/AH dispatch) | Y | L | ouroboros-rest |
+| BR.5 | #489 ✅ | 🟢 Done | ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete | Org states, dispatch gating, recovery window, DEK shred (S9) | mvp, settings, rest | N (after AD.1, AP/AH dispatch) | Y | L | ouroboros-rest |
 | BR.6 | #490 | 🟡 Open | ouroboros-rest: [BR.6] Settings integration tests | Policy enforcement, capabilities, audit/webhooks, lifecycle | mvp, settings, rest, ci | N (after BR.1–BR.5, BQ.2) | Y | M | ouroboros-rest |
 
 ### Issue BR.1 — ouroboros-rest: [BR.1] Members, capabilities & service accounts
@@ -546,7 +546,7 @@ routes: daily_digest{09:00, email} ✓ · loop_failures{pagerduty} 🔒 "connect
 
 ### Issue BR.5 — ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete
 
-> **GitHub issue:** #489 · **Status:** 🟡 Open · **Parent epic:** #477
+> **GitHub issue:** #489 ✅ · **Status:** 🟢 Done · **Parent epic:** #477
 
 - **Problem Statement:** The danger zone's three operations must be exact
   mechanism (decision S9): graceful pause, consequence-previewed
@@ -577,6 +577,40 @@ routes: daily_digest{09:00, email} ✓ · loop_failures{pagerduty} 🔒 "connect
 pause ─▶ org_state: paused ─▶ dispatch checks hold (stages finish) · banner everywhere
 delete "acme-robotics" + step-up ─▶ pending_delete (30d recovery) ─▶ purge + DEK destroyed 🔥
 ```
+
+- **Delivered** (`ouroboros-rest` 0.38.16 `src/modules/lifecycle/`; `ouroboros-db` V090;
+  `ouroboros-engine` 0.7.14 ingest error mirror; `docs/SECURITY_MODEL.md` §2.6). Three things were
+  decided with the user where the issue and the codebase disagreed.
+  - **Webhook emission before BR.3 exists — an outbox, decided with the user.** Every transition
+    writes `audit.workspace.*` to `audit_event_outbox` in the transaction that moves the state;
+    #487 delivers from that table rather than adding a second emitter. The table has no foreign
+    key, so `audit.workspace.purged` outlives the workspace.
+  - **Disconnect — decided with the user.** There is no GitHub App installation table, so
+    disconnect is pause + delete the stored GitHub token + pause every active GitHub ticket source.
+    `pull_requests` is untouched. The preview counts open PRs, unfinished runs, syncing sources,
+    enabled repositories and whether a token is stored.
+  - **Purge scope — decided with the user: Postgres and the artifact store.** The DEK is destroyed
+    first, then the artifact objects, then the organization (through BetterAuth's adapter, since
+    it owns the row; every tenant table cascades), then a census of every table naming the
+    workspace, which is asserted zero, then the `workspace_tombstones` row. The workspace's own
+    `audit_events` cascade with it (V022), so the purge's lasting record is the tombstone plus the
+    outbox event, with actor `system`.
+  - **Dispatch points.** Queue pull = `POST /internal/runs` and stage advancement = a transition
+    *into* `active`, both refused `409 workspace_paused | workspace_pending_delete`. Finishing,
+    failing or skipping the stage in flight always lands. Farm dispatch is the
+    `FARM_DISPATCH_GATE` seam bound to `LifecycleDispatchGate` (one pass per `DISPATCH_INTERVAL_MS`).
+    The state is read per request, uncached.
+  - **Freeze.** A third global guard after the tenant and roles guards. In `pending_delete` a
+    non-owner gets `403 workspace_pending_delete` everywhere, and an owner gets it everywhere
+    except `GET /settings/lifecycle` and `POST /settings/lifecycle/restore`. It also covers
+    sessions acting by `X-Ouro-Tenant`, which the revocation (by `activeOrganizationId`) cannot
+    reach, and the five-minute cookie cache.
+  - **Step-up** is AD.2's, extracted into a shared `StepUpModule` so delete and provider reveal
+    share one registry.
+  - **The backup claim, stated truthfully.** A backup taken while the workspace existed also holds
+    its sealed DEK rows, wrapped under the KEK. Destroying the live rows makes backup ciphertext
+    unreadable only once that KEK is retired (the §3.5 re-wrap) or those backups age out.
+    §2.6 now says so rather than claiming more.
 
 ### Issue BR.6 — ouroboros-rest: [BR.6] Settings integration tests
 

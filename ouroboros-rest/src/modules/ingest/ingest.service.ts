@@ -57,6 +57,9 @@ import type { Transaction } from "kysely";
 
 import type { Database, Run, RunIngestOperation, RunStage } from "../db/schema";
 import { GATE_EVIDENCE, type GateEvidenceSink } from "../pull-requests/gates/gate.evidence";
+import { workspaceNotAdmitting } from "../lifecycle/lifecycle.errors";
+import { WorkspaceStateReader } from "../lifecycle/lifecycle.state";
+import { admitsNewWork } from "../lifecycle/lifecycle.states";
 import { isDatabaseFailure } from "../tenancy/constraints";
 import {
   GUARDRAIL_SCHEDULER,
@@ -121,12 +124,16 @@ export class IngestService {
    * @param runs - Every statement the contract issues.
    * @param guardrails - What a change-set report triggers. Injected by token, because AP.3
    *   ([#305](https://github.com/NobuData/ouroboros/issues/305)) substitutes for it.
+   * @param states - Where each workspace stands (BR.5,
+   *   [#489](https://github.com/NobuData/ouroboros/issues/489)): a paused or pending-deletion
+   *   workspace opens no run and starts no stage, while work in flight still reports.
    * @param gates - The gate engine's sink, told once judged verdicts have committed (AX.2,
    *   [#358](https://github.com/NobuData/ouroboros/issues/358)); absent without the engine.
    */
   constructor(
     private readonly runs: IngestRepository,
     @InjectGuardrailScheduler() private readonly guardrails: GuardrailScheduler,
+    private readonly states: WorkspaceStateReader,
     @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
   ) {}
 
@@ -176,6 +183,10 @@ export class IngestService {
       if (replay.replayed) {
         return replay.response;
       }
+
+      // The queue pull's hold (#489): a replay above still answers — it opened nothing new —
+      // but a workspace that is not `active` opens no run. The ticket stays queued.
+      await this.admitNewWork(ticket.organizationId);
 
       // `issue_number` is an integer and `external_id` is text, which is V008 and V030
       // disagreeing about what a ticket is. The disagreement is named rather than papered
@@ -292,6 +303,13 @@ export class IngestService {
 
       if (replay.replayed) {
         return replay.response;
+      }
+
+      // Stage advancement's hold (#489): a stage *starting* is new work and waits while the
+      // workspace is not `active`; a stage finishing (`succeeded`/`failed`) or being skipped is
+      // the in-flight stage completing, and always lands.
+      if (request.status === "active") {
+        await this.admitNewWork(row.organization_id);
       }
 
       const stage = await this.pinnedStage(trx, row, request.stageKey);
@@ -701,6 +719,24 @@ export class IngestService {
   }
 
   // --- the shared five steps ----------------------------------------------------------------
+
+  /**
+   * Refuse new work in a workspace that is not `active` (BR.5,
+   * [#489](https://github.com/NobuData/ouroboros/issues/489)).
+   *
+   * Read per request rather than cached, so a pause holds the next run or stage the engine asks
+   * for — within one of its polls, with no second interval to document.
+   *
+   * @param organizationId - The workspace the work belongs to.
+   * @throws {ConflictError} `409 workspace_paused` or `409 workspace_pending_delete`.
+   */
+  private async admitNewWork(organizationId: string): Promise<void> {
+    const state = await this.states.stateOf(organizationId);
+
+    if (!admitsNewWork(state)) {
+      throw workspaceNotAdmitting(state);
+    }
+  }
 
   /**
    * The run, locked for the rest of the transaction.

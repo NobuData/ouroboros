@@ -192,6 +192,20 @@ export class FakeTenantKeys {
     return Promise.resolve(updated);
   }
 
+  /** @see VaultRepository.destroyKeys */
+  destroyKeys(organizationId: string): Promise<number> {
+    let destroyed = 0;
+
+    for (const [at, row] of this.rows) {
+      if (row.organization_id === organizationId) {
+        this.rows.delete(at);
+        destroyed += 1;
+      }
+    }
+
+    return Promise.resolve(destroyed);
+  }
+
   /** @see VaultRepository.organizationIds */
   organizationIds(): Promise<string[]> {
     return Promise.resolve([...this.organizations]);

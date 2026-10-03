@@ -19,6 +19,7 @@ import { ProviderConnectionsRepository } from "./provider-connections.repository
 import { ProviderConnectionsService } from "./provider-connections.service";
 import { RevealLimiter } from "./reveal.limiter";
 import { StepUpRegistry, StepUpService } from "./step-up";
+import { StepUpModule } from "./step-up.module";
 
 /**
  * What the module wires, and the two claims about it that are worth an assertion.
@@ -89,7 +90,7 @@ describe("the provider connections module", () => {
     expect(app.get(RegistryService)).toBeInstanceOf(RegistryService);
   });
 
-  it("imports exactly the six modules whose capabilities it borrows", () => {
+  it("imports exactly the seven modules whose capabilities it borrows", () => {
     // `AuditModule` joined the four with AD.4 (#225): the trail is another module's
     // capability, reached through its exported service, on the same terms as the vault's and
     // the registry's. It is not a provider declared here, which is what keeps *the address
@@ -98,6 +99,8 @@ describe("the provider connections module", () => {
 
     // `ProviderHealthModule` joined with AE.4 (#230): the strip's snapshot is Z.3's to write,
     // and a test that wrote it through a second writer would be two opinions about one column.
+    // `StepUpModule` joined with BR.5 (#489): workspace deletion charges the same step-up, so
+    // the registry is one singleton both modules import.
     expect(imports).toEqual([
       DbModule,
       VaultModule,
@@ -105,6 +108,7 @@ describe("the provider connections module", () => {
       RegistryModule,
       AuditModule,
       ProviderHealthModule,
+      StepUpModule,
     ]);
   });
 
