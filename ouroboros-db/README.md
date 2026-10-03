@@ -1917,7 +1917,10 @@ corpus's builds' counts set so the window totals exactly that — and *312* loop
 recent ones plus older `standard-fix` loops (`5eed006e…`, 31–89 days back, merged or failed, no
 PR row, build or intervention, loop numbers 1301+ below every other). Read under the schedule's
 1.23M-line cap, the log source is sampled at 0.3. The `build_duration` series is seeded the way
-its extractor derives it, and the family marked filled through yesterday. Both runs end
+its extractor derives it, and the family marked filled through yesterday. The page's run names
+the job label that series is of — `duration_label: zephyr build`, by BV.1's rule (the commonest
+succeeded label in the window) — which is what the duration chart draws under the change-points
+([#517](https://github.com/NobuData/ouroboros/issues/517)). Both runs end
 `composing` with every analyzer ticked completed. The
 provenance is `deterministic analyzers v1` and `llm_cost_cents` is null on both runs — no model
 ran, so no `$` (decision A3).

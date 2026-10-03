@@ -23,8 +23,10 @@ export interface PlotFrame {
   readonly width: number;
   /** The viewBox's height. */
   readonly height: number;
-  /** The x of the first point; the last sits the same distance from the right edge. */
+  /** How far the last point sits from the right edge — and, with no gutter, the first from the left. */
   readonly inset: number;
+  /** The x of the first point: the inset, plus the gutter a labelled y-axis takes on the left. */
+  readonly left: number;
   /** The y the largest value in the domain is drawn at. Above it is room for labels. */
   readonly top: number;
   /** The y a value of zero is drawn at — the solid baseline. */
@@ -41,13 +43,23 @@ export interface PlotFrame {
  * @param width The viewBox's width. Values below `40` are raised to `40`, the narrowest box
  *   that still has a plot inside its insets.
  * @param height The viewBox's height. Raised to `60` for the same reason.
+ * @param gutter Room on the left for a y-axis's labels, in viewBox units — mockup 18's duration
+ *   chart keeps `30` for `6m`, `5m`, `4m`. Defaults to none; a negative one is none.
  * @returns The frame.
  */
-export function plotFrame(width: number, height: number): PlotFrame {
+export function plotFrame(width: number, height: number, gutter = 0): PlotFrame {
   const w = Math.max(40, width);
   const h = Math.max(60, height);
+  const inset = 10;
 
-  return { width: w, height: h, inset: 10, top: Math.round(h * 0.2), baseline: h - 30 };
+  return {
+    width: w,
+    height: h,
+    inset,
+    left: inset + Math.max(0, gutter),
+    top: Math.round(h * 0.2),
+    baseline: h - 30,
+  };
 }
 
 /**
@@ -74,16 +86,21 @@ export function domainMax(values: readonly number[], guide?: number): number {
  * @param value The value. Clamped to the domain, so a negative never drops below the baseline.
  * @param max The domain's top, from {@link domainMax}.
  * @param frame The frame.
- * @returns The y, in viewBox units.
+ * @param min The domain's bottom — the value drawn on the baseline. Zero unless the chart has a
+ *   labelled y-axis that starts elsewhere (a duration that never nears zero).
+ * @returns The y, in viewBox units. A domain with no height puts everything on the baseline.
  */
-export function yOf(value: number, max: number, frame: PlotFrame): number {
-  const clamped = Number.isFinite(value) ? Math.min(Math.max(value, 0), max) : 0;
+export function yOf(value: number, max: number, frame: PlotFrame, min = 0): number {
+  const span = max - min;
+  const clamped = Number.isFinite(value) ? Math.min(Math.max(value, min), max) : min;
+  const share = span > 0 ? (clamped - min) / span : 0;
 
-  return round(frame.baseline - (clamped / max) * (frame.baseline - frame.top));
+  return round(frame.baseline - share * (frame.baseline - frame.top));
 }
 
 /**
- * The x the i-th of `count` points is drawn at, spread evenly from inset to inset.
+ * The x the i-th of `count` points is drawn at, spread evenly from the frame's left to its
+ * right inset.
  *
  * A single point has nowhere to spread to and is drawn on the right, where the endpoint of a
  * longer series would be — it *is* the latest value.
@@ -98,7 +115,7 @@ export function xOf(index: number, count: number, frame: PlotFrame): number {
 
   if (count <= 1) return right;
 
-  return round(frame.inset + (index / (count - 1)) * (right - frame.inset));
+  return round(frame.left + (index / (count - 1)) * (right - frame.left));
 }
 
 /**
@@ -107,16 +124,18 @@ export function xOf(index: number, count: number, frame: PlotFrame): number {
  * @param values The series' values.
  * @param max The domain's top.
  * @param frame The frame.
+ * @param min The domain's bottom. Defaults to zero.
  * @returns One point per value, in order.
  */
 export function placePoints(
   values: readonly number[],
   max: number,
   frame: PlotFrame,
+  min = 0,
 ): readonly PlotPoint[] {
   return values.map((value, index) => ({
     x: xOf(index, values.length, frame),
-    y: yOf(value, max, frame),
+    y: yOf(value, max, frame, min),
   }));
 }
 

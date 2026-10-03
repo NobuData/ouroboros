@@ -28,6 +28,10 @@
  * judges every applied suggestion after its window — delivered, under, over or confounded — and
  * recalibrates the analyzer's factor by bounded, reproducible arithmetic; the composer applies the
  * new factor at the next composition.
+ *
+ * The duration chart's read (`duration/`, BW.2, [#517](https://github.com/NobuData/ouroboros/issues/517))
+ * answers the series a run analyzed together with the change-points it detected on it — every
+ * ranked candidate, its score, and evidence resolved to the surface it opens on.
  */
 
 import { Module } from "@nestjs/common";
@@ -58,6 +62,9 @@ import { SuggestionComposer } from "./composer/composer.service";
 import { SYNTHESIZER, UnavailableSynthesizer } from "./composer/synthesis.contract";
 import { CorpusAssembler } from "./corpus/corpus.assembler";
 import { CorpusRepository } from "./corpus/corpus.repository";
+import { DurationChartController } from "./duration/duration.controller";
+import { DurationRepository } from "./duration/duration.repository";
+import { DurationChartService } from "./duration/duration.service";
 import { AnalysisScheduleController } from "./schedule/schedule.controller";
 import { AnalysisScheduleService } from "./schedule/schedule.service";
 
@@ -77,6 +84,7 @@ import { AnalysisScheduleService } from "./schedule/schedule.service";
     AnalysisScheduleController,
     SuggestionActionsController,
     MeasurementController,
+    DurationChartController,
   ],
   providers: [
     CorpusRepository,
@@ -95,6 +103,8 @@ import { AnalysisScheduleService } from "./schedule/schedule.service";
     MeasurementRepository,
     MeasurementService,
     MeasurementScheduler,
+    DurationRepository,
+    DurationChartService,
   ],
   exports: [AnalysisOrchestrator],
 })

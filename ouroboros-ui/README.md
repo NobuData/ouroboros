@@ -3915,16 +3915,19 @@ leg 21's shell assertion found.
 ## Build Analyzer
 
 `/analyzer` ([#516](https://github.com/NobuData/ouroboros/issues/516), mockup 18) — the frame:
-the head, *Run analysis now* with real progress, the schedule editor and the meta strip. The cards
-under it are BW.2–BW.5's. The code is [`app/analyzer/`](app/analyzer); every sentence and format is
-a pure function in [`view.ts`](app/analyzer/view.ts).
+the head, *Run analysis now* with real progress, the schedule editor and the meta strip — and, in
+the mockup's main column, the annotated duration chart
+([#517](https://github.com/NobuData/ouroboros/issues/517)). The remaining cards are BW.3–BW.5's.
+The code is [`app/analyzer/`](app/analyzer); every sentence and format is a pure function in
+[`view.ts`](app/analyzer/view.ts) and [`duration-view.ts`](app/analyzer/duration-view.ts).
 
 - **Repo-scoped by the tenant chip.** The page analyses the chip's focus repository; under
   *All repos* it takes the first enabled one and says how to choose
   ([`repo.ts`](app/analyzer/repo.ts)). It has no sidebar entry: it publishes **Build Farm** as its
   origin, so that entry stays lit. The farm's and the insights' **✦ Build Analyzer** link here.
-- **One poll per repository.** `GET /api/analyzer?repo=` on this origin answers the newest run
-  and the schedule together, and asks to be polled every 3 s while a run is in flight.
+- **One poll per repository.** `GET /api/analyzer?repo=` on this origin answers the newest run,
+  the schedule and the duration chart together, and asks to be polled every 3 s while a run is in
+  flight.
 - **Honest provenance (decision A3).** `Analyzed by` is the run's analyzer-set label
   (`deterministic analyzers v1`) opening the analyzers, their versions and outcomes; a model pill
   appears only beside an analyzer of kind `llm`. `Last run` is compute time; the `$` appears only
@@ -3941,6 +3944,44 @@ a pure function in [`view.ts`](app/analyzer/view.ts).
   counter, and the three budgets. Every member may read it; only an owner or admin may save. The
   form is checked against V080's rules before it is sent, and the service's per-field refusals
   land on the same fields.
+
+### The annotated duration chart
+
+**Build duration · 90 days, with detected change-points**
+([`duration-card.tsx`](app/analyzer/duration-card.tsx), #517) is the `TimeSeries` primitive with
+its annotation layer — one chart system, not a second one.
+
+- **Chips are findings rendered, not annotations drawn.** Each chip is one `change_point` finding
+  of the run the chart is drawn from: it sits on the finding's detected day, says
+  `<date> · <top candidate> <delta>`, and is tinted by the **sign of the delta** — `warn` for a
+  slower build, `ok` for a faster one, never by the candidate's wording. No finding, no chip; a
+  finding whose day the series does not reach is not drawn. A long candidate name is cut on the
+  chip — never the date or the delta — and kept whole in the chip's accessible name and the sheet.
+- **Clustered change-points stack.** [`app/charts/marks.ts`](app/charts/marks.ts) places the
+  chips left to right, each on the highest row it shares with nothing it touches, and holds a
+  chip against the plot's right edge rather than letting it run off. The layout is solved in rem
+  at the chart's minimum width, so it holds at every wider width and every font scale;
+  `charts.css` positions a chip by the same two rules, and `charts-styles.test.ts` holds the two
+  to the same lengths.
+- **Durations, not seconds.** The y-axis counts in whole steps around the data (`3m 4m 5m 6m`),
+  the endpoint is labelled directly (`4m 05s`), and each day's column says its median and builds.
+- **The Details sheet tells the fuller truth.** A chip opens
+  [`change-point-sheet.tsx`](app/analyzer/change-point-sheet.tsx): *attributed to (top
+  candidate)*, the **whole ranked candidate list with scores** and `proximity × prior`, the
+  attribution window with its dates, both segment medians, the confidence with its basis and
+  method, and the evidence — each reference a link to the surface it resolves on (a pull request,
+  the workflow studio, the build farm's pools or runners card), or a statement that it can no
+  longer be opened. A shift with nothing recorded in reach says so instead of borrowing a cause.
+- **Accessible.** The chart's image is named by a summary of the series (what, when, its range,
+  where it ends, how many shifts). Every chip is a button in the tab order whose name adds the
+  change in words — date, direction, magnitude, top candidate — and opens the same sheet; Escape
+  closes it and returns focus to the chip.
+- **Scrolls in its own wrapper.** On a narrow pane or at a large font scale the chart — chips and
+  plot together — scrolls inside `.chart-scroll`, never the content pane.
+
+`TimeSeries` gained three optional props for this ([`app/charts/time-series.tsx`](app/charts/time-series.tsx)):
+`markers` (`{id, index, label, description?, tone}`), `onMarker` (chips become buttons) and `axis`
+(`{min, max, ticks, format?}` — labelled gridlines over a domain that need not start at zero).
 
 ## Insights
 

@@ -11,10 +11,11 @@ import { SCHEMA_NAME } from "../db/schema";
 import type { EngineFinding } from "../engine/engine.analysis";
 import { readFixture } from "../workflows/dsl.golden.fixture";
 import { WorkflowsService } from "../workflows/workflows.service";
-import { pendingProgress } from "./analysis.progress";
+import { analyzerEnded, pendingProgress, remainingNotRun } from "./analysis.progress";
 import { AnalysisRepository } from "./analysis.repository";
 import { FORGE_02_ID, POOL_A_ID, SEEDED_FINDINGS } from "./composer/composer.seed.fixture";
 import { SuggestionComposer } from "./composer/composer.service";
+import { DEFAULT_BUDGET, FULL_READ, manifestBudget } from "./corpus/corpus.manifest";
 
 /** The repository every bench analyzes. */
 export const BENCH_REPO = "acme-robotics/helios-firmware";
@@ -131,6 +132,112 @@ export async function analyze(
     computeSeconds: 1,
     confidenceNote: null,
     failureReason: "ended by the suite so the next run may start",
+  });
+  return inserted.run.id;
+}
+
+/**
+ * A change-point finding as the engine's v1 analyzer emits one — a shift on `date`, with ranked
+ * candidates.
+ *
+ * @param date - The breakpoint day.
+ * @param deltaSeconds - After minus before.
+ * @param candidates - The ranked candidates, best first; each cites its `ref`.
+ * @param evidence - References cited beyond the candidates' — the builds either side.
+ * @returns The finding.
+ */
+export function changePointFinding(
+  date: string,
+  deltaSeconds: number,
+  candidates: {
+    label: string;
+    score: number;
+    ref: { kind: string; id: string };
+    event_kind: string | null;
+    days_from_breakpoint: number;
+  }[],
+  evidence: { kind: string; id: string }[] = [],
+): EngineFinding {
+  return {
+    analyzer: "change_point",
+    analyzer_version: 1,
+    finding_type: "change_point",
+    subject_key: `build.duration_median@${date}`,
+    data: {
+      date,
+      metric: "build.duration_median",
+      delta_seconds: deltaSeconds,
+      before_median_seconds: 342,
+      after_median_seconds: 342 + deltaSeconds,
+      candidates: candidates.map((candidate) => ({
+        ...candidate,
+        date,
+        proximity: 1 - Math.abs(candidate.days_from_breakpoint) / 4,
+        prior: 0.7,
+      })),
+    },
+    evidence_refs: [...candidates.map((candidate) => candidate.ref), ...evidence],
+    confidence: 90,
+    confidence_basis: { method: "change_point v1", sample_size: 40, effect_size: 9, stability: 1 },
+  };
+}
+
+/**
+ * A complete run whose change-point analyzer finished with the given findings — what the duration
+ * chart annotates (BW.2, #517). The other analyzers of the set are recorded as not run.
+ *
+ * @param api - The harness.
+ * @param workspace - The workspace — one {@link seedSeededIdsWorkspace} prepared.
+ * @param findings - The change-point findings to store.
+ * @param durationLabel - The job label the corpus timed.
+ * @returns The run's id.
+ */
+export async function annotate(
+  api: ApiHarness,
+  workspace: Workspace,
+  findings: EngineFinding[],
+  durationLabel: string | null = "zephyr build",
+): Promise<string> {
+  const runs = api.nest.get(AnalysisRepository);
+  const inserted = await runs.insertRun({
+    organizationId: workspace.id,
+    repoRef: BENCH_REPO,
+    trigger: "manual",
+    scheduleId: null,
+    analyzerSet: BENCH_ANALYZER_SET,
+    progress: pendingProgress(BENCH_ANALYZER_SET),
+  });
+  if (!inserted.started) throw new Error("the run did not start");
+
+  await runs.analyzing(inserted.run.id, {
+    window: WINDOW,
+    counts: { builds: 40, loops: 0, log_lines: 0, hil_sessions: 0 },
+    sources: { builds: FULL_READ, loops: FULL_READ, log_lines: FULL_READ, hil_sessions: FULL_READ },
+    budget: manifestBudget(DEFAULT_BUDGET),
+    duration_label: durationLabel,
+  });
+  await runs.writeFindings(inserted.run, findings);
+  await runs.finish(inserted.run.id, {
+    status: "complete",
+    phase: "composing",
+    manifest: null,
+    progress: remainingNotRun(
+      analyzerEnded(
+        pendingProgress(BENCH_ANALYZER_SET),
+        {
+          analyzer: "change_point",
+          version: 1,
+          status: "completed",
+          reason: null,
+          elapsedSeconds: 1,
+        },
+        findings.length,
+      ),
+      "the bench ran the change-point analyzer alone",
+    ),
+    computeSeconds: 1,
+    confidenceNote: "medium — the bench's corpus",
+    failureReason: null,
   });
   return inserted.run.id;
 }

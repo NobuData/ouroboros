@@ -121,6 +121,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/analyzer/runs/latest`                 | [Build Analyzer runs](#build-analyzer-runs) (#510) — `?repo=owner/name`; the newest run or `{run: null}`; any member |
 | `GET /api/v1/analyzer/runs/{id}`                   | [Build Analyzer runs](#build-analyzer-runs) (#510) — status, phase, per-analyzer progress, corpus manifest; any member |
 | `GET PUT /api/v1/analyzer/schedule`                | [Build Analyzer runs](#build-analyzer-runs) (#516) — `?repo=owner/name`; the weekly slot, every-N threshold with the live `buildCounter`, and budgets; read by any member, saved whole by `owner`/`admin`, audited `analyzer.schedule_updated` |
+| `GET /api/v1/analyzer/duration`                    | [Build Analyzer runs](#build-analyzer-runs) (#517) — `?repo=owner/name`; the newest annotated run's daily-median duration series and its change-points — ranked candidates with scores, attribution window, confidence basis, evidence resolved to the farm, a PR or a workflow; any member |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
@@ -6258,6 +6259,30 @@ suggestion is re-measured for 14 days; the analyzer's model retrains on its own 
   GitHub). Removing confound detection, calibration application or dismissal persistence turns one
   of them red.
 
+**The duration chart** (BW.2, [#517](https://github.com/NobuData/ouroboros/issues/517),
+[`duration/`](src/modules/analyzer/duration)) is the read behind mockup 18's annotated chart and
+the Details sheet each chip opens: `GET /api/v1/analyzer/duration?repo=`, any member.
+- **One run's.** The chart is the repository's newest ended run in which the change-point analyzer
+  completed — a run in flight, a failed one, or one that hit its budget before detecting never
+  blanks it. The window is that run's corpus window, the series is BI's `build_duration` daily
+  medians for the job label its corpus timed (`manifest.durationLabel`), and the change-points are
+  its `change_point` findings. Before such a run — or for a repository the workspace has none of —
+  the answer is an empty chart.
+- **A ranking, not a verdict.** Every stored candidate is published in rank order with its `score`
+  and the two factors it is the product of (`proximity`, `prior`), beside the measured
+  `deltaSeconds` and both segment medians. `attributionWindowDays` is stated per analyzer version
+  (`change_point` v1 is ±3 days, pinned by the engine's ledger) and is `null` for a version this
+  service does not know. A key V081 does not require is `null` when a finding lacks it.
+- **Evidence resolves in the workspace.** Each `{kind, id}` answers what it names and the surface
+  it opens on: a build, a runner or a pool on the **farm**; a workflow version in the **workflow**
+  studio; a merge on its mirrored **pull request** (matched through the merge plan's recorded
+  sha, either side abbreviated) or, when the mirror has none, on the farm that first built the
+  commit. A row retention has removed has a `null` label and surface.
+- **Suite.** `duration.resources.spec.ts`, `duration.service.spec.ts`,
+  `duration.contract.spec.ts` (the answer against `openapi.yaml`) and
+  `duration.integration-spec.ts` (the run chosen, the series scoped to the label and window, each
+  evidence kind resolved against real rows).
+
 ```bash
 yarn test:integration src/modules/analyzer
 ```
@@ -6578,7 +6603,8 @@ ouroboros-rest/
 │       ├── analyzer/       # Build Analyzer runs: triggers, guard, orchestrator  · #510
 │       │   ├── composer/   #   findings → suggestions: templates, impact, confidence · #513
 │       │   ├── actions/    #   preview · apply · dismiss · draft · push, through the planes · #514
-│       │   └── measurement/ #  the 14-day job, confounds, bounded calibration, the read · #515
+│       │   ├── measurement/ #  the 14-day job, confounds, bounded calibration, the read · #515
+│       │   └── duration/   #   the annotated chart's read: series, change-points, evidence · #517
 │       │                   #   corpus/ — bounded, paged readers, log tails, the manifest
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract

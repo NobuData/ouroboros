@@ -27,7 +27,14 @@ const THROUGHPUT = plotFrame(640, 196);
 
 describe("plotFrame", () => {
   it("reproduces the throughput chart's frame", () => {
-    expect(THROUGHPUT).toEqual({ width: 640, height: 196, inset: 10, top: 39, baseline: 166 });
+    expect(THROUGHPUT).toEqual({ width: 640, height: 196, inset: 10, left: 10, top: 39, baseline: 166 });
+  });
+
+  it("keeps a gutter on the left for a y-axis's labels, and none by default or for a negative one", () => {
+    // Mockup 18's duration chart starts its plot at x = 40 and ends it where every chart does.
+    expect(plotFrame(640, 180, 30)).toMatchObject({ left: 40, inset: 10 });
+    expect(plotFrame(640, 180).left).toBe(10);
+    expect(plotFrame(640, 180, -5).left).toBe(10);
   });
 
   it("refuses a box too small to hold a plot", () => {
@@ -76,6 +83,30 @@ describe("placing a point", () => {
 
   it("draws a single point at the right, where the latest value of a series sits", () => {
     expect(xOf(0, 1, THROUGHPUT)).toBe(630);
+  });
+
+  it("spreads the points from the gutter's edge to the right inset when there is a y-axis", () => {
+    const axed = plotFrame(640, 180, 30);
+
+    expect(xOf(0, 89, axed)).toBe(40);
+    expect(xOf(88, 89, axed)).toBe(630);
+    expect(xOf(44, 89, axed)).toBe(335);
+  });
+
+  it("draws a domain that does not start at zero from its floor, clamping what is below it", () => {
+    const axed = plotFrame(640, 180, 30);
+
+    // Three minutes on the baseline, six at the top, as the mockup's axis reads.
+    expect(yOf(180, 360, axed, 180)).toBe(axed.baseline);
+    expect(yOf(360, 360, axed, 180)).toBe(axed.top);
+    expect(yOf(270, 360, axed, 180)).toBe((axed.baseline + axed.top) / 2);
+    expect(yOf(60, 360, axed, 180)).toBe(axed.baseline);
+    expect(placePoints([180, 360], 360, axed, 180).map((point) => point.y)).toEqual([axed.baseline, axed.top]);
+  });
+
+  it("puts everything on the baseline for a domain with no height, rather than dividing by zero", () => {
+    expect(yOf(5, 5, THROUGHPUT, 5)).toBe(166);
+    expect(yOf(9, 5, THROUGHPUT, 5)).toBe(166);
   });
 });
 

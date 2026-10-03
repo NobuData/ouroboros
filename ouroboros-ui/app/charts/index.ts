@@ -6,7 +6,9 @@
  * import { HBars, Sparkline, StackedVBars, TimeSeries } from "@/app/charts";
  * ```
  *
- * - {@link TimeSeries} — throughput, daily cost: line and area, guide, annotation, tooltip.
+ * - {@link TimeSeries} — throughput, daily cost: line and area, guide, annotation, tooltip; and
+ *   mockup 18's build-duration chart through its annotation layer: detected-point markers with
+ *   collision-aware chips, and a labelled y-axis ([#517](https://github.com/NobuData/ouroboros/issues/517)).
  * - {@link HBars} — interventions, stage medians, suite failures, effort ladder, tokens.
  * - {@link Sparkline} — flaky history, DORA cells.
  * - {@link StackedVBars} — builds per day.
@@ -29,7 +31,9 @@ export {
 export {
   TimeSeries,
   type TimeSeriesAnnotation,
+  type TimeSeriesAxis,
   type TimeSeriesGuide,
+  type TimeSeriesMarker,
   type TimeSeriesPoint,
   type TimeSeriesProps,
 } from "./time-series";
