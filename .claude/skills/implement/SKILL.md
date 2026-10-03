@@ -53,6 +53,7 @@ git checkout -b ticket-<number>
 - Create **comprehensive test cases** for all new and changed functionality.
 - UI: Create integration UI tests when working on UI/UX features.
 - Lint the code.
+- DO NOT RUN END TO END TESTS
 
 ## Phase 4: Internal Audit
 
@@ -60,6 +61,7 @@ git checkout -b ticket-<number>
 - UI: Use **CSS classes** - no hard-coded values.
 - Documentation must be complete and simple.
 - Check for code reuse; extract repeated logic into separate reusable modules.
+- DO NOT RUN END TO END TESTS
 - Only run unit tests.  End-to-end and integration are not necessary to run.  Tests should limit the number of threads run at the same time to 1/2 the threads available on the CPU.
 
 ## Phase 5: Verify and Test
@@ -74,7 +76,7 @@ yarn build
 
 Run package-specific builds required by workspace rules.
 
-- Run tests:
+- Run tests WITHOUT END TO END TESTS:
 
 ```bash
 yarn test
@@ -82,6 +84,7 @@ yarn test
 
 Run package-specific tests the issue touches, per READMEs.
 
+- DO NOT RUN END TO END TESTS
 - Test all code, not just changes, so regressions are checked.  Tests should limit the number of threads run at the same time to 1/2 the threads available on the CPU.
 - Fix **any failures introduced that block ticket** and **any tests or build issues** before proceeding.
 
