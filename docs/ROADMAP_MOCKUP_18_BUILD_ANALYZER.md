@@ -750,7 +750,7 @@ draft(BA-1..4) ─▶ AK batch(analyzer-v1) ─▶ sized ─▶ push → sandbox
   - **Boundary.** The dependency-cruiser rule `analyzer-composes-planes-through-their-services`
     plus a SQL write-target scan (`actions.boundary.spec.ts`) assert the analyzer writes only its
     own tables.
-  - *Not here:* a surface owning per-stage test gates (filed as a follow-up), the suggestion list
+  - *Not here:* a surface owning per-stage test gates (#1100), the suggestion list
     and cards (BW.3), the studio rendering a draft's proposed note (UI), and running a reversal
     (BX.3).
 
