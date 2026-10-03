@@ -1,6 +1,7 @@
 import type { EngineSeriesPoint } from "../../engine/engine.analysis";
 import type { AnalysisRunRow } from "../analysis.repository";
 import type { CorpusRepository } from "../corpus/corpus.repository";
+import type { EvidenceRepository } from "../evidence/evidence.repository";
 import { annotatedRun, changePoint, HELIOS, resolvedEvidence, RUN_ID } from "./duration.fixture";
 import type { DurationRepository, FindingRow } from "./duration.repository";
 import { DurationChartService } from "./duration.service";
@@ -33,23 +34,25 @@ function build(world: World = {}) {
   const reads = {
     annotatedRun: jest.fn(() => Promise.resolve(world.run)),
     changePoints: jest.fn(() => Promise.resolve(world.findings ?? [])),
-    evidence: jest.fn(() => Promise.resolve(resolvedEvidence())),
   };
   const corpus = { series: jest.fn(() => Promise.resolve(world.series ?? [])) };
+  const evidence = { resolve: jest.fn(() => Promise.resolve(resolvedEvidence())) };
 
   return {
     service: new DurationChartService(
       reads as unknown as DurationRepository,
       corpus as unknown as CorpusRepository,
+      evidence as unknown as EvidenceRepository,
     ),
     reads,
     corpus,
+    evidence,
   };
 }
 
 describe("the duration chart's read", () => {
   it("answers an empty chart, reading nothing else, before a run has detected change-points", async () => {
-    const { service, reads, corpus } = build();
+    const { service, reads, corpus, evidence } = build();
 
     await expect(service.chart("org", HELIOS)).resolves.toEqual({
       repo: HELIOS,
@@ -63,7 +66,7 @@ describe("the duration chart's read", () => {
     expect(reads.annotatedRun).toHaveBeenCalledWith("org", HELIOS);
     expect(corpus.series).not.toHaveBeenCalled();
     expect(reads.changePoints).not.toHaveBeenCalled();
-    expect(reads.evidence).not.toHaveBeenCalled();
+    expect(evidence.resolve).not.toHaveBeenCalled();
   });
 
   it("reads the series over the run's own corpus window, in the workspace", async () => {
@@ -98,12 +101,12 @@ describe("the duration chart's read", () => {
   });
 
   it("annotates with that run's findings, their evidence resolved in the workspace", async () => {
-    const { service, reads } = build({ run: annotatedRun(), findings: [changePoint()] });
+    const { service, reads, evidence } = build({ run: annotatedRun(), findings: [changePoint()] });
 
     const chart = await service.chart("org", HELIOS);
 
     expect(reads.changePoints).toHaveBeenCalledWith("org", RUN_ID);
-    expect(reads.evidence).toHaveBeenCalledWith(
+    expect(evidence.resolve).toHaveBeenCalledWith(
       "org",
       expect.objectContaining({ merges: ["0c5eed47a1b2"] }),
     );

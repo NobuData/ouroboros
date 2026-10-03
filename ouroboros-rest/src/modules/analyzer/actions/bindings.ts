@@ -24,7 +24,14 @@ import { createHash } from "node:crypto";
 import type { DraftBase } from "../../workflows/workflows.service";
 import type { WorkflowDocument } from "../../workflows/dsl.schema";
 import type { ActionBinding } from "../composer/composer.types";
-import { addPathStage, DeltaRefusal, moveStageBefore, type DeltaResult } from "./workflow.delta";
+import {
+  addPathStage,
+  DeltaRefusal,
+  moveStageBefore,
+  summarizeDelta,
+  type DeltaResult,
+  type DeltaSummary,
+} from "./workflow.delta";
 
 /** The farm payload of a pool move. */
 export interface PoolWindowChange {
@@ -74,6 +81,11 @@ export type ActionPlan =
       summary: string;
       lands: string;
       change: WorkflowDraftChange;
+      /**
+       * What the proposed document differs from its base by — beside `change`, never in it: the
+       * payload is what the plane is handed and what the fingerprint covers.
+       */
+      delta: DeltaSummary;
     }
   | {
       kind: "unavailable";
@@ -355,6 +367,7 @@ export function workflowPlan(
       changeNote: changeNoteOf(subject),
       definition: delta.document,
     },
+    delta: summarizeDelta(document, delta.document),
   };
 }
 

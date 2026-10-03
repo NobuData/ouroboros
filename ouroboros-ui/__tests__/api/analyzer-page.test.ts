@@ -12,11 +12,12 @@ import {
   seededRun,
   seededSchedule,
 } from "../helpers/analyzer";
+import { seededSuggestions } from "../helpers/analyzer-suggestions";
 
 /**
- * The analyzer page, read for the screen's poll (#516) — and its hop, `GET /api/analyzer`: three
- * reads (the run, the schedule and, since #517, the duration chart) under the poll family's
- * deadline, polled fast while a run is in flight.
+ * The analyzer page, read for the screen's poll (#516) — and its hop, `GET /api/analyzer`: four
+ * reads (the run, the schedule, since #517 the duration chart and since #518 the suggestion
+ * cards) under the poll family's deadline, polled fast while a run is in flight.
  */
 
 vi.mock("server-only", () => ({}));
@@ -70,6 +71,7 @@ describe("the page's own read", () => {
   const latest = vi.fn();
   const schedule = vi.fn();
   const duration = vi.fn();
+  const suggestions = vi.fn();
   const CLIENT = { name: "the anonymous client" };
 
   beforeEach(() => {
@@ -77,7 +79,8 @@ describe("the page's own read", () => {
     latest.mockReset().mockResolvedValue(seededRun());
     schedule.mockReset().mockResolvedValue(seededSchedule());
     duration.mockReset().mockResolvedValue(seededDuration());
-    vi.doMock("@/app/api/analyzer", () => ({ analyzer: { latest, schedule, duration } }));
+    suggestions.mockReset().mockResolvedValue(seededSuggestions());
+    vi.doMock("@/app/api/analyzer", () => ({ analyzer: { latest, schedule, duration, suggestions } }));
     vi.doMock("@/app/api/server", () => ({ anonymousApi: () => CLIENT }));
   });
 
@@ -86,15 +89,26 @@ describe("the page's own read", () => {
     vi.doUnmock("@/app/api/server");
   });
 
-  it("makes the run, schedule and duration reads together, through one client, under the deadline", async () => {
+  it("makes the run, schedule, duration and suggestion reads together, through one client, under the deadline", async () => {
     const page = await import("@/app/api/analyzer-page");
 
     const answer = await page.readAnalyzerPage(HELIOS);
 
     expect(answer).toEqual(freshPage());
-    for (const read of [latest, schedule, duration]) {
+    for (const read of [latest, schedule, duration, suggestions]) {
       expect(read).toHaveBeenCalledExactlyOnceWith(HELIOS, CLIENT, expect.any(AbortSignal));
     }
+  });
+
+  it("fails the whole page when the suggestion cards cannot be read, rather than drawing half of it", async () => {
+    suggestions.mockRejectedValue(new TypeError("fetch failed"));
+    const page = await import("@/app/api/analyzer-page");
+
+    expect(await page.readAnalyzerPage(HELIOS)).toEqual({
+      state: "failed",
+      reason: UNREACHABLE_ANALYZER,
+      pollAfterSeconds: null,
+    });
   });
 
   it("fails the whole page when the duration chart cannot be read, rather than drawing half of it", async () => {

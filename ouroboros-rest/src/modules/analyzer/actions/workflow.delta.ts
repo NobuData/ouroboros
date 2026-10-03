@@ -33,6 +33,21 @@ export interface DeltaResult {
 }
 
 /**
+ * What a proposed document changes about its base, stage by stage and connection by connection —
+ * the consequence preview's delta summary (BW.3, [#518](https://github.com/NobuData/ouroboros/issues/518)).
+ */
+export interface DeltaSummary {
+  /** Stages the proposal adds, as {@link stagePhrase} writes them. */
+  nodesAdded: string[];
+  /** Stages it removes. */
+  nodesRemoved: string[];
+  /** Connections it adds — `review → build`, a branch with its label. */
+  edgesAdded: string[];
+  /** Connections it removes. */
+  edgesRemoved: string[];
+}
+
+/**
  * A title as a label — lower-case, words joined by `-`.
  *
  * @param title - A node's title.
@@ -256,5 +271,43 @@ export function addPathStage(
     change:
       `adds stage \`${stageId}\` (${stageTitle}) after ${stagePhrase(anchor)}, run only when a ` +
       `change touches ${shown}`,
+  };
+}
+
+/**
+ * How a connection reads: `review → build`, or `touches-drivers-can → build (branch: elsewhere)`
+ * for one that is not a plain edge.
+ *
+ * @param edge - The edge.
+ * @returns The phrase — also what tells two edges apart.
+ */
+function edgePhrase(edge: WorkflowEdge): string {
+  const plain = `${edge.from} → ${edge.to}`;
+  if (edge.kind === "default") return plain;
+
+  return `${plain} (${edge.label === undefined ? edge.kind : `${edge.kind}: ${edge.label}`})`;
+}
+
+/**
+ * What a proposed document adds to and removes from its base.
+ *
+ * Read from the two documents, not from the delta that produced one from the other, so it holds
+ * for any delta: the preview says what the draft's canvas will differ by, whatever built it.
+ *
+ * @param base - The document the proposal was computed on.
+ * @param proposed - The proposed document.
+ * @returns The stages and connections that differ, in the proposal's (or the base's) own order.
+ */
+export function summarizeDelta(base: WorkflowDocument, proposed: WorkflowDocument): DeltaSummary {
+  const baseNodes = new Set(base.nodes.map((node) => node.id));
+  const proposedNodes = new Set(proposed.nodes.map((node) => node.id));
+  const baseEdges = new Set(base.edges.map(edgePhrase));
+  const proposedEdges = new Set(proposed.edges.map(edgePhrase));
+
+  return {
+    nodesAdded: proposed.nodes.filter((node) => !baseNodes.has(node.id)).map(stagePhrase),
+    nodesRemoved: base.nodes.filter((node) => !proposedNodes.has(node.id)).map(stagePhrase),
+    edgesAdded: proposed.edges.map(edgePhrase).filter((edge) => !baseEdges.has(edge)),
+    edgesRemoved: base.edges.map(edgePhrase).filter((edge) => !proposedEdges.has(edge)),
   };
 }

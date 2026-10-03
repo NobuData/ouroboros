@@ -3917,17 +3917,19 @@ leg 21's shell assertion found.
 `/analyzer` ([#516](https://github.com/NobuData/ouroboros/issues/516), mockup 18) — the frame:
 the head, *Run analysis now* with real progress, the schedule editor and the meta strip — and, in
 the mockup's main column, the annotated duration chart
-([#517](https://github.com/NobuData/ouroboros/issues/517)). The remaining cards are BW.3–BW.5's.
-The code is [`app/analyzer/`](app/analyzer); every sentence and format is a pure function in
-[`view.ts`](app/analyzer/view.ts) and [`duration-view.ts`](app/analyzer/duration-view.ts).
+([#517](https://github.com/NobuData/ouroboros/issues/517)) and the two suggestion cards
+([#518](https://github.com/NobuData/ouroboros/issues/518)). The side column's cards are BW.4's and
+BW.5's. The code is [`app/analyzer/`](app/analyzer); every sentence and format is a pure function
+in [`view.ts`](app/analyzer/view.ts), [`duration-view.ts`](app/analyzer/duration-view.ts) and
+[`suggestions-view.ts`](app/analyzer/suggestions-view.ts).
 
 - **Repo-scoped by the tenant chip.** The page analyses the chip's focus repository; under
   *All repos* it takes the first enabled one and says how to choose
   ([`repo.ts`](app/analyzer/repo.ts)). It has no sidebar entry: it publishes **Build Farm** as its
   origin, so that entry stays lit. The farm's and the insights' **✦ Build Analyzer** link here.
 - **One poll per repository.** `GET /api/analyzer?repo=` on this origin answers the newest run,
-  the schedule and the duration chart together, and asks to be polled every 3 s while a run is in
-  flight.
+  the schedule, the duration chart and the suggestion cards together, and asks to be polled every
+  3 s while a run is in flight.
 - **Honest provenance (decision A3).** `Analyzed by` is the run's analyzer-set label
   (`deterministic analyzers v1`) opening the analyzers, their versions and outcomes; a model pill
   appears only beside an analyzer of kind `llm`. `Last run` is compute time; the `$` appears only
@@ -3982,6 +3984,68 @@ its annotation layer — one chart system, not a second one.
 `TimeSeries` gained three optional props for this ([`app/charts/time-series.tsx`](app/charts/time-series.tsx)):
 `markers` (`{id, index, label, description?, tone}`), `onMarker` (chips become buttons) and `axis`
 (`{min, max, ticks, format?}` — labelled gridlines over a domain that need not start at zero).
+
+### The suggestion cards
+
+**Suggested build-process changes** (`4 open`) and **Suggested workflow changes** (*Open workflow
+studio →*) ([`suggestion-cards.tsx`](app/analyzer/suggestion-cards.tsx), #518) list the
+suggestions that are still current — each stays until an analysis that ran its analyzers no longer
+finds it — **in every status**: an open row to act on, and a resolved one saying how it was
+resolved, so what the page shows after a reload is the service's truth and a dismissal is seen to
+stay one.
+
+```
+Split the test gate: native_sim every build, QEMU + HIL only before merge
+EVIDENCE qemu_cortex_m3 caught 0 unique failures in 214 builds; HIL caught 9 — all at merge gates
+[−3m 40s per loop ⓘ]  conf 91% ⓘ                        [Apply] [Details] [Dismiss]
+```
+
+- **No number without its basis.** The impact pill and `conf NN%` are buttons. The first opens the
+  method, the formula and its inputs, and `raw × calibration = estimate`; the second opens the
+  sample size, the effect size, the stability and the formula they went through. Both are the
+  composer's stored bases — nothing is recomputed in the browser.
+- **Apply is behind a consequence preview** ([`apply-dialog.tsx`](app/analyzer/apply-dialog.tsx)).
+  Nothing is applied from the row: the press reads the service's preview and names the concrete
+  change — *forge-02 joins pool-a between 14:00–16:00 UTC on weekdays* — with where it lands and
+  the payload's own facts (runner, pool, window, days; repository, trigger, command, pool;
+  workflow, version, change note, and the stages and connections a draft adds and removes). The
+  confirm sends that preview's **fingerprint**, so what was read is what runs: a preview that
+  moved is read again and says so, and a suggestion somebody else resolved first applies nothing.
+  A change no plane can take yet (the test-gate split) is described with the reason and offers
+  no confirm.
+- **An applied row** says who and when, `measurement pending — day N of 14`, and links to
+  **Predicted vs measured** (`#predicted-vs-measured`, the anchor BW.5's card answers to).
+- **Dismiss is permanent, and says so** ([`dismiss-dialog.tsx`](app/analyzer/dismiss-dialog.tsx)):
+  *won't be suggested again*, with an optional reason. The row resolves **at once** — the store's
+  optimistic resolution — and is put back open, with the service's reason, if it refuses.
+- **A spike is a different action, not a lesser suggestion.** A row flagged `needs a spike` offers
+  **Draft spike ticket** where the others have Apply
+  ([`spike-dialog.tsx`](app/analyzer/spike-dialog.tsx)): the ticket's title, *what is uncertain*
+  in the impact basis's own words, the tracker to draft for (the planning page's tracker segment),
+  and a statement that the ticket asserts no impact. It is drafted into a planning batch and the
+  dialog links to it (`/planning?batch=…`); nothing reaches a tracker until that batch is pushed.
+  The row shows the figure the suggestion carries — its popover says the figure is extrapolated
+  and unverified — and no figure at all when the impact was never quantified.
+- **Draft as vN →** is the workflow rows' Apply: the same preview, with the stage delta and
+  *Publishing remains human*. Confirming creates the draft and opens the studio on it. **N is the
+  workflow's next version**, read from the workflow — `v15` on the dev seed, whose `standard-fix`
+  is at v14, where mockup 18 draws `v16`.
+- **Simulate on last 50 loops** is an honest soon-state: an inert control carrying *soon* and the
+  reason — it arrives with BX.2 (#523).
+- **Details** ([`suggestion-sheet.tsx`](app/analyzer/suggestion-sheet.tsx)) is everything the two
+  numbers stand on: the impact's basis, the calibration in effect with every update that moved
+  its factor, the scoring, and the findings as their analyzers wrote them — each evidence
+  reference a link to the surface it resolves on (the build farm's pools or runners card, a pull
+  request, the workflow studio, a loop's test results), or a statement that it can no longer be
+  opened. The list is [`evidence-list.tsx`](app/analyzer/evidence-list.tsx), the one the
+  change-point sheet draws.
+- **Roles.** Every member reads the cards, the previews and the sheets. Dismissing is an owner's,
+  admin's or member's; applying and drafting are an owner's or admin's — a member opens the same
+  preview with the confirm inert and the reason on it. The service refuses the rest whatever the
+  page draws.
+- **Accessible.** Each row is an article named by its title; its controls are real buttons
+  described by that title (an inert one by its reason). When a row resolves under the control
+  that had focus, focus moves to the row.
 
 ## Insights
 

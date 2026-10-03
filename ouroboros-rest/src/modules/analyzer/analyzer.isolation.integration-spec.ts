@@ -17,13 +17,14 @@ import {
 import { POOL_A_ID } from "./composer/composer.seed.fixture";
 import type { DurationChartResource } from "./duration/duration.resources";
 import type { MeasurementsResource } from "./measurement/measurement.resources";
+import type { SuggestionsResource } from "./suggestions/suggestions.resources";
 
 /**
  * Organization isolation on every Build Analyzer route (BV.6,
  * [#515](https://github.com/NobuData/ouroboros/issues/515)) — runs, findings, suggestions,
- * batches, measurements and the duration chart.
+ * batches, measurements, the duration chart and the suggestion cards (BW.3, #518).
  *
- * Their workspace holds one of everything: a run with findings, composed suggestions, an applied
+ * Their workspace holds one of everything: a complete run with findings, composed suggestions, an applied
  * one with its measurement, an analyzer-drafted batch, and a complete run whose change-point sits
  * on a rolled-up duration series. Mine is an administrator's workspace
  * with none of it — and every route, aimed at their objects, answers as if they do not exist.
@@ -58,7 +59,8 @@ describe("organization isolation, on every analyzer route", () => {
     const them = await api.signIn();
     theirs = await api.workspace(them);
     await seedSeededIdsWorkspace(api, theirs);
-    theirRun = await analyze(api, theirs);
+    // Complete, so their suggestion cards have rows for the read's claim to be about.
+    theirRun = await analyze(api, theirs, [], { ending: "complete" });
     theirSuggestion = await suggestionId(api, theirs, "Move forge-02");
     theirTicket = await suggestionId(api, theirs, "Refactor tests/");
     await recordApplication(
@@ -167,6 +169,22 @@ describe("organization isolation, on every analyzer route", () => {
       about: "cannot read another workspace's run",
       check: async () => {
         expect(await refused("get", `${ANALYZER}/runs/${theirRun}`)).toBe("analysis_run_not_found");
+      },
+    },
+    [`GET ${ANALYZER}/suggestions`]: {
+      about:
+        "lists none of another workspace's suggestions, findings or calibration for the same repository",
+      check: async () => {
+        const body = bodyOf<SuggestionsResource>(
+          await as("get", `${ANALYZER}/suggestions?repo=${BENCH_REPO}`).expect(200),
+        );
+        expect(body).toEqual({
+          repo: BENCH_REPO,
+          runId: null,
+          analyzedAt: null,
+          suggestions: [],
+          calibration: [],
+        });
       },
     },
     [`GET ${ANALYZER}/suggestions/:id/preview`]: {
@@ -301,6 +319,16 @@ describe("organization isolation, on every analyzer route", () => {
       [theirs.id],
     );
     expect(chart.rows[0]).toEqual({ points: "1", series: "1" });
+
+    // Their cards list something: suggestions last composed by a run that ended complete.
+    const cards = await api.sql.query<{ n: string }>(
+      `select count(*)::text as n from ${SCHEMA_NAME}.analysis_suggestions s
+         join ${SCHEMA_NAME}.analysis_runs r on r.id = s.last_run_id
+        where s.organization_id = $1 and r.status = 'complete'
+          and s.kind in ('build_process', 'workflow')`,
+      [theirs.id],
+    );
+    expect(cards.rows[0].n).toBe("6");
   });
 
   describe("each route holds the line", () => {

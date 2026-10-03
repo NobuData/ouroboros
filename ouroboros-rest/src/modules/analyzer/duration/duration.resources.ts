@@ -20,7 +20,15 @@
 import type { EngineSeriesPoint } from "../../engine/engine.analysis";
 import type { AnalysisRunRow } from "../analysis.repository";
 import type { CorpusManifest } from "../corpus/corpus.manifest";
-import type { EvidenceIds, FindingRow, ResolvedEvidence } from "./duration.repository";
+import type { ResolvedEvidence } from "../evidence/evidence.repository";
+import {
+  evidenceResource,
+  refOf,
+  refsOf,
+  type EvidenceResource,
+} from "../evidence/evidence.resources";
+import { numberOf, objectOf, textOf } from "../stored.json";
+import type { FindingRow } from "./duration.repository";
 
 /**
  * The attribution window, in days either side of a breakpoint, by change-point analyzer version.
@@ -30,28 +38,6 @@ import type { EvidenceIds, FindingRow, ResolvedEvidence } from "./duration.repos
  * A version this service does not know has no window to state, and reads as `null`.
  */
 export const ATTRIBUTION_WINDOW_DAYS: Readonly<Record<number, number>> = { 1: 3 };
-
-/** The product surface an evidence reference opens on. */
-export type EvidenceSurface = "farm" | "pull_request" | "workflow";
-
-/** One evidence reference, with what it names and where it opens. */
-export interface EvidenceResource {
-  /** V081's kind — `build`, `merge`, `workflow_version`, `runner_pool`, `runner`, … */
-  kind: string;
-  /** A uuid, or a commit sha for a `merge`. */
-  id: string;
-  /**
-   * What it names — `#412 · zephyr build`, a merge's title, `standard-fix v9`, a pool's or a
-   * runner's name. Null when the row is no longer there, or the kind is not one this read opens.
-   */
-  label: string | null;
-  /** Where it opens; null when it names nothing that can be opened. */
-  surface: EvidenceSurface | null;
-  /** The mirrored PR, exactly when `surface` is `pull_request`. */
-  pullRequestId: string | null;
-  /** The workflow's slug, exactly when `surface` is `workflow`. */
-  workflowSlug: string | null;
-}
 
 /** One ranked attribution candidate. */
 export interface ChangePointCandidateResource {
@@ -126,144 +112,6 @@ export interface DurationChartResource {
   series: DurationPointResource[];
   /** Oldest breakpoint first. */
   changePoints: ChangePointResource[];
-}
-
-/** A stored JSON object, or an empty one for anything else. */
-function objectOf(value: unknown): Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-/** A stored JSON number, or null. */
-function numberOf(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-/** A stored JSON string, or null. */
-function textOf(value: unknown): string | null {
-  return typeof value === "string" ? value : null;
-}
-
-/** A stored `{kind, id}` reference; V081 holds every one to that shape. */
-function refOf(value: unknown): { kind: string; id: string } {
-  const ref = objectOf(value);
-
-  return { kind: textOf(ref.kind) ?? "", id: textOf(ref.id) ?? "" };
-}
-
-/** A finding's evidence references, in their stored order. */
-function refsOf(finding: Pick<FindingRow, "evidence_refs">): { kind: string; id: string }[] {
-  return Array.isArray(finding.evidence_refs) ? finding.evidence_refs.map(refOf) : [];
-}
-
-/**
- * The references a set of findings cite, grouped for one resolving read.
- *
- * @param findings - The findings.
- * @returns Each resolvable kind's distinct ids. Kinds this read opens nowhere are left out.
- */
-export function evidenceIds(findings: readonly Pick<FindingRow, "evidence_refs">[]): EvidenceIds {
-  const ids: Record<keyof EvidenceIds, Set<string>> = {
-    builds: new Set(),
-    merges: new Set(),
-    workflowVersions: new Set(),
-    runnerPools: new Set(),
-    runners: new Set(),
-  };
-  const groups: Readonly<Record<string, keyof EvidenceIds>> = {
-    build: "builds",
-    merge: "merges",
-    workflow_version: "workflowVersions",
-    runner_pool: "runnerPools",
-    runner: "runners",
-  };
-
-  for (const ref of findings.flatMap(refsOf)) {
-    const group = groups[ref.kind];
-    if (group !== undefined) {
-      ids[group].add(ref.id);
-    }
-  }
-
-  return {
-    builds: [...ids.builds],
-    merges: [...ids.merges],
-    workflowVersions: [...ids.workflowVersions],
-    runnerPools: [...ids.runnerPools],
-    runners: [...ids.runners],
-  };
-}
-
-/** A reference that names nothing this read can open. */
-function unresolved(ref: { kind: string; id: string }): EvidenceResource {
-  return { ...ref, label: null, surface: null, pullRequestId: null, workflowSlug: null };
-}
-
-/**
- * One reference, with what it names and where it opens.
- *
- * @param ref - The stored reference.
- * @param resolved - What the workspace's rows answered.
- * @returns The resource. A merge opens on its mirrored PR when there is one and otherwise on the
- *   farm, whose build is how the commit is known at all.
- */
-export function evidenceResource(
-  ref: { kind: string; id: string },
-  resolved: ResolvedEvidence,
-): EvidenceResource {
-  const onFarm = (label: string): EvidenceResource => ({
-    ...unresolved(ref),
-    label,
-    surface: "farm",
-  });
-
-  switch (ref.kind) {
-    case "build": {
-      const build = resolved.builds.find((row) => row.id === ref.id);
-
-      return build === undefined
-        ? unresolved(ref)
-        : onFarm(`#${String(build.number)} · ${build.label}`);
-    }
-    case "merge": {
-      const merge = resolved.merges.find((row) => row.sha === ref.id);
-      if (merge === undefined) {
-        return unresolved(ref);
-      }
-      if (merge.pull_request_id !== null) {
-        return {
-          ...unresolved(ref),
-          label: merge.title,
-          surface: "pull_request",
-          pullRequestId: merge.pull_request_id,
-        };
-      }
-
-      return merge.title === null ? unresolved(ref) : onFarm(merge.title);
-    }
-    case "workflow_version": {
-      const version = resolved.workflowVersions.find((row) => row.id === ref.id);
-
-      return version === undefined
-        ? unresolved(ref)
-        : {
-            ...unresolved(ref),
-            label: `${version.slug} ${version.version === null ? "draft" : `v${String(version.version)}`}`,
-            surface: "workflow",
-            workflowSlug: version.slug,
-          };
-    }
-    case "runner_pool":
-    case "runner": {
-      const rows = ref.kind === "runner_pool" ? resolved.runnerPools : resolved.runners;
-      const named = rows.find((row) => row.id === ref.id);
-
-      return named === undefined ? unresolved(ref) : onFarm(named.name);
-    }
-    default:
-      return unresolved(ref);
-  }
 }
 
 /**

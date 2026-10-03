@@ -7,7 +7,8 @@ import { describe, expect, it } from "vitest";
  * (#516): the sheet and the components name the same classes, every length scales and every hue
  * is a token — what *both themes* and *CQ.1's rem type* can be verified as, since jsdom applies no
  * stylesheet — and the page adds no chrome to the shell. Since #517 it also dresses the duration
- * chart's card and the Details sheet behind each chip.
+ * chart's card and the Details sheet behind each chip, and since #518 the two suggestion cards
+ * with the surfaces their rows open.
  */
 
 const ANALYZER = join(import.meta.dirname, "..", "..", "app", "analyzer");
@@ -156,12 +157,100 @@ describe("the change-point Details sheet (#517)", () => {
   });
 
   it("wraps a long candidate name, a sha and a method rather than widening the sheet", () => {
-    for (const selector of ["\\.analyzer-cp__name", "\\.analyzer-cp__mono", "\\.analyzer-cp__ref"]) {
+    for (const selector of ["\\.analyzer-cp__name", "\\.analyzer-cp__mono", "\\.analyzer-ev__ref"]) {
       expect(rule(selector), selector).toMatch(/overflow-wrap:\s*anywhere/);
     }
   });
 
   it("draws an evidence link in the accent — a destination, not decoration", () => {
-    expect(rule("\\.analyzer-cp__link")).toMatch(/color:\s*var\(--accent\)/);
+    expect(rule("\\.analyzer-ev__link")).toMatch(/color:\s*var\(--accent\)/);
+  });
+});
+
+describe("the suggestion cards (#518)", () => {
+  it("draws the mockup's row: a padded row on a hairline, a mono evidence line, a faint label", () => {
+    expect(rule("\\.analyzer-sugg__row \\+ \\.analyzer-sugg__row")).toMatch(/border-top:\s*1px solid var\(--line\)/);
+    expect(rule("\\.analyzer-sugg__evidence")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-sugg__evidence")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.analyzer-sugg__label")).toMatch(/text-transform:\s*uppercase/);
+    expect(rule("\\.analyzer-sugg__label")).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+
+  it("sets a row's title in the body face, as the mockup does — it is a heading, not a headline", () => {
+    expect(rule("\\.analyzer-sugg__title")).toMatch(/font-family:\s*var\(--f-ui\)/);
+    expect(rule("\\.analyzer-sugg__title")).toMatch(/font-weight:\s*600/);
+  });
+
+  it("pushes a row's controls right and lets the foot wrap, rather than scrolling the card", () => {
+    expect(rule("\\.analyzer-sugg__foot")).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule("\\.analyzer-sugg__actions")).toMatch(/margin-left:\s*auto/);
+    expect(rule("\\.analyzer-sugg__actions")).toMatch(/flex-wrap:\s*wrap/);
+    expect(rule("\\.analyzer-sugg")).toMatch(/min-width:\s*0/);
+  });
+
+  it("draws `conf NN%` as the mockup's faint mono — and as a control, since it opens its scoring", () => {
+    expect(rule("\\.analyzer-sugg__conf")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-sugg__conf")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.analyzer-sugg__conf")).toMatch(/cursor:\s*pointer/);
+    expect(rule("\\.analyzer-sugg__impact")).toMatch(/cursor:\s*pointer/);
+  });
+
+  it("takes the pills' tints from the design system's chip, never from this sheet", () => {
+    expect(COMPONENT).toContain('cx("ou-chip ou-chip--ok", "analyzer-sugg__impact")');
+    expect(rule("\\.analyzer-sugg__impact")).not.toMatch(/color|background|border/);
+  });
+
+  it("shows where focus landed when a row resolved under the control that had it", () => {
+    expect(rule("\\.analyzer-sugg__body:focus-visible")).toMatch(/outline:\s*1px solid var\(--accent-line\)/);
+  });
+
+  it("gives a resolved row its title back without its weight, and a refusal the error hue", () => {
+    expect(rule("\\.analyzer-sugg__title--resolved")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.analyzer-sugg__refusal")).toMatch(/color:\s*var\(--err\)/);
+  });
+
+  it("wraps a long title, evidence line and reason rather than widening the card", () => {
+    for (const selector of ["\\.analyzer-sugg__title", "\\.analyzer-sugg__evidence", "\\.analyzer-sugg__reason"]) {
+      expect(rule(selector), selector).toMatch(/overflow-wrap:\s*anywhere/);
+    }
+  });
+});
+
+describe("the consequence preview, the dismissal and the spike draft (#518)", () => {
+  it("sets the concrete change apart — the sentence a reader can recognise as wrong", () => {
+    expect(rule("\\.analyzer-apply__summary")).toMatch(/border:\s*1px solid var\(--accent-line\)/);
+    expect(rule("\\.analyzer-apply__summary")).toMatch(/font-weight:\s*600/);
+  });
+
+  it("warns, rather than errors, for a preview that moved and a change no plane can take", () => {
+    expect(rule("\\.analyzer-apply__moved,\\s*\\.analyzer-apply__blocked")).toMatch(/background:\s*var\(--warn-tint\)/);
+    expect(rule("\\.analyzer-apply__error")).toMatch(/color:\s*var\(--err\)/);
+  });
+
+  it("draws a payload's identifiers and a draft's delta in mono, wrapping", () => {
+    expect(rule("\\.analyzer-apply__value--mono")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-apply__delta")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-apply__delta")).toMatch(/overflow-wrap:\s*anywhere/);
+  });
+
+  it("marks a drafted spike as good news, in the ok hue", () => {
+    expect(rule("\\.analyzer-spike__done")).toMatch(/border:\s*1px solid var\(--ok-line\)/);
+  });
+});
+
+describe("a suggestion's Details sheet (#518)", () => {
+  it("heads each part with the mockup's faint uppercase mono label", () => {
+    expect(rule("\\.analyzer-sd__heading")).toMatch(/text-transform:\s*uppercase/);
+    expect(rule("\\.analyzer-sd__heading")).toMatch(/color:\s*var\(--ink-faint\)/);
+  });
+
+  it("lays a finding's data out in columns that fold on a narrow sheet", () => {
+    expect(rule("\\.analyzer-sd__facts")).toMatch(/grid-template-columns:\s*repeat\(auto-fill, minmax\([\d.]+rem, 1fr\)\)/);
+  });
+
+  it("draws its evidence with the list the change-point sheet draws — one treatment, one component", () => {
+    expect(COMPONENT.match(/<ul className="analyzer-ev">/g)).toHaveLength(1);
+    expect(rule("\\.analyzer-ev__detail")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-sd__more")).toMatch(/color:\s*var\(--ink-mut\)/);
   });
 });

@@ -4,14 +4,14 @@ import "server-only";
  * What the Build Analyzer page reads on the server (BW.1,
  * [#516](https://github.com/NobuData/ouroboros/issues/516)).
  *
- * Only what the server can know: the workspace's enabled repositories and the reader's role. The
+ * Only what the server can know: the workspace's enabled repositories and the reader's roles. The
  * repository the page analyses is the tenant chip's choice, which lives in the browser, so the
  * run and the schedule are read by the page's poll once it has chosen (`analyzer-store.tsx`).
  */
 
 import type { Workspace } from "@/app/api/access";
 import { enabledRepos, readEnablement } from "@/app/api/enablement";
-import { mayAdminister } from "@/app/api/membership";
+import { mayAdminister, mayContribute } from "@/app/api/membership";
 import { type Reading, attempt } from "@/app/api/reading";
 
 import { type AnalyzerRepo, analyzerRepos } from "./repo";
@@ -27,6 +27,12 @@ export interface AnalyzerReadings {
    * decides only what the page draws; the service refuses anyone else's call whatever this says.
    */
   readonly mayAdminister: boolean;
+  /**
+   * Whether this person may dismiss a suggestion — `owner`, `admin` or `member` (BW.3,
+   * [#518](https://github.com/NobuData/ouroboros/issues/518)). Like `mayAdminister`, it decides
+   * only what the page draws.
+   */
+  readonly mayDismiss: boolean;
   /** When the read was made, in epoch milliseconds — the strip's clock until the first poll. */
   readonly readAt: number;
 }
@@ -47,6 +53,7 @@ export async function readAnalyzer(access: Workspace, now: () => number = Date.n
     repos,
     workspaceId: membership.id,
     mayAdminister: mayAdminister(membership.roles),
+    mayDismiss: mayContribute(membership.roles),
     readAt: now(),
   };
 }

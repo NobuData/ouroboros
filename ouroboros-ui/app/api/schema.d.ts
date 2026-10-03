@@ -2667,6 +2667,53 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analyzer/suggestions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A repository's build-process and workflow suggestions
+         * @description BW.3 ([#518](https://github.com/NobuData/ouroboros/issues/518)) — mockup 18's **Suggested
+         *     build-process changes** and **Suggested workflow changes** cards, their scoring popovers
+         *     and the Details sheet behind each row.
+         *
+         *     `suggestions` are the repository's `build_process` and `workflow` suggestions that are
+         *     **still current**, in every status, most confident first: an `open` one to act on, an
+         *     `applied` one with the `measurement` its apply opened (day N of its window), a `dismissed`
+         *     one with its `resolution`. A suggestion stays current until a later run that ended
+         *     (`complete` or `budget_exceeded`) had **every analyzer its findings came from complete**
+         *     and still did not compose it again. So a run that did not look — one in flight, a failed
+         *     one, one whose pattern analyzers were skipped — never blanks the cards, a suggestion an
+         *     analysis looked for and no longer finds leaves them, and a dismissed one a re-analysis
+         *     finds again is still listed, still dismissed. Ticket drafts are not listed here. `runId`
+         *     is the newest ended run that composed any suggestion — `null`, with no suggestions,
+         *     before one has.
+         *
+         *     Nothing is recomputed. Beside each number is what produced it: `confidenceBasis` is the
+         *     composer's formula with every input it read; `impact.basis` is the method, the formula's
+         *     id, its inputs, the corpus window, the calibration applied and the estimate before it
+         *     (`estimate = round(raw × factor)`); `findings` are the cited findings as their analyzers
+         *     wrote them, each with its own confidence basis. A finding answers with its first 25
+         *     evidence references, resolved in this workspace as `GET /api/v1/analyzer/duration`
+         *     resolves them, and `evidenceTotal` says how many it cites. `workflow.nextVersion` is the
+         *     version a draft becomes when a person publishes it. `calibration` is the repository's
+         *     cells with their history, as `GET /api/v1/analyzer/measurements` answers them.
+         *
+         *     What a suggestion may be done with is the routes below: preview, apply, dismiss, draft.
+         *     Every member may read. **The workspace is the session's.**
+         */
+        get: operations["listSuggestions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analyzer/suggestions/{id}/preview": {
         parameters: {
             query?: never;
@@ -13253,10 +13300,22 @@ export interface components {
             lands: string;
             /** @description Why it cannot be applied */
             reason: string | null;
-            /** @description The exact payload Apply hands the plane; null when nothing would be applied. */
-            change: Record<string, never> | null;
+            /**
+             * @description The exact payload Apply hands the plane; null when nothing would be applied. A pool move
+             *     is `{runner, pool, daysOfWeek, startsAt, endsAt}`, a job hook `{repo, pool, event,
+             *     titleContains, label, title, command}`, a workflow draft `{workflowId, slug, ifMatch,
+             *     nextVersion, changeNote, definition}`.
+             */
+            change: {
+                [key: string]: unknown;
+            } | null;
             /** @description The studio path a workflow draft opens at. */
             studioPath: string | null;
+            /**
+             * @description For a workflow draft, the stages and connections it adds to and removes from the
+             *     document it is built on. Null for every other plane.
+             */
+            delta: components["schemas"]["WorkflowDeltaSummary"] | null;
             fingerprint: string;
         };
         /** ApplySuggestionBody */
@@ -13313,6 +13372,199 @@ export interface components {
         DraftedSuggestions: {
             batch: components["schemas"]["PlanningBatch"];
             suggestionIds: string[];
+        };
+        /**
+         * AnalysisSuggestions
+         * @description A repository's current build-process and workflow suggestions (BW.3, #518) — mockup 18's
+         *     two suggestion cards — and the calibration their impacts were scaled by.
+         */
+        AnalysisSuggestions: {
+            repo: string;
+            /**
+             * Format: uuid
+             * @description The newest analysis that composed a suggestion. Null before any has.
+             */
+            runId: string | null;
+            /**
+             * Format: date-time
+             * @description When that analysis ended.
+             */
+            analyzedAt: string | null;
+            /** @description Most confident first. */
+            suggestions: components["schemas"]["AnalysisSuggestion"][];
+            /** @description The repository's calibration cells with their history. */
+            calibration: components["schemas"]["CalibrationCell"][];
+        };
+        /**
+         * AnalysisSuggestion
+         * @description One suggestion — a row of a card — as the composer stored it (V081, V087), with what
+         *     produced each of its numbers and what has been done with it.
+         */
+        AnalysisSuggestion: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            kind: "build_process" | "workflow";
+            title: string;
+            evidenceLine: string;
+            confidence: number;
+            /** @description Null on a suggestion composed before the basis was stored. */
+            confidenceBasis: components["schemas"]["AnalysisSuggestionConfidence"] | null;
+            impact: components["schemas"]["AnalysisSuggestionImpact"] | null;
+            /** @description Drafted as an investigation ticket rather than applied. */
+            needsSpike: boolean;
+            /** @enum {string} */
+            plane: "farm_config" | "job_hook" | "workflow" | "test_gate" | "planning";
+            /**
+             * @description For a `workflow` plane whose workflow the workspace still has: the workflow, the version
+             *     a draft becomes when a person publishes it, and the studio path that opens it.
+             */
+            workflow: {
+                slug: string;
+                nextVersion: number;
+                studioPath: string;
+            } | null;
+            /** @enum {string} */
+            status: "open" | "applied" | "dismissed" | "drafted";
+            /** @description Null while `open`. */
+            resolution: {
+                /** Format: date-time */
+                at: string;
+                /** @description Who, by display name. Null once that person is removed. */
+                by: string | null;
+                /** @description A dismissal's reason. Null when none was given. */
+                reason: string | null;
+                /**
+                 * Format: uuid
+                 * @description The planning batch a spike was drafted into.
+                 */
+                draftBatchId: string | null;
+            } | null;
+            /** @description The measurement an apply opened. Null unless `applied`. */
+            measurement: {
+                /** Format: uuid */
+                id: string;
+                /** Format: date */
+                appliedOn: string;
+                /** @description Day N of the window. */
+                day: number;
+                windowDays: number;
+                /** Format: date */
+                windowEndsOn: string;
+                /** @enum {string} */
+                verdict: "pending" | "delivered" | "under" | "over" | "confounded";
+            } | null;
+            /**
+             * @description The findings it cites, from the analysis that last composed it. Empty once retention
+             *     has removed them.
+             */
+            findings: components["schemas"]["AnalysisSuggestionFinding"][];
+        };
+        /**
+         * AnalysisSuggestionConfidence
+         * @description How a suggestion's confidence was computed (V087): `round(100 × support × stability ×
+         *     effect)`, with every input the composer read.
+         */
+        AnalysisSuggestionConfidence: {
+            formula: string;
+            inputs: {
+                /** @description The template that composed it, whose constants `scale` and `effectTarget` are. */
+                template: string | null;
+                /** @description The smallest sample among the cited findings. */
+                n: number | null;
+                scale: number | null;
+                /** @description 1 − e^(−n / scale). */
+                support: number | null;
+                /** @description The smallest stability among the cited findings. */
+                stability: number | null;
+                /** @description Null for an absence claim, which has no effect size to weigh. */
+                effectSize: number | null;
+                effectTarget: number | null;
+                /** @description min(1, |effectSize| / effectTarget); 1 for an absence claim. */
+                effect: number | null;
+            };
+        };
+        /**
+         * AnalysisSuggestionImpact
+         * @description A suggestion's impact (V081) and the basis it was arrived at by.
+         */
+        AnalysisSuggestionImpact: {
+            /** @description Signed, in `unit`. Null exactly when the basis is `unquantified`. */
+            estimate: number | null;
+            /** @description `seconds`, `interventions` or `count`. */
+            unit: string;
+            /** @description What the estimate is per — `per loop`, `queue p95`. */
+            appliesTo: string;
+            /** @description The share of builds it applies to, 0–1, when it is not all of them. */
+            share: number | null;
+            basis: {
+                /** @description `measured`, `extrapolated` or `unquantified`. */
+                method: string;
+                description: string;
+                /** @description The sample a `measured` basis was measured over. */
+                sampleSize: number | null;
+                /** @description The formula's id. Null on a suggestion composed before it was stored. */
+                formula: string | null;
+                /** @description Every number the formula read, by name. */
+                inputs: {
+                    [key: string]: unknown;
+                } | null;
+                /** @description The corpus window the inputs were measured over. */
+                window: {
+                    /** Format: date */
+                    from: string;
+                    /** Format: date */
+                    to: string;
+                    days: number;
+                } | null;
+                /** @description The calibration applied when the suggestion was composed. */
+                calibration: {
+                    analyzer: string;
+                    impactClass: string;
+                    factor: number;
+                } | null;
+                /** @description The estimate before calibration — `estimate = round(raw × factor)`. */
+                raw: number | null;
+            };
+        };
+        /**
+         * AnalysisSuggestionFinding
+         * @description One finding a suggestion cites, as its analyzer wrote it (V081).
+         */
+        AnalysisSuggestionFinding: {
+            /** Format: uuid */
+            id: string;
+            analyzer: string;
+            analyzerVersion: number;
+            findingType: string;
+            subjectKey: string;
+            /** @description The analyzer's typed data, in the shape V081 holds this finding type to. */
+            data: {
+                [key: string]: unknown;
+            };
+            confidence: number;
+            /** @description What the finding's confidence was computed from, under the analyzer's rule. */
+            confidenceBasis: {
+                method: string | null;
+                sampleSize: number | null;
+                effectSize: number | null;
+                stability: number | null;
+            };
+            /** @description The first 25 references it cites, in their stored order, resolved. */
+            evidence: components["schemas"]["AnalysisEvidence"][];
+            /** @description How many references it cites in all. */
+            evidenceTotal: number;
+        };
+        /**
+         * WorkflowDeltaSummary
+         * @description What a proposed workflow draft adds to and removes from the document it is built on (BW.3,
+         *     #518) — stages as `` `id` (Title) ``, connections as `from → to`.
+         */
+        WorkflowDeltaSummary: {
+            nodesAdded: string[];
+            nodesRemoved: string[];
+            edgesAdded: string[];
+            edgesRemoved: string[];
         };
         /**
          * Measurements
@@ -13509,15 +13761,19 @@ export interface components {
             /** @description A uuid, or a 7–40 hex commit sha for a `merge`. */
             id: string;
             /**
-             * @description What it names. Null when the row is no longer there, or for a kind this read does not
-             *     open.
+             * @description What it names — a build's number and label, a merge's title, a workflow version, a
+             *     pool or runner, `Build 3` for a test run, a test case's name, a waiver's reason. Null
+             *     when the row is no longer there.
              */
             label: string | null;
             /**
-             * @description Where it opens. Null when it names nothing that can be opened.
+             * @description Where it opens. A build, pool or runner on the **farm**; a merge on its mirrored
+             *     **pull request**, else the farm; a workflow version in the **workflow** studio; a test
+             *     run or case on its loop's **test results**; a waiver on the pull request its loop
+             *     opened, else that loop's test results. Null when it names nothing that can be opened.
              * @enum {string|null}
              */
-            surface: "farm" | "pull_request" | "workflow" | null;
+            surface: "farm" | "pull_request" | "workflow" | "test_results" | null;
             /**
              * Format: uuid
              * @description The mirrored PR — exactly when `surface` is `pull_request`.
@@ -13525,6 +13781,17 @@ export interface components {
             pullRequestId: string | null;
             /** @description The workflow — exactly when `surface` is `workflow`. */
             workflowSlug: string | null;
+            /**
+             * Format: uuid
+             * @description The loop whose test results it opens — exactly when `surface` is `test_results`.
+             */
+            runId: string | null;
+            /** @description The attempt of that loop, by its ordinal, for a test run or case. */
+            attempt: number | null;
+            /** @description The suite to select there, by name, for a test case. */
+            suiteName: string | null;
+            /** @description The case to select there, by name, for a test case. */
+            caseName: string | null;
         };
         /**
          * StartAnalysisBody
@@ -33500,7 +33767,11 @@ export interface operations {
                      *               "label": "ccache enabled",
                      *               "surface": "pull_request",
                      *               "pullRequestId": "5eed0052-0000-4000-8000-000000000482",
-                     *               "workflowSlug": null
+                     *               "workflowSlug": null,
+                     *               "runId": null,
+                     *               "attempt": null,
+                     *               "suiteName": null,
+                     *               "caseName": null
                      *             },
                      *             {
                      *               "kind": "workflow_version",
@@ -33508,7 +33779,11 @@ export interface operations {
                      *               "label": "standard-fix v9",
                      *               "surface": "workflow",
                      *               "pullRequestId": null,
-                     *               "workflowSlug": "standard-fix"
+                     *               "workflowSlug": "standard-fix",
+                     *               "runId": null,
+                     *               "attempt": null,
+                     *               "suiteName": null,
+                     *               "caseName": null
                      *             },
                      *             {
                      *               "kind": "build",
@@ -33516,7 +33791,11 @@ export interface operations {
                      *               "label": "#641 · zephyr build",
                      *               "surface": "farm",
                      *               "pullRequestId": null,
-                     *               "workflowSlug": null
+                     *               "workflowSlug": null,
+                     *               "runId": null,
+                     *               "attempt": null,
+                     *               "suiteName": null,
+                     *               "caseName": null
                      *             },
                      *             {
                      *               "kind": "build",
@@ -33524,7 +33803,11 @@ export interface operations {
                      *               "label": null,
                      *               "surface": null,
                      *               "pullRequestId": null,
-                     *               "workflowSlug": null
+                     *               "workflowSlug": null,
+                     *               "runId": null,
+                     *               "attempt": null,
+                     *               "suiteName": null,
+                     *               "caseName": null
                      *             }
                      *           ]
                      *         }
@@ -34424,6 +34707,302 @@ export interface operations {
             };
         };
     };
+    listSuggestions: {
+        parameters: {
+            query: {
+                /** @description The repository, `owner/name`. */
+                repo: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The current suggestions and the repository's calibration. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "runId": "5eed0065-0000-4000-8000-000000000002",
+                     *       "analyzedAt": "2026-08-08T10:41:00.000Z",
+                     *       "suggestions": [
+                     *         {
+                     *           "id": "5eed0067-0000-4000-8000-000000000013",
+                     *           "kind": "build_process",
+                     *           "title": "Move forge-02 to pool-a during 14:00–16:00 UTC",
+                     *           "evidenceLine": "pool-a queue exceeds 5 min in that window on 11 of last 14 weekdays; pool-b sits idle 82% of it",
+                     *           "confidence": 84,
+                     *           "confidenceBasis": {
+                     *             "formula": "composer v1: round(100 * (1 - e^(-n/scale)) * stability * min(1, |effect|/target))",
+                     *             "inputs": {
+                     *               "template": "runner_move",
+                     *               "n": 14,
+                     *               "scale": 5,
+                     *               "support": 0.9392,
+                     *               "stability": 0.895,
+                     *               "effectSize": 0.786,
+                     *               "effectTarget": 0.75,
+                     *               "effect": 1
+                     *             }
+                     *           },
+                     *           "impact": {
+                     *             "estimate": -240,
+                     *             "unit": "seconds",
+                     *             "appliesTo": "queue p95",
+                     *             "share": null,
+                     *             "basis": {
+                     *               "method": "extrapolated",
+                     *               "description": "pool-a's window waits with forge-02 taking the backlog",
+                     *               "sampleSize": null,
+                     *               "formula": "runner_move v1: -wait_reduction_seconds",
+                     *               "inputs": {
+                     *                 "wait_reduction_seconds": 240
+                     *               },
+                     *               "window": {
+                     *                 "from": "2026-05-10",
+                     *                 "to": "2026-08-07",
+                     *                 "days": 90
+                     *               },
+                     *               "calibration": {
+                     *                 "analyzer": "queue_correlation",
+                     *                 "impactClass": "queue_wait",
+                     *                 "factor": 1
+                     *               },
+                     *               "raw": -240
+                     *             }
+                     *           },
+                     *           "needsSpike": false,
+                     *           "plane": "farm_config",
+                     *           "workflow": null,
+                     *           "status": "open",
+                     *           "resolution": null,
+                     *           "measurement": null,
+                     *           "findings": [
+                     *             {
+                     *               "id": "5eed0066-0000-4000-8000-000000000151",
+                     *               "analyzer": "queue_correlation",
+                     *               "analyzerVersion": 1,
+                     *               "findingType": "queue_correlation",
+                     *               "subjectKey": "pool-a@14:00-16:00",
+                     *               "data": {
+                     *                 "window": {
+                     *                   "from": "14:00",
+                     *                   "to": "16:00"
+                     *                 },
+                     *                 "metric": "queue_wait",
+                     *                 "threshold_seconds": 300,
+                     *                 "days_exceeded": 11,
+                     *                 "days_observed": 14,
+                     *                 "idle_share": 0.82
+                     *               },
+                     *               "confidence": 84,
+                     *               "confidenceBasis": {
+                     *                 "method": "queue_correlation v1 — weekdays whose longest pool-a wait in the window crossed the threshold, against the other pool's idle share",
+                     *                 "sampleSize": 14,
+                     *                 "effectSize": 0.786,
+                     *                 "stability": 0.895
+                     *               },
+                     *               "evidence": [
+                     *                 {
+                     *                   "kind": "runner_pool",
+                     *                   "id": "5eed0024-0000-4000-8000-000000000001",
+                     *                   "label": "pool-a",
+                     *                   "surface": "farm",
+                     *                   "pullRequestId": null,
+                     *                   "workflowSlug": null,
+                     *                   "runId": null,
+                     *                   "attempt": null,
+                     *                   "suiteName": null,
+                     *                   "caseName": null
+                     *                 },
+                     *                 {
+                     *                   "kind": "runner",
+                     *                   "id": "5eed0025-0000-4000-8000-000000000002",
+                     *                   "label": "forge-02",
+                     *                   "surface": "farm",
+                     *                   "pullRequestId": null,
+                     *                   "workflowSlug": null,
+                     *                   "runId": null,
+                     *                   "attempt": null,
+                     *                   "suiteName": null,
+                     *                   "caseName": null
+                     *                 }
+                     *               ],
+                     *               "evidenceTotal": 14
+                     *             }
+                     *           ]
+                     *         },
+                     *         {
+                     *           "id": "5eed0067-0000-4000-8000-000000000015",
+                     *           "kind": "workflow",
+                     *           "title": "standard-fix: run self-review BEFORE the build stage",
+                     *           "evidenceLine": "34% of failed builds in standard-fix loops contained defects the later self-review flagged anyway — reordering catches them pre-build",
+                     *           "confidence": 89,
+                     *           "confidenceBasis": null,
+                     *           "impact": {
+                     *             "estimate": -125,
+                     *             "unit": "seconds",
+                     *             "appliesTo": "per failed attempt",
+                     *             "share": null,
+                     *             "basis": {
+                     *               "method": "extrapolated",
+                     *               "description": "a failed build attempt's wall-clock, for the share review would have caught first",
+                     *               "sampleSize": null,
+                     *               "formula": null,
+                     *               "inputs": null,
+                     *               "window": null,
+                     *               "calibration": null,
+                     *               "raw": null
+                     *             }
+                     *           },
+                     *           "needsSpike": false,
+                     *           "plane": "workflow",
+                     *           "workflow": {
+                     *             "slug": "standard-fix",
+                     *             "nextVersion": 16,
+                     *             "studioPath": "/workflows/standard-fix"
+                     *           },
+                     *           "status": "dismissed",
+                     *           "resolution": {
+                     *             "at": "2026-08-08T12:00:00.000Z",
+                     *             "by": "Ken Suenobu",
+                     *             "reason": "Review is the slow stage here; revisit after the model change.",
+                     *             "draftBatchId": null
+                     *           },
+                     *           "measurement": null,
+                     *           "findings": []
+                     *         }
+                     *       ],
+                     *       "calibration": [
+                     *         {
+                     *           "analyzer": "cache_window",
+                     *           "impactClass": "duration_delta",
+                     *           "factor": 0.6545,
+                     *           "sampleCount": 1,
+                     *           "updatedAt": "2026-07-24T03:00:00.000Z",
+                     *           "history": [
+                     *             {
+                     *               "fromFactor": 1,
+                     *               "toFactor": 0.6545,
+                     *               "sampleCount": 1,
+                     *               "measuredSum": -72,
+                     *               "predictedSum": -110,
+                     *               "measurementIds": [
+                     *                 "5eed0069-0000-4000-8000-000000000002"
+                     *               ],
+                     *               "addedMeasurementIds": [
+                     *                 "5eed0069-0000-4000-8000-000000000002"
+                     *               ],
+                     *               "createdAt": "2026-07-24T03:00:00.000Z"
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["AnalysisSuggestions"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or not `owner/name`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     previewSuggestion: {
         parameters: {
             query?: never;
@@ -34501,6 +35080,7 @@ export interface operations {
                      *         "endsAt": "16:00"
                      *       },
                      *       "studioPath": null,
+                     *       "delta": null,
                      *       "fingerprint": "sha256:4f9c2b1d0e7a6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d"
                      *     }
                      */

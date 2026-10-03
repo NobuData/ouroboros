@@ -2,8 +2,6 @@ import {
   annotatedRun,
   CCACHE_SHA,
   changePoint,
-  FIRST_AFTER_ID,
-  LAST_BEFORE_ID,
   POLICY_VERSION_ID,
   resolvedEvidence,
 } from "./duration.fixture";
@@ -13,8 +11,6 @@ import {
   durationChartResource,
   durationPointResource,
   emptyDurationChart,
-  evidenceIds,
-  evidenceResource,
 } from "./duration.resources";
 
 /**
@@ -116,106 +112,8 @@ describe("a change-point finding, as the chart reads it", () => {
   });
 });
 
-describe("evidence references", () => {
-  it("are grouped by the kinds this read opens, each id once", () => {
-    const ids = evidenceIds([
-      changePoint(),
-      changePoint({
-        evidence_refs: [
-          { kind: "merge", id: CCACHE_SHA },
-          { kind: "runner_pool", id: "pool-1" },
-          { kind: "runner", id: "runner-1" },
-          { kind: "waiver", id: "waiver-1" },
-        ],
-      }),
-    ]);
-
-    expect(ids).toEqual({
-      builds: [LAST_BEFORE_ID, FIRST_AFTER_ID],
-      merges: [CCACHE_SHA],
-      workflowVersions: [POLICY_VERSION_ID],
-      runnerPools: ["pool-1"],
-      runners: ["runner-1"],
-    });
-  });
-
-  it("open a merge on its mirrored pull request", () => {
-    expect(evidenceResource({ kind: "merge", id: CCACHE_SHA }, resolvedEvidence())).toEqual({
-      kind: "merge",
-      id: CCACHE_SHA,
-      label: "ccache enabled",
-      surface: "pull_request",
-      pullRequestId: "5eed0052-0000-4000-8000-000000000482",
-      workflowSlug: null,
-    });
-  });
-
-  it("open a merge the mirror has no PR for on the farm that built it", () => {
-    const resolved = resolvedEvidence({
-      merges: [{ sha: CCACHE_SHA, title: "ccache enabled", pull_request_id: null }],
-    });
-
-    expect(evidenceResource({ kind: "merge", id: CCACHE_SHA }, resolved)).toMatchObject({
-      label: "ccache enabled",
-      surface: "farm",
-      pullRequestId: null,
-    });
-  });
-
-  it("open a workflow version in the studio, a draft named as one", () => {
-    const ref = { kind: "workflow_version", id: POLICY_VERSION_ID };
-
-    expect(evidenceResource(ref, resolvedEvidence())).toMatchObject({
-      label: "standard-fix v9",
-      surface: "workflow",
-      workflowSlug: "standard-fix",
-    });
-    expect(
-      evidenceResource(
-        ref,
-        resolvedEvidence({
-          workflowVersions: [{ id: POLICY_VERSION_ID, slug: "standard-fix", version: null }],
-        }),
-      ).label,
-    ).toBe("standard-fix draft");
-  });
-
-  it("open a build, a pool and a runner on the farm", () => {
-    const resolved = resolvedEvidence({
-      runnerPools: [{ id: "pool-1", name: "pool-a" }],
-      runners: [{ id: "runner-1", name: "forge-02" }],
-    });
-
-    expect(evidenceResource({ kind: "build", id: LAST_BEFORE_ID }, resolved)).toMatchObject({
-      label: "#641 · zephyr build",
-      surface: "farm",
-    });
-    expect(evidenceResource({ kind: "runner_pool", id: "pool-1" }, resolved)).toMatchObject({
-      label: "pool-a",
-      surface: "farm",
-    });
-    expect(evidenceResource({ kind: "runner", id: "runner-1" }, resolved)).toMatchObject({
-      label: "forge-02",
-      surface: "farm",
-    });
-  });
-
-  it.each([
-    ["a build retention has removed", { kind: "build", id: FIRST_AFTER_ID }],
-    ["a merge nothing in the workspace recorded", { kind: "merge", id: "feedbee" }],
-    ["a pool that is gone", { kind: "runner_pool", id: "pool-9" }],
-    ["a kind this read opens nowhere", { kind: "test_case", id: "case-1" }],
-  ])("leave %s named by its reference alone, opening nothing", (_about, ref) => {
-    expect(evidenceResource(ref, resolvedEvidence())).toEqual({
-      ...ref,
-      label: null,
-      surface: null,
-      pullRequestId: null,
-      workflowSlug: null,
-    });
-  });
-
-  it("keep a finding's references in their stored order", () => {
+describe("a change-point's evidence", () => {
+  it("keeps the finding's references in their stored order, each resolved or not", () => {
     const { evidence } = changePointResource(changePoint(), resolvedEvidence());
 
     expect(evidence.map((entry) => `${entry.kind}:${String(entry.surface)}`)).toEqual([

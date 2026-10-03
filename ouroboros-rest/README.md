@@ -122,6 +122,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/analyzer/runs/{id}`                   | [Build Analyzer runs](#build-analyzer-runs) (#510) — status, phase, per-analyzer progress, corpus manifest; any member |
 | `GET PUT /api/v1/analyzer/schedule`                | [Build Analyzer runs](#build-analyzer-runs) (#516) — `?repo=owner/name`; the weekly slot, every-N threshold with the live `buildCounter`, and budgets; read by any member, saved whole by `owner`/`admin`, audited `analyzer.schedule_updated` |
 | `GET /api/v1/analyzer/duration`                    | [Build Analyzer runs](#build-analyzer-runs) (#517) — `?repo=owner/name`; the newest annotated run's daily-median duration series and its change-points — ranked candidates with scores, attribution window, confidence basis, evidence resolved to the farm, a PR or a workflow; any member |
+| `GET /api/v1/analyzer/suggestions`                 | [Build Analyzer runs](#build-analyzer-runs) (#518) — `?repo=owner/name`; the build-process and workflow suggestions still current, in every status, each with its confidence and impact bases, the measurement its apply opened and the findings it cites with their evidence resolved; plus the calibration cells; any member |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
@@ -6282,6 +6283,46 @@ the Details sheet each chip opens: `GET /api/v1/analyzer/duration?repo=`, any me
   `duration.contract.spec.ts` (the answer against `openapi.yaml`) and
   `duration.integration-spec.ts` (the run chosen, the series scoped to the label and window, each
   evidence kind resolved against real rows).
+
+**The suggestion cards** (BW.3, [#518](https://github.com/NobuData/ouroboros/issues/518),
+[`suggestions/`](src/modules/analyzer/suggestions)) are the read behind mockup 18's **Suggested
+build-process changes** and **Suggested workflow changes**, their scoring popovers and the Details
+sheet behind each row: `GET /api/v1/analyzer/suggestions?repo=`, any member.
+- **What is current.** A suggestion stays on the cards until an analysis **looks again and does
+  not find it**: until a later run that ended (`complete` or `budget_exceeded`) had every analyzer
+  its findings came from complete, and still did not compose it. A run that did not look — one in
+  flight, a failed one, one whose pattern analyzers were skipped, as a live run's are today —
+  never blanks the cards; a run that looked and found nothing does. The rule is per suggestion, so
+  an analysis that ran only some analyzers supersedes only what those analyzers feed.
+- **Every status.** The current build-process and workflow suggestions are answered `open`,
+  `applied` (with the `measurement` its apply opened: day N of its window, the verdict once
+  closed), `dismissed` (who, when, why) and `drafted` (the planning batch). A dismissed suggestion
+  a re-analysis finds again is still listed, still dismissed; one an analysis no longer finds
+  leaves the cards without being resolved by anybody. Ticket drafts are not listed. `runId` names
+  the newest ended run that composed any suggestion, and is `null` before one has.
+- **Nothing recomputed.** Beside each number is what produced it: `confidenceBasis` (V087's formula
+  and every input), `impact.basis` (method, formula id, inputs, window, the calibration applied and
+  the raw estimate before it), and `findings` — the cited findings of the suggestion's own last
+  analysis, as their analyzers wrote them. A key an older row never stored is `null`.
+- **Evidence, bounded.** Each finding answers its first 25 references, resolved, and
+  `evidenceTotal` says how many it cites; only those 25 are resolved. `workflow.nextVersion` is
+  the workflow's version in force plus one — what a draft becomes when a person publishes it.
+  `calibration` is the repository's cells with their history.
+- **Evidence resolution is shared** ([`evidence/`](src/modules/analyzer/evidence)) with the
+  duration chart, and since #518 resolves every kind V081 knows: a `test_run` and a `test_case` on
+  their loop's **test results** (the attempt, and the suite and case to select), and a `waiver` on
+  the **pull request** its loop opened, else on that loop's test results.
+- **The preview's workflow delta.** `GET …/suggestions/{id}/preview` answers `delta` for a workflow
+  draft: the stages and connections the proposed document adds to and removes from the one it is
+  built on (`workflow.delta.ts` `summarizeDelta`). It sits beside `change`, outside the
+  fingerprint: the payload is what the plane is handed.
+- **Suite.** `suggestions.resources.spec.ts`, `suggestions.service.spec.ts`,
+  `suggestions.contract.spec.ts` (the answer and the preview against `openapi.yaml`),
+  `evidence.resources.spec.ts`, and against real rows `suggestions.integration-spec.ts` (what is
+  current: a dismissal across a re-analysis, a suggestion looked for and no longer found, ones
+  kept because their analyzer was skipped, a run in flight or failed superseding nothing) and
+  `evidence.integration-spec.ts` (test runs, cases and waivers, none of them resolved from another
+  workspace). Each clause of the currency rule was removed in turn and turned the suite red.
 
 ```bash
 yarn test:integration src/modules/analyzer

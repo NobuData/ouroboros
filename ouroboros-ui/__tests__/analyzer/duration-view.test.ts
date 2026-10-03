@@ -399,6 +399,62 @@ describe("evidence references", () => {
     );
   });
 
+  it("open a test run, a test case and an unmirrored waiver on their loop's test results (#518)", () => {
+    const run = "5eed0009-0000-4000-8000-000000000479";
+
+    expect(
+      evidenceLink(evidenceOf("test_run", "5eed0031-0000-4000-8000-000000000003", "Build 3", {
+        surface: "test_results",
+        runId: run,
+        attempt: 3,
+      })),
+    ).toMatchObject({
+      kind: "Test run",
+      name: "Build 3",
+      href: `/runs/${run}/tests?from=build-farm&attempt=3`,
+      destination: "Test results",
+    });
+    expect(
+      evidenceLink(evidenceOf("test_case", "5eed0033-0000-4000-8000-000000000001", "ring buffer drains under burst", {
+        surface: "test_results",
+        runId: run,
+        attempt: 3,
+        suiteName: "telemetry integration",
+        caseName: "ring buffer drains under burst",
+      })).href,
+    ).toBe(`/runs/${run}/tests?from=build-farm&attempt=3&suite=telemetry+integration&case=ring+buffer+drains+under+burst`);
+    expect(
+      evidenceLink(evidenceOf("waiver", "5eed006d-0000-4000-8000-000000003401", "No thermal chamber", {
+        surface: "test_results",
+        runId: run,
+      })),
+    ).toMatchObject({ kind: "Waiver", href: `/runs/${run}/tests?from=build-farm`, destination: "Test results" });
+  });
+
+  it("open a waiver on the pull request it waived a criterion of, when the mirror has it (#518)", () => {
+    expect(
+      evidenceLink(evidenceOf("waiver", "5eed006d-0000-4000-8000-000000003401", "No thermal chamber", {
+        surface: "pull_request",
+        pullRequestId: "5eed003a-0000-4000-8000-000000000514",
+      })),
+    ).toMatchObject({
+      kind: "Waiver",
+      name: "No thermal chamber",
+      detail: null,
+      href: "/prs/5eed003a-0000-4000-8000-000000000514?from=build-farm",
+      destination: "Pull request",
+    });
+  });
+
+  it("never link test results the service did not address with a loop", () => {
+    const halfResolved = evidenceOf("test_case", "5eed0033-0000-4000-8000-000000000001", "a case", {
+      surface: "test_results",
+      runId: null,
+    });
+
+    expect(evidenceLink(halfResolved)).toMatchObject({ href: null, destination: EVIDENCE_UNAVAILABLE });
+  });
+
   it("open nothing for a reference whose row is gone, and say so by its id", () => {
     expect(evidenceLink(evidenceOf("build", "5eed0062-0000-4000-8000-000000010623", null))).toEqual({
       key: "build:5eed0062-0000-4000-8000-000000010623",

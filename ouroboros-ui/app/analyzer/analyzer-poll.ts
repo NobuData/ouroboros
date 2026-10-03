@@ -3,14 +3,21 @@
  * — the I.8 poll family's loop over `GET /api/analyzer?repo=` on this origin.
  *
  * One payload per repository: the newest run (its status, phase, per-analyzer progress and
- * manifest), the schedule with its live counter, and the duration chart — the series and the
+ * manifest), the schedule with its live counter, the duration chart — the series and the
  * change-points detected on it (BW.2, [#517](https://github.com/NobuData/ouroboros/issues/517)),
- * which arrive together so a chip can never be drawn over a series it was not detected on. While
+ * which arrive together so a chip can never be drawn over a series it was not detected on — and
+ * the suggestion cards (BW.3, [#518](https://github.com/NobuData/ouroboros/issues/518)): the
+ * current suggestions with the findings each cites and the calibration behind its impact. While
  * a run is in flight the hop asks to be polled every {@link RUNNING_POLL_SECONDS} so *Run analysis
  * now* shows real progress; otherwise the family's default interval holds.
  */
 
-import type { AnalysisRun, AnalysisSchedule, DurationChart } from "@/app/api/analyzer";
+import type {
+  AnalysisRun,
+  AnalysisSchedule,
+  AnalysisSuggestions,
+  DurationChart,
+} from "@/app/api/analyzer";
 import { type Poll, type PollOptions, type PollReader, createPoll, requestPayload } from "@/app/poll";
 
 /** Where the browser asks — **this origin**, not `ouroboros-rest`. */
@@ -28,7 +35,7 @@ export const UNREADABLE_ANALYZER = "The Build Analyzer could not be read.";
 /** What is said when nothing answered at all — a dropped connection, a timeout. */
 export const UNREACHABLE_ANALYZER = "The Build Analyzer could not be reached.";
 
-/** One repository's analyzer page: the newest run, the schedule and the duration chart. */
+/** One repository's analyzer page: the newest run, the schedule, the chart and the suggestions. */
 export interface AnalyzerPage {
   /** The repository, `owner/name`. */
   readonly repo: string;
@@ -38,6 +45,8 @@ export interface AnalyzerPage {
   readonly schedule: AnalysisSchedule;
   /** The duration series and its change-points; empty before a run has detected any. */
   readonly duration: DurationChart;
+  /** The suggestion cards' rows; none before an analysis has composed a suggestion. */
+  readonly suggestions: AnalysisSuggestions;
 }
 
 /** One read of the page, as the loop needs it. Replaced wholesale in tests. */
@@ -63,20 +72,23 @@ export function analyzerUrl(repo: string): string {
  * Whether a parsed body is an analyzer page — enough of one that the screen can draw it.
  *
  * @param value The parsed body.
- * @returns True when it has a repository, a run or `null`, a schedule, and a duration chart
- *   with its two lists.
+ * @returns True when it has a repository, a run or `null`, a schedule, a duration chart with its
+ *   two lists, and the suggestion cards with theirs.
  */
 export function isAnalyzerPage(value: unknown): value is AnalyzerPage {
   if (typeof value !== "object" || value === null) return false;
 
-  const { repo, run, schedule, duration } = value as Partial<Record<keyof AnalyzerPage, unknown>>;
+  const { repo, run, schedule, duration, suggestions } = value as Partial<
+    Record<keyof AnalyzerPage, unknown>
+  >;
 
   return (
     typeof repo === "string" &&
     (run === null || (typeof run === "object" && run !== undefined)) &&
     typeof schedule === "object" &&
     schedule !== null &&
-    isDurationChart(duration)
+    isDurationChart(duration) &&
+    isSuggestions(suggestions)
   );
 }
 
@@ -92,6 +104,20 @@ function isDurationChart(value: unknown): value is DurationChart {
   const { series, changePoints } = value as Partial<Record<keyof DurationChart, unknown>>;
 
   return Array.isArray(series) && Array.isArray(changePoints);
+}
+
+/**
+ * Whether a parsed value is the suggestion cards' content — enough of it that they can be drawn.
+ *
+ * @param value The page's `suggestions`.
+ * @returns True when it carries a list of suggestions and a list of calibration cells.
+ */
+function isSuggestions(value: unknown): value is AnalysisSuggestions {
+  if (typeof value !== "object" || value === null) return false;
+
+  const { suggestions, calibration } = value as Partial<Record<keyof AnalysisSuggestions, unknown>>;
+
+  return Array.isArray(suggestions) && Array.isArray(calibration);
 }
 
 /**

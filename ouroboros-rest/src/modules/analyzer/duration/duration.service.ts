@@ -14,23 +14,26 @@ import { Injectable } from "@nestjs/common";
 import { DURATION_METRIC } from "../corpus/corpus.assembler";
 import type { CorpusManifest } from "../corpus/corpus.manifest";
 import { CorpusRepository } from "../corpus/corpus.repository";
+import { EvidenceRepository } from "../evidence/evidence.repository";
+import { evidenceIds } from "../evidence/evidence.resources";
 import { DurationRepository } from "./duration.repository";
 import {
   durationChartResource,
   emptyDurationChart,
-  evidenceIds,
   type DurationChartResource,
 } from "./duration.resources";
 
 @Injectable()
 export class DurationChartService {
   /**
-   * @param reads - The run, its findings and their evidence.
+   * @param reads - The run and its findings.
    * @param corpus - BI's rolled-up series.
+   * @param evidence - What the findings' references name.
    */
   constructor(
     private readonly reads: DurationRepository,
     private readonly corpus: CorpusRepository,
+    private readonly evidence: EvidenceRepository,
   ) {}
 
   /**
@@ -57,7 +60,7 @@ export class DurationChartService {
         : this.corpus.series({ organizationId, repoRef }, manifest.window, DURATION_METRIC),
       this.reads.changePoints(organizationId, run.id),
     ]);
-    const resolved = await this.reads.evidence(organizationId, evidenceIds(findings));
+    const resolved = await this.evidence.resolve(organizationId, evidenceIds(findings));
 
     return durationChartResource(
       run,

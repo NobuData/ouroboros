@@ -33,7 +33,14 @@ import type {
 import type { TimeSeriesAxis, TimeSeriesMarker, TimeSeriesPoint } from "@/app/charts";
 import { percentOf, spanOfMs } from "@/app/format";
 import { dayLabel } from "@/app/insights/series-view";
-import { BUILD_FARM_PATH, FARM_POOLS_HASH, FARM_RUNNERS_HASH, prPath, workflowPath } from "@/app/paths";
+import {
+  BUILD_FARM_PATH,
+  FARM_POOLS_HASH,
+  FARM_RUNNERS_HASH,
+  prPath,
+  testsPath,
+  workflowPath,
+} from "@/app/paths";
 import { BUILD_FARM_ORIGIN } from "@/app/runs/origin";
 
 import { count } from "./view";
@@ -492,9 +499,10 @@ const SHORT_ID = 7;
  * Where one evidence reference opens.
  *
  * @param evidence The reference, as the service resolved it.
- * @returns Its name and address: a pull request's page, the workflow studio, or the build farm —
- *   the runners card for a runner, the pools card for a pool. A reference whose row is gone keeps
- *   its id and opens nothing.
+ * @returns Its name and address: a pull request's page, the workflow studio, the build farm — the
+ *   runners card for a runner, the pools card for a pool — or a loop's test results, on the
+ *   attempt, suite and case the reference names (#518). A reference whose row is gone keeps its id
+ *   and opens nothing.
  */
 export function evidenceLink(evidence: AnalysisEvidence): EvidenceLink {
   const base = {
@@ -514,6 +522,18 @@ export function evidenceLink(evidence: AnalysisEvidence): EvidenceLink {
   }
   if (evidence.surface === "workflow" && evidence.workflowSlug !== null) {
     return { ...base, href: workflowPath(evidence.workflowSlug), destination: "Workflows" };
+  }
+  if (evidence.surface === "test_results" && evidence.runId !== null) {
+    return {
+      ...base,
+      href: testsPath(evidence.runId, {
+        from: BUILD_FARM_ORIGIN.id,
+        ...(evidence.attempt === null ? {} : { attempt: evidence.attempt }),
+        ...(evidence.suiteName === null ? {} : { suite: evidence.suiteName }),
+        ...(evidence.caseName === null ? {} : { case: evidence.caseName }),
+      }),
+      destination: "Test results",
+    };
   }
   if (evidence.surface === "farm") {
     const hash = { runner: FARM_RUNNERS_HASH, runner_pool: FARM_POOLS_HASH }[evidence.kind as string];

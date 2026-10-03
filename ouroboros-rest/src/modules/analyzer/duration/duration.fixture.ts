@@ -6,7 +6,8 @@
  */
 
 import type { AnalysisRunRow } from "../analysis.repository";
-import type { FindingRow, ResolvedEvidence } from "./duration.repository";
+import type { ResolvedEvidence } from "../evidence/evidence.repository";
+import type { FindingRow } from "./duration.repository";
 
 /** The seeded repository. */
 export const HELIOS = "acme-robotics/helios-firmware";
@@ -144,6 +145,9 @@ export function resolvedEvidence(overrides: Partial<ResolvedEvidence> = {}): Res
     workflowVersions: [{ id: POLICY_VERSION_ID, slug: "standard-fix", version: 9 }],
     runnerPools: [],
     runners: [],
+    testRuns: [],
+    testCases: [],
+    waivers: [],
     ...overrides,
   };
 }

@@ -32,6 +32,11 @@
  * The duration chart's read (`duration/`, BW.2, [#517](https://github.com/NobuData/ouroboros/issues/517))
  * answers the series a run analyzed together with the change-points it detected on it — every
  * ranked candidate, its score, and evidence resolved to the surface it opens on.
+ *
+ * The suggestion cards' read (`suggestions/`, BW.3, [#518](https://github.com/NobuData/ouroboros/issues/518))
+ * answers the build-process and workflow suggestions still current, in every status, each with
+ * its confidence and impact bases, the measurement its apply opened, and the findings it cites.
+ * `evidence/` resolves evidence references for both reads.
  */
 
 import { Module } from "@nestjs/common";
@@ -65,8 +70,12 @@ import { CorpusRepository } from "./corpus/corpus.repository";
 import { DurationChartController } from "./duration/duration.controller";
 import { DurationRepository } from "./duration/duration.repository";
 import { DurationChartService } from "./duration/duration.service";
+import { EvidenceRepository } from "./evidence/evidence.repository";
 import { AnalysisScheduleController } from "./schedule/schedule.controller";
 import { AnalysisScheduleService } from "./schedule/schedule.service";
+import { SuggestionsController } from "./suggestions/suggestions.controller";
+import { SuggestionsRepository } from "./suggestions/suggestions.repository";
+import { SuggestionsService } from "./suggestions/suggestions.service";
 
 @Module({
   imports: [
@@ -85,6 +94,7 @@ import { AnalysisScheduleService } from "./schedule/schedule.service";
     SuggestionActionsController,
     MeasurementController,
     DurationChartController,
+    SuggestionsController,
   ],
   providers: [
     CorpusRepository,
@@ -103,8 +113,11 @@ import { AnalysisScheduleService } from "./schedule/schedule.service";
     MeasurementRepository,
     MeasurementService,
     MeasurementScheduler,
+    EvidenceRepository,
     DurationRepository,
     DurationChartService,
+    SuggestionsRepository,
+    SuggestionsService,
   ],
   exports: [AnalysisOrchestrator],
 })

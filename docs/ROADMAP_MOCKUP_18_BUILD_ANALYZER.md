@@ -827,7 +827,7 @@ annotated chart — via the #16 tokens (both themes; the mockup is dark-only).
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BW.1 | #516 ✅ | 🟢 Done | ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip | Frame, run-now with progress, schedule editor, honest provenance | mvp, analyzer, ui, design | N (after #41, BV.1, BA-D.5) | Y | M | ouroboros-ui |
 | BW.2 | #517 ✅ | 🟢 Done | ouroboros-ui: [BW.2] Annotated duration chart | BK.1 TimeSeries + change-point chips/verticals + Details | mvp, analyzer, ui, design | N (after BW.1, BK.1) | Y | M | ouroboros-ui |
-| BW.3 | #518 | 🟡 Open | ouroboros-ui: [BW.3] Suggestion cards & apply flows | Process + workflow suggestions, previews, dismiss, spike flow | mvp, analyzer, ui, design | N (after BW.1, BV.5) | Y | L | ouroboros-ui |
+| BW.3 | #518 ✅ | 🟢 Done | ouroboros-ui: [BW.3] Suggestion cards & apply flows | Process + workflow suggestions, previews, dismiss, spike flow | mvp, analyzer, ui, design | N (after BW.1, BV.5) | Y | L | ouroboros-ui |
 | BW.4 | #519 | 🟡 Open | ouroboros-ui: [BW.4] Drafted-tickets card | Checkbox drafts, evidence, edit, push-to-backlog flow | mvp, analyzer, ui | N (after BW.1, BV.5) | Y | M | ouroboros-ui |
 | BW.5 | #520 | 🟡 Open | ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards | Verdict rows + notes; the three-step explainer with A2 truth | mvp, analyzer, ui, design | N (after BW.1, BV.6) | Y | S | ouroboros-ui |
 | BW.6 | #521 | 🟡 Open | ouroboros-ui: [BW.6] Analyzer states & e2e leg | Cold/insufficient-corpus/running states; full-chain e2e | mvp, analyzer, ui, ci | N (after BW.2–BW.5) | Y | M | ouroboros-ui, .github |
@@ -938,7 +938,7 @@ chip → Details: candidates [{merge zephyr-4.1 bump, .91}, {config Δ, .22}] ·
 
 ### Issue BW.3 — ouroboros-ui: [BW.3] Suggestion cards & apply flows
 
-> **GitHub issue:** #518 · **Status:** 🟡 Open · **Parent epic:** #504
+> **GitHub issue:** #518 ✅ · **Status:** 🟢 Done · **Parent epic:** #504
 
 - **Problem Statement:** The two suggestion cards with their full
   lifecycle UX: evidence, impact, confidence, apply-with-preview,
@@ -965,6 +965,56 @@ chip → Details: candidates [{merge zephyr-4.1 bump, .91}, {config Δ, .22}] ·
 Split the test gate… [−3m 40s/loop] conf 91% ⓘ  [Apply ▸ preview][Details][Dismiss]
 standard-fix: self-review BEFORE build … [Draft as v16 → studio][Simulate — arrives with BX.2]
 ```
+
+- **Delivered**: `ouroboros-ui` 0.125.0 (`app/analyzer/suggestion-*`, `apply-dialog.tsx`,
+  `dismiss-dialog.tsx`, `spike-dialog.tsx`, `evidence-list.tsx`), `ouroboros-rest` 0.38.12
+  (`src/modules/analyzer/suggestions/`, `evidence/`) and `tests/e2e` 0.27.0 (leg 23). Two choices
+  were made with the user; the rest follow from the code as it stood.
+  - **Read API built here**, as BV.4's and BV.5's entries said it would be:
+    `GET /api/v1/analyzer/suggestions?repo=` (members) answers the build-process and workflow
+    suggestions **still current**, in every status, each with its confidence basis, its impact
+    basis, the measurement its apply opened, and the findings it cites with their evidence
+    resolved (the first 25 per finding, with the total), plus the calibration cells.
+  - **What is current.** A suggestion stays on the cards until a later ended run had every
+    analyzer its findings came from complete and still did not compose it again. A run that did
+    not look — in flight, failed, or with its pattern analyzers skipped, as a live run's are
+    today — never blanks the cards; one that looked and found nothing does. The first rule tried
+    (*the newest run that composed anything*) was wrong, and the e2e leg found it: a live run
+    re-composes one ticket draft, which emptied both cards.
+  - **Rows in every status.** An open row is the mockup's. An applied row says who and when,
+    `measurement pending — day N of 14`, and links to `#predicted-vs-measured`, the anchor BW.5's
+    card answers to (until #520 lands the link has no target). A dismissed row stays, saying
+    *won't be suggested again*. So a reload shows the service's truth, not a remembered press.
+  - **Apply is behind the preview**, rendered from BV.5's payload: the runner, pool, UTC window and
+    days; the repository, trigger, command and pool; the workflow, the version a draft becomes,
+    its change note, and — new in the preview, as `delta` — the stages and connections it adds and
+    removes. The confirm sends the preview's fingerprint; a preview that moved is read again and
+    says so. The test-gate split (#1100) is described with its reason and offers no confirm.
+  - **Spike rows — decided with the user: show what the suggestion carries.** The seeded row is
+    the mockup's (`−55s per build` · `needs a spike` · **Draft spike ticket**) and its popover says
+    the figure is extrapolated and unverified; an unquantified impact draws no figure. The draft
+    dialog carries the uncertainty in the basis's own words, picks the tracker with the planning
+    page's segment, and leads to the batch (`/planning?batch=…`), never to a tracker.
+  - **`Draft as vN →` is computed.** N is the workflow's version in force plus one, so the dev
+    seed reads **`Draft as v15 →`** — `standard-fix` is at v14 there (mockup 04's parity) where
+    mockup 18 draws v16. Confirming creates the draft and opens the studio; the dialog says
+    *Publishing remains human*.
+  - **Simulate on last 50 loops** is an inert control carrying *soon* and the reason (BX.2, #523).
+  - **Evidence resolves further.** The resolver is shared with the duration chart and now opens a
+    test run and a test case on their loop's test results, and a waiver on the pull request its
+    loop opened (else that loop's test results).
+  - **Roles.** Members read every card, preview and sheet, and may dismiss; applying and drafting
+    are an owner's or admin's — a member opens the same preview with the confirm inert and why. A
+    viewer's Dismiss is inert with its reason.
+  - **e2e — decided with the user: written here.** Leg 23 (`specs/analyzer.spec.ts`): seeded
+    parity, the pool move read back from the farm's route, the workflow draft read back from the
+    workflow's, a dismissal across a real re-analysis, and a member's refused apply. Cold-only. Its
+    dismissal assertion proves the row holds across a real run; that the composer keeps a
+    re-found suggestion dismissed is `suggestions.integration-spec.ts`'s.
+  - *Not here:* the measurement card the applied row links to (BW.5), the page's cold and
+    insufficient-corpus states and screenshot parity (BW.6), running a reversal (BX.3), and the
+    seed's day-dependent runner-move confidence (84 on most days, 85 when a second build lands in
+    one of its fourteen windows — `tests/seed.sql` trips on it too).
 
 ### Issue BW.4 — ouroboros-ui: [BW.4] Drafted-tickets card
 
@@ -1207,7 +1257,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
 3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → **BV.3 (#512) ✅** →
    **BV.4 (#513) ✅** → **BV.5 (#514) ✅** → **BV.6 (#515) ✅**
-4. **Phase 3 — UI:** **BW.1 (#516) ✅** → { **BW.2 (#517) ✅** ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
+4. **Phase 3 — UI:** **BW.1 (#516) ✅** → { **BW.2 (#517) ✅** ⊕ **BW.3 (#518) ✅** ⊕ BW.4 (#519) ⊕
    BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
 5. **v2:** BX.1 (#522) after AF.2 (#235); BX.2 (#523) ⊕ BX.3 (#524) ⊕
    BX.4 (#525) ⊕ BX.5 (#526) after their dependencies.

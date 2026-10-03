@@ -193,6 +193,23 @@ describe("the workflow draft", () => {
     });
   });
 
+  it("carries the stage and connection delta beside the payload, outside the fingerprint", () => {
+    const plan = workflowPlan(subject(review, { kind: "workflow" }), base, document);
+
+    if (plan.kind !== "workflow_draft") throw new Error("not a workflow draft");
+    expect(plan.delta.nodesAdded).toEqual([]);
+    expect(plan.delta.edgesAdded).toContain("review → build");
+    expect(plan.delta.edgesRemoved).toContain("implement → build");
+    expect(plan.change).not.toHaveProperty("delta");
+    // The fingerprint is the payload's: a preview with its delta re-described is the same plan.
+    expect(
+      planFingerprint({
+        ...plan,
+        delta: { nodesAdded: [], nodesRemoved: [], edgesAdded: [], edgesRemoved: [] },
+      }),
+    ).toBe(planFingerprint(plan));
+  });
+
   it("refuses a delta the document cannot carry, with the reason", () => {
     const plan = workflowPlan(
       subject({ ...review, change: { ...review.change, move: "lint" } }),
