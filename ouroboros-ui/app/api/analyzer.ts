@@ -2,10 +2,12 @@
  * The Build Analyzer's operations (BV.1, [#510](https://github.com/NobuData/ouroboros/issues/510);
  * BW.1, [#516](https://github.com/NobuData/ouroboros/issues/516); BW.2,
  * [#517](https://github.com/NobuData/ouroboros/issues/517); BW.3,
- * [#518](https://github.com/NobuData/ouroboros/issues/518)) — the runs mockup 18's head and meta
+ * [#518](https://github.com/NobuData/ouroboros/issues/518); BW.4,
+ * [#519](https://github.com/NobuData/ouroboros/issues/519)) — the runs mockup 18's head and meta
  * strip render, *Run analysis now*, the schedule behind **Schedule: weekly + every 50 builds ▾**,
- * the duration series with the change-points detected on it, and the suggestion cards with what
- * a suggestion may be done with: previewed, applied, dismissed, drafted.
+ * the duration series with the change-points detected on it, the suggestion cards with what a
+ * suggestion may be done with — previewed, applied, dismissed, drafted — and the drafted-tickets
+ * card with its push.
  *
  * Thin by design, like every module here: one function per operation, the client injectable so a
  * suite can stub `fetch`, and the service's refusals left as `ApiError`s for the caller to word.
@@ -83,6 +85,21 @@ export type SuggestionResolution = components["schemas"]["SuggestionResolution"]
 
 /** A drafted planning batch, and the suggestions drafted into it. */
 export type DraftedSuggestions = components["schemas"]["DraftedSuggestions"];
+
+/** A repository's drafted-tickets card: the un-drafted ticket suggestions and the batches. */
+export type AnalysisTickets = components["schemas"]["AnalysisTickets"];
+
+/** A ticket suggestion nobody has drafted yet. */
+export type AnalysisUndraftedTicket = components["schemas"]["AnalysisUndraftedTicket"];
+
+/** One planning batch on the card, with what each draft's body says its evidence is. */
+export type AnalysisTicketBatch = components["schemas"]["AnalysisTicketBatch"];
+
+/** What one draft's body says its evidence is. */
+export type AnalysisDraftedTicket = components["schemas"]["AnalysisDraftedTicket"];
+
+/** What a push did — each selected draft's state, and how many landed this run. */
+export type AnalyzerPushReport = components["schemas"]["PlanningPushReport"];
 
 /** The analyzer operations. */
 export const analyzer = {
@@ -238,6 +255,38 @@ export const analyzer = {
       await client.POST("/api/v1/analyzer/suggestions/draft", {
         body: { suggestionIds: [...suggestionIds], targetSourceId },
       }),
+    );
+  },
+
+  /**
+   * `GET /api/v1/analyzer/tickets?repo=` — the drafted-tickets card: the ticket suggestions nobody
+   * has drafted yet, and the planning batches the rest were drafted into, each batch as planning
+   * answers it with the evidence every draft's body states.
+   *
+   * @param repo The repository, `owner/name`.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Abandons the request — the poll's deadline.
+   * @returns The card; both lists empty before an analysis has composed a ticket suggestion.
+   * @throws {ApiError} What the service answered.
+   */
+  async tickets(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<AnalysisTickets> {
+    return unwrap(await client.GET("/api/v1/analyzer/tickets", { params: { query: { repo } }, signal }));
+  },
+
+  /**
+   * `POST /api/v1/analyzer/batches/{id}/push` — push an analyzer-drafted batch's **selected**
+   * drafts to its tracker. `owner`/`admin` only. Idempotent: a draft already pushed is not pushed
+   * again, so a retry after a failure files only what did not land.
+   *
+   * @param batchId The batch.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @returns What the push did.
+   * @throws {ApiError} `batch_not_pushable`, `push_in_progress`, `push_nothing_selected`,
+   *   `push_target_read_only` (409s), `analysis_batch_not_found`, `forbidden`.
+   */
+  async push(batchId: string, client: ApiClient = api()): Promise<AnalyzerPushReport> {
+    return unwrap(
+      await client.POST("/api/v1/analyzer/batches/{id}/push", { params: { path: { id: batchId } } }),
     );
   },
 

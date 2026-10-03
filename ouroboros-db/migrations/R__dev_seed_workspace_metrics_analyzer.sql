@@ -2065,6 +2065,37 @@ select ('5eed006b-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid, 
  where ${ouro_dev_seed}
 on conflict do nothing;
 
+-- Each body is what the suggestion actions' composer writes when it drafts a ticket (#514,
+-- `ticket.drafts.ts`): the evidence line, one line per reference the cited findings carry — each
+-- once, by kind then id — and the line naming the suggestion and the run. A draft is a title and
+-- a body, so the body is where its evidence lives: the drafted-tickets card (#519) reads it back
+-- out, and a push files it.
+--
+-- An update of the rows above rather than part of their insert, so a database seeded before #519
+-- — whose bodies are the bare evidence line — is moved too. A body somebody has edited since no
+-- longer equals that line and is left alone.
+update ouroboros.ticket_drafts draft
+   set body = '**Evidence:** ' || suggestion.evidence_line
+              || E'\n\n**References:**\n'
+              || coalesce(cited.lines, '- (the cited findings carry no references)')
+              || E'\n\nDrafted by the Build Analyzer from suggestion `' || suggestion.id::text
+              || '` (confidence ' || suggestion.confidence::text || '%) over ' || suggestion.repo_ref
+              || ', analysis run `' || suggestion.last_run_id::text || '`.'
+  from (values (1), (2), (3), (4)) as seed (ordinal),
+       ouroboros.analysis_suggestions suggestion
+  left join lateral (
+       select string_agg('- ' || (ref ->> 'kind') || ' `' || (ref ->> 'id') || '`', E'\n'
+                         order by (ref ->> 'kind') collate "C", (ref ->> 'id') collate "C") as lines
+         from (select distinct ref
+                 from ouroboros.analysis_suggestion_findings link
+                 join ouroboros.analysis_findings finding on finding.id = link.finding_id
+                cross join lateral jsonb_array_elements(finding.evidence_refs) ref
+                where link.suggestion_id = suggestion.id) refs) cited on true
+ where draft.id = ('5eed006b-0000-4000-8000-' || lpad(seed.ordinal::text, 12, '0'))::uuid
+   and suggestion.id = ('5eed0067-0000-4000-8000-' || lpad((20 + seed.ordinal)::text, 12, '0'))::uuid
+   and draft.body = suggestion.evidence_line
+   and ${ouro_dev_seed};
+
 -- One version each, through issue_estimates.draft_id (decision N3), heuristic-v0's honesty as the
 -- planning seed applies it. The est. total is the sum of est_minutes: 660 + 120 + 1 020 + 360.
 insert into ouroboros.issue_estimates

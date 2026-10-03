@@ -7,8 +7,8 @@ import { describe, expect, it } from "vitest";
  * (#516): the sheet and the components name the same classes, every length scales and every hue
  * is a token — what *both themes* and *CQ.1's rem type* can be verified as, since jsdom applies no
  * stylesheet — and the page adds no chrome to the shell. Since #517 it also dresses the duration
- * chart's card and the Details sheet behind each chip, and since #518 the two suggestion cards
- * with the surfaces their rows open.
+ * chart's card and the Details sheet behind each chip, since #518 the two suggestion cards with
+ * the surfaces their rows open, and since #519 the drafted-tickets card in the side column.
  */
 
 const ANALYZER = join(import.meta.dirname, "..", "..", "app", "analyzer");
@@ -252,5 +252,55 @@ describe("a suggestion's Details sheet (#518)", () => {
     expect(COMPONENT.match(/<ul className="analyzer-ev">/g)).toHaveLength(1);
     expect(rule("\\.analyzer-ev__detail")).toMatch(/font-family:\s*var\(--f-mono\)/);
     expect(rule("\\.analyzer-sd__more")).toMatch(/color:\s*var\(--ink-mut\)/);
+  });
+});
+
+describe("the drafted-tickets card (#519)", () => {
+  it("takes the mockup's side column — four of twelve — and the whole row on a narrower pane", () => {
+    expect(rule("\\.analyzer__side")).toMatch(/grid-column:\s*span 4/);
+    expect(rule("\\.analyzer__side")).toMatch(/min-width:\s*0/);
+    expect(rule("\\.analyzer__side")).toMatch(/flex-direction:\s*column/);
+    expect(CODE).toMatch(
+      /@media \(max-width: [\d.]+rem\)\s*\{[^@]*\.analyzer__side\s*\{\s*grid-column:\s*span 12/,
+    );
+  });
+
+  it("scrolls a long batch in the rows' own wrapper — down only, never the pane sideways", () => {
+    expect(rule("\\.analyzer-tix__rows")).toMatch(/overflow-y:\s*auto/);
+    expect(rule("\\.analyzer-tix__rows")).toMatch(/max-height:\s*[\d.]+rem/);
+    expect(CODE).not.toMatch(/overflow(-x)?:\s*(auto|scroll)/);
+  });
+
+  it("draws the mockup's row: an accent mono key, a weighted title, a muted mono evidence line", () => {
+    expect(rule("\\.analyzer-tix__key")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-tix__key")).toMatch(/color:\s*var\(--accent\)/);
+    expect(rule("\\.analyzer-tix__title")).toMatch(/font-weight:\s*600/);
+    expect(rule("\\.analyzer-tix__evidence")).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(rule("\\.analyzer-tix__evidence")).toMatch(/color:\s*var\(--ink-mut\)/);
+    expect(rule("\\.analyzer-tix__check")).toMatch(/accent-color:\s*var\(--accent-deep\)/);
+  });
+
+  it("lets a long title and a long evidence line wrap inside the narrow column", () => {
+    expect(rule("\\.analyzer-tix__main")).toMatch(/min-width:\s*0/);
+    expect(rule("\\.analyzer-tix__title")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule("\\.analyzer-tix__evidence")).toMatch(/overflow-wrap:\s*anywhere/);
+    expect(rule("\\.analyzer-tix__actions")).toMatch(/flex-wrap:\s*wrap/);
+  });
+
+  it("tells a landed draft from a failed one by hue", () => {
+    expect(rule("\\.analyzer-tix__pushed")).toMatch(/color:\s*var\(--ok\)/);
+    expect(rule("\\.analyzer-tix__failed")).toMatch(/color:\s*var\(--err\)/);
+    expect(rule("\\.analyzer-tix__failure")).toMatch(/color:\s*var\(--err\)/);
+  });
+
+  it("takes no room for a toast seat with nothing to say", () => {
+    expect(CODE).toMatch(/\.analyzer-toast__seat:empty\s*\{\s*display:\s*none/);
+    expect(COMPONENT).toContain('className="analyzer-toast__seat" role="status"');
+  });
+
+  it("leaves the checkbox, the chip and the buttons to the platform and the design system", () => {
+    expect(COMPONENT).toContain("<EffortChip");
+    expect(COMPONENT).toContain('type="checkbox"');
+    expect(CODE).not.toMatch(/\.ou-/);
   });
 });

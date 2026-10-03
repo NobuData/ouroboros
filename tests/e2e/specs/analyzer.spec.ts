@@ -1,7 +1,8 @@
 /**
  * Leg 23 — **the Build Analyzer's suggestion cards**
  * ([#518](https://github.com/NobuData/ouroboros/issues/518), amending
- * [#56](https://github.com/NobuData/ouroboros/issues/56)).
+ * [#56](https://github.com/NobuData/ouroboros/issues/56)) — **and its drafted-tickets card as the
+ * seed composes it** ([#519](https://github.com/NobuData/ouroboros/issues/519)).
  *
  * Mockup 18's **Suggested build-process changes** and **Suggested workflow changes** against
  * `R__dev_seed_workspace_metrics_analyzer.sql`. The UI's own suites draw every state of both cards
@@ -23,6 +24,12 @@
  *     the page and over the API, after a real **Run analysis now** has run to its end.
  *   * **A member** reads the same preview with the confirm inert, and the service refuses their
  *     direct apply.
+ *   * **The drafted tickets** (#519) — mockup 18's four rows with their keys, titles, estimator
+ *     chips and evidence lines; a tick that moves the push button's count at once and the total
+ *     when the service answers, and is put back; an evidence line opening references that
+ *     resolve; and a member, who may tick and may not push. **The push itself is leg 24's**
+ *     (`specs/tickets.spec.ts`), which has to run after the planning leg — it files canonical
+ *     tickets that leg's seeded parity counts.
  *
  * ## One honest limit of the dismissal assertion
  *
@@ -54,13 +61,21 @@ import {
   MOVE_PREVIEW,
   NOT_COLD,
   ROWS,
+  SEEDED_TICKET_BATCH_ID,
+  TICKETS,
+  TICKETS_CARD,
+  TICKETS_NOT_COLD,
+  TICKET_TOTALS,
   TITLES,
   applyStatusFor,
   focusHelios,
   latestRun,
   moveWindows,
   poolWindows,
+  pushSeededTickets,
   removeMoveWindows,
+  retickSeededTickets,
+  seededTicketBatch,
   standardFixDraft,
   suggestion,
   suggestions,
@@ -109,6 +124,29 @@ function row(page: Page, title: string): Locator {
 }
 
 /**
+ * The drafted-tickets card.
+ *
+ * @param page The page.
+ * @returns Its region.
+ */
+function ticketsCard(page: Page): Locator {
+  return page.locator("main.analyzer").getByRole("region", { name: TICKETS_CARD });
+}
+
+/**
+ * A drafted ticket's row, by its batch-local key.
+ *
+ * @param page The page.
+ * @param key The key — `BA-3`.
+ * @returns The row's list item.
+ */
+function ticketRow(page: Page, key: string): Locator {
+  return ticketsCard(page)
+    .getByRole("listitem")
+    .filter({ has: page.getByRole("checkbox", { name: `Include ${key}` }) });
+}
+
+/**
  * Open the analyzer and wait until both cards hold their rows.
  *
  * @param page The page.
@@ -132,6 +170,15 @@ test.describe("analyzer suggestions — the seeded cards (#518)", () => {
 
       expect(statuses, NOT_COLD).toEqual(["open", "open", "open", "open", "open", "open"]);
       expect(moveWindows(await poolWindows(context)), NOT_COLD).toEqual([]);
+
+      // …and the drafted tickets as the seed drafted them: one batch, sized, four ticked, none pushed.
+      const batch = await seededTicketBatch(context);
+
+      expect(batch?.status, TICKETS_NOT_COLD).toBe("sized");
+      expect(
+        batch?.drafts.map((draft) => [draft.localKey, draft.selected, draft.pushState]),
+        TICKETS_NOT_COLD,
+      ).toEqual(TICKETS.map((ticket) => [ticket.key, true, "pending"]));
     } finally {
       await context.close();
     }
@@ -259,6 +306,135 @@ test.describe("analyzer suggestions — the seeded cards (#518)", () => {
     const move = await suggestion(context, TITLES.move);
     expect(await applyStatusFor(context, move.id)).toBe(403);
     expect((await suggestion(context, TITLES.move)).status).toBe("open");
+  });
+
+  test("drafted tickets: the card as the seed composes it, against mockup 18 (#519)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    await openAnalyzer(page);
+
+    const tickets = ticketsCard(page);
+
+    // The side column's first card, beside the chart rather than under it.
+    await expect(page.locator(".analyzer__side > *").first()).toHaveAccessibleName(TICKETS_CARD);
+    await expect(tickets.getByRole("checkbox", { name: /^Include BA-/ })).toHaveCount(
+      TICKETS.length,
+    );
+
+    for (const seeded of TICKETS) {
+      const element = ticketRow(page, seeded.key);
+
+      await expect(element.getByRole("checkbox")).toBeChecked();
+      await expect(element.locator(".analyzer-tix__key")).toHaveText(seeded.key);
+      await expect(element.locator(".analyzer-tix__title")).toHaveText(seeded.title);
+      // The estimator's sizing, not a figure the page made up.
+      await expect(element.locator(".ou-chip--effort")).toHaveText(seeded.effort);
+      await expect(
+        element.getByRole("button", { name: `Evidence for ${seeded.key}: ${seeded.evidence}` }),
+      ).toBeVisible();
+    }
+
+    await expect(tickets.locator(".analyzer-tix__total")).toHaveText(TICKET_TOTALS.all);
+    await expect(tickets.getByRole("button", { name: "Push 4 tickets to backlog" })).toBeVisible();
+    await expect(tickets.getByRole("link", { name: "Edit drafts" })).toHaveAttribute(
+      "href",
+      `/planning?batch=${SEEDED_TICKET_BATCH_ID}`,
+    );
+  });
+
+  test("drafted tickets: an evidence line opens references that resolve into the product (#519)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    await openAnalyzer(page);
+
+    const chamber = TICKETS[2];
+
+    await ticketRow(page, chamber.key)
+      .getByRole("button", { name: `Evidence for ${chamber.key}: ${chamber.evidence}` })
+      .click();
+
+    const sheet = page.getByRole("dialog");
+
+    await expect(sheet).toContainText(chamber.evidence);
+    // Three waivers, each a link onto the loop it was recorded against — read out of the draft's
+    // own body, which is what a push files.
+    await expect(sheet.getByRole("link")).toHaveCount(3);
+    for (const link of await sheet.getByRole("link").all()) {
+      await expect(link).toHaveAttribute("href", /^\/runs\/[0-9a-f-]+\/tests/);
+    }
+    await expect(sheet).toContainText("Read from the draft's body");
+
+    // The link is live: it lands on that loop's test results.
+    await sheet.getByRole("link").first().click();
+    await expect(page).toHaveURL(/\/runs\/[0-9a-f-]+\/tests/);
+  });
+
+  test("drafted tickets: a tick moves the count at once and the total with the service, and is put back (#519)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    await openAnalyzer(page);
+
+    const tickets = ticketsCard(page);
+    const chamber = ticketRow(page, "BA-3").getByRole("checkbox");
+
+    await chamber.uncheck();
+
+    await expect(tickets.getByRole("button", { name: "Push 3 tickets to backlog" })).toBeVisible();
+    await expect(tickets.locator(".analyzer-tix__total")).toHaveText(TICKET_TOTALS.withoutChamber);
+    // The selection is the batch's own: a reload reads it back.
+    await page.reload();
+    await expect(ticketRow(page, "BA-3").getByRole("checkbox")).not.toBeChecked();
+    await expect(tickets.locator(".analyzer-tix__total")).toHaveText(TICKET_TOTALS.withoutChamber);
+    expect(
+      (await seededTicketBatch(context))?.drafts.find((draft) => draft.localKey === "BA-3"),
+    ).toMatchObject({
+      selected: false,
+    });
+
+    await ticketRow(page, "BA-3").getByRole("checkbox").check();
+
+    await expect(tickets.getByRole("button", { name: "Push 4 tickets to backlog" })).toBeVisible();
+    await expect(tickets.locator(".analyzer-tix__total")).toHaveText(TICKET_TOTALS.all);
+  });
+
+  test("drafted tickets: a member may tick and may not push — on the page and past it (#519)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context, SEED_MEMBER.id);
+    await openAnalyzer(page);
+
+    const push = ticketsCard(page).getByRole("button", { name: "Push 4 tickets to backlog" });
+
+    await expect(ticketRow(page, "BA-1").getByRole("checkbox")).toBeEnabled();
+    await expect(push).toHaveAttribute("aria-disabled", "true");
+    await expect(push).toHaveAttribute(
+      "title",
+      "Pushing to a tracker is for workspace owners and admins.",
+    );
+
+    // Past the page: the role gate is the service's, and nothing was pushed.
+    expect(await pushSeededTickets(context)).toEqual({ status: 403, code: "forbidden" });
+    expect((await seededTicketBatch(context))?.status).toBe("sized");
+  });
+
+  // The selection test's tick is the batch's stored one, so a failure between its two presses
+  // would leave leg 24 pushing three drafts instead of the four it states.
+  test.afterEach(async ({ browser }) => {
+    const context = await browser.newContext();
+
+    try {
+      await signInAs(context);
+      await retickSeededTickets(context);
+    } finally {
+      await context.close();
+    }
   });
 });
 

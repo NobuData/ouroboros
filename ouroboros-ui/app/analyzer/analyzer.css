@@ -2,8 +2,9 @@
  * The Build Analyzer (#516) — mockup 18's page frame, head, run progress, meta strip and schedule
  * editor — its annotated duration chart with the Details sheet behind each chip (#517), and the
  * two suggestion cards with the surfaces their rows open: the consequence preview, the dismissal,
- * the spike draft and the Details sheet (#518). The chart's own marks are app/charts/charts.css's;
- * what is here is the card around them.
+ * the spike draft and the Details sheet (#518), and the drafted-tickets card in the side column
+ * with its toast, its evidence sheet and its draft dialog (#519). The chart's own marks are
+ * app/charts/charts.css's; what is here is the card around them.
  *
  * The mockup is docs/mockups/18-build-analyzer.html over docs/mockups/assets/ouroboros.css. What
  * is taken from it is the anatomy every module page has (docs/DESIGN_SYSTEM_APP_SHELL.md § 2):
@@ -86,8 +87,21 @@
   min-width: 0;
 }
 
+/* The mockup's side column (`c-4 col`): the drafted tickets, and what follows them. */
+.analyzer__side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  grid-column: span 4;
+  min-width: 0;
+}
+
 @media (max-width: 68.75rem) {
   .analyzer__main {
+    grid-column: span 12;
+  }
+
+  .analyzer__side {
     grid-column: span 12;
   }
 }
@@ -796,7 +810,8 @@
 
 .analyzer-apply__actions,
 .analyzer-dismiss__actions,
-.analyzer-spike__actions {
+.analyzer-spike__actions,
+.analyzer-tixdraft__actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -1117,4 +1132,415 @@
   .analyzer__headings {
     min-width: 0;
   }
+}
+
+/* ---------- the drafted-tickets card (#519) ---------- */
+
+.analyzer-tix {
+  min-width: 0;
+}
+
+/* The rows' place while the page is unread. */
+.analyzer-tix__skeleton {
+  height: 14rem;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* One batch, or the suggestions not drafted yet. A second group is ruled off from the first. */
+.analyzer-tix__group + .analyzer-tix__group {
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-8);
+  border-top: 1px solid var(--line-strong);
+}
+
+/* Focus lands here when a push closes the batch under the button that had it. */
+.analyzer-tix__group:focus-visible {
+  outline: 1px solid var(--accent-line);
+  outline-offset: var(--sp-2);
+}
+
+.analyzer-tix__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-6);
+}
+
+/* The select-all checkbox and its label: a card label's faint uppercase mono. */
+.analyzer-tix__all {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-5);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+/* The mockup's checkbox, in the accent hue. The planning page's is the same size. */
+.analyzer-tix__check {
+  flex: none;
+  width: 0.9375rem;
+  height: 0.9375rem;
+  margin: 0;
+  accent-color: var(--accent-deep);
+  cursor: pointer;
+}
+
+/* Which batch a group is, said only when the card holds more than one. */
+.analyzer-tix__caption {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+/*
+ * The rows scroll in their own wrapper (CQ.1): a long batch is read here, and never pushes the
+ * total and the push button out of reach. The ceiling clears the mockup's four rows at their
+ * tallest — wrapped titles, a push state and a Retry under each — so only a longer batch scrolls.
+ */
+.analyzer-tix__rows {
+  max-height: 52rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+/* The mockup's `.ticket`: checkbox, then the content, on hairlines. */
+.analyzer-tix__row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-5);
+  padding: var(--sp-5) 0;
+}
+
+.analyzer-tix__row + .analyzer-tix__row {
+  border-top: 1px solid var(--line);
+}
+
+/* A row's checkbox sits on its first line of text, not centred on a wrapped title. */
+.analyzer-tix__row > .analyzer-tix__check {
+  margin-top: 0.1875rem;
+}
+
+.analyzer-tix__main {
+  flex: 1;
+  min-width: 0;
+}
+
+.analyzer-tix__line {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-4);
+}
+
+/* The mockup's `.t-id`: the batch-local key, mono, in the accent hue. */
+.analyzer-tix__key {
+  flex: none;
+  color: var(--accent);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* The mockup's `.t-title`. */
+.analyzer-tix__title {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* `sizing…`, `unsized`, `pushing…`, an un-drafted suggestion's confidence: faint mono. */
+.analyzer-tix__mark {
+  flex: none;
+  margin: 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+  white-space: nowrap;
+}
+
+/* The mockup's `.t-evidence`: muted mono under the title — and a button, opening its references. */
+.analyzer-tix__evidence {
+  display: block;
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.analyzer-tix__evidence:hover {
+  color: var(--ink-dim);
+}
+
+/* A draft whose body states no evidence says so, where the line would be. */
+.analyzer-tix__noevidence {
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  font-style: italic;
+}
+
+.analyzer-tix__pushed,
+.analyzer-tix__failed {
+  margin: var(--sp-2) 0 0;
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  line-height: var(--lh-body);
+}
+
+.analyzer-tix__pushed {
+  color: var(--ok);
+}
+
+/* The tracker's own ticket: `#621`, opening there. */
+.analyzer-tix__ticket {
+  color: var(--ok);
+  font-family: var(--f-mono);
+  white-space: nowrap;
+}
+
+/* Why a draft did not land, with the control that pushes again. */
+.analyzer-tix__failed {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-5);
+  color: var(--err);
+  overflow-wrap: anywhere;
+}
+
+/* The mockup's divider, then the total above the two controls. */
+.analyzer-tix__footer {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+.analyzer-tix__total {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.analyzer-tix__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4);
+}
+
+/* A tick or a push the service refused. */
+.analyzer-tix__failure {
+  margin: var(--sp-5) 0 0;
+  color: var(--err);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.analyzer-tix__busy {
+  margin: var(--sp-5) 0 0;
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+}
+
+/* A closed batch: what reached the tracker, in place of rows nothing can be done with. */
+.analyzer-tix__closed {
+  margin: 0 0 var(--sp-4);
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.analyzer-tix__headline {
+  color: var(--ink-dim);
+  font-weight: 600;
+}
+
+.analyzer-tix__landed {
+  margin: 0 0 var(--sp-5);
+  padding: 0;
+  list-style: none;
+}
+
+/* One landed ticket: its key, its title, and the tracker's own number for it. */
+.analyzer-tix__landed-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-4);
+  padding: var(--sp-2) 0;
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.analyzer-tix__landed-title {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink-mut);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-tix__link {
+  color: var(--accent);
+  font-size: var(--t-xs);
+  font-weight: 600;
+}
+
+/* ---------- the toast a push leaves ---------- */
+
+/* Always mounted, so the live region exists before it has something to say. */
+.analyzer-toast__seat:empty {
+  display: none;
+}
+
+.analyzer-toast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-6);
+  margin-bottom: var(--sp-6);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--r-md);
+  background: var(--accent-tint);
+  color: var(--ink);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.analyzer-toast__text {
+  font-weight: 600;
+}
+
+.analyzer-toast__note {
+  color: var(--ink-mut);
+}
+
+.analyzer-toast__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-5);
+  margin-left: auto;
+}
+
+.analyzer-toast__link {
+  color: var(--accent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ---------- a drafted ticket's evidence sheet ---------- */
+
+.analyzer-tixev {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+/* The evidence line, as the card draws it — mono, a size up. */
+.analyzer-tixev__line {
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-tixev__note {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* Where the evidence was read from: the draft's own body. */
+.analyzer-tixev__source {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+/* ---------- the draft-tickets dialog ---------- */
+
+.analyzer-tixdraft {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+.analyzer-tixdraft__lede {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.analyzer-tixdraft__list {
+  display: grid;
+  gap: var(--sp-6);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.analyzer-tixdraft__item {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.analyzer-tixdraft__title {
+  color: var(--ink);
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.analyzer-tixdraft__evidence {
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-tixdraft__label {
+  margin: 0 0 var(--sp-2);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+.analyzer-tixdraft__note {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+  line-height: var(--lh-body);
+}
+
+.analyzer-tixdraft__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
 }

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.12"
+  version: "0.38.13"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -8986,9 +8986,9 @@ paths:
         and still did not compose it again. So a run that did not look — one in flight, a failed
         one, one whose pattern analyzers were skipped — never blanks the cards, a suggestion an
         analysis looked for and no longer finds leaves them, and a dismissed one a re-analysis
-        finds again is still listed, still dismissed. Ticket drafts are not listed here. `runId`
-        is the newest ended run that composed any suggestion — `null`, with no suggestions,
-        before one has.
+        finds again is still listed, still dismissed. Ticket drafts are not listed here —
+        `GET /api/v1/analyzer/tickets` answers them. `runId` is the newest ended run that composed
+        any suggestion — `null`, with no suggestions, before one has.
 
         Nothing is recomputed. Beside each number is what produced it: `confidenceBasis` is the
         composer's formula with every input it read; `impact.basis` is the method, the formula's
@@ -9565,6 +9565,162 @@ paths:
           description: |-
             `analysis_suggestion_not_draftable` — a suggestion is applied, not drafted.
             `validation_failed` — the body is malformed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/tickets:
+    get:
+      tags: [analyzer]
+      summary: A repository's drafted tickets
+      description: |-
+        BW.4 ([#519](https://github.com/NobuData/ouroboros/issues/519)) — mockup 18's **Drafted
+        tickets — from patterns, not people** card. It is a view onto ordinary planning batches,
+        not a second drafting system.
+
+        `undrafted` are the repository's `ticket_draft` suggestions that are still `open` and
+        **still current** (the rule `GET /api/v1/analyzer/suggestions` states), most confident
+        first — what `POST /api/v1/analyzer/suggestions/draft` turns into a batch. `batches` are
+        the planning batches the current ticket suggestions were already drafted into, newest
+        first. Each `batch` is exactly what `GET /api/v1/planning/batches/{batch}` answers — every
+        draft it holds, with its checkbox, its estimate and its push state, and the footer the
+        estimator's sizing sums to — because a push files every selected draft, whichever
+        suggestion it came from.
+
+        **A draft's evidence is read from its body**, which is what a push files and what a person
+        may have edited: `drafts[].evidenceLine` is the body's `**Evidence:**` line and
+        `drafts[].evidence` the references listed under its `**References:**` heading, each
+        resolved in this workspace as `GET /api/v1/analyzer/duration` resolves them. A body
+        rewritten without them answers `null` and none. Only the first 25 references are answered;
+        `evidenceTotal` says how many the body lists. An un-drafted suggestion answers the line
+        and the references its draft will carry.
+
+        Selecting and editing a draft are `PATCH /api/v1/planning/batches/{batch}/drafts/{key}`;
+        pushing is `POST /api/v1/analyzer/batches/{id}/push`. Every member may read. **The
+        workspace is the session's.**
+      operationId: listDraftedTickets
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: repo
+          in: query
+          required: true
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 255
+          description: The repository, `owner/name`.
+      responses:
+        "200":
+          description: The un-drafted ticket suggestions and the batches the rest were drafted into.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisTickets"
+              example:
+                repo: acme-robotics/helios-firmware
+                undrafted: []
+                batches:
+                  - batch:
+                      id: 5eed006a-0000-4000-8000-000000000001
+                      status: sized
+                      planner: analyzer-v1
+                      prompt: >-
+                        Build Analyzer: tickets drafted from the patterns in
+                        acme-robotics/helios-firmware's last 90 days of builds
+                      outline: null
+                      targetSourceId: 5eed001a-0000-4000-8000-000000000001
+                      milestone: null
+                      epicId: null
+                      autoSize: true
+                      queueSmall: false
+                      createdAt: "2026-08-08T10:41:00.000Z"
+                      updatedAt: "2026-08-08T10:42:20.000Z"
+                      drafts:
+                        - id: 5eed006b-0000-4000-8000-000000000003
+                          localKey: BA-3
+                          title: Add thermal chamber to rig helios-rig-02
+                          body: |-
+                            **Evidence:** 3 verification waivers in 60 days cite missing thermal coverage
+
+                            **References:**
+                            - waiver `5eed006d-0000-4000-8000-000000000471`
+
+                            Drafted by the Build Analyzer from suggestion `5eed0067-0000-4000-8000-000000000023` (confidence 82%) over acme-robotics/helios-firmware, analysis run `5eed0065-0000-4000-8000-000000000002`.
+                          selected: true
+                          suggestedWorkflow: feature-loop
+                          provenance: planned
+                          dependencies: []
+                          blockedByTicketIds: []
+                          pushState: pending
+                          pushedTicketId: null
+                          pushedTicket: null
+                          pushError: null
+                          estimate:
+                            effort: l
+                            confidence: 71
+                            estMinutes: 1020
+                            estTokens: 500000
+                            routedModel: claude-fable-5
+                            estimator: heuristic-v0
+                            version: 1
+                      summary:
+                        draftCount: 1
+                        selectedCount: 1
+                        sizedCount: 1
+                        allSized: true
+                        estimators: [heuristic-v0]
+                        estMinutes: 1020
+                        loopDays: 0.7
+                    drafts:
+                      - localKey: BA-3
+                        evidenceLine: 3 verification waivers in 60 days cite missing thermal coverage
+                        evidence:
+                          - kind: waiver
+                            id: 5eed006d-0000-4000-8000-000000000471
+                            label: Thermal chamber booked through the release window
+                            surface: test_results
+                            pullRequestId: null
+                            workflowSlug: null
+                            runId: 5eed0009-0000-4000-8000-000000000471
+                            attempt: null
+                            suiteName: null
+                            caseName: null
+                        evidenceTotal: 1
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or not `owner/name`.
           content:
             application/json:
               schema:
@@ -22780,7 +22936,9 @@ paths:
         "409":
           description: |-
             `batch_not_editable` — the batch is being pushed, was pushed, or was abandoned. Or
-            `planning_target_read_only`.
+            `planning_target_read_only`. Or `batch_not_regenerable` — another plane composed the
+            batch's drafts (the Build Analyzer's `analyzer-v1`), so no planner was ever asked for
+            them and there is nothing to plan them again from; nothing is changed.
           content:
             application/json:
               schema:
@@ -36762,6 +36920,89 @@ components:
           type: integer
           minimum: 0
           description: How many references it cites in all.
+
+    AnalysisTickets:
+      type: object
+      title: AnalysisTickets
+      description: |-
+        A repository's drafted-tickets card (BW.4, #519) — the ticket suggestions nobody has
+        drafted yet, and the planning batches the rest were drafted into.
+      additionalProperties: false
+      required: [repo, undrafted, batches]
+      properties:
+        repo: { type: string }
+        undrafted:
+          type: array
+          description: The open, still-current ticket suggestions, most confident first.
+          items: { $ref: "#/components/schemas/AnalysisUndraftedTicket" }
+        batches:
+          type: array
+          description: The batches the current ticket suggestions were drafted into, newest first.
+          items: { $ref: "#/components/schemas/AnalysisTicketBatch" }
+
+    AnalysisUndraftedTicket:
+      type: object
+      title: AnalysisUndraftedTicket
+      description: A ticket suggestion an analysis composed and nobody has drafted yet.
+      additionalProperties: false
+      required: [id, title, evidenceLine, confidence, evidence, evidenceTotal]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The suggestion — what `POST /api/v1/analyzer/suggestions/draft` takes.
+        title: { type: string }
+        evidenceLine: { type: string }
+        confidence: { type: integer, minimum: 0, maximum: 100 }
+        evidence:
+          type: array
+          maxItems: 25
+          description: The first 25 references its draft will list, in the draft's order, resolved.
+          items: { $ref: "#/components/schemas/AnalysisEvidence" }
+        evidenceTotal:
+          type: integer
+          minimum: 0
+          description: How many references its draft will list in all.
+
+    AnalysisTicketBatch:
+      type: object
+      title: AnalysisTicketBatch
+      description: |-
+        One planning batch on the card: the batch as planning answers it, and what each draft's
+        body says its evidence is.
+      additionalProperties: false
+      required: [batch, drafts]
+      properties:
+        batch: { $ref: "#/components/schemas/PlanningBatch" }
+        drafts:
+          type: array
+          description: One entry per draft of `batch`, in the same order.
+          items: { $ref: "#/components/schemas/AnalysisDraftedTicket" }
+
+    AnalysisDraftedTicket:
+      type: object
+      title: AnalysisDraftedTicket
+      description: |-
+        What one draft's body says its evidence is — read from the body as it stands, so an edit
+        made in the planning editor is what is answered.
+      additionalProperties: false
+      required: [localKey, evidenceLine, evidence, evidenceTotal]
+      properties:
+        localKey:
+          type: string
+          description: The draft's key within its batch — `BA-2`.
+        evidenceLine:
+          type: [string, "null"]
+          description: The body's `**Evidence:**` line. Null when the body states none.
+        evidence:
+          type: array
+          maxItems: 25
+          description: The first 25 references the body lists, in its order, resolved.
+          items: { $ref: "#/components/schemas/AnalysisEvidence" }
+        evidenceTotal:
+          type: integer
+          minimum: 0
+          description: How many references the body lists in all.
 
     WorkflowDeltaSummary:
       type: object

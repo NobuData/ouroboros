@@ -4,7 +4,11 @@
  * The Build Analyzer page's server hops — *Run analysis now* and the schedule editor's save
  * (BW.1, [#516](https://github.com/NobuData/ouroboros/issues/516)), and what a suggestion may be
  * done with (BW.3, [#518](https://github.com/NobuData/ouroboros/issues/518)): its consequence
- * preview, its apply, its dismissal, and a spike's draft.
+ * preview, its apply, its dismissal, and a spike's draft — and the drafted-tickets card's two
+ * writes (BW.4, [#519](https://github.com/NobuData/ouroboros/issues/519)): drafting the ticket
+ * suggestions into a planning batch, ticking a draft, and pushing a batch to its tracker. The tick
+ * is planning's own route — it is planning's checkbox — reached through a hop that can change
+ * nothing else about a draft.
  *
  * Refusals come back as values, never throws, so the page words them: a concurrent run is its own
  * outcome (with the run the service named), a save the service refused carries its per-field
@@ -19,12 +23,14 @@ import {
   type AnalysisRun,
   type AnalysisSchedule,
   type AnalysisScheduleInput,
+  type AnalyzerPushReport,
   type AppliedSuggestion,
   type SuggestionPreview,
   type SuggestionResolution,
   analyzer,
 } from "@/app/api/analyzer";
 import { isApiError } from "@/app/api/errors";
+import { type PlanningBatch, planning } from "@/app/api/planning";
 import { attempt } from "@/app/api/reading";
 import { sources } from "@/app/api/sources";
 import { PLANNING_PATH } from "@/app/paths";
@@ -37,6 +43,7 @@ import {
   SPIKE_FAILED,
   TRACKERS_FAILED,
 } from "./suggestions-view";
+import { DRAFT_TICKETS_FAILED, PUSH_FAILED, TICK_FAILED } from "./tickets-view";
 import { SCHEDULE_SAVE_FAILED, START_FAILED } from "./view";
 
 /** The service's code for a start refused because one is running. */
@@ -309,5 +316,116 @@ export async function draftSpike(id: string, targetSourceId: string): Promise<Dr
     if (!isApiError(error)) throw error;
 
     return { ok: false, reason: `${SPIKE_FAILED} ${error.message}` };
+  }
+}
+
+/* ------------------------------------------------------------------ drafted tickets (BW.4, #519) */
+
+/** How drafting the ticket suggestions went. */
+export type DraftTicketsOutcome =
+  | {
+      readonly ok: true;
+      /** The planning batch they were drafted into — sizing is under way. */
+      readonly batch: PlanningBatch;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Draft ticket suggestions into one planning batch, sized by the estimator. Nothing reaches a
+ * tracker: the batch then stands on the card, where it is selected from, edited and pushed.
+ *
+ * @param ids The suggestions, in the order their drafts are keyed (`BA-1`, `BA-2`, …).
+ * @param targetSourceId The ticket source the batch will push to — fixed once drafted.
+ * @returns The batch, or why nothing was drafted.
+ */
+export async function draftTickets(
+  ids: readonly string[],
+  targetSourceId: string,
+): Promise<DraftTicketsOutcome> {
+  if (!Array.isArray(ids) || ids.length === 0 || !ids.every(isUuid) || !isUuid(targetSourceId)) {
+    return { ok: false, reason: DRAFT_TICKETS_FAILED };
+  }
+
+  try {
+    const { batch } = await analyzer.draft(ids, targetSourceId);
+
+    return { ok: true, batch };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    return { ok: false, reason: `${DRAFT_TICKETS_FAILED} ${error.message}` };
+  }
+}
+
+/** How a tick went. */
+export type SelectTicketOutcome =
+  | {
+      readonly ok: true;
+      /** The batch as it now stands — its footer has moved with the selection. */
+      readonly batch: PlanningBatch;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+/** A draft's key within its batch — `BA-3` — as the service's path parameter requires. */
+const LOCAL_KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
+
+/**
+ * Tick or untick one drafted ticket — the draft's stored `selected`, which is what a push files.
+ * Nothing else about the draft can be changed through here: its title and body are edited on the
+ * planning page.
+ *
+ * @param batchId The batch.
+ * @param localKey The draft's key within it.
+ * @param selected Whether a push should include it.
+ * @returns The batch after the tick, or why it was not saved.
+ */
+export async function selectTicket(
+  batchId: string,
+  localKey: string,
+  selected: boolean,
+): Promise<SelectTicketOutcome> {
+  if (!isUuid(batchId) || typeof localKey !== "string" || !LOCAL_KEY.test(localKey) || typeof selected !== "boolean") {
+    return { ok: false, reason: TICK_FAILED };
+  }
+
+  try {
+    return { ok: true, batch: await planning.patchDraft(batchId, localKey, { selected }) };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    return { ok: false, reason: `${TICK_FAILED} ${error.message}` };
+  }
+}
+
+/** How a push went. */
+export type PushTicketsOutcome =
+  | {
+      readonly ok: true;
+      /** What the push did — each selected draft's state, and how many landed this run. */
+      readonly report: AnalyzerPushReport;
+      /** The batch as it now stands, or `null` when that read failed — the poll will catch up. */
+      readonly batch: PlanningBatch | null;
+    }
+  | { readonly ok: false; readonly reason: string };
+
+/**
+ * Push a drafted batch's **selected** drafts to its tracker. Idempotent: a draft already in the
+ * tracker is not filed again, so pressing it after a failure files only what did not land.
+ *
+ * @param batchId The batch.
+ * @returns What the push did and the batch after it, or why nothing was pushed.
+ */
+export async function pushTickets(batchId: string): Promise<PushTicketsOutcome> {
+  if (!isUuid(batchId)) return { ok: false, reason: PUSH_FAILED };
+
+  try {
+    const report = await analyzer.push(batchId);
+    const after = await attempt(() => planning.batch(batchId));
+
+    return { ok: true, report, batch: after.ok ? after.value : null };
+  } catch (error) {
+    if (!isApiError(error)) throw error;
+
+    return { ok: false, reason: `${PUSH_FAILED} ${error.message}` };
   }
 }

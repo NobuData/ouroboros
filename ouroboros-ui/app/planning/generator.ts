@@ -821,6 +821,29 @@ export function pushReason(input: {
   return undefined;
 }
 
+/** The planner family of a batch the Build Analyzer composed from its findings — `analyzer-v1`. */
+const ANALYZER_PLANNER = /^analyzer-v\d+$/;
+
+/**
+ * Whether the Build Analyzer composed a batch's drafts rather than a planner planning them from
+ * the prompt ([#519](https://github.com/NobuData/ouroboros/issues/519)).
+ *
+ * @param batch The batch.
+ * @returns `true` for an `analyzer-vN` batch.
+ */
+export function isAnalyzerBatch(batch: Pick<PlanningBatch, "planner">): boolean {
+  return ANALYZER_PLANNER.test(batch.planner);
+}
+
+/**
+ * Why a batch the Build Analyzer composed cannot be regenerated: no planner was asked for its
+ * drafts, so re-planning would replace evidence-carrying tickets with whatever the planner makes of
+ * the line the batch was filed under. The service refuses it too (`batch_not_regenerable`).
+ */
+export const COMPOSED_REGENERATE_REASON =
+  "The Build Analyzer drafted these from its findings, not from a prompt — there is nothing to " +
+  "regenerate them from. Edit a draft, or untick the ones not to push.";
+
 /**
  * Why **Regenerate** cannot act, if it cannot.
  *
@@ -835,6 +858,7 @@ export function regenerateReason(
   busy: string | null,
 ): string | undefined {
   if (!mayContribute) return DRAFT_ROLE_REASON;
+  if (isAnalyzerBatch(batch)) return COMPOSED_REGENERATE_REASON;
   if (busy !== null) return busy;
   if (batch.status === "pushed" || batch.status === "abandoned") return BATCH_CLOSED_REASON;
 
@@ -862,24 +886,40 @@ export const NOTHING_SELECTED_FOOTER = "est. total — nothing selected";
 export const PARTIAL_SPEND_NOTE = "Some drafts route to a model with no price, so this is a floor.";
 
 /**
+ * The footer's loop time — `est. total ~3 days of loop time`.
+ *
+ * It is the service's real sum of the selected drafts' `est_minutes`, written with `~` because an
+ * estimate is one, and marked `so far` while a selected draft is still unsized. The line on its
+ * own is what the Build Analyzer's drafted-tickets card draws
+ * ([#519](https://github.com/NobuData/ouroboros/issues/519)), whose mockup carries no spend.
+ *
+ * @param batch The batch.
+ * @returns The line, or {@link NOTHING_SELECTED_FOOTER} when no draft is selected.
+ */
+export function loopTimeText(batch: PlanningBatch): string {
+  const { summary, drafts } = batch;
+
+  if (summary.selectedCount === 0) return NOTHING_SELECTED_FOOTER;
+
+  const unsizedSelected = drafts.some((draft) => draft.selected && draft.estimate === null);
+
+  return `est. total ~${formatDays(summary.loopDays)} of loop time${unsizedSelected ? " so far" : ""}`;
+}
+
+/**
  * The footer's line — the mockup's `est. total ~3 days of loop time · $14 est. spend`.
  *
- * Loop time is the service's real sum of the selected drafts' `est_minutes`, marked `so far` while
- * a selected draft is still unsized. The `$` segment exists only when `summary.spend` does (N10);
+ * {@link loopTimeText}, then the `$` segment — which exists only when `summary.spend` does (N10);
  * a partial price is written as a floor, `$14+`.
  *
  * @param batch The batch.
  * @returns The line.
  */
 export function footerText(batch: PlanningBatch): string {
-  const { summary, drafts } = batch;
+  const { summary } = batch;
+  const loop = loopTimeText(batch);
 
-  if (summary.selectedCount === 0) return NOTHING_SELECTED_FOOTER;
-
-  const unsizedSelected = drafts.some((draft) => draft.selected && draft.estimate === null);
-  const loop = `est. total ~${formatDays(summary.loopDays)} of loop time${unsizedSelected ? " so far" : ""}`;
-
-  if (summary.spend === undefined) return loop;
+  if (summary.selectedCount === 0 || summary.spend === undefined) return loop;
 
   return `${loop} · ${summary.spend.display}${summary.spend.partial ? "+" : ""} est. spend`;
 }

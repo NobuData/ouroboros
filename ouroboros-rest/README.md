@@ -123,6 +123,7 @@ $ curl http://localhost:4000/api/v1
 | `GET PUT /api/v1/analyzer/schedule`                | [Build Analyzer runs](#build-analyzer-runs) (#516) — `?repo=owner/name`; the weekly slot, every-N threshold with the live `buildCounter`, and budgets; read by any member, saved whole by `owner`/`admin`, audited `analyzer.schedule_updated` |
 | `GET /api/v1/analyzer/duration`                    | [Build Analyzer runs](#build-analyzer-runs) (#517) — `?repo=owner/name`; the newest annotated run's daily-median duration series and its change-points — ranked candidates with scores, attribution window, confidence basis, evidence resolved to the farm, a PR or a workflow; any member |
 | `GET /api/v1/analyzer/suggestions`                 | [Build Analyzer runs](#build-analyzer-runs) (#518) — `?repo=owner/name`; the build-process and workflow suggestions still current, in every status, each with its confidence and impact bases, the measurement its apply opened and the findings it cites with their evidence resolved; plus the calibration cells; any member |
+| `GET /api/v1/analyzer/tickets`                     | [Build Analyzer runs](#build-analyzer-runs) (#519) — `?repo=owner/name`; the drafted-tickets card: the ticket suggestions nobody has drafted yet, and the planning batches the rest were drafted into — each batch as planning answers it, with the evidence every draft's body states, resolved; any member |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
@@ -3856,7 +3857,11 @@ sizer (N3) — the push is `PushService`, and **Queue XS/S** is M.3's `BacklogQu
 - **Every edge write is walked first** (`planning.graph.ts`, AL.3's push order): a cycle is a `422`
   that names it.
 - **Regeneration** replaces unpushed drafts, keeps selections by `local_key`, and never touches a
-  pushed draft. A title or body edit marks the draft `provenance: edited` (V037).
+  pushed draft. A title or body edit marks the draft `provenance: edited` (V037). **A batch another
+  plane composed is not regenerable** (`409 batch_not_regenerable`, #519): no planner was asked for
+  the Build Analyzer's `analyzer-v1` drafts, so re-planning would replace them with whatever the
+  engine makes of the batch's filing line. `BatchesService.compose` stores a batch only under a
+  composing plane's planner family (`COMPOSING_PLANNER_FAMILIES`), which is how regeneration tells.
 - **The footer** (`planning.summary.ts`) sums real `est_minutes`, and carries `spend` only when
   `ouroboros.model_price()` prices something — never `$0` for *unknown*.
 - **A pushed draft names its ticket.** The batch read and `push-status` carry `pushedTicket` —
@@ -6230,7 +6235,7 @@ analyzer never mutates another plane: each apply hands its change to the owning 
   into one ordinary AK batch, `analyzer-v1`, through `BatchesService.compose`, and the estimator
   sizes it. Each body carries the evidence line and every evidence reference; a spike states what
   is uncertain and asserts no estimate. `POST /api/v1/analyzer/batches/{id}/push` is AL.3's
-  idempotent push.
+  idempotent push. Such a batch cannot be regenerated (`409 batch_not_regenerable`, #519).
 - **Boundary.** `.dependency-cruiser.cjs`'s `analyzer-composes-planes-through-their-services`
   forbids importing another plane's repository. `actions.boundary.spec.ts` checks that every write
   in the analyzer's source targets its own tables.
@@ -6323,6 +6328,34 @@ sheet behind each row: `GET /api/v1/analyzer/suggestions?repo=`, any member.
   kept because their analyzer was skipped, a run in flight or failed superseding nothing) and
   `evidence.integration-spec.ts` (test runs, cases and waivers, none of them resolved from another
   workspace). Each clause of the currency rule was removed in turn and turned the suite red.
+
+**The drafted-tickets card** (BW.4, [#519](https://github.com/NobuData/ouroboros/issues/519),
+[`tickets/`](src/modules/analyzer/tickets)) is the read behind mockup 18's **Drafted tickets — from
+patterns, not people**: `GET /api/v1/analyzer/tickets?repo=`, any member. It is a view onto
+ordinary planning batches, not a second drafting system — nothing here sizes, edits or pushes.
+- **Two lists.** `undrafted` are the `ticket_draft` suggestions still `open` and still current —
+  what `POST …/suggestions/draft` turns into a batch. `batches` are the planning batches the
+  current ticket suggestions were drafted into, newest first. *Current* is the suggestion cards'
+  rule, one shared predicate (`STILL_CURRENT`); a spike's batch is the suggestion cards', not
+  this card's.
+- **The batch is planning's.** Each is read through `BatchesService.read` and answered as
+  `GET /planning/batches/{batch}` answers it: every draft it holds — a push files every selected
+  one — with its checkbox, its estimate, its push state and the estimator-summed footer. Selecting
+  and editing are planning's `PATCH …/drafts/{key}`; pushing is `POST /analyzer/batches/{id}/push`.
+- **Evidence is read from the body.** A draft is a title and a body, and the body is what a push
+  files, so `draftEvidence` (`actions/ticket.drafts.ts`, the inverse of `ticketDraftOf`) reads the
+  `**Evidence:**` line and the references listed under `**References:**` (a kind and a backticked
+  id per line) back out of it as it stands now, and they are resolved like any finding's. An edit that kept them keeps
+  them; a body rewritten without them answers `null` and none. A line that is not a well-formed
+  reference — an id that is neither a uuid nor, for a `merge`, a commit sha — is prose: nothing a
+  person typed reaches a typed lookup. The first 25 references are answered, with the total.
+- **Suite.** `ticket.drafts.spec.ts` (the round trip, and what is not a reference),
+  `tickets.resources.spec.ts`, `tickets.service.spec.ts`, `tickets.contract.spec.ts`, and against
+  real rows `tickets.integration-spec.ts`: un-drafted → drafted, planning's edits answered, a push
+  landing, what stays and what leaves, a second repository, a second workspace mirroring the same
+  one, and the refused regeneration. Each predicate of both statements was removed in turn and
+  turned the suite red — bar `status = 'drafted'`, which V081's check makes the same question as
+  *has a batch*.
 
 ```bash
 yarn test:integration src/modules/analyzer

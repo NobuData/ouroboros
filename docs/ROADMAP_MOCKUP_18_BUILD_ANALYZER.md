@@ -828,7 +828,7 @@ annotated chart — via the #16 tokens (both themes; the mockup is dark-only).
 | BW.1 | #516 ✅ | 🟢 Done | ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip | Frame, run-now with progress, schedule editor, honest provenance | mvp, analyzer, ui, design | N (after #41, BV.1, BA-D.5) | Y | M | ouroboros-ui |
 | BW.2 | #517 ✅ | 🟢 Done | ouroboros-ui: [BW.2] Annotated duration chart | BK.1 TimeSeries + change-point chips/verticals + Details | mvp, analyzer, ui, design | N (after BW.1, BK.1) | Y | M | ouroboros-ui |
 | BW.3 | #518 ✅ | 🟢 Done | ouroboros-ui: [BW.3] Suggestion cards & apply flows | Process + workflow suggestions, previews, dismiss, spike flow | mvp, analyzer, ui, design | N (after BW.1, BV.5) | Y | L | ouroboros-ui |
-| BW.4 | #519 | 🟡 Open | ouroboros-ui: [BW.4] Drafted-tickets card | Checkbox drafts, evidence, edit, push-to-backlog flow | mvp, analyzer, ui | N (after BW.1, BV.5) | Y | M | ouroboros-ui |
+| BW.4 | #519 ✅ | 🟢 Done | ouroboros-ui: [BW.4] Drafted-tickets card | Checkbox drafts, evidence, edit, push-to-backlog flow | mvp, analyzer, ui | N (after BW.1, BV.5) | Y | M | ouroboros-ui |
 | BW.5 | #520 | 🟡 Open | ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards | Verdict rows + notes; the three-step explainer with A2 truth | mvp, analyzer, ui, design | N (after BW.1, BV.6) | Y | S | ouroboros-ui |
 | BW.6 | #521 | 🟡 Open | ouroboros-ui: [BW.6] Analyzer states & e2e leg | Cold/insufficient-corpus/running states; full-chain e2e | mvp, analyzer, ui, ci | N (after BW.2–BW.5) | Y | M | ouroboros-ui, .github |
 
@@ -1018,7 +1018,7 @@ standard-fix: self-review BEFORE build … [Draft as v16 → studio][Simulate �
 
 ### Issue BW.4 — ouroboros-ui: [BW.4] Drafted-tickets card
 
-> **GitHub issue:** #519 · **Status:** 🟡 Open · **Parent epic:** #504
+> **GitHub issue:** #519 ✅ · **Status:** 🟢 Done · **Parent epic:** #504
 
 - **Problem Statement:** The analyzer's ticket drafts riding the
   planning flow: selection, evidence, editing, sized total, push.
@@ -1040,6 +1040,66 @@ standard-fix: self-review BEFORE build … [Draft as v16 → studio][Simulate �
 ☑ BA-2 Bump ccache 4.9→4.11 [XS] "cache-miss signature in 118 builds ↗"
 est. ~1.5 days · [Push 4 tickets to backlog →] ─▶ ✓#621 ✓#622 … (intake syncs)
 ```
+
+- **Delivered** (`ouroboros-ui` 0.126.0 `app/analyzer/tickets-*.tsx|ts`, `ouroboros-rest` 0.38.13
+  `src/modules/analyzer/tickets/`, the #509 seed, `tests/e2e` 0.28.0 legs 23–24). Four things were
+  decided with the user where the issue and the codebase disagreed.
+  - **A view onto planning's batches.** The card draws ordinary AK batches and adds only the
+    evidence: the checkbox is the draft's stored `selected` (planning's PATCH), the effort chip the
+    estimator's, `est. total` the service's `summary.loopDays` in the planning footer's own words,
+    **Edit drafts** the planning editor on `/planning?batch=…`, and the push BV.5's idempotent
+    one. No number is computed in the browser: a tick moves the count at once and the total when
+    the service answers.
+  - **The read.** `GET /api/v1/analyzer/tickets?repo=` (any member) — the BW cards' precedent, as
+    the roadmap had no read for this card either. It answers the `ticket_draft` suggestions still
+    open and still current, and each planning batch a current ticket suggestion was drafted into
+    — read through `BatchesService.read`, every draft it holds, because a push files every
+    selected one. *Current* is BW.3's rule, now one shared predicate.
+  - **Evidence is read from the draft's body — decided with the user.** A draft is a title and a
+    body; nothing records which suggestion it came from, and the body is what a push files. So
+    `draftEvidence` (beside BV.5's composer, which it inverts) reads the `**Evidence:**` line and
+    the references back out of the body as it stands, and they resolve like any finding's. The
+    card therefore shows what a ticket will carry — an edit made in the planning editor included
+    — and a body rewritten without its evidence says so. The alternative, a migration linking
+    each draft to its suggestion, would show the analyzer's line beside a ticket that no longer
+    carries it. A line that is not a well-formed reference is prose: nothing typed into a body
+    reaches a typed lookup.
+  - **The seed's bodies are the composer's.** #509 seeded the four bodies as the bare evidence
+    line, written before BV.5's composer existed, so a push of the seeded batch would have filed
+    tickets with no references. They are now byte-for-byte what `ticketDraftOf` writes — 31, 118,
+    3 and 5 references — applied as an update so an already-seeded database moves too.
+  - **Un-drafted suggestions — decided with the user.** A real analysis leaves its ticket
+    suggestions `open` and nothing drafted them: the mockup draws only the drafted state. The card
+    lists them as *Not drafted yet* with **Draft N tickets** (owner/admin), which picks the
+    tracker in the planning page's own segment — fixed once drafted — and the batch then stands
+    on the card, `sizing…`. Each batch still current is its own group with its own total, push
+    and **Edit drafts**; one batch and nothing un-drafted is the mockup.
+  - **Selection — decided with the user: the planning page's rule.** Members tick and untick,
+    viewers cannot; drafting and pushing are an owner's or admin's, each inert control carrying
+    its reason. A select-all checkbox per batch, mixed when some are ticked.
+  - **Push states.** `pushed ✓ #621` linking to the tracker, or `failed — reason` with **Retry**
+    — the same idempotent push, as is the footer's **Resume push**. The page is read every 2 s
+    while a push runs. A closed batch collapses to *3 of 4 drafts were pushed to GitHub. BA-3 was
+    left out.*, the pushed tickets' links and **Open the batch →** — never an empty box.
+  - **The toast is honest about intake.** It links to **Issues** only when something landed in a
+    GitHub tracker and says *they appear there once the backlog has synced*: intake lists the
+    GitHub backlog as last synced and nothing else yet (#968).
+  - **Regenerate is refused for an analyzer batch.** **Edit drafts** sends people to the planning
+    editor, where Regenerate would have re-planned the batch from the line it was filed under —
+    replacing the analyzer's drafts and renaming its planner. `POST …/regenerate` now answers
+    `409 batch_not_regenerable` for a composed batch, and the button is inert with why.
+  - **e2e — decided with the user: written here.** Leg 23 gains the seeded card's parity, a tick
+    put back, an evidence link landing on a loop's test results, and a member's refused push. Leg
+    24 (`specs/tickets.spec.ts`, named to sort after the planning leg, whose parity counts the
+    tickets it files) is the chain: a title edited in the planning editor, `BA-3` unticked, a
+    push with one creation refused, **Retry**, and the sandbox tracker holding exactly the three
+    ticked drafts, each once, with the evidence in their bodies; a further push refused; the
+    toast's link to Issues, where the backlog's own sync shows them. Cold-only.
+  - *Not here:* a product URL in the pushed body (the references are ids the product resolves —
+    the seed cannot know the deployment's address and `/analyzer` has no repository link), a
+    filter on Issues to the pushed tickets (#968), dismissing a ticket suggestion from this card,
+    the page's cold states and screenshot parity (BW.6), and `verify-failure-modes.sh` pairs for
+    leg 24.
 
 ### Issue BW.5 — ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards
 
@@ -1257,7 +1317,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
 3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → **BV.3 (#512) ✅** →
    **BV.4 (#513) ✅** → **BV.5 (#514) ✅** → **BV.6 (#515) ✅**
-4. **Phase 3 — UI:** **BW.1 (#516) ✅** → { **BW.2 (#517) ✅** ⊕ **BW.3 (#518) ✅** ⊕ BW.4 (#519) ⊕
+4. **Phase 3 — UI:** **BW.1 (#516) ✅** → { **BW.2 (#517) ✅** ⊕ **BW.3 (#518) ✅** ⊕ **BW.4 (#519) ✅** ⊕
    BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
 5. **v2:** BX.1 (#522) after AF.2 (#235); BX.2 (#523) ⊕ BX.3 (#524) ⊕
    BX.4 (#525) ⊕ BX.5 (#526) after their dependencies.

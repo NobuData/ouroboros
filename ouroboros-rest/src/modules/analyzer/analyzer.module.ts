@@ -37,6 +37,11 @@
  * answers the build-process and workflow suggestions still current, in every status, each with
  * its confidence and impact bases, the measurement its apply opened, and the findings it cites.
  * `evidence/` resolves evidence references for both reads.
+ *
+ * The drafted-tickets card's read (`tickets/`, BW.4, [#519](https://github.com/NobuData/ouroboros/issues/519))
+ * answers the ticket suggestions nobody has drafted yet and the planning batches the rest were
+ * drafted into — planning's own batches, read through its service — with the evidence each
+ * draft's body states.
  */
 
 import { Module } from "@nestjs/common";
@@ -76,6 +81,9 @@ import { AnalysisScheduleService } from "./schedule/schedule.service";
 import { SuggestionsController } from "./suggestions/suggestions.controller";
 import { SuggestionsRepository } from "./suggestions/suggestions.repository";
 import { SuggestionsService } from "./suggestions/suggestions.service";
+import { TicketsController } from "./tickets/tickets.controller";
+import { TicketsRepository } from "./tickets/tickets.repository";
+import { TicketsService } from "./tickets/tickets.service";
 
 @Module({
   imports: [
@@ -95,6 +103,7 @@ import { SuggestionsService } from "./suggestions/suggestions.service";
     MeasurementController,
     DurationChartController,
     SuggestionsController,
+    TicketsController,
   ],
   providers: [
     CorpusRepository,
@@ -118,6 +127,8 @@ import { SuggestionsService } from "./suggestions/suggestions.service";
     DurationChartService,
     SuggestionsRepository,
     SuggestionsService,
+    TicketsRepository,
+    TicketsService,
   ],
   exports: [AnalysisOrchestrator],
 })

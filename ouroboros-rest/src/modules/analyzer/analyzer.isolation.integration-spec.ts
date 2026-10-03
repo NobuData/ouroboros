@@ -18,15 +18,17 @@ import { POOL_A_ID } from "./composer/composer.seed.fixture";
 import type { DurationChartResource } from "./duration/duration.resources";
 import type { MeasurementsResource } from "./measurement/measurement.resources";
 import type { SuggestionsResource } from "./suggestions/suggestions.resources";
+import type { TicketsResource } from "./tickets/tickets.resources";
 
 /**
  * Organization isolation on every Build Analyzer route (BV.6,
  * [#515](https://github.com/NobuData/ouroboros/issues/515)) — runs, findings, suggestions,
- * batches, measurements, the duration chart and the suggestion cards (BW.3, #518).
+ * batches, measurements, the duration chart, the suggestion cards (BW.3, #518) and the
+ * drafted-tickets card (BW.4, #519).
  *
  * Their workspace holds one of everything: a complete run with findings, composed suggestions, an applied
- * one with its measurement, an analyzer-drafted batch, and a complete run whose change-point sits
- * on a rolled-up duration series. Mine is an administrator's workspace
+ * one with its measurement, an analyzer-drafted batch a ticket suggestion was drafted into (and
+ * another still open), and a complete run whose change-point sits on a rolled-up duration series. Mine is an administrator's workspace
  * with none of it — and every route, aimed at their objects, answers as if they do not exist.
  * Their repository has the same `owner/name` I would name, so a route scoped by repository rather
  * than workspace would leak.
@@ -47,6 +49,7 @@ describe("organization isolation, on every analyzer route", () => {
   let api: ApiHarness;
   let me: Person;
   let mine: Workspace;
+  let them: Person;
   let theirs: Workspace;
   let theirRun: string;
   let theirSuggestion: string;
@@ -56,7 +59,7 @@ describe("organization isolation, on every analyzer route", () => {
 
   beforeAll(async () => {
     api = await ApiHarness.start();
-    const them = await api.signIn();
+    them = await api.signIn();
     theirs = await api.workspace(them);
     await seedSeededIdsWorkspace(api, theirs);
     // Complete, so their suggestion cards have rows for the read's claim to be about.
@@ -89,6 +92,14 @@ describe("organization isolation, on every analyzer route", () => {
       [theirs.id, theirSource],
     );
     theirBatch = batch.rows[0].id;
+    // One of their ticket suggestions is drafted into it, so their drafted-tickets card holds a
+    // batch as well as the suggestion still open.
+    await api.sql.query(
+      `update ${SCHEMA_NAME}.analysis_suggestions
+          set status = 'drafted', draft_batch_id = $2, resolved_at = now()
+        where id = $1`,
+      [await suggestionId(api, theirs, "Bump ccache"), theirBatch],
+    );
     await rollUp(api, theirs, "build_duration", "2026-06-22", [212_000], "zephyr build");
     await annotate(api, theirs, [
       changePointFinding("2026-06-22", -130, [
@@ -185,6 +196,16 @@ describe("organization isolation, on every analyzer route", () => {
           suggestions: [],
           calibration: [],
         });
+      },
+    },
+    [`GET ${ANALYZER}/tickets`]: {
+      about:
+        "lists none of another workspace's ticket suggestions or drafted batches for the same repository",
+      check: async () => {
+        const body = bodyOf<TicketsResource>(
+          await as("get", `${ANALYZER}/tickets?repo=${BENCH_REPO}`).expect(200),
+        );
+        expect(body).toEqual({ repo: BENCH_REPO, undrafted: [], batches: [] });
       },
     },
     [`GET ${ANALYZER}/suggestions/:id/preview`]: {
@@ -329,6 +350,16 @@ describe("organization isolation, on every analyzer route", () => {
       [theirs.id],
     );
     expect(cards.rows[0].n).toBe("6");
+
+    // …and their drafted-tickets card: a suggestion still open, and the batch another went into.
+    const tickets = bodyOf<TicketsResource>(
+      await api
+        .as(them)("get", `${ANALYZER}/tickets?repo=${BENCH_REPO}`)
+        .set(TENANT_HEADER, theirs.slug)
+        .expect(200),
+    );
+    expect(tickets.undrafted.map((entry) => entry.id)).toContain(theirTicket);
+    expect(tickets.batches.map((entry) => entry.batch.id)).toEqual([theirBatch]);
   });
 
   describe("each route holds the line", () => {

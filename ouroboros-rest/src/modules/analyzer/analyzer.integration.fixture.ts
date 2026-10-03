@@ -100,6 +100,13 @@ export interface AnalyzeOptions {
    * however many findings it stored: none means it looked and found nothing.
    */
   skipped?: readonly string[];
+  /** The repository analyzed — {@link BENCH_REPO} when omitted. */
+  repo?: string;
+  /**
+   * What every stored finding cites — the seeded pool-a when omitted. A finding's evidence must
+   * resolve in its own workspace (V081), so a second workspace cites a row of its own.
+   */
+  evidence?: { kind: string; id: string }[];
 }
 
 /**
@@ -174,18 +181,23 @@ export async function analyze(
   extra: EngineFinding[] = [],
   options: AnalyzeOptions = {},
 ): Promise<string> {
-  const { ending = "failed", only = () => true, skipped = [] } = options;
+  const {
+    ending = "failed",
+    only = () => true,
+    skipped = [],
+    repo = BENCH_REPO,
+    evidence = [{ kind: "runner_pool", id: POOL_A_ID }],
+  } = options;
   const runs = api.nest.get(AnalysisRepository);
   const inserted = await runs.insertRun({
     organizationId: workspace.id,
-    repoRef: BENCH_REPO,
+    repoRef: repo,
     trigger: "manual",
     scheduleId: null,
     analyzerSet: BENCH_ANALYZER_SET,
     progress: pendingProgress(BENCH_ANALYZER_SET),
   });
   if (!inserted.started) throw new Error("the run did not start");
-  const evidence = [{ kind: "runner_pool", id: POOL_A_ID }];
   const written = new Map<string, number>();
 
   if (ending !== "failed") {

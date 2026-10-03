@@ -13,6 +13,7 @@ import { DurationCard } from "./duration-card";
 import { MetaStrip } from "./meta-strip";
 import { RunProgress } from "./run-progress";
 import { ProcessSuggestionsCard, WorkflowSuggestionsCard } from "./suggestion-cards";
+import { TicketsCard } from "./tickets-card";
 
 import "./analyzer.css";
 
@@ -27,8 +28,9 @@ const UNREAD_HEADLINE = "The Build Analyzer could not be read.";
  * 18's frame in the shell's content pane: the head, *Run analysis now*'s progress, and the meta
  * strip. Below it the mockup's two columns begin: the main one holds the annotated duration chart
  * (BW.2, [#517](https://github.com/NobuData/ouroboros/issues/517)) and, under it, the two
- * suggestion cards (BW.3, [#518](https://github.com/NobuData/ouroboros/issues/518)); the drafted
- * tickets and measurements (BW.4, BW.5) take the side column.
+ * suggestion cards (BW.3, [#518](https://github.com/NobuData/ouroboros/issues/518)); the side
+ * one opens with the drafted tickets (BW.4,
+ * [#519](https://github.com/NobuData/ouroboros/issues/519)), and the measurements (BW.5) follow.
  *
  * It has no sidebar entry of its own; it lives under **Build Farm**, which it publishes as its
  * origin so that entry stays lit (`setNavOrigin`, `app/shell/nav-registry.ts`).
@@ -52,6 +54,7 @@ export function AnalyzerScreen({
           <RunProgress />
           <MetaStrip />
           <AnalyzerMain />
+          <AnalyzerSide />
         </div>
       </main>
     </AnalyzerProvider>
@@ -72,6 +75,22 @@ function AnalyzerMain() {
       <DurationCard />
       <ProcessSuggestionsCard />
       <WorkflowSuggestionsCard />
+    </div>
+  );
+}
+
+/**
+ * The mockup's side column (`c-4`) — what the analysis turned into work: the drafted tickets. Like
+ * the main column it is one repository's, so it is not drawn where there is none to analyse.
+ *
+ * @returns The column, or nothing.
+ */
+function AnalyzerSide() {
+  const { chosen } = useAnalyzer();
+
+  return chosen === null ? null : (
+    <div className="analyzer__side">
+      <TicketsCard />
     </div>
   );
 }

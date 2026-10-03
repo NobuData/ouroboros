@@ -32,6 +32,8 @@ export const PLANNING_ERRORS = Object.freeze({
   selfDependency: "dependency_self_reference",
   /** The batch is being pushed, was pushed, or was abandoned, so its drafts cannot change. `409`. */
   batchNotEditable: "batch_not_editable",
+  /** Another plane composed the batch's drafts, so there is no prompt to plan them again from. `409`. */
+  batchNotRegenerable: "batch_not_regenerable",
   /** The draft has been pushed; its tracker issue is the truth now. `409`. */
   draftPushed: "draft_already_pushed",
   /** The target source's tracker cannot be written to, so no batch can be planned for it. `409`. */
@@ -142,6 +144,20 @@ export function batchNotEditable(batchId: string, status: string): ConflictError
         ? "Every ticket in this batch has been pushed; edit them in the tracker."
         : "This batch was abandoned, so its drafts cannot change.",
     { batchId, status },
+  );
+}
+
+/**
+ * @param batchId - The batch.
+ * @param planner - The composing plane's planner — `analyzer-v1`.
+ * @returns The `409` for regenerating a batch no planner was asked for.
+ */
+export function batchNotRegenerable(batchId: string, planner: string): ConflictError {
+  return new ConflictError(
+    PLANNING_ERRORS.batchNotRegenerable,
+    `These drafts were composed by ${planner}, not planned from a prompt, so there is nothing ` +
+      "to regenerate them from. Edit them here, or deselect the ones not to push.",
+    { batchId, planner },
   );
 }
 

@@ -10,9 +10,13 @@ import type {
 import type { AnalyzerPage } from "@/app/analyzer/analyzer-poll";
 import type { AnalyzerReadings } from "@/app/analyzer/data";
 import type { AnalyzerRepo } from "@/app/analyzer/repo";
+import { trackerOptions } from "@/app/planning/generator";
 import type { PollAnswer } from "@/app/poll";
 
 import { seededSuggestions } from "./analyzer-suggestions";
+import { seededTickets } from "./analyzer-tickets";
+import { writableCatalog } from "./planning";
+import { seededSources } from "./sources";
 
 /**
  * The Build Analyzer's fixtures (#516) — the dev seed's run and schedule for
@@ -444,6 +448,7 @@ export function analyzerPage(over: Partial<AnalyzerPage> = {}): AnalyzerPage {
     schedule: seededSchedule(),
     duration: seededDuration(),
     suggestions: seededSuggestions(),
+    tickets: seededTickets(),
     ...over,
   };
 }
@@ -462,7 +467,8 @@ export function freshPage(page: AnalyzerPage = analyzerPage()): PollAnswer<Analy
  * What the route reads for the first paint.
  *
  * @param over Fields to replace.
- * @returns The readings — an administrator, both repositories enabled.
+ * @returns The readings — an administrator, both repositories enabled, and the seed's two
+ *   trackers with GitHub writable (the planning fixtures' own).
  */
 export function analyzerReadings(over: Partial<AnalyzerReadings> = {}): AnalyzerReadings {
   return {
@@ -470,6 +476,8 @@ export function analyzerReadings(over: Partial<AnalyzerReadings> = {}): Analyzer
     workspaceId: ANALYZER_WORKSPACE,
     mayAdminister: true,
     mayDismiss: true,
+    mayContribute: true,
+    trackers: { ok: true, value: trackerOptions(seededSources(), { ok: true, value: writableCatalog() }) },
     readAt: ANALYZER_NOW,
     ...over,
   };
