@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.38.10",
+    "version": "0.38.11",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -8364,6 +8364,203 @@
                             "5eed0069-0000-4000-8000-000000000002"
                           ],
                           "createdAt": "2026-07-24T03:00:00.000Z"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `repo` is missing or not `owner/name`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyzer/duration": {
+      "get": {
+        "tags": [
+          "analyzer"
+        ],
+        "summary": "A repository's build-duration series and its detected change-points",
+        "description": "BW.2 ([#517](https://github.com/NobuData/ouroboros/issues/517)) — mockup 18's **Build\nduration · 90 days, with detected change-points** chart and the Details sheet behind each\nchip. The chart is **one run's**: the repository's newest ended run in which the\nchange-point analyzer completed. `window` is that run's corpus window, `series` is the daily\nmedian duration of the job label its corpus timed (`durationLabel`, BI's `build_duration`\nfamily, one point per day with builds), and `changePoints` are its `change_point` findings,\noldest breakpoint first.\n\nA change-point is a **ranking, not a verdict**. `candidates` lists every recorded change\ninside the attribution window (`attributionWindowDays` either side of `date`), best first,\neach with its `score` and the two factors it is the product of — `proximity` (how close in\ntime) and `prior` (how plausible that kind of change is). A shift with no recorded change in\nreach carries one candidate saying so, with a score of `0`. `deltaSeconds` is the level\nafter minus the level before, so a negative delta is a faster build.\n\n`evidence` is every reference the finding cites, resolved in this workspace: what it names\n(`label`) and where it opens (`surface`) — a build, a runner or a pool on the **farm**, a\nmerge on its mirrored **pull request** (or on the farm that first built the commit when the\nmirror has no such PR), a workflow version in the workflow studio (**workflow**). A\nreference whose row retention has since removed has a `null` label and surface.\n\nBefore any run has detected change-points — and for a repository the workspace has none of —\n`runId` and `window` are `null` and both lists are empty. Every member may read. **The\nworkspace is the session's.**",
+        "operationId": "getDurationChart",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 255
+            },
+            "description": "The repository, `owner/name`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The series and the change-points detected on it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DurationChart"
+                },
+                "example": {
+                  "repo": "acme-robotics/helios-firmware",
+                  "runId": "5eed0065-0000-4000-8000-000000000002",
+                  "analyzedAt": "2026-08-08T10:41:00.000Z",
+                  "durationLabel": "zephyr build",
+                  "window": {
+                    "from": "2026-05-10",
+                    "to": "2026-08-07",
+                    "days": 90
+                  },
+                  "series": [
+                    {
+                      "day": "2026-06-20",
+                      "medianSeconds": 342,
+                      "builds": 14
+                    },
+                    {
+                      "day": "2026-06-21",
+                      "medianSeconds": 341.5,
+                      "builds": 12
+                    },
+                    {
+                      "day": "2026-06-22",
+                      "medianSeconds": 212,
+                      "builds": 15
+                    }
+                  ],
+                  "changePoints": [
+                    {
+                      "id": "5eed0066-0000-4000-8000-000000000102",
+                      "analyzerVersion": 1,
+                      "date": "2026-06-22",
+                      "metric": "build.duration_median",
+                      "deltaSeconds": -130,
+                      "beforeMedianSeconds": 342,
+                      "afterMedianSeconds": 212,
+                      "attributionWindowDays": 3,
+                      "candidates": [
+                        {
+                          "label": "ccache enabled",
+                          "score": 0.7,
+                          "eventKind": "merge",
+                          "date": "2026-06-22",
+                          "daysFromBreakpoint": 0,
+                          "proximity": 1,
+                          "prior": 0.7,
+                          "ref": {
+                            "kind": "merge",
+                            "id": "0c5eed47a1b2"
+                          }
+                        },
+                        {
+                          "label": "standard-fix v9",
+                          "score": 0.3,
+                          "eventKind": "policy_version",
+                          "date": "2026-06-21",
+                          "daysFromBreakpoint": -1,
+                          "proximity": 0.75,
+                          "prior": 0.4,
+                          "ref": {
+                            "kind": "workflow_version",
+                            "id": "5eed0031-0000-4000-8000-000000000009"
+                          }
+                        }
+                      ],
+                      "confidence": 100,
+                      "confidenceBasis": {
+                        "method": "change_point v1 — 100 * stability * (1 - e^(-effect/2)) * min(1, shorter segment days / (2 * min_segment_days))",
+                        "sampleSize": 642,
+                        "effectSize": 17.537,
+                        "stability": 1
+                      },
+                      "evidence": [
+                        {
+                          "kind": "merge",
+                          "id": "0c5eed47a1b2",
+                          "label": "ccache enabled",
+                          "surface": "pull_request",
+                          "pullRequestId": "5eed0052-0000-4000-8000-000000000482",
+                          "workflowSlug": null
+                        },
+                        {
+                          "kind": "workflow_version",
+                          "id": "5eed0031-0000-4000-8000-000000000009",
+                          "label": "standard-fix v9",
+                          "surface": "workflow",
+                          "pullRequestId": null,
+                          "workflowSlug": "standard-fix"
+                        },
+                        {
+                          "kind": "build",
+                          "id": "5eed0061-0000-4000-8000-000000000641",
+                          "label": "#641 · zephyr build",
+                          "surface": "farm",
+                          "pullRequestId": null,
+                          "workflowSlug": null
+                        },
+                        {
+                          "kind": "build",
+                          "id": "5eed0061-0000-4000-8000-000000000655",
+                          "label": null,
+                          "surface": null,
+                          "pullRequestId": null,
+                          "workflowSlug": null
                         }
                       ]
                     }
@@ -43123,6 +43320,382 @@
                 }
               }
             }
+          }
+        }
+      },
+      "DurationChart": {
+        "type": "object",
+        "title": "DurationChart",
+        "description": "A repository's build-duration series and the change-points one run detected on it (BW.2,\n#517). Everything here is that run's — its corpus window, the job label its corpus timed, its\nfindings.",
+        "additionalProperties": false,
+        "required": [
+          "repo",
+          "runId",
+          "analyzedAt",
+          "durationLabel",
+          "window",
+          "series",
+          "changePoints"
+        ],
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "runId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The run whose findings annotate the series. Null before one has detected change-points."
+          },
+          "analyzedAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When that run ended."
+          },
+          "durationLabel": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The job label whose builds are timed. Null when nothing succeeded in the window."
+          },
+          "window": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "description": "The run's corpus window, in UTC days. Null with `runId`.",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to",
+              "days"
+            ],
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date"
+              },
+              "to": {
+                "type": "string",
+                "format": "date"
+              },
+              "days": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "series": {
+            "type": "array",
+            "description": "One point per day with builds, oldest first.",
+            "items": {
+              "$ref": "#/components/schemas/DurationPoint"
+            }
+          },
+          "changePoints": {
+            "type": "array",
+            "description": "Oldest breakpoint first.",
+            "items": {
+              "$ref": "#/components/schemas/ChangePoint"
+            }
+          }
+        }
+      },
+      "DurationPoint": {
+        "type": "object",
+        "title": "DurationPoint",
+        "description": "One UTC day of the duration series.",
+        "additionalProperties": false,
+        "required": [
+          "day",
+          "medianSeconds",
+          "builds"
+        ],
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "medianSeconds": {
+            "type": "number",
+            "minimum": 0,
+            "description": "The day's median build duration, in seconds."
+          },
+          "builds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "How many succeeded builds the median is over."
+          }
+        }
+      },
+      "ChangePoint": {
+        "type": "object",
+        "title": "ChangePoint",
+        "description": "One detected shift in the duration series (V081's `change_point` finding) — the chart's chip\nand the Details sheet behind it. The attribution is a ranked candidate list, never one\nasserted cause.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "analyzerVersion",
+          "date",
+          "metric",
+          "deltaSeconds",
+          "beforeMedianSeconds",
+          "afterMedianSeconds",
+          "attributionWindowDays",
+          "candidates",
+          "confidence",
+          "confidenceBasis",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "analyzerVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "date": {
+            "type": "string",
+            "format": "date",
+            "description": "The first day of the new level, UTC."
+          },
+          "metric": {
+            "type": "string"
+          },
+          "deltaSeconds": {
+            "type": "number",
+            "description": "The level after minus the level before. Negative is a faster build. Never zero."
+          },
+          "beforeMedianSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The median of the segment before the breakpoint."
+          },
+          "afterMedianSeconds": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "description": "The median of the segment from the breakpoint."
+          },
+          "attributionWindowDays": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0,
+            "description": "Days either side of `date` in which a recorded change is a candidate. Null for an\nanalyzer version whose window this service does not know."
+          },
+          "candidates": {
+            "type": "array",
+            "minItems": 1,
+            "description": "Ranked, best first.",
+            "items": {
+              "$ref": "#/components/schemas/ChangePointCandidate"
+            }
+          },
+          "confidence": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "confidenceBasis": {
+            "type": "object",
+            "description": "What the confidence was computed from, under the analyzer's documented rule.",
+            "additionalProperties": false,
+            "required": [
+              "method",
+              "sampleSize",
+              "effectSize",
+              "stability"
+            ],
+            "properties": {
+              "method": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sampleSize": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "effectSize": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              },
+              "stability": {
+                "type": [
+                  "number",
+                  "null"
+                ]
+              }
+            }
+          },
+          "evidence": {
+            "type": "array",
+            "description": "Every reference the finding cites, in its stored order.",
+            "items": {
+              "$ref": "#/components/schemas/AnalysisEvidence"
+            }
+          }
+        }
+      },
+      "ChangePointCandidate": {
+        "type": "object",
+        "title": "ChangePointCandidate",
+        "description": "One recorded change inside a change-point's attribution window, with its score. `score` is\n`proximity` × `prior`; the factors are null on a finding that did not record them.",
+        "additionalProperties": false,
+        "required": [
+          "label",
+          "score",
+          "eventKind",
+          "date",
+          "daysFromBreakpoint",
+          "proximity",
+          "prior",
+          "ref"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "eventKind": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`merge`, `policy_version`, `infra_event`, `config_version` or `env_recipe_version`. Null\non the candidate that says no recorded change was in reach."
+          },
+          "date": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date"
+          },
+          "daysFromBreakpoint": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Negative is before the breakpoint."
+          },
+          "proximity": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "prior": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "ref": {
+            "type": "object",
+            "description": "The evidence the candidate cites — one of the change-point's `evidence`.",
+            "additionalProperties": false,
+            "required": [
+              "kind",
+              "id"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "AnalysisEvidence": {
+        "type": "object",
+        "title": "AnalysisEvidence",
+        "description": "One evidence reference of a finding (V081), resolved in the workspace: what it names and\nwhich surface it opens on.",
+        "additionalProperties": false,
+        "required": [
+          "kind",
+          "id",
+          "label",
+          "surface",
+          "pullRequestId",
+          "workflowSlug"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "build",
+              "test_run",
+              "test_case",
+              "waiver",
+              "merge",
+              "workflow_version",
+              "runner_pool",
+              "runner"
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "A uuid, or a 7–40 hex commit sha for a `merge`."
+          },
+          "label": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What it names. Null when the row is no longer there, or for a kind this read does not\nopen."
+          },
+          "surface": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "farm",
+              "pull_request",
+              "workflow",
+              null
+            ],
+            "description": "Where it opens. Null when it names nothing that can be opened."
+          },
+          "pullRequestId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid",
+            "description": "The mirrored PR — exactly when `surface` is `pull_request`."
+          },
+          "workflowSlug": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The workflow — exactly when `surface` is `workflow`."
           }
         }
       },

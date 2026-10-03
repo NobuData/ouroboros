@@ -4,7 +4,8 @@ import "server-only";
  * One read of a repository's Build Analyzer page, for the poll's hop (BW.1,
  * [#516](https://github.com/NobuData/ouroboros/issues/516)).
  *
- * Two service reads made together — the newest run and the schedule — under the poll family's
+ * Three service reads made together — the newest run, the schedule, and the duration chart
+ * (BW.2, [#517](https://github.com/NobuData/ouroboros/issues/517)) — under the poll family's
  * deadline, answered as a `PollAnswer`. A page whose run is in flight asks to be read again every
  * {@link RUNNING_POLL_SECONDS} seconds, which is what makes the progress panel tick.
  */
@@ -22,19 +23,20 @@ export const ANALYZER_UNAVAILABLE_CODE = "analyzer_unavailable";
  * Read one repository's page.
  *
  * @param repo The repository, `owner/name`.
- * @param read How to read it. Defaults to the two service reads; a suite passes a stub.
+ * @param read How to read it. Defaults to the three service reads; a suite passes a stub.
  * @returns The page with a short interval while a run is in flight, or why it could not be read.
  */
 export async function readAnalyzerPage(
   repo: string,
   read: (repo: string, signal: AbortSignal) => Promise<AnalyzerPage> = async (asked, signal) => {
     const client = anonymousApi();
-    const [run, schedule] = await Promise.all([
+    const [run, schedule, duration] = await Promise.all([
       analyzer.latest(asked, client, signal),
       analyzer.schedule(asked, client, signal),
+      analyzer.duration(asked, client, signal),
     ]);
 
-    return { repo: asked, run, schedule };
+    return { repo: asked, run, schedule, duration };
   },
 ): Promise<PollAnswer<AnalyzerPage>> {
   const answer = await readForPoll((signal) => read(repo, signal), UNREACHABLE_ANALYZER);

@@ -3,6 +3,7 @@
 import { useEffect, useId, useOptimistic, useRef, useState, useTransition } from "react";
 
 import type { RunnerPool, RunnerPoolChange } from "@/app/api/farm";
+import { FARM_POOLS_HASH } from "@/app/paths";
 import { Button, Card, CardHead, EmptyState, Eyebrow, Toggle } from "@/app/ui";
 
 import { updatePool } from "./pool-actions";
@@ -138,8 +139,8 @@ export function PoolsCard({ mayAdminister }: Readonly<{ mayAdminister: boolean }
   );
 }
 
-/** The id the card's `aria-labelledby` points at. */
-const TITLE_ID = "pools-card-title";
+/** The id the card's `aria-labelledby` points at — and where a link to the pools lands. */
+const TITLE_ID = FARM_POOLS_HASH;
 
 /**
  * One pool: its name, its composed line, its switch — and its auto-scale sub-toggle where a

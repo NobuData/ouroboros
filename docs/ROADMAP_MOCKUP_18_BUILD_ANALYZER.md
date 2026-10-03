@@ -826,7 +826,7 @@ annotated chart — via the #16 tokens (both themes; the mockup is dark-only).
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BW.1 | #516 ✅ | 🟢 Done | ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip | Frame, run-now with progress, schedule editor, honest provenance | mvp, analyzer, ui, design | N (after #41, BV.1, BA-D.5) | Y | M | ouroboros-ui |
-| BW.2 | #517 | 🟡 Open | ouroboros-ui: [BW.2] Annotated duration chart | BK.1 TimeSeries + change-point chips/verticals + Details | mvp, analyzer, ui, design | N (after BW.1, BK.1) | Y | M | ouroboros-ui |
+| BW.2 | #517 ✅ | 🟢 Done | ouroboros-ui: [BW.2] Annotated duration chart | BK.1 TimeSeries + change-point chips/verticals + Details | mvp, analyzer, ui, design | N (after BW.1, BK.1) | Y | M | ouroboros-ui |
 | BW.3 | #518 | 🟡 Open | ouroboros-ui: [BW.3] Suggestion cards & apply flows | Process + workflow suggestions, previews, dismiss, spike flow | mvp, analyzer, ui, design | N (after BW.1, BV.5) | Y | L | ouroboros-ui |
 | BW.4 | #519 | 🟡 Open | ouroboros-ui: [BW.4] Drafted-tickets card | Checkbox drafts, evidence, edit, push-to-backlog flow | mvp, analyzer, ui | N (after BW.1, BV.5) | Y | M | ouroboros-ui |
 | BW.5 | #520 | 🟡 Open | ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards | Verdict rows + notes; the three-step explainer with A2 truth | mvp, analyzer, ui, design | N (after BW.1, BV.6) | Y | S | ouroboros-ui |
@@ -879,7 +879,7 @@ Corpus 1,284 builds · … · Analyzed by [deterministic analyzers v1 ⓘ] · La
 
 ### Issue BW.2 — ouroboros-ui: [BW.2] Annotated duration chart
 
-> **GitHub issue:** #517 · **Status:** 🟡 Open · **Parent epic:** #504
+> **GitHub issue:** #517 ✅ · **Status:** 🟢 Done · **Parent epic:** #504
 
 - **Problem Statement:** The chart with detection verticals and
   attributed chips — findings rendered, not drawn (A8).
@@ -902,6 +902,39 @@ Corpus 1,284 builds · … · Analyzed by [deterministic analyzers v1 ⓘ] · La
 ──┊──────╔ May 18 · Zephyr 4.1 migration +1m 30s ╗───┊(Jun 22 −2m 10s ok)───┊──── 4m 12s●
 chip → Details: candidates [{merge zephyr-4.1 bump, .91}, {config Δ, .22}] · window ±3d
 ```
+
+- **Delivered**: `ouroboros-ui` 0.124.0 (`app/charts/` annotation layer, `app/analyzer/duration-*`,
+  `change-point-sheet.tsx`), `ouroboros-rest` 0.38.11 and the dev seed.
+  - **Read API built here.** No route served findings or the duration series, so — as #515 and
+    #516 did for their cards — `GET /api/v1/analyzer/duration?repo=` (members) answers both
+    together: the BI `build_duration` daily medians of the job label the run's corpus timed, over
+    that run's window, and its `change_point` findings with every ranked candidate, score, factor,
+    confidence basis and evidence. The chart is **one run's**: the newest ended run whose
+    change-point analyzer completed, so a run in flight or a failed one never blanks it.
+  - **Evidence is resolved in the service.** Each reference answers what it names and the surface
+    it opens on: a merge on its mirrored PR (through the merge plan's recorded sha) or, when the
+    mirror has none, on the farm that built the commit; a workflow version in the studio; builds,
+    pools and runners on the farm. A row retention has removed opens nothing and says so.
+  - **The attribution window** is not stored in a finding; the service states it per analyzer
+    version (`change_point` v1 = ±3 days, pinned by the engine's ledger) and `null` for a version
+    it does not know.
+  - **Annotation layer, not a second chart.** `TimeSeries` gained `markers` (a dashed vertical
+    and a chip each), `onMarker`, and a labelled `axis`. Chips are HTML buttons in a band above
+    the plot, placed by `app/charts/marks.ts`: left to right, each on the highest row it shares
+    with nothing it touches, held against the right edge rather than run off it. The layout is
+    solved in rem at the chart's minimum width, which makes it hold at every wider width and font
+    scale. A long candidate name is cut on the chip (never the date or the delta) and whole in
+    the chip's accessible name and the sheet.
+  - **Tint is the delta's sign.** `warn` for slower, `ok` for faster, from the finding's
+    `deltaSeconds` alone. A finding whose day the series does not reach draws no chip.
+  - **Details sheet.** *Attributed to (top candidate)*, the whole ranked list with scores and
+    `proximity × prior`, the window with its dates, both segment medians, the confidence with its
+    basis and method, and the evidence links. A shift with nothing recorded in reach says so.
+  - **The seed** now stores the run's `duration_label` (`zephyr build`), as BV.1's assembler
+    writes it. Its last window day's median is 245 s, so the endpoint reads `4m 05s`; `4m 12s` is
+    the level the last segment wobbles about.
+  - **Layout.** The card opens the mockup's main column (`analyzer__main`, eight of twelve); BW.3's
+    cards join it and BW.4/BW.5 take the side column.
 
 ### Issue BW.3 — ouroboros-ui: [BW.3] Suggestion cards & apply flows
 
@@ -1174,7 +1207,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
 3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → **BV.3 (#512) ✅** →
    **BV.4 (#513) ✅** → **BV.5 (#514) ✅** → **BV.6 (#515) ✅**
-4. **Phase 3 — UI:** **BW.1 (#516) ✅** → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
+4. **Phase 3 — UI:** **BW.1 (#516) ✅** → { **BW.2 (#517) ✅** ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
    BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
 5. **v2:** BX.1 (#522) after AF.2 (#235); BX.2 (#523) ⊕ BX.3 (#524) ⊕
    BX.4 (#525) ⊕ BX.5 (#526) after their dependencies.

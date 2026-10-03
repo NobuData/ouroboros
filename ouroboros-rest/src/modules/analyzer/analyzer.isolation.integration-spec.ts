@@ -6,20 +6,26 @@ import { TENANT_HEADER } from "../tenancy/tenant.resolver";
 import { SOURCE_CONFIG } from "../ticket-sources/providers/github.provider.fixture";
 import {
   analyze,
+  annotate,
   BENCH_REPO,
+  changePointFinding,
   recordApplication,
+  rollUp,
   seedSeededIdsWorkspace,
   suggestionId,
 } from "./analyzer.integration.fixture";
+import { POOL_A_ID } from "./composer/composer.seed.fixture";
+import type { DurationChartResource } from "./duration/duration.resources";
 import type { MeasurementsResource } from "./measurement/measurement.resources";
 
 /**
  * Organization isolation on every Build Analyzer route (BV.6,
  * [#515](https://github.com/NobuData/ouroboros/issues/515)) — runs, findings, suggestions,
- * batches and measurements.
+ * batches, measurements and the duration chart.
  *
  * Their workspace holds one of everything: a run with findings, composed suggestions, an applied
- * one with its measurement, and an analyzer-drafted batch. Mine is an administrator's workspace
+ * one with its measurement, an analyzer-drafted batch, and a complete run whose change-point sits
+ * on a rolled-up duration series. Mine is an administrator's workspace
  * with none of it — and every route, aimed at their objects, answers as if they do not exist.
  * Their repository has the same `owner/name` I would name, so a route scoped by repository rather
  * than workspace would leak.
@@ -81,6 +87,18 @@ describe("organization isolation, on every analyzer route", () => {
       [theirs.id, theirSource],
     );
     theirBatch = batch.rows[0].id;
+    await rollUp(api, theirs, "build_duration", "2026-06-22", [212_000], "zephyr build");
+    await annotate(api, theirs, [
+      changePointFinding("2026-06-22", -130, [
+        {
+          label: "pool-a image zephyr-sdk:0.17",
+          score: 0.6,
+          ref: { kind: "runner_pool", id: POOL_A_ID },
+          event_kind: "infra_event",
+          days_from_breakpoint: 0,
+        },
+      ]),
+    ]);
 
     me = await api.signIn();
     mine = await api.workspace(me);
@@ -236,6 +254,24 @@ describe("organization isolation, on every analyzer route", () => {
         expect(body.calibration).toEqual([]);
       },
     },
+    [`GET ${ANALYZER}/duration`]: {
+      about:
+        "draws none of another workspace's duration series or change-points for the same repository",
+      check: async () => {
+        const body = bodyOf<DurationChartResource>(
+          await as("get", `${ANALYZER}/duration?repo=${BENCH_REPO}`).expect(200),
+        );
+        expect(body).toEqual({
+          repo: BENCH_REPO,
+          runId: null,
+          analyzedAt: null,
+          durationLabel: null,
+          window: null,
+          series: [],
+          changePoints: [],
+        });
+      },
+    },
   };
 
   it("HAS A CLAIM FOR EVERY ANALYZER ROUTE THE APPLICATION REGISTERS", () => {
@@ -254,6 +290,17 @@ describe("organization isolation, on every analyzer route", () => {
       [theirs.id],
     );
     expect(rows[0].n).toBe("1");
+
+    const chart = await api.sql.query<{ points: string; series: string }>(
+      `select (select count(*) from ${SCHEMA_NAME}.analysis_findings f
+                 join ${SCHEMA_NAME}.analysis_runs r on r.id = f.run_id
+                where f.organization_id = $1 and f.finding_type = 'change_point'
+                  and r.status = 'complete')::text as points,
+              (select count(*) from ${SCHEMA_NAME}.metric_daily d
+                where d.organization_id = $1 and d.metric_id = 'build_duration')::text as series`,
+      [theirs.id],
+    );
+    expect(chart.rows[0]).toEqual({ points: "1", series: "1" });
   });
 
   describe("each route holds the line", () => {

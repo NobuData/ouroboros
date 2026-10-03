@@ -6227,6 +6227,28 @@ select pg_temp.must_hold(
     where r.id = '5eed0065-0000-4000-8000-000000000002'),
   'Confidence: high — 90d of stable telemetry, with the basis that produced it');
 
+-- BW.2 (#517): the duration chart draws the series the change-points were detected on — the job
+-- label the run's manifest names, which is the one the findings' evidence builds carry — and that
+-- series has a rolled-up median for every breakpoint day, so each chip has a point to sit on.
+select pg_temp.must_hold(
+  (select r.corpus_manifest ->> 'duration_label' = 'zephyr build'
+      and (select count(*) = 3
+              and bool_and(exists (
+                    select 1 from ouroboros.metric_daily d
+                     where d.organization_id = r.organization_id and d.repo_ref = r.repo_ref
+                       and d.metric_id = 'build_duration'
+                       and d.dimension = r.corpus_manifest ->> 'duration_label'
+                       and d.day = (f.data ->> 'date')::date))
+              and bool_and(not exists (
+                    select 1 from jsonb_array_elements(f.evidence_refs) ref
+                      join ouroboros.build_jobs job on job.id::text = ref ->> 'id'
+                     where ref ->> 'kind' = 'build'
+                       and job.label <> r.corpus_manifest ->> 'duration_label'))
+             from ouroboros.analysis_findings f
+            where f.run_id = r.id and f.finding_type = 'change_point')
+     from ouroboros.analysis_runs r where r.id = '5eed0065-0000-4000-8000-000000000002'),
+  'the run names the job label its durations are of, and every change-point sits on a day of that series');
+
 select pg_temp.must_hold(
   (select s.enabled and s.weekly_enabled and s.weekly_day = 1 and s.weekly_time = '06:00'
       and s.every_n_builds = 50

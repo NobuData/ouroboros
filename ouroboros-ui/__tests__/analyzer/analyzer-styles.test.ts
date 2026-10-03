@@ -6,7 +6,8 @@ import { describe, expect, it } from "vitest";
  * The properties of `app/analyzer/analyzer.css` that are agreements with something outside it
  * (#516): the sheet and the components name the same classes, every length scales and every hue
  * is a token — what *both themes* and *CQ.1's rem type* can be verified as, since jsdom applies no
- * stylesheet — and the page adds no chrome to the shell.
+ * stylesheet — and the page adds no chrome to the shell. Since #517 it also dresses the duration
+ * chart's card and the Details sheet behind each chip.
  */
 
 const ANALYZER = join(import.meta.dirname, "..", "..", "app", "analyzer");
@@ -118,5 +119,49 @@ describe("run progress", () => {
     expect(rule("\\.analyzer-progress__status--budget")).toMatch(/color:\s*var\(--warn\)/);
     expect(rule("\\.analyzer-progress__status--failed")).toMatch(/color:\s*var\(--err\)/);
     expect(rule("\\.analyzer-progress__status--complete")).toMatch(/color:\s*var\(--ok\)/);
+  });
+});
+
+describe("the duration chart's card (#517)", () => {
+  it("takes the mockup's main column — eight of twelve — and the whole row on a narrower pane", () => {
+    expect(rule("\\.analyzer__main")).toMatch(/grid-column:\s*span 8/);
+    expect(rule("\\.analyzer__main")).toMatch(/min-width:\s*0/);
+    expect(CODE).toMatch(/@media \(max-width: [\d.]+rem\)\s*\{\s*\.analyzer__main\s*\{\s*grid-column:\s*span 12/);
+  });
+
+  it("leaves the scrolling to the chart's own wrapper — the card scrolls nothing itself", () => {
+    // `app/charts/charts.css` owns `.chart-scroll`; this sheet must never scroll the pane's content.
+    expect(CODE).not.toMatch(/overflow(-x)?:\s*(auto|scroll)/);
+    expect(rule("\\.analyzer-duration")).toMatch(/min-width:\s*0/);
+    expect(COMPONENT).toContain('from "@/app/charts"');
+  });
+
+  it("draws the mockup's faint caption, and holds the chart's shape while it is unread", () => {
+    expect(rule("\\.analyzer-duration__caption")).toMatch(/color:\s*var\(--ink-faint\)/);
+    expect(rule("\\.analyzer-duration__caption")).toMatch(/font-size:\s*var\(--t-xs\)/);
+    expect(rule("\\.analyzer-duration__skeleton")).toMatch(/aspect-ratio:\s*640 \/ \d+/);
+  });
+});
+
+describe("the change-point Details sheet (#517)", () => {
+  it("tints the delta by its sign with the same tokens the chip uses", () => {
+    expect(rule("\\.analyzer-cp__delta--warn")).toMatch(/color:\s*var\(--warn\)/);
+    expect(rule("\\.analyzer-cp__delta--ok")).toMatch(/color:\s*var\(--ok\)/);
+  });
+
+  it("sets a candidate's rank, name and score on one line and its detail under them", () => {
+    expect(rule("\\.analyzer-cp__candidate")).toMatch(/display:\s*grid/);
+    expect(rule("\\.analyzer-cp__meta")).toMatch(/grid-column:\s*2 \/ -1/);
+    expect(rule("\\.analyzer-cp__score")).toMatch(/font-family:\s*var\(--f-mono\)/);
+  });
+
+  it("wraps a long candidate name, a sha and a method rather than widening the sheet", () => {
+    for (const selector of ["\\.analyzer-cp__name", "\\.analyzer-cp__mono", "\\.analyzer-cp__ref"]) {
+      expect(rule(selector), selector).toMatch(/overflow-wrap:\s*anywhere/);
+    }
+  });
+
+  it("draws an evidence link in the accent — a destination, not decoration", () => {
+    expect(rule("\\.analyzer-cp__link")).toMatch(/color:\s*var\(--accent\)/);
   });
 });

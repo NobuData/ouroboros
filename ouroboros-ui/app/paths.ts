@@ -456,6 +456,16 @@ export const ROUTING_RULES_HASH = "models-rules-title";
 export const FARM_RUNNERS_HASH = "runners-card-title";
 
 /**
+ * The build farm's pools card heading, likewise — where a runner pool cited as evidence by a
+ * Build Analyzer finding goes (BW.2, [#517](https://github.com/NobuData/ouroboros/issues/517)).
+ *
+ * `app/farm/pools-card.tsx` renders it as the card's `aria-labelledby` target, and the analyzer's
+ * Details sheet links to it beneath {@link BUILD_FARM_PATH}: a pool has no address of its own, and
+ * the card that lists and configures the pools is where one resolves to.
+ */
+export const FARM_POOLS_HASH = "pools-card-title";
+
+/**
  * The dashboard's *Up next in queue* heading, likewise — where the issues screen's toast sends
  * a reader after a press that queued ([#118](https://github.com/NobuData/ouroboros/issues/118)).
  *

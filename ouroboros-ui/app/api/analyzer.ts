@@ -1,8 +1,9 @@
 /**
  * The Build Analyzer's operations (BV.1, [#510](https://github.com/NobuData/ouroboros/issues/510);
- * BW.1, [#516](https://github.com/NobuData/ouroboros/issues/516)) — the runs mockup 18's head and
- * meta strip render, *Run analysis now*, and the schedule behind **Schedule: weekly + every 50
- * builds ▾**.
+ * BW.1, [#516](https://github.com/NobuData/ouroboros/issues/516); BW.2,
+ * [#517](https://github.com/NobuData/ouroboros/issues/517)) — the runs mockup 18's head and meta
+ * strip render, *Run analysis now*, the schedule behind **Schedule: weekly + every 50 builds ▾**,
+ * and the duration series with the change-points detected on it.
  *
  * Thin by design, like every module here: one function per operation, the client injectable so a
  * suite can stub `fetch`, and the service's refusals left as `ApiError`s for the caller to word.
@@ -35,6 +36,21 @@ export type AnalysisSchedule = components["schemas"]["AnalysisSchedule"];
 
 /** What the schedule editor saves — the whole configuration. */
 export type AnalysisScheduleInput = components["schemas"]["PutAnalysisScheduleBody"];
+
+/** A repository's duration series and the change-points one run detected on it. */
+export type DurationChart = components["schemas"]["DurationChart"];
+
+/** One UTC day of the duration series. */
+export type DurationPoint = components["schemas"]["DurationPoint"];
+
+/** One detected change-point — a chip, and the Details sheet behind it. */
+export type ChangePoint = components["schemas"]["ChangePoint"];
+
+/** One ranked attribution candidate of a change-point. */
+export type ChangePointCandidate = components["schemas"]["ChangePointCandidate"];
+
+/** One evidence reference of a finding, resolved to what it names and where it opens. */
+export type AnalysisEvidence = components["schemas"]["AnalysisEvidence"];
 
 /** The analyzer operations. */
 export const analyzer = {
@@ -79,6 +95,20 @@ export const analyzer = {
    */
   async schedule(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<AnalysisSchedule> {
     return unwrap(await client.GET("/api/v1/analyzer/schedule", { params: { query: { repo } }, signal }));
+  },
+
+  /**
+   * `GET /api/v1/analyzer/duration?repo=` — the duration series of the newest run that detected
+   * change-points, with those change-points: ranked candidates, scores, resolved evidence.
+   *
+   * @param repo The repository, `owner/name`.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Abandons the request — the poll's deadline.
+   * @returns The chart; `runId: null` and empty lists before any run has detected change-points.
+   * @throws {ApiError} What the service answered.
+   */
+  async duration(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<DurationChart> {
+    return unwrap(await client.GET("/api/v1/analyzer/duration", { params: { query: { repo } }, signal }));
   },
 
   /**

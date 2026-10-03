@@ -1,6 +1,7 @@
 /*
  * The Build Analyzer (#516) — mockup 18's page frame, head, run progress, meta strip and schedule
- * editor.
+ * editor — and its annotated duration chart with the Details sheet behind each chip (#517). The
+ * chart's own marks are app/charts/charts.css's; what is here is the card around them.
  *
  * The mockup is docs/mockups/18-build-analyzer.html over docs/mockups/assets/ouroboros.css. What
  * is taken from it is the anatomy every module page has (docs/DESIGN_SYSTEM_APP_SHELL.md § 2):
@@ -68,6 +69,25 @@
 
 .analyzer__grid > * {
   grid-column: span 12;
+}
+
+/*
+ * The mockup's main column (`c-8 col`): the duration chart and, below it, the suggestion cards.
+ * A column rather than cards placed in the grid, because the two columns' cards differ in height
+ * and each column stacks its own.
+ */
+.analyzer__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+  grid-column: span 8;
+  min-width: 0;
+}
+
+@media (max-width: 68.75rem) {
+  .analyzer__main {
+    grid-column: span 12;
+  }
 }
 
 /* ---------- the meta strip ---------- */
@@ -316,6 +336,184 @@
 .analyzer-busy__link {
   color: var(--accent);
   font-weight: 600;
+}
+
+/* ---------- the duration chart ---------- */
+
+/* The chart scrolls inside its own wrapper (charts.css); the card only has to let it be narrow. */
+.analyzer-duration {
+  min-width: 0;
+}
+
+/* The mockup's `.caption`. */
+.analyzer-duration__caption {
+  margin: var(--sp-5) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+/* The chart's place while the page is unread: its own shape, so nothing moves when it lands. */
+.analyzer-duration__skeleton {
+  aspect-ratio: 640 / 224;
+  border-radius: var(--r-md);
+  background: var(--raised);
+}
+
+/* ---------- the change-point Details sheet ---------- */
+
+.analyzer-cp {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-9);
+}
+
+.analyzer-cp__lede {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-family: var(--f-mono);
+  font-size: var(--t-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.analyzer-cp__delta {
+  font-weight: 600;
+}
+
+/* By the delta's sign, as the chip is: slower is a warning, faster is good news. */
+.analyzer-cp__delta--warn {
+  color: var(--warn);
+}
+
+.analyzer-cp__delta--ok {
+  color: var(--ok);
+}
+
+/* The mockup's `.lbl`: faint uppercase mono, over each part of the finding. */
+.analyzer-cp__heading {
+  margin: 0 0 var(--sp-3);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-weight: 400;
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+.analyzer-cp__top {
+  display: block;
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t-md);
+  font-weight: 600;
+}
+
+.analyzer-cp__note {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.analyzer-cp__candidates,
+.analyzer-cp__evidence {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Rank, name and score on one line; what kind of change, when, and the score's factors under it. */
+.analyzer-cp__candidate {
+  display: grid;
+  grid-template-columns: 1.25rem 1fr max-content;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-5);
+  padding: var(--sp-5) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.analyzer-cp__rank {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+.analyzer-cp__name {
+  font-size: var(--t-sm);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.analyzer-cp__score {
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.analyzer-cp__meta {
+  grid-column: 2 / -1;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
+}
+
+.analyzer-cp__facts {
+  display: grid;
+  gap: var(--sp-8);
+  margin: 0;
+}
+
+.analyzer-cp__value {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.analyzer-cp__basis {
+  color: var(--ink-mut);
+}
+
+.analyzer-cp__mono {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-cp__ref {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-4);
+  font-size: var(--t-sm);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-cp__kind {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.analyzer-cp__link {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.analyzer-cp__where {
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
 }
 
 /* ---------- the schedule editor ---------- */

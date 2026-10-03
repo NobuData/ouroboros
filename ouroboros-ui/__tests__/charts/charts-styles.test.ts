@@ -2,6 +2,17 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
+import {
+  CHART_MIN_WIDTH_REM,
+  MARK_BORDER_REM,
+  MARK_CH_EM,
+  MARK_FONT_REM,
+  MARK_OFFSET_REM,
+  MARK_PAD_REM,
+  MARK_ROW_REM,
+  MARK_SLACK_CH,
+} from "@/app/charts/marks";
+
 /**
  * The properties of `app/charts/charts.css` that are agreements with something outside it
  * (#442). The generic rules — no colour literal, no px type — are `__tests__/styles.test.ts`'s
@@ -10,6 +21,27 @@ import { describe, expect, it } from "vitest";
 
 const CHARTS_DIR = join(import.meta.dirname, "..", "..", "app", "charts");
 const SHEET = readFileSync(join(CHARTS_DIR, "charts.css"), "utf8");
+const TOKENS = readFileSync(join(CHARTS_DIR, "..", "tokens.css"), "utf8");
+
+/**
+ * A token's value in rem, as the token sheet first declares it.
+ *
+ * @param name The custom property, e.g. `--sp-4`.
+ * @returns The number of rem.
+ */
+function tokenRem(name: string): number {
+  return Number(new RegExp(`${name}:\\s*([\\d.]+)rem`).exec(TOKENS)?.[1]);
+}
+
+/**
+ * One rule's declarations — the first rule with exactly this selector.
+ *
+ * @param selector The selector, as a regular expression fragment.
+ * @returns What is between its braces, or `""` when there is no such rule.
+ */
+function rule(selector: string): string {
+  return new RegExp(`(?:^|\\}|\\s)(?<!,\\s*)${selector}\\s*\\{([^}]*)\\}`).exec(CODE)?.[1] ?? "";
+}
 
 /** The sheet without its prose, so a rule cannot be found inside a comment. */
 const CODE = SHEET.replace(/\/\*[\s\S]*?\*\//g, " ");
@@ -58,6 +90,88 @@ describe("scrolling", () => {
   it("scrolls a wide chart inside its own wrapper, never the content pane", () => {
     expect(CODE).toMatch(/\.chart-scroll\s*\{[^}]*overflow-x:\s*auto/);
     expect(CODE).toMatch(/\.chart-scroll__inner\s*\{[^}]*min-width:\s*[\d.]+rem/);
+  });
+});
+
+describe("marker chips, and the layout that places them", () => {
+  // app/charts/marks.ts solves the chips' layout in rem, at the chart's narrowest width. Every
+  // length it assumes is declared here; if the two part, chips overlap where the layout says
+  // they do not.
+  const chip = rule("\\.chart-mark");
+
+  it("is solved at the scroll wrapper's own minimum widths", () => {
+    expect(rule("\\.chart-scroll__inner")).toContain(`min-width: ${CHART_MIN_WIDTH_REM.wide}rem`);
+    expect(rule("\\.chart-scroll__inner--half")).toContain(`min-width: ${CHART_MIN_WIDTH_REM.half}rem`);
+  });
+
+  it("measures a chip in the type and the padding the sheet gives it", () => {
+    expect(chip).toMatch(/font-family:\s*var\(--f-mono\)/);
+    expect(chip).toMatch(/font-size:\s*var\(--t-2xs\)/);
+    expect(tokenRem("--t-2xs")).toBe(MARK_FONT_REM);
+    expect(chip).toMatch(/padding:\s*0 var\(--sp-3\)/);
+    expect(tokenRem("--sp-3")).toBe(MARK_PAD_REM);
+    expect(chip).toMatch(/border:\s*1px solid/);
+    expect(tokenRem("--sp-1")).toBe(MARK_BORDER_REM);
+    // The width is the text's alone — a button is border-box unless told otherwise, which would
+    // take the padding out of it and ellipsise every label.
+    expect(chip).toMatch(/box-sizing:\s*content-box/);
+    expect(chip).toContain(`width: calc((var(--chart-chars, 0) + ${MARK_SLACK_CH}) * 1ch)`);
+  });
+
+  it("assumes an advance no narrower than a hinted renderer draws — a whole pixel up from 0.6em", () => {
+    // IBM Plex Mono's advance is 0.6em: 6.6px of the chip's 11px face, which hinting snaps to 7.
+    const hinted = Math.ceil(0.6 * MARK_FONT_REM * 16) / (MARK_FONT_REM * 16);
+
+    expect(MARK_CH_EM).toBeGreaterThanOrEqual(hinted);
+  });
+
+  it("starts a chip after its vertical, or against the plot's right edge — whichever is further left", () => {
+    const left = /left:\s*max\(\s*0%,\s*min\(([\s\S]*)\)\s*\);/.exec(chip)?.[1] ?? "";
+
+    expect(left).toContain("calc(var(--chart-x, 0%) + var(--sp-2))");
+    expect(tokenRem("--sp-2")).toBe(MARK_OFFSET_REM);
+    // The edge rule subtracts the chip's whole width: its characters, both paddings, both borders.
+    expect(left.replace(/\s+/g, " ")).toContain(
+      `calc(100% - var(--chart-end, 0%) - (var(--chart-chars, 0) + ${MARK_SLACK_CH}) * 1ch - 2 * var(--sp-3) - var(--sp-1))`,
+    );
+  });
+
+  it("stacks the rows at one pitch, in the band, the chips and their stems alike", () => {
+    const pitch = `${MARK_ROW_REM}rem`;
+
+    expect(rule("\\.chart-marks")).toContain(`var(--chart-rows, 0) * ${pitch}`);
+    expect(chip).toContain(`var(--chart-row, 0) * ${pitch}`);
+    expect(rule("\\.chart-mark__stem")).toContain(`var(--chart-row, 0) * ${pitch}`);
+  });
+
+  it("cuts a label that outgrows its room with an ellipsis instead of spilling onto a neighbour", () => {
+    expect(chip).toMatch(/overflow:\s*hidden/);
+    expect(chip).toMatch(/text-overflow:\s*ellipsis/);
+    expect(chip).toMatch(/white-space:\s*nowrap/);
+  });
+
+  it("tints by tone from the warning and success tokens, opaque over the card's surface", () => {
+    const warn = rule("\\.chart-mark--warn");
+    const ok = rule("\\.chart-mark--ok");
+
+    expect(warn).toMatch(/color:\s*var\(--warn\)/);
+    expect(warn).toMatch(/border-color:\s*var\(--warn-line\)/);
+    expect(warn).toMatch(/background:.*var\(--warn-tint\).*var\(--surface\)/);
+    expect(ok).toMatch(/color:\s*var\(--ok\)/);
+    expect(ok).toMatch(/border-color:\s*var\(--ok-line\)/);
+    expect(ok).toMatch(/background:.*var\(--ok-tint\).*var\(--surface\)/);
+    expect(ok).not.toMatch(/--warn/);
+  });
+
+  it("draws a focus ring on a chip, and the stem behind the chips", () => {
+    expect(rule("\\.chart-mark:focus-visible")).toMatch(/outline:\s*2px solid var\(--accent\)/);
+    expect(chip).toMatch(/z-index:\s*1/);
+    expect(rule("\\.chart-mark__stem")).not.toMatch(/z-index/);
+  });
+
+  it("lays the day columns and the tooltip over the plot alone, never over the chips", () => {
+    expect(rule("\\.chart-ts__plot")).toMatch(/position:\s*relative/);
+    expect(rule("\\.chart-ts__hits")).toMatch(/position:\s*absolute/);
   });
 });
 

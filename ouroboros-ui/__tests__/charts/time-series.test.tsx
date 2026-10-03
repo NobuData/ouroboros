@@ -1,12 +1,14 @@
-import { act, fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
-import { TimeSeries, type TimeSeriesPoint } from "@/app/charts";
+import { TimeSeries, type TimeSeriesMarker, type TimeSeriesPoint } from "@/app/charts";
+import { plotFrame, xOf, yOf } from "@/app/charts/geometry";
 import { moneyOfCents } from "@/app/format";
 
 /**
  * The line-and-area chart (#442): the four combinations of its optional marks, the series
- * that have almost nothing in them, and the two ways to reach a day's detail.
+ * that have almost nothing in them, and the two ways to reach a day's detail — and its annotation
+ * layer (#517): markers with their chips, and a labelled y-axis.
  */
 
 /** A week of figures, with the tooltip's detail on each. */
@@ -266,6 +268,195 @@ describe("the keyboard", () => {
   });
 });
 
+describe("markers", () => {
+  const MARKERS: readonly TimeSeriesMarker[] = [
+    { id: "slower", index: 1, label: "Aug 2 · Zephyr 4.1 migration +1m 30s", description: "It rose.", tone: "warn" },
+    { id: "faster", index: 4, label: "Aug 5 · ccache enabled −2m 10s", tone: "ok" },
+  ];
+
+  it("draws none by default — no band, no verticals", () => {
+    const container = draw();
+
+    expect(container.querySelector(".chart-marks")).toBeNull();
+    expect(container.querySelector("[data-chart-markers]")).toBeNull();
+  });
+
+  it("draws a dashed vertical through the plot at each marked point", () => {
+    const container = draw({ markers: MARKERS });
+    const frame = plotFrame(640, 196);
+    const lines = [...container.querySelectorAll("[data-chart-markers] .chart-ts__marker")];
+
+    expect(lines.map((line) => Number(line.getAttribute("x1")))).toEqual([xOf(1, 7, frame), xOf(4, 7, frame)]);
+    for (const line of lines) {
+      expect(line.getAttribute("x1")).toBe(line.getAttribute("x2"));
+      expect(Number(line.getAttribute("y2"))).toBe(frame.baseline);
+    }
+  });
+
+  it("draws each marker's chip in a named group, tinted by its tone", () => {
+    const container = draw({ markers: MARKERS, markersLabel: "Detected change-points", onMarker: () => {} });
+    const group = screen.getByRole("group", { name: "Detected change-points" });
+    const chips = within(group).getAllByRole("button");
+
+    expect(chips.map((chip) => chip.textContent)).toEqual([
+      "Aug 2 · Zephyr 4.1 migration +1m 30s",
+      "Aug 5 · ccache enabled −2m 10s",
+    ]);
+    expect(chips[0]).toHaveClass("chart-mark", "chart-mark--warn");
+    expect(chips[1]).toHaveClass("chart-mark", "chart-mark--ok");
+    expect(chips[1]).not.toHaveClass("chart-mark--warn");
+    expect(container.querySelectorAll(".chart-mark__stem")).toHaveLength(2);
+  });
+
+  it("names a chip by its text and then what is said beyond it", () => {
+    draw({ markers: MARKERS, onMarker: () => {} });
+
+    expect(
+      screen.getByRole("button", { name: "Aug 2 · Zephyr 4.1 migration +1m 30s — It rose." }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Aug 5 · ccache enabled −2m 10s" })).toBeInTheDocument();
+  });
+
+  it("makes each chip a tab stop of its own that hands its marker back when pressed", () => {
+    const onMarker = vi.fn();
+    draw({ markers: MARKERS, onMarker });
+    const chip = screen.getByRole("button", { name: /ccache enabled/ });
+
+    expect(chip.tagName).toBe("BUTTON");
+    expect(chip).not.toHaveAttribute("tabindex", "-1");
+
+    chip.focus();
+    expect(chip).toHaveFocus();
+    fireEvent.click(chip);
+
+    expect(onMarker).toHaveBeenCalledExactlyOnceWith("faster");
+  });
+
+  it("draws the chips as text when nothing listens for a press", () => {
+    draw({ markers: MARKERS });
+    const group = screen.getByRole("group", { name: "Annotations" });
+
+    expect(within(group).queryAllByRole("button")).toHaveLength(0);
+    expect(within(group).getByText("Aug 5 · ccache enabled −2m 10s")).toHaveClass("chart-mark--ok");
+    expect(group.querySelector(".chart-mark--warn")!.textContent).toBe(
+      "Aug 2 · Zephyr 4.1 migration +1m 30s — It rose.",
+    );
+  });
+
+  it("places each chip by its point's x, its row and its room", () => {
+    // Two neighbouring days: the second chip starts under the first's span.
+    const container = draw({
+      markers: [MARKERS[0]!, { ...MARKERS[1]!, index: 2 }],
+      onMarker: () => {},
+    });
+    const frame = plotFrame(640, 196);
+    const band = container.querySelector<HTMLElement>(".chart-marks")!;
+    const [first, second] = [...container.querySelectorAll<HTMLElement>("button.chart-mark")];
+
+    expect(band.style.getPropertyValue("--chart-rows")).toBe("2");
+    expect(first!.style.getPropertyValue("--chart-x")).toBe(`${Math.round((xOf(1, 7, frame) / 640) * 10000) / 100}%`);
+    expect(first!.style.getPropertyValue("--chart-row")).toBe("0");
+    expect(first!.style.getPropertyValue("--chart-chars")).toBe(String(MARKERS[0]!.label.length));
+    expect(second!.style.getPropertyValue("--chart-row")).toBe("1");
+  });
+
+  it("keeps chips that are clear of one another on one row", () => {
+    const container = draw({ markers: MARKERS, onMarker: () => {} });
+
+    expect(container.querySelector<HTMLElement>(".chart-marks")!.style.getPropertyValue("--chart-rows")).toBe("1");
+  });
+
+  it("ignores a marker pointing past the series, and one at no whole point", () => {
+    const container = draw({
+      markers: [
+        { id: "past", index: 40, label: "nowhere", tone: "warn" },
+        { id: "between", index: 1.5, label: "between", tone: "warn" },
+        { id: "before", index: -1, label: "before", tone: "ok" },
+      ],
+    });
+
+    expect(container.querySelector(".chart-marks")).toBeNull();
+    expect(container.querySelector("[data-chart-markers]")).toBeNull();
+  });
+
+  it("keeps the day columns under the plot only, so they never cover a chip", () => {
+    const container = draw({ markers: MARKERS, onMarker: () => {} });
+    const plot = container.querySelector(".chart-ts__plot")!;
+
+    expect(plot.querySelector(".chart-ts__hits")).not.toBeNull();
+    expect(plot.querySelector(".chart-ts__svg")).not.toBeNull();
+    expect(plot.querySelector(".chart-marks")).toBeNull();
+    expect(container.querySelector(".chart-marks")!.compareDocumentPosition(plot)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+  });
+});
+
+describe("a labelled y-axis", () => {
+  const axis = { min: 180, max: 360, ticks: [180, 240, 300, 360], format: (value: number) => `${value / 60}m` };
+  const minutes: readonly TimeSeriesPoint[] = [252, 342, 212, 252].map((value, index) => ({
+    label: `Aug ${index + 1}`,
+    value,
+  }));
+
+  it("draws none by default", () => {
+    expect(draw().querySelector("[data-chart-axis]")).toBeNull();
+  });
+
+  it("writes each tick with the axis's own formatter, beside the plot", () => {
+    const { container } = render(<TimeSeries label="Duration" points={minutes} axis={axis} />);
+    const labels = [...container.querySelectorAll("[data-chart-axis] text")];
+    const frame = plotFrame(640, 196, 30);
+
+    expect(labels.map((label) => label.textContent)).toEqual(["3m", "4m", "5m", "6m"]);
+    for (const label of labels) {
+      expect(label.getAttribute("text-anchor")).toBe("end");
+      expect(Number(label.getAttribute("x"))).toBeLessThan(frame.left);
+    }
+  });
+
+  it("draws a gridline at every tick above the floor, which is the solid baseline", () => {
+    const { container } = render(<TimeSeries label="Duration" points={minutes} axis={axis} gridlines={9} />);
+    const frame = plotFrame(640, 196, 30);
+    const ys = [...container.querySelectorAll(".chart-ts__grid")].map((line) => Number(line.getAttribute("y1")));
+
+    expect(ys).toEqual([240, 300, 360].map((tick) => yOf(tick, 360, frame, 180)));
+    expect(Number(container.querySelector(".chart-ts__baseline")!.getAttribute("y1"))).toBe(frame.baseline);
+  });
+
+  it("starts the plot after the labels' gutter and measures the series from the axis's floor", () => {
+    const { container } = render(<TimeSeries label="Duration" points={minutes} axis={axis} />);
+    const frame = plotFrame(640, 196, 30);
+    const points = container.querySelector(".chart-ts__line")!.getAttribute("points")!.split(" ");
+
+    expect(points[0]).toBe(`${frame.left},${yOf(252, 360, frame, 180)}`);
+    expect(points[3]).toBe(`630,${yOf(252, 360, frame, 180)}`);
+    expect(container.querySelector(".chart-ts__grid")!.getAttribute("x1")).toBe(String(frame.left));
+  });
+
+  it("drops a tick outside the domain rather than drawing it off the plot", () => {
+    const { container } = render(
+      <TimeSeries label="Duration" points={minutes} axis={{ ...axis, ticks: [120, 240, 420] }} />,
+    );
+
+    expect([...container.querySelectorAll("[data-chart-axis] text")].map((label) => label.textContent)).toEqual(["4m"]);
+  });
+
+  it("falls back to the chart's own formatter for the ticks", () => {
+    const { container } = render(
+      <TimeSeries
+        label="Duration"
+        points={minutes}
+        axis={{ min: 180, max: 360, ticks: [240] }}
+        formatValue={(value) => `${value}s`}
+      />,
+    );
+
+    expect(container.querySelector("[data-chart-axis] text")!.textContent).toBe("240s");
+    expect(container.querySelector("[data-chart-endpoint] text")!.textContent).toBe("252s");
+  });
+});
+
 describe("the scroll wrapper", () => {
   it("wraps the chart in its own scroller, sized for a wide or a half card", () => {
     const wide = draw();
@@ -277,7 +468,12 @@ describe("the scroll wrapper", () => {
   });
 
   it("carries only data in its inline styles", () => {
-    const container = draw();
+    const container = draw({
+      markers: [{ id: "m", index: 2, label: "Aug 3 · a merge +10s", tone: "warn" }],
+      onMarker: () => {},
+    });
+
+    expect(container.querySelectorAll(".chart-marks [style]").length).toBeGreaterThan(0);
 
     for (const element of container.querySelectorAll("[style]")) {
       const declarations = element.getAttribute("style")!.split(";").filter(Boolean);

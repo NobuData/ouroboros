@@ -2488,6 +2488,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analyzer/duration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * A repository's build-duration series and its detected change-points
+         * @description BW.2 ([#517](https://github.com/NobuData/ouroboros/issues/517)) — mockup 18's **Build
+         *     duration · 90 days, with detected change-points** chart and the Details sheet behind each
+         *     chip. The chart is **one run's**: the repository's newest ended run in which the
+         *     change-point analyzer completed. `window` is that run's corpus window, `series` is the daily
+         *     median duration of the job label its corpus timed (`durationLabel`, BI's `build_duration`
+         *     family, one point per day with builds), and `changePoints` are its `change_point` findings,
+         *     oldest breakpoint first.
+         *
+         *     A change-point is a **ranking, not a verdict**. `candidates` lists every recorded change
+         *     inside the attribution window (`attributionWindowDays` either side of `date`), best first,
+         *     each with its `score` and the two factors it is the product of — `proximity` (how close in
+         *     time) and `prior` (how plausible that kind of change is). A shift with no recorded change in
+         *     reach carries one candidate saying so, with a score of `0`. `deltaSeconds` is the level
+         *     after minus the level before, so a negative delta is a faster build.
+         *
+         *     `evidence` is every reference the finding cites, resolved in this workspace: what it names
+         *     (`label`) and where it opens (`surface`) — a build, a runner or a pool on the **farm**, a
+         *     merge on its mirrored **pull request** (or on the farm that first built the commit when the
+         *     mirror has no such PR), a workflow version in the workflow studio (**workflow**). A
+         *     reference whose row retention has since removed has a `null` label and surface.
+         *
+         *     Before any run has detected change-points — and for a repository the workspace has none of —
+         *     `runId` and `window` are `null` and both lists are empty. Every member may read. **The
+         *     workspace is the session's.**
+         */
+        get: operations["getDurationChart"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/analyzer/runs": {
         parameters: {
             query?: never;
@@ -13344,6 +13387,144 @@ export interface components {
                 /** Format: date-time */
                 createdAt: string;
             }[];
+        };
+        /**
+         * DurationChart
+         * @description A repository's build-duration series and the change-points one run detected on it (BW.2,
+         *     #517). Everything here is that run's — its corpus window, the job label its corpus timed, its
+         *     findings.
+         */
+        DurationChart: {
+            repo: string;
+            /**
+             * Format: uuid
+             * @description The run whose findings annotate the series. Null before one has detected change-points.
+             */
+            runId: string | null;
+            /**
+             * Format: date-time
+             * @description When that run ended.
+             */
+            analyzedAt: string | null;
+            /** @description The job label whose builds are timed. Null when nothing succeeded in the window. */
+            durationLabel: string | null;
+            /** @description The run's corpus window, in UTC days. Null with `runId`. */
+            window: {
+                /** Format: date */
+                from: string;
+                /** Format: date */
+                to: string;
+                days: number;
+            } | null;
+            /** @description One point per day with builds, oldest first. */
+            series: components["schemas"]["DurationPoint"][];
+            /** @description Oldest breakpoint first. */
+            changePoints: components["schemas"]["ChangePoint"][];
+        };
+        /**
+         * DurationPoint
+         * @description One UTC day of the duration series.
+         */
+        DurationPoint: {
+            /** Format: date */
+            day: string;
+            /** @description The day's median build duration, in seconds. */
+            medianSeconds: number;
+            /** @description How many succeeded builds the median is over. */
+            builds: number;
+        };
+        /**
+         * ChangePoint
+         * @description One detected shift in the duration series (V081's `change_point` finding) — the chart's chip
+         *     and the Details sheet behind it. The attribution is a ranked candidate list, never one
+         *     asserted cause.
+         */
+        ChangePoint: {
+            /** Format: uuid */
+            id: string;
+            analyzerVersion: number;
+            /**
+             * Format: date
+             * @description The first day of the new level, UTC.
+             */
+            date: string;
+            metric: string;
+            /** @description The level after minus the level before. Negative is a faster build. Never zero. */
+            deltaSeconds: number;
+            /** @description The median of the segment before the breakpoint. */
+            beforeMedianSeconds: number | null;
+            /** @description The median of the segment from the breakpoint. */
+            afterMedianSeconds: number | null;
+            /**
+             * @description Days either side of `date` in which a recorded change is a candidate. Null for an
+             *     analyzer version whose window this service does not know.
+             */
+            attributionWindowDays: number | null;
+            /** @description Ranked, best first. */
+            candidates: components["schemas"]["ChangePointCandidate"][];
+            confidence: number;
+            /** @description What the confidence was computed from, under the analyzer's documented rule. */
+            confidenceBasis: {
+                method: string | null;
+                sampleSize: number | null;
+                effectSize: number | null;
+                stability: number | null;
+            };
+            /** @description Every reference the finding cites, in its stored order. */
+            evidence: components["schemas"]["AnalysisEvidence"][];
+        };
+        /**
+         * ChangePointCandidate
+         * @description One recorded change inside a change-point's attribution window, with its score. `score` is
+         *     `proximity` × `prior`; the factors are null on a finding that did not record them.
+         */
+        ChangePointCandidate: {
+            label: string;
+            score: number;
+            /**
+             * @description `merge`, `policy_version`, `infra_event`, `config_version` or `env_recipe_version`. Null
+             *     on the candidate that says no recorded change was in reach.
+             */
+            eventKind: string | null;
+            /** Format: date */
+            date: string | null;
+            /** @description Negative is before the breakpoint. */
+            daysFromBreakpoint: number | null;
+            proximity: number | null;
+            prior: number | null;
+            /** @description The evidence the candidate cites — one of the change-point's `evidence`. */
+            ref: {
+                kind: string;
+                id: string;
+            };
+        };
+        /**
+         * AnalysisEvidence
+         * @description One evidence reference of a finding (V081), resolved in the workspace: what it names and
+         *     which surface it opens on.
+         */
+        AnalysisEvidence: {
+            /** @enum {string} */
+            kind: "build" | "test_run" | "test_case" | "waiver" | "merge" | "workflow_version" | "runner_pool" | "runner";
+            /** @description A uuid, or a 7–40 hex commit sha for a `merge`. */
+            id: string;
+            /**
+             * @description What it names. Null when the row is no longer there, or for a kind this read does not
+             *     open.
+             */
+            label: string | null;
+            /**
+             * @description Where it opens. Null when it names nothing that can be opened.
+             * @enum {string|null}
+             */
+            surface: "farm" | "pull_request" | "workflow" | null;
+            /**
+             * Format: uuid
+             * @description The mirrored PR — exactly when `surface` is `pull_request`.
+             */
+            pullRequestId: string | null;
+            /** @description The workflow — exactly when `surface` is `workflow`. */
+            workflowSlug: string | null;
         };
         /**
          * StartAnalysisBody
@@ -33124,6 +33305,233 @@ export interface operations {
                      *     }
                      */
                     "application/json": components["schemas"]["Measurements"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — `repo` is missing or not `owner/name`. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getDurationChart: {
+        parameters: {
+            query: {
+                /** @description The repository, `owner/name`. */
+                repo: string;
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The series and the change-points detected on it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "repo": "acme-robotics/helios-firmware",
+                     *       "runId": "5eed0065-0000-4000-8000-000000000002",
+                     *       "analyzedAt": "2026-08-08T10:41:00.000Z",
+                     *       "durationLabel": "zephyr build",
+                     *       "window": {
+                     *         "from": "2026-05-10",
+                     *         "to": "2026-08-07",
+                     *         "days": 90
+                     *       },
+                     *       "series": [
+                     *         {
+                     *           "day": "2026-06-20",
+                     *           "medianSeconds": 342,
+                     *           "builds": 14
+                     *         },
+                     *         {
+                     *           "day": "2026-06-21",
+                     *           "medianSeconds": 341.5,
+                     *           "builds": 12
+                     *         },
+                     *         {
+                     *           "day": "2026-06-22",
+                     *           "medianSeconds": 212,
+                     *           "builds": 15
+                     *         }
+                     *       ],
+                     *       "changePoints": [
+                     *         {
+                     *           "id": "5eed0066-0000-4000-8000-000000000102",
+                     *           "analyzerVersion": 1,
+                     *           "date": "2026-06-22",
+                     *           "metric": "build.duration_median",
+                     *           "deltaSeconds": -130,
+                     *           "beforeMedianSeconds": 342,
+                     *           "afterMedianSeconds": 212,
+                     *           "attributionWindowDays": 3,
+                     *           "candidates": [
+                     *             {
+                     *               "label": "ccache enabled",
+                     *               "score": 0.7,
+                     *               "eventKind": "merge",
+                     *               "date": "2026-06-22",
+                     *               "daysFromBreakpoint": 0,
+                     *               "proximity": 1,
+                     *               "prior": 0.7,
+                     *               "ref": {
+                     *                 "kind": "merge",
+                     *                 "id": "0c5eed47a1b2"
+                     *               }
+                     *             },
+                     *             {
+                     *               "label": "standard-fix v9",
+                     *               "score": 0.3,
+                     *               "eventKind": "policy_version",
+                     *               "date": "2026-06-21",
+                     *               "daysFromBreakpoint": -1,
+                     *               "proximity": 0.75,
+                     *               "prior": 0.4,
+                     *               "ref": {
+                     *                 "kind": "workflow_version",
+                     *                 "id": "5eed0031-0000-4000-8000-000000000009"
+                     *               }
+                     *             }
+                     *           ],
+                     *           "confidence": 100,
+                     *           "confidenceBasis": {
+                     *             "method": "change_point v1 — 100 * stability * (1 - e^(-effect/2)) * min(1, shorter segment days / (2 * min_segment_days))",
+                     *             "sampleSize": 642,
+                     *             "effectSize": 17.537,
+                     *             "stability": 1
+                     *           },
+                     *           "evidence": [
+                     *             {
+                     *               "kind": "merge",
+                     *               "id": "0c5eed47a1b2",
+                     *               "label": "ccache enabled",
+                     *               "surface": "pull_request",
+                     *               "pullRequestId": "5eed0052-0000-4000-8000-000000000482",
+                     *               "workflowSlug": null
+                     *             },
+                     *             {
+                     *               "kind": "workflow_version",
+                     *               "id": "5eed0031-0000-4000-8000-000000000009",
+                     *               "label": "standard-fix v9",
+                     *               "surface": "workflow",
+                     *               "pullRequestId": null,
+                     *               "workflowSlug": "standard-fix"
+                     *             },
+                     *             {
+                     *               "kind": "build",
+                     *               "id": "5eed0061-0000-4000-8000-000000000641",
+                     *               "label": "#641 · zephyr build",
+                     *               "surface": "farm",
+                     *               "pullRequestId": null,
+                     *               "workflowSlug": null
+                     *             },
+                     *             {
+                     *               "kind": "build",
+                     *               "id": "5eed0061-0000-4000-8000-000000000655",
+                     *               "label": null,
+                     *               "surface": null,
+                     *               "pullRequestId": null,
+                     *               "workflowSlug": null
+                     *             }
+                     *           ]
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["DurationChart"];
                 };
             };
             /**

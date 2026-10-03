@@ -6,9 +6,10 @@
  * type is the rem scale, other lengths are tokens or rem with hairlines excepted. Both themes
  * therefore come for free. The chart- prefix keeps it out of the primitives' ou- namespace.
  *
- * Data reaches this sheet one way only: a fraction in a custom property (--chart-fill,
- * --chart-x, --chart-step), the way app/ui/meter.tsx passes its fill. The declarations that
- * read them live here; the call site writes nothing but the number.
+ * Data reaches this sheet one way only: a number in a custom property (--chart-fill, --chart-x,
+ * --chart-step, and a marker chip's --chart-row, --chart-rows, --chart-chars and --chart-end),
+ * the way app/ui/meter.tsx passes its fill. The declarations that read them live here; the call
+ * site writes nothing but the number.
  *
  * Every entrance animation is inside the reduced-motion guard at the end of the sheet. It is
  * decoration: the figure is drawn in full before it starts and after it ends.
@@ -34,6 +35,11 @@
 }
 
 /* ============================================================ time series */
+
+/* The plot and what is laid over it — the hit columns and the tooltip are positioned against it. */
+.chart-ts__plot {
+  position: relative;
+}
 
 .chart-ts__svg {
   display: block;
@@ -76,6 +82,13 @@
   stroke: var(--line-strong);
   stroke-width: 1;
   stroke-dasharray: 3 3;
+}
+
+/* A marker's vertical through the plot (mockup 18's change-point lines). */
+.chart-ts__marker {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
 }
 
 .chart-ts__dot {
@@ -127,6 +140,95 @@
   outline: 2px solid var(--accent);
   outline-offset: -2px;
   border-radius: var(--r-xs);
+}
+
+/* ============================================================ marker chips */
+
+/*
+ * The band of chips above an annotated plot (#517). Each chip is HTML — a real, rem-sized button —
+ * placed by three numbers app/charts/marks.ts computes: the row it was given, the characters it
+ * has room for, and its vertical's x. Its left edge is just after its vertical, or as far left of
+ * that as it takes to end at the plot's right edge, whichever is further left — the two rules the
+ * layout solves for. __tests__/charts/charts-styles.test.ts holds the lengths below to the
+ * constants in that module.
+ *
+ * The rows start one step down from the band's top: the scroll wrapper clips what leaves it, and
+ * a focused chip's ring is drawn outside the chip.
+ */
+.chart-marks {
+  position: relative;
+  height: calc(var(--sp-2) + var(--chart-rows, 0) * 1.375rem);
+}
+
+.chart-mark {
+  position: absolute;
+  z-index: 1;
+  top: calc(var(--sp-2) + var(--chart-row, 0) * 1.375rem);
+  left: max(
+    0%,
+    min(
+      calc(var(--chart-x, 0%) + var(--sp-2)),
+      calc(100% - var(--chart-end, 0%) - (var(--chart-chars, 0) + 0.25) * 1ch - 2 * var(--sp-3) - var(--sp-1))
+    )
+  );
+  /* Content-box, stated: a button is border-box by default, and the width is the text's alone. */
+  box-sizing: content-box;
+  width: calc((var(--chart-chars, 0) + 0.25) * 1ch);
+  margin: 0;
+  padding: 0 var(--sp-3);
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-xs);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1rem;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Only a chip that can be pressed looks pressable. */
+button.chart-mark {
+  cursor: pointer;
+}
+
+button.chart-mark:hover {
+  border-color: currentcolor;
+}
+
+.chart-mark:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/*
+ * The tint is laid over the card's own surface, so a chip is opaque and a stem passing behind a
+ * chip in a lower row does not show through it.
+ */
+.chart-mark--warn {
+  border-color: var(--warn-line);
+  background: linear-gradient(var(--warn-tint), var(--warn-tint)), var(--surface);
+  color: var(--warn);
+}
+
+.chart-mark--ok {
+  border-color: var(--ok-line);
+  background: linear-gradient(var(--ok-tint), var(--ok-tint)), var(--surface);
+  color: var(--ok);
+}
+
+/*
+ * The vertical, continued up from the plot to the row its chip is on. Centred on its x, as the
+ * plot's own line is, so the two meet as one.
+ */
+.chart-mark__stem {
+  position: absolute;
+  top: calc(var(--sp-2) + var(--chart-row, 0) * 1.375rem + 1.125rem);
+  bottom: 0;
+  left: var(--chart-x, 0%);
+  border-left: 1px dashed var(--line-strong);
+  transform: translateX(-50%);
 }
 
 /* ============================================================ tooltip card */

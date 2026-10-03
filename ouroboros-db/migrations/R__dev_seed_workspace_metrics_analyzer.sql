@@ -1146,7 +1146,8 @@ select '5eed0065-0000-4000-8000-000000000002'::uuid, scope.organization_id,
                       'hil_sessions', jsonb_build_object('sampled', false, 'rate', 1, 'cap', null)),
          'budget',  jsonb_build_object('max_builds', scope.max_builds,
                                        'max_log_lines', scope.max_log_lines,
-                                       'compute_ceiling_seconds', scope.compute_ceiling_seconds)),
+                                       'compute_ceiling_seconds', scope.compute_ceiling_seconds),
+         'duration_label', timed.label),
        jsonb_build_object('label', 'deterministic analyzers v1',
                           'analyzers', (select jsonb_agg(jsonb_build_object('id', a.id, 'version', 1,
                                                                             'kind', 'deterministic')
@@ -1174,6 +1175,19 @@ select '5eed0065-0000-4000-8000-000000000002'::uuid, scope.organization_id,
      where run.organization_id = scope.organization_id and run.github_repo_id = scope.repo_id
        and (run.started_at at time zone 'UTC')::date between scope.today - 90 and scope.today - 1
   ) looped
+  -- BV.1's duration label, by its own rule: the commonest job label among the window's succeeded
+  -- builds. It names whose durations the change-points were detected on, and so which
+  -- `build_duration` series the duration chart draws under them (#517).
+  left join lateral (
+    select job.label
+      from ouroboros.build_jobs job
+     where job.organization_id = scope.organization_id and job.github_repo_id = scope.repo_id
+       and job.status = 'succeeded'
+       and (job.finished_at at time zone 'UTC')::date between scope.today - 90 and scope.today - 1
+     group by job.label
+     order by count(*) desc, job.label
+     limit 1
+  ) timed on true
  where ${ouro_dev_seed}
 on conflict do nothing;
 

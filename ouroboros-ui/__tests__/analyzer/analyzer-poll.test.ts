@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { analyzerUrl, isAnalyzerPage, requestAnalyzer, UNREADABLE_ANALYZER } from "@/app/analyzer/analyzer-poll";
 import { analyzerRepos, chooseRepo } from "@/app/analyzer/repo";
 
-import { ANALYZER_REPOS, HELIOS, analyzerPage } from "../helpers/analyzer";
+import { ANALYZER_REPOS, HELIOS, analyzerPage, emptyDuration, seededSchedule } from "../helpers/analyzer";
 
 /** The analyzer page's poll and its repository (#516): one address per repository, a guard on what answered. */
 
@@ -52,6 +52,20 @@ describe("isAnalyzerPage", () => {
     expect(isAnalyzerPage({})).toBe(false);
     expect(isAnalyzerPage({ repo: HELIOS, run: null })).toBe(false);
     expect(isAnalyzerPage({ repo: 1, run: null, schedule: {} })).toBe(false);
+  });
+
+  it("accepts a page whose duration chart is empty — a repository no run has analysed", () => {
+    expect(isAnalyzerPage(analyzerPage({ run: null, duration: emptyDuration() }))).toBe(true);
+  });
+
+  it("refuses a page with no duration chart, or one missing its series or its change-points (#517)", () => {
+    const page = { repo: HELIOS, run: null, schedule: seededSchedule() };
+
+    expect(isAnalyzerPage(page)).toBe(false);
+    expect(isAnalyzerPage({ ...page, duration: null })).toBe(false);
+    expect(isAnalyzerPage({ ...page, duration: { series: [] } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, duration: { series: [], changePoints: "none" } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, duration: { series: [], changePoints: [] } })).toBe(true);
   });
 });
 
