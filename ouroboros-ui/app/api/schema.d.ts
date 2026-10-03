@@ -2080,6 +2080,63 @@ export interface paths {
         patch: operations["patchAutoMergeSetting"];
         trace?: never;
     };
+    "/api/v1/settings/workspace": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The workspace card
+         * @description Mockup 17's **Workspace** card ([#483](https://github.com/NobuData/ouroboros/issues/483),
+         *     decision **S6**) — the workspace name, its tenant domain, the data region and the
+         *     training-data row, each with whether this caller can change it and, when not, why.
+         *
+         *     **The affordance follows the payload.** `editable`, `selectable` and `changeable`
+         *     say whether a control works; when one is `false` its `reason` says why
+         *     (`deployment`, `plan` or `role`), and the card renders that reason rather than a
+         *     control that silently does nothing.
+         *
+         *     **Region and training data describe this deployment.** A self-hosted install
+         *     reports the operator's `OURO_DATA_REGION` (or `self-hosted`) read-only, and
+         *     `trainingData` is `{enabled: false, changeable: false, reason: deployment}` — this
+         *     deployment never trains on your data, and no plan is involved. The plan-locked
+         *     variant is in the schema for the SaaS tier
+         *     ([#500](https://github.com/NobuData/ouroboros/issues/500)) and never produced here.
+         *
+         *     **Any member may read it.** Name and domain are `editable` for `owner` and `admin`
+         *     and `reason: role` for everyone else. The workspace is the session's, exactly as
+         *     the other settings operations'.
+         */
+        get: operations["readWorkspaceSettings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Rename the workspace or change its tenant domain
+         * @description Save the card's two editable fields; the answer is the card as it now stands. Send
+         *     what changed — a body carrying nothing, or only current values, writes nothing and
+         *     answers the current card. Region and training data are not settings and are refused
+         *     as unknown fields.
+         *
+         *     **`domain` replaces the primary.** The new domain becomes the workspace's primary
+         *     tenant domain — inserted, or promoted if the workspace already lists it — and the
+         *     previous primary is removed, in one transaction. Other domains are untouched.
+         *     Changing it changes how sign-in finds this workspace for everyone who uses it, which
+         *     the card states beside the field.
+         *
+         *     **All or nothing for every refusal a caller can cause.** The domain is written
+         *     first, so a domain another workspace holds (`409 domain_taken`) leaves the name
+         *     unchanged too. A save that changes something is audited as `workspace.updated`.
+         *
+         *     **`owner` or `admin`, and nobody else.**
+         */
+        patch: operations["patchWorkspaceSettings"];
+        trace?: never;
+    };
     "/api/v1/settings/lifecycle": {
         parameters: {
             query?: never;
@@ -15121,6 +15178,143 @@ export interface components {
              *     `null` is a `422` naming the field, never a coercion.
              */
             enabled?: boolean;
+        };
+        /**
+         * WorkspaceSettings
+         * @description The Settings workspace card — what both operations on `/api/v1/settings/workspace`
+         *     answer ([#483](https://github.com/NobuData/ouroboros/issues/483)). Every control says
+         *     whether it can be used, and when it cannot, why.
+         */
+        WorkspaceSettings: {
+            /** @description The organization id. Opaque; never parse it as a uuid. */
+            id: string;
+            /** @description The organization slug. Not editable from the card. */
+            slug: string;
+            /**
+             * @description What kind of deployment answered. Only `self_hosted` exists until the SaaS tier
+             *     ([#500](https://github.com/NobuData/ouroboros/issues/500)).
+             * @enum {string}
+             */
+            deployment: "self_hosted";
+            name: components["schemas"]["WorkspaceNameField"];
+            domain: components["schemas"]["WorkspaceDomainField"];
+            region: components["schemas"]["WorkspaceRegion"];
+            trainingData: components["schemas"]["WorkspaceTrainingData"];
+        };
+        /**
+         * WorkspaceControlReason
+         * @description Why a control on the workspace card cannot be used. `deployment` — this deployment
+         *     cannot do it at all. `plan` — a plan entitlement locks it; reserved for the SaaS tier
+         *     and never produced by a self-hosted deployment. `role` — the caller's role may not
+         *     change it.
+         * @enum {string}
+         */
+        WorkspaceControlReason: "deployment" | "plan" | "role";
+        /**
+         * WorkspaceNameField
+         * @description The workspace's display name, and whether this caller may change it.
+         */
+        WorkspaceNameField: {
+            /** @description The organization's display name. */
+            value: string;
+            /** @description Whether this caller may change it — `owner` and `admin` may. */
+            editable: boolean;
+            /** @description Why it cannot be changed. Null exactly when `editable` is true. */
+            reason: components["schemas"]["WorkspaceControlReason"] | null;
+        };
+        /**
+         * WorkspaceDomainField
+         * @description The workspace's primary tenant domain, its tags, and what changing it does.
+         */
+        WorkspaceDomainField: {
+            /** @description The primary domain, or null when the workspace has none. */
+            value: string | null;
+            /** @description Whether this caller may change it — `owner` and `admin` may. */
+            editable: boolean;
+            /** @description Why it cannot be changed. Null exactly when `editable` is true. */
+            reason: components["schemas"]["WorkspaceControlReason"] | null;
+            /**
+             * @description Tags to show beside the domain. `sso_enforced` appears only when sign-ins on this
+             *     domain require SSO; otherwise it is absent rather than shown as false. No SSO
+             *     provider exists in this release ([#722](https://github.com/NobuData/ouroboros/issues/722)),
+             *     so the list is empty.
+             */
+            tags: "sso_enforced"[];
+            /** @description What changing the domain does, for the card to show beside the edit. */
+            consequence: string;
+        };
+        /**
+         * WorkspaceRegion
+         * @description Where this deployment keeps its data, as the deployment declares it. Read-only on a
+         *     self-hosted install — the region was chosen when it was deployed.
+         */
+        WorkspaceRegion: {
+            /** @description The operator's `OURO_DATA_REGION`, or `self-hosted` when it is unset. */
+            label: string;
+            /**
+             * @description Whether the card may offer a choice. Always false until the SaaS tier.
+             * @constant
+             */
+            selectable: false;
+            /**
+             * @description `configured` when the operator named the region, `default` when the label is the
+             *     `self-hosted` fallback.
+             * @enum {string}
+             */
+            source: "configured" | "default";
+            /**
+             * @description Why the region cannot be chosen here.
+             * @constant
+             */
+            reason: "deployment";
+            /**
+             * Format: uri
+             * @description The security model's data-residency section.
+             */
+            docsUrl: string;
+        };
+        /**
+         * WorkspaceTrainingData
+         * @description Whether the workspace's data trains a model, and whether that can change. Three
+         *     variants; a self-hosted deployment produces only the first — off, because nothing
+         *     leaves this deployment to be trained on. The plan-locked and changeable variants are
+         *     the SaaS tier's ([#500](https://github.com/NobuData/ouroboros/issues/500)).
+         */
+        WorkspaceTrainingData: {
+            /** @constant */
+            enabled: false;
+            /** @constant */
+            changeable: false;
+            /** @constant */
+            reason: "deployment";
+        } | {
+            enabled: boolean;
+            /** @constant */
+            changeable: false;
+            /** @constant */
+            reason: "plan";
+        } | {
+            enabled: boolean;
+            /** @constant */
+            changeable: true;
+            reason: null;
+        };
+        /**
+         * WorkspaceSettingsPatch
+         * @description The body of `PATCH /api/v1/settings/workspace` — send what changed. Region and
+         *     training data are not settings; sending either is a `422`.
+         */
+        WorkspaceSettingsPatch: {
+            /**
+             * @description The workspace's display name. No leading or trailing whitespace and no control
+             *     characters — refused rather than trimmed, so what is stored is what was sent.
+             */
+            name?: string;
+            /**
+             * @description The tenant domain, lower-case. Replaces the primary domain; the previous primary is
+             *     removed and other domains are untouched.
+             */
+            domain?: string;
         };
         /**
          * BillingMode
@@ -31451,6 +31645,329 @@ export interface operations {
              * @description `validation_failed` — `enabled` was not a boolean. `details` carries the entry
              *     keyed by the field. A `"true"`, a `1` or a `null` is refused, not coerced,
              *     because a workspace's merge posture is nothing to flip by accident of type.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readWorkspaceSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The card. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed0000-0000-4000-8000-000000000001",
+                     *       "slug": "acme-robotics",
+                     *       "deployment": "self_hosted",
+                     *       "name": {
+                     *         "value": "acme-robotics",
+                     *         "editable": true,
+                     *         "reason": null
+                     *       },
+                     *       "domain": {
+                     *         "value": "acme.ouroboros.dev",
+                     *         "editable": true,
+                     *         "reason": null,
+                     *         "tags": [],
+                     *         "consequence": "Changing the tenant domain changes how sign-in finds this workspace for everyone who uses it."
+                     *       },
+                     *       "region": {
+                     *         "label": "self-hosted",
+                     *         "selectable": false,
+                     *         "source": "default",
+                     *         "reason": "deployment",
+                     *         "docsUrl": "https://github.com/NobuData/ouroboros/blob/main/docs/SECURITY_MODEL.md#67-where-a-workspaces-data-lives"
+                     *       },
+                     *       "trainingData": {
+                     *         "enabled": false,
+                     *         "changeable": false,
+                     *         "reason": "deployment"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkspaceSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    patchWorkspaceSettings: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "Acme Robotics",
+                 *       "domain": "acme.ouroboros.dev"
+                 *     }
+                 */
+                "application/json": components["schemas"]["WorkspaceSettingsPatch"];
+            };
+        };
+        responses: {
+            /** @description The card after the save. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "5eed0000-0000-4000-8000-000000000001",
+                     *       "slug": "acme-robotics",
+                     *       "deployment": "self_hosted",
+                     *       "name": {
+                     *         "value": "acme-robotics",
+                     *         "editable": true,
+                     *         "reason": null
+                     *       },
+                     *       "domain": {
+                     *         "value": "acme.ouroboros.dev",
+                     *         "editable": true,
+                     *         "reason": null,
+                     *         "tags": [],
+                     *         "consequence": "Changing the tenant domain changes how sign-in finds this workspace for everyone who uses it."
+                     *       },
+                     *       "region": {
+                     *         "label": "self-hosted",
+                     *         "selectable": false,
+                     *         "source": "default",
+                     *         "reason": "deployment",
+                     *         "docsUrl": "https://github.com/NobuData/ouroboros/blob/main/docs/SECURITY_MODEL.md#67-where-a-workspaces-data-lives"
+                     *       },
+                     *       "trainingData": {
+                     *         "enabled": false,
+                     *         "changeable": false,
+                     *         "reason": "deployment"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["WorkspaceSettings"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none. Choose one through `/api/auth/organization/set-active`, or
+             *     name one per request with `X-Ouro-Tenant`.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour. Sign in through `/api/auth/sign-in/social`.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — you are a member of this workspace and your role does not permit
+             *     this. Renaming a workspace or changing its tenant domain is `owner` or `admin`;
+             *     `member` and `viewer` may read the card, which tells them so with `reason: role`.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you
+             *     are a member of. The two are deliberately one answer.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `domain_taken` — another workspace holds that domain. Nothing was written: not
+             *     the domain, and not a name sent in the same body. `details.fields.domain` carries
+             *     the message, so the card attaches it to the domain field as it does a `422`.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — `name` or `domain` was refused, or the body carried a
+             *     field this operation does not take. `details.fields` is keyed by the field, so each
+             *     message attaches to its input. A name must be 1–100 characters with no leading or
+             *     trailing whitespace and no control characters; a domain must be a lower-case domain
+             *     name.
              */
             422: {
                 headers: {

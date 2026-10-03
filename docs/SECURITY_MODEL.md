@@ -875,6 +875,35 @@ LLM synthesis pass ([#522](https://github.com/NobuData/ouroboros/issues/522)) is
 *does* reach the configured provider, and this section and the page must both say so — a tenant
 that has not enabled it keeps the stronger claim.
 
+### 6.7 Where a workspace's data lives
+
+> **Status: Shipped** — BQ.4 ([#483](https://github.com/NobuData/ouroboros/issues/483)), roadmap
+> decision **S6**. This is the section the Settings workspace card's region area links to.
+
+**A self-hosted deployment's data lives where its operator deployed it, and nowhere else.** Every
+workspace's rows are in this deployment's PostgreSQL; build logs and artifacts are in the storage
+the operator configured for the farm. Ouroboros runs no control plane that holds a copy, so there
+is no second region to pick and nothing to migrate between.
+
+That is why the card does not offer a region choice:
+
+- **The region is a label, read-only.** `GET /api/v1/settings/workspace` reports `region.label` from
+  `OURO_DATA_REGION` — the operator's own name for where they deployed — or `self-hosted` when it is
+  unset, with `selectable: false` and `reason: deployment`. The label describes a decision made at
+  deployment time; setting it moves no data. A dropdown here would claim a capability the software
+  does not have, and data residency is where such a claim has consequences.
+- **This deployment never trains on your data.** The training-data row is
+  `{enabled: false, changeable: false, reason: deployment}`: there is no training pipeline in
+  Ouroboros and nothing leaves the deployment for one. The card states that plainly. It carries no
+  lock icon and names no plan, because no plan is doing the protecting.
+
+**What this does not cover.** Model providers a workspace configures do receive the prompts and
+code context a run sends them — that is what calling a provider means, and their retention and
+training terms are the provider's. §4 covers how credentials for them are held; choosing a provider
+whose terms fit is the operator's call. The SaaS tier ([#500](https://github.com/NobuData/ouroboros/issues/500))
+will add a real region choice and plan-governed training controls; the payload already has room
+for them (`reason: plan`), and this section changes when that tier ships, not before.
+
 ---
 
 ## 7. The build farm's certificate authority
@@ -1264,18 +1293,16 @@ never leave your deployment.** That one is true of every installation today, and
 
 Later roadmaps filed four additions against this document — three amendment comments on
 [#226](https://github.com/NobuData/ouroboros/issues/226), carrying four items between them.
-**Three of the four have landed**: the build-farm CA is now
+**All four have landed**: the build-farm CA is now
 [§7](#7-the-build-farms-certificate-authority), the Build Analyzer's tenant locality is
-[§6.6](#66-the-build-analyzers-corpus-stays-on-the-tenant), and crypto-shredding as the deletion
+[§6.6](#66-the-build-analyzers-corpus-stays-on-the-tenant), crypto-shredding as the deletion
 guarantee (BR.5, [#489](https://github.com/NobuData/ouroboros/issues/489)) is
-[§2.6](#26-deleting-a-workspace-destroys-its-credentials), rather than lines in this table. That is
-what §10 means by a section moving from Planned to Shipped. The one below is still **Planned**,
-and it becomes a section of its own when the work it describes lands. They are listed rather than
-written up as though they were true, which is the same rule the rest of this document follows.
-
-| Coming | From | What this document will gain |
-|---|---|---|
-| **Deployment truth in Settings** | BQ.4 ([#483](https://github.com/NobuData/ouroboros/issues/483)), roadmap decision **S6** | The settings page renders what is true of *this* deployment: a self-hosted install shows its region read-only rather than offering a chooser it cannot honour, and states plainly that this deployment never trains on your data. The residency documentation that card links to is this document. |
+[§2.6](#26-deleting-a-workspace-destroys-its-credentials), and deployment truth in Settings (BQ.4,
+[#483](https://github.com/NobuData/ouroboros/issues/483)) is
+[§6.7](#67-where-a-workspaces-data-lives), rather than lines in a table. That is what §10 means by
+a section moving from Planned to Shipped. Nothing filed against this document is waiting; a new
+addition is listed here, rather than written up as though it were true, until the work it
+describes lands.
 
 ---
 

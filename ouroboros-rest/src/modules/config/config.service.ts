@@ -473,6 +473,14 @@ export class AppConfigService {
   }
 
   /**
+   * Where this deployment keeps its data — `OURO_DATA_REGION`. `undefined` when unset, which the
+   * Settings workspace card reports as `self-hosted` (BQ.4, #483).
+   */
+  get dataRegion(): string | undefined {
+    return this.config.get<string>("dataRegion");
+  }
+
+  /**
    * Is this a production deployment?
    *
    * The one derived flag worth naming, because it is asked in several places and asking
@@ -562,6 +570,7 @@ export class AppConfigService {
       managedKeyPool: this.managedKeyPool,
       managedKeyTrialCents: this.managedKeyTrialCents,
       hostedRunnerPool: this.hostedRunnerPool,
+      dataRegion: this.dataRegion,
     };
   }
 

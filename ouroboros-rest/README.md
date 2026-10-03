@@ -125,6 +125,7 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/analyzer/suggestions`                 | [Build Analyzer runs](#build-analyzer-runs) (#518) — `?repo=owner/name`; the build-process and workflow suggestions still current, in every status, each with its confidence and impact bases, the measurement its apply opened and the findings it cites with their evidence resolved; plus the calibration cells; any member |
 | `GET /api/v1/analyzer/tickets`                     | [Build Analyzer runs](#build-analyzer-runs) (#519) — `?repo=owner/name`; the drafted-tickets card: the ticket suggestions nobody has drafted yet, and the planning batches the rest were drafted into — each batch as planning answers it, with the evidence every draft's body states, resolved; any member |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
+| `GET PATCH /api/v1/settings/workspace`              | [The workspace card](#the-workspace-card) (#483) — name and tenant domain, read by any member, saved by `owner`/`admin`; region and training data as deployment truth |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
 | `POST /api/v1/onboarding/skip`                      | *I've done this before* — marks the wizard bypassed, answers `/settings`; imports nothing (BD.3, #398) |
@@ -331,6 +332,7 @@ service never starts half-configured.
 | `OURO_MANAGED_KEY_POOL` | Whether this deployment declares a managed key pool — selects the [Smart Defaults](#the-first-run-launcher-and-smart-defaults) models row ([#388](https://github.com/NobuData/ouroboros/issues/388)) |     no — false     | `true` or `false` |
 | `OURO_MANAGED_KEY_TRIAL_CENTS` | The trial credit the managed key pool gives a new workspace, printed on the managed row; unset, the row names no figure |     no — unset     | whole cents, 1–1000000; refused unless `OURO_MANAGED_KEY_POOL` is `true` |
 | `OURO_HOSTED_RUNNER_POOL` | Whether this deployment declares a hosted runner pool — selects the Smart Defaults build row ([#388](https://github.com/NobuData/ouroboros/issues/388)) |     no — false     | `true` or `false` |
+| `OURO_DATA_REGION` | Where this deployment keeps its data, shown read-only on [the workspace card](#the-workspace-card) ([#483](https://github.com/NobuData/ouroboros/issues/483)); a label that moves nothing |     no — unset     | up to 64 of letters, digits, `. _ : / ( ) -`; no spaces; unset reads `self-hosted` |
 
 Every one of them is documented with a development default in the repo-root
 [`.env.example`](../.env.example), and `scripts/verify-dev-env.sh` fails the build if this
@@ -4190,6 +4192,34 @@ forgets a job while its runner never goes offline is not detected. Agents older 
 0.6.0 end their session on a `job.cancel` or an offer's `attempt`; `OURO_FARM_MIN_AGENT_VERSION`
 is the lever. In a development database the seeded fleet never connects, so a few minutes after
 REST starts its seeded in-flight builds are taken back like any lost runner's.
+
+## The workspace card
+
+**Mockup 17's Workspace card, with the deployment's truth in place of the mockup's SaaS controls**
+([#483](https://github.com/NobuData/ouroboros/issues/483), BQ.4, decision S6).
+`src/modules/settings/workspace.*.ts`.
+
+```
+GET   /api/v1/settings/workspace   any member · name, domain, region, training data + affordances
+PATCH /api/v1/settings/workspace   owner/admin · { name?, domain? } · audited workspace.updated
+```
+
+**The affordance follows the payload.** Every control says whether it works (`editable`,
+`selectable`, `changeable`) and, when it does not, why — `reason` is `deployment`, `plan` or
+`role`. Name and domain are editable for `owner`/`admin` and `reason: role` for everyone else.
+
+| Control | Source | On a self-hosted deployment |
+|---|---|---|
+| Name | BetterAuth `organization.name`, written through the plugin's adapter | editable; 1–100 characters, no edge whitespace or control characters |
+| Domain | the primary `tenant_domains` row | editable; a save **replaces** the primary (the old primary row is removed, others untouched); `tags` holds `sso_enforced` only when SSO is enforced — always empty until #722 |
+| Region | `OURO_DATA_REGION`, else `self-hosted` | `selectable: false`, `reason: deployment`, `source: configured \| default`, `docsUrl` → `SECURITY_MODEL.md` §6.7 |
+| Training data | `workspace.truth.ts` | `{enabled: false, changeable: false, reason: deployment}` — never the plan lock |
+
+A save writes the domain first (one transaction), then the name, so `409 domain_taken`
+(`details.fields.domain`) leaves the name unchanged too. Validation failures are
+`422 validation_failed` keyed by field. A save that changes nothing writes and audits nothing.
+The plan-locked and changeable training variants are in the schema for BT.4 (#500) and are never
+produced here.
 
 ## Workspace lifecycle
 
