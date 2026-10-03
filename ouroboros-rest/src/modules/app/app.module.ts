@@ -20,6 +20,7 @@ import { FarmModule } from "../farm/farm.module";
 import { FarmArtifactsModule } from "../farm/artifacts/artifacts.module";
 import { FarmDispatchModule } from "../farm/dispatch/dispatch.module";
 import { FarmGatewayModule } from "../farm/gateway/gateway.module";
+import { FarmConfigModule } from "../farm/config/farm-config.module";
 import { FarmFleetModule } from "../farm/fleet/fleet.module";
 import { FarmLogsModule } from "../farm/logs/logs.module";
 import { FarmInstallerModule } from "../farm/installer/installer.module";
@@ -502,6 +503,11 @@ export class AppModule {
         // stat row's *2h* is measured against. Reads are every member's and mutations are
         // `admin` and above, on the routes themselves.
         FarmFleetModule,
+        // BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — the farm configuration
+        // the Build Analyzer composes: time-windowed pool assignment and job hooks. After
+        // `FarmFleetModule`, beside the POOLS card it configures. Reads are every member's and
+        // writes `admin` and above.
+        FarmConfigModule,
         InternalModule,
         // AP.1 ([#303](https://github.com/NobuData/ouroboros/issues/303)) — the run ingestion
         // contract: the six `/internal/runs` routes every executor reports through, the

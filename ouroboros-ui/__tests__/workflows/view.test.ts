@@ -208,7 +208,7 @@ describe("which document the head describes", () => {
     const detail = workflowDetail({
       currentVersion: null,
       version: null,
-      draft: { etag: "none", definition: null, updatedAt: null },
+      draft: { etag: "none", definition: null, updatedAt: null, changeNote: null },
     });
 
     expect(describedDefinition(detail)).toBeNull();
@@ -226,7 +226,7 @@ describe("which document the canvas opens on", () => {
   });
 
   it("falls back to the version in force for a workflow with no draft open", () => {
-    const detail = workflowDetail({ draft: { etag: "none", definition: null, updatedAt: null } });
+    const detail = workflowDetail({ draft: { etag: "none", definition: null, updatedAt: null, changeNote: null } });
 
     expect(canvasDefinition(detail)).toBe(detail.version?.definition);
   });
@@ -235,7 +235,7 @@ describe("which document the canvas opens on", () => {
     const detail = workflowDetail({
       currentVersion: null,
       version: null,
-      draft: { etag: "none", definition: null, updatedAt: null },
+      draft: { etag: "none", definition: null, updatedAt: null, changeNote: null },
     });
 
     expect(canvasDefinition(detail)).toBe(BLANK_DEFINITION);
@@ -281,7 +281,7 @@ describe("the subline", () => {
     const detail = workflowDetail({
       currentVersion: null,
       version: null,
-      draft: { etag: "e", definition: {}, updatedAt: DRAFT_EDITED_AT },
+      draft: { etag: "e", definition: {}, updatedAt: DRAFT_EDITED_AT, changeNote: null },
     });
 
     expect(studioSubline(detail, railEntry({ currentVersion: null }), NOW)).toBe(
@@ -292,7 +292,7 @@ describe("the subline", () => {
   it("says `draft edits` beside the version when the open draft is not the version in force (#152)", () => {
     const edited = standardFixDefinition();
     (edited.nodes as Record<string, unknown>[])[0].title = "Issue queued, edited";
-    const detail = workflowDetail({ draft: { etag: "e", definition: edited, updatedAt: DRAFT_EDITED_AT } });
+    const detail = workflowDetail({ draft: { etag: "e", definition: edited, updatedAt: DRAFT_EDITED_AT, changeNote: null } });
 
     expect(studioSubline(detail, railEntry(), NOW)).toBe(
       "Runs when a sized issue with effort ≤ M is queued. Last edited 2h ago · v14 · draft edits · used by 42% of runs.",
@@ -303,7 +303,7 @@ describe("the subline", () => {
     const version = standardFixDefinition();
     const reordered = Object.fromEntries(Object.entries(standardFixDefinition()).reverse());
     const detail = workflowDetail({
-      draft: { etag: "e", definition: reordered, updatedAt: DRAFT_EDITED_AT },
+      draft: { etag: "e", definition: reordered, updatedAt: DRAFT_EDITED_AT, changeNote: null },
       version: { ...workflowDetail().version!, definition: version },
     });
 

@@ -390,6 +390,12 @@ export function predicateFrom(node: ts.Expression): Predicate {
         ? { kind: "checks", op }
         : { kind: "checks", op, names: stringList(args[0]) };
     }
+    case "paths":
+      return {
+        kind: "paths",
+        op: inverse(PREDICATE_METHODS.paths, method, node),
+        globs: stringList(args[0]),
+      };
     default:
       return fail(node, `reads ${subject}, which is not a predicate kind`);
   }

@@ -93,6 +93,18 @@ import type { DraftEdge } from "./push.order";
 import { PushService } from "./push.service";
 import { QueueSmallHook } from "./queue-small";
 
+/** A batch another plane composed — see {@link BatchesService.compose}. */
+export interface ComposedBatchInput {
+  /** The line the batch is filed under — what asked for these drafts. */
+  readonly prompt: string;
+  /** The composing planner, versioned — `analyzer-v1`. */
+  readonly planner: string;
+  /** The write-capable ticket source the drafts will push to. */
+  readonly targetSourceId: string;
+  /** The drafts, each keyed within the batch. */
+  readonly drafts: readonly { localKey: string; title: string; body: string }[];
+}
+
 /** `draft_batches_planner_versioned`, as a pattern — a name and a version. */
 export const PLANNER_PATTERN = /^[a-z0-9][a-z0-9-]*-v[0-9]+$/;
 
@@ -203,6 +215,68 @@ export class BatchesService {
     }
 
     return { ...(await this.read(organizationId, batchId)), notes: plan.notes };
+  }
+
+  /**
+   * Store a batch of drafts another plane composed — the Build Analyzer's ticket drafts (BV.5,
+   * [#514](https://github.com/NobuData/ouroboros/issues/514), decision A5) — as an ordinary AK
+   * batch: the same target rules, the same estimator sizing, the same edit and push flow. No
+   * planner is asked; the caller *is* the planner, and names itself with a versioned name
+   * (`analyzer-v1`) the batch records as its provenance.
+   *
+   * @param organizationId - The workspace.
+   * @param userId - Who asked.
+   * @param input - The prompt line, the planner, the target and the drafts.
+   * @returns The stored batch. Sizing is under way: the batch reads `drafting` until every
+   *   selected draft has an estimate, then `sized`.
+   * @throws {NotFoundError} `planning_source_not_found`.
+   * @throws {ConflictError} `planning_target_read_only`.
+   * @throws {Error} When `planner` is not a versioned name — a caller's bug, not a request's.
+   */
+  async compose(
+    organizationId: string,
+    userId: string | null,
+    input: ComposedBatchInput,
+  ): Promise<BatchResource> {
+    if (!PLANNER_PATTERN.test(input.planner) || input.planner.length > MAX_PLANNER_LENGTH) {
+      throw new Error(`planner ${input.planner} is not a versioned name (name-vN)`);
+    }
+
+    const source = await this.repository.source(organizationId, input.targetSourceId);
+
+    if (source === undefined) {
+      throw sourceNotFound(input.targetSourceId);
+    }
+
+    const provider = this.writerFor(source);
+    const drafts: NewDraft[] = input.drafts.map((draft) => ({
+      localKey: draft.localKey,
+      title: draft.title,
+      body: draft.body,
+      suggestedWorkflow: null,
+      selected: true,
+      dependencies: [],
+    }));
+
+    const { batchId, drafts: stored } = await this.repository.insertBatch(
+      {
+        organizationId,
+        prompt: input.prompt,
+        outline: null,
+        planner: input.planner,
+        targetSourceId: source.sourceId,
+        targetMilestone: null,
+        epicId: null,
+        autoSize: true,
+        queueSmall: false,
+        createdBy: userId,
+      },
+      drafts,
+    );
+
+    this.dispatchSizing(organizationId, batchId, source, provider, [...stored.values()]);
+
+    return this.read(organizationId, batchId);
   }
 
   /**

@@ -95,11 +95,37 @@ export const TriggerSchema = z.strictObject({
 export type TriggerSpec = z.infer<typeof TriggerSchema>;
 
 /**
+ * One path segment of a glob that is not `..`: `.`, `..` with more after it, `.` with a
+ * non-dot after it, or anything starting with neither — never a `/` or whitespace.
+ */
+const GLOB_SEGMENT = String.raw`(?:\.|\.\.[^/\s]+|\.[^/\s.][^/\s]*|[^/\s.][^/\s]*)`;
+
+/**
+ * A changed-path glob, as `v1.json`'s `path_glob` spells it — `drivers/can/**`.
+ *
+ * Relative to the repository root, so it may not start with `/`; never climbs out of it, so no
+ * segment is `..`; and holds no whitespace. Written without lookaheads because the engine's
+ * pydantic compiles patterns with Rust's `regex`, which has none, and the three validators have
+ * to read one pattern. The first segment is required, which is what refuses a leading `/`;
+ * later ones may be empty, so `drivers/can/` is a glob. What a glob *matches* is the engine's
+ * question (`predicates.py`), never the schema's.
+ */
+export const GLOB_PATTERN = new RegExp(`^${GLOB_SEGMENT}(?:/${GLOB_SEGMENT}?)*$`);
+
+/** One changed-path glob. */
+export const GlobSchema = z.string().min(1).max(256).regex(GLOB_PATTERN);
+
+/**
  * The predicate variants, by `kind`.
  *
  * Flat by design: composition would need recursion in three validators, and the canvas draws
- * branches rather than boolean trees. The same five kinds serve a flow node's predicate and
+ * branches rather than boolean trees. The same six kinds serve a flow node's predicate and
  * a branch edge's condition, so the dry-run simulator (R.2) needs one evaluator.
+ *
+ * `paths` (#514) tests the loop's *change* rather than its ticket — whether any changed path
+ * matches one of its globs (`any`) or none does (`none`) — so a stage can run only for loops
+ * touching `drivers/can/`. It is a flow-node predicate and a branch condition, never a trigger
+ * condition: a ticket that has just been queued has changed nothing yet.
  */
 export const PREDICATE_SCHEMAS = {
   always: z.strictObject({ kind: z.literal("always") }),
@@ -123,12 +149,17 @@ export const PREDICATE_SCHEMAS = {
     op: z.enum(["all_passed", "any_failed"]),
     names: z.array(z.string().min(1).max(128)).min(1).max(64).optional(),
   }),
+  paths: z.strictObject({
+    kind: z.literal("paths"),
+    op: z.enum(["any", "none"]),
+    globs: z.array(GlobSchema).min(1).max(32),
+  }),
 } as const;
 
 /** The `kind` values a predicate may carry. */
 export const PREDICATE_KINDS = Object.keys(PREDICATE_SCHEMAS) as (keyof typeof PREDICATE_SCHEMAS)[];
 
-/** One structured test, evaluated against the run's ticket and its check results. */
+/** One structured test, evaluated against the run's ticket, its change and its check results. */
 export type Predicate = {
   [K in keyof typeof PREDICATE_SCHEMAS]: z.infer<(typeof PREDICATE_SCHEMAS)[K]>;
 }[keyof typeof PREDICATE_SCHEMAS];

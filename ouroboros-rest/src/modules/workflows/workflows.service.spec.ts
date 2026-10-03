@@ -4,6 +4,7 @@ import type { DatabaseService } from "../db/db.service";
 import type { Workflow, WorkflowVersion } from "../db/schema";
 import { UNIQUE_VIOLATION } from "../tenancy/constraints";
 import { NO_DRAFT, draftEtag } from "./draft.etag";
+import { readFixture } from "./dsl.golden.fixture";
 import type { WorkflowPublishGate } from "./publish.gate";
 import type { WorkflowStatsService } from "./stats.service";
 import { WORKFLOW_CONSTRAINTS } from "./workflows.errors";
@@ -359,6 +360,7 @@ describe("saving a draft", () => {
       { nodes: [1] },
       "visual",
       expect.anything(),
+      undefined,
     );
     expect(saved.etag).not.toBe(current);
   });
@@ -433,6 +435,7 @@ describe("saving a draft", () => {
       { nodes: [] },
       "visual",
       expect.anything(),
+      null,
     );
   });
 
@@ -479,6 +482,7 @@ describe("the guarded write both editors share", () => {
       { nodes: [2] },
       "code",
       expect.anything(),
+      undefined,
     );
     expect(written.definition).toEqual({ nodes: [2] });
   });
@@ -494,6 +498,7 @@ describe("the guarded write both editors share", () => {
       { nodes: [] },
       "code",
       expect.anything(),
+      null,
     );
   });
 
@@ -615,6 +620,95 @@ describe("publishing", () => {
     repository.publish.mockRejectedValue(failure);
 
     await expect(service.publish(WORKSPACE, WORKFLOW, {}, PERSON, AT)).rejects.toBe(failure);
+  });
+});
+
+describe("a proposed draft (#514)", () => {
+  it("bases a proposal on the draft when there is one, with the etag it must be written against", async () => {
+    const { service, repository } = harness({
+      findBySlug: jest.fn().mockResolvedValue(workflow()),
+    });
+
+    const base = await service.draftBase(WORKSPACE, "standard-fix");
+
+    expect(base).toMatchObject({ from: "draft", version: null, etag: draftEtag(draft()) });
+    expect(repository.versionAt).not.toHaveBeenCalled();
+  });
+
+  it("bases it on the version in force when there is no draft", async () => {
+    const { service } = harness({
+      findBySlug: jest.fn().mockResolvedValue(workflow()),
+      draftOf: jest.fn().mockResolvedValue(undefined),
+    });
+
+    const base = await service.draftBase(WORKSPACE, "standard-fix");
+
+    expect(base).toMatchObject({ from: "version", version: 15, etag: NO_DRAFT });
+  });
+
+  it("answers a slug the workspace does not have with workflow_not_found", async () => {
+    const { service } = harness({
+      findBySlug: jest.fn().mockResolvedValue(undefined),
+    });
+
+    await expect(service.draftBase(WORKSPACE, "nope")).rejects.toMatchObject({
+      code: "workflow_not_found",
+    });
+  });
+
+  it("writes the document and its note as a draft, guarded by the etag, and never publishes", async () => {
+    const { service, repository, gate } = harness();
+    const document = readFixture("valid/standard-fix.json");
+
+    await service.proposeDraft(WORKSPACE, WORKFLOW, draftEtag(draft()), document, "Cites 171.");
+
+    expect(repository.writeDraft).toHaveBeenCalledWith(
+      draft().id,
+      document,
+      "visual",
+      expect.anything(),
+      "Cites 171.",
+    );
+    expect(repository.publish).not.toHaveBeenCalled();
+    expect(gate.check).not.toHaveBeenCalled();
+  });
+
+  it("refuses a document that does not parse, writing nothing", async () => {
+    const { service, repository } = harness();
+
+    await expect(
+      service.proposeDraft(WORKSPACE, WORKFLOW, draftEtag(draft()), { nodes: [] }, "x"),
+    ).rejects.toMatchObject({ code: "workflow_definition_invalid" });
+    expect(repository.writeDraft).not.toHaveBeenCalled();
+  });
+
+  it("refuses a stale base with workflow_draft_conflict", async () => {
+    const { service } = harness();
+    const document = readFixture("valid/standard-fix.json");
+
+    await expect(
+      service.proposeDraft(WORKSPACE, WORKFLOW, "an-older-token", document, "x"),
+    ).rejects.toMatchObject({ code: "workflow_draft_conflict" });
+  });
+
+  it("publishing keeps the proposed note when the publisher writes none, and replaces it when they do", async () => {
+    const proposed = draft({ change_note: "Cites 171." });
+    const keeps = harness({ draftOf: jest.fn().mockResolvedValue(proposed) });
+
+    await keeps.service.publish(WORKSPACE, WORKFLOW, {}, PERSON, AT);
+    expect(keeps.repository.publish).toHaveBeenCalledWith(
+      WORKFLOW,
+      expect.objectContaining({ changeNote: "Cites 171." }),
+      expect.anything(),
+    );
+
+    const replaces = harness({ draftOf: jest.fn().mockResolvedValue(proposed) });
+    await replaces.service.publish(WORKSPACE, WORKFLOW, { changeNote: "Mine." }, PERSON, AT);
+    expect(replaces.repository.publish).toHaveBeenCalledWith(
+      WORKFLOW,
+      expect.objectContaining({ changeNote: "Mine." }),
+      expect.anything(),
+    );
   });
 });
 

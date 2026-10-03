@@ -6189,6 +6189,35 @@ run is still `running`.
   `UnavailableSynthesizer`, which answers the contract's empty shape. Composition does not
   depend on it.
 
+**Acting on suggestions** (BV.5, [#514](https://github.com/NobuData/ouroboros/issues/514),
+[`actions/`](src/modules/analyzer/actions)) previews, applies, dismisses, drafts and pushes. The
+analyzer never mutates another plane: each apply hands its change to the owning plane's service.
+- **Preview.** `GET /api/v1/analyzer/suggestions/{id}/preview` is open to members and has no side
+  effects. `bindings.ts` builds the exact payload the plane will receive and the sentence naming
+  the concrete change — runner, pool, UTC window; repository, title filter, command; workflow,
+  stage delta, next version. A `fingerprint` lets Apply refuse anything else.
+- **Apply.** `POST …/{id}/apply` is admin+. A pool move goes to `PoolWindowsService` and a cache
+  re-warm to `JobHooksService` (`farm/config/`, `/api/v1/farm/pool-windows` and `/job-hooks`). A
+  workflow suggestion becomes a **draft** through `WorkflowsService.proposeDraft`, guarded by the
+  base etag and carrying a change note that cites the suggestion; publishing stays human. A
+  test-gate split has no owning plane and answers `422 analysis_plane_unavailable`. Every refusal
+  happens before any plane is touched.
+- **Recording.** After the plane accepts and `analysis_suggestion.applied` is audited, one
+  transaction resolves the suggestion and writes two rows. The application row keeps the payload,
+  preview, landing and reversal. BU.3's measurement row freezes the target metric
+  (`build_duration`, `queue_wait` p95 for the moved-to pool, `human_interventions`), the baseline
+  over the policy window before the apply, and the prediction with its calibration.
+- **Dismiss.** `POST …/{id}/dismiss` is member+ and takes an optional reason. It is kept against
+  the suggestion's stable identity, so it survives re-analysis.
+- **Draft and push.** `POST /api/v1/analyzer/suggestions/draft` turns ticket and spike suggestions
+  into one ordinary AK batch, `analyzer-v1`, through `BatchesService.compose`, and the estimator
+  sizes it. Each body carries the evidence line and every evidence reference; a spike states what
+  is uncertain and asserts no estimate. `POST /api/v1/analyzer/batches/{id}/push` is AL.3's
+  idempotent push.
+- **Boundary.** `.dependency-cruiser.cjs`'s `analyzer-composes-planes-through-their-services`
+  forbids importing another plane's repository. `actions.boundary.spec.ts` checks that every write
+  in the analyzer's source targets its own tables.
+
 ```bash
 yarn test:integration src/modules/analyzer
 ```
@@ -6492,6 +6521,7 @@ ouroboros-rest/
 │       │   ├── fleet/      # GET /farm — the page, its stats and the ⋯ menu          · #254
 │       │   │               #   fleet.stats.ts — where null stops being zero
 │       │   │               #   fleet.policy.ts — the day boundary, last week, B5's label
+│       │   ├── config/     # /farm/pool-windows · /farm/job-hooks — what Apply composes · #514
 │       │   └── installer/  # /install.sh · /runner/<version>/<file> — the agent's installer · #248
 │       ├── pull-requests/  # the PR plane: SPI sync (#357), gates/ (#358)
 │       │                   #   criteria/ — claims, typed evidence, verify, waive + annotate · #359
@@ -6506,7 +6536,8 @@ ouroboros-rest/
 │       │                   #   artifact.retention.ts — the hourly sweep that leaves tombstones
 │       ├── test-plane/     # suites only: the failing-HIL scenario + isolation     · #334
 │       ├── analyzer/       # Build Analyzer runs: triggers, guard, orchestrator  · #510
-│       │   └── composer/   #   findings → suggestions: templates, impact, confidence · #513
+│       │   ├── composer/   #   findings → suggestions: templates, impact, confidence · #513
+│       │   └── actions/    #   preview · apply · dismiss · draft · push, through the planes · #514
 │       │                   #   corpus/ — bounded, paged readers, log tails, the manifest
 │       └── internal/       # /internal/* — the engine-facing surface       · #224
 │                           #   lease (local providers only) + the invoke contract

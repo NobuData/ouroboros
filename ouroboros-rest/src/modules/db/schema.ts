@@ -5672,7 +5672,8 @@ export interface MetricDefinitionsTable {
   /** How a window re-derives the metric (V078): never an average of daily values. */
   aggregation: MetricAggregation;
   /** What `metric_daily.dimension` names for the metric, or null when undimensioned (V078). */
-  dimension_kind: "stage" | "suite" | "effort" | "cause" | "task_kind" | "job_label" | null;
+  dimension_kind:
+    "stage" | "suite" | "effort" | "cause" | "task_kind" | "job_label" | "pool" | null;
   created_at: Stamped;
   updated_at: Stamped;
 }

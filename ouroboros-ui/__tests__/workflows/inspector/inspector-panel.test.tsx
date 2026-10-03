@@ -10,6 +10,8 @@ import {
   CLEAN_REASON,
   DECLARED_NOTE,
   DIRTY_NOTE,
+  GLOBS_REQUIRED,
+  GLOB_INVALID,
   INSPECTOR_LABEL,
   INVALID_REASON,
   MANY_SELECTED_NOTE,
@@ -367,6 +369,26 @@ describe("every node type has a working form", () => {
     expect(onApply).toHaveBeenLastCalledWith("effort-recheck", {
       kind: "decision",
       predicate: { kind: "labels", op: "any", values: ["docs", "chore"] },
+    });
+  });
+
+  it("builds a paths predicate from its operator and globs (#514)", () => {
+    const { onApply } = open("effort-recheck");
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Tests" }), { target: { value: "paths" } });
+    expect(screen.getByRole("combobox", { name: "Operator" })).toHaveValue("any");
+    expect(screen.getByText(GLOBS_REQUIRED)).toBeInTheDocument();
+
+    const globs = screen.getByRole("textbox", { name: "Globs" });
+    fireEvent.change(globs, { target: { value: "/drivers/can/**" } });
+    expect(screen.getByText(GLOB_INVALID)).toBeInTheDocument();
+
+    fireEvent.change(globs, { target: { value: "drivers/can/**, docs/*.md" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Operator" }), { target: { value: "none" } });
+    fireEvent.click(applyButton());
+    expect(onApply).toHaveBeenLastCalledWith("effort-recheck", {
+      kind: "decision",
+      predicate: { kind: "paths", op: "none", globs: ["drivers/can/**", "docs/*.md"] },
     });
   });
 

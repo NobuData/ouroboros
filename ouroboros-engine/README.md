@@ -307,6 +307,7 @@ saying why.
 | Gates | Annotated with what they require. |
 | Loops | Reported with `outcome: "loop"` and never walked. `max_retries` is the `limits.max_retries` of the model stage the loop returns to, or `null` when that stage declares none. |
 | `checks` predicates | Check results come from a run, so the walk assumes the green path and marks the evaluation `assumed: true`. |
+| `paths` predicates | A dry run has no change, so the walk assumes no changed path matches — `any` does not hold, `none` does — and marks the evaluation `assumed: true`. |
 | Effort | Ordered `xs` < `s` < `m` < `l` < `xl`. An unsized ticket (`estimate: null`) satisfies no comparison. |
 | Labels | Compared exactly as the tracker spells them. |
 

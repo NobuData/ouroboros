@@ -44,6 +44,12 @@
     },
     "fingerprint": "sha256:f108491518ba305830a8bd1772151aa0c1b0b3687a216d66c32b90025db0c516"
   },
+  "queue_wait": {
+    "metrics": {
+      "queue_wait": 1
+    },
+    "fingerprint": "sha256:3d49bc0bd6b11961bfb91b486a1df8b7258d56e53205c5aac076eaaa586527c3"
+  },
   "tests": {
     "metrics": {
       "test_cases_run": 1,

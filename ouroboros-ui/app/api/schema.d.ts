@@ -2555,6 +2555,148 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/analyzer/suggestions/{id}/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * What applying a suggestion would change, and where
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514), decision A4) — the
+         *     consequence preview. It names the **concrete** change — the runner, pool and UTC window; the
+         *     repository, title filter, command and pool; the workflow, the stage delta and the version a
+         *     draft becomes — and where it lands, generated from the same payload Apply hands the owning
+         *     plane (`change`). **No side effects.**
+         *
+         *     A test-gate split (no plane owns per-stage PR and merge gates yet), a ticket and a spike
+         *     preview with `appliable: false` and the `reason`; a ticket or spike is `draftable`.
+         *
+         *     Pass `fingerprint` to Apply to insist it executes this preview and nothing else. Every
+         *     member may read.
+         */
+        get: operations["previewSuggestion"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyzer/suggestions/{id}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Apply a suggestion through the plane that owns the change
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514), decision A4) — mockup 18's
+         *     **Apply** and **Draft as v16 →**. The analyzer never mutates another plane: a pool move is
+         *     `POST /api/v1/farm/pool-windows`'s service, a cache re-warm `POST /api/v1/farm/job-hooks`'s,
+         *     a workflow suggestion a **draft** through the studio's draft service with a change note citing
+         *     the suggestion and its evidence — **publishing stays a person's act** (`target.studioPath`
+         *     opens it).
+         *
+         *     **Everything that can refuse, refuses first** — nothing is written by a refused apply.
+         *     Then the plane changes, the apply is audited as `analysis_suggestion.applied` (subject
+         *     `analysis_suggestion`, with the plane, the preview and the payload), and one transaction
+         *     marks the suggestion `applied`, keeps the application record with its **reversal** (the call
+         *     that would undo it) and writes BU.3's measurement row: the target metric, the **baseline**
+         *     over the window before today and the **prediction** with its calibration, frozen now.
+         *
+         *     `owner` or `admin`.
+         */
+        post: operations["applySuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyzer/suggestions/{id}/dismiss": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dismiss a suggestion
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — mockup 18's **Dismiss**,
+         *     with an optional reason. Remembered against the suggestion's **stable identity**: re-analysis
+         *     updates the same row and it stays dismissed. A dismissal without a reason is recorded as
+         *     *Dismissed without a reason.*
+         *
+         *     `owner`, `admin` or `member`, audited as `analysis_suggestion.dismissed`.
+         */
+        post: operations["dismissSuggestion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyzer/suggestions/draft": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Draft ticket and spike suggestions into a planning batch
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514), decision A5) — mockup 18's
+         *     drafted-tickets card and **Draft spike ticket**. The suggestions become one ordinary AK draft
+         *     batch with `planner: analyzer-v1`, each draft's body carrying its evidence line and every
+         *     evidence reference its findings cite; a spike drafts an investigation that states what is
+         *     uncertain and asserts no estimate. The estimator sizes every draft, so the batch's
+         *     `summary.estMinutes` — the card's *est. total* — is real. The standard edit flow and
+         *     `POST /api/v1/analyzer/batches/{id}/push` do the rest.
+         *
+         *     `owner` or `admin`, audited as `analysis_suggestion.drafted` per suggestion.
+         */
+        post: operations["draftSuggestions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/analyzer/batches/{id}/push": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Push an analyzer-drafted batch to its tracker
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — mockup 18's **Push 4
+         *     tickets to backlog →**: AL.3's push of the batch's **selected** drafts to any write-capable
+         *     tracker. **Idempotent**: a pushed draft is not pushed again, and each create carries the
+         *     SPI's idempotency key, so a retried push makes no duplicate.
+         *
+         *     `owner` or `admin`, audited as `analyzer.batch_pushed` (subject `draft_batch`).
+         */
+        post: operations["pushAnalyzerBatch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/github-token": {
         parameters: {
             query?: never;
@@ -7231,6 +7373,118 @@ export interface paths {
          *     `owner` or `admin`.
          */
         patch: operations["updateRunnerPool"];
+        trace?: never;
+    };
+    "/api/v1/farm/pool-windows": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Time-windowed pool assignments
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — every *"forge-02 joins
+         *     pool-a between 14:00–16:00 UTC on weekdays"* the workspace has, newest first. Dispatch
+         *     offers a pool's jobs to its own runners and to any runner with an enabled window on that
+         *     pool open at the instant of the offer. Every member may read.
+         */
+        get: operations["listPoolWindows"];
+        put?: never;
+        /**
+         * Give a runner a time window in a pool
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — a runner joins a pool for
+         *     a window of the UTC day, on some weekdays; outside it the runner is in its own pool. The
+         *     Build Analyzer's pool-move apply composes this route's service; it never writes the farm's
+         *     tables.
+         *
+         *     **Idempotent.** A window with the same runner, pool and times is the same window: `201`
+         *     when this call created it, `200` with the one already there — and no second audit event.
+         *
+         *     `owner` or `admin`, audited as `runner.pool_window_added` (subject `runner_pool_window`).
+         */
+        post: operations["addPoolWindow"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farm/pool-windows/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a time-windowed pool assignment
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — the reversal of adding
+         *     one. `owner` or `admin`, audited as `runner.pool_window_removed`.
+         */
+        delete: operations["removePoolWindow"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farm/job-hooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Job hooks
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — every job the farm
+         *     submits on a repository event, newest first. Every member may read.
+         */
+        get: operations["listJobHooks"];
+        put?: never;
+        /**
+         * Register a job hook
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — *"re-warm ccache right
+         *     after deps-refresh merges"*: on every merge into `repo` whose pull-request title contains
+         *     `titleContains` (case-insensitively; every merge when absent), the farm submits `command`
+         *     in `pool`, at the base branch and the merged head commit. Each fired job is an ordinary
+         *     build submission, audited as `runner.job_submitted` with no actor and the hook's id.
+         *
+         *     **Idempotent.** The same repository, pool, event, command and filter is the same hook:
+         *     `201` when created, `200` with the one already there.
+         *
+         *     `owner` or `admin`, audited as `runner.job_hook_registered` (subject `farm_job_hook`) —
+         *     never with the command, which is where a pasted token would ride.
+         */
+        post: operations["registerJobHook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/farm/job-hooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a job hook
+         * @description BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — the reversal of
+         *     registering one. `owner` or `admin`, audited as `runner.job_hook_removed`.
+         */
+        delete: operations["removeJobHook"];
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/farm/runners/{id}/drain": {
@@ -12867,6 +13121,86 @@ export interface components {
             ruleVersion: number | null;
             /** @description The re-categorization that set a human cause; null for a rule's. */
             override: components["schemas"]["InterventionOverride"] | null;
+        };
+        /**
+         * SuggestionPreview
+         * @description What applying a suggestion would change and where (BV.5, #514) — generated from the payload
+         *     Apply executes.
+         */
+        SuggestionPreview: {
+            /** Format: uuid */
+            suggestionId: string;
+            /** @enum {string} */
+            plane: "farm_config" | "job_hook" | "workflow" | "test_gate" | "planning";
+            appliable: boolean;
+            /** @description A ticket draft or a spike — drafted */
+            draftable: boolean;
+            /** @description The concrete change */
+            summary: string;
+            /** @description Where it lands. */
+            lands: string;
+            /** @description Why it cannot be applied */
+            reason: string | null;
+            /** @description The exact payload Apply hands the plane; null when nothing would be applied. */
+            change: Record<string, never> | null;
+            /** @description The studio path a workflow draft opens at. */
+            studioPath: string | null;
+            fingerprint: string;
+        };
+        /** ApplySuggestionBody */
+        ApplySuggestionBody: {
+            /** @description The preview's fingerprint, to refuse anything but that plan. */
+            fingerprint?: string;
+        };
+        /** AppliedSuggestion */
+        AppliedSuggestion: {
+            suggestion: components["schemas"]["SuggestionResolution"];
+            preview: components["schemas"]["SuggestionPreview"];
+            /** @description Where it landed — `{kind, id, …}`; a workflow draft carries `studioPath`. */
+            target: {
+                /** @enum {string} */
+                kind: "runner_pool_window" | "farm_job_hook" | "workflow_draft";
+                id: string;
+            };
+            /**
+             * Format: uuid
+             * @description The `analysis_suggestion.applied` event.
+             */
+            eventId: string;
+            /** @description BU.3's measurement row, frozen at apply. */
+            measurement: {
+                /** Format: uuid */
+                id: string;
+                targetMetric: string;
+                windowDays: number;
+                baseline: Record<string, never>;
+                predicted: Record<string, never>;
+            };
+        };
+        /** DismissSuggestionBody */
+        DismissSuggestionBody: {
+            reason?: string;
+        };
+        /** SuggestionResolution */
+        SuggestionResolution: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            status: "applied" | "dismissed" | "drafted";
+            /** Format: date-time */
+            resolvedAt: string;
+            reason: string | null;
+        };
+        /** DraftSuggestionsBody */
+        DraftSuggestionsBody: {
+            suggestionIds: string[];
+            /** Format: uuid */
+            targetSourceId: string;
+        };
+        /** DraftedSuggestions */
+        DraftedSuggestions: {
+            batch: components["schemas"]["PlanningBatch"];
+            suggestionIds: string[];
         };
         /**
          * StartAnalysisBody
@@ -18672,6 +19006,12 @@ export interface components {
              * @example 2026-09-12T08:30:00.000Z
              */
             updatedAt: string | null;
+            /**
+             * @description The draft's proposed change note (#514) — the Build Analyzer's draft cites the suggestion
+             *     and evidence it came from. Publishing keeps it unless the publisher writes their own;
+             *     `null` when there is none.
+             */
+            changeNote: string | null;
         };
         /**
          * WorkflowVersion
@@ -21900,6 +22240,85 @@ export interface components {
                 /** @description How many `test_runs.parse_warnings` the parse left. */
                 parseWarnings: number;
             } | null;
+        };
+        /**
+         * PoolWindow
+         * @description A time-windowed pool assignment (BV.5, #514): a runner joins a pool between two UTC times
+         *     on some ISO weekdays.
+         */
+        PoolWindow: {
+            /** Format: uuid */
+            id: string;
+            runner: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            pool: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            /** @description ISO weekdays, 1 = Monday. */
+            daysOfWeek: number[];
+            /** @description HH:MM, UTC. */
+            startsAt: string;
+            /** @description HH:MM, UTC. */
+            endsAt: string;
+            enabled: boolean;
+            createdBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** PoolWindowList */
+        PoolWindowList: components["schemas"]["PoolWindow"][];
+        /** CreatePoolWindowBody */
+        CreatePoolWindowBody: {
+            /** @description The runner */
+            runner: string;
+            /** @description The pool */
+            pool: string;
+            daysOfWeek: number[];
+            startsAt: string;
+            endsAt: string;
+        };
+        /**
+         * JobHook
+         * @description A job the farm submits on every matching merge into a repository (BV.5,
+         */
+        JobHook: {
+            /** Format: uuid */
+            id: string;
+            /** @description `owner/name`. */
+            repo: string;
+            pool: {
+                /** Format: uuid */
+                id: string;
+                name: string;
+            };
+            /** @enum {string} */
+            event: "merge";
+            titleContains: string | null;
+            label: string;
+            title: string;
+            command: string[];
+            enabled: boolean;
+            createdBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** JobHookList */
+        JobHookList: components["schemas"]["JobHook"][];
+        /** CreateJobHookBody */
+        CreateJobHookBody: {
+            repo: string;
+            pool: string;
+            /** @enum {string} */
+            event: "merge";
+            titleContains?: string;
+            label: string;
+            title: string;
+            command: string[];
         };
         /**
          * RunnerPool
@@ -32902,6 +33321,744 @@ export interface operations {
             };
         };
     };
+    previewSuggestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The suggestion. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preview. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "suggestionId": "5eed0067-0000-4000-8000-000000000013",
+                     *       "plane": "farm_config",
+                     *       "appliable": true,
+                     *       "draftable": false,
+                     *       "summary": "forge-02 joins pool-a between 14:00–16:00 UTC on weekdays (Mon–Fri); outside that window it stays in its own pool.",
+                     *       "lands": "Build farm · pool windows",
+                     *       "reason": null,
+                     *       "change": {
+                     *         "runner": "forge-02",
+                     *         "pool": "pool-a",
+                     *         "daysOfWeek": [
+                     *           1,
+                     *           2,
+                     *           3,
+                     *           4,
+                     *           5
+                     *         ],
+                     *         "startsAt": "14:00",
+                     *         "endsAt": "16:00"
+                     *       },
+                     *       "studioPath": null,
+                     *       "fingerprint": "sha256:4f9c2b1d0e7a6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["SuggestionPreview"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_suggestion_not_found` — no such suggestion in this workspace.
+             *     `workflow_not_found` — the workflow the suggestion names no longer exists.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    applySuggestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The suggestion. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "fingerprint": "sha256:4f9c2b1d0e7a6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d"
+                 *     }
+                 */
+                "application/json": components["schemas"]["ApplySuggestionBody"];
+            };
+        };
+        responses: {
+            /** @description Applied — what changed, where, the audit event and the measurement row. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AppliedSuggestion"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_suggestion_not_found` — no such suggestion in this workspace.
+             *     `farm_runner_not_found`, `farm_pool_not_found`, `farm_repository_not_found`,
+             *     `workflow_not_found` — the plane no longer has what the binding names.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_suggestion_resolved` — already applied, dismissed or drafted; `details.status`.
+             *     `analysis_preview_stale` — the plan changed since the `fingerprint` the caller confirmed.
+             *     `analysis_baseline_unavailable` — the target metric has no rollup for the window before
+             *     today yet; nothing was applied.
+             *     `workflow_draft_conflict` — the workflow's draft moved since the preview read it.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_plane_unavailable` — no plane can take this change (a test-gate split, a ticket
+             *     or spike, a delta the workflow cannot carry, an impact with nothing to measure);
+             *     `details.reason` says why.
+             *     `workflow_definition_invalid` — the proposed document did not parse.
+             *     `validation_failed` — the id or `fingerprint` is malformed.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    dismissSuggestion: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The suggestion. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "reason": "QEMU caught a real regression last month; keep it on PRs."
+                 *     }
+                 */
+                "application/json": components["schemas"]["DismissSuggestionBody"];
+            };
+        };
+        responses: {
+            /** @description Dismissed. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SuggestionResolution"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is a `viewer`; dismissing needs `owner`, `admin` or `member`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_suggestion_not_found` — no such suggestion in this workspace.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `analysis_suggestion_resolved` — already applied, dismissed or drafted. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id or `reason` is malformed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    draftSuggestions: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "suggestionIds": [
+                 *         "5eed0067-0000-4000-8000-000000000021",
+                 *         "5eed0067-0000-4000-8000-000000000014"
+                 *       ],
+                 *       "targetSourceId": "5eed0003-0000-4000-8000-000000000001"
+                 *     }
+                 */
+                "application/json": components["schemas"]["DraftSuggestionsBody"];
+            };
+        };
+        responses: {
+            /** @description The batch, `drafting` until every draft is sized. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DraftedSuggestions"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_suggestion_not_found` — no such suggestion in this workspace.
+             *     `planning_source_not_found` — no such ticket source.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_suggestion_resolved` — a suggestion is already resolved.
+             *     `planning_target_read_only` — the source cannot take writes.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_suggestion_not_draftable` — a suggestion is applied, not drafted.
+             *     `validation_failed` — the body is malformed.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    pushAnalyzerBatch: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The batch. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description What the push did. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanningPushReport"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `analysis_batch_not_found` — no batch the analyzer drafted has that id here.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `batch_not_pushable` — the batch cannot be pushed in its state.
+             *     `push_in_progress` — a push of this batch is already running.
+             *     `push_nothing_selected` — no draft is selected.
+             *     `push_target_read_only` — the target source cannot take writes.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
     readGithubToken: {
         parameters: {
             query?: never;
@@ -42321,7 +43478,8 @@ export interface operations {
                      *       "draft": {
                      *         "etag": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
                      *         "definition": {},
-                     *         "updatedAt": "2026-09-12T10:00:00.000Z"
+                     *         "updatedAt": "2026-09-12T10:00:00.000Z",
+                     *         "changeNote": null
                      *       },
                      *       "version": null
                      *     }
@@ -43364,7 +44522,8 @@ export interface operations {
                      *           "nodes": [],
                      *           "edges": []
                      *         },
-                     *         "updatedAt": "2026-09-12T08:30:00.000Z"
+                     *         "updatedAt": "2026-09-12T08:30:00.000Z",
+                     *         "changeNote": null
                      *       },
                      *       "version": {
                      *         "version": 14,
@@ -43702,7 +44861,8 @@ export interface operations {
                      *         "nodes": [],
                      *         "edges": []
                      *       },
-                     *       "updatedAt": "2026-09-12T10:07:31.412Z"
+                     *       "updatedAt": "2026-09-12T10:07:31.412Z",
+                     *       "changeNote": null
                      *     }
                      */
                     "application/json": components["schemas"]["WorkflowDraft"];
@@ -56049,6 +57209,796 @@ export interface operations {
              *     `farm_pool_image_mismatch` — the merged pool would be a container pool with no image,
              *     or a shell pool with one.
              */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listPoolWindows: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The windows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolWindowList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    addPoolWindow: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "runner": "forge-02",
+                 *       "pool": "pool-a",
+                 *       "daysOfWeek": [
+                 *         1,
+                 *         2,
+                 *         3,
+                 *         4,
+                 *         5
+                 *       ],
+                 *       "startsAt": "14:00",
+                 *       "endsAt": "16:00"
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreatePoolWindowBody"];
+            };
+        };
+        responses: {
+            /** @description An identical window was already there; this is it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PoolWindow"];
+                };
+            };
+            /** @description The window, created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "id": "7f000006-0000-4000-8000-000000000001",
+                     *       "runner": {
+                     *         "id": "7f000002-0000-4000-8000-000000000001",
+                     *         "name": "forge-02"
+                     *       },
+                     *       "pool": {
+                     *         "id": "7f000001-0000-4000-8000-000000000002",
+                     *         "name": "pool-a"
+                     *       },
+                     *       "daysOfWeek": [
+                     *         1,
+                     *         2,
+                     *         3,
+                     *         4,
+                     *         5
+                     *       ],
+                     *       "startsAt": "14:00",
+                     *       "endsAt": "16:00",
+                     *       "enabled": true,
+                     *       "createdBy": "user_maya",
+                     *       "createdAt": "2026-10-02T18:00:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["PoolWindow"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_runner_not_found` — no runner by that name.
+             *     `farm_pool_not_found` — no pool by that name.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_pool_window_unordered` — `endsAt` is not after `startsAt`: a window lies inside one
+             *     UTC day; split one across midnight into two.
+             *     `validation_failed` — a field is missing or malformed.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removePoolWindow: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The window. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_pool_window_not_found` — no such window in this workspace.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listJobHooks: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The hooks. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobHookList"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    registerJobHook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "repo": "acme-robotics/helios-firmware",
+                 *       "pool": "pool-a",
+                 *       "event": "merge",
+                 *       "titleContains": "deps-refresh",
+                 *       "label": "post-merge hook",
+                 *       "title": "Re-warm ccache right after deps-refresh merges",
+                 *       "command": [
+                 *         "west",
+                 *         "build",
+                 *         "-t",
+                 *         "ccache-warm"
+                 *       ]
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateJobHookBody"];
+            };
+        };
+        responses: {
+            /** @description An identical hook was already registered; this is it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobHook"];
+                };
+            };
+            /** @description The hook, registered. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["JobHook"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_repository_not_found` — this workspace mirrors no such repository.
+             *     `farm_pool_not_found` — no pool by that name.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — a field is missing or malformed. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    removeJobHook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The hook. */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `forbidden` — the caller is not an `owner` or `admin`. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `farm_job_hook_not_found` — no such hook in this workspace.
+             *     `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+             *     member of.
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — the id is not a uuid. */
             422: {
                 headers: {
                     [name: string]: unknown;

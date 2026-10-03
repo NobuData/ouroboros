@@ -76,6 +76,11 @@ export interface WorkflowDraft {
   readonly definition: unknown;
   /** The mockup's *Last edited*, or `null` when there is no draft. */
   readonly updatedAt: string | null;
+  /**
+   * The draft's proposed change note (#514) — the Build Analyzer's draft cites the finding it came
+   * from — which publishing keeps unless the publisher writes their own; `null` when none.
+   */
+  readonly changeNote: string | null;
 }
 
 /** One published, immutable version — document and all. */
@@ -157,6 +162,7 @@ export function workflowDraft(draft: WorkflowVersion | undefined): WorkflowDraft
     etag: draftEtag(draft),
     definition: draft === undefined ? null : draft.definition,
     updatedAt: draft === undefined ? null : draft.updated_at.toISOString(),
+    changeNote: draft === undefined ? null : draft.change_note,
   };
 }
 

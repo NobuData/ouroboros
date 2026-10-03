@@ -10,6 +10,7 @@
 
 import {
   EdgeSchema,
+  GlobSchema,
   InfraConfigSchema,
   LlmConfigSchema,
   NODE_CONFIG_SCHEMAS,
@@ -91,8 +92,8 @@ describe("TriggerSchema", () => {
 });
 
 describe("the predicate grammar", () => {
-  it("is the five kinds the DSL publishes, and its keys are those kinds", () => {
-    expect(PREDICATE_KINDS).toEqual(["always", "effort", "labels", "source", "checks"]);
+  it("is the six kinds the DSL publishes, and its keys are those kinds", () => {
+    expect(PREDICATE_KINDS).toEqual(["always", "effort", "labels", "source", "checks", "paths"]);
     for (const kind of PREDICATE_KINDS) {
       expect(accepts(PREDICATE_SCHEMAS[kind], { kind })).toBe(kind === "always");
     }
@@ -120,6 +121,59 @@ describe("the predicate grammar", () => {
     expect(
       accepts(PREDICATE_SCHEMAS.source, { kind: "source", op: "in", values: ["bugzilla"] }),
     ).toBe(false);
+  });
+
+  it("tests a change's paths against 1 to 32 globs, with `any` or `none` (#514)", () => {
+    const paths = (op: string, globs: unknown) =>
+      accepts(PREDICATE_SCHEMAS.paths, { kind: "paths", op, globs });
+
+    expect(paths("any", ["drivers/can/**"])).toBe(true);
+    expect(
+      paths(
+        "none",
+        Array.from({ length: 32 }, (_, n) => `src/${n}/**`),
+      ),
+    ).toBe(true);
+    expect(paths("all", ["drivers/can/**"])).toBe(false);
+    expect(paths("any", [])).toBe(false);
+    expect(
+      paths(
+        "any",
+        Array.from({ length: 33 }, (_, n) => `src/${n}/**`),
+      ),
+    ).toBe(false);
+    expect(accepts(PREDICATE_SCHEMAS.paths, { kind: "paths", op: "any" })).toBe(false);
+  });
+
+  it.each([
+    "drivers/can/**",
+    "**/*.c",
+    "*.md",
+    ".github/workflows/*.yml",
+    "docs/",
+    "a//b",
+    "./src/**",
+    ".../x",
+    "..rc/x",
+    "x".repeat(256),
+  ])("accepts the glob %j", (glob) => {
+    expect(accepts(GlobSchema, glob)).toBe(true);
+  });
+
+  it.each([
+    ["empty", ""],
+    ["past 256 characters", "x".repeat(257)],
+    ["rooted", "/drivers/can/**"],
+    ["only a slash", "/"],
+    ["climbing out first", "../secrets/**"],
+    ["climbing out midway", "drivers/../secrets"],
+    ["climbing out last", "drivers/.."],
+    ["just ..", ".."],
+    ["holding a space", "drivers/can bus/**"],
+    ["holding a tab", "drivers/\tcan"],
+    ["holding a line feed", "drivers/can/**\n"],
+  ])("refuses a glob %s", (_about, glob) => {
+    expect(accepts(GlobSchema, glob)).toBe(false);
   });
 
   it("refuses a member another kind declares", () => {

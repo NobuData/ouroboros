@@ -100,7 +100,8 @@ export interface NewDraft {
   readonly localKey: string;
   readonly title: string;
   readonly body: string | null;
-  readonly suggestedWorkflow: string;
+  /** The workflow the planner suggests, or null when it suggests none (an analyzer draft). */
+  readonly suggestedWorkflow: string | null;
   readonly selected: boolean;
   /** The local keys this draft is blocked by. */
   readonly dependencies: readonly string[];

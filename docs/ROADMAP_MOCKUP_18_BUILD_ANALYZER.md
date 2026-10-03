@@ -449,7 +449,7 @@ seeds: 90d series w/ 3 planted shifts + attribution anchors · run manifest ·
 | BV.2 | #511 ✅ | 🟢 Done | ouroboros-engine: [BV.2] Analyzer SPI & statistical core | The engine-side SPI + change-point (ruptures) + attribution | mvp, analyzer, engine | N (after BU.2, #52) | Y | L | ouroboros-engine |
 | BV.3 | #512 ✅ | 🟢 Done | ouroboros-engine: [BV.3] Pattern analyzers | Signatures, config-usage, cache-window, queue, waiver-cites, workflow-outcome | mvp, analyzer, engine | N (after BV.2) | Y | L | ouroboros-engine |
 | BV.4 | #513 ✅ | 🟢 Done | ouroboros-rest: [BV.4] Suggestion composer | Templates, impact math, confidence scoring, `/v0/synthesize` contract | mvp, analyzer, rest | N (after BV.2/BV.3) | Y | M | ouroboros-rest |
-| BV.5 | #514 | 🟡 Open | ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push | Plane compositions with previews; planning-batch drafting (A4/A5) | mvp, analyzer, rest, workflow, planning | N (after BV.4, WF-P.3, AK/AL) | Y | L | ouroboros-rest |
+| BV.5 | #514 ✅ | 🟢 Done | ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push | Plane compositions with previews; planning-batch drafting (A4/A5) | mvp, analyzer, rest, workflow, planning | N (after BV.4, WF-P.3, AK/AL) | Y | L | ouroboros-rest |
 | BV.6 | #515 | 🟡 Open | ouroboros-rest: [BV.6] Measurement job & calibration | 14d windows, verdicts, confounds, recalibration (A6); tests | mvp, analyzer, rest, ci | N (after BU.3, BV.5, BI.2) | Y | M | ouroboros-rest |
 
 ### Issue BV.1 — ouroboros-rest: [BV.1] Corpus assembly & run orchestration
@@ -686,7 +686,7 @@ finding(cache_window) × calibration(0.65 → post-BU.3) ─▶
 
 ### Issue BV.5 — ouroboros-rest: [BV.5] Actions — apply, dismiss, draft & push
 
-> **GitHub issue:** #514 · **Status:** 🟡 Open · **Parent epic:** #503
+> **GitHub issue:** #514 ✅ · **Status:** 🟢 Done · **Parent epic:** #503
 
 - **Problem Statement:** Apply/Dismiss/Draft must compose the owning
   planes with previews (A4/A5) — the analyzer never mutates directly.
@@ -717,6 +717,42 @@ finding(cache_window) × calibration(0.65 → post-BU.3) ─▶
 apply(pool-move) ─▶ preview "forge-02 → pool-a 14:00–16:00 UTC" ─▶ farm config + baseline recorded
 draft(BA-1..4) ─▶ AK batch(analyzer-v1) ─▶ sized ─▶ push → sandbox tracker ✓
 ```
+
+- **Delivered** (`ouroboros-rest` 0.38.8 `src/modules/analyzer/actions/` and
+  `src/modules/farm/config/`, `ouroboros-db` `V088__analyzer_actions.sql`, `ouroboros-engine`
+  0.7.12, `ouroboros-ui` 0.122.2). Scope choices were made with the user where the codebase lacked a plane.
+  - **Routes.** `GET …/analyzer/suggestions/{id}/preview` (members, no side effects), `POST
+    …/apply` (admin+), `POST …/dismiss` (member+), `POST …/analyzer/suggestions/draft` and `POST
+    …/analyzer/batches/{id}/push` (admin+). Every action is audited: `analysis_suggestion.applied`,
+    `.dismissed` and `.drafted`, and `analyzer.batch_pushed`.
+  - **Previews are the payload.** `bindings.ts` turns each binding into the exact change its plane
+    is handed and writes the sentence from those fields, e.g. *"forge-02 joins pool-a between
+    14:00–16:00 UTC on weekdays (Mon–Fri)…"*. A `fingerprint` lets Apply insist on the plan that
+    was previewed.
+  - **Farm.** The new `FarmConfigModule` is the writer `runner_pool_windows` lacked
+    (`/farm/pool-windows`). It also adds job hooks (`/farm/job-hooks`, V088 `farm_job_hooks`), which
+    fire on merge through a third PR-sync observer and `FarmJobsService.submitForHook`. Both are
+    idempotent and audited `runner.*`.
+  - **Workflow.** Apply proposes a real draft through `WorkflowsService.proposeDraft`, guarded by the
+    base etag. V088 lets a draft carry a proposed `change_note` citing the suggestion; publish keeps
+    it unless the publisher writes one. The DSL gains a `paths` predicate (REST, engine, schema,
+    UI), so the flake-retry stage is a decision with branch edges. Nothing is published.
+  - **Test gate.** No plane owns per-stage PR/merge gates, so its preview says so and Apply answers
+    `422 analysis_plane_unavailable`, writing nothing.
+  - **Measurement.** Apply writes BU.3's row in the same transaction that resolves the suggestion:
+    the target metric per impact class (`build_duration`; the new `queue_wait` p95 for the moved-to
+    pool; `human_interventions`), a baseline over the policy window before the apply, and
+    `predicted` with its calibration. `analysis_suggestion_applications` keeps the resolved payload,
+    the preview, where it landed and the reversal for BX.3.
+  - **Drafting.** `BatchesService.compose` makes an ordinary AK batch (`analyzer-v1`) sized by the
+    estimator. Bodies carry the evidence line and every evidence reference; a spike states what is
+    uncertain and asserts no estimate. Push is AL.3's, idempotent.
+  - **Boundary.** The dependency-cruiser rule `analyzer-composes-planes-through-their-services`
+    plus a SQL write-target scan (`actions.boundary.spec.ts`) assert the analyzer writes only its
+    own tables.
+  - *Not here:* a surface owning per-stage test gates (#1100), the suggestion list
+    and cards (BW.3), the studio rendering a draft's proposed note (UI), and running a reversal
+    (BX.3).
 
 ### Issue BV.6 — ouroboros-rest: [BV.6] Measurement job & calibration
 
@@ -1089,7 +1125,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
    BI.1/BI.2, WF-P.3/S, AK/AL, farm config, BK.1, #41/#46.
 2. **Phase 1 — Domain:** **BU.1 (#506) ✅** → **BU.2 (#507) ✅** → **BU.3 (#508) ✅** → BU.4 (#509)
 3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → **BV.3 (#512) ✅** →
-   **BV.4 (#513) ✅** → BV.5 (#514) → BV.6 (#515)
+   **BV.4 (#513) ✅** → **BV.5 (#514) ✅** → BV.6 (#515)
 4. **Phase 3 — UI:** BW.1 (#516) → { BW.2 (#517) ⊕ BW.3 (#518) ⊕ BW.4 (#519) ⊕
    BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
 5. **v2:** BX.1 (#522) after AF.2 (#235); BX.2 (#523) ⊕ BX.3 (#524) ⊕

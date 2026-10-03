@@ -174,7 +174,7 @@ describe("workflows.create", () => {
       name: "Hotfix P1",
       currentVersion: null,
       version: null,
-      draft: { etag: "none", definition: {}, updatedAt: "2026-09-13T12:00:00.000Z" },
+      draft: { etag: "none", definition: {}, updatedAt: "2026-09-13T12:00:00.000Z", changeNote: null },
     });
     const { client, requests } = clientAnswering(created, 201);
 

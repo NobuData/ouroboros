@@ -268,6 +268,7 @@ export function workflowDetail(overrides: Partial<WorkflowDetail> = {}): Workflo
       etag: "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
       definition,
       updatedAt: DRAFT_EDITED_AT,
+      changeNote: null,
     },
     version: {
       version: 14,

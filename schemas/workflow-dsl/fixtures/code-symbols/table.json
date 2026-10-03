@@ -323,6 +323,10 @@
         {
           "label": "(i) => i.checks.",
           "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.paths.",
+          "kind": "snippet"
         }
       ]
     },
@@ -387,6 +391,10 @@
         },
         {
           "label": "(i) => i.checks.",
+          "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.paths.",
           "kind": "snippet"
         }
       ]
@@ -554,6 +562,10 @@
         {
           "label": "(i) => i.checks.",
           "kind": "snippet"
+        },
+        {
+          "label": "(i) => i.paths.",
+          "kind": "snippet"
         }
       ]
     },
@@ -619,6 +631,10 @@
         },
         {
           "label": "checks",
+          "kind": "property"
+        },
+        {
+          "label": "paths",
           "kind": "property"
         }
       ]
@@ -700,6 +716,21 @@
           "label": "anyFailed",
           "kind": "method",
           "symbol": "predicate.checks.anyFailed"
+        }
+      ]
+    },
+    {
+      "scope": "predicate.paths",
+      "completions": [
+        {
+          "label": "any",
+          "kind": "method",
+          "symbol": "predicate.paths.any"
+        },
+        {
+          "label": "none",
+          "kind": "method",
+          "symbol": "predicate.paths.none"
         }
       ]
     },
@@ -2253,6 +2284,66 @@
         },
         {
           "text": "names?: ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.paths.any",
+      "signature": [
+        {
+          "text": "paths.any",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "globs: ",
+          "role": "text"
+        },
+        {
+          "text": "string[]",
+          "role": "type"
+        },
+        {
+          "text": "): ",
+          "role": "text"
+        },
+        {
+          "text": "Predicate",
+          "role": "type"
+        }
+      ],
+      "doc": "One structured test, evaluated against the run's ticket and its check results. Flat by design: composition would need recursion in three validators and the canvas draws branches rather than boolean trees."
+    },
+    {
+      "symbol": "predicate.paths.none",
+      "signature": [
+        {
+          "text": "paths.none",
+          "role": "name"
+        },
+        {
+          "text": "(",
+          "role": "text"
+        },
+        {
+          "text": "globs: ",
           "role": "text"
         },
         {

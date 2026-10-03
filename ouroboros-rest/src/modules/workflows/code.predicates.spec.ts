@@ -39,6 +39,14 @@ const PREDICATES: [Predicate, string][] = [
     { kind: "checks", op: "any_failed", names: ["build", "test"] },
     '(i) => i.checks.anyFailed(["build", "test"])',
   ],
+  [
+    { kind: "paths", op: "any", globs: ["drivers/can/**"] },
+    '(i) => i.paths.any(["drivers/can/**"])',
+  ],
+  [
+    { kind: "paths", op: "none", globs: ["docs/**", "*.md"] },
+    '(i) => i.paths.none(["docs/**", "*.md"])',
+  ],
 ];
 
 /** Every trigger-condition combination, and its exact `when` — or none. */

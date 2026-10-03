@@ -14,7 +14,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-engine
-  version: 0.7.11
+  version: 0.7.12
   summary: Internal backend for Ouroboros — executes the work ouroboros-rest brokers.
   description: |-
     The **Python backend** of [Ouroboros](https://github.com/NobuData/ouroboros): the
@@ -121,7 +121,7 @@ paths:
                 $ref: "#/components/schemas/ServiceIdentity"
               example:
                 service: ouroboros-engine
-                version: 0.7.11
+                version: 0.7.12
         "401":
           $ref: "#/components/responses/Unauthorized"
 
@@ -147,7 +147,7 @@ paths:
                 $ref: "#/components/schemas/ServiceStatus"
               example:
                 service: ouroboros-engine
-                version: 0.7.11
+                version: 0.7.12
                 uptime_seconds: 1234.567
         "401":
           $ref: "#/components/responses/Unauthorized"
@@ -195,7 +195,7 @@ paths:
                   task_kind: echo
                   payload:
                     note: hello from ouroboros-rest
-                engine_version: 0.7.11
+                engine_version: 0.7.12
         "401":
           $ref: "#/components/responses/Unauthorized"
         "422":
@@ -460,6 +460,9 @@ paths:
            stage it returns to, or `null` when that stage declares none.
         6. **Check results are assumed green.** They are produced by a run, so a `checks`
            condition is evaluated as though every check passed, and marked `assumed: true`.
+        7. **The change is assumed to touch nothing.** A dry run has no changed paths, so a
+           `paths` condition is evaluated as though no changed path matched — `any` does not
+           hold and `none` does — and marked `assumed: true`.
 
         A definition that does not validate is answered with its `findings` — the ones
         `POST /v0/workflows/validate` answers — and `steps`, `verdicts` and `highlight_path`

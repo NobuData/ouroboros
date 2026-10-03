@@ -8,6 +8,8 @@ import {
   type ConfigRecord,
   type FieldMessages,
   type GenericField,
+  GLOBS_HINT,
+  GLOBS_LABEL,
   JSON_NOTE,
   type JsonSchema,
   LIST_HINT,
@@ -256,7 +258,7 @@ export interface PredicateFieldsProps {
   readonly schema: JsonSchema;
   /** The document its references resolve against. */
   readonly root: JsonSchema;
-  /** What stops the draft from being applied, as `<field>.kind` and `<field>.values`. */
+  /** What stops the draft from being applied, as `<field>.kind`, `<field>.values` and `<field>.globs`. */
   readonly errors: FieldMessages;
   /**
    * Whether *none* is a value — a loop edge's condition is optional (§ 6), a flow node's predicate
@@ -308,6 +310,7 @@ export function PredicateFields({
       ...(nextOps.length > 0 ? { op: nextOps[0] } : {}),
       ...(nextValues.length > 0 ? { value: nextValues[0] } : {}),
       ...(requiredProperties(nextBranch, root).includes("values") ? { values: [] } : {}),
+      ...(requiredProperties(nextBranch, root).includes("globs") ? { globs: [] } : {}),
     });
   };
 
@@ -399,6 +402,18 @@ export function PredicateFields({
           mono
           onChange={(event) => onChange({ ...value, values: [...splitList(event.target.value)] })}
           value={Array.isArray(value.values) ? value.values.join(", ") : ""}
+        />
+      )}
+
+      {properties.includes("globs") && (
+        <TextField
+          error={errors[`${field}.globs`]}
+          hint={GLOBS_HINT}
+          id={`${id}-globs`}
+          label={GLOBS_LABEL}
+          mono
+          onChange={(event) => onChange({ ...value, globs: [...splitList(event.target.value)] })}
+          value={Array.isArray(value.globs) ? value.globs.join(", ") : ""}
         />
       )}
 

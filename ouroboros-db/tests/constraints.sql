@@ -8743,11 +8743,19 @@ select pg_temp.must_reject(
   'a draft has no publisher, because nobody has published it',
   'workflow_versions_draft_unattributed');
 
-select pg_temp.must_reject(
-  $$update ouroboros.workflow_versions set change_note = 'work in progress'
-     where workflow_id = 'a9a00000-0000-0000-0000-000000000002'$$,
-  'nor a change note, which describes a publish rather than an edit',
-  'workflow_versions_draft_unattributed');
+-- Since #514 a draft may carry a proposed change note — the Build Analyzer's draft cites its
+-- finding — which the publisher keeps or replaces. It is still unattributed.
+update ouroboros.workflow_versions set change_note = 'proposed: cites finding 171'
+ where workflow_id = 'a9a00000-0000-0000-0000-000000000002' and version is null;
+
+select pg_temp.must_hold(
+  (select change_note = 'proposed: cites finding 171' and published_by is null
+     from ouroboros.workflow_versions
+    where workflow_id = 'a9a00000-0000-0000-0000-000000000002' and version is null),
+  'a draft may carry a proposed change note, and still no publisher');
+
+update ouroboros.workflow_versions set change_note = null
+ where workflow_id = 'a9a00000-0000-0000-0000-000000000002' and version is null;
 
 select pg_temp.must_reject(
   $$insert into ouroboros.workflow_versions (workflow_id, version, definition, published_at, change_note)
@@ -12563,6 +12571,36 @@ select pg_temp.must_reject(
   $$update ouroboros.runner_pool_windows set ends_at = '13:00'
      where id = '7f000006-0000-4000-8000-000000000001'$$,
   'a window lies inside one day', 'runner_pool_windows_ordered');
+
+-- --- a job hook fires on a repository's merges (#514) ---------------------------
+insert into ouroboros.farm_job_hooks
+  (id, organization_id, github_repo_id, pool_id, title_contains, label, title, command)
+values ('7f000007-0000-4000-8000-000000000001', 'org-farm',
+        '7f000011-0000-4000-8000-000000000001', '7f000001-0000-4000-8000-000000000001',
+        'deps-refresh', 'ccache warm', 'Re-warm ccache after deps-refresh', 'west build -t ccache-warm');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.farm_job_hooks
+      (organization_id, github_repo_id, pool_id, title_contains, label, title, command)
+    values ('org-farm', '7f000011-0000-4000-8000-000000000001',
+            '7f000001-0000-4000-8000-000000000001', 'deps-refresh', 'again', 'Again',
+            'west build -t ccache-warm')$$,
+  'registering the same hook twice is one hook', 'farm_job_hooks_identity_idx');
+
+select pg_temp.must_reject(
+  $$update ouroboros.farm_job_hooks set event = 'push'
+     where id = '7f000007-0000-4000-8000-000000000001'$$,
+  'merge is the one event a hook fires on', 'farm_job_hooks_event_known');
+
+select pg_temp.must_reject(
+  $$update ouroboros.farm_job_hooks set title_contains = '  '
+     where id = '7f000007-0000-4000-8000-000000000001'$$,
+  'a title filter is text or absent, never blank', 'farm_job_hooks_title_contains_present');
+
+select pg_temp.must_reject(
+  $$update ouroboros.farm_job_hooks set organization_id = 'org-farm2'
+     where id = '7f000007-0000-4000-8000-000000000001'$$,
+  'a hook runs in a pool of its own workspace', 'farm_job_hooks_pool_fk');
 
 -- --- the per-job log cap, and the marker it leaves ------------------------------
 --
@@ -26972,13 +27010,13 @@ select pg_temp.must_hold(
 
 select pg_temp.must_hold(
   (select array_agg(metric_id order by metric_id)
-            = '{build_duration,completion_time_by_effort,cycle_time,stage_duration}'
+            = '{build_duration,completion_time_by_effort,cycle_time,queue_wait,stage_duration}'
      from ouroboros.metric_definitions where aggregation = 'median'),
-  'the shipped medians are cycle time, stage duration, completion time by effort and (V086) build duration');
+  'the shipped medians are cycle time, stage duration, completion time by effort, (V086) build duration and (V088) queue wait');
 
 select pg_temp.must_hold(
   (select array_agg(metric_id || ':' || dimension_kind order by metric_id)
-            = '{build_duration:job_label,completion_time_by_effort:effort,human_interventions:cause,stage_duration:stage,test_failures_by_suite:suite,tokens_by_task_kind:task_kind}'
+            = '{build_duration:job_label,completion_time_by_effort:effort,human_interventions:cause,queue_wait:pool,stage_duration:stage,test_failures_by_suite:suite,tokens_by_task_kind:task_kind}'
      from ouroboros.metric_definitions where dimension_kind is not null),
   'the shipped dimensioned metrics name their dimension (V079 added the cause, V083 the task kind, V086 the job label)');
 
@@ -29528,6 +29566,45 @@ select pg_temp.v085_apply(name, at::timestamptz)
                ('pool-move',   '2026-07-20T14:00:00Z'), ('other-warm',  '2026-07-26T08:00:00Z'))
        as v (name, at);
 
+-- --- The application record (V088, #514): what the apply composed, and its undo ------------
+
+insert into ouroboros.analysis_suggestion_applications
+  (suggestion_id, organization_id, repo_ref, plane, change, preview, target, reversal,
+   applied_event_id, applied_by, applied_at)
+select s.id, s.organization_id, s.repo_ref, 'farm_config',
+       '{"runner_id": "a8500000-0000-4000-8000-000000000009", "days_of_week": [1,2,3,4,5]}',
+       'forge-02 joins pool-a between 14:00–16:00 UTC on weekdays',
+       '{"kind": "runner_pool_window", "id": "a8540000-0000-4000-8000-000000000001"}',
+       '{"action": "farm.pool_window.delete", "target": {"id": "a8540000-0000-4000-8000-000000000001"}}',
+       s.applied_event_id, 'user-v085', '2026-07-20T14:00:00Z'
+  from ouroboros.analysis_suggestions s
+ where s.id = (select id from v085_s where name = 'pool-move');
+
+select pg_temp.must_reject(
+  $$update ouroboros.analysis_suggestion_applications set preview = 'something else'
+     where suggestion_id = (select id from v085_s where name = 'pool-move')$$,
+  'what was applied is what was applied', 'analysis_suggestion_applications_frozen');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_suggestion_applications
+      (suggestion_id, organization_id, repo_ref, plane, change, preview, target, reversal,
+       applied_event_id)
+    select s.id, s.organization_id, s.repo_ref, 'job_hook', '{}', 'x',
+           '{"kind": "farm_job_hook", "id": "i"}', '{"action": "undo"}', s.applied_event_id
+      from ouroboros.analysis_suggestions s
+     where s.id = (select id from v085_s where name = 'other-warm')$$,
+  'a reversal names the call and its target', 'analysis_suggestion_applications_reversal_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.analysis_suggestion_applications
+      (suggestion_id, organization_id, repo_ref, plane, change, preview, target, reversal,
+       applied_event_id)
+    select s.id, s.organization_id, s.repo_ref, 'planning', '{}', 'x',
+           '{"kind": "k", "id": "i"}', '{"action": "a", "target": {}}', s.applied_event_id
+      from ouroboros.analysis_suggestions s
+     where s.id = (select id from v085_s where name = 'gate-split')$$,
+  'only farm, job-hook and workflow changes are applied', 'analysis_suggestion_applications_plane_known');
+
 -- What BV.5 records at apply: the measurement id, the metric, the baseline and the prediction.
 create temp table v085_m (name text primary key, id uuid, applied_at timestamptz, metric text,
                           baseline jsonb, predicted jsonb) on commit drop;
@@ -30429,6 +30506,15 @@ select pg_temp.must_hold(
   'job_label' = any (pg_temp.vocabulary('ouroboros.metric_definitions',
                                         'metric_definitions_dimension_kind_known')),
   'job_label joins the dimension vocabulary');
+
+-- --- the queue-wait family (V088, #514) ------------------------------------------
+
+select pg_temp.must_hold(
+  (select family = 'queue_wait' and aggregation = 'median' and dimension_kind = 'pool'
+          and unit = 'duration_ms' and not is_rate and not proxy
+          and source_planes = '{builds}' and version = 1
+     from ouroboros.metric_definitions where metric_id = 'queue_wait'),
+  'queue_wait is registered: its own family, a median per pool, in milliseconds');
 
 delete from ouroboros.organization where "id" = 'org-v086';
 

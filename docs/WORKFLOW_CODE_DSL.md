@@ -447,9 +447,12 @@ ticket `i`, and none of them is ever called.
 | `{kind: "checks", op: "all_passed", names: ["build"]}` | `(i) => i.checks.allPassed(["build"])` |
 | `{kind: "checks", op: "any_failed"}` | `(i) => i.checks.anyFailed()` |
 | `{kind: "checks", op: "any_failed", names: ["build", "test"]}` | `(i) => i.checks.anyFailed(["build", "test"])` |
+| `{kind: "paths", op: "any", globs: ["drivers/can/**"]}` | `(i) => i.paths.any(["drivers/can/**"])` |
+| `{kind: "paths", op: "none", globs: ["docs/**", "*.md"]}` | `(i) => i.paths.none(["docs/**", "*.md"])` |
 
 * **Effort values are constants**: `effort.XS`, `effort.S`, `effort.M`, `effort.L`, `effort.XL`.
-* **Lists are always arrays**, even with one member, so `labels`, `source` and `names` read alike.
+* **Lists are always arrays**, even with one member, so `labels`, `source`, `names` and `globs`
+  read alike.
 * **An absent `names` is an empty argument list**, never `[]`: an empty `names` is not a valid
   document, so `allPassed()` and `allPassed([...])` can't be confused.
 * **`in` is a legal property name** in TypeScript, so `i.source.in([...])` parses.

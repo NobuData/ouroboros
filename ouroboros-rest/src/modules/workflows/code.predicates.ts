@@ -15,6 +15,7 @@
  * | `{kind: "labels", op, values}` | `(i) => i.labels.<op>([...])` |
  * | `{kind: "source", op, values}` | `(i) => i.source.<in \| notIn>([...])` |
  * | `{kind: "checks", op, names?}` | `(i) => i.checks.<allPassed \| anyFailed>([...]?)` |
+ * | `{kind: "paths", op, globs}` | `(i) => i.paths.<any \| none>([...])` |
  *
  * The arrow is a *spelling*, not a function anybody calls: nothing in the code-view path
  * evaluates it (decision C2), and the parser reads it as syntax.
@@ -64,6 +65,8 @@ export function printPredicate(predicate: Predicate): string {
       const names = predicate.names === undefined ? "" : stringArray(predicate.names);
       return `${ARROW}${subject}.${PREDICATE_METHODS.checks[predicate.op]}(${names})`;
     }
+    case "paths":
+      return `${ARROW}${subject}.${PREDICATE_METHODS.paths[predicate.op]}(${stringArray(predicate.globs)})`;
   }
 }
 

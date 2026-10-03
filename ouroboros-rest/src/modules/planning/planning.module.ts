@@ -70,6 +70,7 @@ import { ReestimationScheduler } from "./reestimation.scheduler";
     ReestimationJob,
     ReestimationScheduler,
   ],
-  exports: [PushService],
+  // BatchesService for the Build Analyzer's drafted tickets (#514), which are ordinary batches.
+  exports: [PushService, BatchesService],
 })
 export class PlanningModule {}

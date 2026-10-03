@@ -42,6 +42,8 @@ import { calleeFor } from "./code.printer";
 import {
   AliasNameSchema,
   EffortSchema,
+  GLOB_PATTERN,
+  GlobSchema,
   NodeIdSchema,
   PREDICATE_SCHEMAS,
   SourceKindSchema,
@@ -189,6 +191,21 @@ const LABEL = text(1, 64);
 /** A check name, as `require` and `names` list them. */
 const CHECK_NAME = text(1, 128);
 
+/**
+ * A changed-path glob: the shapes an author writes, then anything the pattern admits — `.`
+ * segments, `...`, empty segments after the first, and characters a quote has to escape.
+ */
+const GLOB = fc.oneof(
+  {
+    arbitrary: fc.constantFrom("drivers/can/**", "**/*.c", ".github/workflows/*.yml", "docs/"),
+    weight: 2,
+  },
+  {
+    arbitrary: fc.stringMatching(GLOB_PATTERN).filter((glob) => GlobSchema.safeParse(glob).success),
+    weight: 3,
+  },
+);
+
 const EFFORT = fc.constantFrom(...EffortSchema.options);
 const SOURCE = fc.constantFrom(...SourceKindSchema.options);
 
@@ -220,6 +237,10 @@ export const PREDICATE: fc.Arbitrary<Predicate> = fc.oneof(
     op,
     ...(names === undefined ? {} : { names }),
   })),
+  record({
+    op: fc.constantFrom(...PREDICATE_SCHEMAS.paths.shape.op.options),
+    globs: fc.array(GLOB, { minLength: 1, maxLength: 3 }),
+  }).map(({ op, globs }): Predicate => ({ kind: "paths", op, globs })),
 );
 
 /** The root trigger: `ticket_queued`, with any subset of its three conditions. */
@@ -499,6 +520,7 @@ const PREDICATE_FORMS = [
     `checks.${op}`,
     `checks.${op}+names`,
   ]),
+  ...PREDICATE_SCHEMAS.paths.shape.op.options.map((op) => `paths.${op}`),
 ];
 
 /**

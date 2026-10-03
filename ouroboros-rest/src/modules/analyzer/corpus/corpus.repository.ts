@@ -559,14 +559,14 @@ export class CorpusRepository {
   /**
    * A rolled-up metric's daily rows for the repository — BI's grain, every dimension.
    *
-   * @param scope - The repository.
+   * @param scope - The repository (its id is not needed: the grain is keyed by `repo_ref`).
    * @param window - The window.
    * @param metricId - The metric, e.g. `build_duration`.
    * @returns One point per (day, dimension), ordered.
    */
   async series(
-    scope: CorpusScope,
-    window: CorpusWindow,
+    scope: Pick<CorpusScope, "organizationId" | "repoRef">,
+    window: Pick<CorpusWindow, "from" | "to">,
     metricId: string,
   ): Promise<EngineSeriesPoint[]> {
     const { rows } = await sql<{ day: string; dimension: string; value: string; samples: unknown }>`

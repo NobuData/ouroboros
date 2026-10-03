@@ -28,6 +28,7 @@ import { ControlsModule } from "../controls/controls.module";
 import { DbModule } from "../db/db.module";
 import { FactProposersModule } from "../fact-proposers/proposers.module";
 import { FactsModule } from "../facts/facts.module";
+import { FarmConfigModule } from "../farm/config/farm-config.module";
 import { InsightsModule } from "../insights/insights.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
@@ -58,6 +59,7 @@ import { PrSyncService } from "./pr-sync.service";
     FactProposersModule,
     PoliciesModule,
     InsightsModule,
+    FarmConfigModule,
   ],
   controllers: [CriteriaController, MergeController, PageController],
   providers: [

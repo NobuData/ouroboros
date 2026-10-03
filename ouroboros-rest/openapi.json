@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.38.7",
+    "version": "0.38.8",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -8702,6 +8702,578 @@
         }
       }
     },
+    "/api/v1/analyzer/suggestions/{id}/preview": {
+      "get": {
+        "tags": [
+          "analyzer"
+        ],
+        "summary": "What applying a suggestion would change, and where",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514), decision A4) — the\nconsequence preview. It names the **concrete** change — the runner, pool and UTC window; the\nrepository, title filter, command and pool; the workflow, the stage delta and the version a\ndraft becomes — and where it lands, generated from the same payload Apply hands the owning\nplane (`change`). **No side effects.**\n\nA test-gate split (no plane owns per-stage PR and merge gates yet), a ticket and a spike\npreview with `appliable: false` and the `reason`; a ticket or spike is `draftable`.\n\nPass `fingerprint` to Apply to insist it executes this preview and nothing else. Every\nmember may read.",
+        "operationId": "previewSuggestion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The suggestion."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The preview.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionPreview"
+                },
+                "example": {
+                  "suggestionId": "5eed0067-0000-4000-8000-000000000013",
+                  "plane": "farm_config",
+                  "appliable": true,
+                  "draftable": false,
+                  "summary": "forge-02 joins pool-a between 14:00–16:00 UTC on weekdays (Mon–Fri); outside that window it stays in its own pool.",
+                  "lands": "Build farm · pool windows",
+                  "reason": null,
+                  "change": {
+                    "runner": "forge-02",
+                    "pool": "pool-a",
+                    "daysOfWeek": [
+                      1,
+                      2,
+                      3,
+                      4,
+                      5
+                    ],
+                    "startsAt": "14:00",
+                    "endsAt": "16:00"
+                  },
+                  "studioPath": null,
+                  "fingerprint": "sha256:4f9c2b1d0e7a6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`analysis_suggestion_not_found` — no such suggestion in this workspace.\n`workflow_not_found` — the workflow the suggestion names no longer exists.\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyzer/suggestions/{id}/apply": {
+      "post": {
+        "tags": [
+          "analyzer"
+        ],
+        "summary": "Apply a suggestion through the plane that owns the change",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514), decision A4) — mockup 18's\n**Apply** and **Draft as v16 →**. The analyzer never mutates another plane: a pool move is\n`POST /api/v1/farm/pool-windows`'s service, a cache re-warm `POST /api/v1/farm/job-hooks`'s,\na workflow suggestion a **draft** through the studio's draft service with a change note citing\nthe suggestion and its evidence — **publishing stays a person's act** (`target.studioPath`\nopens it).\n\n**Everything that can refuse, refuses first** — nothing is written by a refused apply.\nThen the plane changes, the apply is audited as `analysis_suggestion.applied` (subject\n`analysis_suggestion`, with the plane, the preview and the payload), and one transaction\nmarks the suggestion `applied`, keeps the application record with its **reversal** (the call\nthat would undo it) and writes BU.3's measurement row: the target metric, the **baseline**\nover the window before today and the **prediction** with its calibration, frozen now.\n\n`owner` or `admin`.",
+        "operationId": "applySuggestion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The suggestion."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplySuggestionBody"
+              },
+              "example": {
+                "fingerprint": "sha256:4f9c2b1d0e7a6c5b4a39281706f5e4d3c2b1a0f9e8d7c6b5a4938271605f4e3d"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Applied — what changed, where, the audit event and the measurement row.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AppliedSuggestion"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`analysis_suggestion_not_found` — no such suggestion in this workspace.\n`farm_runner_not_found`, `farm_pool_not_found`, `farm_repository_not_found`,\n`workflow_not_found` — the plane no longer has what the binding names.\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`analysis_suggestion_resolved` — already applied, dismissed or drafted; `details.status`.\n`analysis_preview_stale` — the plan changed since the `fingerprint` the caller confirmed.\n`analysis_baseline_unavailable` — the target metric has no rollup for the window before\ntoday yet; nothing was applied.\n`workflow_draft_conflict` — the workflow's draft moved since the preview read it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`analysis_plane_unavailable` — no plane can take this change (a test-gate split, a ticket\nor spike, a delta the workflow cannot carry, an impact with nothing to measure);\n`details.reason` says why.\n`workflow_definition_invalid` — the proposed document did not parse.\n`validation_failed` — the id or `fingerprint` is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyzer/suggestions/{id}/dismiss": {
+      "post": {
+        "tags": [
+          "analyzer"
+        ],
+        "summary": "Dismiss a suggestion",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — mockup 18's **Dismiss**,\nwith an optional reason. Remembered against the suggestion's **stable identity**: re-analysis\nupdates the same row and it stays dismissed. A dismissal without a reason is recorded as\n*Dismissed without a reason.*\n\n`owner`, `admin` or `member`, audited as `analysis_suggestion.dismissed`.",
+        "operationId": "dismissSuggestion",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The suggestion."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DismissSuggestionBody"
+              },
+              "example": {
+                "reason": "QEMU caught a real regression last month; keep it on PRs."
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dismissed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuggestionResolution"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is a `viewer`; dismissing needs `owner`, `admin` or `member`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`analysis_suggestion_not_found` — no such suggestion in this workspace.\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`analysis_suggestion_resolved` — already applied, dismissed or drafted.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id or `reason` is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyzer/suggestions/draft": {
+      "post": {
+        "tags": [
+          "analyzer"
+        ],
+        "summary": "Draft ticket and spike suggestions into a planning batch",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514), decision A5) — mockup 18's\ndrafted-tickets card and **Draft spike ticket**. The suggestions become one ordinary AK draft\nbatch with `planner: analyzer-v1`, each draft's body carrying its evidence line and every\nevidence reference its findings cite; a spike drafts an investigation that states what is\nuncertain and asserts no estimate. The estimator sizes every draft, so the batch's\n`summary.estMinutes` — the card's *est. total* — is real. The standard edit flow and\n`POST /api/v1/analyzer/batches/{id}/push` do the rest.\n\n`owner` or `admin`, audited as `analysis_suggestion.drafted` per suggestion.",
+        "operationId": "draftSuggestions",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftSuggestionsBody"
+              },
+              "example": {
+                "suggestionIds": [
+                  "5eed0067-0000-4000-8000-000000000021",
+                  "5eed0067-0000-4000-8000-000000000014"
+                ],
+                "targetSourceId": "5eed0003-0000-4000-8000-000000000001"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The batch, `drafting` until every draft is sized.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftedSuggestions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`analysis_suggestion_not_found` — no such suggestion in this workspace.\n`planning_source_not_found` — no such ticket source.\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`analysis_suggestion_resolved` — a suggestion is already resolved.\n`planning_target_read_only` — the source cannot take writes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`analysis_suggestion_not_draftable` — a suggestion is applied, not drafted.\n`validation_failed` — the body is malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyzer/batches/{id}/push": {
+      "post": {
+        "tags": [
+          "analyzer"
+        ],
+        "summary": "Push an analyzer-drafted batch to its tracker",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — mockup 18's **Push 4\ntickets to backlog →**: AL.3's push of the batch's **selected** drafts to any write-capable\ntracker. **Idempotent**: a pushed draft is not pushed again, and each create carries the\nSPI's idempotency key, so a retried push makes no duplicate.\n\n`owner` or `admin`, audited as `analyzer.batch_pushed` (subject `draft_batch`).",
+        "operationId": "pushAnalyzerBatch",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The batch."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "What the push did.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanningPushReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`analysis_batch_not_found` — no batch the analyzer drafted has that id here.\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`batch_not_pushable` — the batch cannot be pushed in its state.\n`push_in_progress` — a push of this batch is already running.\n`push_nothing_selected` — no draft is selected.\n`push_target_read_only` — the target source cannot take writes.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/settings/github-token": {
       "get": {
         "tags": [
@@ -15686,7 +16258,8 @@
                   "draft": {
                     "etag": "2f0a7c1d9e4b6a38c5d2e1f0a9b8c7d6e5f4a3b2c1d0e9f8a7b6c5d4e3f2a1b0",
                     "definition": {},
-                    "updatedAt": "2026-09-12T10:00:00.000Z"
+                    "updatedAt": "2026-09-12T10:00:00.000Z",
+                    "changeNote": null
                   },
                   "version": null
                 }
@@ -16477,7 +17050,8 @@
                       "nodes": [],
                       "edges": []
                     },
-                    "updatedAt": "2026-09-12T08:30:00.000Z"
+                    "updatedAt": "2026-09-12T08:30:00.000Z",
+                    "changeNote": null
                   },
                   "version": {
                     "version": 14,
@@ -16746,7 +17320,8 @@
                     "nodes": [],
                     "edges": []
                   },
-                  "updatedAt": "2026-09-12T10:07:31.412Z"
+                  "updatedAt": "2026-09-12T10:07:31.412Z",
+                  "changeNote": null
                 }
               }
             }
@@ -25861,6 +26436,580 @@
           },
           "409": {
             "description": "`farm_pool_in_use` — runners or builds still name this pool. `details` carries both\ncounts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/farm/pool-windows": {
+      "get": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "Time-windowed pool assignments",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — every *\"forge-02 joins\npool-a between 14:00–16:00 UTC on weekdays\"* the workspace has, newest first. Dispatch\noffers a pool's jobs to its own runners and to any runner with an enabled window on that\npool open at the instant of the offer. Every member may read.",
+        "operationId": "listPoolWindows",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The windows.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolWindowList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "Give a runner a time window in a pool",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — a runner joins a pool for\na window of the UTC day, on some weekdays; outside it the runner is in its own pool. The\nBuild Analyzer's pool-move apply composes this route's service; it never writes the farm's\ntables.\n\n**Idempotent.** A window with the same runner, pool and times is the same window: `201`\nwhen this call created it, `200` with the one already there — and no second audit event.\n\n`owner` or `admin`, audited as `runner.pool_window_added` (subject `runner_pool_window`).",
+        "operationId": "addPoolWindow",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePoolWindowBody"
+              },
+              "example": {
+                "runner": "forge-02",
+                "pool": "pool-a",
+                "daysOfWeek": [
+                  1,
+                  2,
+                  3,
+                  4,
+                  5
+                ],
+                "startsAt": "14:00",
+                "endsAt": "16:00"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "An identical window was already there; this is it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolWindow"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The window, created.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PoolWindow"
+                },
+                "example": {
+                  "id": "7f000006-0000-4000-8000-000000000001",
+                  "runner": {
+                    "id": "7f000002-0000-4000-8000-000000000001",
+                    "name": "forge-02"
+                  },
+                  "pool": {
+                    "id": "7f000001-0000-4000-8000-000000000002",
+                    "name": "pool-a"
+                  },
+                  "daysOfWeek": [
+                    1,
+                    2,
+                    3,
+                    4,
+                    5
+                  ],
+                  "startsAt": "14:00",
+                  "endsAt": "16:00",
+                  "enabled": true,
+                  "createdBy": "user_maya",
+                  "createdAt": "2026-10-02T18:00:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`farm_runner_not_found` — no runner by that name.\n`farm_pool_not_found` — no pool by that name.\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`farm_pool_window_unordered` — `endsAt` is not after `startsAt`: a window lies inside one\nUTC day; split one across midnight into two.\n`validation_failed` — a field is missing or malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/farm/pool-windows/{id}": {
+      "delete": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "Remove a time-windowed pool assignment",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — the reversal of adding\none. `owner` or `admin`, audited as `runner.pool_window_removed`.",
+        "operationId": "removePoolWindow",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The window."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`farm_pool_window_not_found` — no such window in this workspace.\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/farm/job-hooks": {
+      "get": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "Job hooks",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — every job the farm\nsubmits on a repository event, newest first. Every member may read.",
+        "operationId": "listJobHooks",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The hooks.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobHookList"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "Register a job hook",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — *\"re-warm ccache right\nafter deps-refresh merges\"*: on every merge into `repo` whose pull-request title contains\n`titleContains` (case-insensitively; every merge when absent), the farm submits `command`\nin `pool`, at the base branch and the merged head commit. Each fired job is an ordinary\nbuild submission, audited as `runner.job_submitted` with no actor and the hook's id.\n\n**Idempotent.** The same repository, pool, event, command and filter is the same hook:\n`201` when created, `200` with the one already there.\n\n`owner` or `admin`, audited as `runner.job_hook_registered` (subject `farm_job_hook`) —\nnever with the command, which is where a pasted token would ride.",
+        "operationId": "registerJobHook",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateJobHookBody"
+              },
+              "example": {
+                "repo": "acme-robotics/helios-firmware",
+                "pool": "pool-a",
+                "event": "merge",
+                "titleContains": "deps-refresh",
+                "label": "post-merge hook",
+                "title": "Re-warm ccache right after deps-refresh merges",
+                "command": [
+                  "west",
+                  "build",
+                  "-t",
+                  "ccache-warm"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "An identical hook was already registered; this is it.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobHook"
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "The hook, registered.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobHook"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`farm_repository_not_found` — this workspace mirrors no such repository.\n`farm_pool_not_found` — no pool by that name.\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a field is missing or malformed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/farm/job-hooks/{id}": {
+      "delete": {
+        "tags": [
+          "farm"
+        ],
+        "summary": "Remove a job hook",
+        "description": "BV.5 ([#514](https://github.com/NobuData/ouroboros/issues/514)) — the reversal of\nregistering one. `owner` or `admin`, audited as `runner.job_hook_removed`.",
+        "operationId": "removeJobHook",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "description": "The hook."
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Removed."
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — the caller is not an `owner` or `admin`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`farm_job_hook_not_found` — no such hook in this workspace.\n`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — the id is not a uuid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -41089,6 +42238,264 @@
           }
         }
       },
+      "SuggestionPreview": {
+        "type": "object",
+        "title": "SuggestionPreview",
+        "description": "What applying a suggestion would change and where (BV.5, #514) — generated from the payload\nApply executes.",
+        "additionalProperties": false,
+        "required": [
+          "suggestionId",
+          "plane",
+          "appliable",
+          "draftable",
+          "summary",
+          "lands",
+          "reason",
+          "change",
+          "studioPath",
+          "fingerprint"
+        ],
+        "properties": {
+          "suggestionId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "plane": {
+            "type": "string",
+            "enum": [
+              "farm_config",
+              "job_hook",
+              "workflow",
+              "test_gate",
+              "planning"
+            ]
+          },
+          "appliable": {
+            "type": "boolean"
+          },
+          "draftable": {
+            "type": "boolean",
+            "description": "A ticket draft or a spike — drafted",
+            "not applied.": null
+          },
+          "summary": {
+            "type": "string",
+            "description": "The concrete change",
+            "as one sentence.": null
+          },
+          "lands": {
+            "type": "string",
+            "description": "Where it lands."
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why it cannot be applied",
+            "when it cannot.": null
+          },
+          "change": {
+            "description": "The exact payload Apply hands the plane; null when nothing would be applied.",
+            "type": [
+              "object",
+              "null"
+            ]
+          },
+          "studioPath": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The studio path a workflow draft opens at."
+          },
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$"
+          }
+        }
+      },
+      "ApplySuggestionBody": {
+        "type": "object",
+        "title": "ApplySuggestionBody",
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint": {
+            "type": "string",
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "description": "The preview's fingerprint, to refuse anything but that plan."
+          }
+        }
+      },
+      "AppliedSuggestion": {
+        "type": "object",
+        "title": "AppliedSuggestion",
+        "additionalProperties": false,
+        "required": [
+          "suggestion",
+          "preview",
+          "target",
+          "eventId",
+          "measurement"
+        ],
+        "properties": {
+          "suggestion": {
+            "$ref": "#/components/schemas/SuggestionResolution"
+          },
+          "preview": {
+            "$ref": "#/components/schemas/SuggestionPreview"
+          },
+          "target": {
+            "type": "object",
+            "description": "Where it landed — `{kind, id, …}`; a workflow draft carries `studioPath`.",
+            "required": [
+              "kind",
+              "id"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "runner_pool_window",
+                  "farm_job_hook",
+                  "workflow_draft"
+                ]
+              },
+              "id": {
+                "type": "string"
+              }
+            }
+          },
+          "eventId": {
+            "type": "string",
+            "format": "uuid",
+            "description": "The `analysis_suggestion.applied` event."
+          },
+          "measurement": {
+            "type": "object",
+            "description": "BU.3's measurement row, frozen at apply.",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "targetMetric",
+              "windowDays",
+              "baseline",
+              "predicted"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "targetMetric": {
+                "type": "string"
+              },
+              "windowDays": {
+                "type": "integer"
+              },
+              "baseline": {
+                "type": "object"
+              },
+              "predicted": {
+                "type": "object"
+              }
+            }
+          }
+        }
+      },
+      "DismissSuggestionBody": {
+        "type": "object",
+        "title": "DismissSuggestionBody",
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        }
+      },
+      "SuggestionResolution": {
+        "type": "object",
+        "title": "SuggestionResolution",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "status",
+          "resolvedAt",
+          "reason"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "applied",
+              "dismissed",
+              "drafted"
+            ]
+          },
+          "resolvedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "DraftSuggestionsBody": {
+        "type": "object",
+        "title": "DraftSuggestionsBody",
+        "additionalProperties": false,
+        "required": [
+          "suggestionIds",
+          "targetSourceId"
+        ],
+        "properties": {
+          "suggestionIds": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 50,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          "targetSourceId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "DraftedSuggestions": {
+        "type": "object",
+        "title": "DraftedSuggestions",
+        "additionalProperties": false,
+        "required": [
+          "batch",
+          "suggestionIds"
+        ],
+        "properties": {
+          "batch": {
+            "$ref": "#/components/schemas/PlanningBatch"
+          },
+          "suggestionIds": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        }
+      },
       "StartAnalysisBody": {
         "type": "object",
         "title": "StartAnalysisBody",
@@ -51252,7 +52659,8 @@
         "required": [
           "etag",
           "definition",
-          "updatedAt"
+          "updatedAt",
+          "changeNote"
         ],
         "properties": {
           "etag": {
@@ -51284,6 +52692,14 @@
             "examples": [
               "2026-09-12T08:30:00.000Z"
             ]
+          },
+          "changeNote": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 500,
+            "description": "The draft's proposed change note (#514) — the Build Analyzer's draft cites the suggestion\nand evidence it came from. Publishing keeps it unless the publisher writes their own;\n`null` when there is none."
           }
         }
       },
@@ -59381,6 +60797,292 @@
                 "type": "integer",
                 "description": "How many `test_runs.parse_warnings` the parse left."
               }
+            }
+          }
+        }
+      },
+      "PoolWindow": {
+        "type": "object",
+        "title": "PoolWindow",
+        "description": "A time-windowed pool assignment (BV.5, #514): a runner joins a pool between two UTC times\non some ISO weekdays.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "runner",
+          "pool",
+          "daysOfWeek",
+          "startsAt",
+          "endsAt",
+          "enabled",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "runner": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "pool": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "daysOfWeek": {
+            "type": "array",
+            "description": "ISO weekdays, 1 = Monday.",
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            }
+          },
+          "startsAt": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "description": "HH:MM, UTC."
+          },
+          "endsAt": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$",
+            "description": "HH:MM, UTC."
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "PoolWindowList": {
+        "type": "array",
+        "title": "PoolWindowList",
+        "items": {
+          "$ref": "#/components/schemas/PoolWindow"
+        }
+      },
+      "CreatePoolWindowBody": {
+        "type": "object",
+        "title": "CreatePoolWindowBody",
+        "additionalProperties": false,
+        "required": [
+          "runner",
+          "pool",
+          "daysOfWeek",
+          "startsAt",
+          "endsAt"
+        ],
+        "properties": {
+          "runner": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The runner",
+            "by name.": null
+          },
+          "pool": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128,
+            "description": "The pool",
+            "by name.": null
+          },
+          "daysOfWeek": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 7,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 7
+            }
+          },
+          "startsAt": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          },
+          "endsAt": {
+            "type": "string",
+            "pattern": "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          }
+        }
+      },
+      "JobHook": {
+        "type": "object",
+        "title": "JobHook",
+        "description": "A job the farm submits on every matching merge into a repository (BV.5,",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "repo",
+          "pool",
+          "event",
+          "titleContains",
+          "label",
+          "title",
+          "command",
+          "enabled",
+          "createdBy",
+          "createdAt"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "repo": {
+            "type": "string",
+            "description": "`owner/name`."
+          },
+          "pool": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "name": {
+                "type": "string"
+              }
+            }
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "merge"
+            ]
+          },
+          "titleContains": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "command": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "JobHookList": {
+        "type": "array",
+        "title": "JobHookList",
+        "items": {
+          "$ref": "#/components/schemas/JobHook"
+        }
+      },
+      "CreateJobHookBody": {
+        "type": "object",
+        "title": "CreateJobHookBody",
+        "additionalProperties": false,
+        "required": [
+          "repo",
+          "pool",
+          "event",
+          "label",
+          "title",
+          "command"
+        ],
+        "properties": {
+          "repo": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 255
+          },
+          "pool": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "merge"
+            ]
+          },
+          "titleContains": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 512
+          },
+          "command": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
             }
           }
         }
