@@ -13,6 +13,7 @@ import type { AnalyzerRepo } from "@/app/analyzer/repo";
 import { trackerOptions } from "@/app/planning/generator";
 import type { PollAnswer } from "@/app/poll";
 
+import { seededMeasurements } from "./analyzer-measurements";
 import { seededSuggestions } from "./analyzer-suggestions";
 import { seededTickets } from "./analyzer-tickets";
 import { writableCatalog } from "./planning";
@@ -449,6 +450,7 @@ export function analyzerPage(over: Partial<AnalyzerPage> = {}): AnalyzerPage {
     duration: seededDuration(),
     suggestions: seededSuggestions(),
     tickets: seededTickets(),
+    measurements: seededMeasurements(),
     ...over,
   };
 }

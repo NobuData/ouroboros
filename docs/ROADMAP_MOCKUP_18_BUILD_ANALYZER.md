@@ -829,7 +829,7 @@ annotated chart — via the #16 tokens (both themes; the mockup is dark-only).
 | BW.2 | #517 ✅ | 🟢 Done | ouroboros-ui: [BW.2] Annotated duration chart | BK.1 TimeSeries + change-point chips/verticals + Details | mvp, analyzer, ui, design | N (after BW.1, BK.1) | Y | M | ouroboros-ui |
 | BW.3 | #518 ✅ | 🟢 Done | ouroboros-ui: [BW.3] Suggestion cards & apply flows | Process + workflow suggestions, previews, dismiss, spike flow | mvp, analyzer, ui, design | N (after BW.1, BV.5) | Y | L | ouroboros-ui |
 | BW.4 | #519 ✅ | 🟢 Done | ouroboros-ui: [BW.4] Drafted-tickets card | Checkbox drafts, evidence, edit, push-to-backlog flow | mvp, analyzer, ui | N (after BW.1, BV.5) | Y | M | ouroboros-ui |
-| BW.5 | #520 | 🟡 Open | ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards | Verdict rows + notes; the three-step explainer with A2 truth | mvp, analyzer, ui, design | N (after BW.1, BV.6) | Y | S | ouroboros-ui |
+| BW.5 | #520 ✅ | 🟢 Done | ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards | Verdict rows + notes; the three-step explainer with A2 truth | mvp, analyzer, ui, design | N (after BW.1, BV.6) | Y | S | ouroboros-ui |
 | BW.6 | #521 | 🟡 Open | ouroboros-ui: [BW.6] Analyzer states & e2e leg | Cold/insufficient-corpus/running states; full-chain e2e | mvp, analyzer, ui, ci | N (after BW.2–BW.5) | Y | M | ouroboros-ui, .github |
 
 ### Issue BW.1 — ouroboros-ui: [BW.1] Analyzer route, head, schedule & meta strip
@@ -1103,7 +1103,7 @@ est. ~1.5 days · [Push 4 tickets to backlog →] ─▶ ✓#621 ✓#622 … (in
 
 ### Issue BW.5 — ouroboros-ui: [BW.5] Predicted-vs-measured & how-it-works cards
 
-> **GitHub issue:** #520 · **Status:** 🟡 Open · **Parent epic:** #504
+> **GitHub issue:** #520 ✅ · **Status:** 🟢 Done · **Parent epic:** #504
 
 - **Problem Statement:** The accountability card (verdict rows, notes,
   the re-measure caption) and the truthful explainer.
@@ -1126,6 +1126,56 @@ est. ~1.5 days · [Push 4 tickets to backlog →] ─▶ ✓#621 ✓#622 … (in
 Test-suite split (Jul 2): predicted −3m40s / measured −3m55s ✓
 ccache warm-up: −1m50s / −1m12s ⚠ "under-delivered — cache model factor → 0.65 ⓘ"
 ```
+
+- **Delivered** (`ouroboros-ui` 0.127.0 `app/analyzer/measurements-card.tsx`,
+  `how-it-works-card.tsx`, `measurements-view.ts`; `ouroboros-rest` 0.38.14, contract only;
+  `tests/e2e` 0.29.0 leg 23). Small enough that nothing needed asking; the calls below are the
+  implementer's.
+  - **The read existed; its shapes did not.** BV.6's `GET /api/v1/analyzer/measurements` is the
+    page's sixth read. Its `baseline`, `predicted` and `measured` were bare objects in the
+    contract, so the generated client knew nothing about them: they are now `MeasurementBaseline`,
+    `MeasurementPrediction` and `MeasurementResult` — what V085 writes, held to it by
+    `measurement.contract.spec.ts`. Additive; no route, field or behaviour changed.
+  - **A miss is a row like any other.** Every measurement is listed, oldest apply first as the
+    mockup orders its pair, with the same name, the same two mono lines and the same weight;
+    only the measured figure's hue and the line under the row differ. Nothing is filtered,
+    collapsed or muted, and a long history scrolls in the rows' own wrapper. The under-delivered
+    row's note is the service's composed sentence — the mockup's — and a miss closed without one
+    still says which way it missed.
+  - **Five treatments.** `delivered`: success hue and `✓`. `under` / `over`: warning hue and the
+    note. `confounded`: neither hue, an outlined `CONFOUNDED` mark, the note, then what
+    interfered. `pending`: `day N of 14` and *measuring queue wait (p95, pool-a) until Oct 17* —
+    the target metric with the statistic and slice its baseline was taken on. Each verdict is
+    also a word a screen reader hears.
+  - **Confounds are resolved on the page.** An interfering application is named by its own row
+    and links to it; an interfering change-point is named by the duration chart's chip for that
+    day — by finding, else by day, since a later analysis re-detects the same shift under a new
+    finding — and links to the chart. One the page no longer holds keeps its date and links
+    nowhere. A pending row already lists what has landed in its window.
+  - **`retrains` opens the recalibration popover**: one plain sentence on what the word means,
+    the formula as the service states it, and each calibration cell — analyzer and impact class,
+    the factor now, and every update with the measurements it added. The sketch above put the
+    factor in the note; the note stays the service's sentence and the factor is here, with what
+    moved it.
+  - **Anchors.** The card's heading answers to `#predicted-vs-measured` — the target BW.3's
+    applied row has linked to since #518 — each row to `#measurement-<id>`, and the chart's
+    heading to `#build-duration`.
+  - **How it works tells the truth about the run.** *01 Ingest* is composed from the newest
+    run's corpus manifest: a class the window held none of says so, and a source the manifest
+    lists as absent is left out of the line and shown under it as *not read*, with the
+    manifest's reason — so a deployment without the rig telemetry export (every live run today)
+    is not told rig telemetry was ingested. The seeded run read all four, which is the mockup's
+    line. The footer links to `docs/SECURITY_MODEL.md` § 6.6 (decision A2 / AD.5), and a test
+    holds the link's anchor to that heading.
+  - **e2e.** Leg 23 gains the seeded pair's parity (the miss in the same face and weight as the
+    delivery, three distinct hues in both palettes), the popover's formula and cells, and the
+    explainer; the apply flow now asserts its measurement appears as a third row and that the
+    applied row's link lands on the card; the re-analysis flow asserts the ingest line stops
+    claiming rig telemetry.
+  - *Not here:* the baseline's and the result's absolute values on the row (the contract now
+    documents them), a link from a row to its suggestion's Details, the dev seed's calibration
+    history being dated the day the seed ran (it goes through the real writer), and the page's
+    cold states and screenshot parity (BW.6).
 
 ### Issue BW.6 — ouroboros-ui: [BW.6] Analyzer states & e2e leg
 
@@ -1318,7 +1368,7 @@ Ordered checklist (⊕ = parallelizable within its phase):
 3. **Phase 2 — Pipeline:** **BV.1 (#510) ✅** ⊕ (→) **BV.2 (#511) ✅** → **BV.3 (#512) ✅** →
    **BV.4 (#513) ✅** → **BV.5 (#514) ✅** → **BV.6 (#515) ✅**
 4. **Phase 3 — UI:** **BW.1 (#516) ✅** → { **BW.2 (#517) ✅** ⊕ **BW.3 (#518) ✅** ⊕ **BW.4 (#519) ✅** ⊕
-   BW.5 (#520) } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
+   **BW.5 (#520) ✅** } → **BW.6 (#521) ✅** *(MVP gate, amending #56)*
 5. **v2:** BX.1 (#522) after AF.2 (#235); BX.2 (#523) ⊕ BX.3 (#524) ⊕
    BX.4 (#525) ⊕ BX.5 (#526) after their dependencies.
 

@@ -9,7 +9,9 @@
  * the suggestion cards (BW.3, [#518](https://github.com/NobuData/ouroboros/issues/518)): the
  * current suggestions with the findings each cites and the calibration behind its impact — and
  * the drafted-tickets card (BW.4, [#519](https://github.com/NobuData/ouroboros/issues/519)): the
- * ticket suggestions nobody has drafted, and the planning batches the rest went into. While a run
+ * ticket suggestions nobody has drafted, and the planning batches the rest went into — and the
+ * measurements every apply opened (BW.5, [#520](https://github.com/NobuData/ouroboros/issues/520)),
+ * with the calibration cells they moved. While a run
  * is in flight, or a drafted batch is still being sized, the hop asks to be polled every
  * {@link RUNNING_POLL_SECONDS} so progress is real; otherwise the family's default interval holds.
  */
@@ -20,6 +22,7 @@ import type {
   AnalysisSuggestions,
   AnalysisTickets,
   DurationChart,
+  Measurements,
 } from "@/app/api/analyzer";
 import { type Poll, type PollOptions, type PollReader, createPoll, requestPayload } from "@/app/poll";
 
@@ -55,6 +58,8 @@ export interface AnalyzerPage {
   readonly suggestions: AnalysisSuggestions;
   /** The drafted-tickets card; both lists empty before an analysis has composed a ticket. */
   readonly tickets: AnalysisTickets;
+  /** Every applied suggestion's measurement, and the calibration; none before a first apply. */
+  readonly measurements: Measurements;
 }
 
 /** One read of the page, as the loop needs it. Replaced wholesale in tests. */
@@ -81,12 +86,13 @@ export function analyzerUrl(repo: string): string {
  *
  * @param value The parsed body.
  * @returns True when it has a repository, a run or `null`, a schedule, a duration chart with its
- *   two lists, the suggestion cards with theirs, and the drafted-tickets card with its two.
+ *   two lists, the suggestion cards with theirs, the drafted-tickets card with its two, and the
+ *   measurements with their rows, their calibration and the formula.
  */
 export function isAnalyzerPage(value: unknown): value is AnalyzerPage {
   if (typeof value !== "object" || value === null) return false;
 
-  const { repo, run, schedule, duration, suggestions, tickets } = value as Partial<
+  const { repo, run, schedule, duration, suggestions, tickets, measurements } = value as Partial<
     Record<keyof AnalyzerPage, unknown>
   >;
 
@@ -97,7 +103,8 @@ export function isAnalyzerPage(value: unknown): value is AnalyzerPage {
     schedule !== null &&
     isDurationChart(duration) &&
     isSuggestions(suggestions) &&
-    isTickets(tickets)
+    isTickets(tickets) &&
+    isMeasurements(measurements)
   );
 }
 
@@ -141,6 +148,21 @@ function isTickets(value: unknown): value is AnalysisTickets {
   const { undrafted, batches } = value as Partial<Record<keyof AnalysisTickets, unknown>>;
 
   return Array.isArray(undrafted) && Array.isArray(batches);
+}
+
+/**
+ * Whether a parsed value is the measurements — enough of them that their card can be drawn.
+ *
+ * @param value The page's `measurements`.
+ * @returns True when it carries a list of measurements, a list of calibration cells and the
+ *   formula as text.
+ */
+function isMeasurements(value: unknown): value is Measurements {
+  if (typeof value !== "object" || value === null) return false;
+
+  const { measurements, calibration, formula } = value as Partial<Record<keyof Measurements, unknown>>;
+
+  return Array.isArray(measurements) && Array.isArray(calibration) && typeof formula === "string";
 }
 
 /**

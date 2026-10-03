@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useState } from "react";
 
 import type { DurationChart } from "@/app/api/analyzer";
 import { TimeSeries } from "@/app/charts";
@@ -9,6 +9,7 @@ import { Card, CardHead, EmptyState, Tag } from "@/app/ui";
 import { useAnalyzer } from "./analyzer-store";
 import { ChangePointSheet } from "./change-point-sheet";
 import {
+  DURATION_ANCHOR,
   DURATION_CAPTION,
   DURATION_TAG,
   MARKERS_LABEL,
@@ -49,7 +50,8 @@ const PLOT_HEIGHT = 180;
  */
 export function DurationCard() {
   const { page } = useAnalyzer();
-  const titleId = useId();
+  // A fixed id rather than `useId`'s: the card is drawn once, and its heading is a link target.
+  const titleId = DURATION_ANCHOR;
   const [opened, setOpened] = useState<string | null>(null);
   const chart = page?.duration ?? null;
   const point = chart?.changePoints.find((candidate) => candidate.id === opened) ?? null;

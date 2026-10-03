@@ -3,11 +3,12 @@
  * BW.1, [#516](https://github.com/NobuData/ouroboros/issues/516); BW.2,
  * [#517](https://github.com/NobuData/ouroboros/issues/517); BW.3,
  * [#518](https://github.com/NobuData/ouroboros/issues/518); BW.4,
- * [#519](https://github.com/NobuData/ouroboros/issues/519)) — the runs mockup 18's head and meta
+ * [#519](https://github.com/NobuData/ouroboros/issues/519); BW.5,
+ * [#520](https://github.com/NobuData/ouroboros/issues/520)) — the runs mockup 18's head and meta
  * strip render, *Run analysis now*, the schedule behind **Schedule: weekly + every 50 builds ▾**,
  * the duration series with the change-points detected on it, the suggestion cards with what a
- * suggestion may be done with — previewed, applied, dismissed, drafted — and the drafted-tickets
- * card with its push.
+ * suggestion may be done with — previewed, applied, dismissed, drafted — the drafted-tickets
+ * card with its push, and the measurements every apply opened, with the calibration they moved.
  *
  * Thin by design, like every module here: one function per operation, the client injectable so a
  * suite can stub `fetch`, and the service's refusals left as `ApiError`s for the caller to word.
@@ -100,6 +101,12 @@ export type AnalysisDraftedTicket = components["schemas"]["AnalysisDraftedTicket
 
 /** What a push did — each selected draft's state, and how many landed this run. */
 export type AnalyzerPushReport = components["schemas"]["PlanningPushReport"];
+
+/** A repository's measurements, its calibration cells and the arithmetic between them. */
+export type Measurements = components["schemas"]["Measurements"];
+
+/** One applied suggestion: predicted and — once its window closes — measured. */
+export type Measurement = components["schemas"]["Measurement"];
 
 /** The analyzer operations. */
 export const analyzer = {
@@ -256,6 +263,20 @@ export const analyzer = {
         body: { suggestionIds: [...suggestionIds], targetSourceId },
       }),
     );
+  },
+
+  /**
+   * `GET /api/v1/analyzer/measurements?repo=` — every applied suggestion's measurement, newest
+   * apply first, with the repository's calibration cells and the formula that moves them.
+   *
+   * @param repo The repository, `owner/name`.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Abandons the request — the poll's deadline.
+   * @returns The measurements; none before a suggestion has been applied.
+   * @throws {ApiError} What the service answered.
+   */
+  async measurements(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<Measurements> {
+    return unwrap(await client.GET("/api/v1/analyzer/measurements", { params: { query: { repo } }, signal }));
   },
 
   /**

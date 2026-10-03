@@ -4,6 +4,7 @@ import { analyzerUrl, isAnalyzerPage, requestAnalyzer, UNREADABLE_ANALYZER } fro
 import { analyzerRepos, chooseRepo } from "@/app/analyzer/repo";
 
 import { ANALYZER_REPOS, HELIOS, analyzerPage, emptyDuration, seededSchedule } from "../helpers/analyzer";
+import { noMeasurements } from "../helpers/analyzer-measurements";
 import { emptySuggestions } from "../helpers/analyzer-suggestions";
 import { emptyTickets } from "../helpers/analyzer-tickets";
 
@@ -67,6 +68,7 @@ describe("isAnalyzerPage", () => {
       schedule: seededSchedule(),
       suggestions: emptySuggestions(),
       tickets: emptyTickets(),
+      measurements: noMeasurements(),
     };
 
     expect(isAnalyzerPage(page)).toBe(false);
@@ -87,6 +89,7 @@ describe("isAnalyzerPage", () => {
       schedule: seededSchedule(),
       duration: emptyDuration(),
       tickets: emptyTickets(),
+      measurements: noMeasurements(),
     };
 
     expect(isAnalyzerPage(page)).toBe(false);
@@ -107,6 +110,7 @@ describe("isAnalyzerPage", () => {
       schedule: seededSchedule(),
       duration: emptyDuration(),
       suggestions: emptySuggestions(),
+      measurements: noMeasurements(),
     };
 
     expect(isAnalyzerPage(page)).toBe(false);
@@ -114,6 +118,29 @@ describe("isAnalyzerPage", () => {
     expect(isAnalyzerPage({ ...page, tickets: { undrafted: [] } })).toBe(false);
     expect(isAnalyzerPage({ ...page, tickets: { undrafted: [], batches: "none" } })).toBe(false);
     expect(isAnalyzerPage({ ...page, tickets: { undrafted: [], batches: [] } })).toBe(true);
+  });
+
+  it("accepts a page with nothing applied — no measurement, no calibration cell", () => {
+    expect(isAnalyzerPage(analyzerPage({ measurements: noMeasurements() }))).toBe(true);
+  });
+
+  it("refuses a page with no measurements, or ones missing their rows, their cells or the formula (#520)", () => {
+    const page = {
+      repo: HELIOS,
+      run: null,
+      schedule: seededSchedule(),
+      duration: emptyDuration(),
+      suggestions: emptySuggestions(),
+      tickets: emptyTickets(),
+    };
+
+    expect(isAnalyzerPage(page)).toBe(false);
+    expect(isAnalyzerPage({ ...page, measurements: null })).toBe(false);
+    expect(isAnalyzerPage({ ...page, measurements: { measurements: [], calibration: [] } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, measurements: { measurements: [], formula: "f" } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, measurements: { measurements: "none", calibration: [], formula: "f" } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, measurements: { measurements: [], calibration: [], formula: 4 } })).toBe(false);
+    expect(isAnalyzerPage({ ...page, measurements: { measurements: [], calibration: [], formula: "f" } })).toBe(true);
   });
 });
 
