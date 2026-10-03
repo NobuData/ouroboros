@@ -1129,6 +1129,15 @@ export interface Configuration {
    * `false` when unset, the self-hosted default: the card then says *enroll a runner*.
    */
   readonly hostedRunnerPool: boolean;
+  /**
+   * Where this deployment keeps its data, as the operator names it — `OURO_DATA_REGION`, such as
+   * `eu-central-1` or `on-prem/frankfurt` (BQ.4, #483, decision S6). `undefined` when unset, and
+   * the Settings workspace card then says `self-hosted` rather than guessing a region.
+   *
+   * It is a label and nothing more: this service runs in one place, chosen when it was deployed,
+   * so the value describes that choice and cannot make one.
+   */
+  readonly dataRegion?: string;
 }
 
 /**
@@ -1203,7 +1212,14 @@ export const VARIABLES = {
   managedKeyPool: "OURO_MANAGED_KEY_POOL",
   managedKeyTrialCents: "OURO_MANAGED_KEY_TRIAL_CENTS",
   hostedRunnerPool: "OURO_HOSTED_RUNNER_POOL",
+  dataRegion: "OURO_DATA_REGION",
 } as const satisfies Record<keyof Configuration, string>;
+
+/**
+ * A region label: a letter or digit, then up to 63 letters, digits and `. _ : / ( ) -`. No
+ * whitespace, because the value lives in an env file that shells source unquoted.
+ */
+export const DATA_REGION_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:/()-]{0,63}$/;
 
 /**
  * A bare email address: one `@`, no spaces, no display name. `OURO_MAIL_FROM` is written into
@@ -1874,6 +1890,13 @@ const environmentShape = z.object({
     .optional(),
   OURO_HOSTED_RUNNER_POOL: capabilityFlag(),
 
+  // Where this deployment keeps its data (BQ.4, #483). Optional: unset, the workspace card says
+  // `self-hosted` — a deployment is never told it lives in a region nobody named.
+  OURO_DATA_REGION: z
+    .string()
+    .regex(DATA_REGION_PATTERN, "expected a region label without spaces, such as eu-central-1")
+    .optional(),
+
   // Where this deployment's local model providers are (#224, decision P3) — `kind=url`
   // pairs, comma-separated. Optional, and its default is *no local providers*: an
   // installation that runs none is the normal one, and a default address would be this
@@ -2115,6 +2138,7 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     managedKeyPool: values.OURO_MANAGED_KEY_POOL,
     managedKeyTrialCents: values.OURO_MANAGED_KEY_TRIAL_CENTS,
     hostedRunnerPool: values.OURO_HOSTED_RUNNER_POOL,
+    dataRegion: values.OURO_DATA_REGION,
   });
 }
 

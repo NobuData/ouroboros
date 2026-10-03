@@ -425,6 +425,14 @@ export const WORKSPACE_RESTORED_EVENT = "workspace.restored";
 export const WORKSPACE_PURGED_EVENT = "workspace.purged";
 
 /**
+ * An administrator saved the Settings workspace card's name or tenant domain (BQ.4,
+ * [#483](https://github.com/NobuData/ouroboros/issues/483)). Subject `workspace`; the detail names
+ * the changed `fields` and each changed field's new and previous value. A save that changes
+ * nothing writes no event.
+ */
+export const WORKSPACE_UPDATED_EVENT = "workspace.updated";
+
+/**
  * A runner was given a time-windowed pool assignment — *"forge-02 joins pool-a between
  * 14:00–16:00 UTC on weekdays"* (BV.5, [#514](https://github.com/NobuData/ouroboros/issues/514)).
  * Subject `runner_pool_window`; the detail names the runner, the pool, the days and the window.
@@ -535,6 +543,7 @@ export const AUDIT_ACTIONS = [
   WORKSPACE_DELETE_REQUESTED_EVENT,
   WORKSPACE_RESTORED_EVENT,
   WORKSPACE_PURGED_EVENT,
+  WORKSPACE_UPDATED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

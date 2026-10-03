@@ -1292,3 +1292,24 @@ describe("the deployment capability flags (BB.5, #388, decision O6)", () => {
     },
   );
 });
+
+describe("the deployment's data region (BQ.4, #483, decision S6)", () => {
+  it("is undefined when unset, so nothing claims a region nobody named", () => {
+    expect(loadConfiguration(testEnvironment()).dataRegion).toBeUndefined();
+  });
+
+  it.each(["eu-central-1", "on-prem/frankfurt", "EU-West(Frankfurt)", "us_east:2"])(
+    "reads %s as the label, unchanged",
+    (value) => {
+      expect(loadConfiguration(testEnvironment({ OURO_DATA_REGION: value })).dataRegion).toBe(
+        value,
+      );
+    },
+  );
+
+  it.each(["EU West", "-eu", "eu;rm", "a".repeat(65)])("rejects %s", (value) => {
+    expect(failureFor(testEnvironment({ OURO_DATA_REGION: value }))).toContain(
+      "OURO_DATA_REGION: expected a region label without spaces",
+    );
+  });
+});

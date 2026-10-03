@@ -1648,7 +1648,7 @@ the blockquote above that records what it did and what it did differently.
 | # | Ref | Issue | Work item | Module | Cx | Blocked by |
 |--:|-----|:-----:|-----------|--------|:--:|------------|
 | 361 | **BR.5** | ✅ [#489](https://github.com/NobuData/ouroboros/issues/489) | Workspace lifecycle — pause, disconnect, delete | ouroboros-rest | L | AD.1 |
-| 362 | **BQ.4** | [#483](https://github.com/NobuData/ouroboros/issues/483) | Workspace config & deployment truth | ouroboros-rest | S | B.3, AD.5 |
+| 362 | **BQ.4** | ✅ [#483](https://github.com/NobuData/ouroboros/issues/483) | Workspace config & deployment truth | ouroboros-rest | S | B.3, AD.5 |
 | 363 | **BR.1** | [#485](https://github.com/NobuData/ouroboros/issues/485) | Members, capabilities & service accounts | ouroboros-rest, ouroboros-db | L | A.5, AD.1 |
 | 364 | **BQ.1** | [#480](https://github.com/NobuData/ouroboros/issues/480) | Versioned org-policy document schema | ouroboros-db | M | B.3, P.2 |
 | 365 | **BM.1** | [#457](https://github.com/NobuData/ouroboros/issues/457) | Decision items & kind registry schema | ouroboros-db | M | AO.1, AW.1, BE.2 |

@@ -16,6 +16,7 @@ import {
   WORKSPACE_PURGED_EVENT,
   WORKSPACE_RESTORED_EVENT,
   WORKSPACE_RESUMED_EVENT,
+  WORKSPACE_UPDATED_EVENT,
   auditDetail,
   GITHUB_TOKEN_CLEARED_EVENT,
   RUNNER_CERT_RENEWED_EVENT,
@@ -171,6 +172,7 @@ describe("the vocabulary", () => {
       "workspace.delete_requested",
       "workspace.restored",
       "workspace.purged",
+      "workspace.updated",
     ]);
   });
 
@@ -282,6 +284,7 @@ describe("the vocabulary", () => {
       WORKSPACE_DELETE_REQUESTED_EVENT,
       WORKSPACE_RESTORED_EVENT,
       WORKSPACE_PURGED_EVENT,
+      WORKSPACE_UPDATED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);
