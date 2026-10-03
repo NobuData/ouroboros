@@ -1,0 +1,395 @@
+/*
+ * The Build Analyzer (#516) — mockup 18's page frame, head, run progress, meta strip and schedule
+ * editor.
+ *
+ * The mockup is docs/mockups/18-build-analyzer.html over docs/mockups/assets/ouroboros.css. What
+ * is taken from it is the anatomy every module page has (docs/DESIGN_SYSTEM_APP_SHELL.md § 2):
+ * page head, then the twelve-column card grid, at the pane's own measure. What is not taken is
+ * its topbar — this page renders inside the app shell and adds no fixed or sticky chrome.
+ *
+ * Held to the two rules every sheet here is (docs/CONVENTIONS.md § 6): every colour is a token
+ * from app/tokens.css, which makes both palettes one sheet, and every length that should follow
+ * the reader's font-size preference is rem, which makes the 125% step correct (CQ.1).
+ */
+
+/* ---------- the page frame ---------- */
+
+.analyzer {
+  padding: var(--sp-11) var(--sp-10) var(--sp-12);
+}
+
+.analyzer__head {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-8);
+  margin-bottom: var(--sp-10);
+}
+
+/* The floor keeps the composed headline from being squeezed beside the actions. */
+.analyzer__headings {
+  flex: 1;
+  min-width: 20rem;
+}
+
+.analyzer__title {
+  font-size: var(--t-2xl);
+  letter-spacing: var(--tr-tight);
+  text-wrap: balance;
+  font-variant-numeric: tabular-nums;
+}
+
+.analyzer__sub {
+  max-width: 64ch;
+  margin: var(--sp-2) 0 0;
+  color: var(--ink-mut);
+  line-height: var(--lh-body);
+}
+
+.analyzer__hint {
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-faint);
+  font-size: var(--t-xs);
+}
+
+.analyzer__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-6);
+}
+
+/* The mockup's `.grid`: twelve columns; the strip and the progress panel span them all. */
+.analyzer__grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: var(--sp-8);
+}
+
+.analyzer__grid > * {
+  grid-column: span 12;
+}
+
+/* ---------- the meta strip ---------- */
+
+.analyzer-strip {
+  padding: var(--sp-6) var(--sp-9);
+}
+
+.analyzer-strip__empty {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+.analyzer-strip__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4) var(--sp-9);
+  margin: 0;
+}
+
+.analyzer-strip__slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* The mockup's `.lbl`: faint uppercase mono. */
+.analyzer-strip__label {
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+/* The mockup's `.val`: dim mono. */
+.analyzer-strip__value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+  margin: 0;
+  color: var(--ink-dim);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A partly read corpus says so in the warning hue — never counts presented as exhaustive. */
+.analyzer-strip__sampled {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+/* The provenance and confidence values are buttons that open their popovers. */
+.analyzer-strip__provenance,
+.analyzer-strip__confidence {
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  cursor: pointer;
+}
+
+.analyzer-strip__provenance:hover,
+.analyzer-strip__confidence:hover {
+  border-color: var(--line-strong);
+}
+
+/* The model pill — drawn only beside an analyzer of kind `llm` (decision A3). */
+.analyzer-strip__model {
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--model-line);
+  border-radius: var(--r-pill);
+  background: var(--model-tint);
+  color: var(--model);
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+}
+
+/* ---------- the strip's popovers ---------- */
+
+.analyzer-pop {
+  position: relative;
+  display: inline-flex;
+}
+
+.analyzer-pop__panel {
+  position: absolute;
+  top: calc(100% + var(--sp-2));
+  left: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  width: 26rem;
+  max-width: 80vw;
+  padding: var(--sp-6);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  background: var(--raised);
+  color: var(--ink);
+  font-family: var(--f-ui);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.analyzer-pop__title {
+  font-weight: 600;
+}
+
+.analyzer-pop__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.analyzer-pop__item,
+.analyzer-pop__text {
+  color: var(--ink-mut);
+}
+
+.analyzer-pop__mono {
+  color: var(--ink);
+  font-family: var(--f-mono);
+}
+
+/* ---------- run progress ---------- */
+
+.analyzer-progress {
+  padding: var(--sp-8) var(--sp-9);
+}
+
+.analyzer-progress__title {
+  margin: 0 0 var(--sp-6);
+  font-size: var(--t-md);
+}
+
+.analyzer-progress__phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-4) var(--sp-8);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--f-mono);
+  font-size: var(--t-xs);
+  letter-spacing: var(--tr-wide);
+  text-transform: uppercase;
+}
+
+.analyzer-progress__phase {
+  padding-left: var(--sp-4);
+  border-left: 1px solid var(--line);
+}
+
+.analyzer-progress__phase--done {
+  border-left-color: var(--ok-line);
+  color: var(--ok);
+}
+
+.analyzer-progress__phase--current {
+  border-left-color: var(--accent-line);
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.analyzer-progress__phase--waiting {
+  color: var(--ink-faint);
+}
+
+.analyzer-progress__analyzers {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(18rem, 1fr));
+  gap: var(--sp-2) var(--sp-8);
+  margin: var(--sp-6) 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+.analyzer-progress__id {
+  color: var(--ink);
+  font-family: var(--f-mono);
+}
+
+.analyzer-progress__status {
+  margin: var(--sp-6) 0 0;
+  padding: var(--sp-4) var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  font-size: var(--t-sm);
+}
+
+.analyzer-progress__status--running {
+  color: var(--ink-dim);
+}
+
+.analyzer-progress__status--complete {
+  border-color: var(--ok-line);
+  background: var(--ok-tint);
+  color: var(--ok);
+}
+
+/* Budget reached: findings kept, so a warning — not the failure's error hue. */
+.analyzer-progress__status--budget {
+  border-color: var(--warn-line);
+  background: var(--warn-tint);
+  color: var(--warn);
+}
+
+.analyzer-progress__status--failed {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+  color: var(--err);
+}
+
+/* ---------- the concurrent-run state and a refused start ---------- */
+
+.analyzer-busy,
+.analyzer-refusal {
+  margin: 0;
+  padding: var(--sp-5) var(--sp-8);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-md);
+  background: var(--warn-tint);
+  color: var(--ink);
+  font-size: var(--t-sm);
+}
+
+.analyzer-refusal {
+  border-color: var(--err-line);
+  background: var(--err-tint);
+}
+
+.analyzer-busy__link {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+/* ---------- the schedule editor ---------- */
+
+.analyzer-schedule {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-8);
+}
+
+.analyzer-schedule__note,
+.analyzer-schedule__counter {
+  margin: 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+}
+
+.analyzer-schedule__switch {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  font-size: var(--t-sm);
+}
+
+.analyzer-schedule__group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  margin: 0;
+  padding: var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+
+.analyzer-schedule__legend {
+  padding: 0 var(--sp-2);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-widest);
+  text-transform: uppercase;
+}
+
+.analyzer-schedule__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(12rem, 1fr));
+  gap: var(--sp-5);
+}
+
+.analyzer-schedule__stepper {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-3);
+}
+
+.analyzer-schedule__error {
+  margin: 0;
+  color: var(--err);
+  font-size: var(--t-sm);
+}
+
+.analyzer-schedule__actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ---------- a narrow pane ---------- */
+
+@media (max-width: 40rem) {
+  .analyzer {
+    padding: var(--sp-8) var(--sp-6) var(--sp-10);
+  }
+
+  .analyzer__headings {
+    min-width: 0;
+  }
+}

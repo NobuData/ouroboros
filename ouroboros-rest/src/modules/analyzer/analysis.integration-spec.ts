@@ -191,6 +191,77 @@ describe("Build Analyzer orchestration", () => {
     expect(response.body).toEqual({ run: null });
   });
 
+  it("round-trips the schedule over the API, keeping the live counter, and lets only an administrator save", async () => {
+    const path = `/api/v1/analyzer/schedule?repo=${encodeURIComponent(REPO)}`;
+    const member = await api.signIn();
+    await api.join(workspace.id, member, "member");
+    const body = {
+      repo: REPO,
+      enabled: true,
+      weeklyEnabled: true,
+      weeklyDay: 1,
+      weeklyTime: "06:00",
+      everyNBuilds: 50,
+      maxBuilds: 2000,
+      maxLogLines: 1_230_000,
+      computeCeilingSeconds: 3600,
+    };
+
+    const before = await api.as(member)("get", path).set(TENANT_HEADER, workspace.slug).expect(200);
+    expect(before.body).toMatchObject({ saved: false, everyNBuilds: null, maxLogLines: 5_000_000 });
+
+    await api
+      .as(member)("put", "/api/v1/analyzer/schedule")
+      .set(TENANT_HEADER, workspace.slug)
+      .send(body)
+      .expect(403);
+
+    await api
+      .as(owner)("put", "/api/v1/analyzer/schedule")
+      .set(TENANT_HEADER, workspace.slug)
+      .send({ ...body, weeklyDay: null })
+      .expect(422);
+
+    await api
+      .as(owner)("put", "/api/v1/analyzer/schedule")
+      .set(TENANT_HEADER, workspace.slug)
+      .send(body)
+      .expect(200);
+    await api.sql.query(
+      `update ${SCHEMA_NAME}.analysis_schedules set build_counter = 12
+        where organization_id = $1 and repo_ref = $2`,
+      [workspace.id, REPO],
+    );
+    const resaved = await api
+      .as(owner)("put", "/api/v1/analyzer/schedule")
+      .set(TENANT_HEADER, workspace.slug)
+      .send({ ...body, weeklyEnabled: false, everyNBuilds: 25 })
+      .expect(200);
+    expect(resaved.body).toMatchObject({ weeklyDay: 1, weeklyTime: "06:00", buildCounter: 12 });
+
+    const after = await api.as(member)("get", path).set(TENANT_HEADER, workspace.slug).expect(200);
+    expect(after.body).toEqual({
+      repo: REPO,
+      saved: true,
+      enabled: true,
+      weeklyEnabled: false,
+      weeklyDay: 1,
+      weeklyTime: "06:00",
+      everyNBuilds: 25,
+      buildCounter: 12,
+      maxBuilds: 2000,
+      maxLogLines: 1_230_000,
+      computeCeilingSeconds: 3600,
+    });
+
+    const { rows } = await api.sql.query<{ n: string }>(
+      `select count(*)::text as n from ${SCHEMA_NAME}.audit_events
+        where organization_id = $1 and action = 'analyzer.schedule_updated'`,
+      [workspace.id],
+    );
+    expect(rows[0].n).toBe("2");
+  });
+
   it("reaps a run abandoned past its ceiling, and leaves a fresh one running", async () => {
     await schedule(null);
     const runs = api.nest.get(AnalysisRepository);

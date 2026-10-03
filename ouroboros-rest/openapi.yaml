@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.9"
+  version: "0.38.10"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -8570,6 +8570,16 @@ paths:
                     - source: rig_telemetry
                       reason: Rig/HIL telemetry export (AJ.4, #266) is not available in this deployment.
                   analyzers: { completed: [change_point], skipped: [], failed: [], notRun: [] }
+                  confidence:
+                    level: high
+                    windowDays: 90
+                    builds: 1284
+                    daysWithBuilds: 90
+                    coverage: 1
+                    perDay: 14.2667
+                    rule:
+                      high: { coverage: 0.9, perDay: 5 }
+                      medium: { coverage: 0.6, perDay: 1 }
                 analyzerSet:
                   label: deterministic analyzers v1
                   analyzers:
@@ -8608,6 +8618,174 @@ paths:
         "422":
           description: |-
             `validation_failed` — `id` is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/analyzer/schedule:
+    get:
+      tags: [analyzer]
+      summary: A repository's analysis schedule and live build counter
+      description: |-
+        BW.1 ([#516](https://github.com/NobuData/ouroboros/issues/516)) — mockup 18's **Schedule:
+        weekly + every 50 builds ▾**: the weekly slot (ISO weekday and `HH:MM`, UTC), the
+        every-N-builds threshold with `buildCounter`, the builds finished since that trigger last
+        fired, and the budgets every run of the repository is held to. A repository with no saved
+        schedule answers V080's defaults with `saved: false` (every trigger off; `2000` builds ·
+        `5000000` log lines · `3600` s). Every member, a `viewer` included.
+      operationId: getAnalysisSchedule
+      parameters:
+        - name: repo
+          in: query
+          required: true
+          description: The repository, `owner/name`.
+          schema:
+            type: string
+            minLength: 3
+            maxLength: 255
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The schedule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisSchedule"
+              example:
+                repo: acme-robotics/helios-firmware
+                saved: true
+                enabled: true
+                weeklyEnabled: true
+                weeklyDay: 1
+                weeklyTime: "06:00"
+                everyNBuilds: 50
+                buildCounter: 12
+                maxBuilds: 2000
+                maxLogLines: 1230000
+                computeCeilingSeconds: 3600
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `analysis_repository_not_found` — this workspace has no such repository.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — `repo` is missing or not `owner/name`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    put:
+      tags: [analyzer]
+      summary: Save a repository's analysis schedule
+      description: |-
+        BW.1 ([#516](https://github.com/NobuData/ouroboros/issues/516)) — the schedule editor's
+        save: the **whole** configuration, every field stated. The weekly slot is required while
+        the weekly trigger is on and kept (so the picker remembers it) while it is off;
+        `everyNBuilds` is at least `1`, or `null` for off; every budget is at least `1`. The live
+        `buildCounter` is never changed by a save.
+
+        **`owner` or `admin`**, audited as `analyzer.schedule_updated` (subject
+        `analysis_schedule`, the saved values in the detail).
+      operationId: putAnalysisSchedule
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PutAnalysisScheduleBody"
+            example:
+              repo: acme-robotics/helios-firmware
+              enabled: true
+              weeklyEnabled: true
+              weeklyDay: 1
+              weeklyTime: "06:00"
+              everyNBuilds: 50
+              maxBuilds: 2000
+              maxLogLines: 1230000
+              computeCeilingSeconds: 3600
+      responses:
+        "200":
+          description: The saved schedule.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AnalysisSchedule"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — the caller is not an `owner` or `admin`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `analysis_repository_not_found` — this workspace has no such repository.
+            `tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a
+            member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a field is missing or out of range: `repo` not `owner/name`, a
+            weekday outside 1–7 or a time not `HH:MM` (or either missing while `weeklyEnabled`),
+            `everyNBuilds` below 1, a budget below 1. `details` names each field.
           content:
             application/json:
               schema:
@@ -36112,7 +36290,7 @@ components:
         312 loops · 90 days · 4.1M log lines · 62 HIL sessions` — with the per-source sampling
         record, the budget the run was assembled under, the duration series' job label, the
         sources the corpus lacks and, once the run has ended, which analyzers completed.
-      required: [window, counts, sources, budget, durationLabel, absent, analyzers]
+      required: [window, counts, sources, budget, durationLabel, absent, analyzers, confidence]
       properties:
         window:
           type: object
@@ -36205,6 +36383,167 @@ components:
               type: array
               items:
                 type: string
+        confidence:
+          description: |-
+            What produced the confidence note (#516); null on a run with no note, or one finished
+            before the basis was recorded.
+          oneOf:
+            - $ref: "#/components/schemas/AnalysisConfidenceBasis"
+            - type: "null"
+    AnalysisSchedule:
+      type: object
+      title: AnalysisSchedule
+      additionalProperties: false
+      description: |-
+        A repository's Build Analyzer schedule (#506, #516) — the triggers, the live every-N
+        counter and the budgets. `saved: false` means none was ever saved and these are V080's
+        defaults.
+      required:
+        [
+          repo,
+          saved,
+          enabled,
+          weeklyEnabled,
+          weeklyDay,
+          weeklyTime,
+          everyNBuilds,
+          buildCounter,
+          maxBuilds,
+          maxLogLines,
+          computeCeilingSeconds,
+        ]
+      properties:
+        repo:
+          type: string
+        saved:
+          type: boolean
+        enabled:
+          type: boolean
+          description: The master switch; off, no scheduled run starts. Manual runs still may.
+        weeklyEnabled:
+          type: boolean
+        weeklyDay:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 7
+          description: ISO day of week, 1 = Monday … 7 = Sunday.
+        weeklyTime:
+          type: [string, "null"]
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          description: Time of day, `HH:MM`, UTC.
+        everyNBuilds:
+          type: [integer, "null"]
+          minimum: 1
+          description: Run every this many finished builds; null when that trigger is off.
+        buildCounter:
+          type: integer
+          minimum: 0
+          description: Builds finished since the every-N trigger last fired.
+        maxBuilds:
+          type: integer
+          minimum: 1
+        maxLogLines:
+          type: integer
+          minimum: 1
+        computeCeilingSeconds:
+          type: integer
+          minimum: 1
+    PutAnalysisScheduleBody:
+      type: object
+      title: PutAnalysisScheduleBody
+      additionalProperties: false
+      description: The schedule editor's save (#516) — the whole configuration.
+      required:
+        [
+          repo,
+          enabled,
+          weeklyEnabled,
+          weeklyDay,
+          weeklyTime,
+          everyNBuilds,
+          maxBuilds,
+          maxLogLines,
+          computeCeilingSeconds,
+        ]
+      properties:
+        repo:
+          type: string
+          minLength: 3
+          maxLength: 255
+        enabled:
+          type: boolean
+        weeklyEnabled:
+          type: boolean
+        weeklyDay:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 7
+        weeklyTime:
+          type: [string, "null"]
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+        everyNBuilds:
+          type: [integer, "null"]
+          minimum: 1
+          maximum: 2147483647
+        maxBuilds:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+        maxLogLines:
+          type: integer
+          minimum: 1
+          maximum: 9007199254740991
+        computeCeilingSeconds:
+          type: integer
+          minimum: 1
+          maximum: 2147483647
+    AnalysisConfidenceThreshold:
+      type: object
+      title: AnalysisConfidenceThreshold
+      additionalProperties: false
+      required: [coverage, perDay]
+      properties:
+        coverage:
+          type: number
+          description: The share of the window's days that must have a build.
+        perDay:
+          type: number
+          description: The builds a day, on average, the level needs.
+    AnalysisConfidenceBasis:
+      type: object
+      title: AnalysisConfidenceBasis
+      additionalProperties: false
+      description: |-
+        What produced the run's confidence note (#516): the level reached, the inputs, the ratios
+        (rounded to four places) and the rule they were judged against — **high** needs both of
+        `rule.high`, **medium** both of `rule.medium`, anything thinner is **low**.
+      required: [level, windowDays, builds, daysWithBuilds, coverage, perDay, rule]
+      properties:
+        level:
+          type: string
+          enum: [high, medium, low]
+        windowDays:
+          type: integer
+          minimum: 1
+        builds:
+          type: integer
+          minimum: 0
+        daysWithBuilds:
+          type: integer
+          minimum: 0
+        coverage:
+          type: number
+        perDay:
+          type: number
+        rule:
+          type: object
+          additionalProperties: false
+          required: [high, medium]
+          properties:
+            high:
+              $ref: "#/components/schemas/AnalysisConfidenceThreshold"
+            medium:
+              $ref: "#/components/schemas/AnalysisConfidenceThreshold"
     AnalysisRun:
       type: object
       title: AnalysisRun

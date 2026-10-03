@@ -20,10 +20,10 @@ import { FARM_ACTIONS, FARM_EYEBROW, FARM_SUBLINE, SOON_MARK, farmHeadline } fro
  * how it degrades is `farmHeadline`'s (`app/farm/view.ts`). That is the one reason this is a
  * Client Component — it decides nothing itself.
  *
- * **The actions are honest.** One of the three has nothing to open yet, so it is an inert button
- * carrying a *soon* mark, and its tooltip names the issue that builds its destination
- * (`FARM_ACTIONS`). **✦ Build Analyzer** is a link to a page that does not exist in the mockup;
- * here it navigates nowhere.
+ * **✦ Build Analyzer links** to the analyzer (BW.1,
+ * [#516](https://github.com/NobuData/ouroboros/issues/516)), which mounts under this page's
+ * sidebar entry. An action that is not built yet would still be an inert button carrying a *soon*
+ * mark, its tooltip naming the issue that builds it (`FARM_ACTIONS`).
  *
  * **Pool settings acts** (AI.4, [#259](https://github.com/NobuData/ouroboros/issues/259)): it
  * opens the pool configuration sheet — the one the pools card's `Configure →` opens, held by
@@ -69,7 +69,11 @@ export function FarmHead({ mayAdminister = false }: Readonly<{ mayAdminister?: b
           </Button>
         )}
         {FARM_ACTIONS.map((action) =>
-          action.id === "pools" ? (
+          action.href !== null ? (
+            <Button href={action.href} key={action.id} tone={action.tone}>
+              {action.label}
+            </Button>
+          ) : action.id === "pools" ? (
             <Button
               key={action.id}
               onClick={openSheet}

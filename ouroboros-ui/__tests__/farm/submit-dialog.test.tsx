@@ -533,7 +533,8 @@ describe("the toast", () => {
     const { container } = draw();
     await submitted();
 
-    expect(container.querySelector("a")).toBeNull();
+    // The head's ✦ Build Analyzer (#516) is the screen's one link, and not the toast's.
+    expect(container.querySelector('a:not([href="/analyzer"])')).toBeNull();
   });
 });
 

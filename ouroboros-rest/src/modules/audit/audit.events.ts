@@ -67,6 +67,7 @@ export type AuditSubjectType =
   | "repository"
   | "org_policy"
   | "analysis_run"
+  | "analysis_schedule"
   | "runner_pool_window"
   | "farm_job_hook"
   | "analysis_suggestion"
@@ -393,6 +394,15 @@ export const POLICY_DRY_RUN_CHANGED_EVENT = "policy.dry_run_changed";
 export const ANALYZER_RUN_REQUESTED_EVENT = "analyzer.run_requested";
 
 /**
+ * An administrator saved a repository's Build Analyzer schedule — the weekly slot, the every-N
+ * threshold and the budgets every run is held to (BW.1,
+ * [#516](https://github.com/NobuData/ouroboros/issues/516)). Subject `analysis_schedule`; the
+ * detail carries the repository and the saved values. The live build counter is not part of it:
+ * a save never changes it.
+ */
+export const ANALYZER_SCHEDULE_UPDATED_EVENT = "analyzer.schedule_updated";
+
+/**
  * A runner was given a time-windowed pool assignment — *"forge-02 joins pool-a between
  * 14:00–16:00 UTC on weekdays"* (BV.5, [#514](https://github.com/NobuData/ouroboros/issues/514)).
  * Subject `runner_pool_window`; the detail names the runner, the pool, the days and the window.
@@ -496,6 +506,7 @@ export const AUDIT_ACTIONS = [
   ANALYSIS_SUGGESTION_DISMISSED_EVENT,
   ANALYSIS_SUGGESTION_DRAFTED_EVENT,
   ANALYZER_BATCH_PUSHED_EVENT,
+  ANALYZER_SCHEDULE_UPDATED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

@@ -95,6 +95,11 @@ export interface CorpusManifest {
   absent?: AbsentSource[];
   /** Set when the run ends: which analyzers completed and which did not. */
   analyzers?: ManifestAnalyzers;
+  /**
+   * Set when the run ends with a confidence note (#516): what produced it. Optional because a run
+   * that failed has no note, and one written before #516 carries no basis.
+   */
+  confidence?: ConfidenceBasis;
 }
 
 /**
@@ -170,8 +175,55 @@ export interface StabilityInput {
   daysWithBuilds: number;
 }
 
+/** The three confidence levels, strongest first. */
+export type ConfidenceLevel = "high" | "medium" | "low";
+
+/** One level's bar: the share of the window's days with a build, and the builds a day. */
+export interface ConfidenceThreshold {
+  coverage: number;
+  per_day: number;
+}
+
 /**
- * The strip's `Confidence: high — 90d of stable telemetry`, computed.
+ * The rule {@link confidenceNote} applies, as data — stored with every basis so a reader of an old
+ * run sees the bar it was judged against, not today's.
+ */
+export const CONFIDENCE_RULE: Readonly<
+  Record<Exclude<ConfidenceLevel, "low">, ConfidenceThreshold>
+> = Object.freeze({
+  high: Object.freeze({ coverage: 0.9, per_day: 5 }),
+  medium: Object.freeze({ coverage: 0.6, per_day: 1 }),
+});
+
+/**
+ * What produced a run's confidence note — stored in the manifest under `confidence` (BW.1,
+ * [#516](https://github.com/NobuData/ouroboros/issues/516)) so the strip's popover shows the
+ * computed basis rather than a label nobody can interrogate.
+ */
+export interface ConfidenceBasis {
+  level: ConfidenceLevel;
+  window_days: number;
+  builds: number;
+  days_with_builds: number;
+  /** `days_with_builds ÷ window_days`, rounded to four places. */
+  coverage: number;
+  /** `builds ÷ window_days`, rounded to four places. */
+  per_day: number;
+  rule: { high: ConfidenceThreshold; medium: ConfidenceThreshold };
+}
+
+/**
+ * Round a ratio to four places — enough to compare against a two-place threshold honestly.
+ *
+ * @param value - The ratio.
+ * @returns It, rounded.
+ */
+function ratio(value: number): number {
+  return Math.round(value * 10_000) / 10_000;
+}
+
+/**
+ * The corpus-stability judgement, with its inputs.
  *
  * The rule is deliberately simple and stated here, because the note is shown beside every finding
  * and a reader must be able to check it:
@@ -180,6 +232,39 @@ export interface StabilityInput {
  *   * **medium** — builds on at least 60 % of the days and at least one a day on average;
  *   * **low** — anything thinner.
  *
+ * The comparison uses the unrounded ratios; the stored `coverage` and `per_day` are rounded for
+ * reading only.
+ *
+ * @param input - The window, its build count and how many of its days had builds.
+ * @returns The level reached, the inputs and ratios, and the rule applied.
+ */
+export function confidenceBasis(input: StabilityInput): ConfidenceBasis {
+  const { window, builds, daysWithBuilds } = input;
+  const coverage = daysWithBuilds / window.days;
+  const perDay = builds / window.days;
+  const meets = (bar: ConfidenceThreshold): boolean =>
+    coverage >= bar.coverage && perDay >= bar.per_day;
+
+  const level: ConfidenceLevel = meets(CONFIDENCE_RULE.high)
+    ? "high"
+    : meets(CONFIDENCE_RULE.medium)
+      ? "medium"
+      : "low";
+
+  return {
+    level,
+    window_days: window.days,
+    builds,
+    days_with_builds: daysWithBuilds,
+    coverage: ratio(coverage),
+    per_day: ratio(perDay),
+    rule: { high: { ...CONFIDENCE_RULE.high }, medium: { ...CONFIDENCE_RULE.medium } },
+  };
+}
+
+/**
+ * The strip's `Confidence: high — 90d of stable telemetry`, computed by {@link confidenceBasis}.
+ *
  * Sampling is not repeated here: the manifest's per-source record already says what was read,
  * and the strip renders it beside the note.
  *
@@ -187,15 +272,14 @@ export interface StabilityInput {
  * @returns The note, e.g. `high — 90d of stable telemetry`.
  */
 export function confidenceNote(input: StabilityInput): string {
+  const { level } = confidenceBasis(input);
   const { window, builds, daysWithBuilds } = input;
-  const coverage = daysWithBuilds / window.days;
-  const perDay = builds / window.days;
 
-  if (coverage >= 0.9 && perDay >= 5) {
+  if (level === "high") {
     return `high — ${String(window.days)}d of stable telemetry`;
   }
 
-  if (coverage >= 0.6 && perDay >= 1) {
+  if (level === "medium") {
     return `medium — builds on ${String(daysWithBuilds)} of ${String(window.days)} days`;
   }
 

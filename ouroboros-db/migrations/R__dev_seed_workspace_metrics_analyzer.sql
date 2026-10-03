@@ -1981,6 +1981,27 @@ on conflict do nothing;
 update ouroboros.analysis_runs
    set status = 'complete', finished_at = started_at + interval '41 minutes', compute_seconds = 2460,
        confidence_note = 'high — 90d of stable telemetry',
+       -- What produced that note (#516): BV.1's stability rule over the manifest's builds and the
+       -- window days on which one finished, stored so the strip's popover shows its basis.
+       corpus_manifest = corpus_manifest || jsonb_build_object('confidence', (
+         select jsonb_build_object(
+                  'level', case when stable.days_with / 90.0 >= 0.9 and stable.builds / 90.0 >= 5 then 'high'
+                                when stable.days_with / 90.0 >= 0.6 and stable.builds / 90.0 >= 1 then 'medium'
+                                else 'low' end,
+                  'window_days', 90, 'builds', stable.builds, 'days_with_builds', stable.days_with,
+                  'coverage', round(stable.days_with / 90.0, 4), 'per_day', round(stable.builds / 90.0, 4),
+                  'rule', jsonb_build_object('high', jsonb_build_object('coverage', 0.9, 'per_day', 5),
+                                             'medium', jsonb_build_object('coverage', 0.6, 'per_day', 1)))
+           from (select (corpus_manifest #>> '{counts,builds}')::integer as builds,
+                        (select count(distinct (job.finished_at at time zone 'UTC')::date)::integer
+                           from ouroboros.build_jobs job
+                           join ouroboros.github_repos repo on repo.id = job.github_repo_id
+                          where job.organization_id = analysis_runs.organization_id
+                            and repo.name = 'helios-firmware'
+                            and job.status in ('succeeded', 'failed', 'retried')
+                            and (job.finished_at at time zone 'UTC')::date
+                                between (corpus_manifest #>> '{window,from}')::date
+                                    and (corpus_manifest #>> '{window,to}')::date) as days_with) stable)),
        -- It ended composing, every analyzer of its set completed with the findings it wrote
        -- (#510's progress, frozen with the run).
        phase = 'composing',

@@ -22,9 +22,11 @@ import {
  * `insightsHeadline`'s (`app/insights/view.ts`).
  *
  * **The actions are honest.** *Email weekly digest* opens its subscribe sheet (BK.6,
- * [#447](https://github.com/NobuData/ouroboros/issues/447), `app/insights/digest-sheet.tsx`); the
- * two with nothing to open yet are inert buttons carrying a *soon* mark, and each tooltip names
- * the issue that builds it (`INSIGHTS_ACTIONS`).
+ * [#447](https://github.com/NobuData/ouroboros/issues/447), `app/insights/digest-sheet.tsx`);
+ * *✦ Build Analyzer* links to the analyzer (BW.1,
+ * [#516](https://github.com/NobuData/ouroboros/issues/516)); the one with nothing to open yet is
+ * an inert button carrying a *soon* mark, its tooltip naming the issue that builds it
+ * (`INSIGHTS_ACTIONS`).
  *
  * @returns The head.
  */
@@ -41,7 +43,11 @@ export function InsightsHead() {
       <RangeSegment />
       <div className="insights__actions">
         {INSIGHTS_ACTIONS.map((action) =>
-          action.id === "digest" ? (
+          action.href !== null ? (
+            <Button href={action.href} key={action.id} tone="ghost">
+              {action.label}
+            </Button>
+          ) : action.id === "digest" ? (
             <DigestAction key={action.id} label={action.label} />
           ) : (
             <Button key={action.id} reason={action.soonNote ?? undefined} tone="ghost">

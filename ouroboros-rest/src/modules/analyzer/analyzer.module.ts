@@ -58,6 +58,8 @@ import { SuggestionComposer } from "./composer/composer.service";
 import { SYNTHESIZER, UnavailableSynthesizer } from "./composer/synthesis.contract";
 import { CorpusAssembler } from "./corpus/corpus.assembler";
 import { CorpusRepository } from "./corpus/corpus.repository";
+import { AnalysisScheduleController } from "./schedule/schedule.controller";
+import { AnalysisScheduleService } from "./schedule/schedule.service";
 
 @Module({
   imports: [
@@ -70,13 +72,19 @@ import { CorpusRepository } from "./corpus/corpus.repository";
     PlanningModule,
     ScheduleModule.forRoot(),
   ],
-  controllers: [AnalysisController, SuggestionActionsController, MeasurementController],
+  controllers: [
+    AnalysisController,
+    AnalysisScheduleController,
+    SuggestionActionsController,
+    MeasurementController,
+  ],
   providers: [
     CorpusRepository,
     CorpusAssembler,
     AnalysisRepository,
     AnalysisOrchestrator,
     AnalysisService,
+    AnalysisScheduleService,
     AnalysisScheduler,
     AnalysisBuildCounter,
     ComposerRepository,

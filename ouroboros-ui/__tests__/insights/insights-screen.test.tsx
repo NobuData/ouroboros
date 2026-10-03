@@ -1,3 +1,4 @@
+import { ANALYZER_PATH } from "@/app/paths";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -93,14 +94,12 @@ describe("the head", () => {
   it("renders each unbuilt action inert, saying why, rather than doing nothing", () => {
     render(<InsightsScreen poll={POLL} readings={insightsReadings()} />);
 
-    for (const [name, why] of [
-      ["✦ Build Analyzer soon", /#516/],
-      ["Send to Slack soon", /#536/],
-    ] as const) {
-      const button = screen.getByRole("button", { name });
-      expect(button).toHaveAttribute("aria-disabled", "true");
-      expect(button).toHaveAttribute("title", expect.stringMatching(why));
-    }
+    const slack = screen.getByRole("button", { name: "Send to Slack soon" });
+    expect(slack).toHaveAttribute("aria-disabled", "true");
+    expect(slack).toHaveAttribute("title", expect.stringMatching(/#536/));
+
+    // The analyzer is built (#516): its action is a link there.
+    expect(screen.getByRole("link", { name: "✦ Build Analyzer" })).toHaveAttribute("href", ANALYZER_PATH);
 
     // The digest's subscribe sheet is built (#447): its action works.
     expect(screen.getByRole("button", { name: "Email weekly digest" })).not.toHaveAttribute("aria-disabled");

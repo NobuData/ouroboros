@@ -120,6 +120,7 @@ $ curl http://localhost:4000/api/v1
 | `POST /api/v1/analyzer/runs`                       | [Build Analyzer runs](#build-analyzer-runs) (#510) — *Run analysis now*: `{repo}`; `202` with the run `running` in `assembling`; `409 analysis_already_running` naming the run that is; audited `analyzer.run_requested`; `owner`/`admin` |
 | `GET /api/v1/analyzer/runs/latest`                 | [Build Analyzer runs](#build-analyzer-runs) (#510) — `?repo=owner/name`; the newest run or `{run: null}`; any member |
 | `GET /api/v1/analyzer/runs/{id}`                   | [Build Analyzer runs](#build-analyzer-runs) (#510) — status, phase, per-analyzer progress, corpus manifest; any member |
+| `GET PUT /api/v1/analyzer/schedule`                | [Build Analyzer runs](#build-analyzer-runs) (#516) — `?repo=owner/name`; the weekly slot, every-N threshold with the live `buildCounter`, and budgets; read by any member, saved whole by `owner`/`admin`, audited `analyzer.schedule_updated` |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
@@ -6162,6 +6163,20 @@ start and outcome tick `analysis_runs.progress`, and a completed analyzer's find
 as it completes — so `budget_exceeded` keeps them and names the analyzers that did not finish,
 and a database refusal fails only that analyzer. The phases are `assembling → analyzing →
 composing`, then `complete`, `budget_exceeded` or `failed` with its reason.
+
+**The confidence note's basis** (BW.1, [#516](https://github.com/NobuData/ouroboros/issues/516)).
+When a run ends with a note, the manifest stores `confidence` beside it: the level, the window's
+builds and days with a build, the coverage and builds-a-day ratios, and the rule they were judged
+against (`CONFIDENCE_RULE`: high needs 90 % of days and 5 a day, medium 60 % and 1). The run
+resource publishes it as `manifest.confidence` (null on a run with no note or from before #516),
+so the strip's popover shows what produced the note.
+
+**The schedule** (BW.1, #516, [`schedule/`](src/modules/analyzer/schedule)).
+`GET /api/v1/analyzer/schedule?repo=` answers the saved schedule with its live `buildCounter`, or
+V080's defaults with `saved: false`; a repository the workspace does not have is a `404`.
+`PUT` saves the whole configuration (owner/admin) under V080's rules — an ISO weekday 1–7 and a
+UTC `HH:MM` required while the weekly trigger is on and kept while it is off, `everyNBuilds` ≥ 1
+or null, budgets ≥ 1 — never touching the counter, and is audited `analyzer.schedule_updated`.
 
 **Composing** (BV.4, [#513](https://github.com/NobuData/ouroboros/issues/513),
 [`composer/`](src/modules/analyzer/composer)) turns the run's findings into suggestions while the

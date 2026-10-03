@@ -1,3 +1,4 @@
+import { ANALYZER_PATH } from "@/app/paths";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -69,11 +70,12 @@ describe("the head's actions", () => {
       "Send to Slack",
     ]);
     expect(INSIGHTS_ACTIONS.map((action) => action.soonNote)).toEqual([
-      expect.stringMatching(/arrives? with #516/),
-      // The digest's subscribe sheet is built (#447): it works, so it has no note.
+      // The analyzer is built (#516) and the digest's subscribe sheet too (#447): no notes.
+      null,
       null,
       expect.stringMatching(/arrives? with #536/),
     ]);
+    expect(INSIGHTS_ACTIONS.map((action) => action.href)).toEqual([ANALYZER_PATH, null, null]);
   });
 });
 

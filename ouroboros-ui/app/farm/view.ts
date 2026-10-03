@@ -24,6 +24,7 @@
 
 import type { FarmPage, FarmStats } from "@/app/api/farm";
 import { elapsedOfSeconds } from "@/app/format";
+import { ANALYZER_PATH } from "@/app/paths";
 import type { StatTone } from "@/app/ui/stat-card";
 
 /* ------------------------------------------------------------------ the head */
@@ -122,16 +123,16 @@ export interface FarmAction {
    * `null` for an action that is built.
    */
   readonly soonNote: string | null;
+  /** Where it navigates, for an action that is a link; `null` for one that acts in place. */
+  readonly href: string | null;
 }
 
 /**
- * The mockup's three head actions: one honest *soon*, and two that act.
+ * The mockup's three head actions — all three built.
  *
- * - **✦ Build Analyzer** is mockup 18, whose route is BW.1
- *   ([#516](https://github.com/NobuData/ouroboros/issues/516)). The mockup links it to a page
- *   that does not exist; here it is inert and says so, rather than a link into a 404. The
- *   amendment on #256 records the other half: on the commit that builds `/analyzer`, this entry
- *   becomes a link to it and the soon-state copy is retired.
+ * - **✦ Build Analyzer** links to mockup 18's `/analyzer` (BW.1,
+ *   [#516](https://github.com/NobuData/ouroboros/issues/516)) — the amendment on #256 acted on:
+ *   the soon state it carried until that route was built is retired.
  * - **Pool settings** opens AI.4's configuration sheet
  *   ([#259](https://github.com/NobuData/ouroboros/issues/259)), which is built — the same sheet
  *   the pools card's `Configure →` opens (`app/farm/pool-store.tsx`). Every member may open it;
@@ -147,14 +148,9 @@ export interface FarmAction {
  * the issue it waits for.
  */
 export const FARM_ACTIONS: readonly FarmAction[] = [
-  {
-    id: "analyzer",
-    label: "✦ Build Analyzer",
-    tone: "ghost",
-    soonNote: "The Build Analyzer arrives with #516.",
-  },
-  { id: "pools", label: "Pool settings", tone: "ghost", soonNote: null },
-  { id: "enroll", label: "+ Enroll runner", tone: "primary", soonNote: null },
+  { id: "analyzer", label: "✦ Build Analyzer", tone: "ghost", soonNote: null, href: ANALYZER_PATH },
+  { id: "pools", label: "Pool settings", tone: "ghost", soonNote: null, href: null },
+  { id: "enroll", label: "+ Enroll runner", tone: "primary", soonNote: null, href: null },
 ];
 
 /* ------------------------------------------------------------------ the stat row */

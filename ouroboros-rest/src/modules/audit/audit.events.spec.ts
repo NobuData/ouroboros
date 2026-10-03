@@ -8,6 +8,7 @@ import {
   ANALYSIS_SUGGESTION_DRAFTED_EVENT,
   ANALYZER_BATCH_PUSHED_EVENT,
   ANALYZER_RUN_REQUESTED_EVENT,
+  ANALYZER_SCHEDULE_UPDATED_EVENT,
   AUDIT_ACTIONS,
   auditDetail,
   GITHUB_TOKEN_CLEARED_EVENT,
@@ -154,6 +155,7 @@ describe("the vocabulary", () => {
       "analysis_suggestion.dismissed",
       "analysis_suggestion.drafted",
       "analyzer.batch_pushed",
+      "analyzer.schedule_updated",
     ]);
   });
 
@@ -256,6 +258,7 @@ describe("the vocabulary", () => {
       ANALYSIS_SUGGESTION_DISMISSED_EVENT,
       ANALYSIS_SUGGESTION_DRAFTED_EVENT,
       ANALYZER_BATCH_PUSHED_EVENT,
+      ANALYZER_SCHEDULE_UPDATED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);
