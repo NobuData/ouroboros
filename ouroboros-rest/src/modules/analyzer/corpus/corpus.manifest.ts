@@ -21,6 +21,32 @@ import { addDays, utcDay } from "../../insights/rollup/rollup.days";
 /** How many days a corpus spans — the strip's `90 days`. */
 export const CORPUS_DAYS = 90;
 
+/**
+ * The fewest days with a build a corpus must hold before what an analysis says about it is shown
+ * (BW.6, [#521](https://github.com/NobuData/ouroboros/issues/521)).
+ *
+ * It is the change-point analyzer's own floor, restated: `change_point` v1 compares two segments
+ * of at least `min_segment_days` (5) observed days each, so under ten it can detect nothing and
+ * the chart it annotates would be a handful of points. `corpus.manifest.spec.ts` reads the
+ * engine's source and holds this number to twice that parameter.
+ *
+ * A **proxy**, and said so: a day counts when any build of the repository finished on it
+ * ({@link StabilityInput.daysWithBuilds}), while the analyzer counts days with a *successful
+ * build of the duration label*. A corpus can clear this floor and still be too thin for the
+ * analyzer; the chart's own read is what the page checks for that.
+ */
+export const MINIMUM_DAYS_WITH_BUILDS = 10;
+
+/**
+ * Whether a corpus holds enough history for its analysis to be shown.
+ *
+ * @param daysWithBuilds - Days of the window on which at least one build finished.
+ * @returns True at or above {@link MINIMUM_DAYS_WITH_BUILDS}.
+ */
+export function corpusSufficient(daysWithBuilds: number): boolean {
+  return daysWithBuilds >= MINIMUM_DAYS_WITH_BUILDS;
+}
+
 /** The budget keys a sampling record may name as its binding cap (V080). */
 export const BUDGET_KEYS = ["max_builds", "max_log_lines", "compute_ceiling_seconds"] as const;
 

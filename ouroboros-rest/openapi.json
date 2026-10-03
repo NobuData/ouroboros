@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.38.14",
+    "version": "0.38.15",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -8373,6 +8373,134 @@
                       ]
                     }
                   ]
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — the `X-Ouro-Tenant` header names no workspace, or none you are a\nmember of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — `repo` is missing or not `owner/name`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/analyzer/corpus": {
+      "get": {
+        "tags": [
+          "analyzer"
+        ],
+        "summary": "A repository's corpus, against the floor an analysis needs",
+        "description": "BW.6 ([#521](https://github.com/NobuData/ouroboros/issues/521)) — the analyzer page's\n*needs more history* and *no analysis yet* states. How much history the repository holds in\nthe window a run started now would read (`builds`, `daysWithBuilds`), the floor below which\nan analysis is not worth showing (`minimumDaysWithBuilds` — the change-point analyzer\ncompares two segments of at least five observed days each, so under ten it can detect\nnothing), and whether the corpus clears it (`sufficient`).\n\n`analyzed` is the same for the newest run that **ended having judged its corpus** —\n`complete` or `budget_exceeded` — which is the population the page's result reads draw\nfrom; `null` before any run has ended that way. A run in flight and a failed one are not\ncounted.\n\nNothing is refused on account of it: an analysis may be started on a corpus below the\nfloor. The numbers are counted, not assembled — no build is read to answer.\n\nEvery member may read. **The workspace is the session's**: a repository it has none of reads\nas an empty corpus that nothing analysed.",
+        "operationId": "readAnalyzerCorpus",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "name": "repo",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 255
+            },
+            "description": "The repository, `owner/name`."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The corpus as it stands and as it was last analysed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnalyzerCorpus"
+                },
+                "examples": {
+                  "analysed": {
+                    "summary": "Ninety days of builds, analysed two hours ago",
+                    "value": {
+                      "repo": "acme-robotics/helios-firmware",
+                      "window": {
+                        "from": "2026-05-10",
+                        "to": "2026-08-07",
+                        "days": 90
+                      },
+                      "builds": 1284,
+                      "daysWithBuilds": 89,
+                      "sufficient": true,
+                      "minimumDaysWithBuilds": 10,
+                      "analyzed": {
+                        "runId": "5eed0065-0000-4000-8000-000000000002",
+                        "analyzedAt": "2026-08-08T13:00:00.000Z",
+                        "builds": 1284,
+                        "daysWithBuilds": 89,
+                        "sufficient": true
+                      }
+                    }
+                  },
+                  "thin": {
+                    "summary": "A new repository — too little history, and nothing analysed",
+                    "value": {
+                      "repo": "acme-robotics/helios-telemetry",
+                      "window": {
+                        "from": "2026-05-10",
+                        "to": "2026-08-07",
+                        "days": 90
+                      },
+                      "builds": 3,
+                      "daysWithBuilds": 3,
+                      "sufficient": false,
+                      "minimumDaysWithBuilds": 10,
+                      "analyzed": null
+                    }
+                  }
                 }
               }
             }
@@ -44687,6 +44815,116 @@
                 }
               }
             }
+          }
+        }
+      },
+      "AnalyzerCorpus": {
+        "type": "object",
+        "title": "AnalyzerCorpus",
+        "description": "How much history a repository holds against the floor an analysis needs, and how much the\nnewest ended analysis read (BW.6, #521).",
+        "additionalProperties": false,
+        "required": [
+          "repo",
+          "window",
+          "builds",
+          "daysWithBuilds",
+          "sufficient",
+          "minimumDaysWithBuilds",
+          "analyzed"
+        ],
+        "properties": {
+          "repo": {
+            "type": "string"
+          },
+          "window": {
+            "type": "object",
+            "description": "The window a run started now would read, in UTC days — today excluded.",
+            "additionalProperties": false,
+            "required": [
+              "from",
+              "to",
+              "days"
+            ],
+            "properties": {
+              "from": {
+                "type": "string",
+                "format": "date"
+              },
+              "to": {
+                "type": "string",
+                "format": "date"
+              },
+              "days": {
+                "type": "integer",
+                "minimum": 1
+              }
+            }
+          },
+          "builds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Builds that finished inside the window."
+          },
+          "daysWithBuilds": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Days of the window on which at least one build finished."
+          },
+          "sufficient": {
+            "type": "boolean",
+            "description": "Whether `daysWithBuilds` is at or above `minimumDaysWithBuilds`."
+          },
+          "minimumDaysWithBuilds": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The floor. A proxy for the change-point analyzer's own minimum (two segments of five\nobserved days): it counts days with any finished build, the analyzer days with a\nsuccessful build of the timed label."
+          },
+          "analyzed": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/AnalyzedCorpus"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The newest run that ended having judged its corpus; null before one has."
+          }
+        }
+      },
+      "AnalyzedCorpus": {
+        "type": "object",
+        "title": "AnalyzedCorpus",
+        "description": "What the newest `complete` or `budget_exceeded` run read, from its own manifest.",
+        "additionalProperties": false,
+        "required": [
+          "runId",
+          "analyzedAt",
+          "builds",
+          "daysWithBuilds",
+          "sufficient"
+        ],
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "analyzedAt": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When that run ended."
+          },
+          "builds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "daysWithBuilds": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "sufficient": {
+            "type": "boolean",
+            "description": "Whether that corpus cleared the floor."
           }
         }
       },

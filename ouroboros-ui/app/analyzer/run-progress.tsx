@@ -1,9 +1,10 @@
 "use client";
 
-import type { AnalysisRun } from "@/app/api/analyzer";
+import type { AnalysisRun, AnalyzerCorpus } from "@/app/api/analyzer";
 import { Card, cx } from "@/app/ui";
 
 import { useAnalyzer } from "./analyzer-store";
+import { shownResultsLine } from "./state-view";
 import {
   FOLLOW_RUNNING,
   PHASES,
@@ -46,6 +47,10 @@ const STATUS_CLASS: Readonly<Record<AnalysisRun["status"], string>> = {
  * link to the running analysis's progress, and no second run is started. Any other refusal is an
  * alert.
  *
+ * Under a run in flight, a failed run or a budget stop, the cards below still hold results — the
+ * last finished analysis's, or what this one's finished analyzers found — and the panel says
+ * which (BW.6, [#521](https://github.com/NobuData/ouroboros/issues/521); `shownResultsLine`).
+ *
  * @returns The panel, or nothing.
  */
 export function RunProgress() {
@@ -77,7 +82,7 @@ export function RunProgress() {
           {outcome.reason}
         </p>
       )}
-      {shown && <ProgressCard run={run} />}
+      {shown && page !== null && <ProgressCard corpus={page.corpus} now={now} run={run} />}
     </>
   );
 }
@@ -86,10 +91,14 @@ export function RunProgress() {
  * The panel for one run.
  *
  * @param props.run The run.
- * @returns The phases, the analyzers' ticks once analysis has begun, and the status line.
+ * @param props.corpus The corpus state — which analysis the cards below were drawn from.
+ * @param props.now The clock.
+ * @returns The phases, the analyzers' ticks once analysis has begun, the status line, and — when
+ *   the cards below are not simply this run's — whose results they are.
  */
-function ProgressCard({ run }: Readonly<{ run: AnalysisRun }>) {
+function ProgressCard({ run, corpus, now }: Readonly<{ run: AnalysisRun; corpus: AnalyzerCorpus; now: Date }>) {
   const ticking = run.phase !== "assembling" || run.status !== "running";
+  const below = shownResultsLine(run, corpus, now);
 
   return (
     <Card aria-labelledby={PROGRESS_ANCHOR} as="section" className="analyzer-progress">
@@ -123,6 +132,7 @@ function ProgressCard({ run }: Readonly<{ run: AnalysisRun }>) {
       <p className={cx("analyzer-progress__status", STATUS_CLASS[run.status])} role="status">
         {runStatusLine(run)}
       </p>
+      {below !== null && <p className="analyzer-progress__below">{below}</p>}
     </Card>
   );
 }

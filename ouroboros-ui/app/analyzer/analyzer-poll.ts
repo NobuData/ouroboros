@@ -11,7 +11,10 @@
  * the drafted-tickets card (BW.4, [#519](https://github.com/NobuData/ouroboros/issues/519)): the
  * ticket suggestions nobody has drafted, and the planning batches the rest went into — and the
  * measurements every apply opened (BW.5, [#520](https://github.com/NobuData/ouroboros/issues/520)),
- * with the calibration cells they moved. While a run
+ * with the calibration cells they moved — and the corpus state (BW.6,
+ * [#521](https://github.com/NobuData/ouroboros/issues/521)): how much history the repository
+ * holds against the floor, and how much the last ended analysis read, which is what decides
+ * whether the page draws results at all (`state-view.ts`). While a run
  * is in flight, or a drafted batch is still being sized, the hop asks to be polled every
  * {@link RUNNING_POLL_SECONDS} so progress is real; otherwise the family's default interval holds.
  */
@@ -21,6 +24,7 @@ import type {
   AnalysisSchedule,
   AnalysisSuggestions,
   AnalysisTickets,
+  AnalyzerCorpus,
   DurationChart,
   Measurements,
 } from "@/app/api/analyzer";
@@ -60,6 +64,8 @@ export interface AnalyzerPage {
   readonly tickets: AnalysisTickets;
   /** Every applied suggestion's measurement, and the calibration; none before a first apply. */
   readonly measurements: Measurements;
+  /** The corpus as it stands against the floor, and as the newest ended analysis read it. */
+  readonly corpus: AnalyzerCorpus;
 }
 
 /** One read of the page, as the loop needs it. Replaced wholesale in tests. */
@@ -86,13 +92,13 @@ export function analyzerUrl(repo: string): string {
  *
  * @param value The parsed body.
  * @returns True when it has a repository, a run or `null`, a schedule, a duration chart with its
- *   two lists, the suggestion cards with theirs, the drafted-tickets card with its two, and the
- *   measurements with their rows, their calibration and the formula.
+ *   two lists, the suggestion cards with theirs, the drafted-tickets card with its two, the
+ *   measurements with their rows, their calibration and the formula, and a judged corpus.
  */
 export function isAnalyzerPage(value: unknown): value is AnalyzerPage {
   if (typeof value !== "object" || value === null) return false;
 
-  const { repo, run, schedule, duration, suggestions, tickets, measurements } = value as Partial<
+  const { repo, run, schedule, duration, suggestions, tickets, measurements, corpus } = value as Partial<
     Record<keyof AnalyzerPage, unknown>
   >;
 
@@ -104,7 +110,8 @@ export function isAnalyzerPage(value: unknown): value is AnalyzerPage {
     isDurationChart(duration) &&
     isSuggestions(suggestions) &&
     isTickets(tickets) &&
-    isMeasurements(measurements)
+    isMeasurements(measurements) &&
+    isCorpus(corpus)
   );
 }
 
@@ -163,6 +170,35 @@ function isMeasurements(value: unknown): value is Measurements {
   const { measurements, calibration, formula } = value as Partial<Record<keyof Measurements, unknown>>;
 
   return Array.isArray(measurements) && Array.isArray(calibration) && typeof formula === "string";
+}
+
+/**
+ * Whether a parsed value is one corpus's history, judged — a count of days and a verdict.
+ *
+ * @param value The corpus, or the one a run read.
+ * @returns True when it carries both counts as numbers and the verdict as a boolean.
+ */
+function isHistory(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+
+  const { builds, daysWithBuilds, sufficient } = value as Partial<Record<keyof AnalyzerCorpus, unknown>>;
+
+  return typeof builds === "number" && typeof daysWithBuilds === "number" && typeof sufficient === "boolean";
+}
+
+/**
+ * Whether a parsed value is the corpus state — enough of it that the page can choose what to draw.
+ *
+ * @param value The page's `corpus`.
+ * @returns True when it carries the current history, the floor, and what was last analysed — a
+ *   history of its own, or `null`.
+ */
+function isCorpus(value: unknown): value is AnalyzerCorpus {
+  if (!isHistory(value)) return false;
+
+  const { minimumDaysWithBuilds, analyzed } = value as Partial<Record<keyof AnalyzerCorpus, unknown>>;
+
+  return typeof minimumDaysWithBuilds === "number" && (analyzed === null || isHistory(analyzed));
 }
 
 /**

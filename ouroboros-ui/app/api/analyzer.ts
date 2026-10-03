@@ -8,7 +8,9 @@
  * strip render, *Run analysis now*, the schedule behind **Schedule: weekly + every 50 builds ▾**,
  * the duration series with the change-points detected on it, the suggestion cards with what a
  * suggestion may be done with — previewed, applied, dismissed, drafted — the drafted-tickets
- * card with its push, and the measurements every apply opened, with the calibration they moved.
+ * card with its push, the measurements every apply opened, with the calibration they moved, and
+ * the corpus state the page's cold states are drawn from (BW.6,
+ * [#521](https://github.com/NobuData/ouroboros/issues/521)).
  *
  * Thin by design, like every module here: one function per operation, the client injectable so a
  * suite can stub `fetch`, and the service's refusals left as `ApiError`s for the caller to word.
@@ -107,6 +109,9 @@ export type Measurements = components["schemas"]["Measurements"];
 
 /** One applied suggestion: predicted and — once its window closes — measured. */
 export type Measurement = components["schemas"]["Measurement"];
+
+/** A repository's corpus against the floor an analysis needs, and what the last ended one read. */
+export type AnalyzerCorpus = components["schemas"]["AnalyzerCorpus"];
 
 /** The analyzer operations. */
 export const analyzer = {
@@ -277,6 +282,20 @@ export const analyzer = {
    */
   async measurements(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<Measurements> {
     return unwrap(await client.GET("/api/v1/analyzer/measurements", { params: { query: { repo } }, signal }));
+  },
+
+  /**
+   * `GET /api/v1/analyzer/corpus?repo=` — how much history the repository holds against the floor
+   * an analysis needs, and how much the newest ended analysis read.
+   *
+   * @param repo The repository, `owner/name`.
+   * @param client The client to call through. Defaults to the server-side one.
+   * @param signal Abandons the request — the poll's deadline.
+   * @returns The corpus state; an empty corpus nothing analysed for a repository with no builds.
+   * @throws {ApiError} What the service answered.
+   */
+  async corpus(repo: string, client: ApiClient = api(), signal?: AbortSignal): Promise<AnalyzerCorpus> {
+    return unwrap(await client.GET("/api/v1/analyzer/corpus", { params: { query: { repo } }, signal }));
   },
 
   /**

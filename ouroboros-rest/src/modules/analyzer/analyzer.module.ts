@@ -42,6 +42,11 @@
  * answers the ticket suggestions nobody has drafted yet and the planning batches the rest were
  * drafted into — planning's own batches, read through its service — with the evidence each
  * draft's body states.
+ *
+ * The corpus-state read (`corpus/corpus.controller.ts`, BW.6,
+ * [#521](https://github.com/NobuData/ouroboros/issues/521)) answers how much history a repository
+ * holds against the floor below which an analysis is not worth showing, and how much the last
+ * ended analysis read — what the page's *needs more history* and *no analysis yet* states say.
  */
 
 import { Module } from "@nestjs/common";
@@ -71,7 +76,9 @@ import { ComposerRepository } from "./composer/composer.repository";
 import { SuggestionComposer } from "./composer/composer.service";
 import { SYNTHESIZER, UnavailableSynthesizer } from "./composer/synthesis.contract";
 import { CorpusAssembler } from "./corpus/corpus.assembler";
+import { CorpusStateController } from "./corpus/corpus.controller";
 import { CorpusRepository } from "./corpus/corpus.repository";
+import { CorpusStateService } from "./corpus/corpus.service";
 import { DurationChartController } from "./duration/duration.controller";
 import { DurationRepository } from "./duration/duration.repository";
 import { DurationChartService } from "./duration/duration.service";
@@ -104,6 +111,7 @@ import { TicketsService } from "./tickets/tickets.service";
     DurationChartController,
     SuggestionsController,
     TicketsController,
+    CorpusStateController,
   ],
   providers: [
     CorpusRepository,
@@ -129,6 +137,7 @@ import { TicketsService } from "./tickets/tickets.service";
     SuggestionsService,
     TicketsRepository,
     TicketsService,
+    CorpusStateService,
   ],
   exports: [AnalysisOrchestrator],
 })

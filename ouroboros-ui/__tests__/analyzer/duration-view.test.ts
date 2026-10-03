@@ -20,6 +20,7 @@ import {
   durationAxis,
   durationChartLabel,
   durationEmpty,
+  tooFewDays,
   durationMarkers,
   durationPoints,
   durationSpan,
@@ -267,6 +268,27 @@ describe("the card's frame", () => {
     expect(durationEmpty(emptyDuration())).toBe(NO_DURATION_RUN);
     expect(durationEmpty(seededDuration({ series: [], changePoints: [] }))).toBe(NO_DURATION_SERIES);
     expect(durationEmpty(seededDuration())).toBeNull();
+  });
+
+  it("draws no curve from fewer timed days than the floor — and says how many there were (#521)", () => {
+    const days = (count: number) => seededDuration({ series: seededDuration().series.slice(0, count), changePoints: [] });
+
+    expect(durationEmpty(days(6), 10)).toEqual(tooFewDays(6, 10));
+    expect(durationEmpty(days(9), 10)).toEqual(tooFewDays(9, 10));
+    expect(durationEmpty(days(10), 10)).toBeNull();
+    expect(tooFewDays(1, 10)).toEqual({
+      title: "Too few days to chart",
+      note: "The last analysis timed builds on 1 day. A curve, and a shift detected in it, need at least 10.",
+    });
+  });
+
+  it("holds no floor of its own: without one, whatever was timed is drawn", () => {
+    const three = seededDuration({ series: seededDuration().series.slice(0, 3), changePoints: [] });
+
+    expect(durationEmpty(three)).toBeNull();
+    // The older reasons still come first: no run, and a run that timed nothing.
+    expect(durationEmpty(emptyDuration(), 10)).toBe(NO_DURATION_RUN);
+    expect(durationEmpty(seededDuration({ series: [], changePoints: [] }), 10)).toBe(NO_DURATION_SERIES);
   });
 });
 

@@ -68,7 +68,7 @@ export function DurationCard() {
       {chart === null ? (
         <div aria-hidden="true" className="analyzer-duration__skeleton" />
       ) : (
-        <DurationPlot chart={chart} onOpen={setOpened} />
+        <DurationPlot chart={chart} floor={page?.corpus.minimumDaysWithBuilds} onOpen={setOpened} />
       )}
       <ChangePointSheet onClose={() => setOpened(null)} point={point} />
     </Card>
@@ -80,14 +80,16 @@ export function DurationCard() {
  * card reads its own from the page's store.
  *
  * @param props.chart The run's series and change-points.
+ * @param props.floor The fewest days a chart is drawn from; none when omitted.
  * @param props.onOpen Called with a change-point's id when its chip is pressed.
  * @returns The annotated time series under its caption, or the card's empty state.
  */
 export function DurationPlot({
   chart,
+  floor,
   onOpen,
-}: Readonly<{ chart: DurationChart; onOpen: (id: string) => void }>) {
-  const empty = durationEmpty(chart);
+}: Readonly<{ chart: DurationChart; floor?: number; onOpen: (id: string) => void }>) {
+  const empty = durationEmpty(chart, floor);
   if (empty !== null) return <EmptyState fill note={empty.note} title={empty.title} />;
 
   const points = durationPoints(chart.series);

@@ -2,9 +2,11 @@
  * Leg 23 — **the Build Analyzer's suggestion cards**
  * ([#518](https://github.com/NobuData/ouroboros/issues/518), amending
  * [#56](https://github.com/NobuData/ouroboros/issues/56)) — **its drafted-tickets card as the
- * seed composes it** ([#519](https://github.com/NobuData/ouroboros/issues/519)) **and its
+ * seed composes it** ([#519](https://github.com/NobuData/ouroboros/issues/519)), **its
  * predicted-vs-measured and how-it-works cards**
- * ([#520](https://github.com/NobuData/ouroboros/issues/520)).
+ * ([#520](https://github.com/NobuData/ouroboros/issues/520)) **and the page's states, with the
+ * rest of the chain** ([#521](https://github.com/NobuData/ouroboros/issues/521) — the Build
+ * Analyzer's MVP gate).
  *
  * Mockup 18's **Suggested build-process changes** and **Suggested workflow changes** against
  * `R__dev_seed_workspace_metrics_analyzer.sql`. The UI's own suites draw every state of both cards
@@ -40,16 +42,34 @@
  *     on; and after the real re-analysis **the ingest line no longer claims rig telemetry**: the
  *     live corpus has no export of it, and the card says *not read*, with the manifest's reason.
  *
- * ## One honest limit of the dismissal assertion
+ *   * **The page as a whole, and its other states** (#521, the MVP gate) — the seven regions in
+ *     both themes, as screenshots on the mockup's calendar; provenance that claims no model and
+ *     no `$`; the three chips on the shifts the seed plants; the shell (fixed header and sidebar,
+ *     **Build Farm** lit, 125% type); a member's page; **insufficient corpus for real** on the
+ *     two seeded repositories that are that thin; and — drawn by answering the page's own poll
+ *     with the service's answer, changed (`support/analyzer.ts` § *What is intercepted*) —
+ *     **never run**, **running**, **failed** and **stopped at its budget**. Then, through the
+ *     writers: **a real analysis reproduces the seeded findings** — the chart re-drawn from the
+ *     new run carries the same three chips — and a thin repository stays insufficient through a
+ *     real analysis of it.
  *
- * The run the leg starts is a real one — the corpus assembled, the engine dispatched, three
- * analyzers completing and a ticket draft re-composed — but the analyzer behind the dismissed row
- * (`workflow_outcome`) is `skipped` on a live corpus until its assembler fills that analyzer's
- * inputs, so the composer does not meet this suggestion again. What this leg proves is therefore
- * that a dismissal **holds across a real run and a reload, in the database and on the page** —
- * and that a run which did not look for a suggestion does not take it off the cards. That the
- * composer keeps a suggestion dismissed when it *does* find it again is asserted where it can be
- * made to: `suggestions.integration-spec.ts` and `actions.integration-spec.ts` in `ouroboros-rest`.
+ * ## What the dismissal test asserts about identity, and one honest limit
+ *
+ * The analyzer runs **twice** there, for real: once before the dismissal and once after it. Each
+ * run assembles the corpus, dispatches it to the engine, and composes — three analyzers complete
+ * (`change_point`, `log_signature`, `waiver_cite`), and the composer meets a suggestion it already
+ * knows: the fixture-timeout ticket (`BA-1`, from `log_signature`), which the seed drafted. That
+ * is where suggestion identity is exercised across real runs, so that is what is asserted: after
+ * both runs `BA-1` is still **one** suggestion, drafted — nothing by its title is waiting under
+ * *Not drafted yet*. An identity that changed between runs would compose it a second time, open.
+ *
+ * The limit: the analyzer behind the *dismissed* row (`workflow_outcome`) is `skipped` on a live
+ * corpus until its assembler fills that analyzer's inputs, so the composer does not meet that
+ * suggestion again. For it the test proves that a dismissal **holds across two real runs and a
+ * reload, in the database and on the page**, and that a run which did not look for a suggestion
+ * does not take it off the cards. That the composer keeps a suggestion dismissed when it *does*
+ * find it again is asserted where it can be made to: `suggestions.integration-spec.ts` and
+ * `actions.integration-spec.ts` in `ouroboros-rest`.
  *
  * ## Green from a cold volume only
  *
@@ -57,54 +77,85 @@
  * *What this leg writes*). The first block's `beforeAll` says so in words; the writers sit outside
  * it and state their own preconditions, because Playwright starts a new worker after a failed test
  * and would run the guard again after one of them had written. What can be put back is: the pool
- * window is deleted and `standard-fix`'s draft is restored to the seeded document.
- *
- * [#521](https://github.com/NobuData/ouroboros/issues/521) (BW.6) extends this file with the
- * page's states and the rest of the chain.
+ * window is deleted and `standard-fix`'s draft is restored to the seeded document. The states
+ * block needs no cold volume: it reads, and rewrites nothing but what the browser is shown.
  */
 import { type BrowserContext, type Locator, type Page, expect, test } from "@playwright/test";
 
 import {
+  ANALYZERS,
   ANALYZER_PATH,
+  ATLAS,
+  type AnalysisRunRow,
+  BUDGET_REASON,
   CARDS,
+  CHART_REGION,
+  ENGINE_UNAVAILABLE,
+  FIRST_RUN_ACTION,
+  HELIOS,
   HOW_IT_WORKS,
   HOW_IT_WORKS_CARD,
+  INSUFFICIENT_REGION,
+  LIVE_ANALYZERS,
   LOCALITY,
   MEASUREMENTS,
   MEASUREMENTS_CARD,
   MOVE_PREVIEW,
+  NEVER_RUN_REGION,
   NOT_COLD,
+  PLANTED_SHIFTS,
+  PROGRESS_REGION,
   RECALIBRATION,
+  REGIONS,
   ROWS,
   SEEDED_TICKET_BATCH_ID,
+  STRIP_REGION,
+  TELEMETRY,
   TICKETS,
   TICKETS_CARD,
   TICKETS_NOT_COLD,
   TICKET_TOTALS,
   TITLES,
   applyStatusFor,
+  asBudgetExceeded,
+  asFailed,
+  asNeverRun,
+  asRunning,
+  chipTexts,
+  corpus,
   dayLabel,
+  daysBetween,
+  durationChart,
   focusHelios,
+  focusRepo,
   latestRun,
   measurements,
   moveWindows,
+  onMockupDay,
   poolWindows,
   pushSeededTickets,
   removeMoveWindows,
   retickSeededTickets,
+  rewriteAnalyzerPoll,
   seededTicketBatch,
   standardFixDraft,
   suggestion,
   suggestions,
+  ticketTitles,
 } from "../support/analyzer";
 import { SEED_MEMBER, SEED_OWNER, SEED_TENANT } from "../support/seed";
 import { signIn } from "../support/session";
+import { expectFontScale, restoreFontScale, setFontScale } from "../support/settings";
+import { chromeBoxes, expectNoPaneHorizontalScroll, scrollPaneTo } from "../support/shell";
 import { STANDARD_FIX, restoreStandardFixDraft } from "../support/studio";
 import { THEMES, pinTheme } from "../support/theme";
 import { selectWorkspace } from "../support/workspace";
 
 /** How long a real analysis is given to run to its end — assemble, dispatch, analyze, compose. */
 const ANALYSIS_TIMEOUT_MS = 120_000;
+
+/** The viewport the seven regions are photographed at — the mockup's own width, near enough. */
+const PARITY_VIEWPORT = { width: 1680, height: 1050 };
 
 /**
  * Sign a seeded person into the seeded workspace, with the page set to open on the seeded
@@ -217,6 +268,108 @@ function hue(element: Locator): Promise<string> {
  */
 function howItWorksCard(page: Page): Locator {
   return page.locator("main.analyzer").getByRole("region", { name: HOW_IT_WORKS_CARD });
+}
+
+/**
+ * A region of the page, by its exact name.
+ *
+ * @param page The page.
+ * @param name The region's accessible name.
+ * @returns The region.
+ */
+function regionOf(page: Page, name: string): Locator {
+  return page.locator("main.analyzer").getByRole("region", { name, exact: true });
+}
+
+/**
+ * The chart's change-point chips, oldest first.
+ *
+ * @param page The page.
+ * @returns The chips.
+ */
+function chips(page: Page): Locator {
+  return regionOf(page, CHART_REGION).locator(".chart-marks button");
+}
+
+/**
+ * What a screenshot of the seeded page must not compare: the one phrase measured against the
+ * clock, and the one figure that depends on the seed's weekday.
+ *
+ * @param page The page.
+ * @returns The locators to mask.
+ */
+function clocks(page: Page): Locator[] {
+  return [
+    regionOf(page, STRIP_REGION)
+      .locator(".analyzer-strip__slot")
+      .filter({ hasText: "Last run" })
+      .locator(".analyzer-strip__value"),
+    row(page, TITLES.move).getByRole("button", { name: /^conf \d+%$/ }),
+    page.locator(".analyzer-progress__below"),
+  ];
+}
+
+/**
+ * Open the analyzer and wait until the page has been read — whatever state it is then in.
+ *
+ * @param page The page.
+ */
+async function openRead(page: Page): Promise<void> {
+  await page.goto(ANALYZER_PATH);
+  await expect(page.locator("main.analyzer h1")).not.toHaveText("Reading the analyzer…");
+  await expect(regionOf(page, STRIP_REGION)).not.toHaveAttribute("aria-busy", "true");
+}
+
+/**
+ * Press **Run analysis now** and wait for the analysis it starts to run to its end.
+ *
+ * A refused start is an alert on the page, and is reported as that — with the page's own words —
+ * rather than as a wait that ran out: with the engine stopped the leg says *the analysis could not
+ * be started*, not *timeout*.
+ *
+ * @param page The page, open on the repository.
+ * @param context The signed-in context, for the reads beneath the browser.
+ * @param repo The repository, `owner/name`. Defaults to `helios-firmware`.
+ * @returns The run, ended.
+ */
+async function analyseToEnd(
+  page: Page,
+  context: BrowserContext,
+  repo: string = HELIOS.ref,
+): Promise<AnalysisRunRow> {
+  const before = (await latestRun(context, repo))?.id ?? null;
+  const refusal = page.locator("main.analyzer .analyzer-refusal");
+
+  await page.getByRole("button", { name: "Run analysis now" }).click();
+  await expect
+    .poll(
+      async () => {
+        if ((await refusal.count()) > 0) return `refused: ${await refusal.innerText()}`;
+
+        return (await latestRun(context, repo))?.id ?? null;
+      },
+      { timeout: ANALYSIS_TIMEOUT_MS, message: "the press starts a new analysis" },
+    )
+    .not.toBe(before);
+  if ((await refusal.count()) > 0) {
+    throw new Error(
+      `the analysis could not be started — the page says: ${await refusal.innerText()}`,
+    );
+  }
+
+  await expect
+    .poll(async () => (await latestRun(context, repo))?.status, { timeout: ANALYSIS_TIMEOUT_MS })
+    .not.toBe("running");
+
+  const run = await latestRun(context, repo);
+  if (run === null) throw new Error("the analysis left no run behind");
+
+  expect(
+    run.status,
+    `the analysis ran to its end (${run.failureReason ?? "no reason given"})`,
+  ).toBe("complete");
+
+  return run;
 }
 
 /**
@@ -618,6 +771,168 @@ test.describe("analyzer suggestions — the seeded cards (#518)", () => {
     );
   });
 
+  test("parity: the seven regions in both themes, on the mockup's calendar (#521)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    // Wide enough that the chart is drawn whole: at the suite's default width it scrolls inside
+    // its card, and a picture of it would end mid-chip.
+    await page.setViewportSize(PARITY_VIEWPORT);
+    // The seed is dated from the day it ran; the pictures are taken on the mockup's day.
+    await rewriteAnalyzerPoll(page, onMockupDay);
+    await openAnalyzer(page);
+
+    // Pinned: the chips read the mockup's dates, whatever today is.
+    await expect(chips(page)).toHaveCount(PLANTED_SHIFTS.length);
+    for (const [index, day] of ["May 18", "Jun 22", "Jul 30"].entries()) {
+      await expect(chips(page).nth(index)).toHaveAttribute(
+        "title",
+        `${day} · ${PLANTED_SHIFTS[index].candidate} ${PLANTED_SHIFTS[index].delta}`,
+      );
+    }
+    await expect(page.locator(".analyzer__main > *, .analyzer__side > *")).toHaveCount(
+      REGIONS.length - 1,
+    );
+
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+
+      for (const region of REGIONS) {
+        await expect(regionOf(page, region.name)).toHaveScreenshot(
+          `analyzer-${region.slug}-${theme}.png`,
+          { mask: clocks(page) },
+        );
+      }
+    }
+  });
+
+  test("provenance is honest, and the chips sit on the shifts the seed plants (#521)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    await openAnalyzer(page);
+
+    // ---- Decision A3: statistics are not dressed as a model, and compute is not a dollar figure.
+    const strip = regionOf(page, STRIP_REGION);
+
+    await expect(strip).toContainText("deterministic analyzers v1");
+    await expect(strip.locator(".analyzer-strip__model")).toHaveCount(0);
+    await expect(strip).not.toContainText("$");
+    await expect(page.locator("main.analyzer")).not.toContainText(/\$\d/);
+
+    await strip.getByRole("button", { name: /deterministic analyzers v1/ }).click();
+
+    const analyzers = strip.getByRole("group", { name: "Analyzers in this run" });
+    for (const id of ANALYZERS) {
+      await expect(analyzers).toContainText(new RegExp(`${id} v1\\s+· deterministic · completed`));
+    }
+    await expect(analyzers).not.toContainText("llm");
+    await page.keyboard.press("Escape");
+
+    // ---- The chips: three, on the days the seed planted its shifts, with their deltas.
+    const chart = await durationChart(context);
+
+    expect(chart.changePoints.map((point) => daysBetween(point.date, chart.window!.to))).toEqual(
+      PLANTED_SHIFTS.map((shift) => shift.daysBeforeWindowEnd),
+    );
+    expect(chart.changePoints.map((point) => point.deltaSeconds)).toEqual(
+      PLANTED_SHIFTS.map((shift) => shift.deltaSeconds),
+    );
+    expect(chart.changePoints.map((point) => point.candidates[0]?.label)).toEqual(
+      PLANTED_SHIFTS.map((shift) => shift.candidate),
+    );
+
+    await expect(chips(page)).toHaveCount(PLANTED_SHIFTS.length);
+    for (const [index, text] of chipTexts(chart).entries()) {
+      await expect(chips(page).nth(index)).toHaveAttribute("title", text);
+    }
+    // The curve is the run's own window: one point per day that timed a build.
+    expect(
+      (await regionOf(page, CHART_REGION).locator(".chart-ts__line").getAttribute("points"))
+        ?.trim()
+        .split(/\s+/),
+    ).toHaveLength(chart.series.length);
+  });
+
+  test("a member reads the whole page: running and scheduling are an administrator's, dismissing is theirs (#521)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context, SEED_MEMBER.id);
+    await openAnalyzer(page);
+
+    // Every region is read.
+    for (const region of REGIONS) await expect(regionOf(page, region.name)).toBeVisible();
+
+    // Run analysis now: the same control, inert, saying why.
+    const run = page.getByRole("button", { name: "Run analysis now" });
+    await expect(run).toHaveAttribute("aria-disabled", "true");
+    await expect(run).toHaveAttribute("title", "Only an owner or admin can run an analysis.");
+
+    // The schedule opens to be read: its note, and no way to save.
+    await page.getByRole("button", { name: /^Schedule/ }).click();
+    const schedule = page.getByRole("dialog", { name: "Analysis schedule" });
+    await expect(schedule).toContainText("Only an owner or admin can change the schedule.");
+    await expect(schedule.getByRole("button", { name: "Save schedule" })).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(schedule).toBeHidden();
+
+    // Dismissing is a member's: the confirm is live. It is not pressed — a dismissal is final.
+    await row(page, TITLES.flake).getByRole("button", { name: "Dismiss", exact: true }).click();
+    const confirm = page.getByRole("alertdialog");
+    await expect(confirm.getByRole("button", { name: "Dismiss", exact: true })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    await confirm.getByRole("button", { name: "Cancel" }).click();
+    await expect(confirm).toBeHidden();
+    expect((await suggestion(context, TITLES.flake)).status).toBe("open");
+  });
+
+  test("shell: fixed chrome, Build Farm lit, and the 125% step (#521)", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+
+    try {
+      await setFontScale(context, "125");
+      await openAnalyzer(page);
+      await expectFontScale(page, "125");
+
+      // ---- The analyzer has no entry of its own: the module it belongs to stays lit.
+      const sidebar = page.getByRole("navigation", { name: "Primary" });
+      await expect(sidebar.getByRole("link", { name: /Build Farm/ })).toHaveAttribute(
+        "aria-current",
+        "true",
+      );
+      await expect(sidebar.locator('[aria-current="page"]')).toHaveCount(0);
+
+      // ---- The page at the scale still draws all seven regions and every chip.
+      for (const region of REGIONS) await expect(regionOf(page, region.name)).toBeVisible();
+      await expect(chips(page)).toHaveCount(PLANTED_SHIFTS.length);
+
+      for (const theme of THEMES) {
+        await pinTheme(page, theme);
+
+        // ---- Header and sidebar hold still while the content pane scrolls.
+        await scrollPaneTo(page, 0);
+        const before = await chromeBoxes(page);
+        expect(before.header, "the header must be on the page to be measured").not.toBeNull();
+        expect(before.sidebar, "the sidebar must be on the page to be measured").not.toBeNull();
+        await scrollPaneTo(page, 400);
+        expect(await chromeBoxes(page)).toEqual(before);
+
+        // ---- At 125%, nothing on the page pushes the pane sideways.
+        await expectNoPaneHorizontalScroll(page);
+      }
+    } finally {
+      await restoreFontScale(context);
+    }
+  });
+
   test.afterEach(async ({ browser }) => {
     const context = await browser.newContext();
 
@@ -626,6 +941,259 @@ test.describe("analyzer suggestions — the seeded cards (#518)", () => {
       await retickSeededTickets(context);
     } finally {
       await context.close();
+    }
+  });
+});
+
+test.describe("analyzer — the states mockup 18 does not draw (#521)", () => {
+  // No cold guard: these read, and change only what the browser is shown.
+
+  test("insufficient corpus, for real: a repository with no builds, and one with three", async ({
+    context,
+    page,
+  }) => {
+    await signIn(context, SEED_OWNER.id);
+    await selectWorkspace(context, SEED_TENANT.slug);
+
+    // ---- No focus: the page opens on the workspace's first repository, which has no build.
+    const empty = await corpus(context, ATLAS.ref);
+    expect(empty).toMatchObject({
+      builds: 0,
+      daysWithBuilds: 0,
+      sufficient: false,
+      analyzed: null,
+    });
+
+    await openRead(page);
+
+    const panel = regionOf(page, INSUFFICIENT_REGION);
+
+    await expect(page.locator("main.analyzer h1")).toHaveText("The analyzer needs more history.");
+    await expect(panel.locator(".analyzer-state__count")).toHaveText(
+      `No builds in the last ${String(empty.window.days)} days.`,
+    );
+    await expect(panel).toContainText(
+      `It needs builds on at least ${String(empty.minimumDaysWithBuilds)} days before it can tell a shift from noise.`,
+    );
+    await expect(panel.locator(".analyzer-state__reads")).toContainText(
+      "Every build's log and test results, and every loop's transcript",
+    );
+    // No chart and no suggestions — and no empty frame standing in for either.
+    await expect(regionOf(page, CHART_REGION)).toHaveCount(0);
+    for (const kind of ["process", "workflow"] as const)
+      await expect(card(page, kind)).toHaveCount(0);
+    await expect(ticketsCard(page)).toHaveCount(0);
+    await expect(page.locator("main.analyzer .chart-ts__line")).toHaveCount(0);
+    await expect(page.locator("main.analyzer").getByRole("article")).toHaveCount(0);
+    // The explainer stays beside it.
+    await expect(howItWorksCard(page)).toBeVisible();
+
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+      await expect(panel).toHaveScreenshot(`analyzer-insufficient-${theme}.png`);
+    }
+
+    // ---- A repository with builds on too few days: its own count, from the service.
+    const telemetry = await page.context().browser()!.newContext();
+
+    try {
+      await signIn(telemetry, SEED_OWNER.id);
+      await selectWorkspace(telemetry, SEED_TENANT.slug);
+      await focusRepo(telemetry, TELEMETRY);
+
+      const thin = await corpus(telemetry, TELEMETRY.ref);
+      expect(thin.builds, "the seed gives helios-telemetry a few builds").toBeGreaterThan(0);
+      expect(thin.daysWithBuilds).toBeLessThan(thin.minimumDaysWithBuilds);
+      expect(thin.sufficient).toBe(false);
+
+      const view = await telemetry.newPage();
+      await openRead(view);
+
+      const plural = (count: number, noun: string) =>
+        `${String(count)} ${count === 1 ? noun : `${noun}s`}`;
+      await expect(
+        regionOf(view, INSUFFICIENT_REGION).locator(".analyzer-state__count"),
+      ).toHaveText(
+        `${plural(thin.builds, "build")} on ${plural(thin.daysWithBuilds, "day")} in the last ${String(thin.window.days)}.`,
+      );
+      await expect(regionOf(view, CHART_REGION)).toHaveCount(0);
+      await expect(view.locator("main.analyzer .chart-ts__line")).toHaveCount(0);
+    } finally {
+      await telemetry.close();
+    }
+  });
+
+  test("never run: the explainer and a call to action — inert, with the reason, for a member", async ({
+    context,
+    page,
+    browser,
+  }) => {
+    await signInAs(context);
+    await rewriteAnalyzerPoll(page, asNeverRun);
+    await openRead(page);
+
+    const panel = regionOf(page, NEVER_RUN_REGION);
+    const held = await corpus(context);
+
+    await expect(page.locator("main.analyzer h1")).toHaveText("No analysis has run here yet.");
+    // The history it would read is the service's own count — this repository has plenty.
+    expect(held.sufficient).toBe(true);
+    await expect(panel.locator(".analyzer-state__count")).toHaveText(
+      `${held.builds.toLocaleString("en-US")} builds on ${String(held.daysWithBuilds)} days in the last ${String(held.window.days)}.`,
+    );
+    await expect(panel).toContainText(
+      "An analysis charts build duration with the shifts it detects",
+    );
+    await expect(panel.getByRole("button", { name: FIRST_RUN_ACTION })).not.toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    // The explainer beside it; no result card, and no empty frame of one.
+    await expect(howItWorksCard(page)).toBeVisible();
+    await expect(regionOf(page, CHART_REGION)).toHaveCount(0);
+    for (const kind of ["process", "workflow"] as const)
+      await expect(card(page, kind)).toHaveCount(0);
+    await expect(regionOf(page, STRIP_REGION)).toContainText("No analysis yet");
+
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+      await expect(panel).toHaveScreenshot(`analyzer-never-run-${theme}.png`, {
+        mask: [panel.locator(".analyzer-state__count")],
+      });
+    }
+
+    // ---- A member is offered the same action, inert, with why.
+    const member = await browser.newContext();
+
+    try {
+      await signInAs(member, SEED_MEMBER.id);
+      const view = await member.newPage();
+      await rewriteAnalyzerPoll(view, asNeverRun);
+      await openRead(view);
+
+      const action = regionOf(view, NEVER_RUN_REGION).getByRole("button", {
+        name: FIRST_RUN_ACTION,
+      });
+      await expect(action).toHaveAttribute("aria-disabled", "true");
+      await expect(action).toHaveAttribute("title", "Only an owner or admin can run an analysis.");
+    } finally {
+      await member.close();
+    }
+  });
+
+  test("running: the progress of the analysis, with the last one's results readable under it", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    await rewriteAnalyzerPoll(page, asRunning);
+    await openAnalyzer(page);
+
+    const progress = regionOf(page, PROGRESS_REGION);
+
+    // The three phases, the one it is in, and a tick per analyzer.
+    await expect(progress.locator(".analyzer-progress__phase")).toHaveText([
+      "Assembling corpus",
+      "Analyzing",
+      "Composing suggestions",
+    ]);
+    await expect(progress.locator('[aria-current="step"]')).toHaveText("Analyzing");
+    await expect(
+      progress.getByRole("list", { name: "Analyzers" }).getByRole("listitem"),
+    ).toHaveCount(ANALYZERS.length);
+    await expect(progress.getByRole("status")).toHaveText(
+      `Analyzing — 2 of ${String(ANALYZERS.length)} analyzers finished.`,
+    );
+    await expect(progress.locator(".analyzer-progress__below")).toHaveText(
+      /^The results below are the last finished analysis's, from .+ ago — they stay until this one ends\.$/,
+    );
+
+    // Underneath, the last finished analysis is all still there.
+    for (const region of REGIONS) await expect(regionOf(page, region.name)).toBeVisible();
+    await expect(chips(page)).toHaveCount(PLANTED_SHIFTS.length);
+    await expect(card(page, "process").getByRole("article")).toHaveCount(4);
+
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+      await expect(progress).toHaveScreenshot(`analyzer-running-${theme}.png`, {
+        mask: clocks(page),
+      });
+    }
+  });
+
+  test("failed: why, what did not run, and the last finished analysis's results still on the page", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    await rewriteAnalyzerPoll(page, asFailed);
+    await openAnalyzer(page);
+
+    const progress = regionOf(page, PROGRESS_REGION);
+
+    await expect(progress.getByRole("status")).toHaveText(
+      `The analysis failed, and nothing from it is shown. ${ENGINE_UNAVAILABLE}`,
+    );
+    await expect(
+      progress
+        .getByRole("list", { name: "Analyzers" })
+        .getByRole("listitem")
+        .filter({ hasText: "not run" }),
+    ).toHaveCount(ANALYZERS.length - 2);
+    await expect(progress.locator(".analyzer-progress__below")).toHaveText(
+      /^The results below are the last finished analysis's, from .+ ago — this run changed none of them\.$/,
+    );
+    // The headline still speaks for the corpus that was analysed.
+    await expect(page.locator("main.analyzer h1")).toContainText("builds have opinions.");
+    await expect(chips(page)).toHaveCount(PLANTED_SHIFTS.length);
+    await expect(card(page, "process").getByRole("article")).toHaveCount(4);
+
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+      await expect(progress).toHaveScreenshot(`analyzer-failed-${theme}.png`, {
+        mask: clocks(page),
+      });
+    }
+  });
+
+  test("stopped at its budget: the findings that were produced, and what did not run", async ({
+    context,
+    page,
+  }) => {
+    await signInAs(context);
+    await rewriteAnalyzerPoll(page, asBudgetExceeded);
+    await openAnalyzer(page);
+
+    const progress = regionOf(page, PROGRESS_REGION);
+    const analyzers = progress.getByRole("list", { name: "Analyzers" });
+
+    // What did not run is named — by the service's sentence, and analyzer by analyzer.
+    await expect(progress.getByRole("status")).toHaveText(
+      `Stopped at its budget. ${BUDGET_REASON}`,
+    );
+    await expect(analyzers).toContainText(
+      "waiver_cite timed out — stopped at the run's compute ceiling",
+    );
+    await expect(analyzers).toContainText(
+      "workflow_outcome not run — the run's compute ceiling was reached",
+    );
+    await expect(analyzers.getByRole("listitem").filter({ hasText: "completed" })).toHaveCount(
+      ANALYZERS.length - 2,
+    );
+    await expect(progress.locator(".analyzer-progress__below")).toHaveText(
+      "The results below include what its finished analyzers found; anything from an analyzer that did not finish is an earlier analysis's.",
+    );
+
+    // …and the findings that were produced are shown.
+    await expect(chips(page)).toHaveCount(PLANTED_SHIFTS.length);
+    await expect(card(page, "process").getByRole("article")).toHaveCount(4);
+    await expect(card(page, "workflow").getByRole("article")).toHaveCount(2);
+
+    for (const theme of THEMES) {
+      await pinTheme(page, theme);
+      await expect(progress).toHaveScreenshot(`analyzer-budget-${theme}.png`, {
+        mask: clocks(page),
+      });
     }
   });
 });
@@ -787,17 +1355,88 @@ test.describe("analyzer suggestions — the flows that write (#518)", () => {
     }
   });
 
-  test("dismiss: a dismissed row stays dismissed across a real re-analysis", async ({
+  test("run analysis: a real run reproduces the seeded findings, and the chart is redrawn from it (#521)", async ({
     context,
     page,
   }) => {
     test.setTimeout(ANALYSIS_TIMEOUT_MS + 60_000);
     await signInAs(context);
-    expect((await suggestion(context, TITLES.flake)).status, NOT_COLD).toBe("open");
 
-    const before = await latestRun(context);
+    const seeded = await durationChart(context);
+    expect(
+      seeded.changePoints,
+      "the seed's three change-points are what the chart starts from",
+    ).toHaveLength(PLANTED_SHIFTS.length);
 
     await openAnalyzer(page);
+    const run = await analyseToEnd(page, context);
+
+    // ---- The page followed the real run to its end.
+    await expect(regionOf(page, PROGRESS_REGION).getByRole("status")).toHaveText(
+      `Analysis complete — ${String(LIVE_ANALYZERS.length)} analyzers finished.`,
+      { timeout: ANALYSIS_TIMEOUT_MS },
+    );
+
+    // ---- The analyzers with their inputs ran; the others say which input a live corpus lacks.
+    const ended = (status: string) =>
+      run.progress.analyzers.filter((entry) => entry.status === status).map((entry) => entry.id);
+
+    expect(ended("completed")).toEqual(LIVE_ANALYZERS);
+    expect(ended("skipped")).toEqual(ANALYZERS.filter((id) => !LIVE_ANALYZERS.includes(id)));
+    for (const entry of run.progress.analyzers.filter((each) => each.status === "skipped")) {
+      expect(entry.reason, `${entry.id} says what it lacked`).toMatch(/^the corpus lacks /);
+    }
+
+    // ---- The chart is the new run's now — and the statistics found what the seed planted:
+    // the same days, the same deltas, the same top candidates.
+    const live = await durationChart(context);
+
+    expect(live.runId, "the chart is drawn from the run that just ended").toBe(run.id);
+    expect(live.runId).not.toBe(seeded.runId);
+    expect(
+      live.changePoints.map((point) => [
+        point.date,
+        point.deltaSeconds,
+        point.candidates[0]?.label,
+      ]),
+      "the change-point analyzer reproduces the seeded findings",
+    ).toEqual(
+      seeded.changePoints.map((point) => [
+        point.date,
+        point.deltaSeconds,
+        point.candidates[0]?.label,
+      ]),
+    );
+    expect(live.changePoints.map((point) => point.deltaSeconds)).toEqual(
+      PLANTED_SHIFTS.map((shift) => shift.deltaSeconds),
+    );
+
+    // ---- …and a page drawn after it carries those chips, with provenance still honest.
+    await page.reload();
+    await expect(chips(page)).toHaveCount(PLANTED_SHIFTS.length);
+    for (const [index, text] of chipTexts(live).entries()) {
+      await expect(chips(page).nth(index)).toHaveAttribute("title", text);
+    }
+
+    const strip = regionOf(page, STRIP_REGION);
+    await expect(strip).toContainText("deterministic analyzers v1");
+    await expect(strip.locator(".analyzer-strip__model")).toHaveCount(0);
+    await expect(strip).not.toContainText("$");
+  });
+
+  test("dismiss: a dismissed row stays dismissed across two real analyses, and what they re-find keeps its identity", async ({
+    context,
+    page,
+  }) => {
+    test.setTimeout(2 * ANALYSIS_TIMEOUT_MS + 60_000);
+    await signInAs(context);
+    expect((await suggestion(context, TITLES.flake)).status, NOT_COLD).toBe("open");
+
+    await openAnalyzer(page);
+
+    // The first of the two analyses: before the dismissal.
+    const first = await analyseToEnd(page, context);
+
     await row(page, TITLES.flake).getByRole("button", { name: "Dismiss", exact: true }).click();
 
     // The guarantee is stated before the dismissal is made.
@@ -815,17 +1454,27 @@ test.describe("analyzer suggestions — the flows that write (#518)", () => {
       .poll(async () => (await suggestion(context, TITLES.flake)).status)
       .toBe("dismissed");
 
-    // A real re-analysis, run to its end.
-    await page.getByRole("button", { name: "Run analysis now" }).click();
-    await expect
-      .poll(async () => (await latestRun(context))?.id, { timeout: ANALYSIS_TIMEOUT_MS })
-      .not.toBe(before?.id);
-    await expect
-      .poll(async () => (await latestRun(context))?.status, { timeout: ANALYSIS_TIMEOUT_MS })
-      .not.toBe("running");
+    // The second: a real re-analysis after it, run to its end. Two runs, both complete.
+    const second = await analyseToEnd(page, context);
+
+    expect(second.id, "the analyzer genuinely ran twice").not.toBe(first.id);
 
     // Still dismissed: in the database, and on a page drawn after the run.
     expect((await suggestion(context, TITLES.flake)).status).toBe("dismissed");
+
+    // Identity, where a live run exercises it: both runs met the fixture-timeout ticket again
+    // (`log_signature` runs on a live corpus), and it is still the one suggestion the seed
+    // drafted — an identity that changed between runs would have composed it a second time, open.
+    const tickets = await ticketTitles(context);
+    const refound = TICKETS[0].title;
+
+    expect(
+      tickets.drafted.filter((title) => title === refound),
+      "the re-found ticket is still one drafted suggestion",
+    ).toHaveLength(1);
+    expect(tickets.undrafted, "nothing was composed again under a new identity").not.toContain(
+      refound,
+    );
 
     await page.reload();
     await expect(row(page, TITLES.flake)).toContainText(
@@ -833,6 +1482,11 @@ test.describe("analyzer suggestions — the flows that write (#518)", () => {
     );
     await expect(row(page, TITLES.flake).getByRole("button", { name: /Draft as/ })).toHaveCount(0);
     await expect(card(page, "workflow").getByRole("article")).toHaveCount(2);
+    // …and on the page the drafted tickets are the seeded four, with no *Not drafted yet* group.
+    await expect(ticketsCard(page).getByRole("checkbox", { name: /^Include BA-/ })).toHaveCount(
+      TICKETS.length,
+    );
+    await expect(ticketsCard(page).getByText("Not drafted yet")).toHaveCount(0);
 
     // The run that just finished read a live corpus, and this deployment exports no rig telemetry
     // (#520): the explainer stops listing it as ingested and says it was not read, with the
@@ -846,5 +1500,45 @@ test.describe("analyzer suggestions — the flows that write (#518)", () => {
     await expect(ingest.locator(".analyzer-hiw__absent")).toHaveText(
       `not read rig telemetry — ${absent[0].reason}`,
     );
+  });
+
+  test("a thin repository stays insufficient through a real analysis of it (#521)", async ({
+    context,
+    page,
+  }) => {
+    test.setTimeout(ANALYSIS_TIMEOUT_MS + 60_000);
+    await signIn(context, SEED_OWNER.id);
+    await selectWorkspace(context, SEED_TENANT.slug);
+    await focusRepo(context, TELEMETRY);
+
+    await openRead(page);
+    await expect(regionOf(page, INSUFFICIENT_REGION)).toBeVisible();
+
+    // An analysis may still be started on a thin corpus, and it runs to its end.
+    const run = await analyseToEnd(page, context, TELEMETRY.ref);
+
+    // It judged its corpus — as too thin — and the service does hold what it timed.
+    const state = await corpus(context, TELEMETRY.ref);
+    const timed = await durationChart(context, TELEMETRY.ref);
+
+    expect(state.analyzed).toMatchObject({ runId: run.id, sufficient: false });
+    expect(timed.runId).toBe(run.id);
+    expect(
+      timed.series.length,
+      "the run timed a few days — there is something to withhold",
+    ).toBeGreaterThan(0);
+    expect(timed.series.length).toBeLessThan(state.minimumDaysWithBuilds);
+
+    // The page draws none of it: the same state, now naming the analysis that read too little.
+    await page.reload();
+    await expect(page.locator("main.analyzer h1")).toHaveText("The analyzer needs more history.");
+
+    const panel = regionOf(page, INSUFFICIENT_REGION);
+    await expect(panel).toContainText(
+      /The last analysis read \d+ builds? on \d+ days? — too little/,
+    );
+    await expect(regionOf(page, CHART_REGION)).toHaveCount(0);
+    await expect(page.locator("main.analyzer .chart-ts__line")).toHaveCount(0);
+    await expect(page.locator("main.analyzer").getByRole("article")).toHaveCount(0);
   });
 });

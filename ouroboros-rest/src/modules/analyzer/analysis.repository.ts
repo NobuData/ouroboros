@@ -256,6 +256,33 @@ export class AnalysisRepository {
   }
 
   /**
+   * A repository's newest run that ended having judged its corpus — `complete` or
+   * `budget_exceeded`, with the confidence basis #516 stores in its manifest.
+   *
+   * That is the population the page's result reads draw from (a run in flight, a failed one and a
+   * budget stop before any analyzer ran are none of theirs either), so its corpus is the one the
+   * results on screen were derived from (BW.6,
+   * [#521](https://github.com/NobuData/ouroboros/issues/521)).
+   *
+   * @param organizationId - The workspace.
+   * @param repoRef - The repository.
+   * @returns The newest by start, or undefined before any run has ended that way.
+   */
+  async latestJudged(organizationId: string, repoRef: string): Promise<AnalysisRunRow | undefined> {
+    return this.database.db
+      .selectFrom("analysis_runs")
+      .selectAll()
+      .where("organization_id", "=", organizationId)
+      .where("repo_ref", "=", repoRef)
+      .where("status", "in", ["complete", "budget_exceeded"])
+      .where(sql<boolean>`corpus_manifest ? 'confidence'`)
+      .orderBy("started_at", "desc")
+      .orderBy("id", "desc")
+      .limit(1)
+      .executeTakeFirst();
+  }
+
+  /**
    * Store the assembled manifest and move the run to `analyzing`.
    *
    * @param id - The run.

@@ -91,15 +91,35 @@ export function durationTitle(chart: DurationChart | null): string {
 }
 
 /**
+ * A run that timed builds on too few days for a curve to mean anything (BW.6,
+ * [#521](https://github.com/NobuData/ouroboros/issues/521)).
+ *
+ * @param days The days it timed.
+ * @param floor The fewest days a chart is drawn from — the service's floor.
+ * @returns The empty state.
+ */
+export function tooFewDays(days: number, floor: number): DurationEmpty {
+  return {
+    title: "Too few days to chart",
+    note: `The last analysis timed builds on ${count(days, "day")}. A curve, and a shift detected in it, need at least ${floor}.`,
+  };
+}
+
+/**
  * Why the card has no chart, if it has none.
  *
  * @param chart The chart.
- * @returns The empty state, or `null` when there is a series to draw.
+ * @param floor The fewest days a chart is drawn from — the service's corpus floor. The page's
+ *   state already withholds a too-thin analysis; this is the same rule held by the chart itself,
+ *   for a run whose corpus cleared the floor while the build it times ran on fewer days. `0`
+ *   (the default) draws whatever there is.
+ * @returns The empty state, or `null` when there is a series worth drawing.
  */
-export function durationEmpty(chart: DurationChart): DurationEmpty | null {
+export function durationEmpty(chart: DurationChart, floor: number = 0): DurationEmpty | null {
   if (chart.runId === null) return NO_DURATION_RUN;
+  if (chart.series.length === 0) return NO_DURATION_SERIES;
 
-  return chart.series.length === 0 ? NO_DURATION_SERIES : null;
+  return chart.series.length < floor ? tooFewDays(chart.series.length, floor) : null;
 }
 
 /* ------------------------------------------------------------------ durations */

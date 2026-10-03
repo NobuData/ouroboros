@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AnalyzerPage, AnalyzerPollOptions } from "@/app/analyzer/analyzer-poll";
 import { PROGRESS_ANCHOR } from "@/app/analyzer/run-progress";
+import { HEADLINE_UNREAD } from "@/app/analyzer/state-view";
 import {
   CHOSEN_REPO_HINT,
   NO_REPOSITORY,
@@ -20,6 +21,7 @@ import {
   HELIOS,
   analyzerPage,
   analyzerReadings,
+  corpusOf,
   freshPage,
   progressOf,
   runningRun,
@@ -115,7 +117,10 @@ describe("the head", () => {
   it("falls back to the first enabled repository under All repos, and says how to choose", async () => {
     resetFocusRepos();
     window.localStorage.clear();
-    answer = freshPage(analyzerPage({ repo: ANALYZER_REPOS[0]!.ref, run: null }));
+    // A repository with history and no analysis of it — what `run: null` is, as the service answers.
+    answer = freshPage(
+      analyzerPage({ repo: ANALYZER_REPOS[0]!.ref, run: null, corpus: corpusOf([1284, 89], null, ANALYZER_REPOS[0]!.ref) }),
+    );
 
     await draw();
 
@@ -137,7 +142,9 @@ describe("the head", () => {
 
     await draw(analyzerReadings());
 
-    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent("No analysis has run here yet.");
+    // The page stays unread — and an unread page claims nothing about the repository (#521).
+    expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(HEADLINE_UNREAD);
+    expect(screen.queryByText(/builds have opinions/)).toBeNull();
   });
 
   it("keeps the Build Farm entry lit — the analyzer has no entry of its own", async () => {
@@ -270,7 +277,8 @@ describe("Run analysis now", () => {
       analyzerPage({
         run: seededRun({
           status: "budget_exceeded",
-          failureReason: "The compute ceiling of 3600 s was reached.",
+          failureReason:
+            "The compute ceiling of 3600 s was reached. Kept the findings of 1 analyzer(s); did not finish: waiver_cite.",
           progress: { analyzers: [progressOf("change_point", "completed", { findings: 3 }), progressOf("waiver_cite", "not_run", { reason: "the compute ceiling was reached" })] },
         }),
       }),
@@ -278,7 +286,9 @@ describe("Run analysis now", () => {
     await draw();
 
     const budget = within(screen.getByRole("region", { name: "Analysis progress" })).getByRole("status");
-    expect(budget).toHaveTextContent("Stopped at its budget; the findings of 1 analyzer were kept.");
+    expect(budget).toHaveTextContent(
+      "Stopped at its budget. The compute ceiling of 3600 s was reached. Kept the findings of 1 analyzer(s); did not finish: waiver_cite.",
+    );
     expect(budget).toHaveClass("analyzer-progress__status--budget");
     expect(screen.getByRole("list", { name: "Analyzers" })).toHaveTextContent("waiver_cite not run — the compute ceiling was reached");
 
@@ -287,7 +297,7 @@ describe("Run analysis now", () => {
     await draw();
 
     const failed = within(screen.getByRole("region", { name: "Analysis progress" })).getByRole("status");
-    expect(failed).toHaveTextContent("The analysis failed and kept no findings. The engine stream was cut off.");
+    expect(failed).toHaveTextContent("The analysis failed, and nothing from it is shown. The engine stream was cut off.");
     expect(failed).toHaveClass("analyzer-progress__status--failed");
   });
 

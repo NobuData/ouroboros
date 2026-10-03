@@ -40,7 +40,7 @@ deployment. Five legs from the issue, and nineteen amended in since:
 | 20 | [`specs/pr-verification.spec.ts`](specs/pr-verification.spec.ts) | **The PR verification page's states (#370)** against the AW.5 seed: mockup 12's `#514` screenshot in both palettes, saying that no sync has ever asked the host about it; a merged PR opening with its receipt and offering nothing to arm; a closed one; a disarmed plan naming **which** re-check refused; a blocked PR leading with *Return to loop*; a member offered no arm, no waive and no approve; the shell at 125% — and **the TOCTOU assertion, for real**: the seeded PR armed, a gate turned red before the last one is green, and **no merge**, with the executor's reason on the page. The live chain — sandbox PR → sync → gates → waive → arm → merged — is written and **parked** on a PR sync trigger, run linking ([#375](https://github.com/NobuData/ouroboros/issues/375)) and a sandbox host that serves pull requests |
 | 21 | [`specs/knowledge.spec.ts`](specs/knowledge.spec.ts) | **The knowledge page's states, and the Knowledge MVP gate (#422)**: what a new org sees — `acme-onboarding`, with no knowledge at all — five cards that teach rather than apologise, in both palettes, and a `repo-map` *pending its first generation* drawn apart from one a generation the host really refused left *failed*; mockup 14's seeded page in both palettes; a member's page, and each write they may not make refused when it is made past the page; the shell at 125% — and **the chain that makes it a knowledge *layer***: import the fixture `CLAUDE.md` and `.cursorrules` from the sandbox host, preview, apply, find the drafts in the table and the candidates in the card, confirm one fact, see it in the manifest preview, and then read **the estimator's own request to the engine off the wire** and find that fact in it; switch a skill off and watch the preview drop it; learn a playbook from a finished run, run it on an issue, and find the queue holding that issue **under that playbook**, with the fact in the context it attaches |
 | 22 | [`specs/insights.spec.ts`](specs/insights.spec.ts) | **The Insights MVP gate (#447)** against the #436 rollup seed: every visual of mockup 15 screenshot in both palettes; one press of the range segment moving every consumer to the same window, agreeing with the API; the DORA strip's `proxy` tags on change failure rate and MTTR, and each popover printing the registry's formula and caveat; a re-categorization made in the card that moves the bars at once (and is put back); **a digest subscription made in the sheet, the scheduler's real tick sending at the slot, and the mail in mailpit carrying the page's own headline and merge rate under the preview's subject**; the routing suggestion and the cost alerts claim absent from the payload and the page; a cold workspace saying *not enough data* with no curve drawn; rollups held back raising the lag banner with the real last-filled time; and the shell at 125% |
-| 23 | [`specs/analyzer.spec.ts`](specs/analyzer.spec.ts) | **The Build Analyzer's suggestion cards (#518)** against the #509 seed: mockup 18's two cards as the seed composes them — titles, evidence lines, impact pills, confidences, `4 open` and the spike row offering **Draft spike ticket**; **an Apply whose effect is its preview** — the pool move's dialog names the runner, pool, UTC window and days, and after the confirm *the farm's own route* holds exactly that window; **a workflow draft that is real** — *Draft as vN →* previews the stage delta, says publishing remains human, opens the studio, and the draft the workflow route answers cites the suggestion in its change note; **a dismissal that outlives a real re-analysis**, on the page and in the database; and a member reading the same preview with the confirm inert while the service refuses their direct apply. Since #519, **the drafted-tickets card as the seed composes it** too: mockup 18's four rows with their keys, titles, estimator chips and evidence lines, `est. total ~1.5 days of loop time`, an evidence line opening references that land on a loop's test results, a tick that moves the push button's count at once and the total when the service answers (and is put back), and a member who may tick and may not push. Since #520, **the predicted-vs-measured and how-it-works cards**: mockup 18's pair with the miss drawn as plainly as the delivery (the same face and weight, three distinct hues in both palettes), *retrains* opening the service's formula and the calibration cells the two closes moved, and the three steps with the tenant-locality link; then, through the writers, **the apply's own measurement as a third row** (`day 0 of 14`, naming its metric) that the applied row's link lands on, and **an ingest line that stops claiming rig telemetry** once a real analysis has read a corpus without it. Cold-only: a resolution is final. BW.6 (#521) extends this file |
+| 23 | [`specs/analyzer.spec.ts`](specs/analyzer.spec.ts) | **The Build Analyzer's suggestion cards (#518)** against the #509 seed: mockup 18's two cards as the seed composes them — titles, evidence lines, impact pills, confidences, `4 open` and the spike row offering **Draft spike ticket**; **an Apply whose effect is its preview** — the pool move's dialog names the runner, pool, UTC window and days, and after the confirm *the farm's own route* holds exactly that window; **a workflow draft that is real** — *Draft as vN →* previews the stage delta, says publishing remains human, opens the studio, and the draft the workflow route answers cites the suggestion in its change note; **a dismissal that outlives a real re-analysis**, on the page and in the database; and a member reading the same preview with the confirm inert while the service refuses their direct apply. Since #519, **the drafted-tickets card as the seed composes it** too: mockup 18's four rows with their keys, titles, estimator chips and evidence lines, `est. total ~1.5 days of loop time`, an evidence line opening references that land on a loop's test results, a tick that moves the push button's count at once and the total when the service answers (and is put back), and a member who may tick and may not push. Since #520, **the predicted-vs-measured and how-it-works cards**: mockup 18's pair with the miss drawn as plainly as the delivery (the same face and weight, three distinct hues in both palettes), *retrains* opening the service's formula and the calibration cells the two closes moved, and the three steps with the tenant-locality link; then, through the writers, **the apply's own measurement as a third row** (`day 0 of 14`, naming its metric) that the applied row's link lands on, and **an ingest line that stops claiming rig telemetry** once a real analysis has read a corpus without it. Since #521 — **the Build Analyzer's MVP gate** — the page as a whole and the states mockup 18 does not draw: the seven regions photographed in both themes on the mockup's own calendar; provenance that claims no model and no `$`; the three chips on the shifts the seed plants; fixed chrome, **Build Farm** lit and the 125% step; a member's page; **insufficient corpus for real** on the two seeded repositories that are that thin (the count and the floor from the service, and no chart or suggestion drawn); and — by answering the page's poll with the service's answer, changed — **never run**, **running**, **failed** and **stopped at its budget**, each over the results that were already there. Its writers then prove the chain: **a real analysis reproduces the seeded findings** (the chart redrawn from the new run carries the same three chips), and the dismissal now spans **two real runs**, asserting that the one suggestion a live run re-finds keeps its identity. Cold-only: a resolution is final |
 | 24 | [`specs/tickets.spec.ts`](specs/tickets.spec.ts) | **The Build Analyzer's drafted tickets, pushed (#519)** — the chain behind mockup 18's **Push 4 tickets to backlog →**, in one traversal: **Edit drafts** opens the planning editor on the analyzer's batch, whose **Regenerate** is inert, and a title edited there is the title the card shows on return; `BA-3` unticked and the batch pushed to the **sandbox tracker** with one creation refused mid-batch — the failed row says why and offers **Retry**, the others link to their tracker issues; after the retry the tracker holds **exactly the three ticked drafts, each once**, read back through its own API with the evidence line, the references and the suggestion in each body; a further push is refused rather than filed again; the toast links to Issues, where the backlog's own sync shows them; and the card is left a summary, not an empty box. Named to sort last: it files canonical tickets the planning, intake and dashboard legs' parity counts. Cold-only: a pushed batch is closed |
 
 Leg 7 is [#647](https://github.com/NobuData/ouroboros/issues/647)'s, the shell roadmap's
@@ -494,6 +494,51 @@ leg must fail *if streaming is faked*, so nothing here fakes it: the test is wri
 `test.fixme` and its reason, its failure-mode pair is registered as parked (§ *Adding a leg*), and
 the **seeded** log is asserted in reading order by the parity group in the meantime.
 
+Leg 23 is [#521](https://github.com/NobuData/ouroboros/issues/521)'s — BW.6, the Build Analyzer
+roadmap's MVP gate — and #518, #519 and #520's before it: twenty-five tests in about forty-two
+seconds of the suite's ten minutes. #521 added eleven of them and about twenty-six seconds; the
+issue allows three minutes. Three blocks: fifteen that read the page as the seed left it, five
+that draw the states mockup 18 does not, and five that write.
+
+**What is real, and what is rewritten.** A seeded stack cannot hold every state: an analysis
+takes two seconds, so *running* is over before a browser can look; nothing seeded has failed or
+stopped at its budget; and the one repository with ninety days of builds was analysed by the
+seed. Those four are drawn leg 20's way — the page's own poll answered with **the service's real
+answer, changed** (`rewriteAnalyzerPoll`, `support/analyzer.ts`) — and prove what the page draws
+for such an answer; that the service produces them is the REST suites'. **Insufficient corpus
+needs no rewrite**: `atlas-scheduler` has no build and `helios-telemetry` has builds on three
+days, and the leg reads the count and the floor from the service before it reads them off the
+page. The last writer then runs a real analysis of `helios-telemetry` and requires the page to
+stay insufficient — the service holds the three days that run timed, and the page draws no chart
+from them.
+
+**The chain.** *Run analysis → findings reproduce* is a real run through the real engine: three
+analyzers complete (the four others say which input a live corpus lacks), the chart read then
+answers from the **new** run, and its change-points are the seeded ones — same days, same deltas,
+same top candidates. *Apply → farm* and *Draft → studio* are #518's; *push → tracker → intake* is
+leg 24. *Dismiss → re-run* runs the analyzer **twice**, once on each side of the dismissal.
+
+**What the dismissal test can and cannot say about identity.** No suggestion a person can dismiss
+is re-found by a live run today: their analyzers (`workflow_outcome`, `cache_window`,
+`queue_correlation`) are skipped until the corpus assembler fills their inputs. The one
+suggestion both runs do meet again is the fixture-timeout ticket the seed drafted (`BA-1`, from
+`log_signature`), so that is where identity across real runs is asserted: after both, it is still
+one drafted suggestion, with nothing by its title under *Not drafted yet*. For the dismissed row
+the leg proves that the dismissal holds across both runs and a reload.
+
+**The three breakages #521 asks for**, each done by hand once — the layer stubbed, its image
+rebuilt into the stack, the database put back to cold, the one test run, the source restored:
+
+| Broken | Went red | With |
+|---|---|---|
+| change-point detection returns nothing — `_detect` in the engine's `changepoint.py` | *run analysis: a real run reproduces the seeded findings* | *the change-point analyzer reproduces the seeded findings* — three expected, none received |
+| the farm plane is handed four of the preview's five days — `execute` in `actions.service.ts` | *apply: the pool move's preview names the change* | the farm's window against `MOVE_PREVIEW.window`: Mon–Thu held where Mon–Fri was previewed |
+| the fixture-timeout ticket cites every log signature, a different identity — `composer.templates.ts` | *dismiss: a dismissed row stays dismissed across two real analyses* | *nothing was composed again under a new identity* — `BA-1`'s title, open, under *Not drafted yet* |
+
+The registered pairs (`scripts/verify-failure-modes.sh`) are `db`, which takes legs 23 and 24
+down at sign-in, and `engine`, against the one test that starts an analysis: the start is refused
+before a run exists, and the leg reports *the analysis could not be started* in the page's words.
+
 ## Stack
 
 [Playwright](https://playwright.dev) on Node 24, Chromium only, over the stack
@@ -645,7 +690,7 @@ tests/e2e/
 ├── playwright.email.config.ts  # the digest email's four client profiles: no stack, its own spec directory (#440)
 ├── email/                      # the digest email rendered from ouroboros-rest's golden HTML, and its baselines
 ├── specs/                      # one file per leg
-│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20 and 21's baselines, and leg 8's matrix under readability/
+│   └── __screenshots__/        # legs 6, 9, 10, 11, 12, 15, 16, 17, 18, 19, 20, 21 and 23's baselines, and leg 8's matrix under readability/
 ├── support/
 │   ├── stack.ts                # addresses, timeouts, and the two budgets
 │   ├── seed.ts                 # the values R__dev_seed.sql writes, copied on purpose
@@ -662,7 +707,7 @@ tests/e2e/
 │   ├── simulator.ts            # the simulated-run driver, started on the host, and the run it opened (legs 17, 18)
 │   ├── pull-requests.ts        # what mockup 12 renders for the seeded PR, and the page's poll rewritten into the states the seed does not hold (leg 20)
 │   ├── knowledge.ts            # the cold workspace and the seeded one, the fixture import's figures, the sandbox issue, and the two reads beneath the browser (leg 21)
-│   ├── analyzer.ts             # what mockup 18's suggestion, drafted-tickets, predicted-vs-measured and how-it-works cards render, the reads beneath the browser, and what legs 23 and 24 put back
+│   ├── analyzer.ts             # what mockup 18's seven regions and the page's other states render, the reads beneath the browser, the poll rewriter and the calendar pin, and what legs 23 and 24 put back
 │   ├── shell.ts                # the containment contract as assertions (leg 7)
 │   ├── readability.ts          # the matrix roster and the 150% probes (leg 8)
 │   ├── contrast.ts             # WCAG ratios over what the browser painted (leg 8)
@@ -794,6 +839,21 @@ is the maps list alone, with one map pending and one failed side by side — the
 two are visually distinct, as a picture — masking the failed row's sentence, which says how long
 ago it failed.
 
+Leg 23's pairs are twelve. `analyzer-{strip,chart,process,workflow,tickets,measured,how}-{light,dark}`
+are mockup 18's seven regions, each photographed alone through a 1680 × 1050 window — wide enough
+that the chart is drawn whole rather than scrolled inside its card. **The calendar is pinned
+rather than masked**: the seed dates everything from the day it ran, and a chip's width and row
+follow from its date's text, so today's chart and tomorrow's are different pictures and no mask
+would hold them together. For these pictures only, the page's answer has its UTC days moved so
+the seed day reads as the mockup's (`onMockupDay`) — the chips are *May 18*, *Jun 22* and
+*Jul 30*, the two measurements *Jul 2* and *Jul 9* — and the test beside it asserts the real
+dates as text. **Two masks**: the strip's *Last run* (measured against the clock) and the pool
+move's confidence (84 or 85 by the seed's weekday). `analyzer-insufficient-{light,dark}` is the
+panel for a repository with no build, unmasked; `analyzer-never-run-{light,dark}` the same panel
+with its call to action, masking the count; and `analyzer-{running,failed,budget}-{light,dark}`
+the progress panel in each of those endings, masking the one line that says how long ago the
+last finished analysis was.
+
 Leg 12's pair is of the **canvas region alone** rather than the page —
 `studio-canvas-{light,dark}` in [`specs/studio.spec.ts`](specs/studio.spec.ts), through a
 1920 × 1400 window the leg asserts the canvas fits whole. The studio's head says *Last edited 2h
@@ -840,18 +900,20 @@ yarn readability
 git status --short specs/__screenshots__
 ```
 
-Legs 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20 and 21's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
+Legs 6, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21 and 23's pairs refresh the same way with `yarn e2e specs/dashboard.spec.ts
 --update-snapshots` — or `specs/routing.spec.ts`, `specs/providers.spec.ts`,
 `specs/issues.spec.ts`, `specs/studio.spec.ts`, `specs/code-editor.spec.ts`,
 `specs/registry.spec.ts`, `specs/planning.spec.ts`, `specs/farm.spec.ts`, `specs/runs.spec.ts`,
-`specs/run-console.spec.ts`, `specs/test-results.spec.ts`, `specs/pr-verification.spec.ts` or
-`specs/knowledge.spec.ts` — at step 2. The precondition is the same, and it is the same seed.
+`specs/run-console.spec.ts`, `specs/test-results.spec.ts`, `specs/pr-verification.spec.ts`,
+`specs/knowledge.spec.ts` or `specs/analyzer.spec.ts` — at step 2. The precondition is the same,
+and it is the same seed.
 
 **Leg 20's pairs need a cold volume, as leg 15's do**, for the reason its section gives: its last
 test changes the seeded PR for good, and every pair before it photographs that PR as the seed left
 it. **Leg 21's do too**: its chain imports into the seeded workspace and its refused generation
 is recorded in the cold one, and all three pairs photograph those workspaces as the seed left
-them.
+them. **Leg 23's do too**: its writers apply, draft, dismiss and analyse for good, and every pair
+is of the page before any of that — the seeded run, six open suggestions, four drafts unpushed.
 
 **Leg 15's pair has one more precondition, and it is the same volume rule its whole file lives
 under.** The parity group asserts the seeded OTA batch *before* it has been pushed, so the pair
@@ -1020,6 +1082,9 @@ stated runtime budget of its own. Two rules keep that from becoming a suite nobo
 - [#358](https://github.com/NobuData/ouroboros/issues/358) — the gate engine leg 20 turns a gate red through
 - [#375](https://github.com/NobuData/ouroboros/issues/375) — loop-created PRs, whose run linking is one of the things that un-parks leg 20's live chain
 - [#422](https://github.com/NobuData/ouroboros/issues/422) — leg 21, the knowledge page's states and the Knowledge MVP gate
+- [#521](https://github.com/NobuData/ouroboros/issues/521) — leg 23's states, screenshots and chain, and the Build Analyzer MVP gate
+- [#518](https://github.com/NobuData/ouroboros/issues/518), [#519](https://github.com/NobuData/ouroboros/issues/519), [#520](https://github.com/NobuData/ouroboros/issues/520) — the cards legs 23 and 24 were built up from
+- [#509](https://github.com/NobuData/ouroboros/issues/509) — the analyzer seed leg 23's parity asserts against, and whose planted shifts its real run reproduces
 - [#409](https://github.com/NobuData/ouroboros/issues/409) — the knowledge seed leg 21's parity asserts against
 - [#413](https://github.com/NobuData/ouroboros/issues/413) — the rules-file import leg 21's chain begins with
 - [#414](https://github.com/NobuData/ouroboros/issues/414) — context assembly, whose manifest leg 21 follows a fact through

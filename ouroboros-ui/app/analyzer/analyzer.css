@@ -118,6 +118,13 @@
   font-size: var(--t-sm);
 }
 
+/* The strip's place while the page is unread: one row's height, and no claim. */
+.analyzer-strip__skeleton {
+  height: 1.25rem;
+  border-radius: var(--r-sm);
+  background: var(--raised);
+}
+
 .analyzer-strip__row {
   display: flex;
   flex-wrap: wrap;
@@ -306,6 +313,13 @@
   border: 1px solid var(--line);
   border-radius: var(--r-sm);
   font-size: var(--t-sm);
+}
+
+/* Whose results the cards below hold, under a run that is not simply their source. */
+.analyzer-progress__below {
+  margin: var(--sp-4) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-xs);
 }
 
 .analyzer-progress__status--running {
@@ -1834,4 +1848,56 @@
 .analyzer-hiw__link {
   color: var(--accent);
   white-space: nowrap;
+}
+
+/* ---------- the cold states: insufficient corpus, never run (#521) ---------- */
+
+.analyzer-state {
+  min-width: 0;
+}
+
+/* How much history there is — the fact the state turns on, in the strip's mono. */
+.analyzer-state__count {
+  margin: 0 0 var(--sp-5);
+  color: var(--ink);
+  font-family: var(--f-mono);
+  font-size: var(--t-md);
+  overflow-wrap: anywhere;
+}
+
+.analyzer-state__text {
+  max-width: 44rem;
+  margin: var(--sp-3) 0 0;
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+/* The call to action: the head's own action, under what it will produce. */
+.analyzer-state__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-5);
+  margin-top: var(--sp-8);
+}
+
+/* What the analyzer reads, ruled off from what the state says. */
+.analyzer-state__reads {
+  max-width: 44rem;
+  margin: var(--sp-8) 0 0;
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+  color: var(--ink-mut);
+  font-size: var(--t-sm);
+  line-height: var(--lh-body);
+}
+
+.analyzer-state__label {
+  display: block;
+  margin-bottom: var(--sp-2);
+  color: var(--ink-faint);
+  font-family: var(--f-mono);
+  font-size: var(--t-2xs);
+  letter-spacing: var(--tr-wider);
+  text-transform: uppercase;
 }

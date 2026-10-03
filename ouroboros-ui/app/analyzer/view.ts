@@ -83,29 +83,61 @@ export function analyzerEyebrow(repo: string | null): string {
   return repo === null ? ANALYZER_EYEBROW : `${ANALYZER_EYEBROW} · ${repoTitle(repo)}`;
 }
 
+/** The headline for a run that ended before it had assembled a corpus. */
+export const NO_CORPUS_HEADLINE = "The last analysis ended before it read the build history.";
+
 /**
- * The headline, slot-filled from the corpus manifest.
+ * The headline over a corpus of this size.
  *
- * @param run The newest run, or `null` before the first.
- * @returns *Your last 1,284 builds have opinions.* for a corpus of at least one build a day;
- *   a truthful sentence for a thinner one, for none, and before the first manifest.
+ * @param builds Builds inside the window.
+ * @param days The window's length.
+ * @returns *Your last 1,284 builds have opinions.* for at least one build a day; a truthful
+ *   sentence for a thinner corpus, and for none.
  */
-export function analyzerHeadline(run: AnalysisRun | null): string {
-  const manifest = run?.manifest ?? null;
-
-  if (manifest === null) {
-    return run === null ? "No analysis has run here yet." : "Reading your build history…";
-  }
-
-  const builds = manifest.counts.builds;
-  const days = manifest.window.days;
-
+export function corpusHeadline(builds: number, days: number): string {
   if (builds === 0) return `No builds in the last ${days} days to learn from yet.`;
   if (builds < days) {
     return `${count(builds, "build")} in ${days} days — early opinions, held loosely.`;
   }
 
   return `Your last ${builds.toLocaleString("en-US")} builds have opinions.`;
+}
+
+/**
+ * The headline, slot-filled from the corpus manifest.
+ *
+ * @param run The newest run, or `null` before the first.
+ * @returns {@link corpusHeadline} over the run's manifest; before a manifest exists, that no
+ *   analysis has run, that one is reading the history now, or — for a run that ended without
+ *   one — that it ended first. Never *reading…* for a run that is no longer running.
+ */
+export function analyzerHeadline(run: AnalysisRun | null): string {
+  if (run === null) return "No analysis has run here yet.";
+
+  const { manifest } = run;
+  if (manifest === null) {
+    return run.status === "running" ? "Reading your build history…" : NO_CORPUS_HEADLINE;
+  }
+
+  return corpusHeadline(manifest.counts.builds, manifest.window.days);
+}
+
+/**
+ * Why *Run analysis now* is inert, if it is.
+ *
+ * @param state Whether this person may run one, whether a press is on its way, and whether the
+ *   page has been read.
+ * @returns The reason, or `undefined` when the control is live.
+ */
+export function runBlock(state: {
+  readonly mayAdminister: boolean;
+  readonly starting: boolean;
+  readonly unread: boolean;
+}): string | undefined {
+  if (!state.mayAdminister) return RUN_MEMBER_REASON;
+  if (state.starting) return RUN_STARTING_REASON;
+
+  return state.unread ? RUN_UNREAD_REASON : undefined;
 }
 
 /* ------------------------------------------------------------------ the schedule control */
@@ -169,6 +201,20 @@ export const NO_RUN_STRIP = "No analysis yet — the corpus, provenance and conf
 
 /** What the corpus slot says while a run is assembling. */
 export const ASSEMBLING_CORPUS = "being assembled…";
+
+/** What the corpus slot says for a run that ended before it had assembled one. */
+export const NO_CORPUS = "not assembled — the run ended first";
+
+/**
+ * The corpus slot's text for a run with no manifest.
+ *
+ * @param run The run.
+ * @returns {@link ASSEMBLING_CORPUS} while it runs; {@link NO_CORPUS} once it has ended — a strip
+ *   that kept saying *being assembled…* after a failure would be promising something.
+ */
+export function missingCorpusLine(run: Pick<AnalysisRun, "status">): string {
+  return run.status === "running" ? ASSEMBLING_CORPUS : NO_CORPUS;
+}
 
 /** The tag a sampled corpus carries. */
 export const SAMPLED_TAG = "sampled";
@@ -414,8 +460,9 @@ export function phaseState(phase: AnalysisRun["phase"], run: AnalysisRun): Phase
  *
  * @param run The run.
  * @returns What is happening, or how it ended — `failed` and `budget_exceeded` each with the
- *   run's own reason, because they mean different things: a broken run kept nothing; one that
- *   reached its budget kept what its finished analyzers found.
+ *   run's own reason, because they mean different things: nothing a broken run found reaches the
+ *   page (whatever its analyzers had finished); one that reached its budget kept what its
+ *   finished analyzers found, and its reason names the ones that did not finish.
  */
 export function runStatusLine(run: AnalysisRun): string {
   const finished = run.progress.analyzers.filter((entry) => entry.status === "completed").length;
@@ -429,9 +476,13 @@ export function runStatusLine(run: AnalysisRun): string {
     case "complete":
       return `Analysis complete — ${count(finished, "analyzer")} finished.`;
     case "budget_exceeded":
-      return `Stopped at its budget; the findings of ${count(finished, "analyzer")} were kept. ${run.failureReason ?? ""}`.trim();
+      // The service's reason says what was kept and names what did not finish; saying the count
+      // here as well would say it twice.
+      return run.failureReason === null
+        ? `Stopped at its budget; the findings of ${count(finished, "analyzer")} were kept.`
+        : `Stopped at its budget. ${run.failureReason}`;
     case "failed":
-      return `The analysis failed and kept no findings. ${run.failureReason ?? ""}`.trim();
+      return `The analysis failed, and nothing from it is shown. ${run.failureReason ?? ""}`.trim();
   }
 }
 

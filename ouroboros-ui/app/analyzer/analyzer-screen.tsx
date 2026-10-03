@@ -8,12 +8,14 @@ import { RetryBanner } from "@/app/ui";
 import { AnalyzerHead } from "./analyzer-head";
 import type { AnalyzerPollOptions } from "./analyzer-poll";
 import { AnalyzerProvider, useAnalyzer } from "./analyzer-store";
+import { CorpusStatePanel } from "./corpus-state";
 import type { AnalyzerReadings } from "./data";
 import { DurationCard } from "./duration-card";
 import { HowItWorksCard } from "./how-it-works-card";
 import { MeasurementsCard } from "./measurements-card";
 import { MetaStrip } from "./meta-strip";
 import { RunProgress } from "./run-progress";
+import { isCold, pageState, sideCards } from "./state-view";
 import { ProcessSuggestionsCard, WorkflowSuggestionsCard } from "./suggestion-cards";
 import { TicketsCard } from "./tickets-card";
 
@@ -34,6 +36,11 @@ const UNREAD_HEADLINE = "The Build Analyzer could not be read.";
  * one holds the drafted tickets (BW.4, [#519](https://github.com/NobuData/ouroboros/issues/519)),
  * then the predicted-vs-measured card and the how-it-works explainer (BW.5,
  * [#520](https://github.com/NobuData/ouroboros/issues/520)).
+ *
+ * That is the page over **results**. A repository with too little history, or one nothing has
+ * analysed yet, gets one panel in place of the result cards (BW.6,
+ * [#521](https://github.com/NobuData/ouroboros/issues/521); `state-view.ts` holds the rule) — and
+ * a run in flight, a failed one and a budget stop are the progress panel, over whichever holds.
  *
  * It has no sidebar entry of its own; it lives under **Build Farm**, which it publishes as its
  * origin so that entry stays lit (`setNavOrigin`, `app/shell/nav-registry.ts`).
@@ -65,19 +72,28 @@ export function AnalyzerScreen({
 }
 
 /**
- * The mockup's main column (`c-8`) — the cards about the repository's builds. It is not drawn in a
- * workspace with no repository to analyse: every card in it is one repository's.
+ * The mockup's main column (`c-8`) — the cards about the repository's builds, or the one panel
+ * that stands in for them while there are no results worth drawing. It is not drawn in a workspace
+ * with no repository to analyse: every card in it is one repository's.
  *
  * @returns The column, or nothing.
  */
 function AnalyzerMain() {
-  const { chosen } = useAnalyzer();
+  const { chosen, page } = useAnalyzer();
 
-  return chosen === null ? null : (
+  if (chosen === null) return null;
+
+  return (
     <div className="analyzer__main">
-      <DurationCard />
-      <ProcessSuggestionsCard />
-      <WorkflowSuggestionsCard />
+      {isCold(pageState(page)) ? (
+        <CorpusStatePanel />
+      ) : (
+        <>
+          <DurationCard />
+          <ProcessSuggestionsCard />
+          <WorkflowSuggestionsCard />
+        </>
+      )}
     </div>
   );
 }
@@ -85,17 +101,22 @@ function AnalyzerMain() {
 /**
  * The mockup's side column (`c-4`) — what the analysis turned into work, how its predictions held
  * up, and how it works. Like the main column it is one repository's, so it is not drawn where
- * there is none to analyse.
+ * there is none to analyse. In a cold state the explainer stays, and the two work cards stay only
+ * where they hold something (`sideCards`).
  *
  * @returns The column, or nothing.
  */
 function AnalyzerSide() {
-  const { chosen } = useAnalyzer();
+  const { chosen, page } = useAnalyzer();
 
-  return chosen === null ? null : (
+  if (chosen === null) return null;
+
+  const cards = sideCards(page);
+
+  return (
     <div className="analyzer__side">
-      <TicketsCard />
-      <MeasurementsCard />
+      {cards.tickets && <TicketsCard />}
+      {cards.measurements && <MeasurementsCard />}
       <HowItWorksCard />
     </div>
   );
