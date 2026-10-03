@@ -23,6 +23,11 @@
  * The suggestion actions (`actions/`, BV.5, [#514](https://github.com/NobuData/ouroboros/issues/514))
  * preview, apply, dismiss, draft and push them — composing the farm, workflow and planning planes
  * through their own services and writing only the analyzer's tables.
+ *
+ * The measurement job (`measurement/`, BV.6, [#515](https://github.com/NobuData/ouroboros/issues/515))
+ * judges every applied suggestion after its window — delivered, under, over or confounded — and
+ * recalibrates the analyzer's factor by bounded, reproducible arithmetic; the composer applies the
+ * new factor at the next composition.
  */
 
 import { Module } from "@nestjs/common";
@@ -38,6 +43,10 @@ import { WorkflowsModule } from "../workflows/workflows.module";
 import { SuggestionActionsController } from "./actions/actions.controller";
 import { ActionsRepository } from "./actions/actions.repository";
 import { SuggestionActionsService } from "./actions/actions.service";
+import { MeasurementController } from "./measurement/measurement.controller";
+import { MeasurementRepository } from "./measurement/measurement.repository";
+import { MeasurementScheduler } from "./measurement/measurement.scheduler";
+import { MeasurementService } from "./measurement/measurement.service";
 import { AnalysisController } from "./analysis.controller";
 import { AnalysisBuildCounter } from "./analysis.counter";
 import { AnalysisOrchestrator } from "./analysis.orchestrator";
@@ -61,7 +70,7 @@ import { CorpusRepository } from "./corpus/corpus.repository";
     PlanningModule,
     ScheduleModule.forRoot(),
   ],
-  controllers: [AnalysisController, SuggestionActionsController],
+  controllers: [AnalysisController, SuggestionActionsController, MeasurementController],
   providers: [
     CorpusRepository,
     CorpusAssembler,
@@ -75,6 +84,9 @@ import { CorpusRepository } from "./corpus/corpus.repository";
     { provide: SYNTHESIZER, useClass: UnavailableSynthesizer },
     ActionsRepository,
     SuggestionActionsService,
+    MeasurementRepository,
+    MeasurementService,
+    MeasurementScheduler,
   ],
   exports: [AnalysisOrchestrator],
 })

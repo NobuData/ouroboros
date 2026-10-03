@@ -105,8 +105,9 @@ module.exports = {
         "The Build Analyzer's corpus leaves this process for the deployment's own engine and " +
         "nowhere else (BV.1, #510; docs/SECURITY_MODEL.md § 6.6). The analyzer module reaches " +
         "the engine through EngineClient and may import no network client of its own — no " +
-        "http/https/net/tls/dgram, no undici, no WebSocket, no mailer, no tracker or host SDK.",
-      from: { path: "^src/modules/analyzer/" },
+        "http/https/net/tls/dgram, no undici, no WebSocket, no mailer, no tracker or host SDK. " +
+        "Its suites are not shipped and may stand a recorded tracker in (BV.6, #515).",
+      from: { path: "^src/modules/analyzer/", pathNot: "spec\\.ts$|\\.fixture\\.ts$" },
       to: {
         path:
           "^(node:)?(http|https|http2|net|tls|dgram)$|(^|node_modules/)(undici|ws|nodemailer|" +

@@ -74,7 +74,7 @@ import {
   type PlanSubject,
 } from "./bindings";
 import {
-  baselineValue,
+  windowValue,
   baselineWindow,
   MEASUREMENT_TARGETS,
   predictedOf,
@@ -298,7 +298,11 @@ export class SuggestionActionsService {
     });
 
     const at = new Date();
-    const drafted = await this.suggestions.markDrafted(organizationId, ids, batch.id, actorId, at);
+    // In the order asked for — `update … returning` promises none.
+    const moved = new Set(
+      await this.suggestions.markDrafted(organizationId, ids, batch.id, actorId, at),
+    );
+    const drafted = ids.filter((id) => moved.has(id));
     for (const id of drafted) {
       await this.audit.record({
         organizationId,
@@ -439,7 +443,7 @@ export class SuggestionActionsService {
         target.metric,
       )
     ).filter((point) => dimension === null || point.dimension === dimension);
-    const value = baselineValue(target, points, days);
+    const value = windowValue(target, points, days);
     if (value === undefined) throw baselineUnavailable(target.metric, window.from, window.to);
 
     return {

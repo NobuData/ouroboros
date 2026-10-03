@@ -2087,6 +2087,13 @@ expect_red 'the same job hook may be registered twice' \
   'drop index ouroboros.farm_job_hooks_identity_idx;'
 
 
+expect_red 'one outlier may swing the calibration factor unbounded' \
+  'an outlier counts double at most' \
+  'create or replace function ouroboros.analyzer_calibration_contribution(
+     p_measured_delta numeric, p_raw numeric)
+   returns numeric language sql immutable as $$ select round(p_measured_delta, 6) $$;'
+
+
 printf '\n'
 if check_summary; then
   rm -rf "$LOG_DIR"

@@ -30305,6 +30305,30 @@ select pg_temp.must_hold(
      from ouroboros.analyzer_measurement_policies where organization_id = 'org-v085'),
   'removing whoever saved a policy keeps the policy');
 
+-- --- V089 (#515): the formula is bounded, one measurement at a time -------------------
+
+select pg_temp.must_hold(
+  ouroboros.analyzer_calibration_contribution(-72, -110) = -72
+    and ouroboros.analyzer_calibration_contribution(-1100, -110) = -220
+    and ouroboros.analyzer_calibration_contribution(40, -110) = 0
+    and ouroboros.analyzer_calibration_contribution(-235, -220) = -235
+    and ouroboros.analyzer_calibration_contribution(-72, 0) is null,
+  'a contribution is its measured delta held to [0, 2] times its raw prediction: in band it is the delta, an outlier counts double at most, a wrong-direction result counts as nothing');
+
+select pg_temp.must_hold(
+  (select bool_and(i.measured_sum = (
+            select coalesce(sum(ouroboros.analyzer_calibration_contribution(
+                     ouroboros.analysis_json_number(m.measured -> 'delta'),
+                     ouroboros.analysis_json_number(m.predicted -> 'delta')
+                       / ouroboros.analysis_json_number(m.predicted #> '{calibration,factor}'))), 0)
+              from ouroboros.suggestion_measurements m
+             where m.id = any (i.measurement_ids)))
+     from ouroboros.analyzer_calibration c
+     cross join lateral ouroboros.analyzer_calibration_inputs(
+       c.organization_id, c.repo_ref, c.analyzer, c.impact_class) i
+    where c.organization_id = 'org-v085'),
+  'a cell''s measured sum is the sum of its measurements'' bounded contributions');
+
 delete from ouroboros.organization where "id" in ('org-v085', 'org-v085-other');
 
 select pg_temp.must_hold(

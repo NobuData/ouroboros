@@ -85,15 +85,16 @@ export function percentile(sorted: readonly number[], fraction: number): number 
 }
 
 /**
- * The baseline value of a window, in the impact's unit — or `undefined` when a median or percentile
- * has no sample to be taken over.
+ * A window's value of the target metric, in the impact's unit — the baseline before an apply, and
+ * BV.6's measured value after it — or `undefined` when a median or percentile has no sample to be
+ * taken over.
  *
  * @param target - Where the impact is measured.
  * @param points - The window's rows (already narrowed to a dimension when the target has one).
  * @param days - The window's length, for a weekly rate.
  * @returns The value, rounded to two places.
  */
-export function baselineValue(
+export function windowValue(
   target: MeasurementTarget,
   points: readonly MetricPoint[],
   days: number,

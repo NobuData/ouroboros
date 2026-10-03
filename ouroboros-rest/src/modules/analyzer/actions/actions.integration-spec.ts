@@ -6,13 +6,12 @@ import {
 } from "../../../testing/harness.fixture";
 import { TENANT_HEADER } from "../../tenancy/tenant.resolver";
 import { SCHEMA_NAME } from "../../db/schema";
-import type { EngineFinding } from "../../engine/engine.analysis";
-import { readFixture } from "../../workflows/dsl.golden.fixture";
-import { WorkflowsService } from "../../workflows/workflows.service";
-import { pendingProgress } from "../analysis.progress";
-import { AnalysisRepository } from "../analysis.repository";
-import { FORGE_02_ID, POOL_A_ID, SEEDED_FINDINGS } from "../composer/composer.seed.fixture";
-import { SuggestionComposer } from "../composer/composer.service";
+import {
+  analyze,
+  BENCH_REPO,
+  seedSeededIdsWorkspace,
+  suggestionId,
+} from "../analyzer.integration.fixture";
 import type { PoolWindowChange } from "./bindings";
 import type { AppliedSuggestionResource, SuggestionPreviewResource } from "./actions.resources";
 
@@ -32,26 +31,6 @@ import type { AppliedSuggestionResource, SuggestionPreviewResource } from "./act
  * yarn test:integration src/modules/analyzer/actions
  * ```
  */
-
-const REPO = "acme-robotics/helios-firmware";
-
-/** As the composer suite: a waiver cite needs a loop plane this suite does not build. */
-const PERSISTABLE = SEEDED_FINDINGS.filter((finding) => finding.analyzer !== "waiver_cite");
-
-/** Every analyzer the seeded findings came from, at v1. */
-const ANALYZER_SET = {
-  label: "deterministic analyzers v1",
-  analyzers: [
-    "cache_window",
-    "config_usage",
-    "log_signature",
-    "queue_correlation",
-    "waiver_cite",
-    "workflow_outcome",
-  ].map((id) => ({ id, version: 1, kind: "deterministic" as const })),
-};
-
-const WINDOW = { from: "2026-05-10", to: "2026-08-07", days: 90 };
 
 /** Yesterday, UTC — inside every apply's baseline window. */
 function yesterday(): string {
@@ -76,29 +55,7 @@ describe("the suggestion actions", () => {
     member = await api.signIn();
     await api.join(workspace.id, member, "member");
 
-    await api.sql.query(
-      `insert into ${SCHEMA_NAME}.runner_pools (id, organization_id, name, executor)
-       values ($2, $1, 'pool-a', 'shell')`,
-      [workspace.id, POOL_A_ID],
-    );
-    await api.sql.query(
-      `insert into ${SCHEMA_NAME}.runners
-         (id, organization_id, pool_id, name, arch, status, desired_state, security_mode,
-          cert_serial, capabilities)
-       values ($3, $1, $2, 'forge-02', 'linux/arm64', 'offline', 'active', 'mtls', '4a7333a2',
-               '{"executors": ["shell"]}'::jsonb)`,
-      [workspace.id, POOL_A_ID, FORGE_02_ID],
-    );
-    const orgs = await api.sql.query<{ id: string }>(
-      `insert into ${SCHEMA_NAME}.github_orgs (organization_id, login, enabled)
-       values ($1, 'acme-robotics', true) returning id`,
-      [workspace.id],
-    );
-    await api.sql.query(
-      `insert into ${SCHEMA_NAME}.github_repos (org_id, name, enabled)
-       values ($1, 'helios-firmware', true)`,
-      [orgs.rows[0].id],
-    );
+    await seedSeededIdsWorkspace(api, workspace);
     // The baselines: yesterday's queue waits in pool-a and build durations, in milliseconds.
     await api.sql.query(
       `insert into ${SCHEMA_NAME}.metric_daily
@@ -107,62 +64,11 @@ describe("the suggestion actions", () => {
                '{"samples": [300000, 420000, 600000]}'),
               ($1, $2, 'build_duration', false, 'zephyr build', $3::date, 252000,
                '{"samples": [238000, 252000, 260500]}')`,
-      [workspace.id, REPO, yesterday()],
+      [workspace.id, BENCH_REPO, yesterday()],
     );
-    await api.nest.get(WorkflowsService).create(workspace.id, {
-      name: "Standard fix",
-      slug: "standard-fix",
-      definition: readFixture("valid/standard-fix.json") as Record<string, unknown>,
-    });
   });
 
   afterEach(() => api.truncate());
-
-  /** Start a run with the seeded findings and compose its suggestions. */
-  async function analyze(): Promise<string> {
-    const runs = api.nest.get(AnalysisRepository);
-    const inserted = await runs.insertRun({
-      organizationId: workspace.id,
-      repoRef: REPO,
-      trigger: "manual",
-      scheduleId: null,
-      analyzerSet: ANALYZER_SET,
-      progress: pendingProgress(ANALYZER_SET),
-    });
-    if (!inserted.started) throw new Error("the run did not start");
-    const evidence = [{ kind: "runner_pool", id: POOL_A_ID }];
-
-    for (const analyzer of ANALYZER_SET.analyzers) {
-      const findings: EngineFinding[] = PERSISTABLE.filter(
-        (finding) => finding.analyzer === analyzer.id,
-      ).map((finding) => ({
-        analyzer: finding.analyzer,
-        analyzer_version: 1,
-        finding_type: finding.findingType,
-        subject_key: finding.subjectKey,
-        data:
-          finding.findingType === "log_signature"
-            ? { ...finding.data, sample_refs: evidence }
-            : { ...finding.data },
-        evidence_refs: evidence,
-        confidence: finding.confidence,
-        confidence_basis: { ...finding.confidenceBasis },
-      }));
-      await runs.writeFindings(inserted.run, findings);
-    }
-
-    await api.nest.get(SuggestionComposer).compose(inserted.run, WINDOW);
-    await runs.finish(inserted.run.id, {
-      status: "failed",
-      phase: "composing",
-      manifest: null,
-      progress: null,
-      computeSeconds: 1,
-      confidenceNote: null,
-      failureReason: "ended by the suite so the next run may start",
-    });
-    return inserted.run.id;
-  }
 
   /**
    * A request as a person, in the workspace.
@@ -176,17 +82,6 @@ describe("the suggestion actions", () => {
     return api.as(person)(method, path).set(TENANT_HEADER, workspace.slug);
   }
 
-  /** A suggestion's id by its title's start. */
-  async function suggestion(prefix: string): Promise<string> {
-    const { rows } = await api.sql.query<{ id: string }>(
-      `select id from ${SCHEMA_NAME}.analysis_suggestions
-        where organization_id = $1 and title like $2`,
-      [workspace.id, `${prefix}%`],
-    );
-    if (rows.length !== 1) throw new Error(`no single suggestion titled ${prefix}…`);
-    return rows[0].id;
-  }
-
   /** How many rows a table has for the workspace. */
   async function count(table: string, column = "organization_id"): Promise<number> {
     const { rows } = await api.sql.query<{ n: string }>(
@@ -197,8 +92,8 @@ describe("the suggestion actions", () => {
   }
 
   it("previews a pool move without writing, then applies exactly that through the farm", async () => {
-    await analyze();
-    const id = await suggestion("Move forge-02");
+    await analyze(api, workspace);
+    const id = await suggestionId(api, workspace, "Move forge-02");
 
     const preview = (
       await call(owner, "get", `/api/v1/analyzer/suggestions/${id}/preview`).expect(200)
@@ -258,8 +153,8 @@ describe("the suggestion actions", () => {
   });
 
   it("drafts a workflow change citing the suggestion, and publishes nothing", async () => {
-    await analyze();
-    const id = await suggestion("standard-fix: run");
+    await analyze(api, workspace);
+    const id = await suggestionId(api, workspace, "standard-fix: run");
 
     const applied = await call(owner, "post", `/api/v1/analyzer/suggestions/${id}/apply`)
       .send({})
@@ -291,15 +186,15 @@ describe("the suggestion actions", () => {
   });
 
   it("registers the cache re-warm as a farm job hook", async () => {
-    await analyze();
-    const id = await suggestion("Re-warm ccache");
+    await analyze(api, workspace);
+    const id = await suggestionId(api, workspace, "Re-warm ccache");
 
     await call(owner, "post", `/api/v1/analyzer/suggestions/${id}/apply`).send({}).expect(200);
 
     const hooks = await call(member, "get", "/api/v1/farm/job-hooks").expect(200);
     expect(hooks.body).toEqual([
       expect.objectContaining({
-        repo: REPO,
+        repo: BENCH_REPO,
         pool: expect.objectContaining({ name: "pool-a" }) as unknown,
         event: "merge",
         command: ["west", "build", "-t", "ccache-warm"],
@@ -308,8 +203,8 @@ describe("the suggestion actions", () => {
   });
 
   it("refuses the test-gate split, which no plane owns, and writes nothing", async () => {
-    await analyze();
-    const id = await suggestion("Split the test gate");
+    await analyze(api, workspace);
+    const id = await suggestionId(api, workspace, "Split the test gate");
 
     const refused = await call(owner, "post", `/api/v1/analyzer/suggestions/${id}/apply`)
       .send({})
@@ -321,15 +216,15 @@ describe("the suggestion actions", () => {
   });
 
   it("keeps a dismissal through re-analysis, and lets a member dismiss but not apply", async () => {
-    await analyze();
-    const id = await suggestion("Move forge-02");
+    await analyze(api, workspace);
+    const id = await suggestionId(api, workspace, "Move forge-02");
 
     await call(member, "post", `/api/v1/analyzer/suggestions/${id}/apply`).send({}).expect(403);
     await call(member, "post", `/api/v1/analyzer/suggestions/${id}/dismiss`)
       .send({ reason: "forge-02 is reserved for HIL" })
       .expect(200);
 
-    await analyze();
+    await analyze(api, workspace);
 
     const { rows } = await api.sql.query<{ status: string; resolution_reason: string }>(
       `select status, resolution_reason from ${SCHEMA_NAME}.analysis_suggestions where id = $1`,
