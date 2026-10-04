@@ -2675,7 +2675,7 @@ expect_red 'a snoozed item may have no expiry' \
   'alter table ouroboros.decision_items drop constraint decision_items_snooze_complete;'
 
 expect_red 'waking may reset an item.s age' \
-  'decision_items_pinned|original created_at' \
+  'is pinned: its workspace|original created_at' \
   'create or replace function ouroboros.decision_items_wake(p_organization_id text, p_at timestamptz default now())
 returns integer
 language plpgsql
