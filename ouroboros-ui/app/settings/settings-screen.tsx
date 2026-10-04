@@ -2,6 +2,9 @@
 
 import type { DryRunPolicy } from "@/app/api/policies";
 import type { Reading } from "@/app/api/reading";
+import type { MembersPage, ServiceAccountList } from "@/app/api/settings-members";
+import { MembersCard } from "@/app/members/members-card";
+import { membersUnread } from "@/app/members/view";
 import { DryRunRow } from "@/app/policies/dry-run-row";
 import { dryRunUnread } from "@/app/policies/view";
 
@@ -43,23 +46,33 @@ import "./settings.css";
  * ### What is mounted today
  *
  * The **Appearance** seat holds its card (`app/settings/appearance-card.tsx`) — the reader's own
- * theme and font size, the same for every role. The **Policies** seat holds the dry-run policy's
- * row — the one policy control that exists — above the note for the rest of that card. Every
- * other seat is its placeholder.
+ * theme and font size, the same for every role. The **Members** seat holds the Members & Roles
+ * card (`app/members/members-card.tsx`, #493), or its placeholder saying why the members could
+ * not be read. The **Policies** seat holds the dry-run policy's row — the one policy control
+ * that exists — above the note for the rest of that card. Every other seat is its placeholder.
  *
  * @param props.workspaceName The active workspace's display name, for the eyebrow.
  * @param props.access Who the reader is — `app/settings/access.ts`'s answer, from the route.
  * @param props.dryRun The dry-run policy as read, or why it could not be.
+ * @param props.members The Members & Roles page as read, or why it could not be.
+ * @param props.serviceAccounts The administrator's service-account list, or `null`.
+ * @param props.readAt When the page was read.
  * @returns The hub.
  */
 export function SettingsScreen({
   workspaceName,
   access,
   dryRun,
+  members,
+  serviceAccounts = null,
+  readAt,
 }: Readonly<{
   workspaceName: string;
   access: SettingsAccess;
   dryRun: Reading<DryRunPolicy>;
+  members?: Reading<MembersPage>;
+  serviceAccounts?: ServiceAccountList | null;
+  readAt?: string;
 }>) {
   return (
     <SettingsSaveProvider access={access}>
@@ -80,6 +93,23 @@ export function SettingsScreen({
             <SettingsSeat key={section.id} section={section.id}>
               {section.id === "appearance" ? (
                 <AppearanceCard />
+              ) : section.id === "members" && members !== undefined ? (
+                members.ok ? (
+                  <MembersCard
+                    // A change of tier (the reader re-roled themselves) remounts it fresh.
+                    key={access.tier}
+                    mayOwn={access.mayOwn}
+                    page={members.value}
+                    readAt={readAt ?? new Date(0).toISOString()}
+                    serviceAccounts={serviceAccounts}
+                  />
+                ) : (
+                  <SeatPlaceholder>
+                    <p className="settings__unread" role="note">
+                      {membersUnread(members.reason)}
+                    </p>
+                  </SeatPlaceholder>
+                )
               ) : section.id === "policies" ? (
                 <SeatPlaceholder>
                   {dryRun.ok ? (

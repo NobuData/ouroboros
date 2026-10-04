@@ -30,6 +30,17 @@ import { renderThemed } from "../helpers/theme";
 
 // The dry-run flip's Server Action is never reached: no case confirms one.
 vi.mock("@/app/policies/policy-actions", () => ({ setDryRun: vi.fn() }));
+// The Members card's Server Actions are never reached here: its own suites drive them.
+vi.mock("@/app/members/members-actions", () => ({
+  inviteMember: vi.fn(),
+  resendInvitation: vi.fn(),
+  revokeInvitation: vi.fn(),
+  updateMember: vi.fn(),
+  removeMember: vi.fn(),
+  createServiceAccount: vi.fn(),
+  rotateServiceAccount: vi.fn(),
+  revokeServiceAccount: vi.fn(),
+}));
 
 /** The Server Action the Appearance card persists a font-size step through. */
 const { saveFontScale } = vi.hoisted(() => ({
@@ -215,7 +226,7 @@ describe("the section grid", () => {
       (section) => seat(section.id).querySelector(".ou-tag")?.textContent?.includes(IMMEDIATE_MARK),
     ).map((section) => section.id);
 
-    expect(marked).toEqual(["appearance", "danger"]);
+    expect(marked).toEqual(["members", "appearance", "danger"]);
     expect(within(seat("danger")).getByText(IMMEDIATE_MARK)).toHaveClass("ou-tag");
     expect(within(seat("appearance")).getByText(APPEARANCE_TAG)).toHaveClass("ou-tag");
   });

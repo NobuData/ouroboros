@@ -76,18 +76,19 @@ describe("the sections", () => {
   it("each say what their card will hold and the issue that builds it — until the card is built", () => {
     for (const section of SETTINGS_SECTIONS) {
       expect(section.title.length, section.id).toBeGreaterThan(0);
-      if (section.id === "appearance") continue;
+      if (section.id === "appearance" || section.id === "members") continue;
 
       expect(section.arrives, section.id).toMatch(/arrives? (here )?with #49[2-6]\./);
     }
-    // The Appearance card is built, so its seat has nothing to announce.
+    // The Appearance and Members cards are built (#491, #493), so their seats announce nothing.
     expect(settingsSection("appearance").arrives).toBeNull();
+    expect(settingsSection("members").arrives).toBeNull();
   });
 
-  it("mark the sections whose controls act at once — the Danger zone and Appearance", () => {
+  it("mark the sections whose controls act at once — Members, Appearance and the Danger zone", () => {
     expect(
       SETTINGS_SECTIONS.filter((section) => section.saves === "immediate").map((section) => section.id),
-    ).toEqual(["appearance", "danger"]);
+    ).toEqual(["members", "appearance", "danger"]);
     expect(settingsSection("danger").saves).toBe("immediate");
     expect(settingsSection("workspace").saves).toBe("batch");
   });

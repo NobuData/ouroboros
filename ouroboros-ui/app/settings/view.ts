@@ -133,8 +133,10 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     title: "Members & roles",
     tab: "Members",
     span: 7,
-    saves: "batch",
-    arrives: "The members table, invitations and service accounts arrive with #493.",
+    // Every control acts at once — the capability box, an invitation, a role change, a token.
+    saves: "immediate",
+    // Built: `app/members/members-card.tsx` (#493).
+    arrives: null,
   },
   {
     id: "appearance",

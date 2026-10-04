@@ -87,7 +87,6 @@ describe("which sections batch", () => {
   it("is every section but the ones whose controls act at once", () => {
     expect(BATCH_SECTIONS).toEqual([
       "workspace",
-      "members",
       "policies",
       "audit",
       "integrations",
@@ -162,7 +161,7 @@ describe("editing", () => {
     expect(pendingCount(state)).toBe(3);
     expect(sectionPending(state, "workspace")).toBe(2);
     expect(sectionPending(state, "notifications")).toBe(1);
-    expect(sectionPending(state, "members")).toBe(0);
+    expect(sectionPending(state, "policies")).toBe(0);
     // Workspace is drawn before Notifications, whichever was edited first.
     expect(dirtySections(state)).toEqual(["workspace", "notifications"]);
   });
@@ -614,13 +613,13 @@ describe("what the page says", () => {
         {
           kind: "refused",
           landed: [],
-          section: "members",
+          section: "policies",
           refusal: { reason: "Refused.", fields: { role: "Unknown role." } },
           unsent: [],
         },
         LABELS,
       ),
-    ).toBe("Not saved — Members & roles: role — Unknown role.");
+    ).toBe("Not saved — Autonomy policies: role — Unknown role.");
   });
 
   it("has no field to focus when the refusal names none", () => {

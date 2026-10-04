@@ -56,7 +56,7 @@ import { SETTINGS_SECTIONS, type SettingsSectionId, settingsSection } from "./vi
 /* ------------------------------------------------------------------ the shapes */
 
 /** The sections whose fields may be unsaved: every one that does not act at once. */
-export type BatchSectionId = Exclude<SettingsSectionId, "appearance" | "danger">;
+export type BatchSectionId = Exclude<SettingsSectionId, "members" | "appearance" | "danger">;
 
 /** A section's fields, by name. What a value is belongs to the card that owns the field. */
 export type SectionValues = Readonly<Record<string, unknown>>;
