@@ -5,7 +5,7 @@
  * ```
  * family     audit.*  decision.*  run.*  pr.*
  * version 1  audit.<every AD.4 action> · decision.filed … · run.opened … · pr.criterion_verified …
- * version 2  (appended: the types a later release adds)
+ * version 2  audit.decision.answered · audit.decision.answer_failed · decision.answered · decision.answer_failed (#462)
  * ```
  *
  * **Versioned so a subscription never widens by itself.** An endpoint records the registry
@@ -55,6 +55,8 @@ export const DERIVED_EVENT_TYPES: Readonly<Partial<Record<AuditAction, string>>>
   "decision.filed": "decision.filed",
   "decision.refreshed": "decision.refreshed",
   "decision.source_resolved": "decision.source_resolved",
+  "decision.answered": "decision.answered",
+  "decision.answer_failed": "decision.answer_failed",
   "pr_criterion.verified": "pr.criterion_verified",
   "pr_criterion.unverified": "pr.criterion_unverified",
   "pr_criterion.waived": "pr.criterion_waived",
@@ -179,6 +181,17 @@ export const WEBHOOK_REGISTRY: readonly WebhookRegistryVersion[] = [
       "run.opened",
       "run.merged",
       "run.canceled",
+    ],
+  },
+  {
+    version: 2,
+    // BN.2 (#462): a person's answer through the inbox's action executor, and a press its plane
+    // refused — each an audit action, and a decision type derived from it.
+    adds: [
+      "audit.decision.answered",
+      "audit.decision.answer_failed",
+      "decision.answered",
+      "decision.answer_failed",
     ],
   },
 ];

@@ -79,6 +79,9 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `POST /internal/runs/:id/controls/:controlId/ack` (#306). A well-formed uuid, so a worker
   // holding the key reaches the handler rather than the pipe's 422.
   controlId: "c0000000-0000-4000-8000-000000000001",
+  // `POST /api/v1/inbox/items/:id/actions/:actionId` (#462). A declared action id's shape, so the
+  // pipe lets it through and what this suite sees is the guard's answer.
+  actionId: "allow_once",
   // `POST /api/v1/test-runs/:id/cases/:caseId/classify` (#332). A well-formed uuid, so the
   // guard's answer — not the pipe's 422 — is what this suite observes.
   caseId: "5eed0035-0000-4000-8000-000000000001",

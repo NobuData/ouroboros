@@ -85,6 +85,14 @@ import { PrSyncService } from "./pr-sync.service";
     MergeApprovalEmitter,
     ClaimWaiverEmitter,
   ],
-  exports: [PrSyncService, ClaimWaiverEmitter],
+  // BN.2 (#462): the inbox's action executor answers Approve & merge and Waive & annotate through
+  // the same three services the PR page's routes call.
+  exports: [
+    PrSyncService,
+    ClaimWaiverEmitter,
+    PageActionsService,
+    MergeExecutorService,
+    CriteriaService,
+  ],
 })
 export class PullRequestsModule {}

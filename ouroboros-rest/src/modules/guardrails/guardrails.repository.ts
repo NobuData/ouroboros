@@ -252,6 +252,40 @@ export class GuardrailsRepository {
   }
 
   /**
+   * The change-set a run last reported, as V047 keeps it: its number and every path in it.
+   *
+   * What {@link GuardrailService.reevaluatePaths} re-judges (BN.2, #462). Paths only — the report's
+   * hunks were never stored.
+   *
+   * @param writer - The caller's transaction.
+   * @param runId - `runs.id`.
+   * @returns The number and the paths in code-unit order, or `undefined` when the run has reported
+   *   no change-set.
+   */
+  async recordedChangeSet(
+    writer: Writer,
+    runId: string,
+  ): Promise<{ changeSetSeq: number; paths: string[] } | undefined> {
+    const run = await writer
+      .selectFrom("runs")
+      .select("change_set_seq")
+      .where("id", "=", runId)
+      .executeTakeFirst();
+    const files = await writer
+      .selectFrom("run_files")
+      .select("path")
+      .where("run_id", "=", runId)
+      .orderBy(sql`path collate "C"`)
+      .execute();
+
+    if (run === undefined || run.change_set_seq < 1 || files.length === 0) {
+      return undefined;
+    }
+
+    return { changeSetSeq: run.change_set_seq, paths: files.map((file) => file.path) };
+  }
+
+  /**
    * Spend one allow-once grant on the evaluation that used it.
    *
    * `ouroboros.guardrail_exception_consume` is atomic and refuses a grant that is used, revoked,

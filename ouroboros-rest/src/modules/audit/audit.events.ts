@@ -520,6 +520,17 @@ export const DECISION_REFRESHED_EVENT = "decision.refreshed";
  * that ended — as `policy(source_resolved)` (#461, X4). Detail names the settlement.
  */
 export const DECISION_SOURCE_RESOLVED_EVENT = "decision.source_resolved";
+/**
+ * A person answered a decision through the inbox's action executor (#462, X9): the owning plane
+ * executed and the resolution was written. Subject `decision_item`; actor the person. Detail: kind,
+ * version, action, channel, the attempt, and the plane's receipt as `outcome_*` keys.
+ */
+export const DECISION_ANSWERED_EVENT = "decision.answered";
+/**
+ * A person pressed a decision's action and the owning plane refused or failed (#462): the item
+ * stays open. Detail: kind, version, action, channel, the attempt, and the error's code and status.
+ */
+export const DECISION_ANSWER_FAILED_EVENT = "decision.answer_failed";
 
 /**
  * The webhook management API's mutations (BR.3, [#487](https://github.com/NobuData/ouroboros/issues/487)),
@@ -620,6 +631,8 @@ export const AUDIT_ACTIONS = [
   DECISION_FILED_EVENT,
   DECISION_REFRESHED_EVENT,
   DECISION_SOURCE_RESOLVED_EVENT,
+  DECISION_ANSWERED_EVENT,
+  DECISION_ANSWER_FAILED_EVENT,
   WEBHOOK_CREATED_EVENT,
   WEBHOOK_UPDATED_EVENT,
   WEBHOOK_ENABLED_EVENT,

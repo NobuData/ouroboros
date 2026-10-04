@@ -53,6 +53,10 @@ event types (`run.merged`). Matching is **exact**: `audit.*` receives audit even
 | `pr.*` | `pr.criterion_verified`, `pr.criterion_unverified`, `pr.criterion_waived`, `pr.approval_requested`, `pr.approval_approved`, `pr.approval_declined`, `pr.thread_resolved`, `pr.merged` | The audit row; for `pr.merged`, the run's facts as below |
 | `run.*` | `run.opened`, `run.merged`, `run.canceled` | `runId`, `loopSeq`, `repositoryId`, `issueNumber`, `status`, `prNumber`, `startedAt`, `finishedAt` |
 
+**Registry version 2** (#462) adds a person's answer through the Needs-You inbox and a press its
+plane refused: `audit.decision.answered`, `audit.decision.answer_failed`, `decision.answered` and
+`decision.answer_failed`.
+
 The full list is `GET /api/v1/settings/webhooks` → `registry.eventTypes`.
 
 **The registry is versioned.** A release that adds an event type adds it in a new registry

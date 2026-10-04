@@ -472,7 +472,11 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-thirty-second and third are V094's `webhook_endpoints` and
     // `webhook_deliveries` with V098's retry columns, mirrored by BR.3 (#487) — the endpoints
     // the dispatcher delivers to and the per-attempt delivery log.
-    expect(TABLE_NAMES).toHaveLength(133);
+    //
+    // The hundred-and-thirty-fourth and fifth are BN.2's (#462): V096's `guardrail_exceptions`,
+    // which the action executor grants an allow-once into, and V099's `decision_action_attempts`,
+    // every press of a card's action.
+    expect(TABLE_NAMES).toHaveLength(135);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

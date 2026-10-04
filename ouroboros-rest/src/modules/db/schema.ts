@@ -1975,6 +1975,31 @@ export interface GuardrailExceptionsLiveView {
 }
 
 /**
+ * `ouroboros.guardrail_exceptions` — allow-once grants (V096,
+ * [#459](https://github.com/NobuData/ouroboros/issues/459), decision **X3**). BN.2's executor
+ * ([#462](https://github.com/NobuData/ouroboros/issues/462)) inserts one when a person presses
+ * **Allow once**; AP.3 spends it. One run, one narrow glob, granted through a decision item, within
+ * the workspace's TTL — the table's trigger refuses anything wider.
+ */
+export interface GuardrailExceptionsTable {
+  id: Generated<string>;
+  organization_id: string;
+  run_id: string;
+  /** `boot/rollback_flag.c`, never `boot/**`. */
+  path_glob: string;
+  /** Required when written; null once the person is deleted. */
+  granted_by: string | null;
+  /** The decision item that authorised the grant. */
+  granted_via: string;
+  expires_at: Date;
+  used_at: Date | null;
+  used_by_evaluation: string | null;
+  revoked_at: Date | null;
+  revoked_by: string | null;
+  created_at: Generated<Date>;
+}
+
+/**
  * `run_controls.kind` — which control was asked for (V048, decision **R6**).
  *
  * The page head's toggle and red button, and the box under the transcript. AP.4
@@ -6279,6 +6304,34 @@ export interface DecisionResolutionsTable {
   created_at: Stamped;
 }
 
+/** `decision_action_attempts.status` (V099) — how a press of a card's action ended. */
+export type DecisionActionAttemptStatus = "running" | "succeeded" | "failed";
+
+/**
+ * `ouroboros.decision_action_attempts` — every press of a decision card's action (V099,
+ * [#462](https://github.com/NobuData/ouroboros/issues/462), decision **X3**). One per (item,
+ * idempotency key); at most one `running` per item, which is the first-answer-wins guard; a
+ * `failed` attempt leaves its item open.
+ */
+export interface DecisionActionAttemptsTable {
+  id: Generated<string>;
+  organization_id: string;
+  item_id: string;
+  action_id: string;
+  /** Required when written; null once the person is deleted. */
+  actor_id: string | null;
+  channel: DecisionChannel;
+  idempotency_key: string;
+  status: ColumnType<DecisionActionAttemptStatus, DecisionActionAttemptStatus | undefined>;
+  /** The receipt — present exactly when the attempt succeeded. */
+  outcome: ColumnType<Record<string, unknown> | null, string | null | undefined, string | null>;
+  error_code: string | null;
+  error_message: string | null;
+  error_status: number | null;
+  started_at: Stamped;
+  finished_at: Date | null;
+}
+
 /**
  * `ouroboros.webhook_outbox` — events awaiting outbound webhook delivery (V090 as
  * `audit_event_outbox`, [#489](https://github.com/NobuData/ouroboros/issues/489); renamed and
@@ -6547,6 +6600,8 @@ export interface Database {
   decision_resolutions: DecisionResolutionsTable;
   webhook_endpoints: WebhookEndpointsTable;
   webhook_deliveries: WebhookDeliveriesTable;
+  guardrail_exceptions: GuardrailExceptionsTable;
+  decision_action_attempts: DecisionActionAttemptsTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -7997,6 +8052,36 @@ export const TABLE_COLUMNS = {
     "delivery_key",
     "next_attempt_at",
     "error",
+  ],
+  guardrail_exceptions: [
+    "id",
+    "organization_id",
+    "run_id",
+    "path_glob",
+    "granted_by",
+    "granted_via",
+    "expires_at",
+    "used_at",
+    "used_by_evaluation",
+    "revoked_at",
+    "revoked_by",
+    "created_at",
+  ],
+  decision_action_attempts: [
+    "id",
+    "organization_id",
+    "item_id",
+    "action_id",
+    "actor_id",
+    "channel",
+    "idempotency_key",
+    "status",
+    "outcome",
+    "error_code",
+    "error_message",
+    "error_status",
+    "started_at",
+    "finished_at",
   ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [

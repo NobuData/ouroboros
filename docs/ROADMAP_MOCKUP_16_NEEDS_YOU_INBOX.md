@@ -366,7 +366,7 @@ seeds: 3 open (err 8m · warn 21m · warn 34m) + 5 resolved (1 policy-auto) + we
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BN.1 | #461 ✅ | 🟢 Done | ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring | Registry service + the eight MVP kinds wired to their planes | mvp, inbox, rest | N (after BM.1) | Y | L | ouroboros-rest |
-| BN.2 | #462 | 🟡 Open | ouroboros-rest: [BN.2] Action executor & allow-once exceptions | Handler bindings to AX/AP/planning; exception grants (X3) | mvp, inbox, rest, runs, pr | N (after BN.1, BM.3) | Y | L | ouroboros-rest |
+| BN.2 | #462 ✅ | 🟢 Done | ouroboros-rest: [BN.2] Action executor & allow-once exceptions | Handler bindings to AX/AP/planning; exception grants (X3) | mvp, inbox, rest, runs, pr | N (after BN.1, BM.3) | Y | L | ouroboros-rest |
 | BN.3 | #463 | 🟡 Open | ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens | Idempotent mirroring; digest + instant mails with signed tokens | mvp, inbox, rest, sources | N (after BN.1, BM.3, BJ.4) | Y | M | ouroboros-rest |
 | BN.4 | #464 | 🟡 Open | ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view | Queue/resolved/stat payloads, snooze, composed policy rows (X6/X7) | mvp, inbox, rest | N (after BN.1, BM.2) | Y | M | ouroboros-rest |
 | BN.5 | #465 | 🟡 Open | ouroboros-rest: [BN.5] Inbox integration tests | Registry, handlers, exceptions, tokens, channels, metrics | mvp, inbox, rest, ci | N (after BN.2–BN.4) | Y | M | ouroboros-rest |
@@ -407,7 +407,9 @@ PR#509 merged out-of-band ─▶ item auto-resolved (resolver: policy(source_res
 
 ### Issue BN.2 — ouroboros-rest: [BN.2] Action executor & allow-once exceptions
 
-> **GitHub issue:** #462 · **Status:** 🟡 Open · **Parent epic:** #454
+> **GitHub issue:** #462 ✅ · **Status:** 🟢 Done · **Parent epic:** #454
+>
+> **Delivered (#462):** `POST /api/v1/inbox/items/{id}/actions/{actionId}` (`ouroboros-rest/src/modules/inbox-actions/`) with V099's `decision_action_attempts` (idempotency, first answer wins, failures recorded) and AP.3's `GuardrailService.reevaluatePaths` (allow-once re-judges `allowed_paths` only and spends the grant). Decided on the ticket: actions whose plane has no operation — `workflow.sign_off_plan` (no DSL human gate), `planning.abandon_batch`, `estimation.accept_resize` / `keep_size` (BP.4), `spend.approve_overage` (dormant) — answer `501 decision_action_unbound` and are **follow-ups**; **Deny** is an AP.4 correction round carrying the reason; **Approve & merge** records the AX.5 approval, arms the existing AX.4 plan and runs it once (`merge: merged | armed`).
 >
 > **Schema already shipped (#458):** answer by inserting a `decision_resolutions` row (it marks the item resolved; its primary key is the race's 409); record a run's wait in `run_blocks` (`blocked_at` when it stops, `unblocked_at` when it resumes). A policy may only answer an `auto_resolvable` kind — the one exception is V097's out-of-band closure (#461).
 >
@@ -447,6 +449,8 @@ action(approve_merge) ─▶ AX.5 approve ─▶ gate green ─▶ AX.4 merges (
 ### Issue BN.3 — ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens
 
 > **GitHub issue:** #463 · **Status:** 🟡 Open · **Parent epic:** #454
+>
+> **Already shipped (#462):** answer a token or a GitHub-comment command through `InboxActionsService.execute(org, item, action, person, {note, idempotencyKey}, channel)` with your channel (`email`, `github`) — it enforces the role, first-answer-wins and idempotency, writes the resolution and audits; a success emits the lifecycle's `resolved` with that channel. Merge-class actions must still land on a session confirm page (X5) before calling it.
 >
 > **Already shipped (#461):** render a card for a mail or a PR comment with `DecisionKindRegistry.render(kind, payload, "html" | "markdown")` — escaping is per destination — and mirror on `DecisionLifecycle` events (`filed`, `refreshed`, `resolved`), never by polling items.
 >
@@ -586,6 +590,8 @@ topbar: [● Needs you · 3] ← lit (warn glow) on this page · excludes snooze
 ### Issue BO.2 — ouroboros-ui: [BO.2] Decision cards
 
 > **GitHub issue:** #467 · **Status:** 🟡 Open · **Parent epic:** #455
+>
+> **Already shipped (#462):** the buttons post to `POST /api/v1/inbox/items/{id}/actions/{actionId}` with a client `idempotencyKey`. A `409 decision_already_answered` carries `details.resolution {actor, actionId, channel, resolvedAt}` for *"answered by Priya 10 s ago"*; `409 decision_action_in_progress` carries `details.attempt`; `501 decision_action_unbound` marks an action whose plane is not built. The `200` receipt is `resolution.outcome` (`merge`/`merge_sha`, `exception_id`, `draft_batch_id`, `control_id`).
 
 - **Problem Statement:** The heart of the page: severity-bordered cards
   rendered entirely from kind declarations — question, age, refs, why,

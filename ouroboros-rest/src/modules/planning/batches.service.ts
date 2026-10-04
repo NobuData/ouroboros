@@ -115,11 +115,12 @@ export const MAX_PLANNER_LENGTH = 64;
 
 /**
  * The planner families of the planes that **compose** batches rather than ask the engine to plan
- * them — today the Build Analyzer (`analyzer-v1`). {@link BatchesService.compose} stores a batch
+ * them — the Build Analyzer (`analyzer-v1`) and the inbox's *Require bench upgrade* (`bench-v1`,
+ * BN.2 #462). {@link BatchesService.compose} stores a batch
  * under one of these only, which is what lets {@link BatchesService.regenerate} tell such a batch
  * apart: its `prompt` is the composing plane's filing line, not a question any planner was asked.
  */
-export const COMPOSING_PLANNER_FAMILIES: readonly string[] = Object.freeze(["analyzer"]);
+export const COMPOSING_PLANNER_FAMILIES: readonly string[] = Object.freeze(["analyzer", "bench"]);
 
 /**
  * Whether a planner name is a composing plane's.
