@@ -230,7 +230,7 @@ Inbox v2`** created at filing; every issue assigned. Complexity chips:
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BM.1 | #457 ✅ | 🟢 Done | ouroboros-db: [BM.1] Decision items & kind registry schema | Typed items, versioned kind declarations, refs, severity (X1/X2) | mvp, inbox, db | N (after AO.1, AW.1, BE.2) | Y | M | ouroboros-db |
 | BM.2 | #458 ✅ | 🟢 Done | ouroboros-db: [BM.2] Resolutions, snooze & metrics spans | Actor/action/channel/latency, auto-accept class, snooze TTLs (X4/X6) | mvp, inbox, db | N (after BM.1) | Y | S | ouroboros-db |
-| BM.3 | #459 | 🟡 Open | ouroboros-db: [BM.3] Guardrail exceptions & action tokens | Scoped allow-once grants; signed channel-token storage (X3/X5) | mvp, inbox, db | N (after BM.1, AO.4) | Y | M | ouroboros-db |
+| BM.3 | #459 ✅ | 🟢 Done | ouroboros-db: [BM.3] Guardrail exceptions & action tokens | Scoped allow-once grants; signed channel-token storage (X3/X5) | mvp, inbox, db | N (after BM.1, AO.4) | Y | M | ouroboros-db |
 | BM.4 | #460 | 🟡 Open | ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes | Three open decisions, five resolutions, policy rows; ci checks | mvp, inbox, db, ci | N (after BM.2/BM.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BM.1 — ouroboros-db: [BM.1] Decision items & kind registry schema
@@ -306,7 +306,7 @@ resolution{resize#486, resolver: policy(auto_accept_resize), channel: api} → "
 
 ### Issue BM.3 — ouroboros-db: [BM.3] Guardrail exceptions & action tokens
 
-> **GitHub issue:** #459 · **Status:** 🟡 Open · **Parent epic:** #453
+> **GitHub issue:** #459 ✅ · **Status:** 🟢 Done · **Parent epic:** #453
 
 - **Problem Statement:** Allow-once needs a real grant object (X3), and
   email answering needs signed single-use tokens with revocation (X5).
@@ -410,6 +410,8 @@ PR#509 merged out-of-band ─▶ item auto-resolved (resolver: policy(source_res
 > **GitHub issue:** #462 · **Status:** 🟡 Open · **Parent epic:** #454
 >
 > **Schema already shipped (#458):** answer by inserting a `decision_resolutions` row (it marks the item resolved; its primary key is the race's 409); record a run's wait in `run_blocks` (`blocked_at` when it stops, `unblocked_at` when it resumes). A policy may only answer an `auto_resolvable` kind — `source_resolved` on a merge-class kind needs an amendment.
+>
+> **Schema already shipped (#459):** allow-once inserts a `guardrail_exceptions` row (run, narrow glob, `granted_via` the item, TTL within `guardrail_exception_max_ttl_minutes`); AP.3's `GuardrailService` already consumes live grants on its next `allowed_paths` pass, so the handler grants and triggers re-evaluation — nothing else.
 
 - **Problem Statement:** Buttons must execute the owning machinery and
   resume the loop (X3) — with the allow-once grant as the one new
@@ -443,6 +445,8 @@ action(approve_merge) ─▶ AX.5 approve ─▶ gate green ─▶ AX.4 merges (
 ### Issue BN.3 — ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens
 
 > **GitHub issue:** #463 · **Status:** 🟡 Open · **Parent epic:** #454
+>
+> **Schema already shipped (#459):** mint with `action_token_mint(item, action, user, hmac, key_ref, channel)` (supersedes the live token; HMAC under a vault key, never the token), spend with `action_token_use(hmac)` — `accepted`, or `used` / `revoked` / `expired` / `unknown` for the three designed errors; `requires_confirm` tokens must land on a session-confirm page. Resolution by any channel already revokes the rest.
 
 - **Problem Statement:** Answer-from-anywhere starts with two real
   channels (X5): host mirroring and secure email actions.

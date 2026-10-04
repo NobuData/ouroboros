@@ -5,6 +5,7 @@ import {
   checkReviewRequired,
   checkSecrets,
   evaluateGuardrails,
+  exceptionsSpent,
   type GuardrailInput,
   type GuardrailVerdictRow,
 } from "./guardrails.checks";
@@ -48,6 +49,80 @@ describe("the rule matrix", () => {
       }
     },
   );
+});
+
+describe("allow-once grants (#459)", () => {
+  const PROTECTED: GuardrailInput = {
+    changeSetSeq: 4,
+    files: [{ path: "boot/rollback_flag.c" }],
+    planFiles: ["boot/rollback_flag.c"],
+    protectedPaths: ["boot/**"],
+  };
+
+  it("spends the grant a passing allowed_paths relied on, once even when it covers two paths", () => {
+    const input: GuardrailInput = {
+      ...PROTECTED,
+      files: [{ path: "boot/rollback_flag.c" }, { path: "boot/rollback_flag.h" }],
+      planFiles: ["boot/rollback_flag.c", "boot/rollback_flag.h"],
+      exceptions: [{ id: "grant-a", pathGlob: "boot/rollback_flag.*" }],
+    };
+    const row = checkAllowedPaths(input);
+
+    expect(row.verdict).toBe("pass");
+    expect(row.evidence?.detail).toBe("2 protected paths allowed once by exception.");
+    expect(exceptionsSpent(input, row)).toEqual(["grant-a"]);
+  });
+
+  it("uses the oldest grant whose glob matches, and leaves the others unspent", () => {
+    const input: GuardrailInput = {
+      ...PROTECTED,
+      exceptions: [
+        { id: "grant-other", pathGlob: "boot/mcuboot.conf" },
+        { id: "grant-old", pathGlob: "boot/rollback_flag.c" },
+        { id: "grant-new", pathGlob: "boot/rollback_flag.c" },
+      ],
+    };
+
+    expect(exceptionsSpent(input, checkAllowedPaths(input))).toEqual(["grant-old"]);
+  });
+
+  it("spends nothing when the verdict fails for another reason — the grant is kept for the retry", () => {
+    const input: GuardrailInput = {
+      ...PROTECTED,
+      files: [{ path: "boot/rollback_flag.c" }, { path: "drivers/spi/bus.c" }],
+      exceptions: [{ id: "grant-a", pathGlob: "boot/rollback_flag.c" }],
+    };
+    const row = checkAllowedPaths(input);
+
+    expect(row.verdict).toBe("fail");
+    expect(row.evidence?.path).toBe("drivers/spi/bus.c");
+    expect(exceptionsSpent(input, row)).toEqual([]);
+  });
+
+  it("spends nothing for a pass no grant was needed for, or for another check's row", () => {
+    const clean: GuardrailInput = {
+      ...PROTECTED,
+      files: [{ path: "drivers/can/a.c" }],
+      planFiles: ["drivers/can/a.c"],
+      exceptions: [{ id: "grant-a", pathGlob: "boot/rollback_flag.c" }],
+    };
+    const covered: GuardrailInput = {
+      ...clean,
+      files: PROTECTED.files,
+      planFiles: PROTECTED.planFiles,
+    };
+
+    expect(exceptionsSpent(clean, checkAllowedPaths(clean))).toEqual([]);
+    expect(checkAllowedPaths(clean).evidence).toBeNull();
+    expect(exceptionsSpent(covered, checkCiConfig(covered))).toEqual([]);
+  });
+
+  it("refuses the protected path once no live grant is offered — the second attempt is blocked", () => {
+    const row = checkAllowedPaths({ ...PROTECTED, exceptions: [] });
+
+    expect(row.verdict).toBe("fail");
+    expect(row.evidence?.detail).toBe("1 path inside a protected path.");
+  });
 });
 
 describe("what a verdict records", () => {

@@ -3,7 +3,7 @@ import { Logger } from "@nestjs/common";
 import { recordingDatabase } from "../db/database.fixture";
 import type { GuardrailRequest } from "../ingest/ingest.guardrails";
 import { readFixture } from "../workflows/dsl.golden.fixture";
-import type { GuardrailVerdictRow } from "./guardrails.checks";
+import type { GuardrailExceptionGrant, GuardrailVerdictRow } from "./guardrails.checks";
 import { AWS_ACCESS_KEY_ID } from "./guardrails.fixture";
 import type { GuardrailsRepository, RunPolicyRow, TicketFacts } from "./guardrails.repository";
 import { SECRETS_RULESET_DISCLOSURE } from "./guardrails.ruleset";
@@ -32,6 +32,8 @@ function stubRepository(
     ticket?: TicketFacts;
     rules?: Awaited<ReturnType<GuardrailsRepository["enabledRules"]>>;
     protectedPaths?: string[];
+    exceptions?: GuardrailExceptionGrant[];
+    consumes?: boolean;
   } = {},
 ) {
   const appended: { policyRef: number | null; verdicts: readonly GuardrailVerdictRow[] }[] = [];
@@ -54,6 +56,8 @@ function stubRepository(
     protectedPaths: jest.fn((_writer: unknown, _run: RunPolicyRow) =>
       Promise.resolve(overrides.protectedPaths ?? []),
     ),
+    liveExceptions: jest.fn(() => Promise.resolve(overrides.exceptions ?? [])),
+    consumeException: jest.fn(() => Promise.resolve(overrides.consumes ?? true)),
     appendVerdicts: jest.fn(
       (
         _writer: unknown,
@@ -63,7 +67,9 @@ function stubRepository(
       ) => {
         appended.push({ policyRef, verdicts });
 
-        return Promise.resolve();
+        return Promise.resolve(
+          new Map(verdicts.map((row) => [row.check, `evaluation-${row.check}`])),
+        );
       },
     ),
   };
@@ -193,6 +199,63 @@ describe("GuardrailService", () => {
       path: "keys/signing.pem",
       glob: "keys/**",
       detail: "1 path inside a protected path.",
+    });
+  });
+
+  describe("allow-once grants (#459)", () => {
+    const GRANT: GuardrailExceptionGrant = { id: "grant-1851", pathGlob: "keys/signing.pem" };
+
+    it("passes allowed_paths on a live grant and consumes it against that verdict's row", async () => {
+      const { repository, appended, spy } = stubRepository({
+        ticket: { labels: [], planFiles: ["keys/signing.pem"], effort: "s" },
+        protectedPaths: ["keys/**"],
+        exceptions: [GRANT],
+      });
+
+      const outcome = await new GuardrailService(repository).evaluate(
+        writer,
+        request([{ path: "keys/signing.pem" }]),
+      );
+
+      expect(spy.liveExceptions.mock.calls[0].slice(1)).toEqual([POLICY, RUN]);
+      expect(outcome.failures).not.toContain("allowed_paths");
+      expect(appended[0].verdicts[0]).toMatchObject({
+        check: "allowed_paths",
+        verdict: "pass",
+        evidence: { detail: "1 protected path allowed once by exception." },
+      });
+      expect(spy.consumeException.mock.calls).toEqual([
+        [writer, "grant-1851", "evaluation-allowed_paths"],
+      ]);
+    });
+
+    it("consumes nothing when the verdict fails anyway, so the grant survives for the retry", async () => {
+      const { repository, spy } = stubRepository({
+        ticket: { labels: [], planFiles: ["keys/signing.pem"], effort: "s" },
+        protectedPaths: ["keys/**"],
+        exceptions: [GRANT],
+      });
+
+      const outcome = await new GuardrailService(repository).evaluate(
+        writer,
+        request([{ path: "keys/signing.pem" }, { path: "drivers/spi/bus.c" }]),
+      );
+
+      expect(outcome.failures).toContain("allowed_paths");
+      expect(spy.consumeException).not.toHaveBeenCalled();
+    });
+
+    it("fails the report rather than keep a pass when the grant cannot be consumed", async () => {
+      const { repository } = stubRepository({
+        ticket: { labels: [], planFiles: ["keys/signing.pem"], effort: "s" },
+        protectedPaths: ["keys/**"],
+        exceptions: [GRANT],
+        consumes: false,
+      });
+
+      await expect(
+        new GuardrailService(repository).evaluate(writer, request([{ path: "keys/signing.pem" }])),
+      ).rejects.toThrow("allow-once grant grant-1851 could not be consumed");
     });
   });
 

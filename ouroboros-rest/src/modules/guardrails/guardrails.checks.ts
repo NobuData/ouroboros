@@ -64,6 +64,17 @@ export interface ReviewPolicy {
   readonly voteRules: number;
 }
 
+/**
+ * One live allow-once grant on the run being judged (`guardrail_exceptions_live`, V096,
+ * [#459](https://github.com/NobuData/ouroboros/issues/459)).
+ */
+export interface GuardrailExceptionGrant {
+  /** `guardrail_exceptions.id` — what the service consumes when the grant is used. */
+  readonly id: string;
+  /** The narrow glob it permits, e.g. `boot/rollback_flag.c`. */
+  readonly pathGlob: string;
+}
+
 /** Everything the four checks judge. */
 export interface GuardrailInput {
   /** The report being judged. */
@@ -82,6 +93,12 @@ export interface GuardrailInput {
    * empty when it protects nothing. A change-set path matching one fails `allowed_paths`.
    */
   readonly protectedPaths?: readonly string[];
+  /**
+   * The run's live allow-once grants, oldest first, or `undefined` / empty when it has none. A
+   * protected path a grant's glob matches does not fail `allowed_paths`; a passing verdict then
+   * spends the grants it relied on ({@link exceptionsSpent}).
+   */
+  readonly exceptions?: readonly GuardrailExceptionGrant[];
   /** The pinned policy, or `undefined` when the pinned document could not be read. */
   readonly review?: ReviewPolicy;
 }
@@ -120,6 +137,11 @@ function counted(count: number, noun: string): string {
  * protected path is one the workspace said a run may not touch, and a plan is only an estimate.
  * With protected paths but no plan, the check still runs — against the protected paths alone.
  *
+ * **An allow-once grant lifts exactly the protected paths its glob matches** (#459, the second
+ * #305 amendment). A covered path is judged like any other path; an uncovered one still fails.
+ * When the verdict passes with a grant's help, the evidence says so, and the service consumes the
+ * grants {@link exceptionsSpent} names — so the run's next report finds them used.
+ *
  * @param input - The change-set and the policy.
  * @returns The verdict. A failure names the first offending path, in code-unit order, and the
  *   protected glob it matched or the scope glob it came closest to.
@@ -131,7 +153,7 @@ export function checkAllowedPaths(input: GuardrailInput): GuardrailVerdictRow {
     rulesetVersion: null,
     changeSetSeq: input.changeSetSeq,
   };
-  const guarded = protectedTouches(input);
+  const { guarded, covered } = exceptionCover(input);
 
   if (guarded.length > 0) {
     return {
@@ -146,19 +168,24 @@ export function checkAllowedPaths(input: GuardrailInput): GuardrailVerdictRow {
   }
 
   if (declared.length === 0) {
-    return (input.protectedPaths ?? []).length === 0
-      ? {
-          ...base,
-          verdict: "not_applicable",
-          evidence: safeEvidence({ detail: "No plan file list declares a scope for this run." }),
-        }
-      : {
-          ...base,
-          verdict: "pass",
-          evidence: safeEvidence({
-            detail: "No protected path touched. No plan file list declares a scope for this run.",
-          }),
-        };
+    if ((input.protectedPaths ?? []).length === 0) {
+      return {
+        ...base,
+        verdict: "not_applicable",
+        evidence: safeEvidence({ detail: "No plan file list declares a scope for this run." }),
+      };
+    }
+
+    return {
+      ...base,
+      verdict: "pass",
+      evidence:
+        covered.length > 0
+          ? allowedOnce(covered, " No plan file list declares a scope for this run.")
+          : safeEvidence({
+              detail: "No protected path touched. No plan file list declares a scope for this run.",
+            }),
+    };
   }
 
   const scope = new GlobSet(
@@ -170,7 +197,11 @@ export function checkAllowedPaths(input: GuardrailInput): GuardrailVerdictRow {
     .sort();
 
   if (outside.length === 0) {
-    return { ...base, verdict: "pass", evidence: null };
+    return {
+      ...base,
+      verdict: "pass",
+      evidence: covered.length > 0 ? allowedOnce(covered, "") : null,
+    };
   }
 
   return {
@@ -182,6 +213,73 @@ export function checkAllowedPaths(input: GuardrailInput): GuardrailVerdictRow {
       detail: `${counted(outside.length, "path")} outside the declared scope.`,
     }),
   };
+}
+
+/** A protected path a live grant covers, and the grant that covers it. */
+interface CoveredPath {
+  readonly path: string;
+  readonly grant: GuardrailExceptionGrant;
+}
+
+/**
+ * Split the protected paths a change-set touches into those still refused and those a live
+ * allow-once grant covers.
+ *
+ * @param input - The change-set, the protected globs and the run's live grants.
+ * @returns `guarded` — each refused path with the protected glob it matched, in code-unit order;
+ *   `covered` — each lifted path with the first grant (oldest first) whose glob matches it.
+ */
+function exceptionCover(input: GuardrailInput): {
+  guarded: { path: string; glob: string }[];
+  covered: CoveredPath[];
+} {
+  const grants = input.exceptions ?? [];
+  const guarded: { path: string; glob: string }[] = [];
+  const covered: CoveredPath[] = [];
+
+  for (const touch of protectedTouches(input)) {
+    const grant = grants.find((candidate) => new GlobSet([candidate.pathGlob]).matches(touch.path));
+
+    if (grant === undefined) {
+      guarded.push(touch);
+    } else {
+      covered.push({ path: touch.path, grant });
+    }
+  }
+
+  return { guarded, covered };
+}
+
+/**
+ * The allow-once grants an `allowed_paths` verdict relied on — what the service consumes.
+ *
+ * @param input - What the checks judged.
+ * @param verdict - The `allowed_paths` verdict they produced.
+ * @returns The grant ids, each once, in the order first used — empty unless the verdict passed
+ *   with a grant's help. A failing verdict spends nothing, so a run refused for another reason
+ *   keeps its grant for the retry.
+ */
+export function exceptionsSpent(input: GuardrailInput, verdict: GuardrailVerdictRow): string[] {
+  if (verdict.check !== "allowed_paths" || verdict.verdict !== "pass") {
+    return [];
+  }
+
+  return [...new Set(exceptionCover(input).covered.map((entry) => entry.grant.id))];
+}
+
+/**
+ * The evidence of a pass that a grant made possible.
+ *
+ * @param covered - The lifted paths, at least one.
+ * @param suffix - A sentence to append, or `""`.
+ * @returns `{path, glob, detail}` naming the first lifted path and its grant's glob.
+ */
+function allowedOnce(covered: readonly CoveredPath[], suffix: string): GuardrailEvidence | null {
+  return safeEvidence({
+    path: covered[0].path,
+    glob: covered[0].grant.pathGlob,
+    detail: `${counted(covered.length, "protected path")} allowed once by exception.${suffix}`,
+  });
 }
 
 /**

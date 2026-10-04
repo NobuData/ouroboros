@@ -17,6 +17,8 @@ const EFFECTIVE = {
   auto_merge_on_checks: true,
   is_explicit: true,
   runner_bearer_fallback: false,
+  guardrail_exception_max_ttl_minutes: 1440,
+  action_token_ttl_minutes: 2880,
   updated_at: new Date("2026-08-13T09:00:00.000Z"),
   updated_by: ADMINISTRATOR,
 } satisfies WorkspaceSettingsEffective;
@@ -25,6 +27,8 @@ const ROW = {
   organization_id: WORKSPACE,
   auto_merge_on_checks: true,
   runner_bearer_fallback: false,
+  guardrail_exception_max_ttl_minutes: 1440,
+  action_token_ttl_minutes: 2880,
   updated_by: ADMINISTRATOR,
   created_at: new Date("2026-08-11T10:20:23.114Z"),
   updated_at: new Date("2026-08-13T09:00:00.000Z"),

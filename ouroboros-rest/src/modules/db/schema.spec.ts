@@ -460,7 +460,10 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-twenty-third to twenty-seventh are BR.1's (#485): BetterAuth's `session`
     // and `invitation`, mirrored read-only for the Members card, and V091's
     // `member_capabilities`, `service_accounts` and `service_tokens`.
-    expect(TABLE_NAMES).toHaveLength(127);
+    //
+    // The hundred-and-twenty-eighth is V096's `guardrail_exceptions_live` (BM.3, #459), the view
+    // AP.3 reads a run's allow-once grants from.
+    expect(TABLE_NAMES).toHaveLength(128);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -644,7 +647,7 @@ describe("TABLE_COLUMNS", () => {
     for (const view of READ_ONLY_VIEWS) {
       expect(TABLE_NAMES).toContain(view);
     }
-    expect(READ_ONLY_VIEWS).toHaveLength(11);
+    expect(READ_ONLY_VIEWS).toHaveLength(12);
   });
 
   it("makes runs_with_stage the same shape as runs, so the stage read moves by one word", () => {

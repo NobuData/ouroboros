@@ -13,10 +13,10 @@
  */
 
 import { Injectable } from "@nestjs/common";
-import type { Kysely, Transaction } from "kysely";
+import { sql, type Kysely, type Transaction } from "kysely";
 
-import type { Database, EscalationThen, EscalationWhen } from "../db/schema";
-import type { GuardrailVerdictRow } from "./guardrails.checks";
+import type { Database, EscalationThen, EscalationWhen, GuardrailCheck } from "../db/schema";
+import type { GuardrailExceptionGrant, GuardrailVerdictRow } from "./guardrails.checks";
 
 /** A connection or a transaction — always the caller's. */
 export type Writer = Kysely<Database> | Transaction<Database>;
@@ -222,6 +222,59 @@ export class GuardrailsRepository {
   }
 
   /**
+   * The run's live allow-once grants, locked for this transaction.
+   *
+   * Read from `guardrail_exceptions_live` (V096, [#459](https://github.com/NobuData/ouroboros/issues/459))
+   * inside the run's own workspace, oldest first, `for update` — so a revocation or a racing
+   * evaluation cannot spend a grant between this read and {@link consumeException}.
+   *
+   * @param writer - The report's transaction.
+   * @param run - The run's policy row (its workspace).
+   * @param runId - `runs.id`.
+   * @returns Each grant's id and glob; empty when the run has none.
+   */
+  async liveExceptions(
+    writer: Writer,
+    run: RunPolicyRow,
+    runId: string,
+  ): Promise<GuardrailExceptionGrant[]> {
+    const rows = await writer
+      .selectFrom("guardrail_exceptions_live")
+      .select(["id", "path_glob"])
+      .where("organization_id", "=", run.organizationId)
+      .where("run_id", "=", runId)
+      .orderBy("created_at")
+      .orderBy("id")
+      .forUpdate()
+      .execute();
+
+    return rows.map((row) => ({ id: row.id, pathGlob: row.path_glob }));
+  }
+
+  /**
+   * Spend one allow-once grant on the evaluation that used it.
+   *
+   * `ouroboros.guardrail_exception_consume` is atomic and refuses a grant that is used, revoked,
+   * expired or another run's, answering `false`.
+   *
+   * @param writer - The report's transaction.
+   * @param exceptionId - `guardrail_exceptions.id`.
+   * @param evaluationId - The `allowed_paths` row of `guardrail_evaluations` that relied on it.
+   * @returns Whether the grant was live and is now consumed.
+   */
+  async consumeException(
+    writer: Writer,
+    exceptionId: string,
+    evaluationId: string,
+  ): Promise<boolean> {
+    const result = await sql<{ consumed: boolean }>`
+      select ouroboros.guardrail_exception_consume(${exceptionId}::uuid, ${evaluationId}::uuid) as consumed
+    `.execute(writer);
+
+    return result.rows[0]?.consumed === true;
+  }
+
+  /**
    * Append one evaluation's verdicts.
    *
    * An insert and never an update: `guardrail_evaluations` is append-only to this service by
@@ -232,14 +285,15 @@ export class GuardrailsRepository {
    * @param run - The run.
    * @param policyRef - The pinned version the policy was read from.
    * @param verdicts - The rows, evidence already screened.
+   * @returns Each written row's id by its check — what a consumed grant is recorded against.
    */
   async appendVerdicts(
     writer: Writer,
     run: string,
     policyRef: number | null,
     verdicts: readonly GuardrailVerdictRow[],
-  ): Promise<void> {
-    await writer
+  ): Promise<Map<GuardrailCheck, string>> {
+    const rows = await writer
       .insertInto("guardrail_evaluations")
       .values(
         verdicts.map((verdict) => ({
@@ -254,6 +308,9 @@ export class GuardrailsRepository {
           change_set_seq: verdict.changeSetSeq,
         })),
       )
+      .returning(["id", "check"])
       .execute();
+
+    return new Map(rows.map((row) => [row.check, row.id]));
   }
 }

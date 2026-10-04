@@ -23,6 +23,8 @@ function effective(enabled: boolean): WorkspaceSettingsEffective {
     auto_merge_on_checks: enabled,
     is_explicit: true,
     runner_bearer_fallback: false,
+    guardrail_exception_max_ttl_minutes: 1440,
+    action_token_ttl_minutes: 2880,
     updated_at: new Date("2026-08-13T09:00:00.000Z"),
     updated_by: FIXTURE_USER.id,
   };
@@ -34,6 +36,8 @@ function stored(enabled: boolean): WorkspaceSettings {
     organization_id: WORKSPACE,
     auto_merge_on_checks: enabled,
     runner_bearer_fallback: false,
+    guardrail_exception_max_ttl_minutes: 1440,
+    action_token_ttl_minutes: 2880,
     updated_by: FIXTURE_USER.id,
     created_at: new Date("2026-08-11T10:20:23.114Z"),
     updated_at: new Date("2026-08-13T09:00:00.000Z"),
