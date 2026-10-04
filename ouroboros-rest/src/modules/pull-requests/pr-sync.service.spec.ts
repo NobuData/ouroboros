@@ -17,6 +17,8 @@ import { TicketSourceRegistry } from "../ticket-sources/ticket-source.registry";
 import type { SyncSource } from "../ticket-sources/ticket-sources.repository";
 import { Logger } from "@nestjs/common";
 
+import { DecisionSourceWatcher } from "../decisions/decision.watchers";
+
 import type { FactCommitObserver } from "../facts/facts.observer";
 import type { CalibrationMergeObserver } from "../insights/calibration.observer";
 import type { GateEvidenceEvent, GateEvidenceSink } from "./gates/gate.evidence";
@@ -141,12 +143,14 @@ class RecordedFacts implements FactCommitObserver {
  * @param gates - The gate engine's sink, when the case listens to it.
  * @param facts - The fact staleness sweep, when the case listens to it.
  * @param calibration - The estimator calibration fill, when the case listens to it.
+ * @param decisions - The Needs-You watcher (#461), when the case listens to it.
  * @returns The service, its collaborators and the PR's number.
  */
 function build(
   gates?: GateEvidenceSink,
   facts?: FactCommitObserver,
   calibration?: CalibrationMergeObserver,
+  decisions?: DecisionSourceWatcher,
 ): {
   service: PrSyncService;
   store: RecordedStore;
@@ -171,7 +175,17 @@ function build(
   ]);
 
   return {
-    service: new PrSyncService(store, registry, opener, gates, facts, undefined, calibration),
+    service: new PrSyncService(
+      store,
+      registry,
+      opener,
+      gates,
+      facts,
+      undefined,
+      calibration,
+      undefined,
+      decisions,
+    ),
     store,
     opener,
     host,
@@ -231,6 +245,21 @@ describe("PrSyncService", () => {
 
     expect([open.newlyMerged, merged.newlyMerged, again.newlyMerged]).toEqual([false, true, false]);
     expect(facts.merges).toEqual([[ORG, "pr-1"]]);
+  });
+
+  it("sweeps the workspace's Needs-You cards on every sync that sees the PR ended — PR merged out of band (#461)", async () => {
+    const sweep = jest.fn().mockResolvedValue(1);
+    const { service, host, prNumber } = build(undefined, undefined, undefined, {
+      sweep,
+    } as unknown as DecisionSourceWatcher);
+
+    await service.sync(ORG, SOURCE.sourceId, prNumber);
+    expect(sweep).not.toHaveBeenCalled();
+
+    host.merge(IN_MEMORY_TOKEN, IN_MEMORY_PROJECT, prNumber, "squash", "can: fix frame order");
+    await service.sync(ORG, SOURCE.sourceId, prNumber);
+
+    expect(sweep).toHaveBeenCalledWith(ORG);
   });
 
   it("keeps the sync's outcome when the fact sweep fails, and logs it", async () => {

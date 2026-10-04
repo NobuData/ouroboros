@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.39.4",
+    "version": "0.39.5",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -100,6 +100,10 @@
     {
       "name": "facts",
       "description": "**The fact lifecycle and the staleness sweep** (mockup 14's *Learned by the loop* card,\nBF.2, [#411](https://github.com/NobuData/ouroboros/issues/411), decisions **K3**/**K4**).\nFacts are born `proposed`; a person confirms or rejects; the sweep flags a confirmed fact\n`stale` when a merged PR touches one of its anchors; a person re-confirms or expires it;\nan expired fact can be re-learned as a **new** linked proposal. Every transition is audited\nwith its actor, and the card's stamps are read from that audit.\n\n**Anchor-less facts are never swept**, and every fact says whether it is. The sweep runs\nwhen the source sync first sees a PR merged, and nightly at `OURO_FACT_SWEEP_HOUR_UTC`.\n\nReading is every member's, `viewer` included. Deciding is `owner`, `admin` or `member`;\nrunning the sweep on demand is `owner` or `admin`."
+    },
+    {
+      "name": "inbox",
+      "description": "**The Needs-You inbox** (mockup 16, epic [#454](https://github.com/NobuData/ouroboros/issues/454))\n— today its pill feed ([#461](https://github.com/NobuData/ouroboros/issues/461), BN.1, delivering\nDASH-J.2's contract [#90](https://github.com/NobuData/ouroboros/issues/90)): how many decisions\nthe workspace's planes have filed and are waiting on, by severity, snooze-aware — the shell's\nsidebar **Needs You** badge. Every plane that blocks on a person files typed items through the\ndecision kind registry; the queue, resolved list, stats and snooze routes arrive with BN.4."
     },
     {
       "name": "fact-proposers",
@@ -23288,6 +23292,74 @@
           },
           "422": {
             "description": "`fact_anchor_invalid` — an anchor V071 would refuse (`details.kind`, `details.value`).\n`fact_provenance_unresolved` — a cited run, pull request or ticket is not this workspace's.\n`validation_failed` — a malformed body.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed. The message is a constant and\n`details` is empty, deliberately.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/inbox/feed": {
+      "get": {
+        "tags": [
+          "inbox"
+        ],
+        "summary": "How many decisions are waiting — the sidebar badge",
+        "description": "Real counts from the decision items every plane files (#461): `open` is what the sidebar\n**Needs You** badge shows — items asking now, by severity in `bySeverity` (the badge lights\nred while any `err` is open). **Snooze-aware**: an item snoozed and still hidden counts in\n`snoozed`, not `open`; one whose snooze has already elapsed counts as `open` even before the\nwake sweep has run, so the badge never hides a question longer than its snooze asked.\n`nextWakeAt` is when the soonest hidden item comes back. Resolved and expired items count\nnowhere. The queue (BN.4) lists exactly the items `open` counts.\n\n**Every member**, `viewer` included.\n\n**The workspace is the session's**: no workspace in this path, the session's active\norganization or `X-Ouro-Tenant` decides, and membership is checked before this\noperation runs.",
+        "operationId": "readInboxFeed",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The counts.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InboxFeed"
+                },
+                "example": {
+                  "open": 3,
+                  "bySeverity": {
+                    "err": 1,
+                    "warn": 2,
+                    "info": 0
+                  },
+                  "snoozed": 0,
+                  "nextWakeAt": null,
+                  "asOf": "2026-10-04T09:12:00.000Z"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`organization_required` — this session is not acting in any workspace and this\noperation names none.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session, or one this service will not\nhonour.",
             "content": {
               "application/json": {
                 "schema": {
@@ -61311,6 +61383,68 @@
             "type": "string",
             "format": "date-time",
             "description": "When it started waiting — the proposal's creation, or the stale flag."
+          }
+        }
+      },
+      "InboxFeed": {
+        "type": "object",
+        "title": "InboxFeed",
+        "description": "`GET /api/v1/inbox/feed` — the Needs-You badge's counts (#461). `open` equals the sum of\n`bySeverity`; `snoozed` is counted apart from it.",
+        "additionalProperties": false,
+        "required": [
+          "open",
+          "bySeverity",
+          "snoozed",
+          "nextWakeAt",
+          "asOf"
+        ],
+        "properties": {
+          "open": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Items asking now — the badge's number. Zero hides the badge."
+          },
+          "bySeverity": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "err",
+              "warn",
+              "info"
+            ],
+            "description": "`open`, by the card's severity.",
+            "properties": {
+              "err": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "warn": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "info": {
+                "type": "integer",
+                "minimum": 0
+              }
+            }
+          },
+          "snoozed": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Items snoozed and still hidden. Not in `open`."
+          },
+          "nextWakeAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When the soonest hidden item wakes; null when none is snoozed."
+          },
+          "asOf": {
+            "type": "string",
+            "format": "date-time",
+            "description": "The instant the counts are as of."
           }
         }
       },

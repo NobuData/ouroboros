@@ -37,12 +37,13 @@
  * **Roles** are the controller's: every member drafts, selects and edits; pushing is admin+.
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 
 import type { DraftBatchStatus } from "../db/schema";
 import { EngineClient } from "../engine/engine.client";
 import { PLAN_MAX_WORKFLOW_TAGS, type Plan, type PlanDraft } from "../engine/engine.contract";
 import { describeForLog } from "../errors/failure";
+import { SplitApprovalEmitter } from "./split-approval.emitter";
 import {
   EstimationOrchestrator,
   type DraftSizingOutcome,
@@ -158,6 +159,8 @@ export class BatchesService {
    * @param orchestrator - INTAKE-L.3's orchestrator — the one sizer.
    * @param pusher - AL.3's push.
    * @param queueSmall - The `queue_small` hook (M.3).
+   * @param splits - The Needs-You emitter (#461): a stored planner batch files a `split_approval`
+   *   card. Absent in a context without the inbox.
    */
   constructor(
     private readonly repository: PlanningRepository,
@@ -168,6 +171,7 @@ export class BatchesService {
     private readonly orchestrator: EstimationOrchestrator,
     private readonly pusher: PushService,
     private readonly queueSmall: QueueSmallHook,
+    @Optional() private readonly splits?: SplitApprovalEmitter,
   ) {}
 
   /**
@@ -232,6 +236,9 @@ export class BatchesService {
     if (body.autoSize ?? true) {
       this.dispatchSizing(organizationId, batchId, source, provider, [...stored.values()]);
     }
+
+    // The proposed split waits on a person to push it: file its inbox card (#461). Never throws.
+    await this.splits?.drafted(organizationId, batchId);
 
     return { ...(await this.read(organizationId, batchId)), notes: plan.notes };
   }
@@ -384,6 +391,9 @@ export class BatchesService {
     if (batch.autoSize) {
       this.dispatchSizing(organizationId, batchId, batch.source, provider, [...stored.values()]);
     }
+
+    // A regenerated split refreshes its card's count (#461). Never throws.
+    await this.splits?.drafted(organizationId, batchId);
 
     return { ...(await this.read(organizationId, batchId)), notes: plan.notes };
   }

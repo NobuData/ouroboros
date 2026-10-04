@@ -27,9 +27,10 @@
  * implying a coverage the sweep does not have; each fact's resource says `sweep.covered: false`.
  */
 
-import { Injectable, Logger } from "@nestjs/common";
+import { Injectable, Logger, Optional } from "@nestjs/common";
 
 import { describeForLog } from "../errors/failure";
+import { FactReviewEmitter } from "./fact-review.emitter";
 import { matchAnchor, type AnchorMatch } from "./facts.anchors";
 import { STATUS_REASON_MAX_LENGTH } from "./facts.dto";
 import type { FactCommitObserver } from "./facts.observer";
@@ -183,8 +184,15 @@ export class FactSweepService implements FactCommitObserver {
   /** Where a pass that flagged something is reported. */
   private readonly logger = new Logger(FactSweepService.name);
 
-  /** @param repo - The statements. */
-  constructor(private readonly repo: FactsRepository) {}
+  /**
+   * @param repo - The statements.
+   * @param reviews - The Needs-You emitter (#461): a fact flagged stale files a `fact_review`
+   *   card. Absent in a context without the inbox.
+   */
+  constructor(
+    private readonly repo: FactsRepository,
+    @Optional() private readonly reviews?: FactReviewEmitter,
+  ) {}
 
   /**
    * The sync-driven trigger: one PR was just observed merged.
@@ -271,6 +279,12 @@ export class FactSweepService implements FactCommitObserver {
         flagged.push(flag);
       }
     }
+
+    // A fact flagged stale waits on a person: file its inbox card (#461). Never throws.
+    await this.reviews?.review(
+      organizationId,
+      flagged.map((flag) => flag.factId),
+    );
 
     if (stampAt !== null) {
       // A window cut at the limit is only checked up to its last merge; the next night goes on.

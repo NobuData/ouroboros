@@ -2,6 +2,7 @@ import { Module, type DynamicModule } from "@nestjs/common";
 
 import { BetterAuthModule } from "../../auth/auth.module";
 import { AuditModule } from "../audit/audit.module";
+import { DecisionsModule } from "../decisions/decisions.module";
 import { BacklogModule } from "../backlog/backlog.module";
 import { BacklogSyncModule } from "../backlog-sync/backlog-sync.module";
 import { AuthModule } from "../auth/auth.module";
@@ -365,6 +366,12 @@ export class AppModule {
         // names, P7's reference check and the code view's `skills/` files; it imports nothing of
         // the workflow module's back, and nothing else claims the prefix.
         SkillsModule,
+        // BN.1 ([#461](https://github.com/NobuData/ouroboros/issues/461)) — the decision kind registry,
+        // the out-of-band watcher and the Needs-You feed under `/api/v1/inbox`. Every plane that
+        // blocks on a person imports it for the registry (facts, pull requests, guardrails, planning,
+        // estimation, runs); it imports only `DbModule` and `AuditModule`, and nothing else claims
+        // the prefix.
+        DecisionsModule,
         // BF.2 ([#411](https://github.com/NobuData/ouroboros/issues/411)) — the fact lifecycle and
         // the staleness sweep under `/api/v1/facts`. `PullRequestsModule` imports it for the
         // commit observer PR sync reports a merge to; nothing else claims the prefix.

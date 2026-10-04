@@ -14,8 +14,10 @@
  * secrets_license   the pin holds on its checks
  * model_review      an add_vote escalation rule matches the ticket (#194)
  * human_approval    always — the policy owns the question; its verdict is the policy's answer.
- *                   Once a person asks for a review (AX.5, #361) it is required whatever org config
- *                   says, with the source `… + review requested`
+ *                   When the org policy's human_review rule matches the ticket (#461 — the refactor
+ *                   label) it is required whatever org config says, with the source
+ *                   `… + org policy: refactor → human review`. Once a person asks for a review
+ *                   (AX.5, #361) it is required too, with `… + review requested` appended
  * ```
  *
  * A PR with no run, or a pin that cannot be read, gets every gate required with the source
@@ -25,6 +27,7 @@
 
 import { BUILT_IN_GATE_KEYS, type BuiltInGateKey } from "../../db/schema";
 import type { PinnedPolicy } from "../../guardrails/guardrails.policy";
+import type { HumanReviewMatch } from "./gate.human-review";
 import type { OrgGateConfig } from "./gate.policy";
 import type { GateDefinitionSpec } from "./gate.types";
 
@@ -57,6 +60,17 @@ export const ORG_CONFIG_SOURCE = "org config";
 /** What a requested review appends to `human_approval`'s provenance. */
 export const REVIEW_REQUESTED_SOURCE = "review requested";
 
+/**
+ * What the org policy's `human_review` rule appends to `human_approval`'s provenance (#461) —
+ * `org policy: refactor → human review`, or `org policy → human review` for a match on effort.
+ *
+ * @param label - The label the rule matched, or null.
+ * @returns The provenance fragment.
+ */
+export function policyReviewSource(label: string | null): string {
+  return label === null ? "org policy → human review" : `org policy: ${label} → human review`;
+}
+
 /** What a PR's gate set is materialized from. */
 export interface DefinitionInput {
   /** The run's pin — `standard-fix` and `14` — or null for a PR without a run or an unpinned run. */
@@ -74,6 +88,11 @@ export interface DefinitionInput {
    * Optional; absent means no.
    */
   readonly reviewRequested?: boolean;
+  /**
+   * What the org policy's `human_review` rule decided for the PR's ticket (#461, the #358
+   * amendment). Optional; absent means the policy requires nothing.
+   */
+  readonly policyReview?: HumanReviewMatch;
 }
 
 /**
@@ -117,11 +136,21 @@ export function materializeDefinitions(input: DefinitionInput): GateDefinitionSp
       source = ORG_CONFIG_SOURCE;
     }
 
+    // The org policy says this PR needs a human (#461): the gate is the policy's, not config's to
+    // switch off — and the card names the policy.
+    if (gateKey === "human_approval" && input.policyReview?.required === true) {
+      required = true;
+      disabled = false;
+      source = `${pinSource} + ${policyReviewSource(input.policyReview.label)}`;
+    }
+
     // A person asked for a review: the gate is theirs to answer, not config's to switch off.
     if (gateKey === "human_approval" && input.reviewRequested === true) {
       required = true;
       disabled = false;
-      source = `${pinSource} + ${REVIEW_REQUESTED_SOURCE}`;
+      // Kept after the policy's provenance when both hold; otherwise it replaces org config's.
+      const base = input.policyReview?.required === true ? source : pinSource;
+      source = `${base} + ${REVIEW_REQUESTED_SOURCE}`;
     }
 
     return {

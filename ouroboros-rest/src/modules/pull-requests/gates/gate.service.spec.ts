@@ -365,6 +365,46 @@ describe("GateEngineService", () => {
     expect(store.asked.at(-1)).toEqual({ kind: "approval_recorded", prId: "pr-514" });
   });
 
+  it("requires human review of a refactor-labelled PR under the published policy, and tells listeners the label (#461)", async () => {
+    const listeners = new GateListeners();
+    const heard: GateEvaluated[] = [];
+    listeners.add({ gateEvaluated: (evaluated) => heard.push(evaluated) });
+    store.push(REV_2);
+    store.sources = { ...store.sources, ticket: { ...store.sources.ticket, labels: ["refactor"] } };
+    service = new GateEngineService(
+      store,
+      org({
+        ...DEFAULT_ORG_GATE_CONFIG,
+        overrides: { human_approval: { disabled: true } },
+        humanReview: { enabled: true, conditions: { any: [{ label: "refactor" }, { effort_gte: "l" }] } },
+      }),
+      listeners,
+    );
+
+    const evaluation = await service.evaluate("pr-514");
+    await service.notify("org-358", { kind: "revision_pushed", prId: "pr-514" });
+
+    expect(evaluation?.humanReview).toEqual({ required: true, label: "refactor" });
+    expect(store.definitions.find((row) => row.gateKey === "human_approval")).toMatchObject({
+      required: true,
+      source: "standard-fix@v14 pin + org policy: refactor → human review",
+    });
+    expect(heard.at(-1)?.humanReview).toEqual({ required: true, label: "refactor" });
+  });
+
+  it("requires nothing new of a PR the policy does not match", async () => {
+    store.push(REV_2);
+    service = new GateEngineService(
+      store,
+      org({ ...DEFAULT_ORG_GATE_CONFIG, humanReview: { enabled: true, conditions: { label: "refactor" } } }),
+    );
+
+    expect((await service.evaluate("pr-514"))?.humanReview).toEqual({ required: false, label: null });
+    expect(store.definitions.find((row) => row.gateKey === "human_approval")?.source).toBe(
+      "standard-fix@v14 pin",
+    );
+  });
+
   it("re-evaluates only human approval on an approval event, and an approval can flip the aggregate", async () => {
     store.push(REV_2);
     store.sources = { ...store.sources, rules: [] };
@@ -434,6 +474,7 @@ describe("GateEngineService", () => {
         state: "verifying",
         mergeReady: false,
         redCount: 0,
+        humanReview: { required: false, label: null },
       },
     ]);
   });

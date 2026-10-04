@@ -69,6 +69,9 @@ import {
   SERVICE_ACCOUNT_CREATED_EVENT,
   SERVICE_ACCOUNT_ROTATED_EVENT,
   SERVICE_ACCOUNT_REVOKED_EVENT,
+  DECISION_FILED_EVENT,
+  DECISION_REFRESHED_EVENT,
+  DECISION_SOURCE_RESOLVED_EVENT,
 } from "./audit.events";
 
 /**
@@ -191,6 +194,9 @@ describe("the vocabulary", () => {
       "service_account.created",
       "service_account.rotated",
       "service_account.revoked",
+      "decision.filed",
+      "decision.refreshed",
+      "decision.source_resolved",
     ]);
   });
 
@@ -217,7 +223,8 @@ describe("the vocabulary", () => {
     // who asked for a Build Analyzer run (#510), under `analyzer.`, and `analysis_suggestion.`
     // for what was done with a suggestion (#514) — V081 spells the apply event that way — and
     // `workspace.` for the Danger zone's lifecycle (#489), `member.` for the Members & Roles card
-    // and `service_account.` for its non-human principals (#485). The
+    // and `service_account.` for its non-human principals (#485), and `decision.` for what the
+    // planes file into the Needs-You inbox and what closes itself out of band (#461). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -228,6 +235,7 @@ describe("the vocabulary", () => {
       "analysis_suggestion",
       "analyzer",
       "credential",
+      "decision",
       "github",
       "knowledge",
       "member",
@@ -315,6 +323,9 @@ describe("the vocabulary", () => {
       SERVICE_ACCOUNT_CREATED_EVENT,
       SERVICE_ACCOUNT_ROTATED_EVENT,
       SERVICE_ACCOUNT_REVOKED_EVENT,
+      DECISION_FILED_EVENT,
+      DECISION_REFRESHED_EVENT,
+      DECISION_SOURCE_RESOLVED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

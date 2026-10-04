@@ -21,6 +21,10 @@
  * (`GET /planning/health`) and the nightly re-estimation job (decision **N9**). The job sizes through
  * the same `EstimationOrchestrator` — `enqueueTicket` — and provides no estimator either;
  * `ScheduleModule.forRoot()` is imported for its `SchedulerRegistry`, as `EstimationModule` does.
+ *
+ * BN.1 ([#461](https://github.com/NobuData/ouroboros/issues/461)) adds `SplitApprovalEmitter`: a
+ * stored planner batch files a `split_approval` card in the Needs-You inbox, and pushing or
+ * abandoning the batch settles it. It imports `DecisionsModule` for the registry.
  */
 
 import { Module } from "@nestjs/common";
@@ -28,6 +32,7 @@ import { ScheduleModule } from "@nestjs/schedule";
 
 import { BacklogModule } from "../backlog/backlog.module";
 import { DbModule } from "../db/db.module";
+import { DecisionsModule } from "../decisions/decisions.module";
 import { EngineModule } from "../engine/engine.module";
 import { EstimationModule } from "../estimation/estimation.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
@@ -45,6 +50,7 @@ import { QueueSmallHook } from "./queue-small";
 import { ReestimationJob } from "./reestimation.job";
 import { ReestimationRepository } from "./reestimation.repository";
 import { ReestimationScheduler } from "./reestimation.scheduler";
+import { SplitApprovalEmitter } from "./split-approval.emitter";
 
 @Module({
   imports: [
@@ -55,6 +61,7 @@ import { ReestimationScheduler } from "./reestimation.scheduler";
     BacklogModule,
     WorkflowsModule,
     ScheduleModule.forRoot(),
+    DecisionsModule,
   ],
   controllers: [BatchesController, PlanningController],
   providers: [
@@ -69,6 +76,7 @@ import { ReestimationScheduler } from "./reestimation.scheduler";
     ReestimationRepository,
     ReestimationJob,
     ReestimationScheduler,
+    SplitApprovalEmitter,
   ],
   // BatchesService for the Build Analyzer's drafted tickets (#514), which are ordinary batches.
   exports: [PushService, BatchesService],

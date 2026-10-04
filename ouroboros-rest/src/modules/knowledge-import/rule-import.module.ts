@@ -13,7 +13,8 @@
  *
  * **It writes through the registries' own statements.** `SkillsRepository` and `FactsRepository`
  * are provided here rather than exported from their modules — both are stateless over the pool,
- * and their modules keep their deliberately narrow exports.
+ * and their modules keep their deliberately narrow exports. It imports `FactsModule` for one thing
+ * only, the Needs-You `FactReviewEmitter` (#461): each imported proposal files its review card.
  */
 
 import { Module } from "@nestjs/common";
@@ -21,6 +22,7 @@ import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { DbModule } from "../db/db.module";
 import { DetectionModule } from "../detection/detection.module";
+import { FactsModule } from "../facts/facts.module";
 import { FactsRepository } from "../facts/facts.repository";
 import { SkillsRepository } from "../skills/skills.repository";
 import { RuleImportController } from "./rule-import.controller";
@@ -28,7 +30,7 @@ import { RuleImportRepository } from "./rule-import.repository";
 import { RuleImportService } from "./rule-import.service";
 
 @Module({
-  imports: [DbModule, AuditModule, DetectionModule],
+  imports: [DbModule, AuditModule, DetectionModule, FactsModule],
   controllers: [RuleImportController],
   providers: [RuleImportService, RuleImportRepository, SkillsRepository, FactsRepository],
 })

@@ -31152,13 +31152,17 @@ insert into v093_card values
 select pg_temp.must_hold(
   (select array_agg(kind_id || ' v' || version || ' ' || severity_default order by kind_id)
           = array['claim_waiver v1 warn', 'merge_approval v1 err', 'protected_path_allow_once v1 warn']
-     from ouroboros.decision_kinds),
+     from ouroboros.decision_kinds
+    -- V097 (#461) declares the other six MVP kinds; this section asks V093's own three.
+    where kind_id not in ('plan_sign_off', 'fact_review', 'run_needs_human', 'split_approval',
+                          'resize_review', 'spend_approval')),
   'the three declarations mockup 16 fixes ship at v1 — merge_approval err, the other two warn — and no others');
 
 select pg_temp.must_hold(
   (select merge_class and resolution_semantics -> 'auto_resolvable' = 'false'::jsonb
      from ouroboros.decision_kinds where kind_id = 'merge_approval')
-  and (select bool_and(escalation_window = interval '30 minutes') from ouroboros.decision_kinds),
+  and (select bool_and(escalation_window = interval '30 minutes') from ouroboros.decision_kinds
+        where kind_id in ('merge_approval', 'protected_path_allow_once', 'claim_waiver')),
   'merge_approval is merge-class and not auto-resolvable, and every kind escalates after mockup 19''s thirty minutes');
 
 select pg_temp.must_hold(
@@ -31360,7 +31364,7 @@ select pg_temp.must_reject(
   'a payload is an object', 'decision_items_payload_object');
 
 select pg_temp.must_raise(
-  $$select ouroboros.decision_item_emit('org-v093', 'plan_sign_off', '{}', '[]', 'workflows', 'probe:x')$$,
+  $$select ouroboros.decision_item_emit('org-v093', 'bisect_complete', '{}', '[]', 'research', 'probe:x')$$,
   '23503', 'emitting a kind with no declaration is refused');
 
 -- --- typed refs ---------------------------------------------------------------------
@@ -33110,6 +33114,281 @@ select pg_temp.must_hold(
   'exceptions and tokens cascade with their workspace');
 
 drop table v096_ids;
+
+-- ===========================================================================
+-- V097 — the six remaining MVP kinds and the out-of-band closure (#461, BN.1)
+-- ===========================================================================
+--
+-- Asked here: the six declarations BN.1's emitters file against ship at v1 with their severities
+-- (fact_review info, so knowledge never outranks a blocked loop; resize_review the one
+-- auto-resolvable kind) and render their question and why from facts alone; a payload failing its
+-- schema files nothing; an item whose source settled elsewhere — PR #509 merged on its host —
+-- closes as policy(source_resolved), merge-class or not, once and only once, snoozed or not, under
+-- the service role; the reserved action and the reserved policy cannot be borrowed by a human, by
+-- another policy, or with a note; and the weekly metrics count answers, never closures.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v097', 'Emitter Works', 'emitter-works-v097', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a9700000-0000-0000-0000-00000000000a', 'Maya Answerer', 'maya@emitter-works.example', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a9710000-0000-0000-0000-00000000000a', 'org-v097', 'emitter-v097', true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a971f000-0000-0000-0000-00000000000a', 'a9710000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main');
+
+insert into ouroboros.ticket_sources (id, organization_id, kind, display_name) values
+  ('a9720000-0000-0000-0000-00000000000a', 'org-v097', 'github', 'GitHub · emitter');
+
+insert into ouroboros.tickets
+    (id, organization_id, source_id, external_id, external_key, external_url, title, state,
+     source_created_at, source_updated_at)
+  values
+    ('a9730000-0000-0000-0000-000000000465', 'org-v097', 'a9720000-0000-0000-0000-00000000000a',
+     '465', '#465', 'https://github.com/emitter-v097/helios-firmware/issues/465',
+     'Refactor the telemetry ring buffer', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z'),
+    ('a9730000-0000-0000-0000-000000000486', 'org-v097', 'a9720000-0000-0000-0000-00000000000a',
+     '486', '#486', 'https://github.com/emitter-v097/helios-firmware/issues/486',
+     'CAN bus telemetry backpressure', 'open', '2026-09-01T00:00:00Z', '2026-09-01T00:00:00Z');
+
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a9760000-0000-0000-0000-000000001843', 'org-v097', 'a971f000-0000-0000-0000-00000000000a',
+     465, 'Refactor the telemetry ring buffer', 'standard-fix', 'claude-fable-5', 'review',
+     'Review', 7, 8, '2026-09-01T09:00:00Z', 1843),
+    ('a9760000-0000-0000-0000-000000001851', 'org-v097', 'a971f000-0000-0000-0000-00000000000a',
+     479, 'OTA rollback flag is never cleared', 'standard-fix', 'claude-fable-5', 'review',
+     'Build', 4, 8, '2026-09-01T09:30:00Z', 1851);
+
+insert into ouroboros.pull_requests
+    (id, organization_id, source_id, external_number, external_url, title, head_branch,
+     base_branch, run_id, ticket_id, state)
+  values
+    ('a9770000-0000-0000-0000-000000000509', 'org-v097', 'a9720000-0000-0000-0000-00000000000a',
+     509, 'https://github.com/emitter-v097/helios-firmware/pull/509', 'telemetry: refactor ring',
+     'loop/465', 'main', 'a9760000-0000-0000-0000-000000001843',
+     'a9730000-0000-0000-0000-000000000465', 'open');
+
+-- --- the six declarations -------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(kind_id || ' v' || version || ' ' || severity_default order by kind_id)
+          = array['fact_review v1 info', 'plan_sign_off v1 warn', 'resize_review v1 info',
+                  'run_needs_human v1 err', 'spend_approval v1 warn', 'split_approval v1 info']
+     from ouroboros.decision_kinds
+    where kind_id in ('plan_sign_off', 'fact_review', 'run_needs_human', 'split_approval',
+                      'resize_review', 'spend_approval')),
+  'V097 declares the six remaining MVP kinds at v1 — fact_review info, run_needs_human err');
+
+select pg_temp.must_hold(
+  (select array_agg(kind_id order by kind_id) = array['resize_review']
+     from ouroboros.decision_kinds
+    where resolution_semantics -> 'auto_resolvable' = 'true'::jsonb and kind_id !~ '^custom:')
+  and not exists (select 1 from ouroboros.decision_kinds
+                   where merge_class and kind_id <> 'merge_approval' and kind_id !~ '^custom:'),
+  'of the shipped kinds, resize_review is the one auto-resolvable and merge_approval the one merge-class');
+
+-- --- each renders its question and why from facts alone --------------------------------------
+create temporary table v097_ids (name text primary key, id uuid not null);
+
+insert into v097_ids
+select c.name,
+       ouroboros.decision_item_emit('org-v097', c.kind_id, c.payload, c.refs, c.plane, c.source_ref)
+  from (values
+    ('plan', 'plan_sign_off',
+     '{"subject": "Rework the OTA bootloader handoff", "stage_label": "Plan review", "plan_files": 9}'::jsonb,
+     '[{"type": "run", "id": "a9760000-0000-0000-0000-000000001851", "label": "loop #1851"}]'::jsonb,
+     'workflows', 'run:a9760000-0000-0000-0000-000000001851:stage:plan_review'),
+    ('fact', 'fact_review',
+     '{"reason": "awaiting review", "text": "CAN frames are DMA-backed on helios-firmware",
+       "provenance_line": "from PR #514 review cycle"}',
+     '[]', 'facts', 'fact:a97f0000-0000-0000-0000-000000000001:proposed'),
+    ('needs', 'run_needs_human',
+     '{"subject": "OTA rollback flag is never cleared", "stage_label": "Build",
+       "reason": "attempt limit reached"}',
+     '[{"type": "run", "id": "a9760000-0000-0000-0000-000000001851", "label": "loop #1851"}]',
+     'runs', 'run:a9760000-0000-0000-0000-000000001851'),
+    ('split', 'split_approval',
+     '{"subject": "Telemetry v2", "draft_count": 6, "target": "acme-robotics/helios-firmware"}',
+     '[]', 'planning', 'batch:a97b0000-0000-0000-0000-000000000001'),
+    ('resize', 'resize_review',
+     '{"ticket_key": "#486", "from_effort": "L", "to_effort": "M", "confidence": 82}',
+     '[{"type": "ticket", "id": "a9730000-0000-0000-0000-000000000486", "label": "issue #486"}]',
+     'estimation', 'ticket:a9730000-0000-0000-0000-000000000486:estimate:2'),
+    ('spend', 'spend_approval',
+     '{"subject": "OTA rollback flag is never cleared", "spent": "$2.61", "cap": "$2.50"}',
+     '[{"type": "run", "id": "a9760000-0000-0000-0000-000000001851", "label": "loop #1851"}]',
+     'spend', 'run:a9760000-0000-0000-0000-000000001851:spend'),
+    ('merge', 'merge_approval',
+     '{"pr_kind": "refactor", "policy_label": "refactor", "checks_passed": 14, "checks_total": 14,
+       "matrix_state": "all ✓", "added": 214, "removed": 180, "files": 6}',
+     '[{"type": "run", "id": "a9760000-0000-0000-0000-000000001843", "label": "loop #1843"},
+       {"type": "pr",  "id": "a9770000-0000-0000-0000-000000000509", "label": "PR #509"}]',
+     'pr.gates', 'pr:a9770000-0000-0000-0000-000000000509')
+  ) as c(name, kind_id, payload, refs, plane, source_ref);
+
+create function pg_temp.v097(name text) returns uuid language sql stable as $$
+  select id from v097_ids where v097_ids.name = v097.name
+$$;
+
+select pg_temp.must_hold(
+  (select question = 'Sign off a plan before the loop builds it?'
+      and why = 'Rework the OTA bootloader handoff is waiting at Plan review: its plan touches 9 files. Signing off lets the loop continue.'
+     from ouroboros.decision_items_rendered where id = pg_temp.v097('plan'))
+  and (select question = 'Should the loops trust this fact?'
+      and why = '“CAN frames are DMA-backed on helios-firmware” — awaiting review, from PR #514 review cycle.'
+      and tags = array['knowledge'] and severity = 'info'
+     from ouroboros.decision_items_rendered where id = pg_temp.v097('fact'))
+  and (select question = 'Take over a loop that needs a human?'
+      and why = 'OTA rollback flag is never cleared stopped at Build: attempt limit reached.'
+      and severity = 'err'
+     from ouroboros.decision_items_rendered where id = pg_temp.v097('needs')),
+  'plan_sign_off, fact_review and run_needs_human render their question and why from facts alone');
+
+select pg_temp.must_hold(
+  (select question = 'Approve a split into 6 tickets?'
+      and why = 'The planner split Telemetry v2 into 6 draft tickets. Approving pushes them to acme-robotics/helios-firmware.'
+     from ouroboros.decision_items_rendered where id = pg_temp.v097('split'))
+  and (select question = 'Accept a re-size of #486 from L to M?'
+      and why = 'The estimator re-sized #486 from L to M at 82% confidence. Accepting keeps the new size; keeping restores the old one.'
+     from ouroboros.decision_items_rendered where id = pg_temp.v097('resize'))
+  and (select question = 'Approve more spend on a loop past its cap?'
+      and why = 'OTA rollback flag is never cleared has spent $2.61 against a $2.50 per-run cap; the loop is paused until you decide.'
+     from ouroboros.decision_items_rendered where id = pg_temp.v097('spend')),
+  'split_approval, resize_review and spend_approval render their question and why from facts alone');
+
+-- --- a payload failing its schema files nothing ------------------------------------------------
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v097', 'spend_approval',
+      '{"subject": "OTA rollback flag is never cleared", "spent": "2.61", "cap": "$2.50"}',
+      '[{"type": "run", "id": "a9760000-0000-0000-0000-000000001851", "label": "loop #1851"}]',
+      'spend', 'run:a9760000-0000-0000-0000-000000001851:spend:bad')$$,
+  'spend_approval refuses a spend that is not dollars and cents', 'decision_items_payload_conforms');
+
+select pg_temp.must_reject(
+  $$select ouroboros.decision_item_emit('org-v097', 'fact_review',
+      '{"reason": "awaiting_review", "text": "x", "provenance_line": "from a note"}', '[]',
+      'facts', 'fact:a97f0000-0000-0000-0000-000000000002:proposed')$$,
+  'fact_review refuses a reason outside its enum', 'decision_items_payload_conforms');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.decision_items
+               where organization_id = 'org-v097'
+                 and source_ref in ('run:a9760000-0000-0000-0000-000000001851:spend:bad',
+                                    'fact:a97f0000-0000-0000-0000-000000000002:proposed')),
+  'a refused emission files no item');
+
+-- --- PR #509 merged out of band: its merge_approval closes as policy(source_resolved) ----------
+select pg_temp.must_hold(
+  ouroboros.decision_item_source_resolve(pg_temp.v097('merge'), 'github', '{"source": "pr_merged"}'),
+  'a merge-class item whose PR merged elsewhere closes as policy(source_resolved)');
+
+select pg_temp.must_hold(
+  (select i.status = 'resolved' and r.resolver = 'policy' and r.resolved_by_policy = 'source_resolved'
+      and r.action_id = 'source_resolved' and r.channel = 'github' and r.note is null
+      and r.outcome = '{"source": "pr_merged"}'::jsonb and r.resolved_by_user is null
+     from ouroboros.decision_items i
+     join ouroboros.decision_resolutions r on r.item_id = i.id
+    where i.id = pg_temp.v097('merge')),
+  'the closure is a resolution the resolved list can show: resolver policy, policy source_resolved, the receipt kept');
+
+select pg_temp.must_hold(
+  not ouroboros.decision_item_source_resolve(pg_temp.v097('merge'), 'github', '{}'),
+  'closing an item already resolved does nothing and says so — a watcher may call it as often as it likes');
+
+select pg_temp.must_hold(
+  not ouroboros.decision_item_source_resolve('a97e0000-0000-0000-0000-000000000000', 'api', '{}'),
+  'closing an item that does not exist does nothing');
+
+-- An item that expired unanswered stays expired: its source settling later is not an answer either.
+update ouroboros.decision_items set status = 'expired' where id = pg_temp.v097('split');
+
+select pg_temp.must_hold(
+  not ouroboros.decision_item_source_resolve(pg_temp.v097('split'), 'api', '{"source": "batch_pushed"}'),
+  'closing an expired item does nothing — only an asking item closes');
+
+-- A snoozed card closes too, and its snooze goes with it.
+select ouroboros.decision_item_snooze(pg_temp.v097('plan'), now() + interval '1 hour',
+                                      'a9700000-0000-0000-0000-00000000000a', null);
+
+select pg_temp.must_hold(
+  ouroboros.decision_item_source_resolve(pg_temp.v097('plan'), 'api', '{"source": "run_terminated"}'),
+  'a snoozed item whose source settled closes');
+
+select pg_temp.must_hold(
+  (select status = 'resolved' and snoozed_until is null and snoozed_by is null
+     from ouroboros.decision_items where id = pg_temp.v097('plan')),
+  'closing a snoozed item drops its snooze');
+
+-- The service role can close what it filed.
+grant select on v097_ids to ouroboros_app;
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  ouroboros.decision_item_source_resolve(pg_temp.v097('needs'), 'api', '{"source": "run_terminated"}'),
+  'the service role closes an item whose source settled');
+
+reset role;
+
+-- --- the reserved pair cannot be borrowed --------------------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_resolutions
+      (item_id, organization_id, action_id, resolver, resolved_by_user, channel)
+    values ((select id from v097_ids where name = 'resize'), 'org-v097', 'source_resolved',
+            'human', 'a9700000-0000-0000-0000-00000000000a', 'web')$$,
+  'a person cannot answer with the reserved source_resolved action',
+  'decision_resolutions_action_answers');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_resolutions
+      (item_id, organization_id, action_id, resolver, resolved_by_policy, channel)
+    values ((select id from v097_ids where name = 'resize'), 'org-v097', 'source_resolved',
+            'policy', 'auto_accept_resize', 'api')$$,
+  'another policy cannot borrow the reserved action', 'decision_resolutions_action_answers');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_resolutions
+      (item_id, organization_id, action_id, resolver, resolved_by_policy, channel)
+    values ((select id from v097_ids where name = 'resize'), 'org-v097', 'accept_resize',
+            'policy', 'source_resolved', 'api')$$,
+  'the reserved policy answers nothing but a closure', 'decision_resolutions_source_resolved_pair');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_resolutions
+      (item_id, organization_id, action_id, resolver, resolved_by_policy, channel, note)
+    values ((select id from v097_ids where name = 'resize'), 'org-v097', 'source_resolved',
+            'policy', 'source_resolved', 'api', 'merged anyway')$$,
+  'a closure carries no note', 'decision_resolutions_source_resolved_pair');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_resolutions
+      (item_id, organization_id, action_id, resolver, resolved_by_policy, channel)
+    values ((select id from v097_ids where name = 'spend'), 'org-v097', 'approve_spend',
+            'policy', 'custom:v097-spender', 'api')$$,
+  'a policy still cannot answer a kind that is not auto-resolvable',
+  'decision_resolutions_policy_may_answer');
+
+-- --- the weekly metrics count answers, never closures --------------------------------------------
+insert into ouroboros.decision_resolutions
+    (item_id, organization_id, action_id, resolver, resolved_by_user, channel)
+  values (pg_temp.v097('resize'), 'org-v097', 'accept_resize', 'human',
+          'a9700000-0000-0000-0000-00000000000a', 'web');
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.decision_resolutions where organization_id = 'org-v097')
+  and (select sum(decisions) = 1 and sum(policy_resolutions) = 0
+         from ouroboros.decision_metrics_weekly where organization_id = 'org-v097')
+  and (select array_agg(kind_id) = array['resize_review']
+         from ouroboros.decision_metrics_weekly_by_kind where organization_id = 'org-v097'),
+  'three closures and one answer make one decision this week — closures answered nothing');
+
+delete from ouroboros.organization where "id" = 'org-v097';
+delete from ouroboros."user" where "id" = 'a9700000-0000-0000-0000-00000000000a';
+
+drop table v097_ids;
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

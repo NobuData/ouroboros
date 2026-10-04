@@ -23,6 +23,7 @@
 import { Injectable, Logger } from "@nestjs/common";
 
 import type { PullRequestState } from "../../db/schema";
+import type { HumanReviewMatch } from "./gate.human-review";
 
 /** What a listener is told about one evaluation. */
 export interface GateEvaluated {
@@ -38,6 +39,12 @@ export interface GateEvaluated {
   readonly mergeReady: boolean;
   /** How many required gates are red on the revision. */
   readonly redCount: number;
+  /**
+   * What the org policy's `human_review` rule decided for the PR (#461) — the merge-approval
+   * emitter files a card when it requires a review and names a label. Optional: absent means the
+   * policy required nothing.
+   */
+  readonly humanReview?: HumanReviewMatch;
 }
 
 /** One listener. */

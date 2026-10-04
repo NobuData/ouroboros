@@ -78,6 +78,7 @@ describe("the planning module", () => {
       "ReestimationRepository",
       "ReestimationJob",
       "ReestimationScheduler",
+      "SplitApprovalEmitter",
     ]);
     // AL.5's re-estimation job *schedules* sizing and sizes nothing — so the rule is about
     // estimators, orchestrators and sizers, and the job's own three classes are named above.

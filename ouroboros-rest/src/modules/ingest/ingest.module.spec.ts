@@ -71,7 +71,8 @@ describe("the ingestion module", () => {
     // reach the run read-model* — the convention every module with a repository follows.
     // `GuardrailsModule` is the other import, and it brings no connection of its own;
     // `GatesModule` brings the gate engine's sink (#358), which a judged change-set notifies;
-    // `LifecycleStateModule` the workspace state a paused workspace's runs and stages hold on (#489).
+    // `LifecycleStateModule` the workspace state a paused workspace's runs and stages hold on (#489);
+    // `DecisionsModule` the Needs-You registry the run plane's emitters file into (#461).
     const imports = Reflect.getMetadata("imports", IngestModule) as { name?: string }[];
 
     expect(imports.map((imported) => imported.name)).toEqual([
@@ -79,6 +80,7 @@ describe("the ingestion module", () => {
       "GuardrailsModule",
       "GatesModule",
       "LifecycleStateModule",
+      "DecisionsModule",
     ]);
   });
 });

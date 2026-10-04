@@ -25,12 +25,13 @@
  * the reason, so the audit reads honestly and the service's machine stays the database's.
  */
 
-import { Injectable } from "@nestjs/common";
+import { Injectable, Optional } from "@nestjs/common";
 import type { Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import type { Database, Fact, FactProposer, FactStatus } from "../db/schema";
 import { violatesConstraint } from "../tenancy/constraints";
+import { FactReviewEmitter } from "./fact-review.emitter";
 import { anchorValueProblem } from "./facts.anchors";
 import type { CreateAnchorBody, ProposeFactBody } from "./facts.dto";
 import {
@@ -80,10 +81,13 @@ export class FactsService {
   /**
    * @param repo - The statements.
    * @param database - For transactions.
+   * @param reviews - The Needs-You emitter (#461): a proposal files a `fact_review` card and a
+   *   decision settles it. Absent in a context without the inbox.
    */
   constructor(
     private readonly repo: FactsRepository,
     private readonly database: DatabaseService,
+    @Optional() private readonly reviews?: FactReviewEmitter,
   ) {}
 
   /**
@@ -201,6 +205,9 @@ export class FactsService {
       }),
     );
 
+    // Born proposed, so it waits on a person: file its inbox card (#461). Never throws.
+    await this.reviews?.review(organizationId, [id]);
+
     return this.get(organizationId, id);
   }
 
@@ -301,6 +308,8 @@ export class FactsService {
       }),
     );
 
+    await this.reviews?.settled(organizationId);
+
     return this.get(organizationId, factId);
   }
 
@@ -352,6 +361,9 @@ export class FactsService {
         );
       }),
     );
+
+    // The re-learned proposal waits on a person like any other (#461).
+    await this.reviews?.review(organizationId, [id]);
 
     return this.get(organizationId, id);
   }
@@ -459,6 +471,9 @@ export class FactsService {
         );
       }),
     );
+
+    // Decided here, so the inbox card asking about it is settled (#461). Never throws.
+    await this.reviews?.settled(organizationId);
 
     return this.get(organizationId, factId);
   }

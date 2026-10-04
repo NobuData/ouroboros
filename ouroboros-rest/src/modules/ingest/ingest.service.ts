@@ -56,6 +56,7 @@ import { Inject, Injectable, Optional } from "@nestjs/common";
 import type { Transaction } from "kysely";
 
 import type { Database, Run, RunIngestOperation, RunStage } from "../db/schema";
+import { ProtectedPathEmitter } from "../guardrails/protected-path.emitter";
 import { GATE_EVIDENCE, type GateEvidenceSink } from "../pull-requests/gates/gate.evidence";
 import { workspaceNotAdmitting } from "../lifecycle/lifecycle.errors";
 import { WorkspaceStateReader } from "../lifecycle/lifecycle.state";
@@ -135,6 +136,7 @@ export class IngestService {
     @InjectGuardrailScheduler() private readonly guardrails: GuardrailScheduler,
     private readonly states: WorkspaceStateReader,
     @Optional() @Inject(GATE_EVIDENCE) private readonly gates?: GateEvidenceSink,
+    @Optional() private readonly protectedPaths?: ProtectedPathEmitter,
   ) {}
 
   // --- POST /internal/runs ----------------------------------------------------------------
@@ -547,6 +549,13 @@ export class IngestService {
     // which the engine's idempotency makes a no-op. `notify` never rejects.
     if (organizationId !== undefined && resource.guardrailChecks > 0) {
       await this.gates?.notify(organizationId, { kind: "guardrail_evaluated", runId: run });
+    }
+
+    // A refused protected path asks a person for an allow-once (#461). Filed after the commit, so
+    // a card never outlives a report that rolled back; one card per run and path however often the
+    // run reports. `verdictFailed` never rejects.
+    if (resource.guardrailFailures.includes("allowed_paths")) {
+      await this.protectedPaths?.verdictFailed(run);
     }
 
     return resource;

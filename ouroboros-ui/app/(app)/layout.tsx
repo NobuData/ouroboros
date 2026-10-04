@@ -1,5 +1,6 @@
 import { DashboardSummaryProvider } from "@/app/dashboard/summary-store";
 import { AppShell } from "@/app/shell/app-shell";
+import { InboxBadgePublisher } from "@/app/shell/inbox-badge";
 
 /**
  * Layout for the signed-in half of the product.
@@ -24,6 +25,11 @@ import { AppShell } from "@/app/shell/app-shell";
  * It wraps the shell rather than being wrapped by it because the header is part of what
  * reads it, and a provider inside the shell would have to be inside the header too.
  *
+ * **The Needs-You badge is published here too** ([#461](https://github.com/NobuData/ouroboros/issues/461)):
+ * `InboxBadgePublisher` runs one poll of the inbox feed per signed-in shell and hands the sidebar
+ * its count through the nav registry. It renders nothing, so its place in the tree is about its
+ * lifetime — every signed-in screen — and nothing else.
+ *
  * **There is no session check here, deliberately.** A layout does not re-render on a
  * client-side navigation between sibling routes and does not control whether the rest of the
  * route renders anyway, so a check in one is a check that can be true when the page beneath
@@ -41,6 +47,7 @@ export default function AppLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <DashboardSummaryProvider>
+      <InboxBadgePublisher />
       <AppShell>{children}</AppShell>
     </DashboardSummaryProvider>
   );

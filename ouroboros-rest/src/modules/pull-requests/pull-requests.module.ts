@@ -19,6 +19,9 @@
  * (#412). It imports `PoliciesModule` for the dry-run policy (BA.3, #382) the executor and
  * `PrSyncService.create` enforce, and `InsightsModule` for `CALIBRATION_MERGE_OBSERVER` — every
  * merge the sync first sees is graded against the estimate in force at queue time (BI.4, #435).
+ * It imports `DecisionsModule` (BN.1, #461) for the Needs-You registry: the merge-approval emitter
+ * hears the gate engine and files the card the org policy's refactor rule asks for, the criteria
+ * service files and settles claim waivers, and the sync sweeps a workspace's cards when a PR ends.
  */
 
 import { Module } from "@nestjs/common";
@@ -26,17 +29,20 @@ import { Module } from "@nestjs/common";
 import { AuditModule } from "../audit/audit.module";
 import { ControlsModule } from "../controls/controls.module";
 import { DbModule } from "../db/db.module";
+import { DecisionsModule } from "../decisions/decisions.module";
 import { FactProposersModule } from "../fact-proposers/proposers.module";
 import { FactsModule } from "../facts/facts.module";
 import { FarmConfigModule } from "../farm/config/farm-config.module";
 import { InsightsModule } from "../insights/insights.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { TicketSourcesModule } from "../ticket-sources/ticket-sources.module";
+import { ClaimWaiverEmitter } from "./criteria/claim-waiver.emitter";
 import { CriteriaController } from "./criteria/criteria.controller";
 import { CriteriaRepository } from "./criteria/criteria.repository";
 import { CriteriaService } from "./criteria/criteria.service";
 import { GuardrailsRepository } from "../guardrails/guardrails.repository";
 import { GatesModule } from "./gates/gates.module";
+import { MergeApprovalEmitter, MergeApprovalFactsReader } from "./gates/merge-approval.emitter";
 import { MergeController } from "./merge/merge.controller";
 import { MergeExecutorService } from "./merge/merge.executor";
 import { MergeRepository } from "./merge/merge.repository";
@@ -60,6 +66,7 @@ import { PrSyncService } from "./pr-sync.service";
     PoliciesModule,
     InsightsModule,
     FarmConfigModule,
+    DecisionsModule,
   ],
   controllers: [CriteriaController, MergeController, PageController],
   providers: [
@@ -74,7 +81,10 @@ import { PrSyncService } from "./pr-sync.service";
     PageService,
     PageActionsService,
     ThreadActionsService,
+    MergeApprovalFactsReader,
+    MergeApprovalEmitter,
+    ClaimWaiverEmitter,
   ],
-  exports: [PrSyncService],
+  exports: [PrSyncService, ClaimWaiverEmitter],
 })
 export class PullRequestsModule {}

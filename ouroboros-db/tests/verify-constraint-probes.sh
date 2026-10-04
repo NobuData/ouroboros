@@ -666,6 +666,23 @@
 # consumption by `guardrail_exceptions_history`, a missing supersede by `action_tokens_live_key` —
 # so their markers are those rules' messages.
 #
+# #461 (BN.1, V097) declares the six remaining MVP kinds and the out-of-band closure. One probe per
+# rule "a card whose source settled elsewhere closes itself, and nothing else can pose as that" rests
+# on:
+#
+#   V097 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a closure may close a merge-class kind       rewrite decision_resolutions_policy_may_answer()
+#                                                  without the source_resolved exemption
+#   a closure is the one undeclared action       rewrite decision_resolutions_action_answers()
+#                                                  without the source_resolved exemption
+#   the reserved action and policy name each     drop decision_resolutions_source_resolved_pair
+#     other, and carry no note
+#   only an asking item closes                   rewrite decision_item_source_resolve() without
+#                                                  the status predicate
+#   the weekly metrics count answers only        rewrite decision_metrics_weekly without the filter
+#                                                rewrite decision_metrics_weekly_by_kind without it
+#
 # #409 (BE.5) seeds mockup 14 and adds a probe per `ci/db` scope bullet the BE.1–BE.3 rows above
 # leave unwatched — each one a *subtler* loss than dropping the rule outright:
 #
@@ -3034,6 +3051,59 @@ expect_red 'a token may be rewritten' \
 expect_red 'the live-grant read has no index' \
   'did not use index guardrail_exceptions_live_idx' \
   'drop index ouroboros.guardrail_exceptions_live_idx;'
+
+# V097's rewrites read the function or view back from the catalogue and change one fragment, so
+# they mutate the body this migration installed rather than a copy kept here.
+rewrite_definition() {
+  cat <<SQL
+do \$mutate\$
+declare
+  def text;
+begin
+  def := $1;
+  if position(\$frag\$$2\$frag\$ in def) = 0 then
+    raise exception 'definition no longer contains [%]', \$frag\$$2\$frag\$;
+  end if;
+  execute $3 replace(def, \$frag\$$2\$frag\$, \$frag\$$4\$frag\$);
+end
+\$mutate\$;
+SQL
+}
+
+expect_red 'a closure may not close a merge-class kind' \
+  'is not auto-resolvable, so policy source_resolved' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.decision_resolutions_policy_may_answer()'::regprocedure)" \
+       "if new.resolved_by_policy = 'source_resolved' and new.action_id = 'source_resolved' then" \
+       '' 'if false then')"
+
+expect_red 'a closure must be a declared action' \
+  'action source_resolved does not answer' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.decision_resolutions_action_answers()'::regprocedure)" \
+       "if new.action_id = 'source_resolved' and new.resolver = 'policy'" \
+       '' "if false and new.resolver = 'policy'")"
+
+expect_red 'the reserved action and policy may be borrowed' \
+  'the reserved policy answers nothing but a closure' \
+  'alter table ouroboros.decision_resolutions drop constraint decision_resolutions_source_resolved_pair;'
+
+expect_red 'a closure may close an item that is not asking' \
+  'is (resolved|expired), so it cannot be answered' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.decision_item_source_resolve(uuid, text, jsonb)'::regprocedure)" \
+       "and i.status in ('open', 'snoozed')" '' '')"
+
+expect_red 'the weekly metrics may count closures' \
+  'closures answered nothing' \
+  "$(rewrite_definition "pg_get_viewdef('ouroboros.decision_metrics_weekly'::regclass)" \
+       "'source_resolved'" \
+       "'create or replace view ouroboros.decision_metrics_weekly with (security_invoker = true) as ' ||" \
+       "'no-such-action'")"
+
+expect_red 'the per-kind metrics may count closures' \
+  'closures answered nothing' \
+  "$(rewrite_definition "pg_get_viewdef('ouroboros.decision_metrics_weekly_by_kind'::regclass)" \
+       "'source_resolved'" \
+       "'create or replace view ouroboros.decision_metrics_weekly_by_kind with (security_invoker = true) as ' ||" \
+       "'no-such-action'")"
 
 printf '\n'
 if check_summary; then

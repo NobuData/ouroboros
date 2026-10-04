@@ -44,6 +44,12 @@
  * It imports `GatesModule` for the gate engine's sink, which a judged change-set notifies after
  * its transaction commits (AX.2, [#358](https://github.com/NobuData/ouroboros/issues/358)).
  *
+ * It imports `DecisionsModule` (BN.1, [#461](https://github.com/NobuData/ouroboros/issues/461)) for
+ * the run plane's three Needs-You emitters: the guardrails' protected-path allow-once card, filed
+ * after a report's `allowed_paths` refusal commits; the plan sign-off and needs-human hand-off
+ * hooks, which the run plane calls when it reaches those states; and the spend-approval hook,
+ * dormant until AF.4 (#237) enforces per-run caps.
+ *
  * **It exports nothing.** Nothing inside this service should be opening runs: the contract
  * exists for a caller outside the process, and a second in-process consumer would be a sign
  * that the read-model had grown a second writer — which is exactly what decision R2 exists to
@@ -54,15 +60,27 @@ import { Module } from "@nestjs/common";
 
 import { LifecycleStateModule } from "../lifecycle/lifecycle-state.module";
 import { DbModule } from "../db/db.module";
+import { DecisionsModule } from "../decisions/decisions.module";
 import { GuardrailsModule } from "../guardrails/guardrails.module";
+import { ProtectedPathEmitter } from "../guardrails/protected-path.emitter";
 import { GatesModule } from "../pull-requests/gates/gates.module";
 import { IngestController } from "./ingest.controller";
 import { IngestRepository } from "./ingest.repository";
 import { IngestService } from "./ingest.service";
+import { PlanSignOffEmitter } from "./plan-sign-off.emitter";
+import { RunNeedsHumanEmitter } from "./run-needs-human.emitter";
+import { SpendApprovalEmitter } from "./spend-approval.emitter";
 
 @Module({
-  imports: [DbModule, GuardrailsModule, GatesModule, LifecycleStateModule],
+  imports: [DbModule, GuardrailsModule, GatesModule, LifecycleStateModule, DecisionsModule],
   controllers: [IngestController],
-  providers: [IngestRepository, IngestService],
+  providers: [
+    IngestRepository,
+    IngestService,
+    ProtectedPathEmitter,
+    PlanSignOffEmitter,
+    RunNeedsHumanEmitter,
+    SpendApprovalEmitter,
+  ],
 })
 export class IngestModule {}

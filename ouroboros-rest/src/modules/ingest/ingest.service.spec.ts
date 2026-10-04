@@ -927,6 +927,33 @@ describe("reporting a change-set", () => {
     });
   });
 
+  it("asks for an allow-once card after an allowed_paths refusal commits, and only then (#461)", async () => {
+    const { repository } = stubRepository();
+    const protectedPaths = { verdictFailed: jest.fn().mockResolvedValue(undefined) };
+    const report = {
+      idempotencyKey: "k",
+      files: [{ path: "boot/rollback_flag.c", status: "modified", additions: 1 }],
+    } as never;
+
+    await new IngestService(
+      repository,
+      stubGuardrails(["allowed_paths"]),
+      ACTIVE_STATES,
+      undefined,
+      protectedPaths as never,
+    ).reportFiles(RUN, report);
+    await new IngestService(
+      repository,
+      stubGuardrails(["secrets"]),
+      ACTIVE_STATES,
+      undefined,
+      protectedPaths as never,
+    ).reportFiles(RUN, { ...(report as object), idempotencyKey: "k2" } as never);
+
+    expect(protectedPaths.verdictFailed).toHaveBeenCalledTimes(1);
+    expect(protectedPaths.verdictFailed).toHaveBeenCalledWith(RUN);
+  });
+
   it("still replaces the stored change-set when the report is empty", async () => {
     // A run that reverted everything it did has an empty change-set, not a stale one.
     const { repository, spy } = stubRepository();

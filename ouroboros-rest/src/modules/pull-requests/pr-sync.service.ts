@@ -41,6 +41,7 @@
 import { Inject, Injectable, Logger, Optional } from "@nestjs/common";
 
 import type { TicketSourceKind } from "../db/schema";
+import { DecisionSourceWatcher } from "../decisions/decision.watchers";
 import { describeForLog } from "../errors/failure";
 import { FACT_COMMIT_OBSERVER, type FactCommitObserver } from "../facts/facts.observer";
 import { FARM_MERGE_OBSERVER, type FarmMergeObserver } from "../farm/config/merge.observer";
@@ -103,6 +104,9 @@ export class PrSyncService {
    *   first to see (BI.4, #435); absent in a context without it.
    * @param farm - The farm's job hooks, told about every merge this sync is the first to see
    *   (BV.5, #514); absent in a context without it.
+   * @param decisions - The Needs-You watcher (#461), asked to sweep the workspace when a sync sees
+   *   a PR merged or closed — so a card asking about it closes at once as `policy(source_resolved)`;
+   *   absent in a context without it, where the minute's sweep does it.
    */
   constructor(
     @Inject(PrMirrorRepository) private readonly store: PrMirrorStore,
@@ -115,6 +119,7 @@ export class PrSyncService {
     @Inject(CALIBRATION_MERGE_OBSERVER)
     private readonly calibration?: CalibrationMergeObserver,
     @Optional() @Inject(FARM_MERGE_OBSERVER) private readonly farm?: FarmMergeObserver,
+    @Optional() private readonly decisions?: DecisionSourceWatcher,
   ) {}
 
   /**
@@ -180,6 +185,12 @@ export class PrSyncService {
 
     if (outcome.newlyMerged) {
       await this.reportMerge(organizationId, outcome.prId);
+    }
+
+    // A PR that ended on its host settles every card asking about it (#461). The sweep never
+    // throws: a detector that fails costs only its own kinds, and the minute's sweep retries.
+    if (outcome.state === "merged" || outcome.state === "closed") {
+      await this.decisions?.sweep(organizationId);
     }
 
     return outcome;
