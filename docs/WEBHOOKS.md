@@ -56,6 +56,8 @@ event types (`run.merged`). Matching is **exact**: `audit.*` receives audit even
 **Registry version 2** (#462) adds a person's answer through the Needs-You inbox and a press its
 plane refused: `audit.decision.answered`, `audit.decision.answer_failed`, `decision.answered` and
 `decision.answer_failed`.
+**Registry version 3** (#464) adds snoozing: `audit.decision.snoozed`, `audit.decision.snoozed_all`,
+`audit.decision.unsnoozed` and their `decision.*` types.
 
 The full list is `GET /api/v1/settings/webhooks` → `registry.eventTypes`.
 

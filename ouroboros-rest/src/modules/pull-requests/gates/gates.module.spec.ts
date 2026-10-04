@@ -22,6 +22,7 @@ describe("the gates module", () => {
       GateEngineService,
       GATE_EVIDENCE,
       GateListeners,
+      OrgPolicyGateResolver,
     ]);
   });
 
@@ -30,9 +31,11 @@ describe("the gates module", () => {
 
     expect(orgGatePolicyProvider).toEqual({
       provide: ORG_GATE_POLICY,
-      useClass: OrgPolicyGateResolver,
+      useExisting: OrgPolicyGateResolver,
     });
     expect(providers).toContainEqual(orgGatePolicyProvider);
+    expect(providers).toContainEqual(OrgPolicyGateResolver);
+    expect(Reflect.getMetadata("exports", GatesModule)).toContain(OrgPolicyGateResolver);
   });
 
   it("imports only the database module", () => {

@@ -4,6 +4,7 @@ import { BetterAuthModule } from "../../auth/auth.module";
 import { AuditModule } from "../audit/audit.module";
 import { DecisionsModule } from "../decisions/decisions.module";
 import { InboxActionsModule } from "../inbox-actions/inbox-actions.module";
+import { InboxPoliciesModule } from "../inbox-policies/inbox-policies.module";
 import { BacklogModule } from "../backlog/backlog.module";
 import { BacklogSyncModule } from "../backlog-sync/backlog-sync.module";
 import { AuthModule } from "../auth/auth.module";
@@ -383,6 +384,10 @@ export class AppModule {
         // own each action (PR verification, controls, guardrails, planning, facts), every one of
         // which imports `DecisionsModule` — so it is a module of its own that nothing imports.
         InboxActionsModule,
+        // BN.4 ([#464](https://github.com/NobuData/ouroboros/issues/464)) — the What Needs A Human
+        // card, `GET /api/v1/inbox/policies`, composed from the gate engine's org policy reader,
+        // BA.1's protected paths and BA.3's dry-run; nothing imports it.
+        InboxPoliciesModule,
         // BF.2 ([#411](https://github.com/NobuData/ouroboros/issues/411)) — the fact lifecycle and
         // the staleness sweep under `/api/v1/facts`. `PullRequestsModule` imports it for the
         // commit observer PR sync reports a merge to; nothing else claims the prefix.
