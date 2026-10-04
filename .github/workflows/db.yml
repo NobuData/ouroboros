@@ -445,8 +445,8 @@ jobs:
       # above already holds schemas/org-policy/v1.json to its golden fixtures (valid ones pass,
       # each named malformation is refused); this holds every policy version stored in the seeded
       # database to it. A version is immutable, so one the schema refuses can never be fixed in
-      # place — only outlived — which is why it is asked of the rows rather than of a file. Green
-      # over no rows: versions are published by people, and the seeded v6/v7 arrive with BQ.5.
+      # place — only outlived — which is why it is asked of the rows rather than of a file. BQ.5
+      # (#484) seeds acme-robotics' v1–v7, so this is #484's document-conformance probe too.
       - name: Assert every stored policy version validates against the org-policy schema
         run: |
           docker run --rm --network=host \
@@ -552,6 +552,27 @@ jobs:
             "$POSTGRES_IMAGE" \
             psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
               -v ON_ERROR_STOP=1 -f /tests/decision-refs.sql
+
+      # BQ.5 (#484): the invariants mockup 17's Settings page trusts, asked of the seeded settings
+      # rows — published policy versions refuse an UPDATE and hold the document envelope, the
+      # policy is in force at its newest version, capabilities are explicit and a new service
+      # account holds no scopes, retention has its floors, no webhook key or service key is stored
+      # in the clear, deliveries match subscriptions, only email delivers, and every seeded audit
+      # line's subject resolves. Green against R__dev_seed_workspace_settings.sql is half of it.
+      #
+      # The other half is #484's *"every probe is verified red-then-green"*:
+      # verify-settings-invariants.sh breaks each rule, writes the row it refused, and requires red
+      # naming the invariant each time. Every plant is rolled back, and the registry step below
+      # re-runs seed.sql against this database to say so.
+      - name: Assert the settings invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/settings-invariants.sql
+          OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-settings-invariants.sh --runner docker
 
       # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
       # from #582 without mutating it"*. The registry rules are asserted twice, and this is

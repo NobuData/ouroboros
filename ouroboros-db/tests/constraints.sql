@@ -31728,6 +31728,224 @@ drop table v093_card;
 drop table v093_first;
 
 -- ===========================================================================
+-- V094 — retention tiers, outbound webhooks and org notification routes (#484, BQ.5)
+-- ===========================================================================
+--
+-- The three Settings tables mockup 17 renders that no plane had: a retention tier bounded below
+-- per class, a webhook endpoint whose signing key is only ever sealed and whose deliveries are
+-- only ever of a family it subscribed to, and a notification route whose lock is derived.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
+  values ('org-v094', 'V094 Workspace', 'v094-workspace', now(), null);
+
+-- --- retention_policies ------------------------------------------------------------
+insert into ouroboros.retention_policies (organization_id, data_class, days)
+  values ('org-v094', 'transcripts', 7), ('org-v094', 'audit', 90), ('org-v094', 'custom:ci-cache', 7);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.retention_policies (organization_id, data_class, days)
+    values ('org-v094', 'build_logs', 6)$$,
+  'loop data is kept at least seven days', 'retention_policies_days_floor');
+
+select pg_temp.must_reject(
+  $$update ouroboros.retention_policies set days = 89
+     where organization_id = 'org-v094' and data_class = 'audit'$$,
+  'an audit trail is kept at least ninety days', 'retention_policies_days_floor');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.retention_policies (organization_id, data_class, days)
+    values ('org-v094', 'transcripts', 30)$$,
+  'one tier per data class — a change replaces it', 'retention_policies_pkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.retention_policies (organization_id, data_class, days)
+    values ('org-v094', 'everything', 30)$$,
+  'a data class is one of the four or custom:<slug>', 'retention_policies_data_class_known');
+
+-- --- webhook_endpoints ----------------------------------------------------------------
+insert into ouroboros.webhook_endpoints (id, organization_id, name, url, hmac_key_sealed, event_families, siem)
+  values ('a9400000-0000-4000-8000-000000000001', 'org-v094', 'SIEM', 'https://siem.example.dev/hook',
+          'ouro.v1.1.n.c', '["audit.*"]', true),
+         ('a9400000-0000-4000-8000-000000000002', 'org-v094', 'Bot', 'https://bot.example.dev',
+          'ouro.v1.1.n.c', '["pr.*", "run.*"]', false);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families)
+    values ('org-v094', 'Plain', 'https://plain.example.dev', 'whsec_plaintext-signing-key', '["pr.*"]')$$,
+  'a signing key is sealed under the vault, never stored in the clear', 'webhook_endpoints_hmac_key_envelope');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families)
+    values ('org-v094', 'Http', 'http://plain.example.dev', 'ouro.v1.1.n.c', '["pr.*"]')$$,
+  'an endpoint is https', 'webhook_endpoints_url_https');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families)
+    values ('org-v094', 'Userinfo', 'https://user:pass@plain.example.dev', 'ouro.v1.1.n.c', '["pr.*"]')$$,
+  'an endpoint URL carries no credential', 'webhook_endpoints_url_https');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families)
+    values ('org-v094', 'Billing', 'https://billing.example.dev', 'ouro.v1.1.n.c', '["billing.*"]')$$,
+  'an endpoint subscribes only to registered families', 'webhook_endpoints_event_families_registered');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families)
+    values ('org-v094', 'Nothing', 'https://nothing.example.dev', 'ouro.v1.1.n.c', '[]')$$,
+  'an endpoint subscribes to at least one family', 'webhook_endpoints_event_families_registered');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families)
+    values ('org-v094', 'Object', 'https://object.example.dev', 'ouro.v1.1.n.c', '{"pr.*": true}')$$,
+  'event families are a list', 'webhook_endpoints_event_families_array');
+
+select pg_temp.must_reject(
+  $$update ouroboros.webhook_endpoints set siem = true
+     where id = 'a9400000-0000-4000-8000-000000000002'$$,
+  'the SIEM route subscribes to audit.*', 'webhook_endpoints_siem_subscribes_audit');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families, siem)
+    values ('org-v094', 'SIEM 2', 'https://siem2.example.dev', 'ouro.v1.1.n.c', '["audit.*"]', true)$$,
+  'one SIEM route per workspace', 'webhook_endpoints_one_siem_idx');
+
+-- The column-level grep: nothing on either table could hold a signing key, a password or a token
+-- in the clear. A column whose name says it carries one must be sealed, and held to the envelope.
+select pg_temp.must_hold(
+  (select count(*) = 1 from information_schema.columns c
+    where c.table_schema = 'ouroboros' and c.table_name in ('webhook_endpoints', 'webhook_deliveries')
+      and c.column_name ~ '(secret|key|token|password|credential)')
+  and exists (select 1 from pg_constraint k
+               where k.conrelid = 'ouroboros.webhook_endpoints'::regclass and k.contype = 'c'
+                 and pg_get_constraintdef(k.oid) ~ 'hmac_key_sealed ~~ ''ouro\.v1\.%'''),
+  'the webhook tables hold one key column, hmac_key_sealed, and a CHECK holds it to a sealed envelope');
+
+-- --- webhook_deliveries ------------------------------------------------------------------------
+insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status,
+                                          response_code, latency_ms)
+  values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'audit.provider.rotated', 1, 'succeeded', 200, 90),
+         ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'ping', 1, 'failed', null, 30000),
+         ('org-v094', 'a9400000-0000-4000-8000-000000000002', 'pr.revision_pushed', 1, 'dead_lettered', 503, 400),
+         ('org-v094', 'a9400000-0000-4000-8000-000000000002', 'run.finished', 1, 'pending', null, null);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status)
+    values ('org-v094', 'a9400000-0000-4000-8000-000000000002', 'audit.provider.rotated', 1, 'pending')$$,
+  'an endpoint is sent only the families it subscribed to', 'webhook_deliveries_family_subscribed');
+
+select pg_temp.must_reject(
+  $$update ouroboros.webhook_deliveries set event_type = 'decision.resolved'
+     where event_type = 'audit.provider.rotated' and organization_id = 'org-v094'$$,
+  'nor re-pointed at one it did not', 'webhook_deliveries_family_subscribed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status, response_code)
+    values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'audit.x.y', 1, 'succeeded', 503)$$,
+  'a success is a 2xx', 'webhook_deliveries_outcome_recorded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status, response_code)
+    values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'audit.x.y', 1, 'failed', 204)$$,
+  'a failure is never a 2xx', 'webhook_deliveries_outcome_recorded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status, response_code)
+    values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'audit.x.y', 1, 'pending', 200)$$,
+  'an attempt in flight has no response yet', 'webhook_deliveries_outcome_recorded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status)
+    values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'Audit Rotated', 1, 'pending')$$,
+  'an event type is family.event or ping', 'webhook_deliveries_event_type_grammar');
+
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
+  values ('org-v094-other', 'V094 Other', 'v094-other', now(), null);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status)
+    values ('org-v094-other', 'a9400000-0000-4000-8000-000000000001', 'audit.x.y', 1, 'pending')$$,
+  'a delivery cannot be filed under another workspace''s endpoint', 'webhook_deliveries_endpoint_fk');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status, response_excerpt)
+    values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'audit.x.y', 1, 'failed', repeat('x', 1025))$$,
+  'the captured body is bounded', 'webhook_deliveries_response_excerpt_bounded');
+
+-- --- notification_routes ----------------------------------------------------------------------------
+insert into ouroboros.notification_routes (organization_id, kind, channel, config, enabled)
+  values ('org-v094', 'daily_digest', 'email', '{"time": "09:00"}', true),
+         ('org-v094', 'weekly_insights', 'email', '{"weekday": "monday", "recipients": ["leads@example.dev"]}', true),
+         ('org-v094', 'loop_failures', 'pagerduty', '{}', true),
+         ('org-v094', 'needs_you_dm', 'slack', '{}', true);
+
+select pg_temp.must_hold(
+  (select array_agg(r.kind || ':' || r.locked || ':' || r.delivering || ':' || coalesce(r.locked_reason, '-')
+                    order by r.kind)
+          = array['daily_digest:false:true:-',
+                  'loop_failures:true:false:connect PagerDuty first',
+                  'needs_you_dm:true:false:connect Slack first',
+                  'weekly_insights:false:true:-']
+     from ouroboros.notification_routes_effective r where r.organization_id = 'org-v094'),
+  'only email delivers in this build: a Slack or PagerDuty route is locked with the reason the card prints, even when enabled');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_routes (organization_id, kind, channel)
+    values ('org-v094', 'daily_digest', 'email')$$,
+  'one route per kind — a change replaces it', 'notification_routes_pkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_routes (organization_id, kind, channel)
+    values ('org-v094', 'everything', 'email')$$,
+  'a route kind is one of the four or custom:<slug>', 'notification_routes_kind_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_routes (organization_id, kind, channel)
+    values ('org-v094', 'custom:sms', 'sms')$$,
+  'a channel is email, slack or pagerduty', 'notification_routes_channel_known');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_routes (organization_id, kind, channel, config)
+    values ('org-v094', 'custom:late', 'email', '{"time": "9am"}')$$,
+  'a route time is HH:MM', 'notification_routes_config_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_routes (organization_id, kind, channel, config)
+    values ('org-v094', 'custom:list', 'email', '{"recipients": ["not-an-address"]}')$$,
+  'recipients are email addresses', 'notification_routes_config_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_routes (organization_id, kind, channel, config)
+    values ('org-v094', 'custom:extra', 'email', '{"webhook_url": "https://x.example.dev"}')$$,
+  'a route config holds only time, weekday and recipients', 'notification_routes_config_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.notification_routes (organization_id, kind, channel, config)
+    values ('org-v094', 'custom:arr', 'email', '[]')$$,
+  'a route config is an object', 'notification_routes_config_object');
+
+-- --- the service role --------------------------------------------------------------------------------
+set local role ouroboros_app;
+
+select pg_temp.must_hold(
+  (select count(*) = 4 from ouroboros.notification_routes_effective where organization_id = 'org-v094')
+  and (select count(*) = 3 from ouroboros.retention_policies where organization_id = 'org-v094'),
+  'the service reads the routes'' view and the retention tiers');
+
+insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status)
+  values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'ping', 2, 'pending');
+
+reset role;
+
+-- --- a deleted workspace takes all of it --------------------------------------------------------------
+delete from ouroboros.organization where "id" in ('org-v094', 'org-v094-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.retention_policies where organization_id = 'org-v094')
+  and not exists (select 1 from ouroboros.webhook_endpoints where organization_id = 'org-v094')
+  and not exists (select 1 from ouroboros.webhook_deliveries where organization_id = 'org-v094')
+  and not exists (select 1 from ouroboros.notification_routes where organization_id = 'org-v094'),
+  'retention tiers, webhooks, their deliveries and notification routes cascade with their workspace');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

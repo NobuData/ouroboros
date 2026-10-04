@@ -1297,6 +1297,26 @@
 > (`merge_approval`, `protected_path_allow_once`, `claim_waiver`); every other kind's arrives
 > with its emitter (BN.1, [#461](https://github.com/NobuData/ouroboros/issues/461)).
 >
+> `V094` ([#484](https://github.com/NobuData/ouroboros/issues/484), BQ.5) adds the three Settings
+> tables mockup 17 renders that no plane had yet, built ahead of their REST tickets so the seed
+> joins real tables: **`retention_policies`** (one tier per data class, audit at least 90 days and
+> everything else at least 7 — BQ.3, [#482](https://github.com/NobuData/ouroboros/issues/482)),
+> **`webhook_endpoints`** and **`webhook_deliveries`** (https-only endpoints subscribed to
+> registered families, an HMAC key that is only ever sealed, at most one SIEM route subscribed to
+> `audit.*`, and a per-attempt delivery log that only ever carries a subscribed family — BR.3,
+> [#487](https://github.com/NobuData/ouroboros/issues/487)), and **`notification_routes`** read
+> through `notification_routes_effective`, which derives that only email delivers in this build
+> and locks a Slack or PagerDuty route with the reason the card prints (BR.4,
+> [#488](https://github.com/NobuData/ouroboros/issues/488)).
+>
+> [#484](https://github.com/NobuData/ouroboros/issues/484) (BQ.5) seeds mockup 17 from those rows:
+> [`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql) — see
+> [Who may do what, and where the record goes](#who-may-do-what-and-where-the-record-goes). Its
+> probes, [`tests/settings-invariants.sql`](tests/settings-invariants.sql), and
+> [`tests/verify-settings-invariants.sh`](tests/verify-settings-invariants.sh), which proves each
+> goes red when its rule is broken, cover policy immutability, explicit capabilities, retention
+> floors, sealed and hash-only keys and derived truth.
+>
 > [#509](https://github.com/NobuData/ouroboros/issues/509) (BU.4) seeds the page those three built
 > for, and plants the **corpus** rather than the answers:
 > [`R__dev_seed_workspace_metrics_analyzer.sql`](migrations/R__dev_seed_workspace_metrics_analyzer.sql)
@@ -2035,6 +2055,30 @@ V067), so the seed writes the subsystem rows and the rail is what they add up to
 > **The four tiles are not seeded.** They ship with V068 as global rows and are in every
 > migrated database.
 
+#### Who may do what, and where the record goes
+
+[`R__dev_seed_workspace_settings.sql`](migrations/R__dev_seed_workspace_settings.sql)
+([#484](https://github.com/NobuData/ouroboros/issues/484)) is mockup 17's Settings page for
+`acme-robotics`, and it **sorts last**, because every audit line names a row another seed writes and
+takes its time from it.
+
+| The card | From the rows |
+|---|---|
+| `policy v7` and the history popover | `org_policy_versions` v1–v7; v6 → v7 differs in one rule, auto-merge switched on, and v7 carries the mockup's five rules with their exact terms |
+| Members & roles | Ken (owner), Maya (admin → *Maintainer*, approve ✓ written explicitly), Jorge (member → *Viewer*), `devops-bot` with one hash-only key used 41 s before the seed ran, and `priya@acme.dev` invited two hours before it |
+| Audit log | five events: `ouroboros-app` pushed PR #514 rev 2 (bot, at the revision's own `pushed_at`), Ken rotated the Anthropic key, Ken published v7 (at its `published_at`), Maya's waiver on run #471 (PR #509), and the system marking forge-03 offline 32 s after its last heartbeat |
+| `retained 400d` · `30 days` | `retention_policies` 30 / 30 / 30 / 400 |
+| `Webhooks · 2 active` · *Stream to SIEM ✓* | two active `webhook_endpoints`, counted; the SIEM one takes `audit.*` and its newest delivery succeeded; the release bot's first try at PR #514 got a 503 and was retried |
+| Notifications | daily digest 09:00 → email, weekly insights → an email list, loop failures → PagerDuty registered but off and locked (*connect PagerDuty first*, derived) |
+
+**The honesty variants are seeded by absence.** The mockup draws `4 connected`; this deployment
+has GitHub and Jira (the sources seed) and the webhooks, and **no Slack** — so there is no Slack
+connection, no needs-you DM route and no Okta footer. The waiver line has **no `pr_waivers` row**
+behind it: V079 makes every waiver an intervention, and one more would move mockup 15's cause bars.
+No session is seeded (a session row carries a live bearer value), so Maya's and Jorge's *last
+active* stay empty until they sign in. Every key column holds a sealed envelope whose body decodes
+to `dev-seed-value-not-a-real-…`, or a digest of no known input.
+
 ### The bundled price catalog
 
 The other repeatable migration is not a seed, and it is the one piece of data this module
@@ -2410,6 +2454,23 @@ misses. It then tampers one stored delta and requires the comparison to refuse i
 
 ```bash
 PGPASSWORD=ouroboros OURO_DB_NAME=ouroboros ouroboros-db/tests/verify-analyzer-rediscovery.sh
+```
+
+### Proving the settings invariants read the rows
+
+[`tests/verify-settings-invariants.sh`](tests/verify-settings-invariants.sh) is
+[#484](https://github.com/NobuData/ouroboros/issues/484)'s *"every probe is verified
+red-then-green"*. It requires `settings-invariants.sql` to be green against the seeded database,
+then breaks one rule at a time and writes what that rule refused: a published version revised, v7
+missing a core rule, the policy pointer moved back, a nullable or defaulted capability, a service
+account that starts with scopes, a 30-day audit tier, a signing key in the clear (or a new column
+that could hold one), a service key stored as itself, an audit event sent to a PR-only endpoint,
+a PagerDuty route that reads as delivering, and an audit line naming a runner that does not exist.
+Each run must fail naming the invariant. The JSON Schema half of policy conformance is
+`ci/db`'s org-policy schema step over the same seeded rows.
+
+```bash
+PGPASSWORD=ouroboros OURO_DB_NAME=ouroboros ouroboros-db/tests/verify-settings-invariants.sh
 ```
 
 ### Proving the guard is a guard
@@ -2907,6 +2968,7 @@ ouroboros-db/
 │   ├── V091__members_service_accounts.sql   # member_capabilities (can_approve_loops), service_accounts (scopes allow-list), service_tokens (hash-only), audit_events.actor_service — #485
 │   ├── V092__org_policy_versions.sql        # org_policies.current_version (the handle; dry_run nullable) + org_policy_versions (immutable, dense) + org_policy_publish — #480
 │   ├── V093__decision_kinds_items.sql       # decision_kinds (versioned, immutable declarations) + decision_items (facts, typed refs, idempotency key) + decision_item_emit — #457
+│   ├── V094__retention_webhooks_notification_routes.sql # retention_policies (floors), webhook_endpoints (sealed key, SIEM) + webhook_deliveries, notification_routes (+ _effective lock) — #484
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2924,7 +2986,8 @@ ouroboros-db/
 │   ├── R__dev_seed_workspace_interventions.sql # mockup 15 — twenty intervention events, 8/5/4/2/1, from source records, dev only — #434 (sorts after test_results)
 │   ├── R__dev_seed_workspace_knowledge.sql # mockup 14 — skills, facts, playbooks, env recipe, injection records, dev only — #409
 │   ├── R__dev_seed_workspace_metrics.sql # mockup 15 — ninety days of metric_daily from components, nine graded merges, dev only — #436
-│   ├── R__dev_seed_workspace_metrics_analyzer.sql # mockup 18 — the corpus, two analysis runs, findings, suggestions, measurements, dev only — #509 (sorts last)
+│   ├── R__dev_seed_workspace_metrics_analyzer.sql # mockup 18 — the corpus, two analysis runs, findings, suggestions, measurements, dev only — #509
+│   ├── R__dev_seed_workspace_settings.sql # mockup 17 — policy v1–v7, members, today's audit lines, retention, webhooks, routes, dev only — #484 (sorts last)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
@@ -2934,6 +2997,7 @@ ouroboros-db/
     │   ├── planning-invariants.sql   # the planning invariants, named — included twice — #276
     │   ├── insights-invariants.sql   # the rollup invariants mockup 15 trusts, named — #436
     │   ├── analyzer-invariants.sql   # the Build Analyzer invariants mockup 18 trusts, named — #509
+    │   ├── settings-invariants.sql   # the Settings invariants mockup 17 trusts, named — #484
     │   ├── analyzer-corpus.sql       # the seeded corpus as the engine's Corpus JSON — #509
     │   ├── rediscover.py             # runs the change-point analyzer over it and compares — #509
     │   ├── dependency-cycles.sql     # the recursive-CTE walk that finds a stored cycle — #276
@@ -2960,6 +3024,9 @@ ouroboros-db/
     ├── analyzer-invariants.sql       # the Build Analyzer invariants against the seeded runs — #509
     ├── verify-analyzer-invariants.sh # that they go red when a rule is removed, naming it — #509
     ├── verify-analyzer-rediscovery.sh # the change-point analyzer rediscovers the seeded chips — #509
+    ├── settings-invariants.test.sh   # the settings verifier's usage, and that its pieces agree — #484
+    ├── settings-invariants.sql       # the Settings invariants against the seeded rows — #484
+    ├── verify-settings-invariants.sh # that they go red when a rule is broken, naming it — #484
     ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
     ├── decision-refs.sql             # BM.1's typed decision refs against the seeded universe — #457
     ├── constraints.sql               # what the schema enforces, asserted against a live database
@@ -3097,6 +3164,10 @@ outside this module alters it.
 | `workspace_tombstones` | `V090` | The completion record of a workspace purge ([#489](https://github.com/NobuData/ouroboros/issues/489)) — name, slug, who asked when, `purged_at`, `dek_versions_destroyed`, `artifacts_deleted`, `rows_remaining` | Keyed by the purged workspace's id with no foreign key; counts non-negative; `ouroboros_app` may select and insert only |
 | `member_capabilities` | `V091` | Explicit per-member capabilities ([#485](https://github.com/NobuData/ouroboros/issues/485), BR.1) — `member_id`, `can_approve_loops`, `updated_by`, `updated_at` | One row per member (primary key); no row means the role default; cascades with the membership and the workspace |
 | `service_accounts` | `V091` | Non-human principals ([#485](https://github.com/NobuData/ouroboros/issues/485)) — `name`, `scopes`, `created_by`, `disabled_at` | `name` unique per workspace and `^[a-z][a-z0-9-]{1,38}[a-z0-9]$`; `scopes` an array within `["api.read", "farm.submit"]` (`service_accounts_scopes_registered`) |
+| `retention_policies` | `V094` | How long each class of a workspace's data is kept ([#484](https://github.com/NobuData/ouroboros/issues/484), schema for BQ.3 [#482](https://github.com/NobuData/ouroboros/issues/482)) — `data_class`, `days`, `updated_by`, `updated_at` | `(organization_id, data_class)` primary key; class `transcripts\|build_logs\|artifacts\|audit` or `custom:<slug>`; `days` at least 90 for audit and 7 otherwise (`retention_policies_days_floor`) |
+| `webhook_endpoints` | `V094` | Outbound webhook endpoints ([#484](https://github.com/NobuData/ouroboros/issues/484), schema for BR.3 [#487](https://github.com/NobuData/ouroboros/issues/487)) — `name`, `url`, `hmac_key_sealed`, `event_families`, `siem`, `active` | `url` https with no user-info; `hmac_key_sealed` an AD.1 envelope, the only key column; `event_families` a non-empty subset of `audit.* decision.* run.* pr.*`; `siem` ⇒ subscribes to `audit.*`, at most one per workspace (`webhook_endpoints_one_siem_idx`) |
+| `webhook_deliveries` | `V094` | The delivery log, one row per attempt ([#484](https://github.com/NobuData/ouroboros/issues/484)) — `event_type`, `event_id`, `attempt`, `status`, `response_code`, `latency_ms`, `response_excerpt`, `attempted_at` | `(endpoint_id, organization_id)` references its endpoint; `event_type` `family.event` or `ping`, of a family the endpoint subscribes to (`webhook_deliveries_family_subscribed`); `status` `pending\|succeeded\|failed\|dead_lettered` agreeing with the response code; excerpt at most 1024 characters |
+| `notification_routes` | `V094` | Org-level notification routes ([#484](https://github.com/NobuData/ouroboros/issues/484), schema for BR.4 [#488](https://github.com/NobuData/ouroboros/issues/488)) — `kind`, `channel`, `config`, `enabled` | `(organization_id, kind)` primary key; kind `needs_you_dm\|daily_digest\|loop_failures\|weekly_insights` or `custom:<slug>`; channel `email\|slack\|pagerduty`; config only `time` (HH:MM), `weekday`, `recipients`; read through `notification_routes_effective`, which derives `locked`, `locked_reason` and `delivering` |
 | `service_tokens` | `V091` | Service account bearer tokens, **hash-only** ([#485](https://github.com/NobuData/ouroboros/issues/485)) — `token_hash`, `hint_sealed`, `last_used_at`, `revoked_at` | `token_hash` 64 hex and unique; `hint_sealed` an AD.1 envelope; one live token per account (`service_tokens_one_live_idx`); no column holds the token |
 | `analysis_suggestions` | `V081` | A card or ticket draft ([#507](https://github.com/NobuData/ouroboros/issues/507), decision **A4**) — `repo_ref`, `kind`, `identity_key`, `last_run_id`, `title`, `evidence_line`, `confidence`, `impact`, `needs_spike`, `action_binding`, `status`, `resolved_by`, `resolved_at`, `resolution_reason`, `applied_event_id`, `draft_batch_id` | unique on `(organization_id, repo_ref, identity_key)`, the identity derived from the cited findings and checked at commit; `kind` `build_process\|workflow\|ticket_draft`; `impact` required except on ticket drafts, its `basis` mandatory, an `unquantified` basis needs `needs_spike`; planning is the plane of ticket drafts and spikes only, a workflow suggestion binds the workflow plane; born `open`; `applied` needs its `analysis_suggestion.applied` audit event (not a ticket draft or spike), `dismissed` an actor and a reason, `drafted` a same-workspace batch (ticket draft or spike); resolutions are terminal and frozen; `last_run_id` sets null; cascades with the workspace |
 | `analysis_suggestion_findings` | `V081` | Which findings a suggestion cites ([#507](https://github.com/NobuData/ouroboros/issues/507)) — `suggestion_id`, `finding_id`, `organization_id`, `repo_ref` | many-to-many; both sides share one `(organization_id, repo_ref)` by composite keys; cascades with either side; `ouroboros_app` may select and insert only |
