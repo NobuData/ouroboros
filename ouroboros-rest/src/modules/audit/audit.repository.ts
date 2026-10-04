@@ -32,6 +32,7 @@ import { Injectable } from "@nestjs/common";
 import { DatabaseService } from "../db/db.service";
 import type { NewAuditEvent } from "../db/schema";
 import type { PageWindow } from "../tenancy/pagination";
+import { enqueueWebhookEvents, type OutboxEvent } from "../webhooks/webhook.outbox";
 
 /**
  * One row of the trail, as the endpoint reads it: the event, plus the actor's name.
@@ -75,26 +76,35 @@ export class AuditRepository {
   constructor(private readonly database: DatabaseService) {}
 
   /**
-   * Append one event.
+   * Append one event, and queue its webhook fan-out in the same transaction.
    *
-   * **No transaction, and no caller may put one around it.** An audit write that shared a
+   * **Its own transaction, and no caller may put one around it.** An audit write that shared a
    * transaction with the operation it records would be rolled back by that operation's
    * failure — which is precisely the case AD.4 exists to cover, since *a failed rotation is
    * still an event*. The event is a separate statement so that it survives the failure it
    * describes.
    *
+   * **The outbox rows share it** (BR.3, #487): the audit row and its `webhook_outbox` rows commit
+   * together or not at all, so a crash between the two cannot leave an audited event the SIEM
+   * never hears about — nor a delivered event with no audit row behind it.
+   *
    * @param event - The row. Its shape is `db/schema.ts`'s `NewAuditEvent`, which has no
    *   column a credential could be passed to.
+   * @param fanOut - The outbox event for the row, given the id it was assigned.
    * @returns The event's id, so a caller can correlate its own answer with the trail.
    */
-  async append(event: NewAuditEvent): Promise<string> {
-    const inserted = await this.database.db
-      .insertInto("audit_events")
-      .values(event)
-      .returning("id")
-      .executeTakeFirstOrThrow();
+  async append(event: NewAuditEvent, fanOut: (id: string) => OutboxEvent): Promise<string> {
+    return this.database.transaction(async (trx) => {
+      const inserted = await trx
+        .insertInto("audit_events")
+        .values(event)
+        .returning("id")
+        .executeTakeFirstOrThrow();
 
-    return inserted.id;
+      await enqueueWebhookEvents(trx, fanOut(inserted.id));
+
+      return inserted.id;
+    });
   }
 
   /**

@@ -31817,22 +31817,25 @@ select pg_temp.must_reject(
 
 -- The column-level grep: nothing on either table could hold a signing key, a password or a token
 -- in the clear. A column whose name says it carries one must be sealed, and held to the envelope.
+-- A uuid column cannot carry one, so V098's `delivery_key` (the idempotency key) is not counted.
 select pg_temp.must_hold(
   (select count(*) = 1 from information_schema.columns c
     where c.table_schema = 'ouroboros' and c.table_name in ('webhook_endpoints', 'webhook_deliveries')
-      and c.column_name ~ '(secret|key|token|password|credential)')
+      and c.column_name ~ '(secret|key|token|password|credential)'
+      and c.data_type <> 'uuid')
   and exists (select 1 from pg_constraint k
                where k.conrelid = 'ouroboros.webhook_endpoints'::regclass and k.contype = 'c'
                  and pg_get_constraintdef(k.oid) ~ 'hmac_key_sealed ~~ ''ouro\.v1\.%'''),
   'the webhook tables hold one key column, hmac_key_sealed, and a CHECK holds it to a sealed envelope');
 
 -- --- webhook_deliveries ------------------------------------------------------------------------
+-- `next_attempt_at` is V098's: a pending attempt is waiting for a time.
 insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status,
-                                          response_code, latency_ms)
-  values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'audit.provider.rotated', 1, 'succeeded', 200, 90),
-         ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'ping', 1, 'failed', null, 30000),
-         ('org-v094', 'a9400000-0000-4000-8000-000000000002', 'pr.revision_pushed', 1, 'dead_lettered', 503, 400),
-         ('org-v094', 'a9400000-0000-4000-8000-000000000002', 'run.finished', 1, 'pending', null, null);
+                                          response_code, latency_ms, next_attempt_at)
+  values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'audit.provider.rotated', 1, 'succeeded', 200, 90, null),
+         ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'ping', 1, 'failed', null, 30000, null),
+         ('org-v094', 'a9400000-0000-4000-8000-000000000002', 'pr.revision_pushed', 1, 'dead_lettered', 503, 400, null),
+         ('org-v094', 'a9400000-0000-4000-8000-000000000002', 'run.finished', 1, 'pending', null, null, now());
 
 select pg_temp.must_reject(
   $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status)
@@ -31855,8 +31858,9 @@ select pg_temp.must_reject(
   'a failure is never a 2xx', 'webhook_deliveries_outcome_recorded');
 
 select pg_temp.must_reject(
-  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status, response_code)
-    values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'audit.x.y', 1, 'pending', 200)$$,
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status, response_code,
+                                             next_attempt_at)
+    values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'audit.x.y', 1, 'pending', 200, now())$$,
   'an attempt in flight has no response yet', 'webhook_deliveries_outcome_recorded');
 
 select pg_temp.must_reject(
@@ -31869,7 +31873,7 @@ insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata
 
 select pg_temp.must_reject(
   $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status)
-    values ('org-v094-other', 'a9400000-0000-4000-8000-000000000001', 'audit.x.y', 1, 'pending')$$,
+    values ('org-v094-other', 'a9400000-0000-4000-8000-000000000001', 'audit.x.y', 1, 'failed')$$,
   'a delivery cannot be filed under another workspace''s endpoint', 'webhook_deliveries_endpoint_fk');
 
 select pg_temp.must_reject(
@@ -31937,8 +31941,9 @@ select pg_temp.must_hold(
   and (select count(*) = 3 from ouroboros.retention_policies where organization_id = 'org-v094'),
   'the service reads the routes'' view and the retention tiers');
 
-insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status)
-  values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'ping', 2, 'pending');
+insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status,
+                                          next_attempt_at)
+  values ('org-v094', 'a9400000-0000-4000-8000-000000000001', 'ping', 2, 'pending', now());
 
 reset role;
 
@@ -33389,6 +33394,132 @@ delete from ouroboros.organization where "id" = 'org-v097';
 delete from ouroboros."user" where "id" = 'a9700000-0000-0000-0000-00000000000a';
 
 drop table v097_ids;
+
+-- ===========================================================================
+-- V098 — the webhook delivery pipeline (#487, BR.3)
+-- ===========================================================================
+--
+-- V090's outbox renamed `webhook_outbox` and widened to every family; endpoints that subscribe by
+-- exact type under a registry version; and the retry columns the dispatcher needs — one idempotency
+-- key per (event, endpoint), one pending attempt per key, a due time present exactly while pending,
+-- and a bounded failure reason.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
+  values ('org-v098', 'V098 Workspace', 'v098-workspace', now(), null);
+
+-- --- webhook_outbox ------------------------------------------------------------------------
+select pg_temp.must_hold(
+  to_regclass('ouroboros.webhook_outbox') is not null
+  and to_regclass('ouroboros.audit_event_outbox') is null
+  and exists (select 1 from information_schema.columns
+               where table_schema = 'ouroboros' and table_name = 'webhook_outbox'
+                 and column_name = 'dispatched_at'),
+  'the outbox is webhook_outbox, stamped dispatched_at');
+
+insert into ouroboros.webhook_outbox (organization_id, event_type, payload)
+  values ('org-v098', 'audit.workspace.paused', '{}'),
+         ('org-v098', 'decision.filed', '{}'),
+         ('org-v098', 'run.merged', '{}'),
+         ('org-v098', 'pr.criterion_verified', '{}');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_outbox (organization_id, event_type, payload)
+    values ('org-v098', 'audit.paused', '{}')$$,
+  'an audit event keeps V090''s shape: audit, then the action''s two parts', 'webhook_outbox_event_type_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_outbox (organization_id, event_type, payload)
+    values ('org-v098', 'billing.charged', '{}')$$,
+  'the outbox carries only the four registered families', 'webhook_outbox_event_type_grammar');
+
+-- --- webhook_endpoints ----------------------------------------------------------------------
+insert into ouroboros.webhook_endpoints (id, organization_id, name, url, hmac_key_sealed, event_families,
+                                         description, registry_version)
+  values ('a9800000-0000-4000-8000-000000000001', 'org-v098', 'Merges', 'https://merges.example.dev',
+          'ouro.v1.1.n.c', '["run.merged", "pr.*"]', 'Release notes', 1);
+
+select pg_temp.must_hold(
+  (select registry_version = 1 from ouroboros.webhook_endpoints
+    where id = 'a9800000-0000-4000-8000-000000000001'),
+  'an endpoint records the registry version it subscribed under');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families)
+    values ('org-v098', 'Typo', 'https://typo.example.dev', 'ouro.v1.1.n.c', '["run.Merged"]')$$,
+  'an exact-type subscription follows the event grammar', 'webhook_endpoints_event_families_registered');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families)
+    values ('org-v098', 'Numbers', 'https://numbers.example.dev', 'ouro.v1.1.n.c', '[1]')$$,
+  'a subscription entry is text', 'webhook_endpoints_event_families_registered');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_endpoints (organization_id, name, url, hmac_key_sealed, event_families)
+    values ('org-v098', 'Many', 'https://many.example.dev', 'ouro.v1.1.n.c',
+            (select jsonb_agg('run.e' || n) from generate_series(1, 65) n))$$,
+  'at most 64 subscription entries', 'webhook_endpoints_event_families_registered');
+
+select pg_temp.must_reject(
+  $$update ouroboros.webhook_endpoints set registry_version = 0
+     where id = 'a9800000-0000-4000-8000-000000000001'$$,
+  'a registry version is 1 or later', 'webhook_endpoints_registry_version_positive');
+
+select pg_temp.must_reject(
+  $$update ouroboros.webhook_endpoints set description = ' padded'
+     where id = 'a9800000-0000-4000-8000-000000000001'$$,
+  'a description is trimmed text', 'webhook_endpoints_description_bounded');
+
+-- --- webhook_deliveries ------------------------------------------------------------------------
+insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status,
+                                          delivery_key, next_attempt_at, response_code, error)
+  values ('org-v098', 'a9800000-0000-4000-8000-000000000001', 'run.merged', 1, 'failed',
+          'a9800000-0000-4000-8000-0000000000d1', null, 503, 'HTTP 503'),
+         ('org-v098', 'a9800000-0000-4000-8000-000000000001', 'run.merged', 2, 'pending',
+          'a9800000-0000-4000-8000-0000000000d1', now(), null, null);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status)
+    values ('org-v098', 'a9800000-0000-4000-8000-000000000001', 'run.opened', 1, 'pending')$$,
+  'an exact-type subscriber is sent only that type', 'webhook_deliveries_family_subscribed');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status)
+    values ('org-v098', 'a9800000-0000-4000-8000-000000000001', 'pr.merged', 1, 'pending')$$,
+  'a pending attempt is due at a time', 'webhook_deliveries_next_attempt_iff_pending');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status,
+                                             response_code, next_attempt_at)
+    values ('org-v098', 'a9800000-0000-4000-8000-000000000001', 'pr.merged', 1, 'succeeded', 200, now())$$,
+  'a settled attempt is due at no time', 'webhook_deliveries_next_attempt_iff_pending');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status,
+                                             delivery_key, next_attempt_at)
+    values ('org-v098', 'a9800000-0000-4000-8000-000000000001', 'run.merged', 3, 'pending',
+            'a9800000-0000-4000-8000-0000000000d1', now())$$,
+  'one attempt in flight per event and endpoint', 'webhook_deliveries_one_pending_idx');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status,
+                                             delivery_key, response_code)
+    values ('org-v098', 'a9800000-0000-4000-8000-000000000001', 'run.merged', 1, 'failed',
+            'a9800000-0000-4000-8000-0000000000d1', 500)$$,
+  'an attempt number is used once per key', 'webhook_deliveries_key_attempt_idx');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.webhook_deliveries (organization_id, endpoint_id, event_type, attempt, status,
+                                             response_code, error)
+    values ('org-v098', 'a9800000-0000-4000-8000-000000000001', 'pr.merged', 1, 'failed', 500,
+            repeat('e', 513))$$,
+  'the failure reason is bounded', 'webhook_deliveries_error_bounded');
+
+select pg_temp.must_hold(
+  (select count(distinct delivery_key) = 1 and count(*) = 2
+     from ouroboros.webhook_deliveries where organization_id = 'org-v098'),
+  'a retry carries its event''s idempotency key');
+
+delete from ouroboros.webhook_outbox where organization_id = 'org-v098';
+delete from ouroboros.organization where "id" = 'org-v098';
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

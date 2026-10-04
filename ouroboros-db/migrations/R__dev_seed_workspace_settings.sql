@@ -309,15 +309,17 @@ on conflict do nothing;
 
 -- ---------------------------------------------------------------------------
 -- The delivery log. Each of today's audit events reached the SIEM (so its ✓ derives from the
--- newest one), and the release bot's first try at PR #514 rev 2 got a 503 and was retried.
+-- newest one), and the release bot's first try at PR #514 rev 2 got a 503 and was retried — under
+-- the same idempotency key (V098's `delivery_key`, `X-Ouro-Delivery`), as every retry is.
 -- ---------------------------------------------------------------------------
 insert into ouroboros.webhook_deliveries (id, organization_id, endpoint_id, event_type, event_id,
                                           attempt, status, response_code, latency_ms,
-                                          response_excerpt, attempted_at)
+                                          response_excerpt, attempted_at, delivery_key)
 select ('5eed0077-0000-4000-8000-' || lpad(seed.n::text, 12, '0'))::uuid,
        endpoint.organization_id, endpoint.id, seed.event_type, event.id,
        seed.attempt, seed.status, seed.response_code, seed.latency_ms, seed.excerpt,
-       event.occurred_at + seed.after
+       event.occurred_at + seed.after,
+       ('5eed0078-0000-4000-8000-' || lpad((seed.n - seed.attempt + 1)::text, 12, '0'))::uuid
   from (values
          ( 1, 1, 'audit.runner.marked_offline',  5, 1, 'succeeded', 200, 112, null,                   interval '2 seconds'),
          ( 2, 1, 'audit.triage.waived',          4, 1, 'succeeded', 200,  97, null,                   interval '2 seconds'),

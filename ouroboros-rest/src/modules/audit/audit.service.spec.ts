@@ -1,5 +1,10 @@
 import { runWithAuditContext, setAuditServiceActor } from "./audit.context";
-import { PROVIDER_REVEALED_EVENT, type AuditRecord } from "./audit.events";
+import {
+  DECISION_FILED_EVENT,
+  PR_CRITERION_VERIFIED_EVENT,
+  PROVIDER_REVEALED_EVENT,
+  type AuditRecord,
+} from "./audit.events";
 import { AuditRepository, type AuditEventRow } from "./audit.repository";
 import { AuditService } from "./audit.service";
 
@@ -155,6 +160,59 @@ describe("recording an event", () => {
     await expect(new AuditService(events).record(RECORD)).rejects.toThrow(
       "audit_events is unavailable",
     );
+  });
+});
+
+describe("publishing an event to the webhook pipeline (#487)", () => {
+  /** The fan-out callback the service handed the repository, applied to an id. */
+  async function fannedOut(record: AuditRecord) {
+    const events = repository();
+
+    await runWithAuditContext("198.51.100.24", () => new AuditService(events).record(record));
+
+    return events.append.mock.calls[0][1]("b2000000-0000-0000-0000-000000000001");
+  }
+
+  it("publishes the row as audit.<action> with its facts, but no actor name", async () => {
+    await expect(fannedOut(RECORD)).resolves.toEqual({
+      organizationId: WORKSPACE,
+      types: ["audit.provider.revealed"],
+      occurredAt: RECORD.at,
+      data: {
+        id: "b2000000-0000-0000-0000-000000000001",
+        action: PROVIDER_REVEALED_EVENT,
+        actorKind: "user",
+        actorId: ACTOR,
+        actorService: null,
+        subjectType: "provider_connection",
+        subjectId: CONNECTION,
+        ip: "198.51.100.24",
+        detail: { kind: "anthropic", step_up: "password" },
+        occurredAt: "2026-08-24T16:13:00.000Z",
+      },
+    });
+  });
+
+  it("also publishes a decision action in the decision family", async () => {
+    const outbox = await fannedOut({
+      ...RECORD,
+      actorId: null,
+      action: DECISION_FILED_EVENT,
+      subjectType: "decision_item",
+    });
+
+    expect(outbox.types).toEqual(["audit.decision.filed", "decision.filed"]);
+    expect(outbox.data).toMatchObject({ actorKind: "system", actorId: null });
+  });
+
+  it("also publishes a PR verification action in the pr family", async () => {
+    const outbox = await fannedOut({
+      ...RECORD,
+      action: PR_CRITERION_VERIFIED_EVENT,
+      subjectType: "pr_criterion",
+    });
+
+    expect(outbox.types).toEqual(["audit.pr_criterion.verified", "pr.criterion_verified"]);
   });
 });
 

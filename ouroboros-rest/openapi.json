@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "ouroboros-rest",
-    "version": "0.39.5",
+    "version": "0.39.6",
     "summary": "The public API of Ouroboros — the only boundary between the browser and everything behind it.",
     "description": "The **communications layer** of\n[Ouroboros](https://github.com/NobuData/ouroboros): the one service a browser talks\nto. It owns authentication, sessions, tenant-context resolution, the tenancy API and\nthe gateway to `ouroboros-engine` — and it is the only module that reaches\n`ouroboros-db` or the engine, which is what keeps tenancy enforcement in a single\nauditable place.\n\n**This document describes two families, and a client uses a different library for\neach** ([#711](https://github.com/NobuData/ouroboros/issues/711)).\n\n| Family | Paths | Called through |\n|---|---|---|\n| Auth | `/api/auth/*` — the `identity` and `organizations` tags | **BetterAuth's own client** (`createAuthClient`) |\n| Everything else | `/api/v1/*` | **The client generated from this document** ([#43](https://github.com/NobuData/ouroboros/issues/43)) |\n\nThe split is not a preference. BetterAuth serves those routes itself, from a handler\nmounted ahead of the router, and it ships a typed client that already knows their\nbodies, their cookies and their error codes — so **the auth family is excluded from code\ngeneration**, and calling it through a generated client would mean maintaining a second,\nworse copy of something the library gives away. They are described here anyway, because\na client author has to be able to read them.\n\n**Who is signed in is three calls, and not a fourth.** `GET /api/auth/get-session` is\nthe person, `GET /api/auth/organization/list` is the workspaces they belong to, and\n`GET /api/auth/organization/get-active-member-role` is what they hold in one of them.\nThere is deliberately **no `/api/v1/auth/me`**: there was until #711, and it was deleted\nrather than kept, because two routes answering *who is signed in* are two answers that\ncan disagree — and the one built over this service's own tables would be disagreeing\nwith the session the library actually resolved. Do not add another.\n\nEvery `/api/v1` path sits under that prefix. The version is in the URI because that is\nwhat a generated client, an address bar and a log line can all carry without\nnegotiation, and a controller opts *out* of v1 rather than into it — so a route cannot\nbe published unversioned by omission. The auth family sits *beside* that prefix rather\nthan inside it, because the library versions its own routes and a second version number\nin the path would be a promise this service is not the one keeping.\n\nTwo more paths are deliberately *not* under `/api/v1`: `/health/live` and `/health/ready`.\nThey are read by infrastructure with no notion of an API version — a container's\n`HEALTHCHECK`, a compose healthcheck, an orchestrator's probe — and each of those is\nconfigured once and must keep working when a version is added or retired, which is the\nsame reason `ouroboros-engine`'s liveness route is `/healthz` rather than\n`/v0/healthz`. They are described here anyway, because this document describes\neverything the service serves. So are two more for the same kind of reader: the runner\ninstaller's `/install.sh` and `/runner/{version}/{file}`\n([#248](https://github.com/NobuData/ouroboros/issues/248)), read by `curl` on a build\nmachine in a command copied once and kept for years.\n\n**Every error has one shape** — `{code, message, details}`, from every operation below\nand from `ouroboros-engine` behind it (`docs/ARCHITECTURE.md` § 5.3). `code` is stable\nand machine-readable and is what a client branches on; `message` is written for a\nperson; `details` carries what is specific to the failure, which for a `422` is one\nentry per field that was refused. A constraint the database enforces is answered in the\nsame envelope rather than leaking through it: a duplicate domain is a `409` with\n`code: \"domain_taken\"`, never a PostgreSQL error string.\n\n**Lists are paginated the same way** — `?limit=&offset=`, answering\n`{items, total, limit, offset}`. The window is echoed back so a client that sent\nneither can still compute the next page, and `total` is always counted so a page count\ncan be rendered.\n\nWhat is described below is the whole of the surface today: the heartbeat the scaffold\n([#27](https://github.com/NobuData/ouroboros/issues/27)) landed, the probes\n([#29](https://github.com/NobuData/ouroboros/issues/29)), the tenancy API\n([#31](https://github.com/NobuData/ouroboros/issues/31)), the auth family BetterAuth\nserves ([#701](https://github.com/NobuData/ouroboros/issues/701),\n[#702](https://github.com/NobuData/ouroboros/issues/702),\n[#704](https://github.com/NobuData/ouroboros/issues/704)) and the engine gateway\n([#35](https://github.com/NobuData/ouroboros/issues/35)).\n\n**Everything below requires a session** except the operations that carry\n`security: []` — the routes a signed-out browser has to be able to reach at all (signing\nin, the callback, reading a session that may be absent, signing out) and the three whose\nreader is not a browser. A request without one is a `401` with\n`code: \"unauthenticated\"`, and that is one answer covering every way a session can fail:\nabsent, expired, revoked, forged, or naming a person who no longer exists.\n\n**Every `/api/v1` request also operates in one workspace**\n([#32](https://github.com/NobuData/ouroboros/issues/32),\n[#713](https://github.com/NobuData/ouroboros/issues/713)). It is the session's **active\norganization** — chosen through `/api/auth/organization/set-active` and carried on the\nsession row, so a client cannot assert it — overridden per request by the `{tenantId}` in\nthe path, or by the `X-Ouro-Tenant` header on the operations that have none. A session\nacting in no workspace, on an operation that names none either, is a `400` with\n`code: \"organization_required\"`: the caller is being asked to choose one, which is what\nthe workspace picker is for. A workspace the caller is not a member of answers **`404`,\nnever `403`** — a `403` would confirm that an identifier names something real — and a\nmember whose role is too low gets the one `403` this API does answer, because by then the\nworkspace is no secret from them.",
     "license": {
@@ -148,6 +148,10 @@
     {
       "name": "service-accounts",
       "description": "**Service accounts** ([#485](https://github.com/NobuData/ouroboros/issues/485)) — non-human\nprincipals with hash-only, scoped bearer tokens (`ouroService`), shown once, rotatable and\nrevocable. Requests they authenticate are audited as `service:<name>`."
+    },
+    {
+      "name": "webhooks",
+      "description": "**Outbound webhooks & SIEM streaming** ([#487](https://github.com/NobuData/ouroboros/issues/487),\ndecision S8) — endpoints subscribed to versioned event families, HMAC-signed at-least-once\ndelivery with retries, a visible dead-letter queue and a delivery log. *Stream to SIEM* is an\nendpoint subscribed to `audit.*`. The receiver contract is `docs/WEBHOOKS.md`."
     },
     {
       "name": "lifecycle",
@@ -7386,6 +7390,770 @@
           },
           "422": {
             "description": "`validation_failed` — the id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/webhooks": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "List webhook endpoints",
+        "description": "Every outbound webhook endpoint ([#487](https://github.com/NobuData/ouroboros/issues/487)) with its\ndelivery health, the **counted** `activeCount` (*Webhooks · 2 active*), the **derived** SIEM row\n(*Stream to SIEM ✓*, or a warning once events are dead-lettered) and the event registry for a\nsubscription picker. **No signing secret is ever returned here.** Owners and admins only.",
+        "operationId": "listWebhooks",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The endpoints, the count, the SIEM row and the registry.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookList"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthese routes are for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Create a webhook endpoint",
+        "description": "Creates an endpoint subscribed to family wildcards (`audit.*`, `decision.*`, `run.*`, `pr.*`) or\nexact event types, under the latest registry version. The URL must be https and every address its\nhost resolves to must be external — loopback, link-local (the metadata address), RFC1918, CGNAT\nand unique-local targets are refused unless the operator allowed them in\n`OURO_WEBHOOK_INTERNAL_ALLOWLIST`. **The response is the only time the signing secret is ever\nreturned** — it is stored sealed under the workspace key. At most one endpoint is the SIEM route,\nand it must subscribe to `audit.*`. Audited as `webhook.created`. Owners and admins only.",
+        "operationId": "createWebhook",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateWebhookRequest"
+              },
+              "example": {
+                "name": "SIEM · Splunk HEC",
+                "url": "https://siem.acme.dev/services/collector/event",
+                "eventFamilies": [
+                  "audit.*"
+                ],
+                "siem": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The endpoint and its signing secret, shown once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecret"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthese routes are for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`tenant_not_found` — no such workspace, or none you are a member of.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`webhook_name_taken` — the workspace already has an endpoint of this name.\n`webhook_siem_taken` — the workspace already has a SIEM endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — a malformed body. `webhook_target_refused` — the URL policy refused\nthe target. `webhook_subscription_invalid` — an entry is not a family wildcard or a registered\ntype. `webhook_siem_requires_audit` — a SIEM endpoint without `audit.*`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/webhooks/{id}": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Read a webhook endpoint",
+        "description": "One endpoint and its delivery health. Never its signing secret. Owners and admins only.",
+        "operationId": "getWebhook",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The endpoint.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookEndpoint"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthese routes are for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Edit, enable or disable a webhook endpoint",
+        "description": "Changes only the fields sent; `description` may be cleared with `null`. A new URL is held to the\nURL policy again. `registryVersion` moves the subscription to a later registry version — until\nthen, event types added after it are not delivered. Audited as `webhook.enabled` or\n`webhook.disabled` when the switch is the only change, `webhook.updated` otherwise; an edit that\nchanges nothing writes nothing. Attempts queued for a disabled endpoint wait until it is enabled\nagain. Owners and admins only.",
+        "operationId": "updateWebhook",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateWebhookRequest"
+              },
+              "example": {
+                "active": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The endpoint as stored.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookEndpoint"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthese routes are for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`webhook_name_taken`, or `webhook_siem_taken`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed`, `webhook_target_refused`, `webhook_subscription_invalid`,\n`webhook_siem_requires_audit` or `webhook_registry_version_unknown`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Delete a webhook endpoint",
+        "description": "Deletes the endpoint and its delivery log. Audited as `webhook.deleted`. Owners and admins only.",
+        "operationId": "deleteWebhook",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookId"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted."
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthese routes are for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/webhooks/{id}/rotate-secret": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Rotate a webhook endpoint's signing secret",
+        "description": "Replaces the signing secret; the old one signs nothing from this moment. The new secret is shown\nonce. Audited as `webhook.secret_rotated` — without the secret. Owners and admins only.",
+        "operationId": "rotateWebhookSecret",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The endpoint and its new signing secret, shown once.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookSecret"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthese routes are for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/webhooks/{id}/ping": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Send a test delivery",
+        "description": "Sends the `ping` event to the endpoint **now**, signed like any delivery, and answers with the\ndelivery-log row it produced — success or failure — so *did it work* is a row, not a guess. A ping\nis never retried and never counts toward the endpoint's health. It may be sent to a disabled\nendpoint. Owners and admins only.",
+        "operationId": "pingWebhook",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The settled attempt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDelivery"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthese routes are for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id is not a uuid.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/webhooks/{id}/deliveries": {
+      "get": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Page an endpoint's delivery log",
+        "description": "One row per attempt, newest first, per the #31 pagination convention — status, HTTP code,\nlatency, attempt number, a bounded (1 024 characters) and credential-redacted body excerpt, the\nfailure reason, and whether the row may be redelivered. `status=dead_lettered` lists the\ndead-letter queue. Owners and admins only.",
+        "operationId": "listWebhookDeliveries",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookId"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "$ref": "#/components/parameters/Offset"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookDeliveryStatus"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of the log.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDeliveryPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthese routes are for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id that is not a uuid, a window out of range, or an unknown\nstatus.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "`internal_error` — the service itself failed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/settings/webhooks/{id}/deliveries/{deliveryId}/redeliver": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "Redeliver a dead-lettered event",
+        "description": "Queues a dead-lettered event again: a new pending attempt with the **same** idempotency key\n(`X-Ouro-Delivery`), due now. It gets one try — success clears it from the dead-letter queue,\nfailure returns it there. Only the latest attempt at an event, once dead-lettered, can be\nredelivered. Audited as `webhook.redelivered`. Owners and admins only.",
+        "operationId": "redeliverWebhookDelivery",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/TenantHeader"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookId"
+          },
+          {
+            "$ref": "#/components/parameters/WebhookDeliveryId"
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "The queued attempt.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDelivery"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` — this request carries no session. `service_token_invalid` — a\nservice token that was rotated, revoked or never existed.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden` — not an owner or admin. `service_principal_refused` — a service token;\nthese routes are for people.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`webhook_not_found`, `webhook_delivery_not_found` or `tenant_not_found`.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`webhook_delivery_not_redeliverable` — not dead-lettered, or a later attempt exists.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "`validation_failed` — an id is not a uuid.",
             "content": {
               "application/json": {
                 "schema": {
@@ -34917,6 +35685,37 @@
         },
         "example": "5eed0091-0000-4000-8000-000000000001"
       },
+      "WebhookId": {
+        "name": "id",
+        "in": "path",
+        "required": true,
+        "description": "A webhook endpoint's id.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed0076-0000-4000-8000-000000000001"
+      },
+      "WebhookDeliveryId": {
+        "name": "deliveryId",
+        "in": "path",
+        "required": true,
+        "description": "One delivery attempt's id.",
+        "schema": {
+          "type": "string",
+          "format": "uuid"
+        },
+        "example": "5eed0077-0000-4000-8000-000000000006"
+      },
+      "WebhookDeliveryStatus": {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "description": "Only attempts in this status — `dead_lettered` is the dead-letter queue.",
+        "schema": {
+          "$ref": "#/components/schemas/WebhookDeliveryStatus"
+        }
+      },
       "TenantHeader": {
         "name": "X-Ouro-Tenant",
         "in": "header",
@@ -54570,6 +55369,522 @@
             "items": {
               "$ref": "#/components/schemas/ServiceScopeName"
             }
+          }
+        }
+      },
+      "WebhookDeliveryStatus": {
+        "type": "string",
+        "title": "WebhookDeliveryStatus",
+        "description": "`pending` (due at `nextAttemptAt`) · `succeeded` (a 2xx) · `failed` (not a 2xx; retried\nunless a ping) · `dead_lettered` (attempts exhausted, or a redelivery failed).",
+        "enum": [
+          "pending",
+          "succeeded",
+          "failed",
+          "dead_lettered"
+        ]
+      },
+      "WebhookHealth": {
+        "type": "object",
+        "title": "WebhookHealth",
+        "description": "An endpoint's delivery health, counted from its log — pings excluded. `idle` (nothing\ndelivered yet), `healthy` (the newest attempt succeeded, nothing dead-lettered),\n`retrying` (the newest attempt failed, a retry is queued), `dead_lettered` (events wait in\nthe dead-letter queue).",
+        "additionalProperties": false,
+        "required": [
+          "state",
+          "deadLettered",
+          "retrying",
+          "lastAttemptAt",
+          "lastStatus",
+          "lastResponseCode",
+          "lastSucceededAt"
+        ],
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "idle",
+              "healthy",
+              "retrying",
+              "dead_lettered"
+            ]
+          },
+          "deadLettered": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "retrying": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "lastAttemptAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "lastStatus": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookDeliveryStatus"
+              }
+            ]
+          },
+          "lastResponseCode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "lastSucceededAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          }
+        }
+      },
+      "WebhookEndpoint": {
+        "type": "object",
+        "title": "WebhookEndpoint",
+        "description": "An outbound webhook endpoint. **Never carries its signing secret.**",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "name",
+          "description",
+          "url",
+          "host",
+          "eventFamilies",
+          "registryVersion",
+          "siem",
+          "active",
+          "createdBy",
+          "createdAt",
+          "updatedAt",
+          "health"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 280
+          },
+          "url": {
+            "type": "string",
+            "format": "uri"
+          },
+          "host": {
+            "type": "string",
+            "description": "The URL's host — what a list shows."
+          },
+          "eventFamilies": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string"
+            },
+            "examples": [
+              [
+                "audit.*"
+              ],
+              [
+                "pr.*",
+                "run.merged"
+              ]
+            ]
+          },
+          "registryVersion": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "The event-registry version the subscription was made under."
+          },
+          "siem": {
+            "type": "boolean",
+            "description": "The workspace's SIEM route — at most one, subscribed to `audit.*`."
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "createdBy": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updatedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "health": {
+            "$ref": "#/components/schemas/WebhookHealth"
+          }
+        }
+      },
+      "WebhookSecret": {
+        "type": "object",
+        "title": "WebhookSecret",
+        "description": "The answer to create and rotate — **the only time a signing secret is ever returned**.",
+        "additionalProperties": false,
+        "required": [
+          "endpoint",
+          "secret"
+        ],
+        "properties": {
+          "endpoint": {
+            "$ref": "#/components/schemas/WebhookEndpoint"
+          },
+          "secret": {
+            "type": "string",
+            "pattern": "^whsec_[A-Za-z0-9_-]{43}$",
+            "description": "The HMAC-SHA256 signing secret. Stored sealed, never shown again — copy it now."
+          }
+        }
+      },
+      "WebhookSiem": {
+        "type": "object",
+        "title": "WebhookSiem",
+        "description": "The Audit card's *Stream to SIEM* row, derived from the SIEM endpoint's log. `streaming` is\nthe ✓ (active, newest attempt succeeded, dead-letter queue empty); `warning` means events\nare dead-lettered and the SIEM's record has a hole until they are redelivered.",
+        "additionalProperties": false,
+        "required": [
+          "endpointId",
+          "name",
+          "active",
+          "streaming",
+          "warning",
+          "health"
+        ],
+        "properties": {
+          "endpointId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "streaming": {
+            "type": "boolean"
+          },
+          "warning": {
+            "type": "boolean"
+          },
+          "health": {
+            "$ref": "#/components/schemas/WebhookHealth"
+          }
+        }
+      },
+      "WebhookRegistry": {
+        "type": "object",
+        "title": "WebhookRegistry",
+        "description": "The versioned event registry, for a subscription picker.",
+        "additionalProperties": false,
+        "required": [
+          "latestVersion",
+          "families",
+          "eventTypes"
+        ],
+        "properties": {
+          "latestVersion": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "families": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "examples": [
+              [
+                "audit.*",
+                "decision.*",
+                "run.*",
+                "pr.*"
+              ]
+            ]
+          },
+          "eventTypes": {
+            "type": "array",
+            "description": "Every type registered at the latest version, sorted.",
+            "items": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "WebhookList": {
+        "type": "object",
+        "title": "WebhookList",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "activeCount",
+          "siem",
+          "registry"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookEndpoint"
+            }
+          },
+          "activeCount": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "*Webhooks · N active* — counted from the rows, never stored."
+          },
+          "siem": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/WebhookSiem"
+              }
+            ]
+          },
+          "registry": {
+            "$ref": "#/components/schemas/WebhookRegistry"
+          }
+        }
+      },
+      "WebhookDelivery": {
+        "type": "object",
+        "title": "WebhookDelivery",
+        "description": "One delivery attempt.",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "endpointId",
+          "deliveryKey",
+          "eventType",
+          "eventId",
+          "attempt",
+          "status",
+          "responseCode",
+          "latencyMs",
+          "responseExcerpt",
+          "error",
+          "attemptedAt",
+          "nextAttemptAt",
+          "redeliverable"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "endpointId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "deliveryKey": {
+            "type": "string",
+            "format": "uuid",
+            "description": "`X-Ouro-Delivery` — the same on every attempt at one event for one endpoint."
+          },
+          "eventType": {
+            "type": "string",
+            "examples": [
+              "audit.provider.rotated",
+              "ping"
+            ]
+          },
+          "eventId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "uuid"
+          },
+          "attempt": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "status": {
+            "$ref": "#/components/schemas/WebhookDeliveryStatus"
+          },
+          "responseCode": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "latencyMs": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "responseExcerpt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 1024,
+            "description": "The receiver's answer, at most 1 024 characters, credentials redacted."
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 512
+          },
+          "attemptedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "nextAttemptAt": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "redeliverable": {
+            "type": "boolean",
+            "description": "The latest attempt at its event, and dead-lettered."
+          }
+        }
+      },
+      "WebhookDeliveryPage": {
+        "type": "object",
+        "title": "WebhookDeliveryPage",
+        "additionalProperties": false,
+        "required": [
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WebhookDelivery"
+            }
+          },
+          "total": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "CreateWebhookRequest": {
+        "type": "object",
+        "title": "CreateWebhookRequest",
+        "description": "There is no secret field — the server mints every signing secret.",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "url",
+          "eventFamilies"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 280
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https://[^\\s/?#@]+(/[^\\s]*)?$"
+          },
+          "eventFamilies": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^(?:(audit|decision|run|pr)\\.\\*|(audit|decision|run|pr)(\\.[a-z][a-z0-9_]*)+)$"
+            }
+          },
+          "siem": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          }
+        }
+      },
+      "UpdateWebhookRequest": {
+        "type": "object",
+        "title": "UpdateWebhookRequest",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 80
+          },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "maxLength": 280
+          },
+          "url": {
+            "type": "string",
+            "maxLength": 2048,
+            "pattern": "^https://[^\\s/?#@]+(/[^\\s]*)?$"
+          },
+          "eventFamilies": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 64,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "pattern": "^(?:(audit|decision|run|pr)\\.\\*|(audit|decision|run|pr)(\\.[a-z][a-z0-9_]*)+)$"
+            }
+          },
+          "siem": {
+            "type": "boolean"
+          },
+          "active": {
+            "type": "boolean"
+          },
+          "registryVersion": {
+            "type": "integer",
+            "minimum": 1
           }
         }
       },

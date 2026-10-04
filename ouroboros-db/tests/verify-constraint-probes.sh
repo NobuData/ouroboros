@@ -565,6 +565,22 @@
 #   a channel is email, slack or pagerduty       drop notification_routes_channel_known
 #   a route config is time/weekday/recipients    drop notification_routes_config_shape
 #
+# #487 (BR.3, V098) is the webhook delivery pipeline over V090's outbox and V094's tables. One probe
+# per rule the delivery log's honesty rests on:
+#
+#   V098 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   the outbox carries the four families only    drop webhook_outbox_event_type_grammar
+#   (a subscription entry follows the grammar — V094's families probe drops the same constraint)
+#   an exact type is a subscription              rewrite webhook_delivery_family_subscribed
+#                                                  to V094's family-only match
+#   a registry version is 1 or later             drop webhook_endpoints_registry_version_positive
+#   a description is trimmed and bounded         drop webhook_endpoints_description_bounded
+#   pending ⇔ due at a time                      drop webhook_deliveries_next_attempt_iff_pending
+#   one attempt in flight per key                drop webhook_deliveries_one_pending_idx
+#   an attempt number is used once per key       drop webhook_deliveries_key_attempt_idx
+#   the failure reason is bounded                drop webhook_deliveries_error_bounded
+#
 # #457 (BM.1, V093) adds the decision domain — versioned kind declarations and the typed items
 # filed against them. One probe per rule the inbox's truthfulness rests on:
 #
@@ -3104,6 +3120,41 @@ expect_red 'the per-kind metrics may count closures' \
        "'source_resolved'" \
        "'create or replace view ouroboros.decision_metrics_weekly_by_kind with (security_invoker = true) as ' ||" \
        "'no-such-action'")"
+
+# V098 (#487). The exact-type rewrite reads V098's trigger function back and removes the one
+# clause it added, which is V094's family-only match again.
+expect_red 'the outbox may carry any family' \
+  'an audit event keeps V090.s shape' \
+  'alter table ouroboros.webhook_outbox drop constraint webhook_outbox_event_type_grammar;'
+
+expect_red 'an exact-type subscription is sent nothing' \
+  'is not subscribed to run.merged' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.webhook_delivery_family_subscribed()'::regprocedure)" \
+       'or families ? new.event_type' '' '')"
+
+expect_red 'a registry version may be zero' \
+  'a registry version is 1 or later' \
+  'alter table ouroboros.webhook_endpoints drop constraint webhook_endpoints_registry_version_positive;'
+
+expect_red 'a description may be padded' \
+  'a description is trimmed text' \
+  'alter table ouroboros.webhook_endpoints drop constraint webhook_endpoints_description_bounded;'
+
+expect_red 'a pending attempt may have no due time' \
+  'a pending attempt is due at a time' \
+  'alter table ouroboros.webhook_deliveries drop constraint webhook_deliveries_next_attempt_iff_pending;'
+
+expect_red 'an event may have two attempts in flight' \
+  'one attempt in flight per event and endpoint' \
+  'drop index ouroboros.webhook_deliveries_one_pending_idx;'
+
+expect_red 'an attempt number may repeat' \
+  'an attempt number is used once per key' \
+  'drop index ouroboros.webhook_deliveries_key_attempt_idx;'
+
+expect_red 'a failure reason may be unbounded' \
+  'the failure reason is bounded' \
+  'alter table ouroboros.webhook_deliveries drop constraint webhook_deliveries_error_bounded;'
 
 printf '\n'
 if check_summary; then

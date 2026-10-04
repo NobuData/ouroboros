@@ -47,45 +47,73 @@ describe("the audit repository", () => {
   });
 
   describe("appending", () => {
-    it("inserts one row and answers with its id", async () => {
-      database.answers({ rows: [{ id: "b2000000-0000-0000-0000-000000000001" }] });
-
-      const id = await events.append({
-        organization_id: WORKSPACE,
-        actor_id: ACTOR,
-        action: "provider.revealed",
-        subject_type: "provider_connection",
-        subject_id: CONNECTION,
-        ip: "198.51.100.24",
-        detail: { kind: "anthropic", step_up: "password" },
-        occurred_at: new Date("2026-08-24T16:13:00.000Z"),
-      });
-
-      expect(id).toBe("b2000000-0000-0000-0000-000000000001");
-      expect(database.sql()).toHaveLength(1);
-      expect(database.sql()[0]).toContain('insert into "ouroboros"."audit_events"');
-      expect(database.sql()[0]).toContain('returning "id"');
+    /** The webhook fan-out the service would hand over for a row. */
+    const fanOut = (id: string) => ({
+      organizationId: WORKSPACE,
+      types: ["audit.provider.revealed"],
+      data: { id },
+      occurredAt: new Date("2026-08-24T16:13:00.000Z"),
     });
 
-    it("opens no transaction, so the event survives the failure it describes", async () => {
-      // An audit write inside the operation's transaction would be rolled back by that
-      // operation's failure — which is precisely the case AD.4 exists to cover, since *a
-      // failed rotation is still an event*.
-      database.answers({ rows: [{ id: "b2000000-0000-0000-0000-000000000001" }] });
+    it("inserts one row and answers with its id", async () => {
+      database.answers(
+        { rows: [{ id: "b2000000-0000-0000-0000-000000000001" }] },
+        { rows: [{ id: "c3000000-0000-0000-0000-000000000001" }] },
+      );
 
-      await events.append({
-        organization_id: WORKSPACE,
-        actor_id: null,
-        action: "credential.lease_granted",
-        subject_type: "run",
-        subject_id: "5eed0009-0000-4000-8000-000000000482",
-        ip: null,
-        detail: {},
-        occurred_at: new Date("2026-08-24T15:23:00.000Z"),
-      });
+      const id = await events.append(
+        {
+          organization_id: WORKSPACE,
+          actor_id: ACTOR,
+          action: "provider.revealed",
+          subject_type: "provider_connection",
+          subject_id: CONNECTION,
+          ip: "198.51.100.24",
+          detail: { kind: "anthropic", step_up: "password" },
+          occurred_at: new Date("2026-08-24T16:13:00.000Z"),
+        },
+        fanOut,
+      );
 
-      expect(database.sql()).not.toContain("begin");
-      expect(database.sql()).not.toContain("commit");
+      expect(id).toBe("b2000000-0000-0000-0000-000000000001");
+      expect(database.sql()[1]).toContain('insert into "ouroboros"."audit_events"');
+      expect(database.sql()[1]).toContain('returning "id"');
+    });
+
+    it("queues the webhook fan-out in the audit row's own transaction, and nothing else", async () => {
+      // BR.3 (#487): the audit row and its outbox rows commit together. The transaction is the
+      // append's own — never the operation's — so a failed operation still leaves its event
+      // (AD.4: *a failed rotation is still an event*).
+      database.answers(
+        { rows: [{ id: "b2000000-0000-0000-0000-000000000001" }] },
+        { rows: [{ id: "c3000000-0000-0000-0000-000000000001" }] },
+      );
+
+      await events.append(
+        {
+          organization_id: WORKSPACE,
+          actor_id: null,
+          action: "credential.lease_granted",
+          subject_type: "run",
+          subject_id: "5eed0009-0000-4000-8000-000000000482",
+          ip: null,
+          detail: {},
+          occurred_at: new Date("2026-08-24T15:23:00.000Z"),
+        },
+        fanOut,
+      );
+
+      const sql = database.sql();
+
+      expect(sql).toHaveLength(4);
+      expect(sql[0]).toBe("begin");
+      expect(sql[1]).toContain('insert into "ouroboros"."audit_events"');
+      expect(sql[2]).toContain('insert into "ouroboros"."webhook_outbox"');
+      expect(sql[3]).toBe("commit");
+      // The outbox row names the audit row it was built from.
+      expect(database.statements[2].parameters).toContain(
+        JSON.stringify({ id: "b2000000-0000-0000-0000-000000000001" }),
+      );
     });
   });
 

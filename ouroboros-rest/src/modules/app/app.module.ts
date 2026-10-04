@@ -40,6 +40,7 @@ import { RoutingModule } from "../routing/routing.module";
 import { LifecycleModule } from "../lifecycle/lifecycle.module";
 import { MembersModule } from "../members/members.module";
 import { ServiceAccountsModule } from "../service-accounts/service-accounts.module";
+import { WebhooksModule } from "../webhooks/webhooks.module";
 import { SettingsModule } from "../settings/settings.module";
 import { PoliciesModule } from "../policies/policies.module";
 import { InsightsModule } from "../insights/insights.module";
@@ -347,6 +348,10 @@ export class AppModule {
         // (middleware on every route), after `VaultModule` and `AuditModule`, which it imports.
         MembersModule,
         ServiceAccountsModule,
+        // BR.3 ([#487](https://github.com/NobuData/ouroboros/issues/487)) — outbound webhooks
+        // under `/api/v1/settings/webhooks`, a distinct literal segment beside the other settings
+        // routes, and the dispatcher that drains `webhook_outbox` on a timer.
+        WebhooksModule,
         // K.4 ([#102](https://github.com/NobuData/ouroboros/issues/102)) — the poller that
         // fills `github_issues`. After `GithubModule`, which it imports for the client and
         // for the *which workspaces have a token* question; it declares no route at all, so

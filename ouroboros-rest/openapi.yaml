@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.39.5"
+  version: "0.39.6"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -677,6 +677,12 @@ tags:
       **Service accounts** ([#485](https://github.com/NobuData/ouroboros/issues/485)) — non-human
       principals with hash-only, scoped bearer tokens (`ouroService`), shown once, rotatable and
       revocable. Requests they authenticate are audited as `service:<name>`.
+  - name: webhooks
+    description: |-
+      **Outbound webhooks & SIEM streaming** ([#487](https://github.com/NobuData/ouroboros/issues/487),
+      decision S8) — endpoints subscribed to versioned event families, HMAC-signed at-least-once
+      delivery with retries, a visible dead-letter queue and a delivery log. *Stream to SIEM* is an
+      endpoint subscribed to `audit.*`. The receiver contract is `docs/WEBHOOKS.md`.
   - name: lifecycle
     description: |-
       **The workspace lifecycle** (mockup 17's Danger zone, issue
@@ -7311,6 +7317,549 @@ paths:
         "422":
           description: |-
             `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/webhooks:
+    get:
+      tags: [webhooks]
+      summary: List webhook endpoints
+      description: |-
+        Every outbound webhook endpoint ([#487](https://github.com/NobuData/ouroboros/issues/487)) with its
+        delivery health, the **counted** `activeCount` (*Webhooks · 2 active*), the **derived** SIEM row
+        (*Stream to SIEM ✓*, or a warning once events are dead-lettered) and the event registry for a
+        subscription picker. **No signing secret is ever returned here.** Owners and admins only.
+      operationId: listWebhooks
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The endpoints, the count, the SIEM row and the registry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookList"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [webhooks]
+      summary: Create a webhook endpoint
+      description: |-
+        Creates an endpoint subscribed to family wildcards (`audit.*`, `decision.*`, `run.*`, `pr.*`) or
+        exact event types, under the latest registry version. The URL must be https and every address its
+        host resolves to must be external — loopback, link-local (the metadata address), RFC1918, CGNAT
+        and unique-local targets are refused unless the operator allowed them in
+        `OURO_WEBHOOK_INTERNAL_ALLOWLIST`. **The response is the only time the signing secret is ever
+        returned** — it is stored sealed under the workspace key. At most one endpoint is the SIEM route,
+        and it must subscribe to `audit.*`. Audited as `webhook.created`. Owners and admins only.
+      operationId: createWebhook
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateWebhookRequest"
+            example:
+              name: "SIEM · Splunk HEC"
+              url: https://siem.acme.dev/services/collector/event
+              eventFamilies: ["audit.*"]
+              siem: true
+      responses:
+        "201":
+          description: The endpoint and its signing secret, shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecret"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `webhook_name_taken` — the workspace already has an endpoint of this name.
+            `webhook_siem_taken` — the workspace already has a SIEM endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a malformed body. `webhook_target_refused` — the URL policy refused
+            the target. `webhook_subscription_invalid` — an entry is not a family wildcard or a registered
+            type. `webhook_siem_requires_audit` — a SIEM endpoint without `audit.*`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/webhooks/{id}:
+    get:
+      tags: [webhooks]
+      summary: Read a webhook endpoint
+      description: |-
+        One endpoint and its delivery health. Never its signing secret. Owners and admins only.
+      operationId: getWebhook
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/WebhookId"
+      responses:
+        "200":
+          description: The endpoint.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [webhooks]
+      summary: Edit, enable or disable a webhook endpoint
+      description: |-
+        Changes only the fields sent; `description` may be cleared with `null`. A new URL is held to the
+        URL policy again. `registryVersion` moves the subscription to a later registry version — until
+        then, event types added after it are not delivered. Audited as `webhook.enabled` or
+        `webhook.disabled` when the switch is the only change, `webhook.updated` otherwise; an edit that
+        changes nothing writes nothing. Attempts queued for a disabled endpoint wait until it is enabled
+        again. Owners and admins only.
+      operationId: updateWebhook
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/WebhookId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateWebhookRequest"
+            example:
+              active: false
+      responses:
+        "200":
+          description: The endpoint as stored.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookEndpoint"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `webhook_name_taken`, or `webhook_siem_taken`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed`, `webhook_target_refused`, `webhook_subscription_invalid`,
+            `webhook_siem_requires_audit` or `webhook_registry_version_unknown`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [webhooks]
+      summary: Delete a webhook endpoint
+      description: |-
+        Deletes the endpoint and its delivery log. Audited as `webhook.deleted`. Owners and admins only.
+      operationId: deleteWebhook
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/WebhookId"
+      responses:
+        "204":
+          description: Deleted.
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/webhooks/{id}/rotate-secret:
+    post:
+      tags: [webhooks]
+      summary: Rotate a webhook endpoint's signing secret
+      description: |-
+        Replaces the signing secret; the old one signs nothing from this moment. The new secret is shown
+        once. Audited as `webhook.secret_rotated` — without the secret. Owners and admins only.
+      operationId: rotateWebhookSecret
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/WebhookId"
+      responses:
+        "200":
+          description: The endpoint and its new signing secret, shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookSecret"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/webhooks/{id}/ping:
+    post:
+      tags: [webhooks]
+      summary: Send a test delivery
+      description: |-
+        Sends the `ping` event to the endpoint **now**, signed like any delivery, and answers with the
+        delivery-log row it produced — success or failure — so *did it work* is a row, not a guess. A ping
+        is never retried and never counts toward the endpoint's health. It may be sent to a disabled
+        endpoint. Owners and admins only.
+      operationId: pingWebhook
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/WebhookId"
+      responses:
+        "200":
+          description: The settled attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDelivery"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/webhooks/{id}/deliveries:
+    get:
+      tags: [webhooks]
+      summary: Page an endpoint's delivery log
+      description: |-
+        One row per attempt, newest first, per the #31 pagination convention — status, HTTP code,
+        latency, attempt number, a bounded (1 024 characters) and credential-redacted body excerpt, the
+        failure reason, and whether the row may be redelivered. `status=dead_lettered` lists the
+        dead-letter queue. Owners and admins only.
+      operationId: listWebhookDeliveries
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/WebhookId"
+        - $ref: "#/components/parameters/Limit"
+        - $ref: "#/components/parameters/Offset"
+        - $ref: "#/components/parameters/WebhookDeliveryStatus"
+      responses:
+        "200":
+          description: One page of the log.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDeliveryPage"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id that is not a uuid, a window out of range, or an unknown
+            status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/webhooks/{id}/deliveries/{deliveryId}/redeliver:
+    post:
+      tags: [webhooks]
+      summary: Redeliver a dead-lettered event
+      description: |-
+        Queues a dead-lettered event again: a new pending attempt with the **same** idempotency key
+        (`X-Ouro-Delivery`), due now. It gets one try — success clears it from the dead-letter queue,
+        failure returns it there. Only the latest attempt at an event, once dead-lettered, can be
+        redelivered. Audited as `webhook.redelivered`. Owners and admins only.
+      operationId: redeliverWebhookDelivery
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/WebhookId"
+        - $ref: "#/components/parameters/WebhookDeliveryId"
+      responses:
+        "202":
+          description: The queued attempt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WebhookDelivery"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `webhook_not_found`, `webhook_delivery_not_found` or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `webhook_delivery_not_redeliverable` — not dead-lettered, or a later attempt exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — an id is not a uuid.
           content:
             application/json:
               schema:
@@ -31266,6 +31815,34 @@ components:
         format: uuid
       example: 5eed0091-0000-4000-8000-000000000001
 
+    WebhookId:
+      name: id
+      in: path
+      required: true
+      description: A webhook endpoint's id.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed0076-0000-4000-8000-000000000001
+
+    WebhookDeliveryId:
+      name: deliveryId
+      in: path
+      required: true
+      description: One delivery attempt's id.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed0077-0000-4000-8000-000000000006
+
+    WebhookDeliveryStatus:
+      name: status
+      in: query
+      required: false
+      description: Only attempts in this status — `dead_lettered` is the dead-letter queue.
+      schema:
+        $ref: "#/components/schemas/WebhookDeliveryStatus"
+
     TenantHeader:
       name: X-Ouro-Tenant
       in: header
@@ -44175,6 +44752,309 @@ components:
           uniqueItems: true
           items:
             $ref: "#/components/schemas/ServiceScopeName"
+
+    WebhookDeliveryStatus:
+      type: string
+      title: WebhookDeliveryStatus
+      description: |-
+        `pending` (due at `nextAttemptAt`) · `succeeded` (a 2xx) · `failed` (not a 2xx; retried
+        unless a ping) · `dead_lettered` (attempts exhausted, or a redelivery failed).
+      enum: [pending, succeeded, failed, dead_lettered]
+
+    WebhookHealth:
+      type: object
+      title: WebhookHealth
+      description: |-
+        An endpoint's delivery health, counted from its log — pings excluded. `idle` (nothing
+        delivered yet), `healthy` (the newest attempt succeeded, nothing dead-lettered),
+        `retrying` (the newest attempt failed, a retry is queued), `dead_lettered` (events wait in
+        the dead-letter queue).
+      additionalProperties: false
+      required:
+        [state, deadLettered, retrying, lastAttemptAt, lastStatus, lastResponseCode, lastSucceededAt]
+      properties:
+        state:
+          type: string
+          enum: [idle, healthy, retrying, dead_lettered]
+        deadLettered:
+          type: integer
+          minimum: 0
+        retrying:
+          type: integer
+          minimum: 0
+        lastAttemptAt:
+          type: [string, "null"]
+          format: date-time
+        lastStatus:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/WebhookDeliveryStatus"
+        lastResponseCode:
+          type: [integer, "null"]
+        lastSucceededAt:
+          type: [string, "null"]
+          format: date-time
+
+    WebhookEndpoint:
+      type: object
+      title: WebhookEndpoint
+      description: An outbound webhook endpoint. **Never carries its signing secret.**
+      additionalProperties: false
+      required:
+        [id, name, description, url, host, eventFamilies, registryVersion, siem, active, createdBy, createdAt, updatedAt, health]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          maxLength: 80
+        description:
+          type: [string, "null"]
+          maxLength: 280
+        url:
+          type: string
+          format: uri
+        host:
+          type: string
+          description: The URL's host — what a list shows.
+        eventFamilies:
+          type: array
+          minItems: 1
+          items:
+            type: string
+          examples: [["audit.*"], ["pr.*", "run.merged"]]
+        registryVersion:
+          type: integer
+          minimum: 1
+          description: The event-registry version the subscription was made under.
+        siem:
+          type: boolean
+          description: The workspace's SIEM route — at most one, subscribed to `audit.*`.
+        active:
+          type: boolean
+        createdBy:
+          type: [string, "null"]
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+        health:
+          $ref: "#/components/schemas/WebhookHealth"
+
+    WebhookSecret:
+      type: object
+      title: WebhookSecret
+      description: The answer to create and rotate — **the only time a signing secret is ever returned**.
+      additionalProperties: false
+      required: [endpoint, secret]
+      properties:
+        endpoint:
+          $ref: "#/components/schemas/WebhookEndpoint"
+        secret:
+          type: string
+          pattern: ^whsec_[A-Za-z0-9_-]{43}$
+          description: The HMAC-SHA256 signing secret. Stored sealed, never shown again — copy it now.
+
+    WebhookSiem:
+      type: object
+      title: WebhookSiem
+      description: |-
+        The Audit card's *Stream to SIEM* row, derived from the SIEM endpoint's log. `streaming` is
+        the ✓ (active, newest attempt succeeded, dead-letter queue empty); `warning` means events
+        are dead-lettered and the SIEM's record has a hole until they are redelivered.
+      additionalProperties: false
+      required: [endpointId, name, active, streaming, warning, health]
+      properties:
+        endpointId:
+          type: string
+          format: uuid
+        name:
+          type: string
+        active:
+          type: boolean
+        streaming:
+          type: boolean
+        warning:
+          type: boolean
+        health:
+          $ref: "#/components/schemas/WebhookHealth"
+
+    WebhookRegistry:
+      type: object
+      title: WebhookRegistry
+      description: The versioned event registry, for a subscription picker.
+      additionalProperties: false
+      required: [latestVersion, families, eventTypes]
+      properties:
+        latestVersion:
+          type: integer
+          minimum: 1
+        families:
+          type: array
+          items:
+            type: string
+          examples: [["audit.*", "decision.*", "run.*", "pr.*"]]
+        eventTypes:
+          type: array
+          description: Every type registered at the latest version, sorted.
+          items:
+            type: string
+
+    WebhookList:
+      type: object
+      title: WebhookList
+      additionalProperties: false
+      required: [items, activeCount, siem, registry]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookEndpoint"
+        activeCount:
+          type: integer
+          minimum: 0
+          description: "*Webhooks · N active* — counted from the rows, never stored."
+        siem:
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/WebhookSiem"
+        registry:
+          $ref: "#/components/schemas/WebhookRegistry"
+
+    WebhookDelivery:
+      type: object
+      title: WebhookDelivery
+      description: One delivery attempt.
+      additionalProperties: false
+      required:
+        [id, endpointId, deliveryKey, eventType, eventId, attempt, status, responseCode, latencyMs, responseExcerpt, error, attemptedAt, nextAttemptAt, redeliverable]
+      properties:
+        id:
+          type: string
+          format: uuid
+        endpointId:
+          type: string
+          format: uuid
+        deliveryKey:
+          type: string
+          format: uuid
+          description: "`X-Ouro-Delivery` — the same on every attempt at one event for one endpoint."
+        eventType:
+          type: string
+          examples: ["audit.provider.rotated", "ping"]
+        eventId:
+          type: [string, "null"]
+          format: uuid
+        attempt:
+          type: integer
+          minimum: 1
+        status:
+          $ref: "#/components/schemas/WebhookDeliveryStatus"
+        responseCode:
+          type: [integer, "null"]
+        latencyMs:
+          type: [integer, "null"]
+          minimum: 0
+        responseExcerpt:
+          type: [string, "null"]
+          maxLength: 1024
+          description: The receiver's answer, at most 1 024 characters, credentials redacted.
+        error:
+          type: [string, "null"]
+          maxLength: 512
+        attemptedAt:
+          type: string
+          format: date-time
+        nextAttemptAt:
+          type: [string, "null"]
+          format: date-time
+        redeliverable:
+          type: boolean
+          description: The latest attempt at its event, and dead-lettered.
+
+    WebhookDeliveryPage:
+      type: object
+      title: WebhookDeliveryPage
+      additionalProperties: false
+      required: [items, total, limit, offset]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebhookDelivery"
+        total:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+        offset:
+          type: integer
+          minimum: 0
+
+    CreateWebhookRequest:
+      type: object
+      title: CreateWebhookRequest
+      description: There is no secret field — the server mints every signing secret.
+      additionalProperties: false
+      required: [name, url, eventFamilies]
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        description:
+          type: [string, "null"]
+          maxLength: 280
+        url:
+          type: string
+          maxLength: 2048
+          pattern: ^https://[^\s/?#@]+(/[^\s]*)?$
+        eventFamilies:
+          type: array
+          minItems: 1
+          maxItems: 64
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^(?:(audit|decision|run|pr)\.\*|(audit|decision|run|pr)(\.[a-z][a-z0-9_]*)+)$
+        siem:
+          type: boolean
+        active:
+          type: boolean
+
+    UpdateWebhookRequest:
+      type: object
+      title: UpdateWebhookRequest
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          maxLength: 80
+        description:
+          type: [string, "null"]
+          maxLength: 280
+        url:
+          type: string
+          maxLength: 2048
+          pattern: ^https://[^\s/?#@]+(/[^\s]*)?$
+        eventFamilies:
+          type: array
+          minItems: 1
+          maxItems: 64
+          uniqueItems: true
+          items:
+            type: string
+            pattern: ^(?:(audit|decision|run|pr)\.\*|(audit|decision|run|pr)(\.[a-z][a-z0-9_]*)+)$
+        siem:
+          type: boolean
+        active:
+          type: boolean
+        registryVersion:
+          type: integer
+          minimum: 1
 
     OrganizationRole:
       type: string

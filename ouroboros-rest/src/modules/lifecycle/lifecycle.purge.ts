@@ -26,9 +26,9 @@ import { ARTIFACT_STORE } from "../farm/artifacts/artifact.store.factory";
 import type { ArtifactStore } from "../farm/artifacts/artifact.store";
 import { storedKey } from "../test-results-read/results.service";
 import { VaultService } from "../vault/vault.service";
+import { auditEventTypes } from "../webhooks/webhook.registry";
 import { WORKSPACE_AUTH_STORE, type WorkspaceAuthStore } from "./lifecycle.auth";
 import { LifecycleRepository, type DuePurge } from "./lifecycle.repository";
-import { outboxEventType } from "./lifecycle.service";
 
 /** What one purge did — what the tombstone records. */
 export interface PurgeReport {
@@ -134,7 +134,7 @@ export class LifecyclePurge {
     await this.lifecycle.enqueue(
       this.database.db,
       organizationId,
-      outboxEventType(WORKSPACE_PURGED_EVENT),
+      auditEventTypes(WORKSPACE_PURGED_EVENT),
       {
         action: WORKSPACE_PURGED_EVENT,
         organizationId,

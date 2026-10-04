@@ -122,10 +122,10 @@ export class FakeLifecycleStore {
       enqueue: (
         _executor: unknown,
         organizationId: string,
-        eventType: string,
+        types: readonly string[],
         payload: Record<string, unknown>,
       ) => {
-        this.outbox.push({ organizationId, eventType, payload });
+        for (const eventType of types) this.outbox.push({ organizationId, eventType, payload });
         return Promise.resolve();
       },
       disconnectCounts: () => Promise.resolve(this.counts),

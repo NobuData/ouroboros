@@ -37,6 +37,7 @@ import {
   isCloudProvider,
   type LocalProviderKind,
 } from "../internal/providers";
+import { InternalAllowlist } from "../webhooks/webhook.ssrf";
 
 /**
  * A required environment variable is missing or malformed.
@@ -453,6 +454,28 @@ export const MIN_LIFECYCLE_PURGE_SWEEP_SECONDS = 60;
 
 /** Longest the purge sweep may be set to — one day. */
 export const MAX_LIFECYCLE_PURGE_SWEEP_SECONDS = 86_400;
+
+/**
+ * Seconds between webhook dispatcher ticks when `OURO_WEBHOOK_DISPATCH_SECONDS` is not set — five
+ * (BR.3, #487). A tick moves new events into delivery queues and sends every attempt now due, so
+ * this is the latency between an event and its first attempt.
+ */
+export const DEFAULT_WEBHOOK_DISPATCH_SECONDS = 5;
+
+/** Shortest the dispatcher cadence may be set to — one second. */
+export const MIN_WEBHOOK_DISPATCH_SECONDS = 1;
+
+/** Longest the dispatcher cadence may be set to — five minutes. */
+export const MAX_WEBHOOK_DISPATCH_SECONDS = 300;
+
+/**
+ * Attempts a webhook delivery gets before it is dead-lettered, when `OURO_WEBHOOK_MAX_ATTEMPTS`
+ * is not set — five (BR.3, #487): the first try and four backed-off retries, about 7.5 minutes.
+ */
+export const DEFAULT_WEBHOOK_MAX_ATTEMPTS = 5;
+
+/** The most attempts a delivery may be given — twenty, about fifteen hours of hourly retries. */
+export const MAX_WEBHOOK_MAX_ATTEMPTS = 20;
 
 /**
  * How many days without a tracker update make an open ticket *stale* on the Backlog Health card,
@@ -998,6 +1021,22 @@ export interface Configuration {
    */
   readonly lifecyclePurgeSweepSeconds: number;
   /**
+   * Seconds between webhook dispatcher ticks. From `OURO_WEBHOOK_DISPATCH_SECONDS`,
+   * {@link DEFAULT_WEBHOOK_DISPATCH_SECONDS} when unset (BR.3, #487). Jittered ±25%.
+   */
+  readonly webhookDispatchSeconds: number;
+  /**
+   * Attempts a webhook delivery gets before it is dead-lettered. From `OURO_WEBHOOK_MAX_ATTEMPTS`,
+   * {@link DEFAULT_WEBHOOK_MAX_ATTEMPTS} when unset (BR.3, #487).
+   */
+  readonly webhookMaxAttempts: number;
+  /**
+   * Internal hosts a webhook may reach despite the SSRF policy — hostnames, addresses and CIDR
+   * blocks from `OURO_WEBHOOK_INTERNAL_ALLOWLIST`; empty when unset (BR.3, #487). Never relaxes
+   * https.
+   */
+  readonly webhookInternalAllowlist: readonly string[];
+  /**
    * Days without a tracker update after which an open ticket counts as stale on the Backlog Health
    * card. From `OURO_BACKLOG_STALE_DAYS`, {@link DEFAULT_BACKLOG_STALE_DAYS} when unset.
    */
@@ -1192,6 +1231,9 @@ export const VARIABLES = {
   runSteerTtlSeconds: "OURO_RUN_STEER_TTL_SECONDS",
   runControlSweepSeconds: "OURO_RUN_CONTROL_SWEEP_SECONDS",
   lifecyclePurgeSweepSeconds: "OURO_LIFECYCLE_PURGE_SWEEP_SECONDS",
+  webhookDispatchSeconds: "OURO_WEBHOOK_DISPATCH_SECONDS",
+  webhookMaxAttempts: "OURO_WEBHOOK_MAX_ATTEMPTS",
+  webhookInternalAllowlist: "OURO_WEBHOOK_INTERNAL_ALLOWLIST",
   backlogStaleDays: "OURO_BACKLOG_STALE_DAYS",
   reestimationHourUtc: "OURO_REESTIMATION_HOUR_UTC",
   reestimationJitterMinutes: "OURO_REESTIMATION_JITTER_MINUTES",
@@ -1451,6 +1493,22 @@ function capabilityFlag() {
     .enum(FLAG_VALUES, { error: `expected ${FLAG_VALUES.join(" or ")}` })
     .default("false")
     .transform((value) => value === "true");
+}
+
+/**
+ * Whether one `OURO_WEBHOOK_INTERNAL_ALLOWLIST` entry is a hostname, an address or a CIDR block —
+ * the same parse the SSRF policy applies, so a typo fails the boot rather than allowing nothing.
+ *
+ * @param entry - One trimmed entry.
+ * @returns `true` when the policy can read it.
+ */
+function isAllowlistEntry(entry: string): boolean {
+  try {
+    new InternalAllowlist([entry]);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -1770,6 +1828,34 @@ const environmentShape = z.object({
     DEFAULT_LIFECYCLE_PURGE_SWEEP_SECONDS,
     MAX_LIFECYCLE_PURGE_SWEEP_SECONDS,
   ),
+
+  // BR.3's (#487) webhook dispatcher: its cadence, the attempts before the dead-letter queue, and
+  // the operator's override of the SSRF policy for genuine internal collectors.
+  OURO_WEBHOOK_DISPATCH_SECONDS: cadenceSeconds(
+    MIN_WEBHOOK_DISPATCH_SECONDS,
+    DEFAULT_WEBHOOK_DISPATCH_SECONDS,
+    MAX_WEBHOOK_DISPATCH_SECONDS,
+  ),
+  OURO_WEBHOOK_MAX_ATTEMPTS: boundedWhole(
+    1,
+    DEFAULT_WEBHOOK_MAX_ATTEMPTS,
+    MAX_WEBHOOK_MAX_ATTEMPTS,
+    "attempts",
+  ),
+  OURO_WEBHOOK_INTERNAL_ALLOWLIST: z
+    .string()
+    .default("")
+    .transform((value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry !== ""),
+    )
+    .refine(
+      (entries) => entries.every(isAllowlistEntry),
+      "expected a comma-separated list of hostnames, IP addresses or CIDR blocks, such as " +
+        "collector.internal,10.20.0.0/16",
+    ),
 
   // AL.5's (#281) four: the Backlog Health card's stale threshold, and the nightly job's hour,
   // jitter window and batch bound.
@@ -2118,6 +2204,9 @@ export function loadConfiguration(env: NodeJS.ProcessEnv): Configuration {
     runSteerTtlSeconds: values.OURO_RUN_STEER_TTL_SECONDS,
     runControlSweepSeconds: values.OURO_RUN_CONTROL_SWEEP_SECONDS,
     lifecyclePurgeSweepSeconds: values.OURO_LIFECYCLE_PURGE_SWEEP_SECONDS,
+    webhookDispatchSeconds: values.OURO_WEBHOOK_DISPATCH_SECONDS,
+    webhookMaxAttempts: values.OURO_WEBHOOK_MAX_ATTEMPTS,
+    webhookInternalAllowlist: values.OURO_WEBHOOK_INTERNAL_ALLOWLIST,
     backlogStaleDays: values.OURO_BACKLOG_STALE_DAYS,
     reestimationHourUtc: values.OURO_REESTIMATION_HOUR_UTC,
     reestimationJitterMinutes: values.OURO_REESTIMATION_JITTER_MINUTES,
