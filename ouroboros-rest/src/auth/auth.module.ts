@@ -56,12 +56,13 @@
 
 import { Module } from "@nestjs/common";
 import { APP_GUARD } from "@nestjs/core";
-import { AuthGuard, AuthModule as NestBetterAuth } from "@thallesp/nestjs-better-auth";
+import { AuthModule as NestBetterAuth } from "@thallesp/nestjs-better-auth";
 
 import { AppConfigService } from "../modules/config/config.service";
 import { DbModule } from "../modules/db/db.module";
 import { DatabaseService } from "../modules/db/db.service";
 import { createAuth, type Auth } from "./auth.factory";
+import { SessionOrServiceGuard } from "./session-or-service.guard";
 
 /**
  * How large a JSON request body this service will read.
@@ -152,11 +153,12 @@ const betterAuth = NestBetterAuth.forRootAsync({
 
 @Module({
   imports: [betterAuth],
-  // The library's own guard class, registered as *this* module's global guard. `APP_GUARD`
+  // The library's own guard class — extended by one door for service tokens (#485,
+  // `session-or-service.guard.ts`) — registered as *this* module's global guard. `APP_GUARD`
   // is Nest's token for "run this before every handler in the application"; it resolves
   // `Reflector` and the library's options from the module above, both of which the
   // dynamic module exports globally.
-  providers: [{ provide: APP_GUARD, useClass: AuthGuard }],
+  providers: [{ provide: APP_GUARD, useClass: SessionOrServiceGuard }],
   // Re-exported so `AuthService` — the library's typed access to `auth.api` — is injectable
   // wherever this module is imported. `AuthController.logout` is the first caller: signing
   // out is `auth.api.signOut`, which deletes the session row. (The library's module is

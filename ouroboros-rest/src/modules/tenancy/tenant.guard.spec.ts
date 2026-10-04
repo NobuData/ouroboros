@@ -1,12 +1,21 @@
-import { Controller, Get, type ExecutionContext } from "@nestjs/common";
+import { Controller, Get, Post, type ExecutionContext } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 
 import { AllowAnonymous } from "@thallesp/nestjs-better-auth";
 
+import { currentServiceActor, runWithAuditContext } from "../audit/audit.context";
 import { SESSION_PROPERTY, type SessionUser } from "../auth/principal";
+import { SERVICE_PRINCIPAL_PROPERTY } from "../auth/service.principal";
+import { servicePrincipalFor } from "../auth/service.principal.fixture";
+import { HumanOnly, ServiceScope } from "../auth/service.scopes";
 import { FIXTURE_USER, principalFor } from "../auth/principal.fixture";
 import { FIXTURE_ORGANIZATION, membershipIn } from "./organization.fixture";
-import { currentMembership, currentUser, runWithTenantContext } from "./tenant.context";
+import {
+  currentMembership,
+  currentService,
+  currentUser,
+  runWithTenantContext,
+} from "./tenant.context";
 import { TenantOptional } from "./tenant.decorators";
 import { TenantContextGuard, type TenantRequest } from "./tenant.guard";
 import type { TenantResolver } from "./tenant.resolver";
@@ -264,5 +273,142 @@ describe("a request with no principal on a scoped route", () => {
 
     expect(allowed).toBe(true);
     expect(resolver.resolve).not.toHaveBeenCalled();
+  });
+});
+
+describe("a request authenticated by a service token (#485)", () => {
+  @Controller()
+  class ServiceRoutes {
+    @Get()
+    read(): void {}
+
+    @HumanOnly()
+    @Get()
+    mine(): void {}
+
+    @ServiceScope("farm.submit")
+    @Post()
+    submit(): void {}
+
+    @Post()
+    write(): void {}
+  }
+
+  /** A request carrying a service principal and no session. */
+  function serviceRequest(scopes: string[], extra: Partial<TenantRequest> = {}): TenantRequest {
+    return {
+      headers: {},
+      params: {},
+      [SERVICE_PRINCIPAL_PROPERTY]: servicePrincipalFor(scopes),
+      ...extra,
+    };
+  }
+
+  it("establishes the account's workspace, a role-less membership and the audit actor", async () => {
+    const resolver = resolverDouble();
+    const guard = new TenantContextGuard(new Reflector(), resolver);
+
+    await runWithAuditContext(undefined, () =>
+      runWithTenantContext(async () => {
+        await guard.canActivate(
+          contextFor(
+            ServiceRoutes,
+            ServiceRoutes.prototype.read,
+            serviceRequest(["api.read"], { method: "GET" }),
+          ),
+        );
+
+        expect(currentMembership()).toEqual({ tenant: TENANT, roles: [] });
+        expect(currentService()?.name).toBe("devops-bot");
+        expect(currentUser()).toBeUndefined();
+        expect(currentServiceActor()).toBe("devops-bot");
+      }),
+    );
+    expect(resolver.resolve).not.toHaveBeenCalled();
+  });
+
+  it("refuses a route outside the token's scopes, naming the scope", async () => {
+    const guard = new TenantContextGuard(new Reflector(), resolverDouble());
+
+    await expect(
+      runWithTenantContext(() =>
+        guard.canActivate(
+          contextFor(
+            ServiceRoutes,
+            ServiceRoutes.prototype.submit,
+            serviceRequest(["api.read"], { method: "POST" }),
+          ),
+        ),
+      ),
+    ).rejects.toMatchObject({ code: "service_scope_missing", details: { scope: "farm.submit" } });
+  });
+
+  it("admits an opted-in write to a token holding its scope", async () => {
+    const guard = new TenantContextGuard(new Reflector(), resolverDouble());
+
+    await expect(
+      runWithTenantContext(() =>
+        guard.canActivate(
+          contextFor(
+            ServiceRoutes,
+            ServiceRoutes.prototype.submit,
+            serviceRequest(["farm.submit"], { method: "POST" }),
+          ),
+        ),
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it("refuses a write that did not opt in, and a human-only read", async () => {
+    const guard = new TenantContextGuard(new Reflector(), resolverDouble());
+
+    for (const [handler, method] of [
+      [ServiceRoutes.prototype.write, "POST"],
+      [ServiceRoutes.prototype.mine, "GET"],
+    ] as const) {
+      await expect(
+        runWithTenantContext(() =>
+          guard.canActivate(
+            contextFor(
+              ServiceRoutes,
+              handler,
+              serviceRequest(["api.read", "farm.submit"], { method }),
+            ),
+          ),
+        ),
+      ).rejects.toMatchObject({ code: "service_principal_refused" });
+    }
+  });
+
+  it("refuses a request naming another workspace, as one that does not exist", async () => {
+    const guard = new TenantContextGuard(new Reflector(), resolverDouble());
+    const request = serviceRequest(["api.read"], {
+      method: "GET",
+      headers: { "x-ouro-tenant": "elsewhere" },
+    });
+
+    await expect(
+      runWithTenantContext(() =>
+        guard.canActivate(contextFor(ServiceRoutes, ServiceRoutes.prototype.read, request)),
+      ),
+    ).rejects.toMatchObject({ code: "tenant_not_found" });
+  });
+
+  it("accepts its own workspace named by slug or id", async () => {
+    const guard = new TenantContextGuard(new Reflector(), resolverDouble());
+
+    for (const named of [TENANT.slug, TENANT.id]) {
+      await expect(
+        runWithTenantContext(() =>
+          guard.canActivate(
+            contextFor(
+              ServiceRoutes,
+              ServiceRoutes.prototype.read,
+              serviceRequest(["api.read"], { method: "GET", headers: { "x-ouro-tenant": named } }),
+            ),
+          ),
+        ),
+      ).resolves.toBe(true);
+    }
   });
 });

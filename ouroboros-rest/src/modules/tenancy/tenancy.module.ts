@@ -4,6 +4,8 @@ import { APP_GUARD } from "@nestjs/core";
 import { DbModule } from "../db/db.module";
 import { WorkspaceFreezeGuard } from "../lifecycle/lifecycle.freeze.guard";
 import { LifecycleStateModule } from "../lifecycle/lifecycle-state.module";
+import { CapabilityGuard } from "./capabilities";
+import { CapabilityRepository } from "./capability.repository";
 import { ConstraintViolationInterceptor } from "./constraints";
 import { DomainsController } from "./domains.controller";
 import { DomainsRepository } from "./domains.repository";
@@ -81,12 +83,16 @@ import { TenantResolver } from "./tenant.resolver";
     // registered. `tenancy.module.spec.ts` asserts the consequence rather than the order.
     { provide: APP_GUARD, useClass: TenantContextGuard },
     { provide: APP_GUARD, useClass: RolesGuard },
+    // After the role check: a route's capability (#485, `capabilities.ts`) is asked only of a
+    // caller whose role already reaches it.
+    { provide: APP_GUARD, useClass: CapabilityGuard },
     // Third, and after both: a workspace pending deletion (BR.5, #489) is frozen behind the
     // recovery screen, which needs the membership the first guard resolved.
     { provide: APP_GUARD, useExisting: WorkspaceFreezeGuard },
     // `organization` and `member` — the library's tables, read-only here, and what both the
     // tenant context and `GET /api/v1/orgs` are built on.
     OrganizationRepository,
+    CapabilityRepository,
     DomainsRepository,
     // `github_orgs` and `github_repos` — V003's enablement pair, re-parented by V006.
     EnablementRepository,

@@ -41,6 +41,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import type { SessionUser } from "../auth/principal";
+import type { ServicePrincipal } from "../auth/service.principal";
 import type { Organization, OrganizationRole } from "../db/schema";
 
 /**
@@ -86,6 +87,11 @@ export interface TenantContextStore {
   user?: SessionUser;
   /** The tenant this request is operating in, and the role that lets it. */
   membership?: ActiveMembership;
+  /**
+   * The service account a request authenticated as (#485), instead of a person. Set with a
+   * role-less membership of the account's workspace; `user` stays unset.
+   */
+  service?: ServicePrincipal;
 }
 
 /**
@@ -163,4 +169,13 @@ export function currentMembership(): ActiveMembership | undefined {
  */
 export function currentUser(): SessionUser | undefined {
   return tenantContext()?.user;
+}
+
+/**
+ * The service account the current request authenticated as (#485).
+ *
+ * @returns The principal, or `undefined` for a person's request and outside a request.
+ */
+export function currentService(): ServicePrincipal | undefined {
+  return tenantContext()?.service;
 }

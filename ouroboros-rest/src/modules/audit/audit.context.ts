@@ -57,6 +57,11 @@ import { AsyncLocalStorage } from "node:async_hooks";
 export interface AuditContextStore {
   /** The client address, already normalised. `undefined` when none was knowable. */
   address?: string;
+  /**
+   * The service account the request authenticated as (#485), set by the tenant guard once the
+   * token is accepted. `undefined` on every session-authenticated request.
+   */
+  service?: string;
 }
 
 /**
@@ -144,4 +149,30 @@ export function runWithAuditContext<T>(address: string | undefined, work: () => 
  */
 export function currentClientAddress(): string | undefined {
   return storage.getStore()?.address;
+}
+
+/**
+ * Attribute the rest of this request to a service account (#485).
+ *
+ * Called by the tenant guard after a service token is accepted — never by a domain — so every
+ * event the request records with no person behind it reads `service:<name>` rather than the
+ * system. Outside a request (no store) it does nothing, like a background job's address.
+ *
+ * @param name - The service account's name, e.g. `devops-bot`.
+ */
+export function setAuditServiceActor(name: string): void {
+  const store = storage.getStore();
+
+  if (store !== undefined) {
+    store.service = name;
+  }
+}
+
+/**
+ * Which service account this request authenticated as.
+ *
+ * @returns The account's name, or `undefined` for a person's request and outside a request.
+ */
+export function currentServiceActor(): string | undefined {
+  return storage.getStore()?.service;
 }

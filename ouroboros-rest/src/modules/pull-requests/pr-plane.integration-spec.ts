@@ -718,6 +718,8 @@ describe("the PR plane, on the application's own services", () => {
       );
 
       await api.join(at.org, member, "member");
+      // Granted explicitly (#485), so what refuses below is the merge policy, not the capability.
+      await api.capability(at.org, member, true);
       // No run, so no pinned workflow to auto-merge under: arming is an administrator's.
       await api.sql.query(`update ${SCHEMA_NAME}.pull_requests set run_id = null where id = $1`, [
         at.prId,

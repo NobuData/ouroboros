@@ -60,6 +60,7 @@ import { DbModule } from "../db/db.module";
 import { GithubCredentialStore } from "../github/github.secrets";
 import { ProviderCredentialStore } from "../registry/registry.secrets";
 import { RegistryModule } from "../registry/registry.module";
+import { ServiceTokenHintStore } from "../service-accounts/service-accounts.secrets";
 import { KEY_WRAPPER } from "./key.wrapper";
 import { MasterKeyWrapper } from "./master.key.wrapper";
 import { VAULT_SECRET_STORES, VaultRotation, type VaultSecretStore } from "./vault.rotation";
@@ -77,7 +78,11 @@ import { VaultService } from "./vault.service";
  * construct them, and naming them here is what makes "which modules hold a sealed value" one
  * readable list instead of a factory argument list nobody can grep for.
  */
-export const REGISTERED_SECRET_STORES = [ProviderCredentialStore, GithubCredentialStore] as const;
+export const REGISTERED_SECRET_STORES = [
+  ProviderCredentialStore,
+  GithubCredentialStore,
+  ServiceTokenHintStore,
+] as const;
 
 @Module({
   imports: [DbModule, RegistryModule],
@@ -85,6 +90,8 @@ export const REGISTERED_SECRET_STORES = [ProviderCredentialStore, GithubCredenti
     // Named here rather than reached through `GithubModule`, which imports this one. See the
     // header on `REGISTERED_SECRET_STORES`.
     GithubCredentialStore,
+    // V091's sealed token hints (#485) — named here for `GithubCredentialStore`'s reason.
+    ServiceTokenHintStore,
     VaultRepository,
     VaultService,
     VaultRotation,

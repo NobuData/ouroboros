@@ -650,6 +650,28 @@ export class ApiHarness {
   }
 
   /**
+   * Set a member's `can_approve_loops` explicitly (#485), as `PATCH /settings/members/:id` does,
+   * without going through the route — for a scene that needs the capability rather than tests it.
+   *
+   * @param organizationId - The workspace.
+   * @param person - A member of it.
+   * @param canApproveLoops - The explicit setting.
+   */
+  async capability(
+    organizationId: string,
+    person: Person,
+    canApproveLoops: boolean,
+  ): Promise<void> {
+    await this.sql.query(
+      `insert into ${SCHEMA_NAME}.member_capabilities (member_id, organization_id, can_approve_loops)
+       select m."id", m."organizationId", $3 from ${SCHEMA_NAME}.member m
+        where m."organizationId" = $1 and m."userId" = $2
+       on conflict (member_id) do update set can_approve_loops = excluded.can_approve_loops`,
+      [organizationId, person.id, canApproveLoops],
+    );
+  }
+
+  /**
    * Create a workspace, owned by somebody.
    *
    * Directly rather than over the API, and that is a change #714 forced rather than chose:

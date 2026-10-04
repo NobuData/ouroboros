@@ -503,6 +503,19 @@
 #   the matched fact is the workspace's own      drop fact_suppressions_matched_fact_fk
 #   a suppression is never revised               drop the fact_suppressions_no_update trigger
 #
+# #485 (BR.1, V091) adds service accounts, hash-only tokens and the service audit actor. One
+# probe per rule a later change could quietly lose:
+#
+#   V091 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a token is stored as its hash, never itself  drop service_tokens_hash_hex
+#   scopes come from the registered allow-list   drop service_accounts_scopes_registered
+#   one live token per account                   drop service_tokens_one_live_idx
+#   a person or a service account, never both   drop audit_events_actor_exclusive
+#   a person's event is never re-attributed to   rewrite audit_events_refuse_update() to the
+#     a service account while clearing them
+#                                                  V022 column list, without actor_service
+#
 # #409 (BE.5) seeds mockup 14 and adds a probe per `ci/db` scope bullet the BE.1–BE.3 rows above
 # leave unwatched — each one a *subtler* loss than dropping the rule outright:
 #
@@ -2092,6 +2105,41 @@ expect_red 'one outlier may swing the calibration factor unbounded' \
   'create or replace function ouroboros.analyzer_calibration_contribution(
      p_measured_delta numeric, p_raw numeric)
    returns numeric language sql immutable as $$ select round(p_measured_delta, 6) $$;'
+
+
+expect_red 'a service token may be stored as itself' \
+  'a token is stored as its SHA-256 and never as itself' \
+  'alter table ouroboros.service_tokens drop constraint service_tokens_hash_hex;'
+
+expect_red 'a service account may hold a scope nobody enforces' \
+  'a scope nobody enforces cannot be stored' \
+  'alter table ouroboros.service_accounts drop constraint service_accounts_scopes_registered;'
+
+expect_red 'an account may hold two live tokens' \
+  'one live token per account' \
+  'drop index ouroboros.service_tokens_one_live_idx;'
+
+expect_red 'an event may name a person and a service account at once' \
+  'never both' \
+  'alter table ouroboros.audit_events drop constraint audit_events_actor_exclusive;'
+
+expect_red "a person's event may be re-attributed to a service account" \
+  'cannot be re-attributed to a service account' \
+  'create or replace function ouroboros.audit_events_refuse_update() returns trigger
+   language plpgsql as $$
+   begin
+     if new.actor_id is null and old.actor_id is not null
+        and row(new.id, new.organization_id, new.action, new.subject_type,
+            new.subject_id, new.ip, new.detail, new.occurred_at)
+        is not distinct from
+        row(old.id, old.organization_id, old.action, old.subject_type,
+            old.subject_id, old.ip, old.detail, old.occurred_at)
+     then
+       return new;
+     end if;
+     raise exception $m$audit_events is append-only$m$ using errcode = $m$restrict_violation$m$;
+   end;
+   $$;'
 
 
 printf '\n'

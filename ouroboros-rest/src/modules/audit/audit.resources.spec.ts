@@ -14,6 +14,7 @@ const ROW: AuditEventRow = {
   id: "b2000000-0000-0000-0000-000000000001",
   actor_id: "5eed0003-0000-4000-8000-000000000001",
   actor_name: "Ken Suenobu",
+  actor_service: null,
   action: "provider.rotated",
   subject_type: "provider_connection",
   subject_id: "5eed000c-0000-4000-8000-000000000001",
@@ -23,13 +24,15 @@ const ROW: AuditEventRow = {
 };
 
 describe("rendering one event", () => {
-  it("publishes exactly nine fields, and the workspace is not one of them", () => {
+  it("publishes exactly eleven fields, and the workspace is not one of them", () => {
     // The caller's workspace is the caller's session, so echoing it into every row of every
     // page would be telling a client something it supplied.
     expect(Object.keys(auditEventResource(ROW)).sort()).toEqual([
       "action",
       "actorId",
+      "actorKind",
       "actorName",
+      "actorService",
       "detail",
       "id",
       "ip",
@@ -60,7 +63,31 @@ describe("rendering one event", () => {
       subject_type: "run",
     };
 
-    expect(auditEventResource(lease)).toMatchObject({ actorId: null, actorName: null });
+    expect(auditEventResource(lease)).toMatchObject({
+      actorId: null,
+      actorName: null,
+      actorKind: "system",
+      actorService: null,
+    });
+  });
+
+  it("names a person's event as a user's", () => {
+    expect(auditEventResource(ROW)).toMatchObject({ actorKind: "user", actorService: null });
+  });
+
+  it("names a service-authenticated event service:<name>, distinct from a person (#485)", () => {
+    const bot: AuditEventRow = {
+      ...ROW,
+      actor_id: null,
+      actor_name: null,
+      actor_service: "devops-bot",
+    };
+
+    expect(auditEventResource(bot)).toMatchObject({
+      actorId: null,
+      actorKind: "service",
+      actorService: "devops-bot",
+    });
   });
 
   it("renders an event whose subject is gone", () => {

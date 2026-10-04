@@ -19,11 +19,30 @@
 import { Injectable, type CanActivate, type ExecutionContext } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 
+import { setAuditServiceActor } from "../audit/audit.context";
 import { isAnonymous } from "../auth/anonymous";
 import { activeOrganizationOf, principalOf, type PrincipalRequest } from "../auth/principal";
+import {
+  servicePrincipalOf,
+  type ServicePrincipal,
+  type ServiceRequest,
+} from "../auth/service.principal";
+import {
+  HUMAN_ONLY,
+  SERVICE_SCOPE,
+  serviceAccess,
+  servicePrincipalRefused,
+  serviceScopeMissing,
+  type ServiceScopeName,
+} from "../auth/service.scopes";
+import type { OrganizationRole } from "../db/schema";
+import { REQUIRED_ROLES } from "./roles.guard";
+import { tenantNotFound } from "./tenancy.errors";
 import { setTenantContext } from "./tenant.context";
 import { TENANT_OPTIONAL } from "./tenant.decorators";
 import {
+  headerReference,
+  pathReference,
   pathTenantIsMalformed,
   TenantResolver,
   type TenantHeaders,
@@ -36,7 +55,8 @@ import {
  * `params` is populated by the router before any guard runs, which is what makes the
  * `{orgId}` in a path available here rather than only in a handler.
  */
-export interface TenantRequest extends PrincipalRequest {
+export interface TenantRequest extends PrincipalRequest, Omit<ServiceRequest, "headers"> {
+  method?: string;
   headers?: TenantHeaders & { cookie?: string };
   params?: TenantParameters;
 }
@@ -71,6 +91,15 @@ export class TenantContextGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<TenantRequest>();
+    const service = servicePrincipalOf(request);
+
+    // A service token, not a session (#485): its workspace is its account's, and its scopes
+    // decide the route before any role check runs.
+    if (service !== undefined) {
+      this.admitService(context, request, service);
+      return true;
+    }
+
     const principal = principalOf(request);
 
     // Unreachable through the pipeline: a route that is not `@AllowAnonymous()` and carries
@@ -117,6 +146,69 @@ export class TenantContextGuard implements CanActivate {
     setTenantContext({ membership });
 
     return true;
+  }
+
+  /**
+   * Admit a service principal: check its scope for this route, refuse a request naming another
+   * workspace, then establish its account's workspace as the tenant and its name as the audit
+   * actor.
+   *
+   * The membership carries **no roles** — a service account is not a member. `RolesGuard` skips
+   * service requests because the scope check here already decided, and `CapabilityGuard`
+   * refuses them, since no service account holds a person's approval capability.
+   *
+   * @param context - The request.
+   * @param request - Its headers, parameters and method.
+   * @param service - The authenticated service principal.
+   * @throws {ForbiddenError} `service_scope_missing` (naming the scope) or
+   *   `service_principal_refused`.
+   * @throws {NotFoundError} `tenant_not_found` — the path or header named another workspace.
+   */
+  private admitService(
+    context: ExecutionContext,
+    request: TenantRequest,
+    service: ServicePrincipal,
+  ): void {
+    const access = serviceAccess(
+      {
+        method: request.method ?? "GET",
+        declaredScope: this.metadata<ServiceScopeName>(context, SERVICE_SCOPE),
+        humanOnly: this.isExempt(context, HUMAN_ONLY),
+        tenantOptional: this.isExempt(context, TENANT_OPTIONAL),
+        roles: this.metadata<OrganizationRole[]>(context, REQUIRED_ROLES),
+      },
+      service.scopes,
+    );
+
+    if (!access.allowed) {
+      throw access.reason === "scope_missing"
+        ? serviceScopeMissing(access.scope)
+        : servicePrincipalRefused();
+    }
+
+    const tenant = service.organization;
+    const named = pathReference(request.params) ?? headerReference(request.headers);
+
+    if (named !== undefined && named.value !== tenant.id && named.value !== tenant.slug) {
+      throw tenantNotFound(named.value);
+    }
+
+    setTenantContext({ membership: { tenant, roles: [] }, service });
+    setAuditServiceActor(service.name);
+  }
+
+  /**
+   * Read a route's metadata, handler first.
+   *
+   * @param context - The request.
+   * @param key - The metadata key.
+   * @returns The value, or `undefined`.
+   */
+  private metadata<T>(context: ExecutionContext, key: string): T | undefined {
+    return this.reflector.getAllAndOverride<T | undefined>(key, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
   }
 
   /**

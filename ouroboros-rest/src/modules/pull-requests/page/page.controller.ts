@@ -9,7 +9,8 @@
  * **Roles.** Reading is every member's, a `viewer` included. The head actions — *Return to loop*,
  * *Request human review* and approving or declining — and resolving a review-thread entry (#368)
  * are a contributor's: `owner`, `admin` or
- * `member`, as a steer (AP.4) and a criterion's verification (#359) are.
+ * `member`, as a steer (AP.4) and a criterion's verification (#359) are. Approving or declining
+ * also requires the member's `can_approve_loops` capability (#485, `tenancy/capabilities.ts`).
  *
  * **`200` throughout** — the actions answer what they did and the re-evaluated state.
  */
@@ -17,6 +18,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Post, Query } from "@nestjs/common";
 
 import type { Organization } from "../../db/schema";
+import { RequiresCapability } from "../../tenancy/capabilities";
 import { CONTRIBUTORS, Roles } from "../../tenancy/roles.guard";
 import { currentUser, type ActiveMembership } from "../../tenancy/tenant.context";
 import { CurrentMember, CurrentTenant } from "../../tenancy/tenant.decorators";
@@ -142,6 +144,7 @@ export class PageController {
   @Post(":id/approvals")
   @HttpCode(HttpStatus.OK)
   @Roles(...CONTRIBUTORS)
+  @RequiresCapability("can_approve_loops")
   decide(
     @CurrentMember() member: ActiveMembership,
     @Param() params: PullRequestParams,

@@ -30680,6 +30680,131 @@ select pg_temp.must_hold(
   're-analysis leaves a dismissed suggestion''s confidence and basis as they were dismissed');
 
 -- ===========================================================================
+-- V091 — member capabilities, service accounts and hash-only tokens (#485, BR.1)
+-- ===========================================================================
+--
+-- What the Members & Roles card stands on: an explicit per-member capability that dies with
+-- its membership, service accounts whose scopes are a registered allow-list, tokens stored as a
+-- hash and a sealed hint with at most one live per account, and an audit actor kind that can
+-- never sit beside a person or be rewritten.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt", "metadata")
+  values ('org-v091', 'V091 Workspace', 'v091-workspace', now(), null);
+insert into ouroboros."user" ("id", "name", "email", "emailVerified", "image")
+  values ('v0910000-user', 'V091 Person', 'v091@acme-robotics.dev', true, null);
+insert into ouroboros.member ("id", "organizationId", "userId", "role", "createdAt")
+  values ('mem-v091-ken', 'org-v091', 'v0910000-user', 'admin', now());
+
+-- --- member_capabilities -------------------------------------------------------
+insert into ouroboros.member_capabilities (member_id, organization_id, can_approve_loops)
+  values ('mem-v091-ken', 'org-v091', false);
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.member_capabilities (member_id, organization_id, can_approve_loops)
+    values ('mem-v091-ken', 'org-v091', true)$$,
+  'one capability row per member — an update replaces it', 'member_capabilities_pkey');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.member_capabilities (member_id, organization_id, can_approve_loops)
+    values ('mem-nobody', 'org-v091', true)$$,
+  'a capability belongs to a real membership', 'member_capabilities_member_id_fkey');
+
+delete from ouroboros.member where "id" = 'mem-v091-ken';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.member_capabilities where member_id = 'mem-v091-ken'),
+  'a capability dies with its membership, so a re-invited person starts from the role default');
+
+-- --- service_accounts ------------------------------------------------------------
+insert into ouroboros.service_accounts (id, organization_id, name, scopes)
+  values ('a9100000-0000-4000-8000-000000000001', 'org-v091', 'devops-bot', '["api.read", "farm.submit"]');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.service_accounts (organization_id, name, scopes)
+    values ('org-v091', 'devops-bot', '[]')$$,
+  'a service account name is unique in its workspace — it is an audit identity', 'service_accounts_name_unique');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.service_accounts (organization_id, name, scopes)
+    values ('org-v091', 'Devops Bot', '[]')$$,
+  'a service account name prints cleanly after service:', 'service_accounts_name_grammar');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.service_accounts (organization_id, name, scopes)
+    values ('org-v091', 'admin-bot', '["admin.everything"]')$$,
+  'a scope nobody enforces cannot be stored', 'service_accounts_scopes_registered');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.service_accounts (organization_id, name, scopes)
+    values ('org-v091', 'odd-bot', '{"api.read": true}')$$,
+  'scopes are a list', 'service_accounts_scopes_array');
+
+-- --- service_tokens ---------------------------------------------------------------
+insert into ouroboros.service_tokens (organization_id, service_account_id, token_hash, hint_sealed)
+  values ('org-v091', 'a9100000-0000-4000-8000-000000000001', repeat('a', 64), 'ouro.v1.1.n.c');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.service_tokens (organization_id, service_account_id, token_hash, hint_sealed)
+    values ('org-v091', 'a9100000-0000-4000-8000-000000000001', repeat('b', 64), 'ouro.v1.1.n.c')$$,
+  'one live token per account — rotation revokes before it inserts', 'service_tokens_one_live_idx');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.service_tokens (organization_id, service_account_id, token_hash, hint_sealed, revoked_at)
+    values ('org-v091', 'a9100000-0000-4000-8000-000000000001', 'orb_svc_plaintext', 'ouro.v1.1.n.c', now())$$,
+  'a token is stored as its SHA-256 and never as itself', 'service_tokens_hash_hex');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.service_tokens (organization_id, service_account_id, token_hash, hint_sealed, revoked_at)
+    values ('org-v091', 'a9100000-0000-4000-8000-000000000001', repeat('c', 64), 'orb_svc_ab12', now())$$,
+  'the hint is sealed under the vault, never stored in the clear', 'service_tokens_hint_envelope');
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from information_schema.columns
+    where table_schema = 'ouroboros' and table_name = 'service_tokens'
+      and column_name not in ('id', 'organization_id', 'service_account_id', 'token_hash', 'hint_sealed',
+                              'created_by', 'created_at', 'last_used_at', 'revoked_at')),
+  'service_tokens has no column that could hold the token itself');
+
+-- --- audit_events.actor_service --------------------------------------------------
+insert into ouroboros.audit_events (id, organization_id, actor_service, action, subject_type)
+  values ('b2000000-0000-0000-0000-000000091001', 'org-v091', 'devops-bot', 'runner.job_submitted', 'build_job');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, actor_id, actor_service, action, subject_type)
+    values ('org-v091', 'v0910000-user', 'devops-bot', 'runner.job_submitted', 'build_job')$$,
+  'an event is attributed to a person or to a service account, never both', 'audit_events_actor_exclusive');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.audit_events (organization_id, actor_service, action, subject_type)
+    values ('org-v091', 'Not A Name', 'runner.job_submitted', 'build_job')$$,
+  'a service actor is an account name', 'audit_events_actor_service_grammar');
+
+select pg_temp.must_raise(
+  $$update ouroboros.audit_events set actor_service = 'other-bot'
+     where id = 'b2000000-0000-0000-0000-000000091001'$$,
+  '23001',
+  'a service event cannot be renamed to another account');
+
+-- The one update V022 permits is clearing a person. V091 adds actor_service to the columns that
+-- update must leave untouched — otherwise clearing the person and naming a bot in one statement
+-- would hand a person's action to a service account.
+insert into ouroboros.audit_events (id, organization_id, actor_id, action, subject_type)
+  values ('b2000000-0000-0000-0000-000000091002', 'org-v091', 'v0910000-user', 'runner.job_submitted', 'build_job');
+
+select pg_temp.must_raise(
+  $$update ouroboros.audit_events set actor_id = null, actor_service = 'devops-bot'
+     where id = 'b2000000-0000-0000-0000-000000091002'$$,
+  '23001',
+  'a person''s event cannot be re-attributed to a service account under cover of clearing the person');
+
+-- --- the purge reaches all three ---------------------------------------------------
+delete from ouroboros.organization where "id" = 'org-v091';
+
+select pg_temp.must_hold(
+  (select count(*) = 0 from ouroboros.service_accounts where organization_id = 'org-v091')
+   and (select count(*) = 0 from ouroboros.service_tokens where organization_id = 'org-v091'),
+  'service accounts and their tokens cascade with their workspace');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --

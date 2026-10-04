@@ -456,7 +456,11 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-twentieth to twenty-second are V090's `workspace_lifecycle`,
     // `audit_event_outbox` and `workspace_tombstones` (BR.5, #489) — the organization state every
     // dispatch point consults, the `audit.*` events awaiting delivery, and what a purge leaves.
-    expect(TABLE_NAMES).toHaveLength(122);
+    //
+    // The hundred-and-twenty-third to twenty-seventh are BR.1's (#485): BetterAuth's `session`
+    // and `invitation`, mirrored read-only for the Members card, and V091's
+    // `member_capabilities`, `service_accounts` and `service_tokens`.
+    expect(TABLE_NAMES).toHaveLength(127);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {
@@ -494,6 +498,8 @@ describe("TABLE_COLUMNS", () => {
       "ip",
       "detail",
       "occurred_at",
+      // V091 (#485): the service account a request authenticated as.
+      "actor_service",
     ]);
   });
 

@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.38.17"
+  version: "0.39.0"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -130,6 +130,7 @@ servers:
 # forgetting would be silent in both places at once.
 security:
   - ouroSession: []
+  - ouroService: []
 
 tags:
   - name: service
@@ -657,6 +658,17 @@ tags:
       decision **O1**) — one surface that derives the four-step rail from subsystem truth,
       stores the wizard's choices per repository, guards completion, and offers an honest
       import-skip.
+  - name: members
+    description: |-
+      **Members & Roles** (mockup 17, issue [#485](https://github.com/NobuData/ouroboros/issues/485),
+      decision S3) — the members card over the organization plugin: S3 display roles, the
+      enforced `can_approve_loops` capability, invitations, role changes with last-owner
+      protection. Every write goes through the plugin with the caller's session and is audited.
+  - name: service-accounts
+    description: |-
+      **Service accounts** ([#485](https://github.com/NobuData/ouroboros/issues/485)) — non-human
+      principals with hash-only, scoped bearer tokens (`ouroService`), shown once, rotatable and
+      revocable. Requests they authenticate are audited as `service:<name>`.
   - name: lifecycle
     description: |-
       **The workspace lifecycle** (mockup 17's Danger zone, issue
@@ -6610,6 +6622,698 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/settings/members:
+    get:
+      tags: [members]
+      summary: The Members & Roles card
+      description: |-
+        Mockup 17's members table ([#485](https://github.com/NobuData/ouroboros/issues/485),
+        decision S3) — **every column is data the API enforces**:
+
+        - `roles` are the organization plugin's (`owner | admin | member | viewer`) and remain
+          the enforcement; `displayRole` maps them for the card (`owner → Owner`,
+          `admin → Maintainer`, `member`/`viewer → Viewer`). There is no second role table.
+        - `canApproveLoops` is what the PR plane's approve, waive, arm and merge routes check
+          (`403 capability_required` when false). It defaults by role (owner and admin yes,
+          member and viewer no) until an administrator sets it; `canApproveLoopsSource` says
+          which.
+        - `lastActiveAt` is the person's newest session activity, `null` (rendered `—`) when
+          there is none — never a guess.
+        - Pending invitations carry a real `invitedAt` (a resend does not move it).
+        - Service accounts appear as `Service` rows, named `service:<name>` as the audit trail
+          names them. No token or hint is ever part of this response.
+
+        `footer.directorySync` is **`null` until SCIM group sync (BT.1) exists and syncs** — the
+        card must not claim offboarding is automated when it is manual.
+
+        Any member may read it. **People only**: a service token is refused
+        (`403 service_principal_refused`), because the card answers *which row is you*.
+      operationId: readMembers
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The card.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MembersPage"
+              example:
+                members:
+                  - id: mem_ken
+                    userId: aBcD1234eFgH5678iJkL9012mNoP3456
+                    name: Ken Suenobu
+                    email: ken@acme.dev
+                    image: null
+                    roles: [owner]
+                    displayRole: Owner
+                    you: true
+                    canApproveLoops: true
+                    canApproveLoopsSource: role
+                    lastActiveAt: "2026-10-03T11:58:00.000Z"
+                    joinedAt: "2026-08-01T09:00:00.000Z"
+                  - id: mem_maya
+                    userId: zYxW9876vUtS5432rQpO1098nMlK7654
+                    name: Maya Chen
+                    email: maya@acme.dev
+                    image: null
+                    roles: [admin]
+                    displayRole: Maintainer
+                    you: false
+                    canApproveLoops: true
+                    canApproveLoopsSource: role
+                    lastActiveAt: null
+                    joinedAt: "2026-08-02T09:00:00.000Z"
+                invitations:
+                  - id: inv_priya
+                    email: priya@acme.dev
+                    roles: [member]
+                    displayRole: Viewer
+                    invitedAt: "2026-10-03T10:00:00.000Z"
+                    expiresAt: "2026-10-05T10:00:00.000Z"
+                    expired: false
+                serviceAccounts:
+                  - id: 5eed0091-0000-4000-8000-000000000001
+                    name: devops-bot
+                    actor: "service:devops-bot"
+                    displayRole: Service
+                    scopes: [farm.submit, api.read]
+                    canApproveLoops: false
+                    lastActiveAt: "2026-10-03T11:40:00.000Z"
+                canManage: true
+                footer:
+                  hierarchy: Owner > Maintainer (approve/merge) > Viewer (read-only)
+                  directorySync: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour. `service_token_invalid` — a service token that was rotated, revoked or never
+            existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `service_principal_refused` — a service token; this card is for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/members/invitations:
+    post:
+      tags: [members]
+      summary: Invite somebody
+      description: |-
+        Composes the organization plugin's invitation (`createInvitation`) **with the caller's
+        own session**, so the plugin's permission check is the enforcement (an admin cannot
+        invite an owner, for instance). No email is sent yet — delivery is
+        [#724](https://github.com/NobuData/ouroboros/issues/724). Audited as `member.invited`
+        (the role, never the address). Owners and admins only.
+      operationId: inviteMember
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteMemberRequest"
+            example:
+              email: priya@acme.dev
+              role: member
+      responses:
+        "201":
+          description: The pending invitation.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberInvitation"
+              example:
+                id: inv_priya
+                email: priya@acme.dev
+                roles: [member]
+                displayRole: Viewer
+                invitedAt: "2026-10-03T10:00:00.000Z"
+                expiresAt: "2026-10-05T10:00:00.000Z"
+                expired: false
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is malformed. `member_directory_refused` — the plugin
+            refused (already invited, already a member); `details.reason` carries its code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/members/invitations/{id}/resend:
+    post:
+      tags: [members]
+      summary: Resend a pending invitation
+      description: |-
+        The plugin's `createInvitation` with `resend: true`: the expiry is refreshed; `invitedAt`
+        stays the original instant. Audited as `member.invitation_resent`. Owners and admins only.
+      operationId: resendMemberInvitation
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/InvitationId"
+      responses:
+        "200":
+          description: The invitation, with its new expiry.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MemberInvitation"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `invitation_not_found` — no such invitation in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `invitation_not_pending` — it was already accepted, rejected or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/members/invitations/{id}:
+    delete:
+      tags: [members]
+      summary: Revoke a pending invitation
+      description: |-
+        The plugin's `cancelInvitation`. Audited as `member.invitation_revoked`. Owners and admins
+        only.
+      operationId: revokeMemberInvitation
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/InvitationId"
+      responses:
+        "204":
+          description: Revoked.
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `invitation_not_found` — no such invitation in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `invitation_not_pending` — it was already accepted, rejected or revoked.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/members/{memberId}:
+    patch:
+      tags: [members]
+      summary: Change a member's role and/or approval capability
+      description: |-
+        - **`role`** goes through the plugin's `updateMemberRole` with the caller's session, and
+          is audited as `member.role_changed` with `before`/`after`. **The last owner cannot be
+          demoted** — `409 owner_protected`, and the refused attempt is audited too.
+        - **`canApproveLoops`** is stored as an explicit setting and audited as
+          `member.capability_changed`. An explicit setting **survives later role changes**; a
+          member never set keeps following their role's default.
+
+        Owners and admins only.
+      operationId: updateMember
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/MemberId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateMemberRequest"
+            example:
+              canApproveLoops: false
+      responses:
+        "200":
+          description: The member afterwards.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Member"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `workspace_member_not_found` — no such member of this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `owner_protected` — this is the workspace's last owner; `details.attempt` is `demote`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body is malformed. `member_update_empty` — it names nothing to
+            change. `member_directory_refused` — the plugin refused the role change.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    delete:
+      tags: [members]
+      summary: Remove a member
+      description: |-
+        The plugin's `removeMember`, with the caller's session. **The last owner cannot be
+        removed** — `409 owner_protected`, audited. Audited as `member.removed`. Owners and
+        admins only.
+      operationId: removeMember
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/MemberId"
+      responses:
+        "204":
+          description: Removed.
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `workspace_member_not_found` — no such member of this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `owner_protected` — this is the workspace's last owner; `details.attempt` is `remove`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `member_directory_refused` — the plugin refused; `details.reason` carries its code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/service-accounts:
+    get:
+      tags: [service-accounts]
+      summary: List service accounts
+      description: |-
+        Non-human principals ([#485](https://github.com/NobuData/ouroboros/issues/485)) — newest
+        first, each with its live token's **masked hint** (`orb_svc_••••ab12`), creation and last
+        use. **No token is ever returned here**: tokens are stored hash-only and shown once, by
+        create and rotate. `scopes` is the registered allow-list. Owners and admins only.
+      operationId: listServiceAccounts
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The accounts and the allow-list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceAccountList"
+              example:
+                items:
+                  - id: 5eed0091-0000-4000-8000-000000000001
+                    name: devops-bot
+                    actor: "service:devops-bot"
+                    scopes: [farm.submit, api.read]
+                    createdAt: "2026-10-01T09:00:00.000Z"
+                    createdBy: aBcD1234eFgH5678iJkL9012mNoP3456
+                    disabledAt: null
+                    token:
+                      hint: "orb_svc_••••ab12"
+                      createdAt: "2026-10-01T09:00:00.000Z"
+                      lastUsedAt: "2026-10-03T11:40:00.000Z"
+                scopes:
+                  - scope: api.read
+                    description: Read any workspace resource a viewer may read (GET requests).
+                  - scope: farm.submit
+                    description: Submit and cancel build-farm jobs (POST /farm/jobs).
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [service-accounts]
+      summary: Create a service account
+      description: |-
+        Creates the account and its first token. **The response is the only time the token is
+        ever returned** — copy it now; the database holds only its SHA-256 and a vault-sealed
+        masked hint. Use it as `Authorization: Bearer orb_svc_…`; requests it authenticates are
+        audited as `service:<name>`. Audited as `service_account.created`. Owners and admins only.
+      operationId: createServiceAccount
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateServiceAccountRequest"
+            example:
+              name: devops-bot
+              scopes: [farm.submit, api.read]
+      responses:
+        "201":
+          description: The account and its token, shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceAccountSecret"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `tenant_not_found` — no such workspace, or none you are a member of.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `service_account_name_taken` — the workspace already has an account of this name.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a malformed name, or a scope not on the allow-list.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/service-accounts/{id}/rotate:
+    post:
+      tags: [service-accounts]
+      summary: Rotate a service account's token
+      description: |-
+        Revokes the live token and mints a new one **in one transaction**: the pre-rotation token
+        stops authenticating the moment this answers. The new token is shown once. Audited as
+        `service_account.rotated`. Owners and admins only.
+      operationId: rotateServiceAccount
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/ServiceAccountId"
+      responses:
+        "200":
+          description: The account and its new token, shown once.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceAccountSecret"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `service_account_not_found` — no such account in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `service_account_disabled` — it was revoked; create a new one instead.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/settings/service-accounts/{id}/revoke:
+    post:
+      tags: [service-accounts]
+      summary: Revoke a service account
+      description: |-
+        Its live token dies and the account is disabled; it authenticates nothing from now on.
+        Idempotent. Audited as `service_account.revoked`. Owners and admins only.
+      operationId: revokeServiceAccount
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - $ref: "#/components/parameters/ServiceAccountId"
+      responses:
+        "200":
+          description: The account, disabled and tokenless.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceAccount"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session. `service_token_invalid` — a
+            service token that was rotated, revoked or never existed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+            these routes are for people.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `service_account_not_found` — no such account in this workspace. Or `tenant_not_found`.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the id is not a uuid.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/settings/lifecycle:
     get:
       tags: [lifecycle]
@@ -14604,6 +15308,8 @@ paths:
                     occurredAt: "2026-08-24T16:13:00.000Z"
                     actorId: 5eed0003-0000-4000-8000-000000000001
                     actorName: Ken Suenobu
+                    actorKind: user
+                    actorService: null
                     action: provider.revealed
                     subjectType: provider_connection
                     subjectId: 5eed000c-0000-4000-8000-000000000001
@@ -14616,6 +15322,8 @@ paths:
                     occurredAt: "2026-08-24T15:23:00.000Z"
                     actorId: null
                     actorName: null
+                    actorKind: system
+                    actorService: null
                     action: credential.lease_granted
                     subjectType: run
                     subjectId: 5eed0009-0000-4000-8000-000000000482
@@ -28500,6 +29208,8 @@ paths:
         "403":
           description: |-
             `forbidden` — only an `owner` or `admin` — a waiver lets an unmet criterion through may do this.
+            `capability_required` — the caller lacks `can_approve_loops` (#485); an administrator
+            sets it on the Members card. `details.capability` names it.
           content:
             application/json:
               schema:
@@ -28773,6 +29483,8 @@ paths:
           description: |-
             `forbidden` — a `viewer`. `merge_not_policy_eligible` — a `member`, on a PR whose pinned
             workflow does not auto-merge.
+            `capability_required` — the caller lacks `can_approve_loops` (#485); an administrator
+            sets it on the Members card. `details.capability` names it.
           content:
             application/json:
               schema:
@@ -28937,6 +29649,8 @@ paths:
           description: |-
             `forbidden` — a `viewer`. `merge_not_policy_eligible` — a `member`, on a PR whose pinned
             workflow does not auto-merge.
+            `capability_required` — the caller lacks `can_approve_loops` (#485); an administrator
+            sets it on the Members card. `details.capability` names it.
           content:
             application/json:
               schema:
@@ -29404,6 +30118,8 @@ paths:
         "403":
           description: |-
             `forbidden` — a `viewer`. Head actions are an `owner`'s, `admin`'s or `member`'s.
+            `capability_required` — the caller lacks `can_approve_loops` (#485); an administrator
+            sets it on the Members card. `details.capability` names it.
           content:
             application/json:
               schema:
@@ -29604,6 +30320,8 @@ paths:
         "403":
           description: |-
             `forbidden` — submitting a build is `member` and above.
+            `service_scope_missing` — a service token without the `farm.submit` scope (#485);
+            `details.scope` names it.
           content:
             application/json:
               schema:
@@ -29798,6 +30516,8 @@ paths:
         "403":
           description: |-
             `forbidden` — cancelling a build is `member` and above.
+            `service_scope_missing` — a service token without the `farm.submit` scope (#485);
+            `details.scope` names it.
           content:
             application/json:
               schema:
@@ -30290,6 +31010,26 @@ components:
         `OURO_CORS_ORIGINS`, because a credentialed cross-origin request may not be
         answered with a wildcard.
 
+    ouroService:
+      type: http
+      scheme: bearer
+      bearerFormat: orb_svc_
+      description: |-
+        A service account's token ([#485](https://github.com/NobuData/ouroboros/issues/485)):
+        `Authorization: Bearer orb_svc_…`, minted by `POST /api/v1/settings/service-accounts`
+        and shown once. It acts in its own workspace only, and **its scopes are checked at the
+        route**:
+
+        - `api.read` — any workspace `GET` a viewer may make;
+        - `farm.submit` — `POST /api/v1/farm/jobs` and `POST /api/v1/farm/jobs/{id}/cancel`.
+
+        Any other route — a write that did not opt in, an owner/admin route, a read of *your*
+        view (the members card, the workspace card, the digest) — refuses it with
+        `403 service_principal_refused`; a route whose scope it lacks with
+        `403 service_scope_missing` (`details.scope` names it). A rotated, revoked or unknown
+        token is `401 service_token_invalid`. Requests it authenticates are audited as
+        `service:<name>` (`AuditEvent.actorKind: service`).
+
   # Every path parameter and the two query parameters the pagination convention defines.
   # Referenced rather than repeated: `tenantId` appears on fifteen operations, and fifteen
   # copies of a description is fifteen places for one of them to say something else.
@@ -30431,6 +31171,34 @@ components:
         maxLength: 255
         pattern: "^[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+)+$"
       example: acme-robotics/helios-firmware
+    MemberId:
+      name: memberId
+      in: path
+      required: true
+      description: A membership's id (`Member.id`) — the organization plugin's, opaque text.
+      schema:
+        type: string
+      example: mem_maya
+
+    InvitationId:
+      name: id
+      in: path
+      required: true
+      description: An invitation's id (`MemberInvitation.id`) — the organization plugin's, opaque text.
+      schema:
+        type: string
+      example: inv_priya
+
+    ServiceAccountId:
+      name: id
+      in: path
+      required: true
+      description: A service account's id.
+      schema:
+        type: string
+        format: uuid
+      example: 5eed0091-0000-4000-8000-000000000001
+
     TenantHeader:
       name: X-Ouro-Tenant
       in: header
@@ -43027,6 +43795,326 @@ components:
           type: string
           description: Where the action lives — the settings page's Danger zone card.
 
+    MembersPage:
+      type: object
+      title: MembersPage
+      description: The Members & Roles card (#485).
+      additionalProperties: false
+      required: [members, invitations, serviceAccounts, canManage, footer]
+      properties:
+        members:
+          type: array
+          items:
+            $ref: "#/components/schemas/Member"
+        invitations:
+          type: array
+          description: Pending invitations, newest first.
+          items:
+            $ref: "#/components/schemas/MemberInvitation"
+        serviceAccounts:
+          type: array
+          description: Enabled service accounts, as the card's `Service` rows.
+          items:
+            $ref: "#/components/schemas/ServiceMember"
+        canManage:
+          type: boolean
+          description: Whether the caller may invite, change roles and set capabilities (owner or admin).
+        footer:
+          $ref: "#/components/schemas/MembersFooter"
+
+    Member:
+      type: object
+      title: Member
+      description: One person in the workspace.
+      additionalProperties: false
+      required:
+        [id, userId, name, email, image, roles, displayRole, you, canApproveLoops, canApproveLoopsSource, lastActiveAt, joinedAt]
+      properties:
+        id:
+          type: string
+          description: The membership's id — what `PATCH`/`DELETE /settings/members/{memberId}` address.
+        userId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+        image:
+          type: [string, "null"]
+        roles:
+          type: array
+          description: The organization plugin's roles — the enforcement.
+          items:
+            $ref: "#/components/schemas/OrganizationRole"
+        displayRole:
+          $ref: "#/components/schemas/MemberDisplayRole"
+        you:
+          type: boolean
+          description: Whether this row is the caller.
+        canApproveLoops:
+          type: boolean
+          description: What the PR plane's approve, waive, arm and merge routes will decide.
+        canApproveLoopsSource:
+          type: string
+          enum: [explicit, role]
+          description: "`explicit` when an administrator set it (it survives role changes); `role` when it is the role's default."
+        lastActiveAt:
+          type: [string, "null"]
+          format: date-time
+          description: The person's newest session activity, or `null` — rendered `—`, never guessed.
+        joinedAt:
+          type: string
+          format: date-time
+
+    MemberDisplayRole:
+      type: string
+      title: MemberDisplayRole
+      description: |-
+        Decision S3's display mapping: `owner → Owner`, `admin → Maintainer`,
+        `member`/`viewer → Viewer`; `Service` for a service account.
+      enum: [Owner, Maintainer, Viewer, Service]
+
+    MemberInvitation:
+      type: object
+      title: MemberInvitation
+      description: A pending invitation — the card's dimmed row.
+      additionalProperties: false
+      required: [id, email, roles, displayRole, invitedAt, expiresAt, expired]
+      properties:
+        id:
+          type: string
+        email:
+          type: string
+        roles:
+          type: array
+          items:
+            $ref: "#/components/schemas/OrganizationRole"
+        displayRole:
+          $ref: "#/components/schemas/MemberDisplayRole"
+        invitedAt:
+          type: string
+          format: date-time
+          description: When it was sent — *invited 2h ago*. A resend does not move it.
+        expiresAt:
+          type: string
+          format: date-time
+        expired:
+          type: boolean
+          description: Past its expiry — it can be resent, but not accepted.
+
+    ServiceMember:
+      type: object
+      title: ServiceMember
+      description: A service account as a members-card row. Never carries a token or hint.
+      additionalProperties: false
+      required: [id, name, actor, displayRole, scopes, canApproveLoops, lastActiveAt]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        actor:
+          type: string
+          description: How the audit trail names it — `service:<name>`.
+        displayRole:
+          type: string
+          enum: [Service]
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceScopeName"
+        canApproveLoops:
+          type: boolean
+          enum: [false]
+          description: Always `false` — service accounts hold no person's approval power.
+        lastActiveAt:
+          type: [string, "null"]
+          format: date-time
+          description: When its live token last authenticated a request.
+
+    MembersFooter:
+      type: object
+      title: MembersFooter
+      additionalProperties: false
+      required: [hierarchy, directorySync]
+      properties:
+        hierarchy:
+          type: string
+          description: Rendered from the same mapping the API enforces.
+          examples: ["Owner > Maintainer (approve/merge) > Viewer (read-only)"]
+        directorySync:
+          description: The IdP group-sync line — **`null` until SCIM (BT.1) exists and syncs**.
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/DirectorySync"
+
+    DirectorySync:
+      type: object
+      title: DirectorySync
+      description: Reserved for BT.1; never produced today.
+      additionalProperties: false
+      required: [provider, groupPattern, cadence, lastSyncedAt]
+      properties:
+        provider:
+          type: string
+        groupPattern:
+          type: string
+        cadence:
+          type: string
+        lastSyncedAt:
+          type: string
+          format: date-time
+
+    InviteMemberRequest:
+      type: object
+      title: InviteMemberRequest
+      additionalProperties: false
+      required: [email, role]
+      properties:
+        email:
+          type: string
+          format: email
+        role:
+          $ref: "#/components/schemas/OrganizationRole"
+
+    UpdateMemberRequest:
+      type: object
+      title: UpdateMemberRequest
+      description: Either field, or both; at least one.
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/OrganizationRole"
+        canApproveLoops:
+          type: boolean
+          description: An explicit setting, which then survives role changes.
+
+    ServiceScopeName:
+      type: string
+      title: ServiceScopeName
+      description: |-
+        A registered service scope. `api.read` — any workspace `GET` a viewer may make;
+        `farm.submit` — `POST /farm/jobs` and its cancel. A service token outside its scopes is
+        `403 service_scope_missing` with `details.scope` naming the one it lacked.
+      enum: [api.read, farm.submit]
+
+    ServiceScope:
+      type: object
+      title: ServiceScope
+      additionalProperties: false
+      required: [scope, description]
+      properties:
+        scope:
+          $ref: "#/components/schemas/ServiceScopeName"
+        description:
+          type: string
+
+    ServiceToken:
+      type: object
+      title: ServiceToken
+      description: A live token's metadata — never the token.
+      additionalProperties: false
+      required: [hint, createdAt, lastUsedAt]
+      properties:
+        hint:
+          type: string
+          description: The masked form.
+          examples: ["orb_svc_••••ab12"]
+        createdAt:
+          type: string
+          format: date-time
+        lastUsedAt:
+          type: [string, "null"]
+          format: date-time
+
+    ServiceAccount:
+      type: object
+      title: ServiceAccount
+      additionalProperties: false
+      required: [id, name, actor, scopes, createdAt, createdBy, disabledAt, token]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{1,38}[a-z0-9]$
+        actor:
+          type: string
+          description: "`service:<name>` — how the audit trail names it."
+        scopes:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceScopeName"
+        createdAt:
+          type: string
+          format: date-time
+        createdBy:
+          type: [string, "null"]
+        disabledAt:
+          type: [string, "null"]
+          format: date-time
+          description: When it was revoked, or `null`.
+        token:
+          description: The live token's metadata, or `null` once revoked.
+          oneOf:
+            - type: "null"
+            - $ref: "#/components/schemas/ServiceToken"
+
+    ServiceAccountSecret:
+      type: object
+      title: ServiceAccountSecret
+      description: The answer to create and rotate — **the only time a token is ever returned**.
+      additionalProperties: false
+      required: [account, token]
+      properties:
+        account:
+          $ref: "#/components/schemas/ServiceAccount"
+        token:
+          type: string
+          pattern: ^orb_svc_[A-Za-z0-9_-]{43}$
+          description: The bearer token. Not stored, not retrievable — copy it now.
+
+    ServiceAccountList:
+      type: object
+      title: ServiceAccountList
+      additionalProperties: false
+      required: [items, scopes]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ServiceAccount"
+        scopes:
+          type: array
+          description: The registered allow-list.
+          items:
+            $ref: "#/components/schemas/ServiceScope"
+
+    CreateServiceAccountRequest:
+      type: object
+      title: CreateServiceAccountRequest
+      additionalProperties: false
+      required: [name, scopes]
+      properties:
+        name:
+          type: string
+          pattern: ^[a-z][a-z0-9-]{1,38}[a-z0-9]$
+          description: "`devops-bot` — 3–40 lower-case letters, digits or hyphens."
+        scopes:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items:
+            $ref: "#/components/schemas/ServiceScopeName"
+
+    OrganizationRole:
+      type: string
+      title: OrganizationRole
+      description: A role of the organization plugin — the enforcement every permission check reads.
+      enum: [owner, admin, member, viewer]
+
     WorkspaceLifecycle:
       type: object
       title: WorkspaceLifecycle
@@ -43180,7 +44268,8 @@ components:
       title: AuditEvent
       description: One thing that happened to this workspace's credentials, and who did it.
       additionalProperties: false
-      required: [id, occurredAt, actorId, actorName, action, subjectType, subjectId, ip, detail]
+      required:
+        [id, occurredAt, actorId, actorName, actorKind, actorService, action, subjectType, subjectId, ip, detail]
       properties:
         id:
           type: string
@@ -43210,6 +44299,18 @@ components:
             be a trail worth exfiltrating, and the sheet renders a person rather than a
             mailbox.
           examples: [Ken Suenobu]
+        actorKind:
+          type: string
+          enum: [user, service, system]
+          description: |-
+            Who it is attributed to ([#485](https://github.com/NobuData/ouroboros/issues/485)):
+            `user` when a person is named, `service` when a service account's token authenticated
+            the request, `system` when neither — so the audit plane can style and filter bot rows.
+          examples: [user]
+        actorService:
+          type: [string, "null"]
+          description: The service account's name when `actorKind` is `service` — rendered `service:<name>`.
+          examples: [devops-bot]
         action:
           $ref: "#/components/schemas/AuditAction"
         subjectType:
