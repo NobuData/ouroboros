@@ -454,8 +454,9 @@ describe("TABLE_COLUMNS", () => {
     // its orchestrator reads and writes.
     //
     // The hundred-and-twentieth to twenty-second are V090's `workspace_lifecycle`,
-    // `audit_event_outbox` and `workspace_tombstones` (BR.5, #489) — the organization state every
-    // dispatch point consults, the `audit.*` events awaiting delivery, and what a purge leaves.
+    // `audit_event_outbox` (renamed `webhook_outbox` by V098, #487) and `workspace_tombstones`
+    // (BR.5, #489) — the organization state every dispatch point consults, the events awaiting
+    // delivery, and what a purge leaves.
     //
     // The hundred-and-twenty-third to twenty-seventh are BR.1's (#485): BetterAuth's `session`
     // and `invitation`, mirrored read-only for the Members card, and V091's
@@ -467,7 +468,11 @@ describe("TABLE_COLUMNS", () => {
     // The hundred-and-twenty-ninth to thirty-first are the decision domain BN.1 (#461) files
     // into and closes: V093's `decision_kinds` and `decision_items`, and V095's
     // `decision_resolutions`.
-    expect(TABLE_NAMES).toHaveLength(131);
+    //
+    // The hundred-and-thirty-second and third are V094's `webhook_endpoints` and
+    // `webhook_deliveries` with V098's retry columns, mirrored by BR.3 (#487) — the endpoints
+    // the dispatcher delivers to and the per-attempt delivery log.
+    expect(TABLE_NAMES).toHaveLength(133);
   });
 
   it("mirrors the person a trail names, and only so a select can say their name", () => {

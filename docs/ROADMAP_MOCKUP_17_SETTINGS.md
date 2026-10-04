@@ -416,7 +416,7 @@ seeds: policy v7(+v6) · 5 members (owner/admin/viewer/service/pending) ·
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BR.1 | #485 ✅ | 🟢 Done | ouroboros-rest: [BR.1] Members, capabilities & service accounts | Role mapping, invites, `can_approve_loops`, sealed service tokens | mvp, settings, rest | N (after BA-A.5, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
 | BR.2 | #486 | 🟡 Open | ouroboros-rest: [BR.2] Audit plane — viewer, export & retention | Filterable queries, streamed CSV, 400d tier (delivers #26) | mvp, settings, rest | N (after AD.4 shape, BQ.3) | Y | M | ouroboros-rest |
-| BR.3 | #487 | 🟡 Open | ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming | Endpoint CRUD, signed deliveries, retries+DLQ, audit fan-out | mvp, settings, rest | N (after AD.4, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
+| BR.3 | #487 ✅ | 🟢 Done | ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming | Endpoint CRUD, signed deliveries, retries+DLQ, audit fan-out | mvp, settings, rest | N (after AD.4, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
 | BR.4 | #488 | 🟡 Open | ouroboros-rest: [BR.4] Integrations status hub & org notification routes | Composed connection truth; org-level routes (weekly report etc.) | mvp, settings, rest | N (after BN.3, BJ.4) | Y | M | ouroboros-rest |
 | BR.5 | #489 ✅ | 🟢 Done | ouroboros-rest: [BR.5] Workspace lifecycle — pause, disconnect, delete | Org states, dispatch gating, recovery window, DEK shred (S9) | mvp, settings, rest | N (after AD.1, AP/AH dispatch) | Y | L | ouroboros-rest |
 | BR.6 | #490 | 🟡 Open | ouroboros-rest: [BR.6] Settings integration tests | Policy enforcement, capabilities, audit/webhooks, lifecycle | mvp, settings, rest, ci | N (after BR.1–BR.5, BQ.2) | Y | M | ouroboros-rest |
@@ -483,7 +483,7 @@ purge: audit > 400d ─▶ tombstone counts (never silent)
 
 ### Issue BR.3 — ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming
 
-> **GitHub issue:** #487 · **Status:** 🟡 Open · **Parent epic:** #477
+> **GitHub issue:** #487 ✅ · **Status:** 🟢 Done · **Parent epic:** #477
 >
 > **Schema already shipped (#484):** V094 created `webhook_endpoints` (https, sealed `hmac_key_sealed`, registered `event_families`, one `siem` route) and `webhook_deliveries` (per-attempt log, subscribed families only) — build the pipeline over them and drain V090's `audit_event_outbox`.
 
@@ -514,6 +514,30 @@ purge: audit > 400d ─▶ tombstone counts (never silent)
 event(audit.provider.rotated) ─▶ outbox ─▶ POST https://siem.acme.dev/hook
   headers{X-Ouro-Signature: hmac, X-Ouro-Timestamp} · fail ×5 ─▶ DLQ (redeliver ▸)
 ```
+
+- **Delivered** (`ouroboros-rest` 0.39.6 `src/modules/webhooks/`; `ouroboros-db` V098; receiver
+  contract `docs/WEBHOOKS.md`). Two things were decided with the user where the issue left them
+  open.
+  - **Families — decided with the user: derive + run hooks.** V098 renames V090's outbox to
+    `webhook_outbox` and widens it to all four families. Every audit row is published as
+    `audit.<action>` in the audit row's own transaction (`AuditRepository.append`), the decision
+    and PR-verification audit actions also as `decision.*` / `pr.*`, and the run plane writes
+    `run.opened` (ingestion), `run.canceled` (console abort) and `run.merged` + `pr.merged` (merge
+    executor) in the transaction that moves the run. Registry version 1 is a literal list; a new
+    type is a new version, and an endpoint keeps its subscribed version until moved. Lifecycle's
+    per-transition outbox write was folded into the audit fan-out (only the purge, which has no
+    audit row, still writes its event directly).
+  - **Secret disclosure — decided with the user: shown once.** The server mints `whsec_…`, seals it
+    under the workspace DEK, and returns it only from create and rotate, like #485's service tokens.
+  - **Retries and the DLQ.** One pending attempt per `delivery_key` (the idempotency key), leased
+    rather than removed while sending; backoff 30 s → 1 h; dead-lettered after
+    `OURO_WEBHOOK_MAX_ATTEMPTS` (5); a redelivery keeps the key and gets one try; a ping is never
+    retried and never counts toward health.
+  - **SSRF.** The transport's Node `lookup` is the guard, so the connection goes to the address that
+    was checked; `OURO_WEBHOOK_INTERNAL_ALLOWLIST` is the operator override.
+  - **Routes** are owner/admin only, reads included; the SIEM row (`streaming` ✓ / `warning`) and
+    `activeCount` are derived from rows in `GET /settings/webhooks`, which BR.4's status hub and
+    BS.5's sheet read.
 
 ### Issue BR.4 — ouroboros-rest: [BR.4] Integrations status hub & org notification routes
 
@@ -587,7 +611,8 @@ delete "acme-robotics" + step-up ─▶ pending_delete (30d recovery) ─▶ pur
 - **Delivered** (`ouroboros-rest` 0.38.16 `src/modules/lifecycle/`; `ouroboros-db` V090;
   `ouroboros-engine` 0.7.14 ingest error mirror; `docs/SECURITY_MODEL.md` §2.6). Three things were
   decided with the user where the issue and the codebase disagreed.
-  - **Webhook emission before BR.3 exists — an outbox, decided with the user.** Every transition
+  - **Webhook emission before BR.3 exists — an outbox, decided with the user.** (BR.3 later folded
+    this into the audit fan-out; see its Delivered notes.) Every transition
     writes `audit.workspace.*` to `audit_event_outbox` in the transaction that moves the state;
     #487 delivers from that table rather than adding a second emitter. The table has no foreign
     key, so `audit.workspace.purged` outlives the workspace.

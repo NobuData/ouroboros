@@ -8,6 +8,8 @@ import {
   DEFAULT_ESTIMATION_SWEEP_INTERVAL_SECONDS,
   DEFAULT_RUN_CONTROL_SWEEP_SECONDS,
   DEFAULT_LIFECYCLE_PURGE_SWEEP_SECONDS,
+  DEFAULT_WEBHOOK_DISPATCH_SECONDS,
+  DEFAULT_WEBHOOK_MAX_ATTEMPTS,
   DEFAULT_RUN_CONTROL_TTL_SECONDS,
   DEFAULT_RUN_STEER_TTL_SECONDS,
   DEFAULT_BACKLOG_STALE_DAYS,
@@ -144,6 +146,10 @@ describe("the development defaults", () => {
       runControlSweepSeconds: DEFAULT_RUN_CONTROL_SWEEP_SECONDS,
       // BR.5's (#489) purge sweep, written out in the template at its default.
       lifecyclePurgeSweepSeconds: DEFAULT_LIFECYCLE_PURGE_SWEEP_SECONDS,
+      // BR.3's (#487) dispatcher cadence and attempts at their defaults, and no internal override.
+      webhookDispatchSeconds: DEFAULT_WEBHOOK_DISPATCH_SECONDS,
+      webhookMaxAttempts: DEFAULT_WEBHOOK_MAX_ATTEMPTS,
+      webhookInternalAllowlist: [],
       // AL.5's (#281) four, written out in the template at their defaults for the same reason.
       backlogStaleDays: DEFAULT_BACKLOG_STALE_DAYS,
       reestimationHourUtc: DEFAULT_REESTIMATION_HOUR_UTC,

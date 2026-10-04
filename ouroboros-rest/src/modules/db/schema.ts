@@ -6197,6 +6197,64 @@ export interface DecisionItemsTable {
   snooze_reason: string | null;
 }
 
+/** `webhook_deliveries.status` (V094). */
+export type WebhookDeliveryStatus = "pending" | "succeeded" | "failed" | "dead_lettered";
+
+/**
+ * `ouroboros.webhook_endpoints` — where signed events go (V094,
+ * [#484](https://github.com/NobuData/ouroboros/issues/484); description, registry version and
+ * exact-type subscriptions V098, [#487](https://github.com/NobuData/ouroboros/issues/487)).
+ */
+export interface WebhookEndpointsTable {
+  id: Generated<string>;
+  organization_id: string;
+  name: string;
+  /** https only, no user-info (CHECK). Which hosts may be reached is the SSRF policy's question. */
+  url: string;
+  /** The HMAC-SHA256 signing key as an AD.1 `ouro.v1.…` envelope. Never echoed. */
+  hmac_key_sealed: string;
+  /** `["audit.*", "run.merged"]` — family wildcards or exact types. */
+  event_families: ColumnType<string[], string, string>;
+  /** The workspace's SIEM route — at most one, subscribed to `audit.*`. */
+  siem: Generated<boolean>;
+  active: Generated<boolean>;
+  created_by: string | null;
+  created_at: Stamped;
+  updated_at: Stamped;
+  description: string | null;
+  /** The event-registry version the subscription was made under. */
+  registry_version: Generated<number>;
+}
+
+/**
+ * `ouroboros.webhook_deliveries` — the delivery log, one row per attempt (V094,
+ * [#484](https://github.com/NobuData/ouroboros/issues/484); retry columns V098,
+ * [#487](https://github.com/NobuData/ouroboros/issues/487)).
+ */
+export interface WebhookDeliveriesTable {
+  id: Generated<string>;
+  organization_id: string;
+  endpoint_id: string;
+  /** A registered event type, or `ping`. */
+  event_type: string;
+  /** The `webhook_outbox` row delivered; `null` for a ping. No foreign key. */
+  event_id: string | null;
+  attempt: number;
+  status: WebhookDeliveryStatus;
+  response_code: number | null;
+  latency_ms: number | null;
+  /** At most 1 024 characters of the receiver's answer, credentials redacted. */
+  response_excerpt: string | null;
+  /** When the attempt was made — set again when a leased attempt settles. */
+  attempted_at: ColumnType<Date, Date | undefined, Date>;
+  /** `X-Ouro-Delivery` — the same on every attempt at one event for one endpoint. */
+  delivery_key: Generated<string>;
+  /** When a pending attempt is due; present exactly while pending. */
+  next_attempt_at: Date | null;
+  /** Why the attempt failed when no response explains it. At most 512 characters. */
+  error: string | null;
+}
+
 /**
  * `ouroboros.decision_resolutions` — how an item was answered, or that it was closed because its
  * source settled elsewhere (V095, #458; `source_resolved` V097, #461). One per item, immutable.
@@ -6222,22 +6280,22 @@ export interface DecisionResolutionsTable {
 }
 
 /**
- * `ouroboros.audit_event_outbox` — `audit.*` events awaiting outbound delivery (V090,
- * [#489](https://github.com/NobuData/ouroboros/issues/489)). BR.3
- * ([#487](https://github.com/NobuData/ouroboros/issues/487)) delivers from it.
+ * `ouroboros.webhook_outbox` — events awaiting outbound webhook delivery (V090 as
+ * `audit_event_outbox`, [#489](https://github.com/NobuData/ouroboros/issues/489); renamed and
+ * widened to every registered family by V098, [#487](https://github.com/NobuData/ouroboros/issues/487)).
  *
  * `organization_id` is deliberately not a foreign key: the purge event outlives its workspace.
  */
-export interface AuditEventOutboxTable {
+export interface WebhookOutboxTable {
   id: Generated<string>;
   organization_id: string;
-  /** `audit.workspace.paused` and its siblings. */
+  /** `audit.workspace.paused`, `run.merged`, `pr.criterion_verified` — a registered event type. */
   event_type: string;
-  /** The event body, as delivered. */
+  /** The event's `data`, as delivered. */
   payload: ColumnType<Record<string, unknown>, string, string>;
   occurred_at: Stamped;
-  /** Set by the deliverer once every subscriber has the event. */
-  delivered_at: Date | null;
+  /** Set by the dispatcher once every subscribed endpoint has a delivery queued. */
+  dispatched_at: Date | null;
 }
 
 /**
@@ -6477,7 +6535,7 @@ export interface Database {
   analysis_runs: AnalysisRunsTable;
   analysis_findings: AnalysisFindingsTable;
   workspace_lifecycle: WorkspaceLifecycleTable;
-  audit_event_outbox: AuditEventOutboxTable;
+  webhook_outbox: WebhookOutboxTable;
   workspace_tombstones: WorkspaceTombstonesTable;
   session: SessionTable;
   invitation: InvitationTable;
@@ -6487,6 +6545,8 @@ export interface Database {
   decision_kinds: DecisionKindsTable;
   decision_items: DecisionItemsTable;
   decision_resolutions: DecisionResolutionsTable;
+  webhook_endpoints: WebhookEndpointsTable;
+  webhook_deliveries: WebhookDeliveriesTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -7793,13 +7853,13 @@ export const TABLE_COLUMNS = {
     "created_at",
   ],
   workspace_lifecycle: ["organization_id", "state", "changed_by", "changed_at", "purge_after"],
-  audit_event_outbox: [
+  webhook_outbox: [
     "id",
     "organization_id",
     "event_type",
     "payload",
     "occurred_at",
-    "delivered_at",
+    "dispatched_at",
   ],
   workspace_tombstones: [
     "organization_id",
@@ -7906,6 +7966,37 @@ export const TABLE_COLUMNS = {
     "answer_latency",
     "loop_wait",
     "created_at",
+  ],
+  webhook_endpoints: [
+    "id",
+    "organization_id",
+    "name",
+    "url",
+    "hmac_key_sealed",
+    "event_families",
+    "siem",
+    "active",
+    "created_by",
+    "created_at",
+    "updated_at",
+    "description",
+    "registry_version",
+  ],
+  webhook_deliveries: [
+    "id",
+    "organization_id",
+    "endpoint_id",
+    "event_type",
+    "event_id",
+    "attempt",
+    "status",
+    "response_code",
+    "latency_ms",
+    "response_excerpt",
+    "attempted_at",
+    "delivery_key",
+    "next_attempt_at",
+    "error",
   ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [
@@ -8558,3 +8649,9 @@ export type MemberCapability = Selectable<MemberCapabilitiesTable>;
 export type ServiceAccount = Selectable<ServiceAccountsTable>;
 /** A row of `ouroboros.service_tokens`, as a `select` returns it. */
 export type ServiceToken = Selectable<ServiceTokensTable>;
+/** A row of `ouroboros.webhook_endpoints`, as a `select` returns it. */
+export type WebhookEndpoint = Selectable<WebhookEndpointsTable>;
+/** A row of `ouroboros.webhook_deliveries`, as a `select` returns it. */
+export type WebhookDelivery = Selectable<WebhookDeliveriesTable>;
+/** A row of `ouroboros.webhook_outbox`, as a `select` returns it. */
+export type WebhookOutboxEvent = Selectable<WebhookOutboxTable>;

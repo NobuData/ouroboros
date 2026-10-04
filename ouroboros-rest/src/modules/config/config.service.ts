@@ -355,6 +355,28 @@ export class AppConfigService {
   }
 
   /**
+   * Seconds between webhook dispatcher ticks — `OURO_WEBHOOK_DISPATCH_SECONDS` (#487).
+   *
+   * The nominal interval; `src/modules/webhooks/` jitters it by ±25%, as every loop here does.
+   */
+  get webhookDispatchSeconds(): number {
+    return this.config.getOrThrow<number>("webhookDispatchSeconds");
+  }
+
+  /** Attempts a webhook delivery gets before it is dead-lettered — `OURO_WEBHOOK_MAX_ATTEMPTS` (#487). */
+  get webhookMaxAttempts(): number {
+    return this.config.getOrThrow<number>("webhookMaxAttempts");
+  }
+
+  /**
+   * Internal hosts, addresses and CIDR blocks a webhook may reach despite the SSRF policy —
+   * `OURO_WEBHOOK_INTERNAL_ALLOWLIST` (#487). Empty unless an operator declared one.
+   */
+  get webhookInternalAllowlist(): readonly string[] {
+    return this.config.getOrThrow<readonly string[]>("webhookInternalAllowlist");
+  }
+
+  /**
    * Days without a tracker update after which an open ticket is stale — `OURO_BACKLOG_STALE_DAYS`.
    *
    * The Backlog Health card's third meter (AL.5, #281); configurable rather than mockup 09's fixed
@@ -550,6 +572,9 @@ export class AppConfigService {
       runSteerTtlSeconds: this.runSteerTtlSeconds,
       runControlSweepSeconds: this.runControlSweepSeconds,
       lifecyclePurgeSweepSeconds: this.lifecyclePurgeSweepSeconds,
+      webhookDispatchSeconds: this.webhookDispatchSeconds,
+      webhookMaxAttempts: this.webhookMaxAttempts,
+      webhookInternalAllowlist: this.webhookInternalAllowlist,
       backlogStaleDays: this.backlogStaleDays,
       reestimationHourUtc: this.reestimationHourUtc,
       reestimationJitterMinutes: this.reestimationJitterMinutes,

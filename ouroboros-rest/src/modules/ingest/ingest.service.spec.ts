@@ -158,6 +158,7 @@ function stubRepository() {
 
     lockRun: jest.fn((_w: unknown, _r: string): Promise<Run | undefined> => Promise.resolve(run())),
     insertRun: jest.fn((_w: unknown, _row: Record<string, unknown>) => Promise.resolve(run())),
+    publishOpened: jest.fn((_w: unknown, _run: Run) => Promise.resolve()),
     queuedPlaybook: jest.fn((_w: unknown, _pin: Record<string, unknown>): Promise<string | null> =>
       Promise.resolve(null),
     ),
@@ -292,6 +293,16 @@ describe("opening a run", () => {
     // The workspace the run is written with is the ticket's, and the request never named one.
     expect(spy.insertRun.mock.calls[0][1]).toMatchObject({ organization_id: WORKSPACE });
     expect(JSON.stringify(OPEN)).not.toContain(WORKSPACE);
+  });
+
+  it("publishes run.opened for the run it inserted, on the same transaction (#487)", async () => {
+    const { repository, spy } = stubRepository();
+
+    await new IngestService(repository, stubGuardrails(), ACTIVE_STATES).openRun(OPEN, false);
+
+    expect(spy.publishOpened).toHaveBeenCalledTimes(1);
+    expect(spy.publishOpened.mock.calls[0][0]).toBe(spy.insertRun.mock.calls[0][0]);
+    expect(spy.publishOpened.mock.calls[0][1]).toEqual(run());
   });
 
   it("takes simulated from the principal, not from anything the caller sent", async () => {
@@ -451,6 +462,8 @@ describe("replaying a key", () => {
     expect(answer).toEqual(stored);
     expect(spy.insertRun).not.toHaveBeenCalled();
     expect(spy.insertReceipt).not.toHaveBeenCalled();
+    // A replay opened nothing, so it publishes nothing (#487).
+    expect(spy.publishOpened).not.toHaveBeenCalled();
   });
 
   it("refuses a key presented with a different body", async () => {

@@ -46,6 +46,7 @@ import { readPinnedPolicy } from "../../guardrails/guardrails.policy";
 import { readSpendTotals, type SpendTotals } from "../../runs/run.spend";
 import type { MergePlanChanges } from "./merge.edit";
 import type { SummaryGate } from "./merge.evidence";
+import { RUN_EVENT_COLUMNS, enqueueRunEvent } from "../../webhooks/webhook.run-events";
 import type { RecheckGates, RecheckRevision } from "./merge.recheck";
 
 /** A PR as the executor reads it. */
@@ -668,16 +669,22 @@ class PgMergeTransaction implements MergeTransaction {
 
   /** @inheritdoc */
   async finalizeRun(organizationId: string, runId: string, prNumber: number): Promise<boolean> {
-    const result = await this.trx
+    const merged = await this.trx
       .updateTable("runs")
       .set({ status: "merged", finished_at: sql<Date>`now()`, pr_number: prNumber })
       .where("id", "=", runId)
       .where("organization_id", "=", organizationId)
       // A run that already finished keeps its outcome.
       .where("finished_at", "is", null)
+      .returning(RUN_EVENT_COLUMNS)
       .executeTakeFirst();
 
-    return result.numUpdatedRows > 0n;
+    if (merged === undefined) return false;
+
+    // `run.merged` and `pr.merged` for the webhook pipeline (#487), in the merge's transaction.
+    await enqueueRunEvent(this.trx, "merged", merged);
+
+    return true;
   }
 
   /** @inheritdoc */

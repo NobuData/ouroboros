@@ -72,6 +72,13 @@ import {
   DECISION_FILED_EVENT,
   DECISION_REFRESHED_EVENT,
   DECISION_SOURCE_RESOLVED_EVENT,
+  WEBHOOK_CREATED_EVENT,
+  WEBHOOK_UPDATED_EVENT,
+  WEBHOOK_ENABLED_EVENT,
+  WEBHOOK_DISABLED_EVENT,
+  WEBHOOK_SECRET_ROTATED_EVENT,
+  WEBHOOK_DELETED_EVENT,
+  WEBHOOK_REDELIVERED_EVENT,
 } from "./audit.events";
 
 /**
@@ -197,6 +204,13 @@ describe("the vocabulary", () => {
       "decision.filed",
       "decision.refreshed",
       "decision.source_resolved",
+      "webhook.created",
+      "webhook.updated",
+      "webhook.enabled",
+      "webhook.disabled",
+      "webhook.secret_rotated",
+      "webhook.deleted",
+      "webhook.redelivered",
     ]);
   });
 
@@ -224,7 +238,8 @@ describe("the vocabulary", () => {
     // for what was done with a suggestion (#514) — V081 spells the apply event that way — and
     // `workspace.` for the Danger zone's lifecycle (#489), `member.` for the Members & Roles card
     // and `service_account.` for its non-human principals (#485), and `decision.` for what the
-    // planes file into the Needs-You inbox and what closes itself out of band (#461). The
+    // planes file into the Needs-You inbox and what closes itself out of band (#461), and
+    // `webhook.` for the outbound webhook management API (#487). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -247,6 +262,7 @@ describe("the vocabulary", () => {
       "runner",
       "service_account",
       "triage",
+      "webhook",
       "workspace",
     ]);
   });
@@ -326,6 +342,13 @@ describe("the vocabulary", () => {
       DECISION_FILED_EVENT,
       DECISION_REFRESHED_EVENT,
       DECISION_SOURCE_RESOLVED_EVENT,
+      WEBHOOK_CREATED_EVENT,
+      WEBHOOK_UPDATED_EVENT,
+      WEBHOOK_ENABLED_EVENT,
+      WEBHOOK_DISABLED_EVENT,
+      WEBHOOK_SECRET_ROTATED_EVENT,
+      WEBHOOK_DELETED_EVENT,
+      WEBHOOK_REDELIVERED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

@@ -1657,7 +1657,7 @@ the blockquote above that records what it did and what it did differently.
 | 368 | **BM.2** | ✅ [#458](https://github.com/NobuData/ouroboros/issues/458) | Resolutions, snooze & metrics spans | ouroboros-db | S | BM.1 |
 | 369 | **BM.3** | ✅ [#459](https://github.com/NobuData/ouroboros/issues/459) | Guardrail exceptions & action tokens | ouroboros-db | M | AO.4, BM.1 |
 | 370 | **BN.1** | ✅ [#461](https://github.com/NobuData/ouroboros/issues/461) | DecisionKind SPI & emitter wiring | ouroboros-rest | L | BM.1 |
-| 371 | **BR.3** | [#487](https://github.com/NobuData/ouroboros/issues/487) | Outbound webhooks & SIEM streaming | ouroboros-rest, ouroboros-db | L | AD.1, AD.4 |
+| 371 | **BR.3** | ✅ [#487](https://github.com/NobuData/ouroboros/issues/487) | Outbound webhooks & SIEM streaming | ouroboros-rest, ouroboros-db | L | AD.1, AD.4 |
 | 372 | **BS.3** | [#493](https://github.com/NobuData/ouroboros/issues/493) | Members & roles card | ouroboros-ui | M | BR.1, BS.1 |
 | 373 | **BM.4** | [#460](https://github.com/NobuData/ouroboros/issues/460) | Inbox seeds — mockup-16 parity + probes | ouroboros-db, .github | S | 3.6, BM.2, BM.3 |
 | 374 | **BN.2** | [#462](https://github.com/NobuData/ouroboros/issues/462) | Action executor & allow-once exceptions | ouroboros-rest | L | BM.3, BN.1 |

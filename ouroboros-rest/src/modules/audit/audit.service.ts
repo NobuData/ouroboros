@@ -43,10 +43,12 @@ import { Injectable } from "@nestjs/common";
 import type { NewAuditEvent } from "../db/schema";
 import { pageOf, windowOf, type Page } from "../tenancy/pagination";
 import { currentClientAddress, currentServiceActor } from "./audit.context";
+import { auditEventTypes } from "../webhooks/webhook.registry";
+import type { OutboxEvent } from "../webhooks/webhook.outbox";
 import { auditDetail, type AuditRecord } from "./audit.events";
 import { AuditRepository, type AuditFilter } from "./audit.repository";
 import type { ListAuditQuery } from "./audit.dto";
-import { auditEventResource, type AuditEventResource } from "./audit.resources";
+import { actorKindOf, auditEventResource, type AuditEventResource } from "./audit.resources";
 
 @Injectable()
 export class AuditService {
@@ -85,7 +87,7 @@ export class AuditService {
       occurred_at: event.at,
     };
 
-    return this.events.append(row);
+    return this.events.append(row, (id) => auditOutboxEvent(id, row, event));
   }
 
   /**
@@ -108,4 +110,38 @@ export class AuditService {
 
     return pageOf(rows.map(auditEventResource), total, window);
   }
+}
+
+/**
+ * What an audit row is published as on the webhook pipeline (BR.3, #487): `audit.<action>`, plus
+ * the decision or PR type it is also an event of, carrying the row's facts.
+ *
+ * The person's name is left out on purpose — it is a join, not a fact of the event, and a
+ * receiver keyed on `actorId` stays correct after a rename.
+ *
+ * @param id - The audit row's id.
+ * @param row - The row as written.
+ * @param event - The record it was built from.
+ * @returns The outbox event.
+ */
+export function auditOutboxEvent(id: string, row: NewAuditEvent, event: AuditRecord): OutboxEvent {
+  const actorService = row.actor_service ?? null;
+
+  return {
+    organizationId: event.organizationId,
+    types: auditEventTypes(event.action),
+    occurredAt: event.at,
+    data: {
+      id,
+      action: event.action,
+      actorKind: actorKindOf({ actor_id: event.actorId, actor_service: actorService }),
+      actorId: event.actorId,
+      actorService,
+      subjectType: event.subjectType,
+      subjectId: event.subjectId,
+      ip: row.ip ?? null,
+      detail: row.detail,
+      occurredAt: event.at.toISOString(),
+    },
+  };
 }

@@ -5,9 +5,12 @@
  * Every transition is one shape:
  *
  * ```
- * transaction { lock the row · check the move · write the state · side effects · outbox event }
+ * transaction { lock the row · check the move · write the state · side effects }
  * then        audit row (a separate statement, as every writer of the trail does — AD.4)
  * ```
+ *
+ * The webhook event (`audit.workspace.*`) rides the audit row: the audit writer queues it in
+ * the audit row's own transaction (BR.3, #487), as it does for every audited action.
  *
  * Who may ask is decided by the controller's `@Roles()` — administrators pause, resume and
  * disconnect; only an owner deletes and restores. What this file adds is everything a role
@@ -53,16 +56,6 @@ import {
 import { WorkspaceStateReader } from "./lifecycle.state";
 import { LIFECYCLE_MOVES, canMove, purgeAfter, type LifecycleMove } from "./lifecycle.states";
 import type { ConfirmDto, DeleteWorkspaceDto } from "./lifecycle.dto";
-
-/**
- * The outbox event type for an audit action — the `audit.*` webhook family.
- *
- * @param action - The audit action.
- * @returns `audit.<action>`.
- */
-export function outboxEventType(action: AuditAction): string {
-  return `audit.${action}`;
-}
 
 /** What one transition hands the shared writer. */
 interface Transition {
@@ -314,14 +307,6 @@ export class LifecycleService {
       }
 
       const eventDetail: AuditDetail = { from, to, ...extra };
-
-      await this.lifecycle.enqueue(
-        trx,
-        organizationId,
-        outboxEventType(action),
-        { action, organizationId, actorId, at: at.toISOString(), ...eventDetail },
-        at,
-      );
 
       return eventDetail;
     });

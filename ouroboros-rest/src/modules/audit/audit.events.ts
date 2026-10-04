@@ -76,7 +76,8 @@ export type AuditSubjectType =
   | "member"
   | "invitation"
   | "service_account"
-  | "decision_item";
+  | "decision_item"
+  | "webhook_endpoint";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -409,8 +410,8 @@ export const ANALYZER_SCHEDULE_UPDATED_EVENT = "analyzer.schedule_updated";
 
 /**
  * The Danger zone's six transitions (BR.5, [#489](https://github.com/NobuData/ouroboros/issues/489)),
- * all subject `workspace` with the workspace id as `subjectId`. Each is also written to the
- * `audit_event_outbox` as `audit.<action>`, for BR.3's webhook delivery.
+ * all subject `workspace` with the workspace id as `subjectId`. Like every audit row, each is
+ * published to the `webhook_outbox` as `audit.<action>` in the audit row's transaction (#487).
  *
  * `workspace.purged` is the one whose `audit_events` row cannot survive: the trail cascades with
  * its workspace (V022), so the purge's record is the `workspace_tombstones` row and its outbox
@@ -521,6 +522,26 @@ export const DECISION_REFRESHED_EVENT = "decision.refreshed";
 export const DECISION_SOURCE_RESOLVED_EVENT = "decision.source_resolved";
 
 /**
+ * The webhook management API's mutations (BR.3, [#487](https://github.com/NobuData/ouroboros/issues/487)),
+ * all subject `webhook_endpoint`. An endpoint was created; the detail names it, its host (never the
+ * full URL's path or query, which can carry a collector token), its subscriptions and the SIEM flag.
+ * **No event carries the signing secret** — not on create, not on rotate.
+ */
+export const WEBHOOK_CREATED_EVENT = "webhook.created";
+/** An endpoint's name, description, URL, subscriptions, SIEM flag or registry version changed. */
+export const WEBHOOK_UPDATED_EVENT = "webhook.updated";
+/** An endpoint was switched on (#487). */
+export const WEBHOOK_ENABLED_EVENT = "webhook.enabled";
+/** An endpoint was switched off; its history stays readable (#487). */
+export const WEBHOOK_DISABLED_EVENT = "webhook.disabled";
+/** An endpoint's signing secret was replaced; the old one stopped signing immediately (#487). */
+export const WEBHOOK_SECRET_ROTATED_EVENT = "webhook.secret_rotated";
+/** An endpoint and its delivery log were deleted (#487). */
+export const WEBHOOK_DELETED_EVENT = "webhook.deleted";
+/** A dead-lettered delivery was queued again by an administrator (#487). */
+export const WEBHOOK_REDELIVERED_EVENT = "webhook.redelivered";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -599,6 +620,13 @@ export const AUDIT_ACTIONS = [
   DECISION_FILED_EVENT,
   DECISION_REFRESHED_EVENT,
   DECISION_SOURCE_RESOLVED_EVENT,
+  WEBHOOK_CREATED_EVENT,
+  WEBHOOK_UPDATED_EVENT,
+  WEBHOOK_ENABLED_EVENT,
+  WEBHOOK_DISABLED_EVENT,
+  WEBHOOK_SECRET_ROTATED_EVENT,
+  WEBHOOK_DELETED_EVENT,
+  WEBHOOK_REDELIVERED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

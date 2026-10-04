@@ -10,7 +10,7 @@ import {
   LIFECYCLE_WORKSPACE as WORKSPACE,
   LIFECYCLE_WORKSPACE_NAME as NAME,
 } from "./lifecycle.fixture";
-import { LifecycleService, outboxEventType } from "./lifecycle.service";
+import { LifecycleService } from "./lifecycle.service";
 
 const OWNER: Principal = {
   user: { id: "user-owner" },
@@ -52,12 +52,6 @@ async function codeOf(work: Promise<unknown>): Promise<string> {
   throw new Error("expected a refusal");
 }
 
-describe("outboxEventType", () => {
-  it("files an audit action under the audit.* webhook family", () => {
-    expect(outboxEventType("workspace.paused")).toBe("audit.workspace.paused");
-  });
-});
-
 describe("pausing", () => {
   it("refuses without an explicit confirmation, and writes nothing", async () => {
     const { store, audit, service } = harness();
@@ -69,7 +63,7 @@ describe("pausing", () => {
     expect(audit.record).not.toHaveBeenCalled();
   });
 
-  it("pauses an active workspace, audits it and queues the webhook event", async () => {
+  it("pauses an active workspace and audits it — the audit row carries the webhook event", async () => {
     const { store, audit, service } = harness();
 
     const answer = await service.pause(WORKSPACE, "user-admin", { confirm: true });
@@ -86,17 +80,9 @@ describe("pausing", () => {
         detail: { from: "active", to: "paused" },
       }),
     );
-    expect(store.outbox).toEqual([
-      expect.objectContaining({
-        organizationId: WORKSPACE,
-        eventType: "audit.workspace.paused",
-        payload: expect.objectContaining({
-          from: "active",
-          to: "paused",
-          actorId: "user-admin",
-        }) as unknown,
-      }),
-    ]);
+    // The audit writer queues `audit.workspace.paused` in the audit row's transaction (#487);
+    // the transition writes no outbox row of its own, so the event is never published twice.
+    expect(store.outbox).toEqual([]);
   });
 
   it("refuses a second pause rather than recording one that did not happen", async () => {
@@ -178,7 +164,7 @@ describe("disconnecting GitHub", () => {
         }) as unknown,
       }),
     );
-    expect(store.outbox.map((event) => event.eventType)).toEqual(["audit.workspace.disconnected"]);
+    expect(store.outbox).toEqual([]);
   });
 
   it("keeps an already-paused workspace paused", async () => {
@@ -249,9 +235,7 @@ describe("requesting deletion", () => {
     expect(audit.record).toHaveBeenCalledWith(
       expect.objectContaining({ action: "workspace.delete_requested", actorId: "user-owner" }),
     );
-    expect(store.outbox.map((event) => event.eventType)).toEqual([
-      "audit.workspace.delete_requested",
-    ]);
+    expect(store.outbox).toEqual([]);
   });
 
   it("may delete a paused workspace", async () => {

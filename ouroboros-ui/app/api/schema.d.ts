@@ -2349,6 +2349,162 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/settings/webhooks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List webhook endpoints
+         * @description Every outbound webhook endpoint ([#487](https://github.com/NobuData/ouroboros/issues/487)) with its
+         *     delivery health, the **counted** `activeCount` (*Webhooks · 2 active*), the **derived** SIEM row
+         *     (*Stream to SIEM ✓*, or a warning once events are dead-lettered) and the event registry for a
+         *     subscription picker. **No signing secret is ever returned here.** Owners and admins only.
+         */
+        get: operations["listWebhooks"];
+        put?: never;
+        /**
+         * Create a webhook endpoint
+         * @description Creates an endpoint subscribed to family wildcards (`audit.*`, `decision.*`, `run.*`, `pr.*`) or
+         *     exact event types, under the latest registry version. The URL must be https and every address its
+         *     host resolves to must be external — loopback, link-local (the metadata address), RFC1918, CGNAT
+         *     and unique-local targets are refused unless the operator allowed them in
+         *     `OURO_WEBHOOK_INTERNAL_ALLOWLIST`. **The response is the only time the signing secret is ever
+         *     returned** — it is stored sealed under the workspace key. At most one endpoint is the SIEM route,
+         *     and it must subscribe to `audit.*`. Audited as `webhook.created`. Owners and admins only.
+         */
+        post: operations["createWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/webhooks/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read a webhook endpoint
+         * @description One endpoint and its delivery health. Never its signing secret. Owners and admins only.
+         */
+        get: operations["getWebhook"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete a webhook endpoint
+         * @description Deletes the endpoint and its delivery log. Audited as `webhook.deleted`. Owners and admins only.
+         */
+        delete: operations["deleteWebhook"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit, enable or disable a webhook endpoint
+         * @description Changes only the fields sent; `description` may be cleared with `null`. A new URL is held to the
+         *     URL policy again. `registryVersion` moves the subscription to a later registry version — until
+         *     then, event types added after it are not delivered. Audited as `webhook.enabled` or
+         *     `webhook.disabled` when the switch is the only change, `webhook.updated` otherwise; an edit that
+         *     changes nothing writes nothing. Attempts queued for a disabled endpoint wait until it is enabled
+         *     again. Owners and admins only.
+         */
+        patch: operations["updateWebhook"];
+        trace?: never;
+    };
+    "/api/v1/settings/webhooks/{id}/rotate-secret": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate a webhook endpoint's signing secret
+         * @description Replaces the signing secret; the old one signs nothing from this moment. The new secret is shown
+         *     once. Audited as `webhook.secret_rotated` — without the secret. Owners and admins only.
+         */
+        post: operations["rotateWebhookSecret"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/webhooks/{id}/ping": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Send a test delivery
+         * @description Sends the `ping` event to the endpoint **now**, signed like any delivery, and answers with the
+         *     delivery-log row it produced — success or failure — so *did it work* is a row, not a guess. A ping
+         *     is never retried and never counts toward the endpoint's health. It may be sent to a disabled
+         *     endpoint. Owners and admins only.
+         */
+        post: operations["pingWebhook"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/webhooks/{id}/deliveries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Page an endpoint's delivery log
+         * @description One row per attempt, newest first, per the #31 pagination convention — status, HTTP code,
+         *     latency, attempt number, a bounded (1 024 characters) and credential-redacted body excerpt, the
+         *     failure reason, and whether the row may be redelivered. `status=dead_lettered` lists the
+         *     dead-letter queue. Owners and admins only.
+         */
+        get: operations["listWebhookDeliveries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/settings/webhooks/{id}/deliveries/{deliveryId}/redeliver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Redeliver a dead-lettered event
+         * @description Queues a dead-lettered event again: a new pending attempt with the **same** idempotency key
+         *     (`X-Ouro-Delivery`), due now. It gets one try — success clears it from the dead-letter queue,
+         *     failure returns it there. Only the latest attempt at an event, once dead-lettered, can be
+         *     redelivered. Audited as `webhook.redelivered`. Owners and admins only.
+         */
+        post: operations["redeliverWebhookDelivery"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/settings/lifecycle": {
         parameters: {
             query?: never;
@@ -18183,6 +18339,181 @@ export interface components {
             scopes: components["schemas"]["ServiceScopeName"][];
         };
         /**
+         * WebhookDeliveryStatus
+         * @description `pending` (due at `nextAttemptAt`) · `succeeded` (a 2xx) · `failed` (not a 2xx; retried
+         *     unless a ping) · `dead_lettered` (attempts exhausted, or a redelivery failed).
+         * @enum {string}
+         */
+        WebhookDeliveryStatus: "pending" | "succeeded" | "failed" | "dead_lettered";
+        /**
+         * WebhookHealth
+         * @description An endpoint's delivery health, counted from its log — pings excluded. `idle` (nothing
+         *     delivered yet), `healthy` (the newest attempt succeeded, nothing dead-lettered),
+         *     `retrying` (the newest attempt failed, a retry is queued), `dead_lettered` (events wait in
+         *     the dead-letter queue).
+         */
+        WebhookHealth: {
+            /** @enum {string} */
+            state: "idle" | "healthy" | "retrying" | "dead_lettered";
+            deadLettered: number;
+            retrying: number;
+            /** Format: date-time */
+            lastAttemptAt: string | null;
+            lastStatus: null | components["schemas"]["WebhookDeliveryStatus"];
+            lastResponseCode: number | null;
+            /** Format: date-time */
+            lastSucceededAt: string | null;
+        };
+        /**
+         * WebhookEndpoint
+         * @description An outbound webhook endpoint. **Never carries its signing secret.**
+         */
+        WebhookEndpoint: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string | null;
+            /** Format: uri */
+            url: string;
+            /** @description The URL's host — what a list shows. */
+            host: string;
+            /**
+             * @example [
+             *       "audit.*"
+             *     ]
+             * @example [
+             *       "pr.*",
+             *       "run.merged"
+             *     ]
+             */
+            eventFamilies: string[];
+            /** @description The event-registry version the subscription was made under. */
+            registryVersion: number;
+            /** @description The workspace's SIEM route — at most one, subscribed to `audit.*`. */
+            siem: boolean;
+            active: boolean;
+            createdBy: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+            health: components["schemas"]["WebhookHealth"];
+        };
+        /**
+         * WebhookSecret
+         * @description The answer to create and rotate — **the only time a signing secret is ever returned**.
+         */
+        WebhookSecret: {
+            endpoint: components["schemas"]["WebhookEndpoint"];
+            /** @description The HMAC-SHA256 signing secret. Stored sealed, never shown again — copy it now. */
+            secret: string;
+        };
+        /**
+         * WebhookSiem
+         * @description The Audit card's *Stream to SIEM* row, derived from the SIEM endpoint's log. `streaming` is
+         *     the ✓ (active, newest attempt succeeded, dead-letter queue empty); `warning` means events
+         *     are dead-lettered and the SIEM's record has a hole until they are redelivered.
+         */
+        WebhookSiem: {
+            /** Format: uuid */
+            endpointId: string;
+            name: string;
+            active: boolean;
+            streaming: boolean;
+            warning: boolean;
+            health: components["schemas"]["WebhookHealth"];
+        };
+        /**
+         * WebhookRegistry
+         * @description The versioned event registry, for a subscription picker.
+         */
+        WebhookRegistry: {
+            latestVersion: number;
+            /**
+             * @example [
+             *       "audit.*",
+             *       "decision.*",
+             *       "run.*",
+             *       "pr.*"
+             *     ]
+             */
+            families: string[];
+            /** @description Every type registered at the latest version, sorted. */
+            eventTypes: string[];
+        };
+        /** WebhookList */
+        WebhookList: {
+            items: components["schemas"]["WebhookEndpoint"][];
+            /** @description *Webhooks · N active* — counted from the rows, never stored. */
+            activeCount: number;
+            siem: null | components["schemas"]["WebhookSiem"];
+            registry: components["schemas"]["WebhookRegistry"];
+        };
+        /**
+         * WebhookDelivery
+         * @description One delivery attempt.
+         */
+        WebhookDelivery: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            endpointId: string;
+            /**
+             * Format: uuid
+             * @description `X-Ouro-Delivery` — the same on every attempt at one event for one endpoint.
+             */
+            deliveryKey: string;
+            /**
+             * @example audit.provider.rotated
+             * @example ping
+             */
+            eventType: string;
+            /** Format: uuid */
+            eventId: string | null;
+            attempt: number;
+            status: components["schemas"]["WebhookDeliveryStatus"];
+            responseCode: number | null;
+            latencyMs: number | null;
+            /** @description The receiver's answer, at most 1 024 characters, credentials redacted. */
+            responseExcerpt: string | null;
+            error: string | null;
+            /** Format: date-time */
+            attemptedAt: string;
+            /** Format: date-time */
+            nextAttemptAt: string | null;
+            /** @description The latest attempt at its event, and dead-lettered. */
+            redeliverable: boolean;
+        };
+        /** WebhookDeliveryPage */
+        WebhookDeliveryPage: {
+            items: components["schemas"]["WebhookDelivery"][];
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        /**
+         * CreateWebhookRequest
+         * @description There is no secret field — the server mints every signing secret.
+         */
+        CreateWebhookRequest: {
+            name: string;
+            description?: string | null;
+            url: string;
+            eventFamilies: string[];
+            siem?: boolean;
+            active?: boolean;
+        };
+        /** UpdateWebhookRequest */
+        UpdateWebhookRequest: {
+            name?: string;
+            description?: string | null;
+            url?: string;
+            eventFamilies?: string[];
+            siem?: boolean;
+            active?: boolean;
+            registryVersion?: number;
+        };
+        /**
          * OrganizationRole
          * @description A role of the organization plugin — the enforcement every permission check reads.
          * @enum {string}
@@ -24584,6 +24915,18 @@ export interface components {
          * @example 5eed0091-0000-4000-8000-000000000001
          */
         ServiceAccountId: string;
+        /**
+         * @description A webhook endpoint's id.
+         * @example 5eed0076-0000-4000-8000-000000000001
+         */
+        WebhookId: string;
+        /**
+         * @description One delivery attempt's id.
+         * @example 5eed0077-0000-4000-8000-000000000006
+         */
+        WebhookDeliveryId: string;
+        /** @description Only attempts in this status — `dead_lettered` is the dead-letter queue. */
+        WebhookDeliveryStatus: components["schemas"]["WebhookDeliveryStatus"];
         /**
          * @description The workspace this request is operating in — its slug or its uuid.
          *
@@ -33760,6 +34103,1083 @@ export interface operations {
                 };
             };
             /** @description `validation_failed` — the id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listWebhooks: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The endpoints, the count, the SIEM row and the registry. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookList"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     these routes are for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    createWebhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "name": "SIEM · Splunk HEC",
+                 *       "url": "https://siem.acme.dev/services/collector/event",
+                 *       "eventFamilies": [
+                 *         "audit.*"
+                 *       ],
+                 *       "siem": true
+                 *     }
+                 */
+                "application/json": components["schemas"]["CreateWebhookRequest"];
+            };
+        };
+        responses: {
+            /** @description The endpoint and its signing secret, shown once. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecret"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     these routes are for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `tenant_not_found` — no such workspace, or none you are a member of. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `webhook_name_taken` — the workspace already has an endpoint of this name.
+             *     `webhook_siem_taken` — the workspace already has a SIEM endpoint.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a malformed body. `webhook_target_refused` — the URL policy refused
+             *     the target. `webhook_subscription_invalid` — an entry is not a family wildcard or a registered
+             *     type. `webhook_siem_requires_audit` — a SIEM endpoint without `audit.*`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getWebhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A webhook endpoint's id.
+                 * @example 5eed0076-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["WebhookId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The endpoint. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     these routes are for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    deleteWebhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A webhook endpoint's id.
+                 * @example 5eed0076-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["WebhookId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     these routes are for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateWebhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A webhook endpoint's id.
+                 * @example 5eed0076-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["WebhookId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "active": false
+                 *     }
+                 */
+                "application/json": components["schemas"]["UpdateWebhookRequest"];
+            };
+        };
+        responses: {
+            /** @description The endpoint as stored. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookEndpoint"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     these routes are for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `webhook_name_taken`, or `webhook_siem_taken`. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed`, `webhook_target_refused`, `webhook_subscription_invalid`,
+             *     `webhook_siem_requires_audit` or `webhook_registry_version_unknown`.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    rotateWebhookSecret: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A webhook endpoint's id.
+                 * @example 5eed0076-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["WebhookId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The endpoint and its new signing secret, shown once. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookSecret"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     these routes are for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    pingWebhook: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A webhook endpoint's id.
+                 * @example 5eed0076-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["WebhookId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The settled attempt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDelivery"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     these routes are for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id is not a uuid. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listWebhookDeliveries: {
+        parameters: {
+            query?: {
+                /**
+                 * @description How many rows to return. The ceiling is not a suggestion: without it, a `limit` of a
+                 *     million is a client's way of asking this service to hold a table in memory, and the
+                 *     request that does it is indistinguishable from a mistake in a loop.
+                 * @example 25
+                 */
+                limit?: components["parameters"]["Limit"];
+                /**
+                 * @description How many rows to skip.
+                 * @example 0
+                 */
+                offset?: components["parameters"]["Offset"];
+                /** @description Only attempts in this status — `dead_lettered` is the dead-letter queue. */
+                status?: components["parameters"]["WebhookDeliveryStatus"];
+            };
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A webhook endpoint's id.
+                 * @example 5eed0076-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["WebhookId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of the log. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDeliveryPage"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     these routes are for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `webhook_not_found` — no such endpoint in this workspace. Or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — an id that is not a uuid, a window out of range, or an unknown
+             *     status.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `internal_error` — the service itself failed. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    redeliverWebhookDelivery: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /**
+                 * @description A webhook endpoint's id.
+                 * @example 5eed0076-0000-4000-8000-000000000001
+                 */
+                id: components["parameters"]["WebhookId"];
+                /**
+                 * @description One delivery attempt's id.
+                 * @example 5eed0077-0000-4000-8000-000000000006
+                 */
+                deliveryId: components["parameters"]["WebhookDeliveryId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The queued attempt. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WebhookDelivery"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session. `service_token_invalid` — a
+             *     service token that was rotated, revoked or never existed.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `forbidden` — not an owner or admin. `service_principal_refused` — a service token;
+             *     these routes are for people.
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `webhook_not_found`, `webhook_delivery_not_found` or `tenant_not_found`. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `webhook_delivery_not_redeliverable` — not dead-lettered, or a later attempt exists. */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `validation_failed` — an id is not a uuid. */
             422: {
                 headers: {
                     [name: string]: unknown;

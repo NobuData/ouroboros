@@ -43,9 +43,9 @@ function harness(options: { residual?: number; refs?: unknown[]; gone?: boolean 
       return Promise.resolve();
     }),
     enqueue: jest.fn(
-      (_db: unknown, _org: string, eventType: string, payload: Record<string, unknown>) => {
+      (_db: unknown, _org: string, types: string[], payload: Record<string, unknown>) => {
         calls.push("enqueue");
-        outbox.push({ eventType, payload });
+        for (const eventType of types) outbox.push({ eventType, payload });
         return Promise.resolve();
       },
     ),

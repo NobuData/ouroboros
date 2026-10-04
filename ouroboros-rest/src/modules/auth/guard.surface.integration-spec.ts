@@ -133,6 +133,9 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `PATCH`/`DELETE /api/v1/settings/members/:memberId` (#485). A BetterAuth member id is free
   // text to the router, so any word reaches the guard.
   memberId: "member-1",
+  // `POST /api/v1/settings/webhooks/:id/deliveries/:deliveryId/redeliver` (#487). A uuid, as
+  // `ParseUUIDPipe` requires — but the guard answers before any pipe runs.
+  deliveryId: "5eed0077-0000-4000-8000-000000000006",
 };
 
 /**

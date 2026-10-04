@@ -130,6 +130,8 @@ $ curl http://localhost:4000/api/v1
 | `POST DELETE /api/v1/settings/members/invitations…` | Invite, resend (`…/{id}/resend`) and revoke through the organization plugin; `owner`/`admin`; audited `member.invited \| invitation_resent \| invitation_revoked` |
 | `PATCH DELETE /api/v1/settings/members/{memberId}`  | Role and/or `canApproveLoops`; remove. The last owner is `409 owner_protected` (audited); `owner`/`admin` |
 | `GET POST /api/v1/settings/service-accounts`       | List (tokens masked) and create (token shown once); `/{id}/rotate` and `/{id}/revoke`; `owner`/`admin`; audited `service_account.*` |
+| `GET POST /api/v1/settings/webhooks`               | [Outbound webhooks](#outbound-webhooks) (#487) — endpoints with health, counted `activeCount`, derived `siem` row and the event registry; create answers with the signing secret once; `owner`/`admin` |
+| `GET PATCH DELETE /api/v1/settings/webhooks/{id}…` | Read, edit/enable/disable, delete; `/rotate-secret` (secret once), `/ping` (a logged test delivery), `/deliveries?status=` (the log; `dead_lettered` is the DLQ), `/deliveries/{deliveryId}/redeliver`; `owner`/`admin`; audited `webhook.*` |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
 | `POST /api/v1/onboarding/skip`                      | *I've done this before* — marks the wizard bypassed, answers `/settings`; imports nothing (BD.3, #398) |
@@ -317,6 +319,9 @@ service never starts half-configured.
 | `OURO_RUN_STEER_TTL_SECONDS` | How long a steer is worth delivering — longer, because it lands at the executor's next point of context injection |     no — 300      | a whole number of seconds, 10–3600 |
 | `OURO_RUN_CONTROL_SWEEP_SECONDS` | Seconds between control-expiry sweeps — jittered ±25%; the routes sweep their own run first, so this decides only how soon an expiry is audited for a run nobody is watching |     no — 15       | a whole number of seconds, 5–3600 |
 | `OURO_LIFECYCLE_PURGE_SWEEP_SECONDS` | Seconds between [workspace-purge](#workspace-lifecycle) sweeps — jittered ±25%; a workspace past its 30-day recovery window is purged on the next one ([#489](https://github.com/NobuData/ouroboros/issues/489)) |    no — 3600      | a whole number of seconds, 60–86400 |
+| `OURO_WEBHOOK_DISPATCH_SECONDS` | Seconds between [webhook dispatcher](#outbound-webhooks) ticks — jittered ±25%; the delay between an event and its first attempt ([#487](https://github.com/NobuData/ouroboros/issues/487)) | no — 5 | a whole number of seconds, 1–300 |
+| `OURO_WEBHOOK_MAX_ATTEMPTS` | Attempts a [webhook delivery](#outbound-webhooks) gets before it is dead-lettered ([#487](https://github.com/NobuData/ouroboros/issues/487)) | no — 5 | a whole number, 1–20 |
+| `OURO_WEBHOOK_INTERNAL_ALLOWLIST` | Internal collectors a [webhook](#outbound-webhooks) may reach despite the SSRF policy ([#487](https://github.com/NobuData/ouroboros/issues/487)) | no — empty | comma-separated hostnames, addresses or CIDR blocks |
 | `OURO_BACKLOG_STALE_DAYS` | Days without a tracker update after which an open ticket counts as stale on the [Backlog Health card](#backlog-health-and-nightly-re-estimation) ([#281](https://github.com/NobuData/ouroboros/issues/281)) |      no — 30      | a whole number of days, 1–3650 |
 | `OURO_REESTIMATION_HOUR_UTC` | The UTC hour the [nightly re-estimation job](#backlog-health-and-nightly-re-estimation) is scheduled at |      no — 2       | a whole number, 0–23 |
 | `OURO_REESTIMATION_JITTER_MINUTES` | The window after that hour a night's run is jittered across, so installations do not all run on the hour |      no — 30      | a whole number of minutes, 1–180 |
@@ -4319,15 +4324,82 @@ workspace (asserted zero) and writes `workspace_tombstones` plus `audit.workspac
 reach in a backup.
 
 **Every transition is audited and queued for webhooks.** `workspace.paused | resumed |
-disconnected | delete_requested | restored` are written to `audit_events` (subject `workspace`).
-Each is also written to `audit_event_outbox` as `audit.workspace.*`, in the transaction that moves
-the state; BR.3 ([#487](https://github.com/NobuData/ouroboros/issues/487)) delivers from there.
-The purge's own audit row would cascade away with the workspace, so the tombstone and the outbox
-event are its record.
+disconnected | delete_requested | restored` are written to `audit_events` (subject `workspace`),
+and — like every audit row since BR.3 ([#487](https://github.com/NobuData/ouroboros/issues/487)) —
+published to `webhook_outbox` as `audit.workspace.*` in the audit row's own transaction. The
+purge's own audit row would cascade away with the workspace, so the tombstone and the outbox
+event it writes directly are its record.
 
 **The rehearsal.** `lifecycle.integration-spec.ts` runs pause → stage finishes → holds → resume,
 disconnect, delete → restore, and delete → day 30 → purge on a fixture tenant in `ci/rest`. It
 asserts that a value sealed before the purge no longer decrypts after it.
+
+## Outbound webhooks
+
+> **Issue:** [#487](https://github.com/NobuData/ouroboros/issues/487) — *[BR.3] Outbound webhooks &
+> SIEM streaming* · epic [#477](https://github.com/NobuData/ouroboros/issues/477) · decision **S8** ·
+> schema `V090`, `V094`, `V098` · receiver contract [`docs/WEBHOOKS.md`](../docs/WEBHOOKS.md)
+
+Org-configured endpoints subscribed to typed event families, HMAC-signed at-least-once delivery
+with retries, a visible dead-letter queue and a delivery log. *Stream to SIEM* is simply the
+endpoint flagged `siem`, subscribed to `audit.*`. `src/modules/webhooks/` is the module.
+
+```
+change + event      one transaction   audit row → audit.<action> (+ decision.* / pr.*) · run → run.*
+webhook_outbox      dispatcher tick   one pending attempt per subscribed active endpoint
+attempt             lease · sign · POST (SSRF-guarded lookup) · settle
+settle              2xx succeeded · else failed + backoff retry · dead_lettered after N
+```
+
+```
+GET    /api/v1/settings/webhooks                                     owner/admin · items · activeCount · siem · registry
+POST   /api/v1/settings/webhooks                                     owner/admin · answers with the secret, once
+GET    /api/v1/settings/webhooks/:id                                 owner/admin
+PATCH  /api/v1/settings/webhooks/:id                                 owner/admin · edit, enable, disable, registry version
+DELETE /api/v1/settings/webhooks/:id                                 owner/admin · the log cascades
+POST   /api/v1/settings/webhooks/:id/rotate-secret                   owner/admin · the new secret, once
+POST   /api/v1/settings/webhooks/:id/ping                            owner/admin · a real attempt, logged
+GET    /api/v1/settings/webhooks/:id/deliveries?status=              owner/admin · the log; dead_lettered = the DLQ
+POST   /api/v1/settings/webhooks/:id/deliveries/:deliveryId/redeliver owner/admin · same key, one try
+```
+
+**One emitter: the outbox.** `enqueueWebhookEvents(executor, …)` (`webhook.outbox.ts`) inserts on
+the caller's own transaction. `AuditRepository.append` writes the audit row and its outbox rows
+together, so every audited action is published and nothing is published unaudited; the ingestion
+contract (`run.opened`), the console's abort (`run.canceled`) and the merge executor (`run.merged`
++ `pr.merged`) write theirs in the transaction that moves the run (`webhook.run-events.ts`).
+
+**The registry is versioned** (`webhook.registry.ts`). Version 1 is a literal list; a release that
+adds a type appends a version, and an endpoint receives only the types of the version it
+subscribed under until it is moved. The spec fails if an audit action is registered nowhere.
+Matching is exact: a family wildcard covers its own family only.
+
+**The dispatcher** (`WebhookDispatcher`, every `OURO_WEBHOOK_DISPATCH_SECONDS`) claims outbox rows
+and due attempts with `for update skip locked`, so several instances share the work. A claimed
+attempt is *leased* (its `next_attempt_at` pushed two minutes on), not removed: a crash mid-send
+re-sends it with the same `X-Ouro-Delivery`. Failures retry after 30 s, 1 m, 2 m … (capped at an
+hour) until `OURO_WEBHOOK_MAX_ATTEMPTS`, then dead-letter. A redelivery gets one try. A ping is
+sent in the request and never retried. Attempts for a disabled endpoint wait.
+
+**SSRF policy** (`webhook.ssrf.ts`): https only; loopback, link-local (metadata), RFC1918, CGNAT,
+unique-local and reserved ranges refused at save and at delivery — the transport's Node `lookup`
+*is* the guard, so the socket connects to the address that was approved (no DNS-rebinding gap).
+`OURO_WEBHOOK_INTERNAL_ALLOWLIST` is the operator override; it never relaxes https.
+
+**Secrets** are minted here (`whsec_` + 32 bytes), sealed under the workspace DEK with the endpoint
+id as the record, and returned only by create and rotate. Endpoint readers never select the
+envelope; `webhooks.secrecy.spec.ts` greps the module so a change that starts returning or logging
+it fails. The delivery log keeps at most 1 024 characters of a response, credentials redacted
+(`webhook.capture.ts`).
+
+**Derived, never stored.** `activeCount` counts active rows. Each endpoint's `health`
+(`idle | healthy | retrying | dead_lettered`) is counted from its log, pings excluded; the `siem`
+row is `streaming` (the ✓) when the SIEM endpoint is active and healthy, and `warning` when events
+are dead-lettered.
+
+**Every mutation is audited** — `webhook.created | updated | enabled | disabled | secret_rotated |
+deleted | redelivered`, subject `webhook_endpoint`, naming the host but never the URL's path or the
+secret.
 
 ## Build logs
 

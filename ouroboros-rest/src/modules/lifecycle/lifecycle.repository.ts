@@ -12,6 +12,7 @@ import { Injectable } from "@nestjs/common";
 import { sql, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
+import { enqueueWebhookEvents } from "../webhooks/webhook.outbox";
 import {
   SCHEMA_NAME,
   type Database,
@@ -29,7 +30,7 @@ const OPEN_PULL_REQUEST_STATES = ["open", "verifying", "blocked", "armed"] as co
  * The tables a purge deliberately leaves rows in: the outbox's purge event and the tombstone are
  * the two records meant to outlive the workspace.
  */
-const PURGE_SURVIVORS = new Set(["audit_event_outbox", "workspace_tombstones"]);
+const PURGE_SURVIVORS = new Set(["webhook_outbox", "workspace_tombstones"]);
 
 /** The live state the disconnect preview is computed from. */
 export interface DisconnectCounts {
@@ -128,31 +129,24 @@ export class LifecycleRepository {
   }
 
   /**
-   * Queue one `audit.*` event for outbound delivery (BR.3 drains the table).
+   * Queue one event for outbound webhook delivery — the purge's `audit.workspace.purged`, which
+   * has no audit row to ride (its trail is deleted with the workspace), so it is written here.
    *
-   * @param executor - The transaction the state move runs in, so the event exists exactly when
-   *   the move does.
+   * @param executor - Where to write it. The purge passes the pool: the workspace is gone, so
+   *   there is no change left to share a transaction with.
    * @param organizationId - The workspace.
-   * @param eventType - `audit.workspace.paused` and its siblings.
-   * @param payload - The event body.
+   * @param types - The registered types it is published as.
+   * @param payload - The event's `data`.
    * @param at - When it happened.
    */
   async enqueue(
     executor: Executor,
     organizationId: string,
-    eventType: string,
+    types: readonly string[],
     payload: Record<string, unknown>,
     at: Date,
   ): Promise<void> {
-    await executor
-      .insertInto("audit_event_outbox")
-      .values({
-        organization_id: organizationId,
-        event_type: eventType,
-        payload: JSON.stringify(payload),
-        occurred_at: at,
-      })
-      .execute();
+    await enqueueWebhookEvents(executor, { organizationId, types, data: payload, occurredAt: at });
   }
 
   /**
@@ -310,7 +304,7 @@ export class LifecycleRepository {
    */
   async clearOutbox(organizationId: string): Promise<void> {
     await this.database.db
-      .deleteFrom("audit_event_outbox")
+      .deleteFrom("webhook_outbox")
       .where("organization_id", "=", organizationId)
       .execute();
   }

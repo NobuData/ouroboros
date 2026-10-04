@@ -25,6 +25,7 @@ import { sql, type Kysely, type Transaction } from "kysely";
 
 import { DatabaseService } from "../db/db.service";
 import type { Database, Run, RunControl, RunControlKind } from "../db/schema";
+import { RUN_EVENT_COLUMNS, enqueueRunEvent } from "../webhooks/webhook.run-events";
 
 /** A connection or a transaction — every method takes whichever the caller is inside. */
 export type Writer = Kysely<Database> | Transaction<Database>;
@@ -131,14 +132,20 @@ export class ControlsRepository {
    * @returns Whether this statement closed it.
    */
   async cancelRun(writer: Writer, runId: string): Promise<boolean> {
-    const result = await writer
+    const canceled = await writer
       .updateTable("runs")
       .set({ status: "canceled", finished_at: sql<Date>`now()` })
       .where("id", "=", runId)
       .where("finished_at", "is", null)
+      .returning(RUN_EVENT_COLUMNS)
       .executeTakeFirst();
 
-    return result.numUpdatedRows > 0n;
+    if (canceled === undefined) return false;
+
+    // `run.canceled` for the webhook pipeline (#487), in the abort's own transaction.
+    await enqueueRunEvent(writer, "canceled", canceled);
+
+    return true;
   }
 
   /**

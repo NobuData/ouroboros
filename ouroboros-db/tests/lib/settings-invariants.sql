@@ -121,7 +121,9 @@ select pg_temp.must_hold(
   and (select array_agg(c.column_name::text) = array['hmac_key_sealed']
          from information_schema.columns c
         where c.table_schema = 'ouroboros' and c.table_name in ('webhook_endpoints', 'webhook_deliveries')
-          and c.column_name ~ '(secret|key|token|password|credential)'),
+          and c.column_name ~ '(secret|key|token|password|credential)'
+          -- A uuid cannot carry a key: V098's delivery_key is the idempotency key (#487).
+          and c.data_type <> 'uuid'),
   'webhook_keys_sealed: every stored signing key is a sealed envelope, and hmac_key_sealed is the only webhook column that could hold a key');
 
 select pg_temp.must_reject(

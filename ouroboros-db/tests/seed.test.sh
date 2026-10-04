@@ -1591,7 +1591,7 @@ check_equals 9 "$(grep -Ec "and r\.status = 'running'$" "$ANALYZER_BODY" || true
 
 printf '\nR__dev_seed_workspace_settings.sql — the Settings page\n'
 
-for prefix in '5eed0071' '5eed0072' '5eed0073' '5eed0074' '5eed0076' '5eed0077'; do
+for prefix in '5eed0071' '5eed0072' '5eed0073' '5eed0074' '5eed0076' '5eed0077' '5eed0078'; do
   check_contains "$SETTINGS_BODY" "'$prefix-0000-4000-8000-" \
     "the settings seed builds its ids from the $prefix… prefix"
 done

@@ -246,6 +246,10 @@ export class IngestService {
         playbook_id: playbookId,
       });
 
+      // `run.opened` for the webhook pipeline (#487). In this transaction, so a losing replay
+      // race that rolls back takes its event with it.
+      await this.runs.publishOpened(trx, run);
+
       const response: RunOpenedResource = {
         id: run.id,
         loopSeq: run.loop_seq,

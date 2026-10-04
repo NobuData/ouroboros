@@ -83,17 +83,36 @@ describe("the controls repository", () => {
     });
 
     it("cancels a run only while it is still open, and leaves its branch alone", async () => {
-      database.answers({ numAffectedRows: 1n });
+      database.answers({
+        rows: [
+          {
+            id: RUN,
+            organization_id: ORG,
+            loop_seq: 482,
+            github_repo_id: "repo-1",
+            issue_number: 412,
+            status: "canceled",
+            pr_number: null,
+            started_at: new Date("2026-09-22T14:00:00.000Z"),
+            finished_at: new Date("2026-09-22T14:30:00.000Z"),
+          },
+        ],
+      });
 
       expect(await repository.cancelRun(database.service.db, RUN)).toBe(true);
-      expect(only().sql).toContain('set "status" = $1, "finished_at" = now()');
-      expect(only().sql).toContain('"finished_at" is null');
-      expect(only().sql).not.toContain("branch_name");
-      expect(only().parameters).toEqual(["canceled", RUN]);
+      const [cancel, outbox] = database.statements;
+      expect(cancel.sql).toContain('set "status" = $1, "finished_at" = now()');
+      expect(cancel.sql).toContain('"finished_at" is null');
+      expect(cancel.sql).not.toContain("branch_name");
+      expect(cancel.parameters).toEqual(["canceled", RUN]);
+      // `run.canceled` is queued on the same writer — the abort's transaction (#487).
+      expect(outbox.sql).toContain('insert into "ouroboros"."webhook_outbox"');
+      expect(outbox.parameters).toEqual(expect.arrayContaining([ORG, "run.canceled"]));
     });
 
-    it("reports a run something else closed first", async () => {
+    it("reports a run something else closed first, and publishes nothing", async () => {
       expect(await repository.cancelRun(database.service.db, RUN)).toBe(false);
+      expect(only().sql).toContain('update "ouroboros"."runs"');
     });
 
     it("reads the active stage attempt, newest first", async () => {

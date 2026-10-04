@@ -68,7 +68,7 @@ describe("the workspace lifecycle", () => {
   const move = (run: string, key: string, stageKey: string, status: string) =>
     engine(`/internal/runs/${run}/stage-transitions`, { idempotencyKey: key, stageKey, status });
 
-  /** The workspace's audit actions and outbox events, oldest first. */
+  /** The workspace's audit actions and its `audit.workspace.*` outbox events, oldest first. */
   async function trail(organizationId: string): Promise<{ audit: string[]; outbox: string[] }> {
     const audit = await api.sql.query<{ action: string }>(
       `select action from ${SCHEMA_NAME}.audit_events
@@ -76,8 +76,9 @@ describe("the workspace lifecycle", () => {
       [organizationId],
     );
     const outbox = await api.sql.query<{ event_type: string }>(
-      `select event_type from ${SCHEMA_NAME}.audit_event_outbox
-        where organization_id = $1 order by occurred_at, id`,
+      `select event_type from ${SCHEMA_NAME}.webhook_outbox
+        where organization_id = $1 and event_type like 'audit.workspace.%'
+        order by occurred_at, id`,
       [organizationId],
     );
 

@@ -51,6 +51,7 @@ import type {
   RunStageStatus,
 } from "../db/schema";
 import { readSpendTotals, type SpendTotals } from "../runs/run.spend";
+import { enqueueRunEvent } from "../webhooks/webhook.run-events";
 
 /** A connection or a transaction — every method takes whichever the caller is inside. */
 export type Writer = Kysely<Database> | Transaction<Database>;
@@ -335,6 +336,16 @@ export class IngestRepository {
       .values({ ...run, status: "coding" })
       .returningAll()
       .executeTakeFirstOrThrow();
+  }
+
+  /**
+   * Queue `run.opened` for the webhook pipeline (#487), on the transaction that inserted the run.
+   *
+   * @param writer - That transaction.
+   * @param run - The run as inserted.
+   */
+  async publishOpened(writer: Writer, run: Run): Promise<void> {
+    await enqueueRunEvent(writer, "opened", run, run.started_at);
   }
 
   /**
