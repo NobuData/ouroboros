@@ -8,6 +8,7 @@
  * decision.lifecycle       who hears that an item was filed, refreshed or resolved (#536)
  * inbox.feed / controller  GET /api/v1/inbox/feed — the sidebar badge
  * inbox.queue / controller GET /api/v1/inbox, /resolved, /stats, snooze (BN.4, #464)
+ * inbox.repository         exported: the asking items BN.3's mails (#463) list
  * ```
  *
  * It imports only `DbModule`, `AuditModule` and the scheduler, so every plane can import it for the registry and
@@ -45,6 +46,6 @@ import { InboxRepository } from "./inbox.repository";
     InboxQueueService,
     CapabilityRepository,
   ],
-  exports: [DecisionKindRegistry, DecisionLifecycle, DecisionSourceWatcher],
+  exports: [DecisionKindRegistry, DecisionLifecycle, DecisionSourceWatcher, InboxRepository],
 })
 export class DecisionsModule {}

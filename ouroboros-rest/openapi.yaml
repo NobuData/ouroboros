@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.39.8"
+  version: "0.39.9"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -22412,6 +22412,341 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/v1/inbox/channels:
+    get:
+      tags: [inbox]
+      summary: The decision channels, as they truly stand
+      description: |-
+        The *Answer From Anywhere* card's truth payload (#463, BN.3, X5), which BO.4 renders
+        verbatim so no UI code hand-maintains what is connected. Four rows, in the card's order:
+
+        | channel | state |
+        |---|---|
+        | `slack` | always `unavailable-until` `Chat Ops` — it arrives with mockup 19 (#536/#538) |
+        | `email` | `connected` while this deployment has a mail server (`OURO_SMTP_URL`), else `available` with the reason |
+        | `push` | always `unavailable-until` `BP.2` (#472) |
+        | `github` | `connected` while the workspace has a source whose provider can comment on a PR through the SPI, else `available` |
+
+        **No fake ✓**: a channel that does not exist never reads `connected`. A `connected` row has
+        no `reason`; every other row says why in a sentence. **Every member.**
+      operationId: readInboxChannels
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The four rows.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxChannels"
+              example:
+                channels:
+                  - id: slack
+                    label: Slack
+                    summary: Approve with a button, right in the thread.
+                    state: unavailable-until
+                    until: Chat Ops
+                    reason: Arrives with Chat Ops.
+                  - id: email
+                    label: Email
+                    summary: A daily digest, and an instant mail for each blocking (err) decision.
+                    state: connected
+                    until: null
+                    reason: null
+                  - id: push
+                    label: Mobile push
+                    summary: Critical decisions only.
+                    state: unavailable-until
+                    until: BP.2
+                    reason: Arrives later.
+                  - id: github
+                    label: GitHub
+                    summary: Every decision is mirrored as a PR comment.
+                    state: connected
+                    until: null
+                    reason: null
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/inbox/notifications:
+    get:
+      tags: [inbox]
+      summary: The caller's decision-mail preferences in this workspace
+      description: |-
+        Per person per workspace (#463, BN.3; the settings contract with mockup 17, surfaced by
+        BO.4): the daily digest on/off and its send time (UTC), the instant-send threshold, and
+        per-kind mutes. **Defaults** when nothing is stored (`isExplicit: false`): digest off
+        (09:00 UTC once on), instant mails for `err` items on, nothing muted.
+
+        `digest.nextSendAt` is when the next digest leaves — the latest slot still due, else the
+        first later one at least 20 hours after the last digest sent — so changing the time
+        visibly changes the next send. Null while the digest is off.
+
+        **Every member**, for themselves. A service account has no mailbox and is refused.
+      operationId: readNotificationPreferences
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      responses:
+        "200":
+          description: The preferences, defaults filled in.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
+              example:
+                digest:
+                  enabled: true
+                  time: "09:00"
+                  timeZone: UTC
+                  nextSendAt: "2026-10-05T09:00:00.000Z"
+                instant:
+                  severity: err
+                mutedKinds: [fact_review]
+                isExplicit: true
+                updatedAt: "2026-10-04T16:20:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`notification_preferences_need_person` — a service account has no preferences."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    patch:
+      tags: [inbox]
+      summary: Change the caller's decision-mail preferences
+      description: |-
+        Writes the fields present and keeps the rest (#463); answers the whole resource. A field
+        sent as `null` is refused. `mutedKinds` replaces the stored list and must name declared
+        decision kinds. **Every member**, for themselves.
+      operationId: updateNotificationPreferences
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/NotificationPreferencesPatch"
+            example:
+              digestEnabled: true
+              digestTime: "08:15"
+      responses:
+        "200":
+          description: The preferences after the write.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationPreferences"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: "`notification_preferences_need_person` — a service account has no preferences."
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — a field is malformed (`digestTime` must be `HH:MM`) or null;
+            `notification_kind_unknown` — a muted kind no declaration names.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+  /api/v1/inbox/answer/{token}:
+    get:
+      tags: [inbox]
+      summary: The confirm page an emailed action link opens
+      description: |-
+        Every actionable row of a decision mail carries one link per action the recipient may press
+        (#463, BN.3, X5), linked on the **UI origin** and forwarded here by `ouroboros-ui`'s proxy
+        so the browser's session cookie arrives. It answers **an HTML page**: the full decision
+        card, the action's consequence, and one button.
+
+        **Opening the link changes nothing** — mail scanners and link prefetchers open every link
+        (this `GET` and the `HEAD` it also answers only read). The button's `POST` is the answer.
+
+        **No session needed for a non-merge-class action**: the token is the credential — minted for
+        one item × action × person, single-use, short-lived (`action_token_ttl_minutes`), stored
+        only as an HMAC, revoked the moment the item is resolved through any channel. **A
+        merge-class action demands its own person's session**: without one the page shows the card
+        and *Sign in to confirm*, returning here. A session of anybody else refuses the link.
+      operationId: openInboxAnswerLink
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ActionToken"
+      responses:
+        "200":
+          description: The confirm page, or — for a merge-class link with no session — the sign-in page.
+          content:
+            text/html:
+              schema:
+                type: string
+        "403":
+          description: A page saying the link was sent to someone else, or its person is no longer a member.
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: A page saying the link is not valid. Nothing was looked up for a malformed token.
+          content:
+            text/html:
+              schema:
+                type: string
+        "410":
+          description: |-
+            One of the designed pages for a link that no longer works: expired, already used, the
+            decision already answered, replaced by a newer mail, or withdrawn.
+          content:
+            text/html:
+              schema:
+                type: string
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+    post:
+      tags: [inbox]
+      summary: Answer a decision from its emailed link
+      description: |-
+        The confirm page's button (#463). Spends the token (atomic, once) and answers through the
+        action executor (`POST /api/v1/inbox/items/{id}/actions/{actionId}`'s rules: role,
+        first-answer-wins, idempotency keyed by the token) as the token's person, with channel
+        `email`. Answers an HTML receipt, or a page saying why nothing was done.
+
+        The body is the page's own form, read leniently rather than validated as a contract — a
+        person submits it, not a client: an `application/x-www-form-urlencoded` field `note` (at
+        most 2000 characters), required exactly when the action takes one. A missing note
+        re-renders the page (`422`) without spending the token; anything else in the body is
+        ignored. A merge-class `POST` without the token's person signed in is refused (`401`).
+      operationId: answerInboxAnswerLink
+      security: []
+      parameters:
+        - $ref: "#/components/parameters/ActionToken"
+      responses:
+        "200":
+          description: The receipt — what was done, by whom, and the owning plane's receipt.
+          content:
+            text/html:
+              schema:
+                type: string
+        "401":
+          description: A merge-class link without a session — the sign-in page. Nothing was done.
+          content:
+            text/html:
+              schema:
+                type: string
+        "403":
+          description: A page saying the link was sent to someone else, or its person is no longer a member.
+          content:
+            text/html:
+              schema:
+                type: string
+        "404":
+          description: A page saying the link is not valid.
+          content:
+            text/html:
+              schema:
+                type: string
+        "409":
+          description: |-
+            The owning plane refused (the decision stays open; the page says so), with the plane's
+            own status — `409`, `422`, `501` and others pass through.
+          content:
+            text/html:
+              schema:
+                type: string
+        "410":
+          description: Expired, used, answered elsewhere, replaced or withdrawn — each its own page.
+          content:
+            text/html:
+              schema:
+                type: string
+        "422":
+          description: The confirm page again, asking for the note the action requires. Nothing was spent.
+          content:
+            text/html:
+              schema:
+                type: string
+        "500":
+          description: |-
+            `internal_error` — the service itself failed. The message is a constant and
+            `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
   /api/v1/inbox/items/{id}/snooze:
     post:
       tags: [inbox]
@@ -32416,6 +32751,17 @@ components:
       schema:
         type: string
       example: ouro_unsub_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+    ActionToken:
+      name: token
+      in: path
+      required: true
+      description: |-
+        An action token from a decision mail ([#463](https://github.com/NobuData/ouroboros/issues/463)):
+        `ouro_act_`, a 16-hex key id, `_` and 43 URL-safe characters. Anything else is answered as
+        an invalid link without a lookup.
+      schema:
+        type: string
+      example: ouro_act_9c41d2e07a3b5f68_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
     CalibrationWindow:
       name: window
       in: query
@@ -50946,6 +51292,99 @@ components:
           type: boolean
         policyVersion:
           type: [integer, "null"]
+    InboxChannel:
+      type: object
+      description: One row of the *Answer From Anywhere* card (#463).
+      additionalProperties: false
+      required: [id, label, summary, state, until, reason]
+      properties:
+        id:
+          type: string
+          enum: [github, email, slack, push]
+        label:
+          type: string
+        summary:
+          type: string
+        state:
+          type: string
+          enum: [connected, available, unavailable-until]
+        until:
+          type: [string, "null"]
+          description: What an `unavailable-until` channel arrives with — `Chat Ops`, `BP.2`.
+        reason:
+          type: [string, "null"]
+          description: Why the channel is not connected; null exactly when it is.
+    InboxChannels:
+      type: object
+      description: "`GET /api/v1/inbox/channels` (#463) — rendered verbatim by BO.4."
+      additionalProperties: false
+      required: [channels]
+      properties:
+        channels:
+          type: array
+          items:
+            $ref: "#/components/schemas/InboxChannel"
+    NotificationPreferences:
+      type: object
+      description: "`GET`/`PATCH /api/v1/inbox/notifications` (#463)."
+      additionalProperties: false
+      required: [digest, instant, mutedKinds, isExplicit, updatedAt]
+      properties:
+        digest:
+          type: object
+          additionalProperties: false
+          required: [enabled, time, timeZone, nextSendAt]
+          properties:
+            enabled:
+              type: boolean
+            time:
+              type: string
+              pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+            timeZone:
+              type: string
+              enum: [UTC]
+            nextSendAt:
+              type: [string, "null"]
+              format: date-time
+        instant:
+          type: object
+          additionalProperties: false
+          required: [severity]
+          properties:
+            severity:
+              type: string
+              enum: [err, "off"]
+              description: "`err` — each err-severity item is mailed as it is filed; `off` — never."
+        mutedKinds:
+          type: array
+          items:
+            type: string
+        isExplicit:
+          type: boolean
+          description: False while the defaults apply.
+        updatedAt:
+          type: [string, "null"]
+          format: date-time
+    NotificationPreferencesPatch:
+      type: object
+      description: A change; absent fields are kept, `null` is refused (#463).
+      additionalProperties: false
+      properties:
+        digestEnabled:
+          type: boolean
+        digestTime:
+          type: string
+          pattern: "^([01][0-9]|2[0-3]):[0-5][0-9]$"
+          description: "`HH:MM`, UTC."
+        instantSeverity:
+          type: string
+          enum: [err, "off"]
+        mutedKinds:
+          type: array
+          maxItems: 64
+          items:
+            type: string
+            pattern: "^(custom:)?[a-z][a-z0-9_]{0,62}$"
     InboxSnoozeRequest:
       type: object
       additionalProperties: false

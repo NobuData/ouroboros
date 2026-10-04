@@ -4,6 +4,7 @@ import { BetterAuthModule } from "../../auth/auth.module";
 import { AuditModule } from "../audit/audit.module";
 import { DecisionsModule } from "../decisions/decisions.module";
 import { InboxActionsModule } from "../inbox-actions/inbox-actions.module";
+import { InboxChannelsModule } from "../inbox-channels/inbox-channels.module";
 import { InboxPoliciesModule } from "../inbox-policies/inbox-policies.module";
 import { BacklogModule } from "../backlog/backlog.module";
 import { BacklogSyncModule } from "../backlog-sync/backlog-sync.module";
@@ -388,6 +389,12 @@ export class AppModule {
         // card, `GET /api/v1/inbox/policies`, composed from the gate engine's org policy reader,
         // BA.1's protected paths and BA.3's dry-run; nothing imports it.
         InboxPoliciesModule,
+        // BN.3 ([#463](https://github.com/NobuData/ouroboros/issues/463)) — the decision channels:
+        // the GitHub mirror (one PR comment per item, edited), the email digest and instant mails
+        // with single-use action tokens, the public confirm page `/api/v1/inbox/answer/:token`,
+        // `GET /api/v1/inbox/channels` and the caller's `/api/v1/inbox/notifications`. It hears
+        // the lifecycle and answers through the executor above, so nothing imports it.
+        InboxChannelsModule,
         // BF.2 ([#411](https://github.com/NobuData/ouroboros/issues/411)) — the fact lifecycle and
         // the staleness sweep under `/api/v1/facts`. `PullRequestsModule` imports it for the
         // commit observer PR sync reports a merge to; nothing else claims the prefix.

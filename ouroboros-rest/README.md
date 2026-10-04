@@ -4396,6 +4396,35 @@ re-judges `allowed_paths` alone over the run's recorded change-set (the hunks th
 were never stored, so `secrets` is left as last judged) and spends the grant. If AP.3 still says no,
 the grant rolls back with the transaction.
 
+## Decision channels — GitHub mirror & email tokens
+
+`src/modules/inbox-channels/` (BN.3 [#463](https://github.com/NobuData/ouroboros/issues/463),
+decision **X5**, schema `V100`) makes two channels real and says honestly that the other two are not.
+
+```
+lifecycle filed|refreshed|resolved ─▶ mirror: ONE PR comment per item (SPI commentPR, key decision-<id>),
+                                      edited on refresh/resolution · failures recorded, retried each minute
+lifecycle filed|refreshed (err)    ─▶ instant mail to members who may answer · one token per action
+minute tick                        ─▶ mirror retries · failed instants retried · due daily digests
+GET  /api/v1/inbox/answer/:token   public · the decision card + one button · nothing executes on open
+POST /api/v1/inbox/answer/:token   spend (once) ─▶ InboxActionsService.execute(…, "email") ─▶ receipt
+GET  /api/v1/inbox/channels        github|email connected when real · slack/push unavailable-until
+GET|PATCH /api/v1/inbox/notifications   the caller's digest on/time (UTC), instant err|off, mutes
+```
+
+- **Mirror target**: the item's `pr` ref, else the PR its run opened; otherwise `skip_reason no_pr`
+  (a source without PRs: `no_comment_surface`). The stored comment ref and the SPI marker both key
+  by item, so a retry or redeploy edits rather than reposts.
+- **Tokens** (`tokens/`): `ouro_act_<key id>_<256-bit secret>`; V096 stores only
+  HMAC-SHA256 under a per-workspace key the vault seals (V100 `action_token_keys`). One live token
+  per (item, action, person) — a newer mail supersedes; resolution through any channel revokes.
+- **Confirm page** (`answer/`): linked on the **UI origin**, which `ouroboros-ui`'s `proxy.ts`
+  forwards here, so the session cookie arrives. A merge-class (`requires_confirm`) action demands
+  the token's own signed-in person; anyone else's session refuses the link. Expired, used,
+  answered, superseded, withdrawn and unknown links each render their own page.
+- **Defaults** (no stored preferences): digest off (09:00 UTC once on), instant `err` mails on.
+  Org-level notification routes are #488's (BR.4).
+
 ## Outbound webhooks
 
 > **Issue:** [#487](https://github.com/NobuData/ouroboros/issues/487) — *[BR.3] Outbound webhooks &

@@ -31,7 +31,7 @@ authority on *when* they are built.
 
 ## Progress
 
-**373 of 454 ordered issues are closed** — P0 through P10, P12 and P13 are complete, and P11 and P14 are in progress.
+**374 of 454 ordered issues are closed** — P0 through P10, P12 and P13 are complete, and P11 and P14 are in progress.
 Every issue number in this document links to its GitHub issue, and a **✅**
 in front of one means that issue is **closed**. Rows that have left a phase table
 entirely (their order numbers are the gaps the phase headers call out) shipped earlier
@@ -40,7 +40,7 @@ and are accounted for in the counts below, not in the tables.
 | Status | Phases | Issues |
 |--------|--------|-------:|
 | ✅ **Complete** | P0, P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P12, P13 | **322** |
-| 🟡 **In progress** | P11, P14 | **51** of 69 |
+| 🟡 **In progress** | P11, P14 | **52** of 69 |
 | — **Not started** | P15–P17 | 0 of 63 |
 
 > The checkmarks are derived from GitHub issue state, not from this document. Re-derive
@@ -1635,7 +1635,7 @@ the blockquote above that records what it did and what it did differently.
 
 > **31 issues** · 102 complexity points · order **#361–#391** · 10 dependency waves
 > **Source roadmaps:** `ROADMAP_MOCKUP_16_NEEDS_YOU_INBOX.md`, `ROADMAP_MOCKUP_17_SETTINGS.md`
-> **Status:** 🟡 **In progress** — 15 of 31 issues closed
+> **Status:** 🟡 **In progress** — 16 of 31 issues closed
 
 **Goal.** Deliver the typed decision-kind registry with items emitted by every live plane and actions that resume loops through the real machinery, and the one versioned policy document that drives every enforcement point — auto-merge conditions, review-required, protected paths, spend guard, dry-run-for-new-repos — plus members, audit and lifecycle.
 
@@ -1662,7 +1662,7 @@ the blockquote above that records what it did and what it did differently.
 | 373 | **BM.4** | ✅ [#460](https://github.com/NobuData/ouroboros/issues/460) | Inbox seeds — mockup-16 parity + probes | ouroboros-db, .github | S | 3.6, BM.2, BM.3 |
 | 374 | **BN.2** | ✅ [#462](https://github.com/NobuData/ouroboros/issues/462) | Action executor & allow-once exceptions | ouroboros-rest | L | BM.3, BN.1 |
 | 375 | **BN.4** | ✅ [#464](https://github.com/NobuData/ouroboros/issues/464) | Inbox APIs, snooze & policy read-view | ouroboros-rest | M | BM.2, BN.1 |
-| 376 | **BN.3** | [#463](https://github.com/NobuData/ouroboros/issues/463) | Channels — GitHub mirror & email tokens | ouroboros-rest | M | BJ.4, BM.3, BN.1 |
+| 376 | **BN.3** | ✅ [#463](https://github.com/NobuData/ouroboros/issues/463) | Channels — GitHub mirror & email tokens | ouroboros-rest | M | BJ.4, BM.3, BN.1 |
 | 377 | **BN.5** | [#465](https://github.com/NobuData/ouroboros/issues/465) | Inbox integration tests | ouroboros-rest | M | BN.2, BN.4 |
 | 378 | **BO.1** | [#466](https://github.com/NobuData/ouroboros/issues/466) | Inbox route, head & pill wiring | ouroboros-ui | S | 5.3, D.5, BN.4 |
 | 379 | **BQ.3** | [#482](https://github.com/NobuData/ouroboros/issues/482) | Retention policy service | ouroboros-rest, ouroboros-db | M | AH.5, AO.2, AT.5 |

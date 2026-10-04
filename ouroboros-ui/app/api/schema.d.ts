@@ -6695,6 +6695,117 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inbox/channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The decision channels, as they truly stand
+         * @description The *Answer From Anywhere* card's truth payload (#463, BN.3, X5), which BO.4 renders
+         *     verbatim so no UI code hand-maintains what is connected. Four rows, in the card's order:
+         *
+         *     | channel | state |
+         *     |---|---|
+         *     | `slack` | always `unavailable-until` `Chat Ops` — it arrives with mockup 19 (#536/#538) |
+         *     | `email` | `connected` while this deployment has a mail server (`OURO_SMTP_URL`), else `available` with the reason |
+         *     | `push` | always `unavailable-until` `BP.2` (#472) |
+         *     | `github` | `connected` while the workspace has a source whose provider can comment on a PR through the SPI, else `available` |
+         *
+         *     **No fake ✓**: a channel that does not exist never reads `connected`. A `connected` row has
+         *     no `reason`; every other row says why in a sentence. **Every member.**
+         */
+        get: operations["readInboxChannels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/inbox/notifications": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The caller's decision-mail preferences in this workspace
+         * @description Per person per workspace (#463, BN.3; the settings contract with mockup 17, surfaced by
+         *     BO.4): the daily digest on/off and its send time (UTC), the instant-send threshold, and
+         *     per-kind mutes. **Defaults** when nothing is stored (`isExplicit: false`): digest off
+         *     (09:00 UTC once on), instant mails for `err` items on, nothing muted.
+         *
+         *     `digest.nextSendAt` is when the next digest leaves — the latest slot still due, else the
+         *     first later one at least 20 hours after the last digest sent — so changing the time
+         *     visibly changes the next send. Null while the digest is off.
+         *
+         *     **Every member**, for themselves. A service account has no mailbox and is refused.
+         */
+        get: operations["readNotificationPreferences"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the caller's decision-mail preferences
+         * @description Writes the fields present and keeps the rest (#463); answers the whole resource. A field
+         *     sent as `null` is refused. `mutedKinds` replaces the stored list and must name declared
+         *     decision kinds. **Every member**, for themselves.
+         */
+        patch: operations["updateNotificationPreferences"];
+        trace?: never;
+    };
+    "/api/v1/inbox/answer/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The confirm page an emailed action link opens
+         * @description Every actionable row of a decision mail carries one link per action the recipient may press
+         *     (#463, BN.3, X5), linked on the **UI origin** and forwarded here by `ouroboros-ui`'s proxy
+         *     so the browser's session cookie arrives. It answers **an HTML page**: the full decision
+         *     card, the action's consequence, and one button.
+         *
+         *     **Opening the link changes nothing** — mail scanners and link prefetchers open every link
+         *     (this `GET` and the `HEAD` it also answers only read). The button's `POST` is the answer.
+         *
+         *     **No session needed for a non-merge-class action**: the token is the credential — minted for
+         *     one item × action × person, single-use, short-lived (`action_token_ttl_minutes`), stored
+         *     only as an HMAC, revoked the moment the item is resolved through any channel. **A
+         *     merge-class action demands its own person's session**: without one the page shows the card
+         *     and *Sign in to confirm*, returning here. A session of anybody else refuses the link.
+         */
+        get: operations["openInboxAnswerLink"];
+        put?: never;
+        /**
+         * Answer a decision from its emailed link
+         * @description The confirm page's button (#463). Spends the token (atomic, once) and answers through the
+         *     action executor (`POST /api/v1/inbox/items/{id}/actions/{actionId}`'s rules: role,
+         *     first-answer-wins, idempotency keyed by the token) as the token's person, with channel
+         *     `email`. Answers an HTML receipt, or a page saying why nothing was done.
+         *
+         *     The body is the page's own form, read leniently rather than validated as a contract — a
+         *     person submits it, not a client: an `application/x-www-form-urlencoded` field `note` (at
+         *     most 2000 characters), required exactly when the action takes one. A missing note
+         *     re-renders the page (`422`) without spending the token; anything else in the body is
+         *     ignored. A merge-class `POST` without the token's person signed in is refused (`401`).
+         */
+        post: operations["answerInboxAnswerLink"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/inbox/items/{id}/snooze": {
         parameters: {
             query?: never;
@@ -22664,6 +22775,55 @@ export interface components {
             dryRun: boolean;
             policyVersion: number | null;
         };
+        /** @description One row of the *Answer From Anywhere* card (#463). */
+        InboxChannel: {
+            /** @enum {string} */
+            id: "github" | "email" | "slack" | "push";
+            label: string;
+            summary: string;
+            /** @enum {string} */
+            state: "connected" | "available" | "unavailable-until";
+            /** @description What an `unavailable-until` channel arrives with — `Chat Ops`, `BP.2`. */
+            until: string | null;
+            /** @description Why the channel is not connected; null exactly when it is. */
+            reason: string | null;
+        };
+        /** @description `GET /api/v1/inbox/channels` (#463) — rendered verbatim by BO.4. */
+        InboxChannels: {
+            channels: components["schemas"]["InboxChannel"][];
+        };
+        /** @description `GET`/`PATCH /api/v1/inbox/notifications` (#463). */
+        NotificationPreferences: {
+            digest: {
+                enabled: boolean;
+                time: string;
+                /** @enum {string} */
+                timeZone: "UTC";
+                /** Format: date-time */
+                nextSendAt: string | null;
+            };
+            instant: {
+                /**
+                 * @description `err` — each err-severity item is mailed as it is filed; `off` — never.
+                 * @enum {string}
+                 */
+                severity: "err" | "off";
+            };
+            mutedKinds: string[];
+            /** @description False while the defaults apply. */
+            isExplicit: boolean;
+            /** Format: date-time */
+            updatedAt: string | null;
+        };
+        /** @description A change; absent fields are kept, `null` is refused (#463). */
+        NotificationPreferencesPatch: {
+            digestEnabled?: boolean;
+            /** @description `HH:MM`, UTC. */
+            digestTime?: string;
+            /** @enum {string} */
+            instantSeverity?: "err" | "off";
+            mutedKinds?: string[];
+        };
         InboxSnoozeRequest: {
             /** @default 60 */
             minutes: number;
@@ -25362,6 +25522,13 @@ export interface components {
          * @example ouro_unsub_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
          */
         InsightsDigestToken: string;
+        /**
+         * @description An action token from a decision mail ([#463](https://github.com/NobuData/ouroboros/issues/463)):
+         *     `ouro_act_`, a 16-hex key id, `_` and 43 URL-safe characters. Anything else is answered as
+         *     an invalid link without a lookup.
+         * @example ouro_act_9c41d2e07a3b5f68_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+         */
+        ActionToken: string;
         /**
          * @description The window ending now the report covers, over merge instants — mockup 15's range segment
          *     ([#435](https://github.com/NobuData/ouroboros/issues/435)). `30d` when absent.
@@ -56945,6 +57112,545 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readInboxChannels: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The four rows. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "channels": [
+                     *         {
+                     *           "id": "slack",
+                     *           "label": "Slack",
+                     *           "summary": "Approve with a button, right in the thread.",
+                     *           "state": "unavailable-until",
+                     *           "until": "Chat Ops",
+                     *           "reason": "Arrives with Chat Ops."
+                     *         },
+                     *         {
+                     *           "id": "email",
+                     *           "label": "Email",
+                     *           "summary": "A daily digest, and an instant mail for each blocking (err) decision.",
+                     *           "state": "connected",
+                     *           "until": null,
+                     *           "reason": null
+                     *         },
+                     *         {
+                     *           "id": "push",
+                     *           "label": "Mobile push",
+                     *           "summary": "Critical decisions only.",
+                     *           "state": "unavailable-until",
+                     *           "until": "BP.2",
+                     *           "reason": "Arrives later."
+                     *         },
+                     *         {
+                     *           "id": "github",
+                     *           "label": "GitHub",
+                     *           "summary": "Every decision is mirrored as a PR comment.",
+                     *           "state": "connected",
+                     *           "until": null,
+                     *           "reason": null
+                     *         }
+                     *       ]
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InboxChannels"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    readNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The preferences, defaults filled in. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "digest": {
+                     *         "enabled": true,
+                     *         "time": "09:00",
+                     *         "timeZone": "UTC",
+                     *         "nextSendAt": "2026-10-05T09:00:00.000Z"
+                     *       },
+                     *       "instant": {
+                     *         "severity": "err"
+                     *       },
+                     *       "mutedKinds": [
+                     *         "fact_review"
+                     *       ],
+                     *       "isExplicit": true,
+                     *       "updatedAt": "2026-10-04T16:20:00.000Z"
+                     *     }
+                     */
+                    "application/json": components["schemas"]["NotificationPreferences"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `notification_preferences_need_person` — a service account has no preferences. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    updateNotificationPreferences: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "digestEnabled": true,
+                 *       "digestTime": "08:15"
+                 *     }
+                 */
+                "application/json": components["schemas"]["NotificationPreferencesPatch"];
+            };
+        };
+        responses: {
+            /** @description The preferences after the write. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["NotificationPreferences"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /** @description `notification_preferences_need_person` — a service account has no preferences. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — a field is malformed (`digestTime` must be `HH:MM`) or null;
+             *     `notification_kind_unknown` — a muted kind no declaration names.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    openInboxAnswerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An action token from a decision mail ([#463](https://github.com/NobuData/ouroboros/issues/463)):
+                 *     `ouro_act_`, a 16-hex key id, `_` and 43 URL-safe characters. Anything else is answered as
+                 *     an invalid link without a lookup.
+                 * @example ouro_act_9c41d2e07a3b5f68_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+                 */
+                token: components["parameters"]["ActionToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The confirm page, or — for a merge-class link with no session — the sign-in page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description A page saying the link was sent to someone else, or its person is no longer a member. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description A page saying the link is not valid. Nothing was looked up for a malformed token. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description One of the designed pages for a link that no longer works: expired, already used, the
+             *     decision already answered, replaced by a newer mail, or withdrawn.
+             */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed. The message is a constant and
+             *     `details` is empty, deliberately.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    answerInboxAnswerLink: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /**
+                 * @description An action token from a decision mail ([#463](https://github.com/NobuData/ouroboros/issues/463)):
+                 *     `ouro_act_`, a 16-hex key id, `_` and 43 URL-safe characters. Anything else is answered as
+                 *     an invalid link without a lookup.
+                 * @example ouro_act_9c41d2e07a3b5f68_PHT7LFFHxLVDamqdOm-8S2U2CURNlADGcrwkr9sZBB8
+                 */
+                token: components["parameters"]["ActionToken"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The receipt — what was done, by whom, and the owning plane's receipt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description A merge-class link without a session — the sign-in page. Nothing was done. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description A page saying the link was sent to someone else, or its person is no longer a member. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description A page saying the link is not valid. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /**
+             * @description The owning plane refused (the decision stays open; the page says so), with the plane's
+             *     own status — `409`, `422`, `501` and others pass through.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Expired, used, answered elsewhere, replaced or withdrawn — each its own page. */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description The confirm page again, asking for the note the action requires. Nothing was spent. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
             /**

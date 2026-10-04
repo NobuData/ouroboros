@@ -127,6 +127,14 @@ export const SHIPPED_PUBLIC_SURFACE: readonly string[] = [
   // shaped like a token is refused before any read, as a page with a `404`.
   `GET ${API_BASE_PATH}/insights/digest/unsubscribe/:token`,
   `POST ${API_BASE_PATH}/insights/digest/unsubscribe/:token`,
+  // The decision mails' action links (#463, BN.3, decision X5). The token in the path is the
+  // credential — minted for one item, one action and one person, single-use, short-lived, stored
+  // only as an HMAC — so a non-merge-class answer is one click from the mail. `GET` renders the
+  // decision card and changes nothing (mail scanners open links); `POST` answers through the
+  // executor. A merge-class action demands the token's own signed-in person (the session the
+  // guard still reads on an anonymous route), and someone else's session refuses the link.
+  `GET ${API_BASE_PATH}/inbox/answer/:token`,
+  `POST ${API_BASE_PATH}/inbox/answer/:token`,
 ].sort();
 
 /**

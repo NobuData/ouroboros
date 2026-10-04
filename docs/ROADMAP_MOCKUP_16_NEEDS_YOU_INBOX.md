@@ -367,7 +367,7 @@ seeds: 3 open (err 8m · warn 21m · warn 34m) + 5 resolved (1 policy-auto) + we
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
 | BN.1 | #461 ✅ | 🟢 Done | ouroboros-rest: [BN.1] DecisionKind SPI & emitter wiring | Registry service + the eight MVP kinds wired to their planes | mvp, inbox, rest | N (after BM.1) | Y | L | ouroboros-rest |
 | BN.2 | #462 ✅ | 🟢 Done | ouroboros-rest: [BN.2] Action executor & allow-once exceptions | Handler bindings to AX/AP/planning; exception grants (X3) | mvp, inbox, rest, runs, pr | N (after BN.1, BM.3) | Y | L | ouroboros-rest |
-| BN.3 | #463 | 🟡 Open | ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens | Idempotent mirroring; digest + instant mails with signed tokens | mvp, inbox, rest, sources | N (after BN.1, BM.3, BJ.4) | Y | M | ouroboros-rest |
+| BN.3 | #463 ✅ | 🟢 Done | ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens | Idempotent mirroring; digest + instant mails with signed tokens | mvp, inbox, rest, sources | N (after BN.1, BM.3, BJ.4) | Y | M | ouroboros-rest |
 | BN.4 | #464 ✅ | 🟢 Done | ouroboros-rest: [BN.4] Inbox APIs, snooze & policy read-view | Queue/resolved/stat payloads, snooze, composed policy rows (X6/X7) | mvp, inbox, rest | N (after BN.1, BM.2) | Y | M | ouroboros-rest |
 | BN.5 | #465 | 🟡 Open | ouroboros-rest: [BN.5] Inbox integration tests | Registry, handlers, exceptions, tokens, channels, metrics | mvp, inbox, rest, ci | N (after BN.2–BN.4) | Y | M | ouroboros-rest |
 
@@ -448,7 +448,9 @@ action(approve_merge) ─▶ AX.5 approve ─▶ gate green ─▶ AX.4 merges (
 
 ### Issue BN.3 — ouroboros-rest: [BN.3] Channels — GitHub mirror & email tokens
 
-> **GitHub issue:** #463 · **Status:** 🟡 Open · **Parent epic:** #454
+> **GitHub issue:** #463 ✅ · **Status:** 🟢 Done · **Parent epic:** #454
+>
+> **Delivered (#463):** `ouroboros-rest/src/modules/inbox-channels/` with V100 (`action_token_keys`, `decision_channel_mirrors`, `notification_preferences`, `decision_mail_sends`), OpenAPI 0.39.9: the lifecycle-driven GitHub mirror (one comment per item via `PrSyncService.comment`, edited on refresh/resolution, failures recorded and retried each minute), instant `err` mails and the daily digest with V096 tokens (HMAC under a vault-sealed per-workspace key), the public confirm page `GET`/`POST /api/v1/inbox/answer/{token}`, `GET /api/v1/inbox/channels` (the truth payload BO.4 renders verbatim) and `GET`/`PATCH /api/v1/inbox/notifications`. Decided on the ticket: the confirm page is REST-rendered HTML **linked on the UI origin** and forwarded by `ouroboros-ui/proxy.ts`, so the session cookie reaches a merge-class confirm; the mirror targets the item's `pr` ref, else its run's PR (no SPI issue comments — ticket-only items record `no_comment_surface`/`no_pr`); preferences are **per person per workspace**; defaults are **instant err mails on, digest off** (09:00 UTC once on). Org-level routes (the #488 amendment) stay with BR.4.
 >
 > **Already shipped (#462):** answer a token or a GitHub-comment command through `InboxActionsService.execute(org, item, action, person, {note, idempotencyKey}, channel)` with your channel (`email`, `github`) — it enforces the role, first-answer-wins and idempotency, writes the resolution and audits; a success emits the lifecycle's `resolved` with that channel. Merge-class actions must still land on a session confirm page (X5) before calling it.
 >
