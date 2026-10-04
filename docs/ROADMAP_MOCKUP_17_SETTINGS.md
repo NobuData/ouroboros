@@ -412,7 +412,7 @@ seeds: policy v7(+v6) · 5 members (owner/admin/viewer/service/pending) ·
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BR.1 | #485 | 🟡 Open | ouroboros-rest: [BR.1] Members, capabilities & service accounts | Role mapping, invites, `can_approve_loops`, sealed service tokens | mvp, settings, rest | N (after BA-A.5, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
+| BR.1 | #485 ✅ | 🟢 Done | ouroboros-rest: [BR.1] Members, capabilities & service accounts | Role mapping, invites, `can_approve_loops`, sealed service tokens | mvp, settings, rest | N (after BA-A.5, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
 | BR.2 | #486 | 🟡 Open | ouroboros-rest: [BR.2] Audit plane — viewer, export & retention | Filterable queries, streamed CSV, 400d tier (delivers #26) | mvp, settings, rest | N (after AD.4 shape, BQ.3) | Y | M | ouroboros-rest |
 | BR.3 | #487 | 🟡 Open | ouroboros-rest: [BR.3] Outbound webhooks & SIEM streaming | Endpoint CRUD, signed deliveries, retries+DLQ, audit fan-out | mvp, settings, rest | N (after AD.4, AD.1) | Y | L | ouroboros-rest, ouroboros-db |
 | BR.4 | #488 | 🟡 Open | ouroboros-rest: [BR.4] Integrations status hub & org notification routes | Composed connection truth; org-level routes (weekly report etc.) | mvp, settings, rest | N (after BN.3, BJ.4) | Y | M | ouroboros-rest |
@@ -421,7 +421,7 @@ seeds: policy v7(+v6) · 5 members (owner/admin/viewer/service/pending) ·
 
 ### Issue BR.1 — ouroboros-rest: [BR.1] Members, capabilities & service accounts
 
-> **GitHub issue:** #485 · **Status:** 🟡 Open · **Parent epic:** #477
+> **GitHub issue:** #485 ✅ · **Status:** 🟢 Done · **Parent epic:** #477
 
 - **Problem Statement:** The members card needs enforceable columns
   (decision S3): display-mapped roles, the approve-loops capability, and

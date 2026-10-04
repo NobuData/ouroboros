@@ -87,8 +87,18 @@ export type Stamped = ColumnType<Date, Date | undefined, never>;
  * key that points at this table from our own schema (`provider_connections.added_by`,
  * `model_aliases.updated_by`, `route_revisions.actor`, `audit_events.actor_id`) already
  * treated a person as somebody else's row; this only lets a `select` say their name.
+ *
+ * **`session` and `invitation` joined with BR.1** ([#485](https://github.com/NobuData/ouroboros/issues/485)):
+ * the Members card reads a person's newest `session.updatedAt` as *last active* and lists pending
+ * invitations; every write to either is the plugin's (`members/members.auth.ts`).
  */
-export const LIBRARY_OWNED_TABLES = ["user", "organization", "member"] as const;
+export const LIBRARY_OWNED_TABLES = [
+  "user",
+  "organization",
+  "member",
+  "session",
+  "invitation",
+] as const;
 
 /**
  * `member.role` — what a person may do in one organization (V005).
@@ -3543,6 +3553,13 @@ export interface AuditEventsTable {
    */
   actor_id: ColumnType<string | null, string | null, never>;
   /**
+   * The service account the request authenticated as (V091,
+   * [#485](https://github.com/NobuData/ouroboros/issues/485)) — rendered `service:<name>`. A name
+   * rather than a foreign key, so the trail outlives the account. Exclusive with `actor_id` by
+   * CHECK. Never updated, like every column here.
+   */
+  actor_service: ColumnType<string | null, string | null | undefined, never>;
+  /**
    * What happened — `provider.revealed`, `credential.lease_granted`. `family.event`, lower
    * snake on both sides, by CHECK.
    *
@@ -5965,6 +5982,90 @@ export interface WorkspaceLifecycleTable {
 }
 
 /**
+ * `ouroboros.session` — BetterAuth's sessions (V004, `activeOrganizationId` from V005). Read-only
+ * here: the library writes it. The Members card reads `updatedAt` as *last active*
+ * ([#485](https://github.com/NobuData/ouroboros/issues/485)) — it rolls with the session's
+ * `updateAge`, so it is a coarse but real signal.
+ */
+export interface SessionTable {
+  id: string;
+  expiresAt: Date;
+  token: string;
+  createdAt: Date;
+  updatedAt: Date;
+  ipAddress: string | null;
+  userAgent: string | null;
+  userId: string;
+  activeOrganizationId: string | null;
+}
+
+/**
+ * `ouroboros.invitation` — the organization plugin's invitations (V005). Read-only here: invite,
+ * resend and revoke go through the plugin's API (#485). `createdAt` is the card's *invited 2h ago*.
+ */
+export interface InvitationTable {
+  id: string;
+  organizationId: string;
+  email: string;
+  /** The role the invitee will hold; may be a comma-separated list, like `member.role`. */
+  role: string | null;
+  /** `pending | accepted | rejected | canceled`. */
+  status: string;
+  expiresAt: Date;
+  createdAt: Date;
+  inviterId: string;
+}
+
+/**
+ * `ouroboros.member_capabilities` — explicit per-member capability settings (V091,
+ * [#485](https://github.com/NobuData/ouroboros/issues/485)). No row means the role default.
+ */
+export interface MemberCapabilitiesTable {
+  /** `member.id`, the primary key. `on delete cascade`. */
+  member_id: string;
+  organization_id: string;
+  /** Whether the member may approve, waive and merge (decision S3). */
+  can_approve_loops: boolean;
+  updated_by: string | null;
+  updated_at: ColumnType<Date, Date | undefined, Date>;
+}
+
+/**
+ * `ouroboros.service_accounts` — non-human principals (V091,
+ * [#485](https://github.com/NobuData/ouroboros/issues/485)).
+ */
+export interface ServiceAccountsTable {
+  id: Generated<string>;
+  organization_id: string;
+  /** `devops-bot` — what the audit trail prints after `service:`. */
+  name: string;
+  /** Scopes from the registered allow-list (`service.scopes.ts`), CHECK-constrained. */
+  scopes: ColumnType<string[], string, string>;
+  created_by: string | null;
+  created_at: Stamped;
+  /** Set by revoke; a disabled account authenticates nothing. */
+  disabled_at: Date | null;
+}
+
+/**
+ * `ouroboros.service_tokens` — hash-only bearer tokens (V091,
+ * [#485](https://github.com/NobuData/ouroboros/issues/485)). The token itself is never stored.
+ */
+export interface ServiceTokensTable {
+  id: Generated<string>;
+  organization_id: string;
+  service_account_id: string;
+  /** SHA-256 of the token, lower-case hex. */
+  token_hash: string;
+  /** The masked display form, as an AD.1 envelope under the workspace DEK. */
+  hint_sealed: string;
+  created_by: string | null;
+  created_at: Stamped;
+  last_used_at: Date | null;
+  revoked_at: Date | null;
+}
+
+/**
  * `ouroboros.audit_event_outbox` — `audit.*` events awaiting outbound delivery (V090,
  * [#489](https://github.com/NobuData/ouroboros/issues/489)). BR.3
  * ([#487](https://github.com/NobuData/ouroboros/issues/487)) delivers from it.
@@ -6222,6 +6323,11 @@ export interface Database {
   workspace_lifecycle: WorkspaceLifecycleTable;
   audit_event_outbox: AuditEventOutboxTable;
   workspace_tombstones: WorkspaceTombstonesTable;
+  session: SessionTable;
+  invitation: InvitationTable;
+  member_capabilities: MemberCapabilitiesTable;
+  service_accounts: ServiceAccountsTable;
+  service_tokens: ServiceTokensTable;
   token_usage_daily: TokenUsageDailyView;
   ticket_sources_public: TicketSourcesPublicView;
   planning_epic_progress: PlanningEpicProgressView;
@@ -6753,6 +6859,7 @@ export const TABLE_COLUMNS = {
     "ip",
     "detail",
     "occurred_at",
+    "actor_service",
   ],
   workflows: [
     "id",
@@ -7536,6 +7643,54 @@ export const TABLE_COLUMNS = {
     "artifacts_deleted",
     "rows_remaining",
   ],
+  session: [
+    "id",
+    "expiresAt",
+    "token",
+    "createdAt",
+    "updatedAt",
+    "ipAddress",
+    "userAgent",
+    "userId",
+    "activeOrganizationId",
+  ],
+  invitation: [
+    "id",
+    "organizationId",
+    "email",
+    "role",
+    "status",
+    "expiresAt",
+    "createdAt",
+    "inviterId",
+  ],
+  member_capabilities: [
+    "member_id",
+    "organization_id",
+    "can_approve_loops",
+    "updated_by",
+    "updated_at",
+  ],
+  service_accounts: [
+    "id",
+    "organization_id",
+    "name",
+    "scopes",
+    "created_by",
+    "created_at",
+    "disabled_at",
+  ],
+  service_tokens: [
+    "id",
+    "organization_id",
+    "service_account_id",
+    "token_hash",
+    "hint_sealed",
+    "created_by",
+    "created_at",
+    "last_used_at",
+    "revoked_at",
+  ],
   org_policies_effective: ["organization_id", "dry_run", "is_explicit", "updated_at", "updated_by"],
   env_recipes_current: [
     "id",
@@ -8168,3 +8323,10 @@ export type InterventionOverride = Selectable<InterventionOverridesTable>;
 export type WorkspaceLifecycle = Selectable<WorkspaceLifecycleTable>;
 /** A row of `ouroboros.workspace_tombstones`, as a `select` returns it. */
 export type WorkspaceTombstone = Selectable<WorkspaceTombstonesTable>;
+
+/** A row of `ouroboros.member_capabilities`, as a `select` returns it. */
+export type MemberCapability = Selectable<MemberCapabilitiesTable>;
+/** A row of `ouroboros.service_accounts`, as a `select` returns it. */
+export type ServiceAccount = Selectable<ServiceAccountsTable>;
+/** A row of `ouroboros.service_tokens`, as a `select` returns it. */
+export type ServiceToken = Selectable<ServiceTokensTable>;

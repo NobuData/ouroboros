@@ -72,7 +72,10 @@ export type AuditSubjectType =
   | "farm_job_hook"
   | "analysis_suggestion"
   | "draft_batch"
-  | "workspace";
+  | "workspace"
+  | "member"
+  | "invitation"
+  | "service_account";
 
 /** A provider connection was created — or an attempt to create one was refused. */
 export const PROVIDER_ADDED_EVENT = "provider.added";
@@ -478,6 +481,32 @@ export const ANALYSIS_SUGGESTION_DRAFTED_EVENT = "analysis_suggestion.drafted";
 export const ANALYZER_BATCH_PUSHED_EVENT = "analyzer.batch_pushed";
 
 /**
+ * The Members & Roles card's writes (BR.1, [#485](https://github.com/NobuData/ouroboros/issues/485)).
+ * A person was invited to the workspace. Subject `invitation`; the detail names the email and role.
+ */
+export const MEMBER_INVITED_EVENT = "member.invited";
+/** A pending invitation's expiry was refreshed (#485). Subject `invitation`. */
+export const MEMBER_INVITATION_RESENT_EVENT = "member.invitation_resent";
+/** A pending invitation was revoked (#485). Subject `invitation`. */
+export const MEMBER_INVITATION_REVOKED_EVENT = "member.invitation_revoked";
+/**
+ * A member's role changed (#485). Subject `member`; the detail carries `before` and `after`. A
+ * refused attempt on the last owner is recorded too, with `outcome: failure` and its `reason`.
+ */
+export const MEMBER_ROLE_CHANGED_EVENT = "member.role_changed";
+/** A member was removed (#485). Subject `member`; a refusal is recorded like a role change's. */
+export const MEMBER_REMOVED_EVENT = "member.removed";
+/** A member's `can_approve_loops` was set (#485). Subject `member`; `before`/`after`. */
+export const MEMBER_CAPABILITY_CHANGED_EVENT = "member.capability_changed";
+
+/** A service account was created and its first token shown (#485). Subject `service_account`. */
+export const SERVICE_ACCOUNT_CREATED_EVENT = "service_account.created";
+/** A service account's token was rotated: the old one stopped working (#485). */
+export const SERVICE_ACCOUNT_ROTATED_EVENT = "service_account.rotated";
+/** A service account was revoked: its token is dead and the account disabled (#485). */
+export const SERVICE_ACCOUNT_REVOKED_EVENT = "service_account.revoked";
+
+/**
  * Every action this service writes.
  *
  * A named list rather than a dozen loose constants, so `openapi.yaml`'s prose, the trail
@@ -544,6 +573,15 @@ export const AUDIT_ACTIONS = [
   WORKSPACE_RESTORED_EVENT,
   WORKSPACE_PURGED_EVENT,
   WORKSPACE_UPDATED_EVENT,
+  MEMBER_INVITED_EVENT,
+  MEMBER_INVITATION_RESENT_EVENT,
+  MEMBER_INVITATION_REVOKED_EVENT,
+  MEMBER_ROLE_CHANGED_EVENT,
+  MEMBER_REMOVED_EVENT,
+  MEMBER_CAPABILITY_CHANGED_EVENT,
+  SERVICE_ACCOUNT_CREATED_EVENT,
+  SERVICE_ACCOUNT_ROTATED_EVENT,
+  SERVICE_ACCOUNT_REVOKED_EVENT,
 ] as const;
 
 /** One of {@link AUDIT_ACTIONS}. */

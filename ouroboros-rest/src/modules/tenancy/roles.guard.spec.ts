@@ -5,6 +5,7 @@ import type { DomainError } from "../errors/error.envelope";
 import type { OrganizationRole } from "../db/schema";
 import { DomainsController } from "./domains.controller";
 import { GithubOrgsController } from "./github-orgs.controller";
+import { servicePrincipalFor } from "../auth/service.principal.fixture";
 import { membershipIn } from "./organization.fixture";
 import { OrgsController } from "./orgs.controller";
 import { ReposController } from "./repos.controller";
@@ -224,6 +225,19 @@ describe("a route that declares roles", () => {
     expect(() => guard.canActivate(contextFor(Guarded, Guarded.prototype.administer))).toThrow(
       /no tenant context/,
     );
+  });
+});
+
+describe("a service account (#485)", () => {
+  it("passes every role gate, because the tenant guard's scope check already decided", () => {
+    const context = contextFor(Guarded, Guarded.prototype.ownerOnly);
+
+    expect(
+      runWithTenantContext(() => {
+        setTenantContext({ membership: membershipIn([]), service: servicePrincipalFor() });
+        return guard.canActivate(context);
+      }),
+    ).toBe(true);
   });
 });
 

@@ -42,7 +42,7 @@ import { Injectable } from "@nestjs/common";
 
 import type { NewAuditEvent } from "../db/schema";
 import { pageOf, windowOf, type Page } from "../tenancy/pagination";
-import { currentClientAddress } from "./audit.context";
+import { currentClientAddress, currentServiceActor } from "./audit.context";
 import { auditDetail, type AuditRecord } from "./audit.events";
 import { AuditRepository, type AuditFilter } from "./audit.repository";
 import type { ListAuditQuery } from "./audit.dto";
@@ -74,6 +74,9 @@ export class AuditService {
     const row: NewAuditEvent = {
       organization_id: event.organizationId,
       actor_id: event.actorId,
+      // A service-authenticated request has no person, so its events carry the account instead
+      // (#485). The two are exclusive in the schema; a named person always wins.
+      actor_service: event.actorId === null ? (currentServiceActor() ?? null) : null,
       action: event.action,
       subject_type: event.subjectType,
       subject_id: event.subjectId,

@@ -9,7 +9,9 @@
  * **Roles.** Reading the plan is every member's, a `viewer` included. Arming, merging and editing
  * are routed to contributors and then held by the service to `owner`/`admin`, or a `member` whose
  * PR's pinned workflow auto-merges — the policy is per PR, so it cannot be a route decorator.
- * Disarming is the safe direction and any contributor's.
+ * Disarming is the safe direction and any contributor's. Arming and merging also require the
+ * member's `can_approve_loops` capability (#485, `tenancy/capabilities.ts`), checked at the route
+ * after the role.
  *
  * **`200` throughout** — nothing here creates a resource the caller did not already have.
  */
@@ -17,6 +19,7 @@
 import { Body, Controller, Get, HttpCode, HttpStatus, Param, Patch, Post } from "@nestjs/common";
 
 import type { Organization } from "../../db/schema";
+import { RequiresCapability } from "../../tenancy/capabilities";
 import { CONTRIBUTORS, Roles } from "../../tenancy/roles.guard";
 import { currentUser, type ActiveMembership } from "../../tenancy/tenant.context";
 import { CurrentMember, CurrentTenant } from "../../tenancy/tenant.decorators";
@@ -79,6 +82,7 @@ export class MergeController {
   @Post(":id/merge-plan/arm")
   @HttpCode(HttpStatus.OK)
   @Roles(...CONTRIBUTORS)
+  @RequiresCapability("can_approve_loops")
   arm(
     @CurrentMember() member: ActiveMembership,
     @Param() params: PullRequestParams,
@@ -114,6 +118,7 @@ export class MergeController {
   @Post(":id/merge-plan/merge")
   @HttpCode(HttpStatus.OK)
   @Roles(...CONTRIBUTORS)
+  @RequiresCapability("can_approve_loops")
   merge(
     @CurrentMember() member: ActiveMembership,
     @Param() params: PullRequestParams,

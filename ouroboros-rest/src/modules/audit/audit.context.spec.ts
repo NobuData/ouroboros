@@ -1,8 +1,10 @@
 import {
   clientAddress,
   currentClientAddress,
+  currentServiceActor,
   IPV4_MAPPED_PREFIX,
   runWithAuditContext,
+  setAuditServiceActor,
 } from "./audit.context";
 
 /**
@@ -110,5 +112,28 @@ describe("the per-request store", () => {
     runWithAuditContext(undefined, () => {
       expect(currentClientAddress()).toBeUndefined();
     });
+  });
+});
+
+describe("the service actor (#485)", () => {
+  it("is unset on a person's request", () => {
+    runWithAuditContext("198.51.100.24", () => {
+      expect(currentServiceActor()).toBeUndefined();
+    });
+  });
+
+  it("is what the guard set, for the rest of the request", async () => {
+    await runWithAuditContext(undefined, async () => {
+      setAuditServiceActor("devops-bot");
+      await Promise.resolve();
+
+      expect(currentServiceActor()).toBe("devops-bot");
+    });
+  });
+
+  it("does nothing outside a request", () => {
+    setAuditServiceActor("devops-bot");
+
+    expect(currentServiceActor()).toBeUndefined();
   });
 });

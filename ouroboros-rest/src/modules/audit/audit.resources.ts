@@ -37,6 +37,14 @@ export interface AuditEventResource {
    * a person, not a mailbox.
    */
   actorName: string | null;
+  /**
+   * What kind of actor it was (#485), so the audit plane can style and filter bot rows:
+   * `user` when a person is named, `service` when a service account's token authenticated the
+   * request, `system` when neither (a lease grant, a scheduled purge, an erased person).
+   */
+  actorKind: AuditActorKind;
+  /** The service account's name when `actorKind` is `service` — rendered `service:<name>`. */
+  actorService: string | null;
   /** What happened — one of `audit.events.ts`'s {@link AUDIT_ACTIONS}. */
   action: string;
   /** What kind of thing it was about — `provider_connection`, `run`. */
@@ -68,12 +76,30 @@ export interface AuditEventResource {
  *   timestamp in this API uses, because a client that has to know which endpoints send epoch
  *   milliseconds is a client with a date bug waiting in it.
  */
+/** Who an event is attributed to — see {@link AuditEventResource.actorKind}. */
+export type AuditActorKind = "user" | "service" | "system";
+
+/**
+ * Classify an event's actor.
+ *
+ * @param row - The stored event.
+ * @returns `user` when a person is named, `service` when a service account is, else `system`.
+ */
+export function actorKindOf(
+  row: Pick<AuditEventRow, "actor_id" | "actor_service">,
+): AuditActorKind {
+  if (row.actor_id !== null) return "user";
+  return row.actor_service !== null ? "service" : "system";
+}
+
 export function auditEventResource(row: AuditEventRow): AuditEventResource {
   return {
     id: row.id,
     occurredAt: row.occurred_at.toISOString(),
     actorId: row.actor_id,
     actorName: row.actor_name,
+    actorKind: actorKindOf(row),
+    actorService: row.actor_service,
     action: row.action,
     subjectType: row.subject_type,
     subjectId: row.subject_id,

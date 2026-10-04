@@ -8,7 +8,8 @@
  * **Roles on the routes themselves.** The matrix is every member's to read, a `viewer` included.
  * A `member` may author, import, reorder, cite and verify — the editorial step the issue gives to
  * *member and above* — and **only an administrator may waive**, because a waiver lets an unmet
- * criterion through, which is AT.4's rule for a test waiver (#332) applied to a claim.
+ * criterion through, which is AT.4's rule for a test waiver (#332) applied to a claim — and only
+ * one holding the `can_approve_loops` capability (#485, `tenancy/capabilities.ts`).
  *
  * **`201` for what a request created** — a criterion, an import, a citation, a waiver; **`204`
  * for a delete**; `200` for everything else.
@@ -28,6 +29,7 @@ import {
 } from "@nestjs/common";
 
 import type { Organization } from "../../db/schema";
+import { RequiresCapability } from "../../tenancy/capabilities";
 import { ADMINISTRATORS, CONTRIBUTORS, Roles } from "../../tenancy/roles.guard";
 import { currentUser, type ActiveMembership } from "../../tenancy/tenant.context";
 import { CurrentMember, CurrentTenant } from "../../tenancy/tenant.decorators";
@@ -242,6 +244,7 @@ export class CriteriaController {
   @Post(":id/criteria/:criterionId/waive")
   @HttpCode(HttpStatus.CREATED)
   @Roles(...ADMINISTRATORS)
+  @RequiresCapability("can_approve_loops")
   waive(
     @CurrentMember() member: ActiveMembership,
     @Param() params: CriterionParams,

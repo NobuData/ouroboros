@@ -46,6 +46,8 @@ export interface AuditEventRow {
   actor_id: string | null;
   /** `"user"."name"`, or `null` when there is no actor or the person has been deleted. */
   actor_name: string | null;
+  /** The service account the event is attributed to (#485), when no person is. */
+  actor_service: string | null;
   action: string;
   subject_type: string;
   subject_id: string | null;
@@ -122,6 +124,7 @@ export class AuditRepository {
         "audit_events.id",
         "audit_events.actor_id",
         "user.name as actor_name",
+        "audit_events.actor_service",
         "audit_events.action",
         "audit_events.subject_type",
         "audit_events.subject_id",

@@ -4,6 +4,7 @@ import { Reflector } from "@nestjs/core";
 
 import type { Principal } from "../../auth/principal";
 import type { Organization } from "../../db/schema";
+import { SERVICE_SCOPE } from "../../auth/service.scopes";
 import { CONTRIBUTORS, REQUIRED_ROLES } from "../../tenancy/roles.guard";
 import { COMMIT, JOB, ORG, jobView } from "./dispatch.fixture";
 import { FarmJobsController } from "./jobs.controller";
@@ -54,6 +55,29 @@ describe("the build job routes", () => {
     await controller.submit(TENANT, PRINCIPAL, body);
 
     expect(jobs.submit).toHaveBeenCalledWith(ORG, "user_ken", body);
+  });
+
+  it.each(["submit", "cancel"] as const)(
+    "lets a service account holding farm.submit %s (#485)",
+    (handler) => {
+      expect(reflector.get(SERVICE_SCOPE, FarmJobsController.prototype[handler])).toBe(
+        "farm.submit",
+      );
+    },
+  );
+
+  it("submits a service account's build with no person as the actor (#485)", async () => {
+    const { controller, jobs } = subject();
+    const body = {
+      pool: "pool-a",
+      repository: "acme-robotics/helios-firmware",
+      ref: "main",
+      commit: COMMIT,
+    };
+
+    await controller.submit(TENANT, undefined, body);
+
+    expect(jobs.submit).toHaveBeenCalledWith(ORG, null, body);
   });
 
   it("cancels in the session's workspace", async () => {

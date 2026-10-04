@@ -126,6 +126,10 @@ $ curl http://localhost:4000/api/v1
 | `GET /api/v1/analyzer/tickets`                     | [Build Analyzer runs](#build-analyzer-runs) (#519) — `?repo=owner/name`; the drafted-tickets card: the ticket suggestions nobody has drafted yet, and the planning batches the rest were drafted into — each batch as planning answers it, with the evidence every draft's body states, resolved; any member |
 | `GET PATCH /api/v1/settings/auto-merge`             | The auto-merge switch (#74) — read by any member, flipped by `owner`/`admin` only; the dashboard's one write |
 | `GET PATCH /api/v1/settings/workspace`              | [The workspace card](#the-workspace-card) (#483) — name and tenant domain, read by any member, saved by `owner`/`admin`; region and training data as deployment truth |
+| `GET /api/v1/settings/members`                     | [Members, capabilities & service accounts](#members-capabilities--service-accounts) (#485) — S3 display roles, `canApproveLoops`, last active, pending invitations, `Service` rows and the footer; any member, people only |
+| `POST DELETE /api/v1/settings/members/invitations…` | Invite, resend (`…/{id}/resend`) and revoke through the organization plugin; `owner`/`admin`; audited `member.invited \| invitation_resent \| invitation_revoked` |
+| `PATCH DELETE /api/v1/settings/members/{memberId}`  | Role and/or `canApproveLoops`; remove. The last owner is `409 owner_protected` (audited); `owner`/`admin` |
+| `GET POST /api/v1/settings/service-accounts`       | List (tokens masked) and create (token shown once); `/{id}/rotate` and `/{id}/revoke`; `owner`/`admin`; audited `service_account.*` |
 | `GET PATCH /api/v1/onboarding`                      | [The Get Started wizard](#the-onboarding-wizard-api) (#385) — `?repo=owner/name`; steps derived from subsystem truth, choices stored; any member may dismiss |
 | `POST /api/v1/onboarding/complete-step`             | Complete a step, guarded — `409 onboarding_step_incomplete` with the stated reason unless it is done in reality |
 | `POST /api/v1/onboarding/skip`                      | *I've done this before* — marks the wizard bypassed, answers `/settings`; imports nothing (BD.3, #398) |
@@ -4220,6 +4224,55 @@ A save writes the domain first (one transaction), then the name, so `409 domain_
 `422 validation_failed` keyed by field. A save that changes nothing writes and audits nothing.
 The plan-locked and changeable training variants are in the schema for BT.4 (#500) and are never
 produced here.
+
+## Members, capabilities & service accounts
+
+**Mockup 17's Members & Roles card, every column enforceable**
+([#485](https://github.com/NobuData/ouroboros/issues/485), BR.1, decision S3).
+`src/modules/members/`, `src/modules/service-accounts/`, `src/modules/tenancy/capabilities.ts`,
+`src/modules/auth/service.*.ts`, `src/auth/session-or-service.guard.ts`; tables in V091.
+
+```
+GET    /api/v1/settings/members                       any member (people only) · the card
+POST   /api/v1/settings/members/invitations           owner/admin · { email, role } → plugin createInvitation
+POST   /api/v1/settings/members/invitations/{id}/resend   owner/admin · refreshes expiry; invitedAt stays
+DELETE /api/v1/settings/members/invitations/{id}      owner/admin · plugin cancelInvitation
+PATCH  /api/v1/settings/members/{memberId}            owner/admin · { role?, canApproveLoops? }
+DELETE /api/v1/settings/members/{memberId}            owner/admin · plugin removeMember
+GET    /api/v1/settings/service-accounts              owner/admin · masked tokens + scope allow-list
+POST   /api/v1/settings/service-accounts              owner/admin · { name, scopes } → token shown once
+POST   /api/v1/settings/service-accounts/{id}/rotate  owner/admin · old token dead at once; new shown once
+POST   /api/v1/settings/service-accounts/{id}/revoke  owner/admin · token dead, account disabled
+```
+
+**Roles stay the plugin's.** `roles` are `member.role`; `displayRole` maps them (`owner → Owner`,
+`admin → Maintainer`, `member`/`viewer → Viewer`) and the footer line is rendered from the same
+table (`members.roles.ts`). Every write calls the plugin's API **with the caller's cookies**
+(`members.auth.ts`), so its permission checks still decide; plugin refusals come back as
+`member_directory_refused` with its code in `details.reason`. No invitation email is sent until
+#724. `footer.directorySync` is `null` until SCIM (BT.1) exists.
+
+**`can_approve_loops`** (`tenancy/capabilities.ts`) is a global guard after `RolesGuard`, read by
+`@RequiresCapability("can_approve_loops")` on `POST …/approvals`, `…/criteria/{id}/waive`,
+`…/merge-plan/arm` and `…/merge-plan/merge` — `403 capability_required` when the member lacks it.
+Defaults: owner and admin yes, member and viewer no. An explicit setting (`member_capabilities`)
+survives role changes. The inbox's approve-class actions (#464) use the same decorator when built.
+
+**Service accounts** authenticate with `Authorization: Bearer orb_svc_…`.
+`ServiceTokenMiddleware` looks the token's SHA-256 up before any guard; `SessionOrServiceGuard`
+lets a principal past the session check (and answers a dead token `401 service_token_invalid`);
+`TenantContextGuard` checks its scope and sets its workspace and audit actor (`service:<name>`).
+
+| Route kind | Scope needed |
+|---|---|
+| `@ServiceScope(x)` (today: `POST /farm/jobs`, `…/{id}/cancel` → `farm.submit`) | `x` |
+| any other `GET`/`HEAD` a viewer may read | `api.read` |
+| `@HumanOnly()` (members card, workspace card, digest), owner/admin-only routes, other writes, `@TenantOptional()` | refused — `403 service_principal_refused` |
+
+A token without the needed scope is `403 service_scope_missing` with `details.scope`. Tokens are
+stored hash-only with a vault-sealed hint; see `docs/SECURITY_MODEL.md` §6.8. A new scope needs
+V091's CHECK, `SERVICE_SCOPES` and a route that declares it — `service.scopes.spec.ts` keeps the
+first two in step.
 
 ## Workspace lifecycle
 

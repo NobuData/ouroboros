@@ -17,6 +17,7 @@ import { Body, Controller, Get, Patch, Put } from "@nestjs/common";
 import { Session } from "@thallesp/nestjs-better-auth";
 
 import type { Principal } from "../../auth/principal";
+import { HumanOnly } from "../../auth/service.scopes";
 import type { Organization } from "../../db/schema";
 import { ADMINISTRATORS, Roles } from "../../tenancy/roles.guard";
 import { CurrentTenant } from "../../tenancy/tenant.decorators";
@@ -37,6 +38,8 @@ export class DigestController {
    * @returns The resource. Never a 404: a workspace always has a schedule, if only the default.
    */
   @Get()
+  // The caller's own view, so a service account (#485) has nobody to read it for.
+  @HumanOnly()
   read(
     @CurrentTenant() tenant: Organization,
     @Session() principal: Principal,

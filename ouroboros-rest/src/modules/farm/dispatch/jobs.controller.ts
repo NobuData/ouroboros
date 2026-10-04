@@ -17,12 +17,17 @@
  * **A submission names who made it.** The session's user is handed to the service for the
  * audit trail (`runner.job_submitted`, #260) — read from the session, like the workspace, and
  * never from the body.
+ *
+ * **Service accounts holding `farm.submit` may call both** (#485, `auth/service.scopes.ts`) — the
+ * `devops-bot` case. Such a request has no session, so the actor handed down is `null`, and the
+ * audit trail attributes the event to `service:<name>` from the request's own context.
  */
 
 import { Body, Controller, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post } from "@nestjs/common";
 import { Session } from "@thallesp/nestjs-better-auth";
 
 import type { Principal } from "../../auth/principal";
+import { ServiceScope } from "../../auth/service.scopes";
 import type { Organization } from "../../db/schema";
 import { CONTRIBUTORS, Roles } from "../../tenancy/roles.guard";
 import { CurrentTenant } from "../../tenancy/tenant.decorators";
@@ -41,18 +46,19 @@ export class FarmJobsController {
    * Submit a build.
    *
    * @param tenant - The workspace, established by the tenant guard.
-   * @param principal - Who is submitting, for the audit trail.
+   * @param principal - Who is submitting, for the audit trail — absent for a service account.
    * @param request - The pool, repository, ref, commit and — or the pool's default — command.
    * @returns The job, `201`. Dispatch has been kicked, so it may already be offered.
    */
   @Post()
   @Roles(...CONTRIBUTORS)
+  @ServiceScope("farm.submit")
   submit(
     @CurrentTenant() tenant: Organization,
-    @Session() principal: Principal,
+    @Session() principal: Principal | null | undefined,
     @Body() request: SubmitBuildJobDto,
   ): Promise<BuildJobResource> {
-    return this.jobs.submit(tenant.id, principal.user.id, request);
+    return this.jobs.submit(tenant.id, principal?.user.id ?? null, request);
   }
 
   /**
@@ -68,6 +74,7 @@ export class FarmJobsController {
   @Post(":id/cancel")
   @HttpCode(HttpStatus.OK)
   @Roles(...CONTRIBUTORS)
+  @ServiceScope("farm.submit")
   cancel(
     @CurrentTenant() tenant: Organization,
     @Param("id", ParseUUIDPipe) id: string,

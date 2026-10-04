@@ -60,6 +60,15 @@ import {
   KNOWLEDGE_REPO_MAP_GENERATED_EVENT,
   KNOWLEDGE_ENV_RECIPE_SAVED_EVENT,
   POLICY_DRY_RUN_CHANGED_EVENT,
+  MEMBER_INVITED_EVENT,
+  MEMBER_INVITATION_RESENT_EVENT,
+  MEMBER_INVITATION_REVOKED_EVENT,
+  MEMBER_ROLE_CHANGED_EVENT,
+  MEMBER_REMOVED_EVENT,
+  MEMBER_CAPABILITY_CHANGED_EVENT,
+  SERVICE_ACCOUNT_CREATED_EVENT,
+  SERVICE_ACCOUNT_ROTATED_EVENT,
+  SERVICE_ACCOUNT_REVOKED_EVENT,
 } from "./audit.events";
 
 /**
@@ -173,6 +182,15 @@ describe("the vocabulary", () => {
       "workspace.restored",
       "workspace.purged",
       "workspace.updated",
+      "member.invited",
+      "member.invitation_resent",
+      "member.invitation_revoked",
+      "member.role_changed",
+      "member.removed",
+      "member.capability_changed",
+      "service_account.created",
+      "service_account.rotated",
+      "service_account.revoked",
     ]);
   });
 
@@ -198,7 +216,8 @@ describe("the vocabulary", () => {
     // policy (#382), under `policy.` so every org-policy change is one question, and one about
     // who asked for a Build Analyzer run (#510), under `analyzer.`, and `analysis_suggestion.`
     // for what was done with a suggestion (#514) — V081 spells the apply event that way — and
-    // `workspace.` for the Danger zone's lifecycle (#489). The
+    // `workspace.` for the Danger zone's lifecycle (#489), `member.` for the Members & Roles card
+    // and `service_account.` for its non-human principals (#485). The
     // families are what make `action like 'provider.%'` a useful question — and what keeps
     // *"who changed our GitHub token"* and *"what has happened to our fleet"* answerable
     // without knowing every name in either. The pool events are deliberately inside
@@ -211,12 +230,14 @@ describe("the vocabulary", () => {
       "credential",
       "github",
       "knowledge",
+      "member",
       "policy",
       "pr_approval",
       "pr_criterion",
       "pr_thread",
       "provider",
       "runner",
+      "service_account",
       "triage",
       "workspace",
     ]);
@@ -285,6 +306,15 @@ describe("the vocabulary", () => {
       WORKSPACE_RESTORED_EVENT,
       WORKSPACE_PURGED_EVENT,
       WORKSPACE_UPDATED_EVENT,
+      MEMBER_INVITED_EVENT,
+      MEMBER_INVITATION_RESENT_EVENT,
+      MEMBER_INVITATION_REVOKED_EVENT,
+      MEMBER_ROLE_CHANGED_EVENT,
+      MEMBER_REMOVED_EVENT,
+      MEMBER_CAPABILITY_CHANGED_EVENT,
+      SERVICE_ACCOUNT_CREATED_EVENT,
+      SERVICE_ACCOUNT_ROTATED_EVENT,
+      SERVICE_ACCOUNT_REVOKED_EVENT,
     ];
 
     expect(named).toEqual([...AUDIT_ACTIONS]);

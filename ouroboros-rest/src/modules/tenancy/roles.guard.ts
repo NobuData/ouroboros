@@ -28,7 +28,7 @@ import {
 import { Reflector } from "@nestjs/core";
 
 import type { OrganizationRole } from "../db/schema";
-import { currentMembership } from "./tenant.context";
+import { currentMembership, currentService } from "./tenant.context";
 import { forbidden } from "./tenancy.errors";
 
 /** The metadata key `@Roles()` sets. Namespaced, as every key in this service is. */
@@ -97,6 +97,12 @@ export class RolesGuard implements CanActivate {
     );
 
     if (required === undefined || required.length === 0) {
+      return true;
+    }
+
+    // A service account holds no role (#485): the tenant guard's scope check already decided
+    // this route for it, and refused every route its scopes do not reach.
+    if (currentService() !== undefined) {
       return true;
     }
 

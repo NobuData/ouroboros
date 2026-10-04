@@ -3,6 +3,7 @@ import { Logger } from "@nestjs/common";
 import { parseEnvelope } from "./envelope";
 import { GithubCredentialStore } from "../github/github.secrets";
 import { ProviderCredentialStore } from "../registry/registry.secrets";
+import { ServiceTokenHintStore } from "../service-accounts/service-accounts.secrets";
 import { REGISTERED_SECRET_STORES } from "./vault.module";
 import { NO_VERSION, VaultRotation } from "./vault.rotation";
 import {
@@ -290,11 +291,15 @@ describe("rotating through the job rather than the service", () => {
 describe("what is registered today", () => {
   // The honest statement, as a test. V015 (#189) declared the first encrypted column, so
   // `provider_connections` was the first table the sweep had to visit; V027 (#101) declared
-  // the second, `github_credentials`. #138 (ticket sources) is still open, and this fails the
+  // the second, `github_credentials`; V091 (#485) the third, `service_tokens.hint_sealed`. #138 (ticket sources) is still open, and this fails the
   // day it lands — which is when the sweep's behaviour needs a second look rather than a green
   // suite, exactly as it did when #101 landed.
   it("registers a store for every migration that has given it one", () => {
-    expect(REGISTERED_SECRET_STORES).toEqual([ProviderCredentialStore, GithubCredentialStore]);
+    expect(REGISTERED_SECRET_STORES).toEqual([
+      ProviderCredentialStore,
+      GithubCredentialStore,
+      ServiceTokenHintStore,
+    ]);
   });
 
   it("reports zeros rather than pretending to have swept", async () => {

@@ -130,6 +130,9 @@ const PARAMETERS: Readonly<Record<string, string>> = {
   // `/api/v1/insights/digest/unsubscribe/:token` (#440). Shaped like a token and carried by no
   // send — so the public route answers its own `404` page rather than the session guard's 401.
   token: `ouro_unsub_${"A".repeat(43)}`,
+  // `PATCH`/`DELETE /api/v1/settings/members/:memberId` (#485). A BetterAuth member id is free
+  // text to the router, so any word reaches the guard.
+  memberId: "member-1",
 };
 
 /**

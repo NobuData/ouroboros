@@ -89,7 +89,8 @@ export class FarmJobsService {
    * Submit a build — the route's entry point.
    *
    * @param organizationId - The workspace, from the session.
-   * @param actorId - Who submitted it, from the session — what the trail records.
+   * @param actorId - Who submitted it, from the session — what the trail records. `null` for a
+   *   service account (#485), which the trail attributes from the request context instead.
    * @param request - The pool, repository, ref, commit and command.
    * @returns The job, `queued`. Dispatch has been kicked and may already have offered it.
    * @throws {NotFoundError} `farm_pool_not_found` or `farm_repository_not_found`.
@@ -98,7 +99,7 @@ export class FarmJobsService {
    */
   submit(
     organizationId: string,
-    actorId: string,
+    actorId: string | null,
     request: BuildJobRequest,
   ): Promise<BuildJobResource> {
     return this.enqueue(organizationId, actorId, request, null);

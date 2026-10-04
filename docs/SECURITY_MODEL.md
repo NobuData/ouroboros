@@ -904,6 +904,38 @@ whose terms fit is the operator's call. The SaaS tier ([#500](https://github.com
 will add a real region choice and plan-governed training controls; the payload already has room
 for them (`reason: plan`), and this section changes when that tier ships, not before.
 
+### 6.8 Service accounts and the approval capability
+
+> **Status: Shipped** — BR.1 ([#485](https://github.com/NobuData/ouroboros/issues/485)), roadmap
+> decision **S3**.
+
+**Automation authenticates as itself.** A service account (`devops-bot`) is a principal of its own,
+not a borrowed session: its requests are audited as `service:<name>` (`actorKind: service`), never
+as the person who set it up.
+
+- **Tokens are stored hash-only.** `orb_svc_` plus 32 random bytes, shown once — in the answer to
+  create or rotate — and never again. The database holds the token's SHA-256 (the lookup key) and a
+  masked hint (`orb_svc_••••ab12`) sealed under the workspace DEK (§2). No column can hold the
+  token; `constraints.sql` and the module's secrecy spec both check that.
+- **Rotation is atomic.** The old token is revoked and the new one inserted in one transaction, so
+  the pre-rotation token stops working the moment the call answers. Revoke kills the token and
+  disables the account; an unknown, rotated or revoked token is `401 service_token_invalid`, with
+  no hint of which.
+- **Scopes are checked at the route.** `api.read` reaches workspace reads a viewer could make;
+  `farm.submit` reaches build-job submission and cancellation. A token outside its scopes is
+  `403 service_scope_missing` naming the scope; owner/admin routes and a person's own views refuse
+  every service account. The allow-list is also a database CHECK, so a scope nothing enforces
+  cannot be stored. A token acts only in its own workspace.
+
+**`can_approve_loops` is a control, not a label.** The PR plane's approve, waive, arm and merge
+routes check it after the role check (`403 capability_required`), so unticking it on the Members
+card removes the power it describes. Owners and admins hold it by default; an explicit setting
+survives role changes. Service accounts never hold it.
+
+**What this does not cover.** Invitations send no email until
+[#724](https://github.com/NobuData/ouroboros/issues/724); IdP group sync (SCIM) is BT.1, and the
+Members card says nothing about it until it exists.
+
 ---
 
 ## 7. The build farm's certificate authority

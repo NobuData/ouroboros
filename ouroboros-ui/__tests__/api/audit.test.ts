@@ -97,6 +97,8 @@ describe("audit.events", () => {
           occurredAt: "2026-08-24T15:23:00.000Z",
           actorId: null,
           actorName: null,
+          actorKind: "system",
+          actorService: null,
           action: "credential.lease_granted",
           subjectType: "run",
           subjectId: null,

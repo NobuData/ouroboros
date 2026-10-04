@@ -8,6 +8,7 @@ import { KEY_WRAPPER, type KeyWrapper } from "./key.wrapper";
 import { MASTER_WRAPPER_ID, MasterKeyWrapper } from "./master.key.wrapper";
 import { GithubCredentialStore } from "../github/github.secrets";
 import { ProviderCredentialStore } from "../registry/registry.secrets";
+import { ServiceTokenHintStore } from "../service-accounts/service-accounts.secrets";
 import { REGISTERED_SECRET_STORES, VaultModule } from "./vault.module";
 import { VAULT_SECRET_STORES, VaultRotation, type VaultSecretStore } from "./vault.rotation";
 import { VaultService } from "./vault.service";
@@ -56,19 +57,25 @@ describe("the vault module", () => {
     expect(wrapper.id).toBe(MASTER_WRAPPER_ID);
   });
 
-  it("registers every sealed column in the schema — and today there are two", async () => {
+  it("registers every sealed column in the schema — and today there are three", async () => {
     // #189 was the first migration to declare an encrypted column and the first ticket to put
-    // a store in this list; #101 (V027's GitHub token) is the second. #138 (ticket sources) is
+    // a store in this list; #101 (V027's GitHub token) is the second, and #485 (V091's sealed
+    // service-token hints) the third. #138 (ticket sources) is
     // still open and adds its own the same way. This test is what makes the list a claim rather
     // than a sentence in a pull request, and it fails the day the next one lands — which is
     // exactly what it did when this one did.
     const module = await build();
     const stores = module.get<readonly VaultSecretStore[]>(VAULT_SECRET_STORES);
 
-    expect(REGISTERED_SECRET_STORES).toEqual([ProviderCredentialStore, GithubCredentialStore]);
+    expect(REGISTERED_SECRET_STORES).toEqual([
+      ProviderCredentialStore,
+      GithubCredentialStore,
+      ServiceTokenHintStore,
+    ]);
     expect(stores.map((store) => store.name)).toEqual([
       "provider_connections",
       "github_credentials",
+      "service_tokens",
     ]);
   });
 

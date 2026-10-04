@@ -1,4 +1,4 @@
-import { runWithAuditContext } from "./audit.context";
+import { runWithAuditContext, setAuditServiceActor } from "./audit.context";
 import { PROVIDER_REVEALED_EVENT, type AuditRecord } from "./audit.events";
 import { AuditRepository, type AuditEventRow } from "./audit.repository";
 import { AuditService } from "./audit.service";
@@ -33,6 +33,7 @@ const ROW: AuditEventRow = {
   id: "b2000000-0000-0000-0000-000000000001",
   actor_id: ACTOR,
   actor_name: "Ken Suenobu",
+  actor_service: null,
   action: PROVIDER_REVEALED_EVENT,
   subject_type: "provider_connection",
   subject_id: CONNECTION,
@@ -86,6 +87,39 @@ describe("recording an event", () => {
     await new AuditService(events).record(RECORD);
 
     expect(events.append.mock.calls[0][0].ip).toBeNull();
+  });
+
+  it("attributes an actorless event to the service account the request authenticated as (#485)", async () => {
+    const events = repository();
+
+    await runWithAuditContext("198.51.100.24", () => {
+      setAuditServiceActor("devops-bot");
+      return new AuditService(events).record({ ...RECORD, actorId: null });
+    });
+
+    expect(events.append.mock.calls[0][0]).toMatchObject({
+      actor_id: null,
+      actor_service: "devops-bot",
+    });
+  });
+
+  it("never names a service account beside a person — the schema makes them exclusive", async () => {
+    const events = repository();
+
+    await runWithAuditContext(undefined, () => {
+      setAuditServiceActor("devops-bot");
+      return new AuditService(events).record(RECORD);
+    });
+
+    expect(events.append.mock.calls[0][0]).toMatchObject({ actor_id: ACTOR, actor_service: null });
+  });
+
+  it("writes no service actor outside a service request", async () => {
+    const events = repository();
+
+    await new AuditService(events).record({ ...RECORD, actorId: null });
+
+    expect(events.append.mock.calls[0][0].actor_service).toBeNull();
   });
 
   it("drops the fields a builder left undefined", async () => {
@@ -174,6 +208,8 @@ describe("reading a workspace's trail", () => {
         occurredAt: "2026-08-24T16:13:00.000Z",
         actorId: ACTOR,
         actorName: "Ken Suenobu",
+        actorKind: "user",
+        actorService: null,
         action: PROVIDER_REVEALED_EVENT,
         subjectType: "provider_connection",
         subjectId: CONNECTION,
