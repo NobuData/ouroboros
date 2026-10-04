@@ -43,6 +43,14 @@
  * The same file therefore serves `yarn dev` against `localhost:4000` and a deployment
  * against an internal service address, with no rebuild between them.
  *
+ * ## 1b. The decision answer page — `/api/v1/inbox/answer/*`, also answered by `ouroboros-rest`
+ *
+ * Added by [#463](https://github.com/NobuData/ouroboros/issues/463) (BN.3). An emailed action
+ * link opens a confirm page the service renders, and a merge-class answer there demands the
+ * person's session (decision X5). The session cookie lives on **this** origin, so the mail links
+ * here and this file forwards the family, cookie and form body included — the browser travels it,
+ * exactly as it travels the OAuth callback. Nothing else under `/api/v1` is forwarded.
+ *
  * ## 2. The request's own address, published to the server
  *
  * Added by [#720](https://github.com/NobuData/ouroboros/issues/720). **Next.js gives a
@@ -107,6 +115,12 @@ import { restUrl } from "@/app/env";
 const AUTH_PREFIX = "/api/auth";
 
 /**
+ * The decision answer page's family (§ 1b), written out for the same reason as
+ * {@link AUTH_PREFIX}. The trailing slash keeps `/api/v1/inbox/answers` and the bare prefix out.
+ */
+const ANSWER_PREFIX = "/api/v1/inbox/answer/";
+
+/**
  * Next.js's own cache-busting parameter on a React Server Component request —
  * `NEXT_RSC_UNION_QUERY` in `node_modules/next/dist/client/components/app-router-headers.js`.
  *
@@ -120,17 +134,19 @@ const RSC_PARAM = "_rsc";
  * Handle one request: forward it, or stamp it.
  *
  * @param request The incoming request, matched by {@link config}.
- * @returns A rewrite onto `ouroboros-rest` for the auth family, and otherwise the request
- *   carried on to Next.js with one header added.
+ * @returns A rewrite onto `ouroboros-rest` for the auth family and the answer page, and
+ *   otherwise the request carried on to Next.js with one header added.
  */
 export function proxy(request: NextRequest): NextResponse {
-  return request.nextUrl.pathname.startsWith(AUTH_PREFIX)
+  const { pathname } = request.nextUrl;
+
+  return pathname.startsWith(AUTH_PREFIX) || pathname.startsWith(ANSWER_PREFIX)
     ? forward(request)
     : announce(request);
 }
 
 /**
- * Forward one auth request to `ouroboros-rest`.
+ * Forward one auth or answer-page request to `ouroboros-rest`.
  *
  * The path is passed through unchanged rather than rebuilt from a captured segment: this
  * origin and the service agree on the `/api/auth` prefix, so `/api/auth/callback/github`
@@ -139,7 +155,7 @@ export function proxy(request: NextRequest): NextResponse {
  * the OAuth callback *is* its query string, and dropping it would strip the `code` and the
  * `state` and fail the exchange at the last hop.
  *
- * @param request The incoming request, under {@link AUTH_PREFIX}.
+ * @param request The incoming request, under {@link AUTH_PREFIX} or {@link ANSWER_PREFIX}.
  * @returns A rewrite of it onto the service. Method, headers, body and cookies travel with
  *   the rewrite, and the service's answer — `Set-Cookie` included — is what the browser
  *   receives.
@@ -205,7 +221,10 @@ export function requestAddress(url: Pick<URL, "pathname" | "search">): string {
  * address the browser can compose calls to, which is the property `OURO_REST_URL` is
  * unprefixed to prevent.
  *
- * **The second** is the stamper's, and it is written as an exclusion rather than as a list of
+ * **The second** is the answer page's forward (§ 1b) — one family of `/api/v1`, named exactly,
+ * because the browser travels it from a mail; the rest of `/api/v1` stays unforwarded.
+ *
+ * **The third** is the stamper's, and it is written as an exclusion rather than as a list of
  * protected routes *on purpose*. A list would be the route table kept in two places, which is
  * the drift § *Why this file is not the auth gate* refuses. What is excluded instead is
  * everything that is not a page: `/api/*` (the forwarder's own prefix, and the generated
@@ -233,6 +252,7 @@ export function requestAddress(url: Pick<URL, "pathname" | "search">): string {
 export const config = {
   matcher: [
     "/api/auth/:path*",
+    "/api/v1/inbox/answer/:path*",
     "/((?!api/|_next/|.*\\.(?:ico|png|svg|jpg|jpeg|gif|webp|avif|txt|xml|json|webmanifest)$).*)",
   ],
 };

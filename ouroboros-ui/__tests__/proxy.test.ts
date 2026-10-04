@@ -139,6 +139,31 @@ describe("the auth family, forwarded to ouroboros-rest", () => {
   });
 });
 
+describe("the decision answer page, forwarded to ouroboros-rest (#463)", () => {
+  const TOKEN = `ouro_act_0123456789abcdef_${"a".repeat(43)}`;
+
+  it("rewrites a token link onto the service under the same path", () => {
+    // The session cookie lives on this origin; forwarding is how it reaches the confirm page.
+    const response = proxy(request(`/api/v1/inbox/answer/${TOKEN}`));
+
+    expect(response.headers.get("x-middleware-rewrite")).toBe(
+      `${REST}/api/v1/inbox/answer/${TOKEN}`,
+    );
+    expect(stamped(response)).toBeUndefined();
+  });
+
+  it("forwards nothing else under /api/v1", () => {
+    for (const path of ["/api/v1/inbox", "/api/v1/inbox/answers", "/api/v1/inbox/answer"]) {
+      expect(proxy(request(path)).headers.get("x-middleware-rewrite")).toBeNull();
+    }
+  });
+
+  it("is one of the matcher's entries, compiled by Next.js", async () => {
+    expect(await runsOn(`/api/v1/inbox/answer/${TOKEN}`)).toBe(true);
+    expect(await runsOn("/api/v1/inbox/channels")).toBe(false);
+  });
+});
+
 describe("every other request, carried on with its address", () => {
   it("tells the server the path it was made for", () => {
     const response = proxy(request("/dashboard"));

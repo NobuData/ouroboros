@@ -600,6 +600,28 @@
 #   a closure waits for a running answer         rewrite decision_item_source_resolve() without
 #                                                  the running-attempt check
 #
+# #463 (BN.3, V100) adds the decision channels' tables — token keys, PR-comment mirrors,
+# notification preferences and the mail send log. One probe per rule "one comment per item, one
+# mail per claim, and no key a token can be forged under twice" rests on:
+#
+#   V100 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   one live token key per workspace             drop action_token_keys_one_live
+#   a key ref is V096's grammar                  drop action_token_keys_key_ref_format
+#   a stored key is a vault envelope             drop action_token_keys_sealed_key_envelope
+#   a shown revision has a comment               drop decision_channel_mirrors_shown_has_comment
+#   nothing shown ahead of the latest revision   drop decision_channel_mirrors_shown_not_ahead
+#   a skipped item holds no comment              drop decision_channel_mirrors_skipped_has_no_comment
+#   the skip-reason vocabulary                   drop decision_channel_mirrors_skip_reason
+#   a recorded failure says why                  drop decision_channel_mirrors_last_error_bounded
+#   a digest time is to the minute               drop notification_preferences_digest_time_minute
+#   instant sends exist only for err             drop notification_preferences_instant_severity
+#   mutes are bounded and name kinds             drop notification_preferences_muted_kinds_bounded
+#   an instant mail is claimed once              drop decision_mail_sends_instant_key
+#   a digest is claimed once per slot            drop decision_mail_sends_digest_key
+#   a send names its item or its slot            drop decision_mail_sends_subject
+#   a settled send is in shape                   drop decision_mail_sends_settled_shape
+#
 # #457 (BM.1, V093) adds the decision domain — versioned kind declarations and the typed items
 # filed against them. One probe per rule the inbox's truthfulness rests on:
 #
@@ -3225,6 +3247,67 @@ expect_red 'a closure may take an item mid-answer' \
   'a closure leaves an item alone while' \
   "$(rewrite_definition "pg_get_functiondef('ouroboros.decision_item_source_resolve(uuid, text, jsonb)'::regprocedure)" \
        "a.status = 'running'" '' 'false')"
+
+# V100 (#463). One probe per CHECK and unique index the channels rest on.
+expect_red 'a workspace may hold two live token keys' \
+  'one live token key per workspace' \
+  'drop index ouroboros.action_token_keys_one_live;'
+
+expect_red 'a key may be stored as itself' \
+  'a stored key is a vault envelope' \
+  'alter table ouroboros.action_token_keys drop constraint action_token_keys_sealed_key_envelope;'
+
+expect_red 'a key ref may be anything' \
+  'a key ref is in V096' \
+  'alter table ouroboros.action_token_keys drop constraint action_token_keys_key_ref_format;'
+
+expect_red 'a mirror may show a comment it has not got' \
+  'a shown revision is a comment the host holds' \
+  'alter table ouroboros.decision_channel_mirrors drop constraint decision_channel_mirrors_shown_has_comment;'
+
+expect_red 'a mirror may show the future' \
+  'nothing is shown ahead of the latest revision' \
+  'alter table ouroboros.decision_channel_mirrors drop constraint decision_channel_mirrors_shown_not_ahead;'
+
+expect_red 'a skipped item may hold a comment' \
+  'a skipped item holds no comment' \
+  'alter table ouroboros.decision_channel_mirrors drop constraint decision_channel_mirrors_skipped_has_no_comment;'
+
+expect_red 'a skip may give any reason' \
+  'a skip reason is no_pr or no_comment_surface' \
+  'alter table ouroboros.decision_channel_mirrors drop constraint decision_channel_mirrors_skip_reason;'
+
+expect_red 'a failure may say nothing' \
+  'a recorded failure says why' \
+  'alter table ouroboros.decision_channel_mirrors drop constraint decision_channel_mirrors_last_error_bounded;'
+
+expect_red 'a digest time may carry seconds' \
+  'a digest time is to the minute' \
+  'alter table ouroboros.notification_preferences drop constraint notification_preferences_digest_time_minute;'
+
+expect_red 'instant mails may fire for warn' \
+  'instant sends exist only for err items' \
+  'alter table ouroboros.notification_preferences drop constraint notification_preferences_instant_severity;'
+
+expect_red 'mutes may be unbounded' \
+  'mutes are bounded' \
+  'alter table ouroboros.notification_preferences drop constraint notification_preferences_muted_kinds_bounded;'
+
+expect_red 'an instant mail may be claimed twice' \
+  'an instant mail is claimed once' \
+  'drop index ouroboros.decision_mail_sends_instant_key;'
+
+expect_red 'a digest may be claimed twice' \
+  'a digest is claimed once' \
+  'drop index ouroboros.decision_mail_sends_digest_key;'
+
+expect_red 'a digest may name an item' \
+  'a digest names its slot and no item' \
+  'alter table ouroboros.decision_mail_sends drop constraint decision_mail_sends_subject;'
+
+expect_red 'a failed send may say nothing' \
+  'a failed send says why' \
+  'alter table ouroboros.decision_mail_sends drop constraint decision_mail_sends_settled_shape;'
 
 printf '\n'
 if check_summary; then

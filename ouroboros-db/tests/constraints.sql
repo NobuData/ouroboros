@@ -33706,6 +33706,187 @@ select pg_temp.must_hold(
   'a workspace''s attempts go with it');
 
 -- ===========================================================================
+-- V100 — decision channels: token keys, mirrors, preferences, mail sends (#463, BN.3)
+-- ===========================================================================
+--
+-- Asked here, under the service role: one live token key per workspace, in V096's key-ref grammar;
+-- a mirror row never shows a revision ahead of the latest, never shows one without a comment, and
+-- a skipped item holds no comment; preferences default to digest off at 09:00 UTC with instant err
+-- mails on, and refuse seconds, an unknown threshold and unbounded mutes; a mail send is claimed
+-- once per (person, item | slot, attempt), names exactly its item or its slot, and settles in shape;
+-- and every row goes with its workspace.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v100', 'Channel Works', 'channel-works-v100', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a1000000-0000-0000-0000-00000000000a', 'Mira Mailed', 'mira@channel-works.example', true);
+
+select ouroboros.decision_item_emit(
+         'org-v100', 'fact_review',
+         '{"reason": "awaiting review", "text": "CAN frames are DMA-backed", "provenance_line": "from PR #514 review cycle"}',
+         '[]', 'facts', 'fact:v100-a:proposed');
+
+create function pg_temp.v100_item() returns uuid language sql stable as $$
+  select id from ouroboros.decision_items where organization_id = 'org-v100' and source_ref = 'fact:v100-a:proposed'
+$$;
+
+set local role ouroboros_app;
+
+-- --- action_token_keys ------------------------------------------------------------------------
+insert into ouroboros.action_token_keys (key_ref, organization_id, sealed_key)
+  values ('act.00000000000000a1', 'org-v100', 'ouro.v1.1.nonce.ciphertext');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.action_token_keys (key_ref, organization_id, sealed_key)
+      values ('act.00000000000000a2', 'org-v100', 'ouro.v1.1.nonce.other')$$,
+  'one live token key per workspace', 'action_token_keys_one_live');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.action_token_keys (key_ref, organization_id, sealed_key)
+      values ('act.00000000000000a9', 'org-v100', 'raw-key-material')$$,
+  'a stored key is a vault envelope, never key material', 'action_token_keys_sealed_key_envelope');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.action_token_keys (key_ref, organization_id, sealed_key)
+      values ('Act Key!', 'org-v100', 'ouro.v1.1.nonce.ciphertext')$$,
+  'a key ref is in V096''s hash_key_ref grammar', 'action_token_keys_key_ref_format');
+
+update ouroboros.action_token_keys set retired_at = now() where key_ref = 'act.00000000000000a1';
+
+insert into ouroboros.action_token_keys (key_ref, organization_id, sealed_key)
+  values ('act.00000000000000a2', 'org-v100', 'ouro.v1.1.nonce.rotated');
+
+select pg_temp.must_hold(
+  (select count(*) = 2 and count(*) filter (where retired_at is null) = 1
+     from ouroboros.action_token_keys where organization_id = 'org-v100'),
+  'a rotated key leaves the retired one to verify its tokens');
+
+-- --- decision_channel_mirrors -----------------------------------------------------------------
+insert into ouroboros.decision_channel_mirrors (item_id, organization_id)
+  values (pg_temp.v100_item(), 'org-v100');
+
+select pg_temp.must_hold(
+  (select revision = 1 and shown_revision is null and attempts = 0
+     from ouroboros.decision_channel_mirrors where item_id = pg_temp.v100_item()),
+  'a mirror starts at revision 1 with nothing shown');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_channel_mirrors set shown_revision = 1
+     where item_id = pg_temp.v100_item()$$,
+  'a shown revision is a comment the host holds', 'decision_channel_mirrors_shown_has_comment');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_channel_mirrors set shown_revision = 2, comment_id = 'c-1'
+     where item_id = pg_temp.v100_item()$$,
+  'nothing is shown ahead of the latest revision', 'decision_channel_mirrors_shown_not_ahead');
+
+update ouroboros.decision_channel_mirrors set shown_revision = 1, comment_id = 'c-1'
+ where item_id = pg_temp.v100_item();
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_channel_mirrors set skip_reason = 'no_pr'
+     where item_id = pg_temp.v100_item()$$,
+  'a skipped item holds no comment', 'decision_channel_mirrors_skipped_has_no_comment');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_channel_mirrors set skip_reason = 'host_sulked', comment_id = null,
+         shown_revision = null
+     where item_id = pg_temp.v100_item()$$,
+  'a skip reason is no_pr or no_comment_surface', 'decision_channel_mirrors_skip_reason');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_channel_mirrors set last_error = '   '
+     where item_id = pg_temp.v100_item()$$,
+  'a recorded failure says why', 'decision_channel_mirrors_last_error_bounded');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_channel_mirrors (item_id, organization_id)
+      values (pg_temp.v100_item(), 'org-v100')$$,
+  'one mirror row per item', 'decision_channel_mirrors_pkey');
+
+-- --- notification_preferences -----------------------------------------------------------------
+insert into ouroboros.notification_preferences (organization_id, user_id)
+  values ('org-v100', 'a1000000-0000-0000-0000-00000000000a');
+
+select pg_temp.must_hold(
+  (select not digest_enabled and digest_time = '09:00' and instant_severity = 'err'
+          and muted_kinds = '{}'
+     from ouroboros.notification_preferences where organization_id = 'org-v100'),
+  'preferences default to digest off at 09:00 UTC, instant err mails on, nothing muted');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_preferences set digest_time = '09:00:30'
+     where organization_id = 'org-v100'$$,
+  'a digest time is to the minute', 'notification_preferences_digest_time_minute');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_preferences set instant_severity = 'warn'
+     where organization_id = 'org-v100'$$,
+  'instant sends exist only for err items', 'notification_preferences_instant_severity');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_preferences
+       set muted_kinds = array(select 'kind_' || g from generate_series(1, 65) g)
+     where organization_id = 'org-v100'$$,
+  'mutes are bounded', 'notification_preferences_muted_kinds_bounded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.notification_preferences set muted_kinds = array['fact_review', null]
+     where organization_id = 'org-v100'$$,
+  'a mute names a kind', 'notification_preferences_muted_kinds_bounded');
+
+-- --- decision_mail_sends ----------------------------------------------------------------------
+insert into ouroboros.decision_mail_sends
+    (organization_id, user_id, recipient, kind, item_id, attempt, message_id)
+  values ('org-v100', 'a1000000-0000-0000-0000-00000000000a', 'mira@channel-works.example',
+          'instant', pg_temp.v100_item(), 1, '<decision.a@channel-works.example>');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_mail_sends
+        (organization_id, user_id, recipient, kind, item_id, attempt, message_id)
+      values ('org-v100', 'a1000000-0000-0000-0000-00000000000a', 'mira@channel-works.example',
+              'instant', pg_temp.v100_item(), 1, '<decision.a@channel-works.example>')$$,
+  'an instant mail is claimed once per person, item and attempt', 'decision_mail_sends_instant_key');
+
+insert into ouroboros.decision_mail_sends
+    (organization_id, user_id, recipient, kind, slot_at, attempt, message_id)
+  values ('org-v100', 'a1000000-0000-0000-0000-00000000000a', 'mira@channel-works.example',
+          'digest', '2026-10-04 09:00Z', 1, '<decision.d@channel-works.example>');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_mail_sends
+        (organization_id, user_id, recipient, kind, slot_at, attempt, message_id)
+      values ('org-v100', 'a1000000-0000-0000-0000-00000000000a', 'mira@channel-works.example',
+              'digest', '2026-10-04 09:00Z', 1, '<decision.d@channel-works.example>')$$,
+  'a digest is claimed once per person, slot and attempt', 'decision_mail_sends_digest_key');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_mail_sends
+        (organization_id, user_id, recipient, kind, item_id, slot_at, attempt, message_id)
+      values ('org-v100', 'a1000000-0000-0000-0000-00000000000a', 'mira@channel-works.example',
+              'digest', pg_temp.v100_item(), '2026-10-05 09:00Z', 1, '<x@y>')$$,
+  'a digest names its slot and no item', 'decision_mail_sends_subject');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_mail_sends set status = 'failed', settled_at = now()
+     where kind = 'instant' and organization_id = 'org-v100'$$,
+  'a failed send says why', 'decision_mail_sends_settled_shape');
+
+update ouroboros.decision_mail_sends set status = 'sent', settled_at = now()
+ where kind = 'instant' and organization_id = 'org-v100';
+
+reset role;
+
+delete from ouroboros.organization where "id" = 'org-v100';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.action_token_keys where organization_id = 'org-v100')
+  and not exists (select 1 from ouroboros.decision_channel_mirrors where organization_id = 'org-v100')
+  and not exists (select 1 from ouroboros.notification_preferences where organization_id = 'org-v100')
+  and not exists (select 1 from ouroboros.decision_mail_sends where organization_id = 'org-v100'),
+  'a workspace''s keys, mirrors, preferences and sends go with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
