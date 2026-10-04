@@ -1280,6 +1280,23 @@
 > dry-run, the refactor-label review rule, protected paths and the provider caps, with the cap
 > precedence (the stricter cap wins).
 >
+> `V093` ([#457](https://github.com/NobuData/ouroboros/issues/457), BM.1) is the **decision
+> domain** mockup 16's Needs-You inbox stands on. `decision_kinds` holds **versioned, immutable
+> declarations** — `(kind_id, version)` dense per kind; the nine MVP kinds, the five the
+> Research and Marketplace amendments named, or `custom:<slug>` — each owning a severity
+> default, `{slot}` question and why templates, a `payload_schema` (a closed JSON Schema subset
+> the database enforces in full, refusing any keyword it would ignore), the ordered `actions`
+> row, `resolution_semantics`, a `ref_shape` with the card's plain tags, an `escalation_window`
+> and a `merge_class` marker. `merge_approval` is always merge-class, a merge-class kind is never
+> auto-resolvable, and no later version may loosen either. `decision_items` carries **facts
+> only** — `payload` validated against the pinned version at write time, typed canonical `refs`
+> (run · pr · ticket · path) resolved in the item's own workspace, `severity` defaulted from the
+> kind, `status`, and an `emitted_by:source_ref` idempotency key unique per workspace;
+> `decision_item_emit` is the upsert, and `decision_items_rendered` composes every card's prose
+> at the version it pinned. Only the three declarations the mockup fixes word for word ship
+> (`merge_approval`, `protected_path_allow_once`, `claim_waiver`); every other kind's arrives
+> with its emitter (BN.1, [#461](https://github.com/NobuData/ouroboros/issues/461)).
+>
 > [#509](https://github.com/NobuData/ouroboros/issues/509) (BU.4) seeds the page those three built
 > for, and plants the **corpus** rather than the answers:
 > [`R__dev_seed_workspace_metrics_analyzer.sql`](migrations/R__dev_seed_workspace_metrics_analyzer.sql)
@@ -2585,6 +2602,7 @@ misnamed migration is worth reporting before a database is waited on.
 | `tests/analyzer-invariants.sql` | The Build Analyzer invariants mockup 18 trusts, against the *seeded* runs — vocabularies, lifecycle, evidence, confidence, write-once predictions, verdicts, factors, no LLM cost, identity ([#509](https://github.com/NobuData/ouroboros/issues/509)) | no |
 | `tests/verify-analyzer-invariants.sh` | That each of those goes red when its rule is removed and the refused row written, naming the invariant ([#509](https://github.com/NobuData/ouroboros/issues/509)) | yes (rolled back) |
 | `tests/verify-analyzer-rediscovery.sh` | That BV.2's change-point analyzer, run over the seeded corpus, emits exactly the seeded change-point findings ([#509](https://github.com/NobuData/ouroboros/issues/509)) — after `uv sync --locked` in `ouroboros-engine` | no |
+| `tests/decision-refs.sql` | BM.1's typed decision refs resolve against the *seeded* loop #1847, PR #514, canonical #482 and a file that loop changed, and from no other workspace ([#457](https://github.com/NobuData/ouroboros/issues/457)) | yes (rolled back) |
 | `tests/registry-invariants.sql` | The registry rules again, against the *seeded* database — and `tests/seed.sql` a second time to say it survived them ([#583](https://github.com/NobuData/ouroboros/issues/583)) | yes (that one) |
 
 The drift check is the one step that needs a Node toolchain, which is why the job installs
@@ -2888,6 +2906,7 @@ ouroboros-db/
 │   ├── V090__workspace_lifecycle.sql        # workspace_lifecycle (active | paused | pending_delete, purge_after), audit_event_outbox, workspace_tombstones — #489
 │   ├── V091__members_service_accounts.sql   # member_capabilities (can_approve_loops), service_accounts (scopes allow-list), service_tokens (hash-only), audit_events.actor_service — #485
 │   ├── V092__org_policy_versions.sql        # org_policies.current_version (the handle; dry_run nullable) + org_policy_versions (immutable, dense) + org_policy_publish — #480
+│   ├── V093__decision_kinds_items.sql       # decision_kinds (versioned, immutable declarations) + decision_items (facts, typed refs, idempotency key) + decision_item_emit — #457
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2942,6 +2961,7 @@ ouroboros-db/
     ├── verify-analyzer-invariants.sh # that they go red when a rule is removed, naming it — #509
     ├── verify-analyzer-rediscovery.sh # the change-point analyzer rediscovers the seeded chips — #509
     ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
+    ├── decision-refs.sql             # BM.1's typed decision refs against the seeded universe — #457
     ├── constraints.sql               # what the schema enforces, asserted against a live database
     └── seed.sql                      # what the seeds put there, asserted against a live database
 ```
@@ -3061,6 +3081,8 @@ outside this module alters it.
 | `fact_transitions` | `V071` | Every fact creation and status move ([#406](https://github.com/NobuData/ouroboros/issues/406)) — `from_status`, `to_status`, `actor_id`, `reason`, `at` | written only by the `security definer` `fact_transitions_record()` trigger; append-only (`fact_transitions_no_update`, the actor set-null excepted); `ouroboros_app` may only select |
 | `fact_suppressions` | `V074` | A fact candidate a proposer did not propose ([#412](https://github.com/NobuData/ouroboros/issues/412), BF.3, decision **K5**) — `repo_ref`, `proposer`, `proposer_version`, `text`, `normalized_text`, `matched_fact_id`, `provenance`, `source_key`, `created_at` | `proposer` is `correction_note\|waiver\|steer\|import\|llm` (never `manual`); `matched_fact_id` is a fact of the same workspace in any status (composite FK, cascade); `provenance` typed and resolved as a fact's; one row per `(organization_id, source_key, matched_fact_id)`; append-only (`fact_suppressions_no_update`); `ouroboros_app` may select and insert only |
 | `org_policies` | `V075`, `V092` | The workspace's **dry-run** policy ([#382](https://github.com/NobuData/ouroboros/issues/382), BA.3, decision **O3**) and, since V092, the policy document's **handle** ([#480](https://github.com/NobuData/ouroboros/issues/480)) — `dry_run`, `updated_by`, `created_at`, `updated_at`, `current_version` | one row per organization, as a primary key, which the onboarding default (`on conflict do update … where dry_run is null`) and the flip (`on conflict do update`) both conflict on; **never answered** is no row or `dry_run` null (a handle a publish created) — read through `org_policies_effective`, which reads both as `false`; `dry_run` defaults `true`; `updated_by` references `"user"` and sets null rather than cascading; `current_version` is null until the first publish, then only ever the newest version (`org_policies_current_is_latest`, `org_policies_current_version_fk`) |
+| `decision_kinds` | `V093` | Versioned decision-kind declarations ([#457](https://github.com/NobuData/ouroboros/issues/457), BM.1, decision **X1**) — `kind_id`, `version`, `severity_default`, `question_template`, `why_template`, `payload_schema`, `actions`, `resolution_semantics`, `ref_shape`, `escalation_window`, `merge_class`, `created_at` | `(kind_id, version)` primary key, dense from 1 (`decision_kinds_next_version`); **immutable** (`decision_kinds_immutable`); kind ids from the vocabulary or `custom:<slug>`; template slots name required scalar facts; `payload_schema` a closed, fully enforced JSON Schema subset; actions, resolution semantics and ref shape each CHECKed; `merge_approval` ⇒ merge-class ⇒ never auto-resolvable, and no later version loosens either (`decision_kinds_no_loosening`); newest version per kind read through `decision_kinds_current`; three rows ship in the migration |
+| `decision_items` | `V093` | Typed decision items ([#457](https://github.com/NobuData/ouroboros/issues/457), BM.1, decision **X2**) — `organization_id`, `kind_id`, `kind_version`, `payload`, `severity`, `status`, `refs`, `emitted_by`, `source_ref`, `idempotency_key` (generated), `created_at`, `updated_at` | `(kind_id, kind_version)` references a declaration, pinned for life (`decision_items_pinned`); `payload` conforms to that version's schema at write time; `refs` typed `{type: run\|pr\|ticket\|path, id, label}`, required types present, each resolving in the item's own workspace (`decision_ref_resolves`, definer); `severity` `err\|warn\|info` defaulting from the kind; `status` `open\|snoozed\|resolved\|expired`; `(organization_id, idempotency_key)` unique; indexed for the queue, the open-count pill and GIN reverse lookup; rendered through `decision_items_rendered`; filed through `decision_item_emit`; cascades with its workspace |
 | `org_policy_versions` | `V092` | Every published version of the org-policy document ([#480](https://github.com/NobuData/ouroboros/issues/480), BQ.1) — `version`, `document`, `published_by`, `published_at`, `change_note` | `(organization_id, version)` primary key, dense from 1 (`org_policy_versions_next_version`); **immutable** — `UPDATE`/`DELETE` refused for every role except the publisher's set-null and the workspace's cascade (`org_policy_versions_immutable`); `document` rule ids are the five or `custom:<slug>`, all five present, each `{enabled: boolean, conditions: object}`, spend caps positive integer cents; grammar in [`schemas/org-policy/v1.json`](../schemas/org-policy/v1.json); written through `org_policy_publish` |
 | `metric_definitions` | `V076`, `V078` | The Insights methodology registry ([#432](https://github.com/NobuData/ouroboros/issues/432), BI.1, decision **I1**) — `metric_id`, `family`, `title`, `formula_text`, `source_planes`, `caveats`, `unit`, `is_rate`, `version`, `proxy`, `aggregation` (`sum\|ratio\|median`, #433), `dimension_kind` | ships its first 11 rows in the migration; `unit` is `count\|pct\|duration_ms\|cents\|tokens` and every `pct` is a rate; formula text, caveats and a non-empty `source_planes` are required; a change to `formula_text`, `source_planes`, `unit`, `is_rate` or `proxy` must raise `version`, which never decreases (`metric_definitions_version_guard`); `V086` ([#510](https://github.com/NobuData/ouroboros/issues/510)) adds `build_duration` (its own family, a median per `job_label`, a new dimension kind); `ouroboros_app` may only select |
 | `metric_daily` | `V076`, `V078` | The Insights daily grain ([#432](https://github.com/NobuData/ouroboros/issues/432), [#433](https://github.com/NobuData/ouroboros/issues/433), decision **I2**) — `repo_ref` (null = org-level), `metric_id`, `is_rate`, `dimension` (`''` = none), `day`, `value`, `numerator`, `denominator`, `meta`, `computed_at` | unique nulls not distinct on `(organization_id, repo_ref, metric_id, dimension, day)`; `metric_daily_shape_guard` holds the dimension to the definition's `dimension_kind`, and a median row to ascending `meta.samples` whose median is `value`; `(metric_id, is_rate)` is a foreign key to the registry, and `numerator`/`denominator` are required exactly on rate rows (`metric_daily_rate_components`); `value` ≥ 0; `meta` is an object; BRIN on `day`; cascades with the workspace |
