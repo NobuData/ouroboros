@@ -715,6 +715,12 @@ check_contains "$DB_WORKFLOW" 'tests/settings-invariants\.sql' \
 check_contains "$DB_WORKFLOW" 'tests/verify-settings-invariants\.sh' \
   'db.yml plants bad settings rows and requires the invariants to go red'
 
+# The Needs-You inbox's (#460), the same two halves.
+check_contains "$DB_WORKFLOW" 'tests/inbox-invariants\.sql' \
+  'db.yml asserts the inbox invariants against the seeded database'
+check_contains "$DB_WORKFLOW" 'tests/verify-inbox-invariants\.sh' \
+  'db.yml plants bad inbox rows and requires the invariants to go red'
+
 # It reads the library out of the installed dependency, so the job has to install and
 # build. Without the build the check cannot load the configuration that decides the
 # schema, and would fail for a reason that has nothing to do with drift.

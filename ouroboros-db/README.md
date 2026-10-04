@@ -1365,6 +1365,14 @@
 > goes red when its rule is broken, cover policy immutability, explicit capabilities, retention
 > floors, sealed and hash-only keys and derived truth.
 >
+> [#460](https://github.com/NobuData/ouroboros/issues/460) (BM.4) seeds mockup 16 from V093–V097:
+> [`R__dev_seed_workspace_triage_inbox.sql`](migrations/R__dev_seed_workspace_triage_inbox.sql) —
+> see [What is waiting on a person](#what-is-waiting-on-a-person). Its probes,
+> [`tests/inbox-invariants.sql`](tests/inbox-invariants.sql), and
+> [`tests/verify-inbox-invariants.sh`](tests/verify-inbox-invariants.sh), which proves each goes red,
+> cover vocabulary coverage, idempotency keys, one resolution per item, hash-only tokens, scoped
+> allow-once grants, the weekly metrics against an oracle, and the cards against the universe.
+>
 > [#509](https://github.com/NobuData/ouroboros/issues/509) (BU.4) seeds the page those three built
 > for, and plants the **corpus** rather than the answers:
 > [`R__dev_seed_workspace_metrics_analyzer.sql`](migrations/R__dev_seed_workspace_metrics_analyzer.sql)
@@ -1802,7 +1810,7 @@ aggregate over these rows** and the migration contains none of them —
 
 | Table | Rows | What mockup 09 renders from them |
 |---|---|---|
-| `tickets` | 52 | `#540`–`#591` in the GitHub source, 42 open: *two-way sync · 42 issues*, the health card's `42 open`, **Sized** `38/42` (`sizing_status`; four newest are `unsized`) and **Stale > 30d** `6` (`source_updated_at`) |
+| `tickets` | 52 | `#540`–`#591` in the GitHub source, 42 open: *two-way sync · 42 issues*, the health card's `42 open`, **Sized** `38/42` (`sizing_status`; four newest are `unsized`) and **Stale > 30d** `6` (`source_updated_at`). The inbox seed (#460) adds four open canonical tickets, so a fully seeded database reads **46 open** and **Sized** `39/46` |
 | `ticket_dependencies` | 10 | **Blocked** `4` — six ticket edges, two of them `synced` — and the drafts' four *blocks OTA-3 / OTA-5* notes |
 | `planning_epics` | 5 | The gantt's lanes, tints and order; months are offsets from the current month, so the current month is always the second column and TODAY never rots. *Zephyr 4.2 migration* has null months and status `proposed` |
 | `epic_tickets` | 42 | The chips `12 · 8`, `9 · 2`, `14 · 0`, `7 · 0`, through `planning_epic_progress` |
@@ -2126,6 +2134,29 @@ behind it: V079 makes every waiver an intervention, and one more would move mock
 No session is seeded (a session row carries a live bearer value), so Maya's and Jorge's *last
 active* stay empty until they sign in. Every key column holds a sealed envelope whose body decodes
 to `dev-seed-value-not-a-real-…`, or a digest of no known input.
+
+#### What is waiting on a person
+
+[`R__dev_seed_workspace_triage_inbox.sql`](migrations/R__dev_seed_workspace_triage_inbox.sql)
+([#460](https://github.com/NobuData/ouroboros/issues/460)) is mockup 16's Needs-You inbox for
+`acme-robotics`. It sorts after the settings seed, whose policy versions its auto-accept names, and
+every card's facts are read from the rows its refs name.
+
+| The page | From the rows |
+|---|---|
+| *Approve merge for a refactor PR?* · `8m` | `merge_approval` on loop **#1830** · **PR #504** · issue #465 — PR #504 is mirrored here (six files from #1830's change-set, 13 required gates green, `human_approval` pending, three verified criteria), so the card computes `13/13 · all ✓ · +214 −180 across 6 files` and the dashboard's `13/14` stays true |
+| *Allow a one-time edit to a protected path?* · `21m` | `protected_path_allow_once` on loop **#1844** · issue #479 · `boot/rollback_flag.c` — a failing `allowed_paths` evaluation (`boot/**`), a 3-line change-set row and an open run block: the stop **Allow once** clears |
+| *Waive a claim the bench can't verify?* · `34m` | `claim_waiver` on PR #514's thermal criterion — kept as drawn although that criterion is already waived on PR #514's page and the PR is minutes old |
+| **Resolved today · 5** | the split of #490 into 6 tickets (Ken, web) and the estimator re-size of #486 L→M **auto-accepted by policy** `auto_accept_resize` (api), whose outcome names the published policy version it ran under, plus three more answers |
+| `11 decisions · median 41s · never longer than 6m` | eleven `decision_resolutions` this UTC week, with run blocks shaped so the view computes exactly that; the head's *about 90 seconds* is the open kinds' medians (a kind unanswered this week takes the week's median) |
+| state coverage | one snoozed `fact_review` (the proposed `k_msgq` fact, until tomorrow 09:00 UTC) and one expired plan sign-off; one answer by email |
+
+**The mockup's numbers give way to the universe's.** The mockup's loop #1843 / PR #509 and loop
+#1851 do not exist: issue #465 is loop #1830 → PR #504 (mockup 02) and issue #479 is loop #1844.
+Every age is relative to the load, and every answer is clamped to today (UTC) or this Monday, so the
+stat card is right on any day — on a Monday the week's answers land on today too. The stop on #1844
+is an intervention (V079), so mockup 15 reads **8 / 5 / 4 / 2 / 2** and the stored rollup is brought
+to match; and the four canonical tickets the refs need move mockup 09's counts to `46 open`.
 
 ### The bundled price catalog
 
@@ -2519,6 +2550,21 @@ Each run must fail naming the invariant. The JSON Schema half of policy conforma
 
 ```bash
 PGPASSWORD=ouroboros OURO_DB_NAME=ouroboros ouroboros-db/tests/verify-settings-invariants.sh
+```
+
+### Proving the inbox invariants read the rows
+
+[`tests/verify-inbox-invariants.sh`](tests/verify-inbox-invariants.sh) is
+[#460](https://github.com/NobuData/ouroboros/issues/460)'s *"probes fail red when a vocabulary
+value, constraint or the metric oracle is broken"*. It requires `inbox-invariants.sql` to be green
+against the seeded database, then plants seventeen breakages one at a time: a channel or a kind
+with no seeded row, a dropped idempotency key, an item answered twice or re-keyed, a token stored as
+itself, sharing a digest or beside a plaintext column, a `boot/**` or over-TTL grant, a stored
+answer time, a median that drifts, a fourth open card, a dangling ref, PR #504's diff stat moving, a
+later pass on loop #1844, and a snooze that already ran out. Each run must fail naming the invariant.
+
+```bash
+PGPASSWORD=ouroboros OURO_DB_NAME=ouroboros ouroboros-db/tests/verify-inbox-invariants.sh
 ```
 
 ### Proving the guard is a guard
@@ -3039,7 +3085,8 @@ ouroboros-db/
 │   ├── R__dev_seed_workspace_knowledge.sql # mockup 14 — skills, facts, playbooks, env recipe, injection records, dev only — #409
 │   ├── R__dev_seed_workspace_metrics.sql # mockup 15 — ninety days of metric_daily from components, nine graded merges, dev only — #436
 │   ├── R__dev_seed_workspace_metrics_analyzer.sql # mockup 18 — the corpus, two analysis runs, findings, suggestions, measurements, dev only — #509
-│   ├── R__dev_seed_workspace_settings.sql # mockup 17 — policy v1–v7, members, today's audit lines, retention, webhooks, routes, dev only — #484 (sorts last)
+│   ├── R__dev_seed_workspace_settings.sql # mockup 17 — policy v1–v7, members, today's audit lines, retention, webhooks, routes, dev only — #484
+│   ├── R__dev_seed_workspace_triage_inbox.sql # mockup 16 — three open cards, the week's eleven answers, PR #504, dev only — #460 (sorts last)
 │   └── R__model_price_catalog.sql    # the bundled price snapshot, every environment — #580 (generated)
 └── tests/
     ├── lib/
@@ -3050,6 +3097,7 @@ ouroboros-db/
     │   ├── insights-invariants.sql   # the rollup invariants mockup 15 trusts, named — #436
     │   ├── analyzer-invariants.sql   # the Build Analyzer invariants mockup 18 trusts, named — #509
     │   ├── settings-invariants.sql   # the Settings invariants mockup 17 trusts, named — #484
+    │   ├── inbox-invariants.sql      # the Needs-You inbox invariants mockup 16 trusts, named — #460
     │   ├── analyzer-corpus.sql       # the seeded corpus as the engine's Corpus JSON — #509
     │   ├── rediscover.py             # runs the change-point analyzer over it and compares — #509
     │   ├── dependency-cycles.sql     # the recursive-CTE walk that finds a stored cycle — #276
@@ -3080,6 +3128,9 @@ ouroboros-db/
     ├── settings-invariants.test.sh   # the settings verifier's usage, and that its pieces agree — #484
     ├── settings-invariants.sql       # the Settings invariants against the seeded rows — #484
     ├── verify-settings-invariants.sh # that they go red when a rule is broken, naming it — #484
+    ├── inbox-invariants.test.sh      # the inbox verifier's usage, and that its pieces agree — #460
+    ├── inbox-invariants.sql          # the Needs-You inbox invariants against the seeded rows — #460
+    ├── verify-inbox-invariants.sh    # that they go red when a rule is broken, naming it — #460
     ├── verify-analysis-run-guard.sh  # one running analysis per repo, under a two-session race — #506
     ├── decision-refs.sql             # BM.1's typed decision refs against the seeded universe — #457
     ├── constraints.sql               # what the schema enforces, asserted against a live database

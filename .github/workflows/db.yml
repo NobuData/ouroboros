@@ -574,6 +574,29 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tests/settings-invariants.sql
           OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-settings-invariants.sh --runner docker
 
+      # BM.4 (#460): the invariants mockup 16's Needs-You inbox trusts, asked of the seeded decision
+      # rows — every status, severity, resolver, channel and declared kind exercised by a seeded
+      # row, one item per idempotency key, one resolution per item, tokens hash-only and unique,
+      # allow-once grants narrow and within the TTL, decision_metrics_weekly equal to an oracle
+      # over the raw rows and the seeded week to the hand-computed 11 · 41s · 6m (and the head's
+      # ~90 s from per-kind medians), every ref resolving, the merge card agreeing with PR #504, a
+      # real stop behind Allow once, and the snoozed item outside the pill. Green against
+      # R__dev_seed_workspace_triage_inbox.sql is half of it.
+      #
+      # The other half is #460's *"probes fail red when a vocabulary value, constraint or the metric
+      # oracle is broken"*: verify-inbox-invariants.sh breaks each rule or plants the drifted row,
+      # and requires red naming the invariant each time. Every plant is rolled back, and the
+      # registry step below re-runs seed.sql against this database to say so.
+      - name: Assert the inbox invariants against the seeded database, and that they go red
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/inbox-invariants.sql
+          OURO_DB_NAME="$SEED_DB_NAME" ouroboros-db/tests/verify-inbox-invariants.sh --runner docker
+
       # CG.5's third acceptance criterion (#583): *"probes run against the seeded database
       # from #582 without mutating it"*. The registry rules are asserted twice, and this is
       # the second time — the first is inside constraints.sql two steps up, which includes

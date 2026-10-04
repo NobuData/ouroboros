@@ -231,7 +231,7 @@ Inbox v2`** created at filing; every issue assigned. Complexity chips:
 | BM.1 | #457 ✅ | 🟢 Done | ouroboros-db: [BM.1] Decision items & kind registry schema | Typed items, versioned kind declarations, refs, severity (X1/X2) | mvp, inbox, db | N (after AO.1, AW.1, BE.2) | Y | M | ouroboros-db |
 | BM.2 | #458 ✅ | 🟢 Done | ouroboros-db: [BM.2] Resolutions, snooze & metrics spans | Actor/action/channel/latency, auto-accept class, snooze TTLs (X4/X6) | mvp, inbox, db | N (after BM.1) | Y | S | ouroboros-db |
 | BM.3 | #459 ✅ | 🟢 Done | ouroboros-db: [BM.3] Guardrail exceptions & action tokens | Scoped allow-once grants; signed channel-token storage (X3/X5) | mvp, inbox, db | N (after BM.1, AO.4) | Y | M | ouroboros-db |
-| BM.4 | #460 | 🟡 Open | ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes | Three open decisions, five resolutions, policy rows; ci checks | mvp, inbox, db, ci | N (after BM.2/BM.3, #24) | Y | S | ouroboros-db, .github |
+| BM.4 | #460 ✅ | 🟢 Done | ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes | Three open decisions, five resolutions, policy rows; ci checks | mvp, inbox, db, ci | N (after BM.2/BM.3, #24) | Y | S | ouroboros-db, .github |
 
 ### Issue BM.1 — ouroboros-db: [BM.1] Decision items & kind registry schema
 
@@ -333,7 +333,7 @@ action_token{item, allow_once, ken, hash, TTL 48h, requires_confirm: false} · m
 
 ### Issue BM.4 — ouroboros-db: [BM.4] Inbox seeds — mockup-16 parity + probes
 
-> **GitHub issue:** #460 · **Status:** 🟡 Open · **Parent epic:** #453
+> **GitHub issue:** #460 ✅ · **Status:** 🟢 Done · **Parent epic:** #453
 >
 > **Schema already shipped (#458):** V095 created `decision_resolutions`, `run_blocks`, the snooze columns + `decision_snooze_events` and `decision_metrics_weekly` (+ `_by_kind`). The week's 6m is a `run_blocks` span, so seed the blocks beside the resolutions; the policy row needs an `auto_resolvable` resize kind; `constraints.sql`'s V095 fixture week is the 11 · 41s · 6m shape to copy.
 
@@ -485,6 +485,8 @@ email [Allow once] link ─▶ token ✓ ─▶ receipt · [Approve & merge] lin
 
 > **GitHub issue:** #464 · **Status:** 🟡 Open · **Parent epic:** #454
 >
+> **Seeded (#460):** the head's estimate is each open card's kind median this UTC week from `decision_metrics_weekly_by_kind`, falling back to the week's overall median for a kind nobody answered this week — on the seed, merge_approval 41 + protected_path_allow_once 8 + claim_waiver 41 = 90 s. `tests/inbox-invariants.sql` holds the seed to that rule, so serve exactly it.
+>
 > **Already shipped (#461):** `GET /api/v1/inbox/feed` (open by severity, snooze-aware: an elapsed snooze counts as open) is in `decisions/inbox.controller.ts` — add the queue, resolved, stats and snooze routes beside it, and list exactly the items `open` counts. The policy card reads `DecisionKindRegistry.kinds()`: `spend_approval` comes back `dormant: true`, so the card must not claim cap approvals exist. The resolved list shows `source_resolved` closures (`resolver: policy`); the weekly metrics already leave them out.
 >
 > **Schema already shipped (#458):** snooze through `decision_item_snooze` / `decision_items_snooze_all` (one scope-all event), re-surface with `decision_items_wake(org)` before reading the queue, and serve `GET /stats` from `decision_metrics_weekly` (UTC ISO weeks).
@@ -557,6 +559,8 @@ dark-only).
 ### Issue BO.1 — ouroboros-ui: [BO.1] Inbox route, head & pill wiring
 
 > **GitHub issue:** #466 · **Status:** 🟡 Open · **Parent epic:** #455
+>
+> **Seeded (#460):** the cards read the seeded universe, not the mockup's numbers — `loop #1830 · PR #504 · issue #465 · refactor` (13/13 checks: PR #504 holds 13 required gates green and `human_approval` pending, as the dashboard's 13/14 says), `loop #1844 · issue #479 · boot/rollback_flag.c` (*change 3 lines*), and `PR #514 · verification`. Ages are relative to the load; on a Monday the week's answers clamp onto today, so *Resolved today* can list more than five.
 
 - **Problem Statement:** The frame: computed head sentence, snooze-all,
   and the shell pill lighting up on-page with truthful counts.

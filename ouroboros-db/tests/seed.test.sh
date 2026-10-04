@@ -9,7 +9,8 @@
 # migrations/R__dev_seed_workflows.sql, migrations/R__dev_seed_workspace_interventions.sql,
 # migrations/R__dev_seed_workspace_knowledge.sql, migrations/R__dev_seed_workspace_metrics.sql,
 # migrations/R__dev_seed_workspace_metrics_analyzer.sql,
-# migrations/R__dev_seed_workspace_settings.sql, and the
+# migrations/R__dev_seed_workspace_settings.sql,
+# migrations/R__dev_seed_workspace_triage_inbox.sql, and the
 # configuration that decides whether they do anything.
 #
 # The seeds are the migrations in this module that must behave differently in two places,
@@ -33,7 +34,8 @@
 # R__dev_seed_workspace_interventions.sql (#434) is *where people still had to step in*,
 # R__dev_seed_workspace_metrics.sql (#436) is *what it all added up to*,
 # R__dev_seed_workspace_metrics_analyzer.sql (#509) is *what it could have done better*,
-# R__dev_seed_workspace_settings.sql (#484) is *who may do what, and where the record goes* — and the
+# R__dev_seed_workspace_settings.sql (#484) is *who may do what, and where the record goes*,
+# R__dev_seed_workspace_triage_inbox.sql (#460) is *what is waiting on a person* — and the
 # structural rules below are asserted over all of them, in a loop, so that a tenth seed
 # inherits them by being added to the one list at the top.
 #
@@ -91,6 +93,7 @@ INTERVENTIONS_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_interventions.s
 METRICS_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_metrics.sql"
 ANALYZER_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_metrics_analyzer.sql"
 SETTINGS_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_settings.sql"
+INBOX_SEED="$MODULE_DIR/migrations/R__dev_seed_workspace_triage_inbox.sql"
 CONFIG="$MODULE_DIR/flyway.toml"
 SEED_CONFIG="$MODULE_DIR/flyway.seed.toml"
 DEV_CONFIG="$MODULE_DIR/flyway.dev.toml"
@@ -136,6 +139,7 @@ INTERVENTIONS_BODY="$work/seed-body-workspace-interventions.sql"
 METRICS_BODY="$work/seed-body-workspace-metrics.sql"
 ANALYZER_BODY="$work/seed-body-workspace-metrics-analyzer.sql"
 SETTINGS_BODY="$work/seed-body-workspace-settings.sql"
+INBOX_BODY="$work/seed-body-workspace-triage-inbox.sql"
 seed_body "$SEED" "$BODY"
 seed_body "$DASHBOARD_SEED" "$DASHBOARD_BODY"
 seed_body "$INTAKE_SEED" "$INTAKE_BODY"
@@ -155,6 +159,7 @@ seed_body "$INTERVENTIONS_SEED" "$INTERVENTIONS_BODY"
 seed_body "$METRICS_SEED" "$METRICS_BODY"
 seed_body "$ANALYZER_SEED" "$ANALYZER_BODY"
 seed_body "$SETTINGS_SEED" "$SETTINGS_BODY"
+seed_body "$INBOX_SEED" "$INBOX_BODY"
 
 # count_lines PATTERN [FILE] — how many lines of a seed's SQL match an extended regex.
 # Defaults to R__dev_seed.sql, which is what the assertions written before there was a
@@ -190,6 +195,7 @@ check_exists "$INTERVENTIONS_SEED" 'migrations/R__dev_seed_workspace_interventio
 check_exists "$METRICS_SEED" 'migrations/R__dev_seed_workspace_metrics.sql exists'
 check_exists "$ANALYZER_SEED" 'migrations/R__dev_seed_workspace_metrics_analyzer.sql exists'
 check_exists "$SETTINGS_SEED" 'migrations/R__dev_seed_workspace_settings.sql exists'
+check_exists "$INBOX_SEED" 'migrations/R__dev_seed_workspace_triage_inbox.sql exists'
 
 # Repeatable, not versioned. A seed that grows with the product would otherwise become a
 # chain of V### files that can never be re-run — README.md § Migration rules, rule 3.
@@ -197,7 +203,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
                  "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
-                 "$ANALYZER_SEED" "$SETTINGS_SEED"; do
+                 "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED"; do
   check_matches "$(basename -- "$seed_file")" '^R__[a-z0-9_]+\.sql$' \
     "$(basename -- "$seed_file") is a repeatable migration, so it re-applies when it changes"
 done
@@ -251,6 +257,8 @@ analyzer_description=$(basename -- "$ANALYZER_SEED" .sql)
 analyzer_description=${analyzer_description#R__}
 settings_description=$(basename -- "$SETTINGS_SEED" .sql)
 settings_description=${settings_description#R__}
+inbox_description=$(basename -- "$INBOX_SEED" .sql)
+inbox_description=${inbox_description#R__}
 
 # The providers seed hangs off the first one too — it finds the workspace by slug and Ken
 # by email — and the routing seed hangs off the providers one, since every alias binds to a
@@ -330,6 +338,12 @@ settings_description=${settings_description#R__}
 # named `workspace_settings` for that, and sorts last: `dev_seed_settings` would sort before
 # `dev_seed_sources`, and on a database migrated from empty its audit card would hold nothing.
 #
+# The inbox seed (#460) **must** sort after the settings seed, whose published policy versions its
+# auto-accept names, and through it after every seed whose rows its cards are about: the dashboard's
+# loops, the intake mirror, the verification seed's PR #514, the knowledge seed's proposed fact and
+# the insights seed's rollup it amends. It is named `workspace_triage_inbox` for that —
+# `dev_seed_inbox` would sort before `dev_seed_intake`, and every card would find nothing.
+#
 # The onboarding seed (#383) **must** sort after two of them: the first, for Ken, and the intake
 # seed, whose nine issues and their estimates it copies into its own workspace by query — on a
 # database migrated from empty, sorting before `dev_seed_intake` would mirror nothing and leave
@@ -341,10 +355,10 @@ settings_description=${settings_description#R__}
 # the first of their domain. `dev_seed_farm` does that; `farm_dev_seed`, which reads better,
 # would sort before `dev_seed` and every join in it would find nothing on a database migrated
 # from empty.
-check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$settings_description")" \
-  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$settings_description" |
+check_equals "$(printf '%s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s %s' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$settings_description" "$inbox_description")" \
+  "$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$base_description" "$audit_description" "$dashboard_description" "$farm_description" "$intake_description" "$onboarding_description" "$providers_description" "$routing_description" "$run_console_description" "$sources_description" "$test_results_description" "$planning_description" "$verification_description" "$workflows_description" "$interventions_description" "$knowledge_description" "$metrics_description" "$analyzer_description" "$settings_description" "$inbox_description" |
      LC_ALL=C sort | tr '\n' ' ' | sed 's/ $//')" \
-  'the nineteen seeds sort in the order their rows depend on, so Flyway applies them in it'
+  'the twenty seeds sort in the order their rows depend on, so Flyway applies them in it'
 
 # Every statement is guarded, and every statement can be applied twice. Counted rather
 # than spot-checked: the failure this catches is a *new* statement added later without
@@ -366,7 +380,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
                  "$PROVIDERS_SEED" "$ROUTING_SEED" "$RUN_CONSOLE_SEED" "$SOURCES_SEED" \
                  "$TEST_RESULTS_SEED" "$PLANNING_SEED" "$VERIFICATION_SEED" "$WORKFLOWS_SEED" \
                  "$KNOWLEDGE_SEED" "$ONBOARDING_SEED" "$INTERVENTIONS_SEED" "$METRICS_SEED" \
-                 "$ANALYZER_SEED" "$SETTINGS_SEED"; do
+                 "$ANALYZER_SEED" "$SETTINGS_SEED" "$INBOX_SEED"; do
   name=$(basename -- "$seed_file")
   body=$BODY
   [ "$seed_file" = "$AUDIT_SEED" ] && body=$AUDIT_BODY
@@ -387,6 +401,7 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
   [ "$seed_file" = "$METRICS_SEED" ] && body=$METRICS_BODY
   [ "$seed_file" = "$ANALYZER_SEED" ] && body=$ANALYZER_BODY
   [ "$seed_file" = "$SETTINGS_SEED" ] && body=$SETTINGS_BODY
+  [ "$seed_file" = "$INBOX_SEED" ] && body=$INBOX_BODY
 
   inserts=$(count_lines '^insert into ouroboros\.' "$body")
   updates=$(count_lines '^update ouroboros\.' "$body")
@@ -432,6 +447,13 @@ for seed_file in "$SEED" "$AUDIT_SEED" "$DASHBOARD_SEED" "$FARM_SEED" "$INTAKE_S
       check_equals "$(grep -Eoc "'secrets'" "$body" || true)" \
                    "$(grep -Eoc 'secret' "$body" || true)" \
                    "$name says secret only as the guardrail check named 'secrets'"
+      continue
+    fi
+    # The inbox seed (#460) mirrors PR #504's gate set, so it says the scan gate's name too.
+    if [ "$seed_file" = "$INBOX_SEED" ] && [ "$secret" = secret ]; then
+      check_equals "$(grep -Eo "'secrets_license'" "$body" | wc -l | tr -d ' ')" \
+                   "$(grep -Eo 'secret' "$body" | wc -l | tr -d ' ')" \
+                   "$name says secret only as the gate 'secrets_license'"
       continue
     fi
     if [ "$seed_file" = "$VERIFICATION_SEED" ] && [ "$secret" = secret ]; then
@@ -1636,6 +1658,50 @@ check_contains "$SETTINGS_BODY" 'where prior\.organization_id = org\."id"' \
   'the policy history is written only into a workspace that has none, so a second application is a no-op'
 
 # ---------------------------------------------------------------------------
+# R__dev_seed_workspace_triage_inbox.sql — mockup 16's Needs-You inbox (#460)
+# ---------------------------------------------------------------------------
+
+printf '\nR__dev_seed_workspace_triage_inbox.sql — the Needs-You inbox\n'
+
+for prefix in 5eed0079 5eed007a 5eed007b 5eed007c 5eed007d 5eed007e 5eed007f 5eed0080 5eed0081 \
+              5eed0082 5eed0083; do
+  check_contains "$INBOX_BODY" "'$prefix-0000-4000-8000-" \
+    "the inbox seed builds its ids from the $prefix… prefix"
+done
+
+# The inbox and what its cards needed to point at — and no row the inbox could not explain. In
+# particular no `pr_waivers` row and no hand-written intervention: V079 derives the one intervention
+# the protected-path stop is. Its updates set PR #504's counts and criteria, and bring the insights
+# rollup and its tooltip to the intervention that stop raised.
+inbox_tables=$(grep -Eo '^(insert into|update) ouroboros\.[a-z_]+' "$INBOX_BODY" |
+  sed -E 's/^(insert into|update) ouroboros\.//' | LC_ALL=C sort -u | tr '\n' ' ')
+check_equals 'decision_items decision_resolutions guardrail_evaluations metric_daily pr_criteria pr_criteria_evidence pr_gate_definitions pr_gate_results pr_revisions pull_requests run_blocks run_files tickets ' \
+  "$inbox_tables" \
+  'the inbox seed writes the cards, answers, blocks, the stop, PR #504 and the tickets — and amends only the rollup'
+check_absent "$INBOX_BODY" 'pr_waivers|intervention_events \(' \
+  'and writes no waiver and no intervention of its own'
+
+# **Every figure is computed.** The card's checks, diff stat and matrix are read off PR #504's rows;
+# the stat card's median, longest wait and the head's estimate are never stated.
+# (`'all ✓'` is in it once, as the word the matrix computes to, and `180` is one answer's latency.)
+check_absent "$INBOX_BODY" "'13/13'|214|'41s'|'6m'|interval '90 seconds'|'checks_passed', [0-9]|'files', [0-9]" \
+  'no card figure is stored as a literal — the merge card reads PR #504, the stat card reads the rows'
+check_contains "$INBOX_BODY" 'pr_gate_results_latest' 'the merge card counts the gates the verification page counts'
+check_contains "$INBOX_BODY" "now\(\) - interval '8 minutes'" 'the cards'"'"' ages are relative to the load, not dates'
+check_absent "$INBOX_BODY" "'20[0-9][0-9]-[0-9][0-9]-[0-9][0-9]" 'and no date is written anywhere'
+
+# Parents by natural key, never by restating another seed's id.
+check_absent "$INBOX_BODY" "'5eed00[0-6][0-9a-f]-0000-4000-8000-" \
+  'every row of another seed — loops, tickets, PR #514, the fact, the policy — is found by natural key'
+
+# The answers and the snooze are guarded beyond the conflict clause: an answered item refuses a
+# second answer before a conflict is looked for, and a snooze is a function call.
+check_contains "$INBOX_BODY" 'not exists \(select 1 from ouroboros\.decision_resolutions r where r\.item_id = item\.id\)' \
+  'an answered item is never answered again on a second application'
+check_contains "$INBOX_BODY" 'not exists \(select 1 from ouroboros\.decision_snooze_events e where e\.item_id = item\.id\)' \
+  'and the snooze is recorded once'
+
+# ---------------------------------------------------------------------------
 # The documentation the seed is only usable through
 # ---------------------------------------------------------------------------
 
@@ -1661,6 +1727,7 @@ check_contains "$README" 'R__dev_seed_workspace_interventions\.sql' 'README.md d
 check_contains "$README" 'R__dev_seed_workspace_metrics\.sql' 'README.md documents the insights seed'
 check_contains "$README" 'R__dev_seed_workspace_metrics_analyzer\.sql' 'README.md documents the Build Analyzer seed'
 check_contains "$README" 'R__dev_seed_workspace_settings\.sql' 'README.md documents the settings seed'
+check_contains "$README" 'R__dev_seed_workspace_triage_inbox\.sql' 'README.md documents the inbox seed'
 check_contains "$README" 'acme-onboarding' 'README.md names the onboarding workspace a developer will find'
 check_contains "$README" 'resolution_snapshots' 'README.md documents the snapshot table the routing seed fills for mockup 21'
 check_contains "$README" 'V024' 'README.md documents the migration that adds it'

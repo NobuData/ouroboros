@@ -2995,25 +2995,27 @@ select pg_temp.must_hold(
   'each ticket carries GitHub''s identity, link and repository in the shape the provider maps them');
 
 -- ---------------------------------------------------------------------------
--- Tracker Sync and Backlog Health — `42 open`, `38/42`, `4`, `6`.
+-- Tracker Sync and Backlog Health — `42 open`, `38/42`, `4`, `6` on mockup 09; 46 and 39/46 since
+-- #460 filed the canonical twins of #465, #479, #486 and #490 (open; #486 sized) for the inbox's
+-- ticket refs.
 -- ---------------------------------------------------------------------------
 select pg_temp.must_hold(
-  (select count(*) = 42
+  (select count(*) = 46
      from ouroboros.tickets t
      join ouroboros.ticket_sources src on src.id = t.source_id
      join ouroboros.organization org on org."id" = t.organization_id
     where org."slug" = 'acme-robotics'
       and src.kind = 'github'
       and t.state = 'open'),
-  'the GitHub source holds 42 open tickets — the sync row''s count and the health card''s tag');
+  'the GitHub source holds 46 open tickets — the sync row''s count and the health card''s tag');
 
 select pg_temp.must_hold(
-  (select count(*) filter (where t.sizing_status = 'sized') = 38 and count(*) = 42
+  (select count(*) filter (where t.sizing_status = 'sized') = 39 and count(*) = 46
      from ouroboros.tickets t
      join ouroboros.organization org on org."id" = t.organization_id
     where org."slug" = 'acme-robotics'
       and t.state = 'open'),
-  'Sized computes to 38 of 42 open tickets');
+  'Sized computes to 39 of 46 open tickets');
 
 -- Over the planning seed's own rows: `#482` (below) is a closed, sized ticket of the same
 -- workspace, so counting the whole workspace reads 49 of 53 and would say nothing about this
@@ -4062,13 +4064,15 @@ select pg_temp.must_hold(
   (select count(*) = 0 from ouroboros.run_events event
      join ouroboros.runs run on run.id = event.run_id
     where run.issue_number <> 482)
+   -- The inbox seed's (#460) change-sets of #1830 and #1844, and #1844's protected-path stop.
    and (select count(*) = 0 from ouroboros.run_files file
           join ouroboros.runs run on run.id = file.run_id
-         where run.issue_number <> 482)
+         where run.issue_number <> 482 and file.id::text not like '5eed007a-%')
    -- The interventions seed's (#434) review-required failures are policy gates, not a console.
    and (select count(*) = 0 from ouroboros.guardrail_evaluations guard
           join ouroboros.runs run on run.id = guard.run_id
-         where run.issue_number <> 482 and guard.id::text not like '5eed005a-%')
+         where run.issue_number <> 482 and guard.id::text not like '5eed005a-%'
+           and guard.id::text not like '5eed007b-%')
    and (select count(*) = 0 from ouroboros.run_controls),
   'only #482 has a console, and nothing has been asked of any loop — the control queue is empty');
 
@@ -4323,8 +4327,8 @@ select pg_temp.must_hold(
 
 -- --- one #482 universe --------------------------------------------------------------------------
 --
--- The insights seed's (#436) nine merged PRs are its graded loops, asserted in its own section;
--- every other PR in the database is this one.
+-- The insights seed's (#436) nine merged PRs are its graded loops and the inbox seed's (#460) PR #504
+-- is the merge card's, each asserted in its own section; every other PR in the database is this one.
 select pg_temp.must_hold(
   (select count(*) = 1
           and bool_and(pr.run_id = '5eed0009-0000-4000-8000-000000000482'
@@ -4335,7 +4339,7 @@ select pg_temp.must_hold(
                        and pr.external_url like 'https://github.com/%/helios-firmware/pull/514')
      from ouroboros.pull_requests pr
      join ouroboros.runs run on run.id = pr.run_id
-    where pr.id::text not like '5eed0060-%'),
+    where pr.id::text not like '5eed0060-%' and pr.id::text not like '5eed007c-%'),
   'one PR, #514, verifying, from loop/482-canbus-flake into main — opened by #482 and closing the canonical #482');
 
 -- No sync has run against #514 — the seed wrote it — so its stamp claims none (V066, #370). The
@@ -5423,25 +5427,26 @@ select pg_temp.must_hold(
 -- R__dev_seed_workspace_interventions.sql — mockup 15's "where loops still need humans" (#434)
 -- ===========================================================================
 
--- The card, from the rows: 20 in the 30-day window, 8 / 5 / 4 / 2 / 1.
+-- The card, from the rows: 21 in the 30-day window, 8 / 5 / 4 / 2 / 2 — mockup 15's 20 and
+-- 8 / 5 / 4 / 2 / 1, plus the inbox seed's (#460) protected-path stop on #1844, cause `other`.
 select pg_temp.must_hold(
   (select array_agg(cause || '=' || n order by n desc, cause)
-            = '{infra_rig=8,ambiguous_ticket=5,policy_gate=4,model_disagreement=2,other=1}'
+            = '{infra_rig=8,ambiguous_ticket=5,policy_gate=4,model_disagreement=2,other=2}'
      from (select e.cause, count(*) as n
              from ouroboros.intervention_events e
              join ouroboros.organization org on org."id" = e.organization_id
             where org."slug" = 'acme-robotics'
               and e.detected_at > now() - interval '30 days'
             group by e.cause) counted),
-  'the seeded 30-day window lands 8 / 5 / 4 / 2 / 1 across the five causes');
+  'the seeded 30-day window lands 8 / 5 / 4 / 2 / 2 across the five causes');
 
--- "Fix the top row and interventions drop ~40%" is arithmetic over those rows.
+-- "Fix the top row and interventions drop ~38%" is arithmetic over those rows.
 select pg_temp.must_hold(
-  (select round(100.0 * count(*) filter (where cause = 'infra_rig') / count(*)) = 40
+  (select round(100.0 * count(*) filter (where cause = 'infra_rig') / count(*)) = 38
      from ouroboros.intervention_events e
      join ouroboros.organization org on org."id" = e.organization_id
     where org."slug" = 'acme-robotics' and e.detected_at > now() - interval '30 days'),
-  'the top row is 8 of 20 — 40%');
+  'the top row is 8 of 21 — 38%');
 
 -- Every event traces to its source record, and only one cause was typed by a person.
 select pg_temp.must_hold(
@@ -5501,9 +5506,11 @@ select pg_temp.must_hold(
      (select count(*) from ouroboros.intervention_overrides  where id::text like '5eed005d-%'),
      -- #509's three thermal waivers raise three events of their own, 33–57 days back and so
      -- outside the card's window; they are the Build Analyzer seed's, counted in its section.
+     -- #460's protected-path stop on #1844 raises one more, counted in the inbox section.
      (select count(*) from ouroboros.intervention_events
        where organization_id = '5eed0001-0000-4000-8000-000000000001'
-         and not (source = 'waiver' and source_ref like '5eed006d-%')),
+         and not (source = 'waiver' and source_ref like '5eed006d-%')
+         and source_ref <> '5eed0009-0000-4000-8000-000000000479/allowed_paths'),
      (select count(*) from ouroboros.intervention_overrides
        where organization_id = '5eed0001-0000-4000-8000-000000000001')]
    = array[11, 11, 11, 11, 3, 1, 1, 20, 1]::bigint[]),
@@ -5621,11 +5628,12 @@ select pg_temp.must_hold(
     and pg_temp.bi5_sum('cost_cents', 30, 59) / pg_temp.bi5_sum('merged_prs', 30, 59) = 228,
   'Cost per merged PR is Σ cost / Σ merges: $1.87, from $2.28 — ▼ $0.41');
 
--- The mockup's `2/wk` cannot stand beside its own twenty-event card; the count is what computes.
+-- The mockup's `2/wk` cannot stand beside its own twenty-event card; the count is what computes —
+-- twenty-one since the inbox seed's (#460) stop on #1844.
 select pg_temp.must_hold(
-  pg_temp.bi5_sum('human_interventions', 0, 29) = 20
+  pg_temp.bi5_sum('human_interventions', 0, 29) = 21
     and pg_temp.bi5_sum('human_interventions', 30, 59) = 25,
-  'Human interventions: 20 in the window against 25 before it — ▼ 5');
+  'Human interventions: 21 in the window against 25 before it — ▼ 4');
 
 -- --- throughput ------------------------------------------------------------------------------------
 select pg_temp.must_hold(
@@ -5722,13 +5730,13 @@ select pg_temp.must_hold(
 -- --- where loops still need humans ------------------------------------------------------------------
 select pg_temp.must_hold(
   (select array_agg(dimension || '=' || n order by n desc, dimension)
-            = '{infra_rig=8,ambiguous_ticket=5,policy_gate=4,model_disagreement=2,other=1}'
-          and round(100.0 * max(n) / sum(n)) = 40
+            = '{infra_rig=8,ambiguous_ticket=5,policy_gate=4,model_disagreement=2,other=2}'
+          and round(100.0 * max(n) / sum(n)) = 38
      from (select dimension, sum(value) as n from ouroboros.metric_daily
             where metric_id = 'human_interventions'
               and day >= (now() at time zone 'UTC')::date - 29
             group by dimension) causes),
-  'the cause bars land 8 / 5 / 4 / 2 / 1, and the top row is 40% of them');
+  'the cause bars land 8 / 5 / 4 / 2 / 2 (#460''s stop is the second other), and the top row is 38% of them');
 
 -- Derived, not summarised: the window is #434's events with the extractor's grouping, exactly.
 select pg_temp.must_hold(
@@ -6747,6 +6755,214 @@ select pg_temp.must_hold(
      from ouroboros.notification_routes_effective r
     where r.organization_id = '5eed0001-0000-4000-8000-000000000001'),
   'daily digest 09:00 → email on, weekly insights → email on, loop failures → PagerDuty locked: "connect PagerDuty first"; no needs-you DM, since there is no Slack');
+
+-- ===========================================================================
+-- R__dev_seed_workspace_triage_inbox.sql — mockup 16's Needs-You inbox (#460, BM.4)
+-- ===========================================================================
+--
+-- The page as it reads on a cold stack: three open cards whose facts are the rows their refs name,
+-- five answers today, the week's arithmetic, and one snoozed and one expired row. Ages are checked
+-- against the seed's own clock — the merge card is filed `now() − 8m`, and Flyway runs a file in
+-- one transaction, so its created_at plus eight minutes is the moment every `now()` in it read.
+-- The rules behind the rows (vocabularies, keys, tokens, exceptions, the oracle) are
+-- tests/inbox-invariants.sql's.
+
+create temporary view inbox_seed_clock as
+  select item.created_at + interval '8 minutes' as seeded_at
+    from ouroboros.decision_items item
+   where item.id = '5eed0082-0000-4000-8000-000000000001';
+
+-- --- exactly the rows the seed names, once each ------------------------------------------------
+select pg_temp.must_hold(
+  (select array[
+     (select count(*) from ouroboros.tickets               where id::text like '5eed0079-%'),
+     (select count(*) from ouroboros.run_files             where id::text like '5eed007a-%'),
+     (select count(*) from ouroboros.guardrail_evaluations where id::text like '5eed007b-%'),
+     (select count(*) from ouroboros.pull_requests         where id::text like '5eed007c-%'),
+     (select count(*) from ouroboros.pr_revisions          where id::text like '5eed007d-%'),
+     (select count(*) from ouroboros.pr_gate_definitions   where id::text like '5eed007e-%'),
+     (select count(*) from ouroboros.pr_gate_results       where id::text like '5eed007f-%'),
+     (select count(*) from ouroboros.pr_criteria           where id::text like '5eed0080-%'),
+     (select count(*) from ouroboros.pr_criteria_evidence  where id::text like '5eed0081-%'),
+     (select count(*) from ouroboros.decision_items        where id::text like '5eed0082-%'),
+     (select count(*) from ouroboros.run_blocks            where id::text like '5eed0083-%'),
+     (select count(*) from ouroboros.decision_resolutions  where item_id::text like '5eed0082-%'),
+     (select count(*) from ouroboros.decision_snooze_events where item_id::text like '5eed0082-%'),
+     -- Every decision row in the database is this seed's.
+     (select count(*) from ouroboros.decision_items        where id::text not like '5eed0082-%')]
+   = array[4, 9, 1, 1, 1, 14, 14, 3, 3, 16, 8, 11, 1, 0]::bigint[]),
+  'the inbox seed wrote 4 tickets, 9 files, 1 stop, PR #504 with 1 revision, 14 gates, 3 criteria, and 16 items, 8 blocks, 11 answers, 1 snooze — once');
+
+select pg_temp.must_hold(
+  (select array_agg(t.external_key || ':' || t.state || ':' || t.sizing_status order by t.external_key)
+          = array['#465:open:unsized', '#479:open:unsized', '#486:open:sized', '#490:open:needs_human']
+          and bool_and(t.labels ? 'refactor') filter (where t.external_key = '#465')
+     from ouroboros.tickets t
+    where t.id::text like '5eed0079-%'),
+  'the canonical twins of #465, #479, #486 and #490 are open, sized as their mirrors are, and #465 carries the refactor label');
+
+-- --- the three cards, word for word ------------------------------------------------------------
+select pg_temp.must_hold(
+  (select array_agg(r.severity || ' | ' || r.question || ' | ' || r.why || ' | '
+                    || array_to_string(r.tags, ',') || ' | '
+                    || (select string_agg(ref ->> 'label', ' · ' order by ord)
+                          from jsonb_array_elements(r.refs) with ordinality as x(ref, ord))
+                    order by r.created_at desc)
+          = array[
+              'err | Approve merge for a refactor PR? | Policy: anything labeled refactor needs a human. 13/13 checks green, verification matrix all ✓, +214 −180 across 6 files. | refactor | loop #1830 · PR #504 · issue #465',
+              'warn | Allow a one-time edit to a protected path? | Add OTA rollback on failed checksum wants to change 3 lines to boot/rollback_flag.c — a protected path. Diff is 3 lines, shown in the run console. |  | loop #1844 · issue #479 · boot/rollback_flag.c',
+              'warn | Waive a claim the bench can''t verify? | “Flake must not reappear across temperature range” — the rig has no thermal chamber. Waiving annotates the PR publicly. | verification | PR #514']
+     from ouroboros.decision_items_rendered r
+    where r.status = 'open'
+      and r.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'three open cards, newest first: the merge approval, the allow-once and the claim waiver, rendered from their facts');
+
+select pg_temp.must_hold(
+  (select array_agg(extract(epoch from clock.seeded_at - item.created_at)::integer
+                    order by item.created_at desc) = array[480, 1260, 2040]
+     from ouroboros.decision_items item, inbox_seed_clock clock
+    where item.status = 'open'),
+  'their ages are 8m, 21m and 34m counted from the load, not from a date');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 from ouroboros.decision_items
+    where organization_id = '5eed0001-0000-4000-8000-000000000001' and status = 'open'),
+  'the sidebar pill counts three — the snoozed item is not one of them');
+
+-- --- the merge card agrees with the PR page and the dashboard -----------------------------------
+select pg_temp.must_hold(
+  (select (item.payload ->> 'added')::integer = pr.additions
+          and (item.payload ->> 'removed')::integer = pr.deletions
+          and (item.payload ->> 'files')::integer = pr.changed_files
+          and (pr.additions, pr.deletions, pr.changed_files) = (214, 180, 6)
+          and (select (sum(f.additions), sum(f.deletions), count(*))
+                 from ouroboros.run_files f where f.run_id = pr.run_id)
+              = (pr.additions::bigint, pr.deletions::bigint, pr.changed_files::bigint)
+     from ouroboros.decision_items item
+     join ouroboros.pull_requests pr on item.refs @> jsonb_build_array(
+                                          jsonb_build_object('type', 'pr', 'id', pr.id::text))
+    where item.id = '5eed0082-0000-4000-8000-000000000001'),
+  'the merge card''s +214 −180 across 6 files is PR #504''s head, and PR #504''s head is loop #1830''s change-set');
+
+select pg_temp.must_hold(
+  (select agg.required_count = run.checks_total and agg.green_count = run.checks_passed
+          and (run.checks_passed, run.checks_total) = (13, 14)
+          and (item.payload ->> 'checks_passed')::integer = agg.green_count
+          and (item.payload ->> 'checks_total')::integer = agg.required_count - 1
+          and not agg.merge_ready
+     from ouroboros.decision_items item
+     join ouroboros.pull_requests pr on pr.id = '5eed007c-0000-4000-8000-000000000504'
+     join ouroboros.runs run         on run.id = pr.run_id
+     join ouroboros.pr_revisions rev on rev.pr_id = pr.id and rev.revision_seq = 1
+     cross join lateral ouroboros.pr_gate_aggregate(rev.id) agg
+    where item.id = '5eed0082-0000-4000-8000-000000000001'),
+  'PR #504 reads 13 of 14 green as the dashboard does, the pending one is the human approval, and the card counts the other 13/13');
+
+select pg_temp.must_hold(
+  (select count(*) = 3 and bool_and(c.status = 'verified')
+     from ouroboros.pr_criteria c where c.pr_id = '5eed007c-0000-4000-8000-000000000504'),
+  'the verification matrix is all ✓ — three claims, each verified against evidence');
+
+-- --- every ref names a real row of acme-robotics -------------------------------------------------
+select pg_temp.must_hold(
+  (select bool_and(ouroboros.decision_ref_resolves(item.organization_id, ref)
+                   and case ref ->> 'type'
+                         when 'run' then exists (select 1 from ouroboros.runs r
+                                                  where r.id = (ref ->> 'id')::uuid
+                                                    and ref ->> 'label' = 'loop #' || r.loop_seq)
+                         when 'pr' then exists (select 1 from ouroboros.pull_requests p
+                                                 where p.id = (ref ->> 'id')::uuid
+                                                   and ref ->> 'label' = 'PR #' || p.external_number)
+                         when 'ticket' then exists (select 1 from ouroboros.tickets t
+                                                     where t.id = (ref ->> 'id')::uuid
+                                                       and ref ->> 'label' = 'issue ' || t.external_key)
+                         else ref ->> 'id' = ref ->> 'label'
+                       end)
+     from ouroboros.decision_items item
+     cross join lateral jsonb_array_elements(item.refs) ref
+    where item.id::text like '5eed0082-%'),
+  'every ref of every seeded item resolves, and its label is the natural key of the row it names');
+
+-- --- Allow once has a stop to clear ---------------------------------------------------------------
+select pg_temp.must_hold(
+  (select stop.verdict = 'fail' and stop."check" = 'allowed_paths'
+          and stop.evidence ->> 'path' = item.payload ->> 'path'
+          and stop.evidence ->> 'path' like 'boot/%'
+          and (select v.document #> '{protected_paths,conditions,path_globs}' ? 'boot/**'
+                 from ouroboros.org_policy_versions v
+                where v.organization_id = item.organization_id
+                order by v.version desc limit 1)
+          and latest.verdict = 'fail'
+          and block.unblocked_at is null and block.blocked_at > stop.evaluated_at
+          and not exists (select 1 from ouroboros.guardrail_exceptions e where e.run_id = stop.run_id)
+     from ouroboros.decision_items item
+     join ouroboros.guardrail_evaluations stop on stop.id = '5eed007b-0000-4000-8000-000479000001'
+     join ouroboros.v_run_guardrails_latest latest
+       on latest.run_id = stop.run_id and latest."check" = 'allowed_paths'
+     join ouroboros.run_blocks block on block.decision_item_id = item.id and block.run_id = stop.run_id
+    where item.id = '5eed0082-0000-4000-8000-000000000002'),
+  'loop #1844''s latest allowed_paths verdict is the fail on boot/rollback_flag.c that policy v7 protects, it is blocked on the card, and no exception has been granted yet');
+
+-- --- resolved today · 5, one of them a policy's ---------------------------------------------------
+select pg_temp.must_hold(
+  (select count(*) = 11
+          and count(*) filter (where (r.resolved_at at time zone 'UTC')::date
+                                     = (clock.seeded_at at time zone 'UTC')::date) >= 5
+          and bool_and(r.resolved_at <= clock.seeded_at)
+     from ouroboros.decision_resolutions r, inbox_seed_clock clock
+    where r.organization_id = '5eed0001-0000-4000-8000-000000000001'),
+  'eleven answers this week, at least five of them today (exactly five unless the stack started on a Monday), none after the load');
+
+select pg_temp.must_hold(
+  (select r.resolver = 'policy' and r.resolved_by_policy = 'auto_accept_resize'
+          and r.resolved_by_user is null and r.channel = 'api' and r.action_id = 'accept_resize'
+          and exists (select 1 from ouroboros.org_policy_versions v
+                       where v.organization_id = r.organization_id
+                         and v.version = (r.outcome ->> 'org_policy_version')::integer)
+          and item.payload = '{"ticket_key": "#486", "from_effort": "L", "to_effort": "M", "confidence": 82}'
+     from ouroboros.decision_resolutions r
+     join ouroboros.decision_items item on item.id = r.item_id
+    where item.id = '5eed0082-0000-4000-8000-000000000101'),
+  'the estimator re-size of #486 L→M was auto-accepted by policy over the API, and its policy ref names a published policy version');
+
+select pg_temp.must_hold(
+  (select r.resolver = 'human' and person.email = 'ken@acme-robotics.dev' and r.channel = 'web'
+          and r.action_id = 'approve_split' and item.payload ->> 'draft_count' = '6'
+          and item.refs @> jsonb_build_array(jsonb_build_object('type', 'ticket', 'label', 'issue #490'))
+     from ouroboros.decision_resolutions r
+     join ouroboros.decision_items item on item.id = r.item_id
+     join ouroboros."user" person      on person."id" = r.resolved_by_user
+    where item.id = '5eed0082-0000-4000-8000-000000000102'),
+  'Ken approved splitting #490 into 6 tickets, on the web');
+
+-- --- this week: 11 decisions · median 41s · never longer than 6m ----------------------------------
+select pg_temp.must_hold(
+  (select w.decisions = 11 and w.median_answer_latency = interval '41 seconds'
+          and w.max_loop_wait = interval '6 minutes' and w.policy_resolutions = 1
+     from ouroboros.decision_metrics_weekly w, inbox_seed_clock clock
+    where w.organization_id = '5eed0001-0000-4000-8000-000000000001'
+      and w.week = (date_trunc('week', clock.seeded_at at time zone 'UTC'))::date),
+  'the stat card computes to 11 decisions · median 41s · loops never waited longer than 6m');
+
+-- --- the state-coverage rows ------------------------------------------------------------------------
+select pg_temp.must_hold(
+  (select item.status = 'snoozed' and item.kind_id = 'fact_review'
+          and item.snoozed_until > clock.seeded_at
+          and event.scope = 'item' and event."until" = item.snoozed_until
+          and event.actor = item.snoozed_by
+     from ouroboros.decision_items item
+     join ouroboros.decision_snooze_events event on event.item_id = item.id,
+          inbox_seed_clock clock
+    where item.id = '5eed0082-0000-4000-8000-000000000201'),
+  'one snoozed item — the proposed k_msgq fact — hidden until after the load, with the event that snoozed it');
+
+select pg_temp.must_hold(
+  (select count(*) filter (where item.status = 'expired') = 1
+          and count(*) filter (where r.channel = 'email') = 1
+     from ouroboros.decision_items item
+     left join ouroboros.decision_resolutions r on r.item_id = item.id
+    where item.id::text like '5eed0082-%'),
+  'one expired item, and one answer that came in by email');
 
 \o
 \echo 'seed.sql: all assertions passed'
