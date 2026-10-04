@@ -8,9 +8,10 @@
  *
  * ```
  * change-set report (AP.1) ──▶ read: run → pin → stage permissions · plan files · vote rules
- *                                     · protected paths (#380)
+ *                                     · protected paths (#380) · live allow-once grants (#459)
  *                           ──▶ judge: allowed_paths · ci_config · secrets · review_required
  *                           ──▶ append four rows to guardrail_evaluations (never update)
+ *                           ──▶ consume the grants a passing allowed_paths relied on
  *                           ──▶ answer: {checks: 4, failures: [...]}  → needsHuman on the report
  * ```
  *
@@ -18,6 +19,12 @@
  * executor as `needsHuman`; nothing here pauses a stage or moves `runs.status`. Blocking needs an
  * executor to block and lands with AR.1 ([#315](https://github.com/NobuData/ouroboros/issues/315)).
  * The card says what is true today and does not imply a gate that is not there.
+ *
+ * **Allow once means once** (#459, decision **X3**). A protected path a live grant covers does not
+ * fail `allowed_paths`; when the verdict passes with a grant's help, the grant is consumed against
+ * that verdict's row in the same transaction, so the run's next report is refused again. The
+ * grants are read `for update`, and a grant that can no longer be consumed fails the report
+ * rather than leaving a pass that nothing paid for.
  *
  * **Re-evaluation supersedes.** Every report appends four new rows; `v_run_guardrails_latest`
  * is what the card reads, so a fixed change-set flips the latest verdict to `pass` while the
@@ -41,7 +48,12 @@ import type {
   GuardrailScheduler,
   GuardrailWriter,
 } from "../ingest/ingest.guardrails";
-import { evaluateGuardrails, type GuardrailVerdictRow } from "./guardrails.checks";
+import {
+  evaluateGuardrails,
+  exceptionsSpent,
+  type GuardrailInput,
+  type GuardrailVerdictRow,
+} from "./guardrails.checks";
 import {
   asQueueEffort,
   countVoteRules,
@@ -105,6 +117,7 @@ export class GuardrailService implements GuardrailScheduler {
     const ticket = await this.repository.ticketFacts(writer, run);
     const rules = await this.repository.enabledRules(writer, run.organizationId);
     const protectedPaths = await this.repository.protectedPaths(writer, run);
+    const exceptions = await this.repository.liveExceptions(writer, run, request.runId);
 
     const started = performance.now();
     const effort = asQueueEffort(ticket.effort);
@@ -113,22 +126,62 @@ export class GuardrailService implements GuardrailScheduler {
       policy,
       countVoteRules(rules, { labels: ticket.labels, ...(effort === undefined ? {} : { effort }) }),
     );
-    const verdicts = evaluateGuardrails({
+    const input: GuardrailInput = {
       changeSetSeq: request.changeSetSeq,
       files: request.changeSet,
       ...(ticket.planFiles === undefined ? {} : { planFiles: ticket.planFiles }),
       ...(permissions === undefined ? {} : { permissions }),
       protectedPaths,
+      exceptions,
       ...(review === undefined ? {} : { review }),
-    });
+    };
+    const verdicts = evaluateGuardrails(input);
     const elapsed = performance.now() - started;
 
-    await this.repository.appendVerdicts(writer, request.runId, run.workflowVersionPin, verdicts);
+    const written = await this.repository.appendVerdicts(
+      writer,
+      request.runId,
+      run.workflowVersionPin,
+      verdicts,
+    );
+    await this.consumeGrants(writer, input, verdicts, written);
 
     const failures = verdicts.filter((row) => row.verdict === "fail").map((row) => row.check);
     this.logger.debug(summary(request, verdicts, elapsed));
 
     return { checks: verdicts.length, failures };
+  }
+
+  /**
+   * Spend the allow-once grants a passing `allowed_paths` verdict relied on.
+   *
+   * @param writer - The report's transaction.
+   * @param input - What the checks judged, grants included.
+   * @param verdicts - What they decided.
+   * @param written - The written rows' ids by check.
+   * @throws {Error} When a grant read as live could not be consumed — which the `for update` read
+   *   rules out, so it fails the report rather than keep a pass nothing paid for.
+   */
+  private async consumeGrants(
+    writer: GuardrailWriter,
+    input: GuardrailInput,
+    verdicts: readonly GuardrailVerdictRow[],
+    written: ReadonlyMap<string, string>,
+  ): Promise<void> {
+    const allowed = verdicts.find((row) => row.check === "allowed_paths");
+    const evaluation = written.get("allowed_paths");
+
+    if (allowed === undefined || evaluation === undefined) {
+      return;
+    }
+
+    for (const grant of exceptionsSpent(input, allowed)) {
+      if (!(await this.repository.consumeException(writer, grant, evaluation))) {
+        throw new Error(
+          `allow-once grant ${grant} could not be consumed by evaluation ${evaluation}`,
+        );
+      }
+    }
   }
 }
 

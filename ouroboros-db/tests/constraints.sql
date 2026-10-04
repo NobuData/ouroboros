@@ -14513,8 +14513,11 @@ select pg_temp.must_hold(
    -- `intervention_hook_classification()`, so a hook can draw a run's context from planes the
    -- writer cannot read — asserted in V079's section. #457 added `decision_ref_resolves()`, so a
    -- decision item's run and ticket refs resolve for a writer that cannot read either table —
-   -- asserted in V093's section.
+   -- asserted in V093's section. #459 added `decision_ttl_settings()`, so an exception's and a
+   -- token's TTL can be bounded by workspace settings the writer cannot read — asserted in
+   -- V096's section.
    and (select array_agg(proname::text order by proname) = array['decision_ref_resolves',
+                                                                 'decision_ttl_settings',
                                                                  'fact_transitions_record',
                                                                  'failure_classifications_routed_valid',
                                                                  'intervention_hook_classification',
@@ -14525,7 +14528,7 @@ select pg_temp.must_hold(
                                                                  'sync_intervention_events']
           from pg_proc
          where pronamespace = 'ouroboros'::regnamespace and prosecdef),
-  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks and #457''s decision ref resolver are the only functions in the schema that run as the owner at all');
+  'the transcript''s append runs as its owner with its search_path pinned and pg_temp last and execute revoked from public — and it, #301''s control audit, #327''s receipt check, #353''s evidence resolver, #406''s fact audit, #434''s three intervention hooks, #457''s decision ref resolver and #459''s TTL settings reader are the only functions in the schema that run as the owner at all');
 
 -- --- the cascades ----------------------------------------------------------------
 delete from ouroboros.runs where id = 'a6100000-0000-0000-0000-000000000484';
@@ -32575,6 +32578,538 @@ select pg_temp.must_hold(
 
 drop table v095_snooze;
 drop table v095_all;
+
+-- ===========================================================================
+-- V096 — guardrail exceptions and action tokens (#459, BM.3)
+-- ===========================================================================
+--
+-- Asked here: an allow-once grant permits its path for its own run only, lapses when it
+-- expires, permits once and never twice, records the evaluation that consumed it (card → grant →
+-- consumption), cannot exist without the item that granted it, and lives no longer than the
+-- workspace allows; an action token is stored as a hash and nothing else, is the one live token
+-- for its item × action × person (a new mint supersedes), is revoked the moment its item is
+-- resolved through any channel, takes requires_confirm from its kind's merge class, and its
+-- expired, used and revoked states read as three different answers.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v096',       'Exception Works', 'exception-works-v096', now()),
+  ('org-v096-other', 'Other Works',     'other-works-v096',     now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a9600000-0000-0000-0000-00000000000a', 'Ken Granter', 'ken@exception-works.example', true),
+  ('a9600000-0000-0000-0000-00000000000b', 'Ana Granter', 'ana@exception-works.example', true);
+
+insert into ouroboros.github_orgs (id, organization_id, login, enabled) values
+  ('a9610000-0000-0000-0000-00000000000a', 'org-v096',       'exception-v096', true),
+  ('a9610000-0000-0000-0000-00000000000b', 'org-v096-other', 'other-v096',     true);
+
+insert into ouroboros.github_repos (id, org_id, name, enabled, default_branch) values
+  ('a961f000-0000-0000-0000-00000000000a', 'a9610000-0000-0000-0000-00000000000a',
+   'helios-firmware', true, 'main'),
+  ('a961f000-0000-0000-0000-00000000000b', 'a9610000-0000-0000-0000-00000000000b',
+   'other-firmware', true, 'main');
+
+-- Loop #1851 (the mockup's), a second loop touching the same file, and another workspace's.
+insert into ouroboros.runs
+    (id, organization_id, github_repo_id, issue_number, issue_title, workflow_tag, model, status,
+     stage_label, stage_index, stage_total, started_at, loop_seq)
+  values
+    ('a9660000-0000-0000-0000-000000001851', 'org-v096', 'a961f000-0000-0000-0000-00000000000a',
+     479, 'OTA rollback flag is never cleared', 'standard-fix', 'claude-fable-5', 'review',
+     'Review', 7, 8, '2026-10-01T09:00:00Z', 1851),
+    ('a9660000-0000-0000-0000-000000001852', 'org-v096', 'a961f000-0000-0000-0000-00000000000a',
+     480, 'Boot flag cleanup', 'standard-fix', 'claude-fable-5', 'review',
+     'Review', 7, 8, '2026-10-01T09:30:00Z', 1852),
+    ('a9660000-0000-0000-0000-00000000f001', 'org-v096-other', 'a961f000-0000-0000-0000-00000000000b',
+     1, 'someone else''s loop', 'standard-fix', 'claude-fable-5', 'review',
+     'Review', 7, 8, '2026-10-01T09:30:00Z', 1);
+
+-- One allowed_paths evaluation per run, and a secrets one for #1851.
+insert into ouroboros.guardrail_evaluations (id, run_id, "check", verdict, change_set_seq) values
+  ('a9670000-0000-0000-0000-000000001851', 'a9660000-0000-0000-0000-000000001851', 'allowed_paths', 'pass', 3),
+  ('a9670000-0000-0000-0000-000000001852', 'a9660000-0000-0000-0000-000000001852', 'allowed_paths', 'pass', 1),
+  ('a9670000-0000-0000-0000-00000000005e', 'a9660000-0000-0000-0000-000000001851', 'secrets',       'pass', 3),
+  ('a9670000-0000-0000-0000-000000001853', 'a9660000-0000-0000-0000-000000001851', 'allowed_paths', 'pass', 4);
+
+-- The mockup's second card, on loop #1851; the same question about #1852; and a merge-class kind
+-- of this section's own for the token rules.
+create function pg_temp.v096_item(run uuid, key text, kind text default 'protected_path_allow_once')
+returns uuid language sql as $$
+  insert into ouroboros.decision_items
+    (organization_id, kind_id, kind_version, payload, refs, emitted_by, source_ref)
+  values
+    ((select organization_id from ouroboros.runs where id = run), kind, 1,
+     case when kind = 'protected_path_allow_once'
+          then '{"subject": "The OTA rollback fix", "edit_summary": "add one line",
+                 "path": "boot/rollback_flag.c", "diff_lines": 3}'::jsonb
+          else '{"ticket": 479}'::jsonb end,
+     jsonb_build_array(jsonb_build_object('type', 'run', 'id', run::text, 'label', 'loop'))
+       || case when kind = 'protected_path_allow_once'
+               then '[{"type": "path", "id": "boot/rollback_flag.c", "label": "boot/rollback_flag.c"}]'::jsonb
+               else '[]'::jsonb end,
+     'guardrails', key)
+  returning id
+$$;
+
+insert into ouroboros.decision_kinds
+  (kind_id, version, severity_default, question_template, why_template, payload_schema, actions,
+   resolution_semantics, ref_shape, merge_class)
+values
+  ('custom:v096-merge', 1, 'err', 'Merge #{ticket}?', 'Ticket #{ticket} is ready to merge.',
+   '{"type": "object", "additionalProperties": false, "required": ["ticket"],
+     "properties": {"ticket": {"type": "integer", "minimum": 1}}}',
+   '[{"id": "approve_merge", "label": "Approve & merge", "style": "primary", "required_role": "approver",
+      "consequence_text": "Merges it.", "takes_note": false, "handler_binding": "pr.approve_and_merge"}]',
+   '{"answered_by": ["approve_merge"], "closes_source": ["approve_merge"], "auto_resolvable": false}',
+   '{"required": ["run"], "optional": [], "tags": []}', true);
+
+create temporary table v096_ids (name text primary key, id uuid not null);
+
+insert into v096_ids values
+  ('card',  pg_temp.v096_item('a9660000-0000-0000-0000-000000001851', 'run:1851:path:boot/rollback_flag.c')),
+  ('card2', pg_temp.v096_item('a9660000-0000-0000-0000-000000001852', 'run:1852:path:boot/rollback_flag.c')),
+  ('merge', pg_temp.v096_item('a9660000-0000-0000-0000-000000001851', 'run:1851:merge', 'custom:v096-merge'));
+
+create function pg_temp.v096(name text) returns uuid language sql stable as $$
+  select id from v096_ids where v096_ids.name = v096.name
+$$;
+
+-- A grant on a run through an item, by Ken, for two hours unless told otherwise.
+create function pg_temp.v096_grant(run uuid, item uuid, glob text default 'boot/rollback_flag.c',
+                                   ttl interval default interval '2 hours',
+                                   who text default 'a9600000-0000-0000-0000-00000000000a',
+                                   made timestamptz default now(), org text default 'org-v096')
+returns uuid language sql as $$
+  insert into ouroboros.guardrail_exceptions
+    (organization_id, run_id, path_glob, granted_by, granted_via, expires_at, created_at)
+  values (org, run, glob, who, item, made + ttl, made)
+  returning id
+$$;
+
+-- --- an exception permits its glob for its own run, once ----------------------------------------
+insert into v096_ids values
+  ('grant', pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card')));
+
+select pg_temp.must_hold(
+  (select array_agg(path_glob) = array['boot/rollback_flag.c']
+     from ouroboros.guardrail_exceptions_live where run_id = 'a9660000-0000-0000-0000-000000001851')
+  and not exists (select 1 from ouroboros.guardrail_exceptions_live
+                   where run_id = 'a9660000-0000-0000-0000-000000001852'),
+  'the grant is live for loop #1851 and for no other loop');
+
+select pg_temp.must_hold(
+  not ouroboros.guardrail_exception_consume(pg_temp.v096('grant'), 'a9670000-0000-0000-0000-000000001852'),
+  'a second run touching the same path cannot consume #1851''s grant — it is still blocked');
+
+select pg_temp.must_hold(
+  ouroboros.guardrail_exception_consume(pg_temp.v096('grant'), 'a9670000-0000-0000-0000-000000001851'),
+  'loop #1851''s allowed_paths evaluation consumes its grant');
+
+select pg_temp.must_hold(
+  not ouroboros.guardrail_exception_consume(pg_temp.v096('grant'), 'a9670000-0000-0000-0000-000000001853')
+  and not exists (select 1 from ouroboros.guardrail_exceptions_live
+                   where run_id = 'a9660000-0000-0000-0000-000000001851'),
+  'single use: the run''s next evaluation finds no grant, and the path is blocked again');
+
+select pg_temp.must_hold(
+  (select d.question = 'Allow a one-time edit to a protected path?'
+          and e.granted_by = 'a9600000-0000-0000-0000-00000000000a'
+          and e.used_at = now()
+          and g.run_id = e.run_id and g."check" = 'allowed_paths' and g.change_set_seq = 3
+     from ouroboros.guardrail_exceptions e
+     join ouroboros.decision_items_rendered d on d.id = e.granted_via
+     join ouroboros.guardrail_evaluations g on g.id = e.used_by_evaluation
+    where e.id = pg_temp.v096('grant')),
+  'card → grant → consumption is one join: the question asked, who granted, the evaluation that used it');
+
+-- --- an expired or revoked grant permits nothing -------------------------------------------------
+insert into v096_ids values
+  ('expired', pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card'),
+                                 made => now() - interval '3 hours')),
+  ('revoked', pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card')));
+
+update ouroboros.guardrail_exceptions
+   set revoked_at = now(), revoked_by = 'a9600000-0000-0000-0000-00000000000b'
+ where id = pg_temp.v096('revoked');
+
+select pg_temp.must_hold(
+  not ouroboros.guardrail_exception_consume(pg_temp.v096('expired'), 'a9670000-0000-0000-0000-000000001853')
+  and not ouroboros.guardrail_exception_consume(pg_temp.v096('revoked'), 'a9670000-0000-0000-0000-000000001853')
+  and (select count(*) = 0 from ouroboros.guardrail_exceptions_live
+        where run_id = 'a9660000-0000-0000-0000-000000001851'),
+  'an expired grant and a revoked one permit nothing');
+
+select pg_temp.must_reject(
+  $$update ouroboros.guardrail_exceptions set revoked_at = now() where id = pg_temp.v096('grant')$$,
+  'a used grant cannot be revoked after the fact', 'guardrail_exceptions_used_or_revoked');
+
+-- --- no grant without its card, its granter, its run, or a bound -----------------------------
+select pg_temp.must_hold(
+  (select attnotnull from pg_attribute
+    where attrelid = 'ouroboros.guardrail_exceptions'::regclass and attname = 'granted_via'),
+  'an exception cannot exist without the decision item that granted it (granted_via is required)');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', gen_random_uuid())$$,
+  'a grant names a real decision item', 'guardrail_exceptions_granted_via_fk');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card2'))$$,
+  'a card about another loop cannot grant this loop an exception', 'guardrail_exceptions_granted_for_run');
+
+-- The trigger refuses a foreign run first (no card here is about it); with it off for one
+-- statement, the keys beneath it — each asked on its own.
+select pg_temp.must_reject(
+  $q$do $probe$ begin
+      alter table ouroboros.guardrail_exceptions disable trigger guardrail_exceptions_granted;
+      perform pg_temp.v096_grant('a9660000-0000-0000-0000-00000000f001', pg_temp.v096('card'),
+                                 org => 'org-v096-other');
+    end $probe$$q$,
+  'a grant stays in its card''s workspace', 'guardrail_exceptions_granted_via_fk');
+
+select pg_temp.must_reject(
+  $q$do $probe$ begin
+      alter table ouroboros.guardrail_exceptions disable trigger guardrail_exceptions_granted;
+      perform pg_temp.v096_grant('a9660000-0000-0000-0000-00000000f001', pg_temp.v096('card'));
+    end $probe$$q$,
+  'a grant names a run of its own workspace', 'guardrail_exceptions_run_fk');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card'), who => null)$$,
+  'a grant names who said yes', 'guardrail_exceptions_granted_by_named');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card'), 'boot/**')$$,
+  'a grant is the narrowest expression — never a whole tree', 'guardrail_exceptions_path_glob_narrow');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card'), '../boot/rollback_flag.c')$$,
+  'a grant names a repository-relative path', 'guardrail_exceptions_path_glob_narrow');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card'),
+                              ttl => interval '0 seconds')$$,
+  'a grant expires after it is made', 'guardrail_exceptions_expires_after_created');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card'),
+                              ttl => interval '25 hours')$$,
+  'a grant lives no longer than the default 24-hour maximum', 'guardrail_exceptions_ttl_bounded');
+
+insert into ouroboros.workspace_settings (organization_id, guardrail_exception_max_ttl_minutes)
+  values ('org-v096', 60);
+
+select pg_temp.must_reject(
+  $$select pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card'))$$,
+  'and no longer than the workspace''s own configured maximum', 'guardrail_exceptions_ttl_bounded');
+
+select pg_temp.must_hold(
+  pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card'),
+                     ttl => interval '1 hour') is not null,
+  'a grant within the configured maximum is accepted');
+
+select pg_temp.must_reject(
+  $$update ouroboros.workspace_settings set guardrail_exception_max_ttl_minutes = 10081
+     where organization_id = 'org-v096'$$,
+  'the configured maximum is itself at most seven days — no indefinite grants',
+  'workspace_settings_guardrail_exception_max_ttl_bounded');
+
+select pg_temp.must_hold(
+  (select guardrail_exception_max_ttl_minutes = 60 and action_token_ttl_minutes = 2880
+     from ouroboros.workspace_settings_effective where organization_id = 'org-v096')
+  and (select guardrail_exception_max_ttl_minutes = 1440 and action_token_ttl_minutes = 2880
+         from ouroboros.workspace_settings_effective where organization_id = 'org-v096-other')
+  and (select array_agg(pg_get_expr(d.adbin, d.adrelid) order by a.attname)
+              = array['2880', '1440']
+         from pg_attrdef d
+         join pg_attribute a on a.attrelid = d.adrelid and a.attnum = d.adnum
+        where d.adrelid = 'ouroboros.workspace_settings'::regclass
+          and a.attname in ('action_token_ttl_minutes', 'guardrail_exception_max_ttl_minutes')),
+  'the effective settings resolve the two TTLs, defaulting to the columns'' 24 hours and 48 hours');
+
+-- --- a grant is history: consumed once, by its own run's allowed_paths evaluation --------------
+insert into v096_ids values
+  ('spare', pg_temp.v096_grant('a9660000-0000-0000-0000-000000001851', pg_temp.v096('card'),
+                               ttl => interval '30 minutes'));
+
+select pg_temp.must_reject(
+  $$update ouroboros.guardrail_exceptions set path_glob = 'boot/other.c' where id = pg_temp.v096('spare')$$,
+  'what a grant permits never changes', 'guardrail_exceptions_history');
+
+select pg_temp.must_reject(
+  $$update ouroboros.guardrail_exceptions set used_at = now(),
+            used_by_evaluation = 'a9670000-0000-0000-0000-000000001852'
+     where id = pg_temp.v096('spare')$$,
+  'a grant is consumed only by an evaluation of its own run', 'guardrail_exceptions_consumed_by_own_run');
+
+select pg_temp.must_reject(
+  $$update ouroboros.guardrail_exceptions set used_at = now(),
+            used_by_evaluation = 'a9670000-0000-0000-0000-00000000005e'
+     where id = pg_temp.v096('spare')$$,
+  'a grant is consumed by an allowed_paths evaluation, not another check', 'guardrail_exceptions_consumed_by_own_run');
+
+select pg_temp.must_reject(
+  $$update ouroboros.guardrail_exceptions set used_at = now() where id = pg_temp.v096('spare')$$,
+  'a consumption names its evaluation', 'guardrail_exceptions_use_recorded');
+
+select pg_temp.must_reject(
+  $$update ouroboros.guardrail_exceptions set used_at = now() - interval '1 minute'
+     where id = pg_temp.v096('grant')$$,
+  'a consumption is recorded once', 'guardrail_exceptions_history');
+
+select pg_temp.must_reject(
+  $$update ouroboros.guardrail_exceptions set revoked_by = 'a9600000-0000-0000-0000-00000000000a'
+     where id = pg_temp.v096('spare')$$,
+  'a revoker comes with a revocation', 'guardrail_exceptions_revoker_only_when_revoked');
+
+-- --- action tokens: minted as hashes, one live per item × action × person ------------------------
+create function pg_temp.v096_hash(seed text) returns text language sql immutable as $$
+  select encode(sha256(convert_to(seed, 'UTF8')), 'hex')
+$$;
+
+insert into v096_ids values
+  ('t1', ouroboros.action_token_mint(pg_temp.v096('card'), 'allow_once',
+                                     'a9600000-0000-0000-0000-00000000000a', pg_temp.v096_hash('t1'),
+                                     'vault.v1', 'email'));
+
+select pg_temp.must_hold(
+  (select requires_confirm = false and expires_at = now() + interval '48 hours'
+          and hash_algorithm = 'hmac-sha256' and hash_key_ref = 'vault.v1' and channel = 'email'
+     from ouroboros.action_tokens where id = pg_temp.v096('t1')),
+  'an allow-once token needs no session confirmation and lives the workspace''s 48 hours');
+
+insert into v096_ids values
+  ('t2', ouroboros.action_token_mint(pg_temp.v096('card'), 'allow_once',
+                                     'a9600000-0000-0000-0000-00000000000a', pg_temp.v096_hash('t2'),
+                                     'vault.v1', 'email'));
+
+select pg_temp.must_hold(
+  (select revoke_reason = 'superseded' from ouroboros.action_tokens where id = pg_temp.v096('t1'))
+  and (select count(*) = 1 from ouroboros.action_tokens
+        where item_id = pg_temp.v096('card') and action_id = 'allow_once'
+          and user_id = 'a9600000-0000-0000-0000-00000000000a'
+          and used_at is null and revoked_at is null),
+  'minting a second token supersedes the first: one live token per item × action × person');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.action_tokens
+      (organization_id, item_id, action_id, user_id, token_hash, hash_key_ref, channel,
+       requires_confirm, expires_at)
+    values ('org-v096', pg_temp.v096('card'), 'allow_once', 'a9600000-0000-0000-0000-00000000000a',
+            pg_temp.v096_hash('t3'), 'vault.v1', 'email', false, now() + interval '1 hour')$$,
+  'two live tokens for one item, action and person are refused', 'action_tokens_live_key');
+
+-- --- requires_confirm is the kind's, not the caller's --------------------------------------------
+insert into v096_ids values
+  ('merge-token', ouroboros.action_token_mint(pg_temp.v096('merge'), 'approve_merge',
+                                              'a9600000-0000-0000-0000-00000000000a',
+                                              pg_temp.v096_hash('merge'), 'vault.v1', 'email'));
+
+insert into ouroboros.action_tokens
+  (organization_id, item_id, action_id, user_id, token_hash, hash_key_ref, channel,
+   requires_confirm, expires_at)
+values ('org-v096', pg_temp.v096('merge'), 'approve_merge', 'a9600000-0000-0000-0000-00000000000b',
+        pg_temp.v096_hash('merge-ana'), 'vault.v1', 'slack', false, now() + interval '1 hour');
+
+select pg_temp.must_hold(
+  (select bool_and(requires_confirm) and count(*) = 2
+     from ouroboros.action_tokens where item_id = pg_temp.v096('merge'))
+  and not exists (select 1 from ouroboros.action_tokens t
+                    join ouroboros.decision_items i on i.id = t.item_id
+                    join ouroboros.decision_kinds k on k.kind_id = i.kind_id and k.version = i.kind_version
+                   where t.requires_confirm <> k.merge_class),
+  'requires_confirm is true for every merge-class token — derived from the kind, even when the caller sent false');
+
+select pg_temp.must_reject(
+  $$update ouroboros.action_tokens set requires_confirm = false where id = pg_temp.v096('merge-token')$$,
+  'and cannot be switched off later', 'action_tokens_history');
+
+-- --- what a token may carry ------------------------------------------------------------------------
+select pg_temp.must_reject(
+  $$select ouroboros.action_token_mint(pg_temp.v096('card'), 'view_diff',
+                                       'a9600000-0000-0000-0000-00000000000b',
+                                       pg_temp.v096_hash('link'), 'vault.v1', 'email')$$,
+  'a token carries an answering action, never a link', 'action_tokens_action_answers');
+
+select pg_temp.must_reject(
+  $$select ouroboros.action_token_mint(pg_temp.v096('card'), 'allow_once',
+                                       'a9600000-0000-0000-0000-00000000000b', 'not-a-hash', 'vault.v1', 'email')$$,
+  'a token is stored as a 64-character hex hash', 'action_tokens_hash_hex');
+
+select pg_temp.must_reject(
+  $$select ouroboros.action_token_mint(pg_temp.v096('card'), 'allow_once',
+                                       'a9600000-0000-0000-0000-00000000000b', pg_temp.v096_hash('md5'),
+                                       'vault.v1', 'email', 'md5')$$,
+  'the hash algorithm is HMAC-SHA256', 'action_tokens_hash_algorithm');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.action_tokens
+      (organization_id, item_id, action_id, user_id, token_hash, hash_key_ref, channel,
+       requires_confirm, expires_at)
+    values ('org-v096', pg_temp.v096('card'), 'deny', 'a9600000-0000-0000-0000-00000000000b',
+            pg_temp.v096_hash('long'), 'vault.v1', 'email', false, now() + interval '49 hours')$$,
+  'a token lives no longer than the workspace''s token TTL', 'action_tokens_ttl_bounded');
+
+select pg_temp.must_hold(
+  (select array_agg(attname::text order by attnum)
+          = array['id', 'organization_id', 'item_id', 'action_id', 'user_id', 'token_hash',
+                  'hash_algorithm', 'hash_key_ref', 'channel', 'requires_confirm', 'expires_at',
+                  'used_at', 'revoked_at', 'revoke_reason', 'created_at']
+     from pg_attribute
+    where attrelid = 'ouroboros.action_tokens'::regclass and attnum > 0 and not attisdropped)
+  and (select bool_and(not exists (select 1 from unnest(proargnames) n
+                                    where n ~ 'token' and n <> 'p_token_hash' and n <> 'token_id'))
+         from pg_proc
+        where pronamespace = 'ouroboros'::regnamespace
+          and proname in ('action_token_mint', 'action_token_use'))
+  and (select bool_and(attname::text <> 'token_hash')
+         from pg_attribute where attrelid = 'ouroboros.action_tokens_state'::regclass and attnum > 0),
+  'token plaintext has nowhere to go: one hash column, writers that take only the hash, a state view without it');
+
+-- --- expired, used and revoked are three answers --------------------------------------------------
+insert into ouroboros.action_tokens
+  (organization_id, item_id, action_id, user_id, token_hash, hash_key_ref, channel,
+   requires_confirm, expires_at, created_at)
+values ('org-v096', pg_temp.v096('card'), 'deny', 'a9600000-0000-0000-0000-00000000000a',
+        pg_temp.v096_hash('stale'), 'vault.v1', 'email', false,
+        now() - interval '1 hour', now() - interval '2 hours');
+
+select pg_temp.must_hold(
+  (select outcome = 'accepted' and action_id = 'allow_once' and requires_confirm = false
+     from ouroboros.action_token_use(pg_temp.v096_hash('t2'))),
+  'a live token is accepted once');
+
+select pg_temp.must_hold(
+  (select outcome from ouroboros.action_token_use(pg_temp.v096_hash('t2'))) = 'used'
+  and (select outcome from ouroboros.action_token_use(pg_temp.v096_hash('t1'))) = 'revoked'
+  and (select outcome from ouroboros.action_token_use(pg_temp.v096_hash('stale'))) = 'expired'
+  and (select outcome from ouroboros.action_token_use(pg_temp.v096_hash('never minted'))) = 'unknown',
+  'a used, a revoked, an expired and an unknown token are four different answers — and none is accepted');
+
+select pg_temp.must_hold(
+  (select array_agg(t.name || ':' || s.state order by t.name)
+          = array['stale:expired', 't1:revoked', 't2:used']
+     from ouroboros.action_tokens_state s
+     join (values ('t1', pg_temp.v096_hash('t1')), ('t2', pg_temp.v096_hash('t2')),
+                  ('stale', pg_temp.v096_hash('stale'))) as t(name, hash)
+       on s.id = (select id from ouroboros.action_tokens where token_hash = t.hash)),
+  'action_tokens_state tells expired, used and revoked apart');
+
+select pg_temp.must_reject(
+  $$update ouroboros.action_tokens set used_at = null where token_hash = pg_temp.v096_hash('t2')$$,
+  'a use is recorded once', 'action_tokens_history');
+
+select pg_temp.must_reject(
+  $$update ouroboros.action_tokens set revoked_at = now(), revoke_reason = 'withdrawn'
+     where token_hash = pg_temp.v096_hash('t2')$$,
+  'a used token is not revoked after the fact', 'action_tokens_used_or_revoked');
+
+-- --- resolving an item revokes every outstanding token, whichever channel answered ---------------
+insert into v096_ids values
+  ('ken-deny', ouroboros.action_token_mint(pg_temp.v096('card'), 'deny',
+                                           'a9600000-0000-0000-0000-00000000000a',
+                                           pg_temp.v096_hash('ken-deny'), 'vault.v1', 'email')),
+  ('ana-allow', ouroboros.action_token_mint(pg_temp.v096('card'), 'allow_once',
+                                            'a9600000-0000-0000-0000-00000000000b',
+                                            pg_temp.v096_hash('ana-allow'), 'vault.v1', 'slack'));
+
+insert into ouroboros.decision_resolutions
+  (item_id, organization_id, action_id, resolver, resolved_by_user, channel)
+values (pg_temp.v096('card'), 'org-v096', 'allow_once', 'human',
+        'a9600000-0000-0000-0000-00000000000a', 'web');
+
+select pg_temp.must_hold(
+  (select array_agg(revoke_reason order by revoke_reason) = array['item_closed', 'item_closed']
+     from ouroboros.action_tokens where id in (pg_temp.v096('ken-deny'), pg_temp.v096('ana-allow')))
+  and not exists (select 1 from ouroboros.action_tokens_state
+                   where item_id = pg_temp.v096('card') and state = 'live'),
+  'answering on the web revokes the emailed and the Slack tokens alike — nothing for the item stays live');
+
+select pg_temp.must_reject(
+  $$select ouroboros.action_token_mint(pg_temp.v096('card'), 'deny',
+                                       'a9600000-0000-0000-0000-00000000000a',
+                                       pg_temp.v096_hash('late'), 'vault.v1', 'email')$$,
+  'no token is minted for an item that is no longer asking', 'action_tokens_item_open');
+
+update ouroboros.decision_items set status = 'expired' where id = pg_temp.v096('merge');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.action_tokens_state
+               where item_id = pg_temp.v096('merge') and state = 'live')
+  and (select bool_and(revoke_reason = 'item_closed') from ouroboros.action_tokens
+        where item_id = pg_temp.v096('merge')),
+  'an item that expires unanswered revokes its tokens too');
+
+-- --- the live reads are index reads ---------------------------------------------------------------
+set local enable_seqscan = off;
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.guardrail_exceptions
+     where organization_id = 'org-v096' and run_id = 'a9660000-0000-0000-0000-000000001851'
+       and used_at is null and revoked_at is null$$,
+  'guardrail_exceptions_live_idx');
+
+select pg_temp.must_use_index(
+  $$select id from ouroboros.action_tokens
+     where item_id = 'a9660000-0000-0000-0000-000000001851' and used_at is null and revoked_at is null$$,
+  'action_tokens_live_key');
+
+reset enable_seqscan;
+
+-- --- the service role grants, consumes, mints and spends ------------------------------------------
+select pg_temp.must_hold(
+  not has_table_privilege('ouroboros_app', 'ouroboros.workspace_settings', 'select')
+  and has_function_privilege('ouroboros_app', 'ouroboros.decision_ttl_settings(text)', 'execute')
+  and not has_function_privilege('public', 'ouroboros.decision_ttl_settings(text)', 'execute')
+  and (select prosecdef and proconfig @> array['search_path=pg_catalog, ouroboros, pg_temp']
+         from pg_proc where oid = 'ouroboros.decision_ttl_settings(text)'::regprocedure),
+  'the TTL reader runs as its owner with its search_path pinned, executable by the service only');
+
+insert into v096_ids values
+  ('card3', pg_temp.v096_item('a9660000-0000-0000-0000-000000001852', 'run:1852:path:again'));
+
+grant select, insert on v096_ids to ouroboros_app;
+
+set local role ouroboros_app;
+
+-- A statement of its own: a mint inside the read that looks it up would run once per row.
+insert into v096_ids values
+  ('app-token', ouroboros.action_token_mint(pg_temp.v096('card3'), 'deny',
+                                            'a9600000-0000-0000-0000-00000000000b',
+                                            pg_temp.v096_hash('as-app'), 'vault.v1', 'push'));
+
+select pg_temp.must_hold(
+  ouroboros.guardrail_exception_consume(
+    pg_temp.v096_grant('a9660000-0000-0000-0000-000000001852', pg_temp.v096('card3'),
+                       ttl => interval '30 minutes'),
+    'a9670000-0000-0000-0000-000000001852')
+  and (select outcome = 'accepted' from ouroboros.action_token_use(pg_temp.v096_hash('as-app'))),
+  'the service role grants and consumes an exception, and mints and spends a token, under the workspace''s TTLs');
+
+select pg_temp.must_reject(
+  $$select pg_temp.v096_grant('a9660000-0000-0000-0000-000000001852', pg_temp.v096('card3'),
+                              ttl => interval '25 hours')$$,
+  'and is held to the TTL bound as the service', 'guardrail_exceptions_ttl_bounded');
+
+reset role;
+
+-- --- people can be forgotten; workspaces take it all with them ------------------------------------
+delete from ouroboros."user" where "id" = 'a9600000-0000-0000-0000-00000000000b';
+
+select pg_temp.must_hold(
+  (select revoked_by is null and revoked_at is not null
+     from ouroboros.guardrail_exceptions where id = pg_temp.v096('revoked'))
+  and not exists (select 1 from ouroboros.action_tokens
+                   where user_id = 'a9600000-0000-0000-0000-00000000000b'),
+  'a deleted revoker is forgotten from the grant, and a deleted person''s tokens go with them');
+
+delete from ouroboros.organization where "id" in ('org-v096', 'org-v096-other');
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.guardrail_exceptions where organization_id = 'org-v096')
+  and not exists (select 1 from ouroboros.action_tokens where organization_id = 'org-v096'),
+  'exceptions and tokens cascade with their workspace');
+
+drop table v096_ids;
 
 -- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)

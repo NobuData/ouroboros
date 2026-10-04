@@ -633,6 +633,39 @@
 # `decision_resolutions_loop_wait_positive`, a reset age by V093's `decision_items_pinned` — so each
 # marker is the message of whichever names the rule first.
 #
+# #459 (BM.3, V096) adds allow-once guardrail exceptions and hash-only action tokens. One probe per
+# rule "allow once means once" and "a link in a mail never merges" rest on:
+#
+#   V096 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a grant is consumed only by its own run      rewrite guardrail_exception_consume() without
+#                                                  the run predicate
+#   a used grant permits nothing again           rewrite guardrail_exception_consume() without
+#                                                  the used_at predicate
+#   an expired grant permits nothing             rewrite guardrail_exception_consume() without
+#                                                  the expiry predicate
+#   a grant's card is about its run, it names    drop guardrail_exceptions_granted
+#     its granter and its TTL is bounded
+#   a grant is the narrowest expression          drop guardrail_exceptions_path_glob_narrow
+#   the configured maximum is at most 7 days     drop workspace_settings_guardrail_exception_max_ttl_bounded
+#   a grant is history; consumed by its run      drop guardrail_exceptions_history
+#   a used grant is never revoked                drop guardrail_exceptions_used_or_revoked
+#   one live token per item × action × person    drop action_tokens_live_key
+#   minting supersedes the live token            rewrite action_token_mint() without the supersede
+#   requires_confirm is the kind's merge class   rewrite action_tokens_derive() to keep the caller's
+#   a token carries an answering action          rewrite action_tokens_derive() without it
+#   a token is a hex hash                        drop action_tokens_hash_hex
+#   no column for a plaintext token              add action_tokens.token text
+#   resolving an item revokes its tokens         drop decision_items_revoke_tokens
+#   expired, used, revoked are three answers     rewrite action_token_use() to answer revoked for
+#                                                  every refusal
+#   a token is history                           drop action_tokens_history
+#   the live-grant index                         drop guardrail_exceptions_live_idx
+#
+# Three are caught beneath the assertion they aim at — another run's evaluation and a second
+# consumption by `guardrail_exceptions_history`, a missing supersede by `action_tokens_live_key` —
+# so their markers are those rules' messages.
+#
 # #409 (BE.5) seeds mockup 14 and adds a probe per `ci/db` scope bullet the BE.1–BE.3 rows above
 # leave unwatched — each one a *subtler* loss than dropping the rule outright:
 #
@@ -2464,7 +2497,7 @@ expect_red 'the decision ref resolver may forget the workspace' \
    $$;'
 
 expect_red 'the decision ref resolver may run as the caller' \
-  'decision ref resolver are the only functions' \
+  'decision ref resolver and #459.s TTL settings reader are the only functions' \
   'alter function ouroboros.decision_ref_resolves(text, jsonb) security invoker;'
 
 expect_red 'a decision item may miss a ref its kind requires' \
@@ -2736,6 +2769,271 @@ expect_red 'the resolved list has no index' \
 expect_red 'the snooze wake sweep has no index' \
   'did not use index decision_items_snoozed_idx' \
   'drop index ouroboros.decision_items_snoozed_idx;'
+
+expect_red 'a grant may be consumed by another run' \
+  'can only be consumed by an allowed_paths evaluation of run' \
+  'create or replace function ouroboros.guardrail_exception_consume(p_exception_id uuid, p_evaluation_id uuid)
+returns boolean
+language plpgsql
+as $$
+declare
+  consumed uuid;
+begin
+  update ouroboros.guardrail_exceptions e
+     set used_at = now(), used_by_evaluation = p_evaluation_id
+   where e.id = p_exception_id
+     and e.used_at is null
+     and e.revoked_at is null
+     and e.expires_at > now()
+     and true
+  returning e.id into consumed;
+
+  return consumed is not null;
+end;
+$$;'
+
+expect_red 'a used grant may permit again' \
+  'is fixed once granted' \
+  'create or replace function ouroboros.guardrail_exception_consume(p_exception_id uuid, p_evaluation_id uuid)
+returns boolean
+language plpgsql
+as $$
+declare
+  consumed uuid;
+begin
+  update ouroboros.guardrail_exceptions e
+     set used_at = now(), used_by_evaluation = p_evaluation_id
+   where e.id = p_exception_id
+     and e.revoked_at is null
+     and e.expires_at > now()
+     and e.run_id = (select g.run_id from ouroboros.guardrail_evaluations g
+                      where g.id = p_evaluation_id)
+  returning e.id into consumed;
+
+  return consumed is not null;
+end;
+$$;'
+
+expect_red 'an expired grant may permit' \
+  'an expired grant and a revoked one permit nothing' \
+  'create or replace function ouroboros.guardrail_exception_consume(p_exception_id uuid, p_evaluation_id uuid)
+returns boolean
+language plpgsql
+as $$
+declare
+  consumed uuid;
+begin
+  update ouroboros.guardrail_exceptions e
+     set used_at = now(), used_by_evaluation = p_evaluation_id
+   where e.id = p_exception_id
+     and e.used_at is null
+     and e.revoked_at is null
+     and e.run_id = (select g.run_id from ouroboros.guardrail_evaluations g
+                      where g.id = p_evaluation_id)
+  returning e.id into consumed;
+
+  return consumed is not null;
+end;
+$$;'
+
+expect_red 'a grant may skip its card, granter and bound' \
+  'a card about another loop cannot grant' \
+  'drop trigger guardrail_exceptions_granted on ouroboros.guardrail_exceptions;'
+
+expect_red 'a grant may open a whole tree' \
+  'never a whole tree' \
+  'alter table ouroboros.guardrail_exceptions drop constraint guardrail_exceptions_path_glob_narrow;'
+
+expect_red 'the grant maximum may be indefinite' \
+  'no indefinite grants' \
+  'alter table ouroboros.workspace_settings drop constraint workspace_settings_guardrail_exception_max_ttl_bounded;'
+
+expect_red 'a grant may be rewritten' \
+  'what a grant permits never changes' \
+  'drop trigger guardrail_exceptions_history on ouroboros.guardrail_exceptions;'
+
+expect_red 'a used grant may be revoked' \
+  'a used grant cannot be revoked' \
+  'alter table ouroboros.guardrail_exceptions drop constraint guardrail_exceptions_used_or_revoked;'
+
+expect_red 'a person may hold two live tokens for one action' \
+  'two live tokens for one item' \
+  'drop index ouroboros.action_tokens_live_key;'
+
+expect_red 'minting may leave the old token live' \
+  'action_tokens_live_key' \
+  'create or replace function ouroboros.action_token_mint(
+  p_item_id        uuid,
+  p_action_id      text,
+  p_user_id        text,
+  p_token_hash     text,
+  p_hash_key_ref   text,
+  p_channel        text,
+  p_hash_algorithm text default '"'"'hmac-sha256'"'"'
+) returns uuid
+language plpgsql
+as $$
+declare
+  org      text;
+  ttl      interval;
+  token_id uuid;
+begin
+  select organization_id into org from ouroboros.decision_items where id = p_item_id;
+
+  if org is null then
+    raise exception '"'"'no decision item %'"'"', p_item_id
+      using errcode = '"'"'foreign_key_violation'"'"', constraint = '"'"'action_tokens_item_fk'"'"';
+  end if;
+
+  select action_token_ttl into ttl from ouroboros.decision_ttl_settings(org);
+
+  -- Supersede: the live token for this (item, action, user), if any, stops working first.
+
+  insert into ouroboros.action_tokens
+    (organization_id, item_id, action_id, user_id, token_hash, hash_algorithm, hash_key_ref,
+     channel, requires_confirm, expires_at)
+  values
+    (org, p_item_id, p_action_id, p_user_id, p_token_hash, p_hash_algorithm, p_hash_key_ref,
+     p_channel, false, now() + ttl)
+  returning id into token_id;
+
+  return token_id;
+end;
+$$;'
+
+expect_red 'a caller may switch requires_confirm off' \
+  'requires_confirm is true for every merge-class token' \
+  'create or replace function ouroboros.action_tokens_derive() returns trigger
+language plpgsql
+as $$
+declare
+  semantics   jsonb;
+  merge_kind  boolean;
+  item_status text;
+  ttl         interval;
+begin
+  select k.resolution_semantics, k.merge_class, i.status into semantics, merge_kind, item_status
+    from ouroboros.decision_items i
+    join ouroboros.decision_kinds k on k.kind_id = i.kind_id and k.version = i.kind_version
+   where i.id = new.item_id;
+
+  -- No item is the foreign key'"'"'s complaint.
+  if semantics is null then
+    return new;
+  end if;
+
+  if not (semantics -> '"'"'answered_by'"'"') ? new.action_id then
+    raise exception '"'"'action % does not answer this item, so no token can carry it'"'"', new.action_id
+      using errcode = '"'"'check_violation'"'"', constraint = '"'"'action_tokens_action_answers'"'"';
+  end if;
+
+  if item_status not in ('"'"'open'"'"', '"'"'snoozed'"'"') then
+    raise exception '"'"'decision item % is %, so no token can be minted for it'"'"', new.item_id, item_status
+      using errcode = '"'"'check_violation'"'"', constraint = '"'"'action_tokens_item_open'"'"';
+  end if;
+
+  select action_token_ttl into ttl from ouroboros.decision_ttl_settings(new.organization_id);
+
+  if new.expires_at > new.created_at + ttl then
+    raise exception '"'"'an action token lives at most % in this workspace'"'"', ttl
+      using errcode = '"'"'check_violation'"'"', constraint = '"'"'action_tokens_ttl_bounded'"'"';
+  end if;
+
+  -- The declaration decides, whatever the caller sent.
+  return new;
+end;
+$$;'
+
+expect_red 'a token may carry a link' \
+  'a token carries an answering action' \
+  'create or replace function ouroboros.action_tokens_derive() returns trigger
+language plpgsql
+as $$
+declare
+  semantics   jsonb;
+  merge_kind  boolean;
+  item_status text;
+  ttl         interval;
+begin
+  select k.resolution_semantics, k.merge_class, i.status into semantics, merge_kind, item_status
+    from ouroboros.decision_items i
+    join ouroboros.decision_kinds k on k.kind_id = i.kind_id and k.version = i.kind_version
+   where i.id = new.item_id;
+
+  -- No item is the foreign key'"'"'s complaint.
+  if semantics is null then
+    return new;
+  end if;
+
+  if item_status not in ('"'"'open'"'"', '"'"'snoozed'"'"') then
+    raise exception '"'"'decision item % is %, so no token can be minted for it'"'"', new.item_id, item_status
+      using errcode = '"'"'check_violation'"'"', constraint = '"'"'action_tokens_item_open'"'"';
+  end if;
+
+  select action_token_ttl into ttl from ouroboros.decision_ttl_settings(new.organization_id);
+
+  if new.expires_at > new.created_at + ttl then
+    raise exception '"'"'an action token lives at most % in this workspace'"'"', ttl
+      using errcode = '"'"'check_violation'"'"', constraint = '"'"'action_tokens_ttl_bounded'"'"';
+  end if;
+
+  -- The declaration decides, whatever the caller sent.
+  new.requires_confirm := merge_kind;
+  return new;
+end;
+$$;'
+
+expect_red 'a token may be stored as anything' \
+  'a 64-character hex hash' \
+  'alter table ouroboros.action_tokens drop constraint action_tokens_hash_hex;'
+
+expect_red 'a token table may grow a plaintext column' \
+  'token plaintext has nowhere to go' \
+  'alter table ouroboros.action_tokens add column token text;'
+
+expect_red 'resolving an item may leave its tokens live' \
+  'revokes the emailed and the Slack tokens' \
+  'drop trigger decision_items_revoke_tokens on ouroboros.decision_items;'
+
+expect_red 'every token refusal may read the same' \
+  'four different answers' \
+  'create or replace function ouroboros.action_token_use(p_token_hash text)
+returns table (token_id uuid, item_id uuid, action_id text, user_id text,
+               requires_confirm boolean, outcome text)
+language plpgsql
+as $$
+declare
+  t ouroboros.action_tokens%rowtype;
+begin
+  select * into t from ouroboros.action_tokens a where a.token_hash = p_token_hash for update;
+
+  if t.id is null then
+    return query select null::uuid, null::uuid, null::text, null::text, null::boolean, '"'"'unknown'"'"'::text;
+    return;
+  end if;
+
+  if t.used_at is not null then
+    outcome := '"'"'revoked'"'"';
+  elsif t.revoked_at is not null then
+    outcome := '"'"'revoked'"'"';
+  elsif t.expires_at <= now() then
+    outcome := '"'"'revoked'"'"';
+  else
+    update ouroboros.action_tokens a set used_at = now() where a.id = t.id;
+    outcome := '"'"'accepted'"'"';
+  end if;
+
+  return query select t.id, t.item_id, t.action_id, t.user_id, t.requires_confirm, outcome;
+end;
+$$;'
+
+expect_red 'a token may be rewritten' \
+  'cannot be switched off later' \
+  'drop trigger action_tokens_history on ouroboros.action_tokens;'
+
+expect_red 'the live-grant read has no index' \
+  'did not use index guardrail_exceptions_live_idx' \
+  'drop index ouroboros.guardrail_exceptions_live_idx;'
 
 printf '\n'
 if check_summary; then

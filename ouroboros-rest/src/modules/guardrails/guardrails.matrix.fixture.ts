@@ -126,6 +126,57 @@ export const RULE_MATRIX: readonly MatrixCell[] = [
   {
     check: "allowed_paths",
     verdict: "pass",
+    because: "a live allow-once grant covers the protected path the plan declares (#459)",
+    input: {
+      ...withFile("boot/rollback_flag.c"),
+      planFiles: [...(MOCKUP_INPUT.planFiles ?? []), "boot/rollback_flag.c"],
+      protectedPaths: ["boot/**", "keys/**"],
+      exceptions: [{ id: "grant-1851", pathGlob: "boot/rollback_flag.c" }],
+    },
+    evidence: {
+      path: "boot/rollback_flag.c",
+      glob: "boot/rollback_flag.c",
+      detail: "1 protected path allowed once by exception.",
+    },
+  },
+  {
+    check: "allowed_paths",
+    verdict: "fail",
+    because:
+      "a grant lifts only the path its glob names — a second protected path still fails (#459)",
+    input: {
+      ...withFile("boot/rollback_flag.c"),
+      files: [{ path: "boot/rollback_flag.c" }, { path: "boot/mcuboot.conf" }],
+      planFiles: ["boot/rollback_flag.c", "boot/mcuboot.conf"],
+      protectedPaths: ["boot/**", "keys/**"],
+      exceptions: [{ id: "grant-1851", pathGlob: "boot/rollback_flag.c" }],
+    },
+    evidence: {
+      path: "boot/mcuboot.conf",
+      glob: "boot/**",
+      detail: "1 path inside a protected path.",
+    },
+  },
+  {
+    check: "allowed_paths",
+    verdict: "pass",
+    because: "a grant covers the protected path and no plan declares a scope (#459)",
+    input: {
+      ...withFile("boot/rollback_flag.c"),
+      planFiles: [],
+      protectedPaths: ["boot/**"],
+      exceptions: [{ id: "grant-1851", pathGlob: "boot/rollback_flag.c" }],
+    },
+    evidence: {
+      path: "boot/rollback_flag.c",
+      glob: "boot/rollback_flag.c",
+      detail:
+        "1 protected path allowed once by exception. No plan file list declares a scope for this run.",
+    },
+  },
+  {
+    check: "allowed_paths",
+    verdict: "pass",
     because: "protected paths exist and the change stays inside the plan's scope (#380)",
     input: { ...MOCKUP_INPUT, protectedPaths: ["boot/**", "keys/**"] },
     evidence: null,

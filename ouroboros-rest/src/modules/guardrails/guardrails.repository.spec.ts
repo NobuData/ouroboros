@@ -143,6 +143,7 @@ describe("the guardrails repository", () => {
 
     expect(database.statements).toHaveLength(1);
     expect(database.statements[0].sql).toContain('insert into "ouroboros"."guardrail_evaluations"');
+    expect(database.statements[0].sql).toContain('returning "id", "check"');
     expect(database.sql().join(" ")).not.toMatch(/update|delete/i);
     expect(database.statements[0].parameters).toEqual(
       expect.arrayContaining([
@@ -156,5 +157,54 @@ describe("the guardrails repository", () => {
         "not_applicable",
       ]),
     );
+  });
+
+  it("answers each written verdict's id by its check", async () => {
+    database.answers({
+      rows: [
+        { id: "evaluation-1", check: "allowed_paths" },
+        { id: "evaluation-2", check: "secrets" },
+      ],
+    });
+
+    const written = await repository.appendVerdicts(database.service.db, RUN, 14, [
+      {
+        check: "allowed_paths",
+        verdict: "pass",
+        evidence: null,
+        rulesetVersion: null,
+        changeSetSeq: 2,
+      },
+    ]);
+
+    expect(written.get("allowed_paths")).toBe("evaluation-1");
+    expect(written.get("secrets")).toBe("evaluation-2");
+  });
+
+  it("reads the run's live grants inside its workspace, oldest first, locked (#459)", async () => {
+    database.answers({ rows: [{ id: "grant-1", path_glob: "boot/rollback_flag.c" }] });
+
+    expect(await repository.liveExceptions(database.service.db, POLICY, RUN)).toEqual([
+      { id: "grant-1", pathGlob: "boot/rollback_flag.c" },
+    ]);
+    expect(database.statements[0].sql).toContain('from "ouroboros"."guardrail_exceptions_live"');
+    expect(database.statements[0].sql).toContain('"organization_id" = $1');
+    expect(database.statements[0].sql).toContain('order by "created_at", "id" for update');
+    expect(database.statements[0].parameters).toEqual([ORG, RUN]);
+  });
+
+  it("consumes a grant through the database function and reports whether it was live", async () => {
+    database.answers({ rows: [{ consumed: true }] }, { rows: [{ consumed: false }] });
+
+    expect(await repository.consumeException(database.service.db, "grant-1", "evaluation-1")).toBe(
+      true,
+    );
+    expect(await repository.consumeException(database.service.db, "grant-1", "evaluation-2")).toBe(
+      false,
+    );
+    expect(database.statements[0].sql).toContain(
+      "ouroboros.guardrail_exception_consume($1::uuid, $2::uuid)",
+    );
+    expect(database.statements[0].parameters).toEqual(["grant-1", "evaluation-1"]);
   });
 });

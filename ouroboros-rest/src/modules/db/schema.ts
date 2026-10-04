@@ -1954,6 +1954,27 @@ export interface RunGuardrailsLatestView {
 }
 
 /**
+ * `ouroboros.guardrail_exceptions_live` — a run's allow-once grants that may still be consumed
+ * (V096, [#459](https://github.com/NobuData/ouroboros/issues/459), decision **X3**).
+ *
+ * A **view** over `guardrail_exceptions`: unused, unrevoked and unexpired. AP.3 reads it per run
+ * and spends a grant through `ouroboros.guardrail_exception_consume(id, evaluation)`, which is
+ * the only write it makes — never an update of its own.
+ */
+export interface GuardrailExceptionsLiveView {
+  id: string;
+  organization_id: string;
+  run_id: string;
+  /** What the grant permits — `boot/rollback_flag.c`, never `boot/**`. */
+  path_glob: string;
+  granted_by: string | null;
+  /** The decision item that authorised the grant. */
+  granted_via: string;
+  expires_at: Date;
+  created_at: Date;
+}
+
+/**
  * `run_controls.kind` — which control was asked for (V048, decision **R6**).
  *
  * The page head's toggle and red button, and the box under the transcript. AP.4
@@ -2343,6 +2364,13 @@ export interface WorkspaceSettingsTable {
    * degraded by AI.2 ([#257](https://github.com/NobuData/ouroboros/issues/257)).
    */
   runner_bearer_fallback: Generated<boolean>;
+  /**
+   * The longest an allow-once guardrail exception may live, in minutes (V096,
+   * [#459](https://github.com/NobuData/ouroboros/issues/459)) — default 1440, at most 10080.
+   */
+  guardrail_exception_max_ttl_minutes: Generated<number>;
+  /** How long an emailed action token lives, in minutes (V096) — default 2880, 5 to 10080. */
+  action_token_ttl_minutes: Generated<number>;
   /** Who last changed a setting here, or null. `on delete set null`, never cascade. */
   updated_by: string | null;
   created_at: Stamped;
@@ -4377,6 +4405,10 @@ export interface WorkspaceSettingsEffectiveView {
    * append columns and may not reorder them — see V041.
    */
   runner_bearer_fallback: boolean;
+  /** The allow-once exception TTL ceiling in minutes, 1440 unless set (V096). */
+  guardrail_exception_max_ttl_minutes: number;
+  /** The action token lifetime in minutes, 2880 unless set (V096). */
+  action_token_ttl_minutes: number;
 }
 
 /**
@@ -4432,6 +4464,7 @@ export const READ_ONLY_VIEWS = [
   "runs_with_stage",
   "run_events_jsonl",
   "v_run_guardrails_latest",
+  "guardrail_exceptions_live",
   "test_run_coverage",
   "pr_gate_results_latest",
   "org_policies_effective",
@@ -6347,6 +6380,7 @@ export interface Database {
   runs_with_stage: RunsWithStageView;
   run_events_jsonl: RunEventsJsonlView;
   v_run_guardrails_latest: RunGuardrailsLatestView;
+  guardrail_exceptions_live: GuardrailExceptionsLiveView;
   test_run_coverage: TestRunCoverageView;
   pr_gate_results_latest: PrGateResultsLatestView;
   org_policies_effective: OrgPoliciesEffectiveView;
@@ -6726,6 +6760,8 @@ export const TABLE_COLUMNS = {
     "created_at",
     "updated_at",
     "runner_bearer_fallback",
+    "guardrail_exception_max_ttl_minutes",
+    "action_token_ttl_minutes",
   ],
   tenant_keys: [
     "organization_id",
@@ -7764,6 +7800,8 @@ export const TABLE_COLUMNS = {
     "updated_at",
     "updated_by",
     "runner_bearer_fallback",
+    "guardrail_exception_max_ttl_minutes",
+    "action_token_ttl_minutes",
   ],
   alias_references: [
     "organization_id",
@@ -7835,6 +7873,16 @@ export const TABLE_COLUMNS = {
     "policy_ref",
     "evaluated_at",
     "change_set_seq",
+  ],
+  guardrail_exceptions_live: [
+    "id",
+    "organization_id",
+    "run_id",
+    "path_glob",
+    "granted_by",
+    "granted_via",
+    "expires_at",
+    "created_at",
   ],
   test_run_coverage: [
     "test_run_id",
