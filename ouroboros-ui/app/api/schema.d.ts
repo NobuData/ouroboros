@@ -6575,6 +6575,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/inbox/items/{id}/actions/{actionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer a decision — press one of its card's actions
+         * @description The single execution endpoint of the Needs-You inbox (#462, BN.2). The inbox executes nothing
+         *     itself: each declared action is a thin adapter onto the plane that owns the operation, and
+         *     that plane's receipt becomes the resolution's `outcome`.
+         *
+         *     | action | what it calls |
+         *     |---|---|
+         *     | `approve_merge` | AX.5 records the approval, then AX.4 arms the PR's existing merge plan and runs it once — `merge` is `merged` with `merge_sha` when the gates were already green, otherwise `armed` (AX.4 merges when they are) |
+         *     | `return_to_loop`, `retry_with_note` | AP.4's correction round, the note as the steering |
+         *     | `allow_once` | a single-use exception for exactly this run and path, then AP.3 re-judges `allowed_paths` (and consumes it), then AP.4 resumes — AP.3, not the inbox, decides the path is writable |
+         *     | `deny` | AP.4's correction round carrying the reason; the path stays protected |
+         *     | `waive_annotate` | AX.3's waiver, the note as its reason, and the public host annotation |
+         *     | `require_bench_upgrade` | a one-draft planning batch (planner `bench-v1`) in the PR's ticket source; the receipt carries the draft's ref |
+         *     | `cancel_run`, `stop_loop` | AP.4's abort |
+         *     | `approve_split` | AL.3's push |
+         *     | `confirm`, `retire` | the fact's confirm/reconfirm or reject/expire |
+         *
+         *     `sign_off`, `discard`, `accept_resize`, `keep_size` and `approve_spend` are declared, but their
+         *     planes have no operation yet: they answer `501 decision_action_unbound`. Links
+         *     (`open_verification`, `view_diff`, …) answer nothing.
+         *
+         *     **First answer wins.** Two presses at once produce one resolution; the loser gets `409`
+         *     with the winner's actor, action and time. **Idempotent**: a request repeated with the same
+         *     `idempotencyKey` answers with the first attempt (`replayed: true`) and never executes twice.
+         *     **Roles are declared**: the action's `required_role` is checked here (`approver` is
+         *     `can_approve_loops`), and the owning plane applies its own policy too. **A failing handler
+         *     leaves the item open**, the attempt recorded with the plane's error, which this operation
+         *     answers with unchanged. Every execution is audited (`decision.answered`,
+         *     `decision.answer_failed`).
+         *
+         *     **Every member** may call it; the declaration decides who may press what. A caller with no
+         *     signed-in person (a service account) is refused.
+         */
+        post: operations["executeInboxAction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/facts/needs-you": {
         parameters: {
             query?: never;
@@ -22255,6 +22305,59 @@ export interface components {
              * @description When it started waiting — the proposal's creation, or the stale flag.
              */
             since: string;
+        };
+        /**
+         * @description A press of a decision card's action (#462). `note` is required exactly when the action
+         *     declares `takes_note`; `idempotencyKey` makes a retry answer with the first attempt.
+         */
+        InboxActionRequest: {
+            /** @description The return-to-loop steering, the waiver's reason or the retirement's why. */
+            note?: string;
+            /** @description The caller's name for this press; generated when absent. */
+            idempotencyKey?: string;
+        };
+        /** @description How the item was answered — the card's receipt. */
+        InboxActionResolution: {
+            actionId: string;
+            /** @enum {string} */
+            resolver: "human" | "policy";
+            /** @description The policy that answered, for `resolver` policy. */
+            policy: string | null;
+            actor: null | {
+                id: string;
+                name: string;
+            };
+            /** @enum {string} */
+            channel: "web" | "email" | "github" | "slack" | "push" | "api";
+            note: string | null;
+            /**
+             * @description What the owning plane did — `{merge, merge_sha}`, `{exception_id, evaluation_id,
+             *     control_id}`, `{criterion_id, annotation}`, `{draft_batch_id, draft_id}`, `{control_id}`.
+             */
+            outcome: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            resolvedAt: string;
+        };
+        /**
+         * @description `POST /api/v1/inbox/items/{id}/actions/{actionId}`'s answer (#462): the item, the attempt
+         *     that answered it and the resolution. `replayed` is true when the idempotency key was seen
+         *     before.
+         */
+        InboxActionResult: {
+            /** Format: uuid */
+            itemId: string;
+            kindId: string;
+            /** @enum {string} */
+            status: "resolved";
+            replayed: boolean;
+            attempt: {
+                /** Format: uuid */
+                id: string;
+                idempotencyKey: string;
+            };
+            resolution: components["schemas"]["InboxActionResolution"];
         };
         /**
          * InboxFeed
@@ -56079,6 +56182,215 @@ export interface operations {
              *     `details` is empty, deliberately.
              */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    executeInboxAction: {
+        parameters: {
+            query?: never;
+            header?: {
+                /**
+                 * @description The workspace this request is operating in — its slug or its uuid.
+                 *
+                 *     **An override, not the answer.** Since
+                 *     [#713](https://github.com/NobuData/ouroboros/issues/713) the workspace a request acts
+                 *     in is the session's active organization, which is server state: it is set through
+                 *     `/api/auth/organization/set-active`, it is stamped onto every new session, and no
+                 *     header can assert it. This header names a *different* workspace for one request —
+                 *     which is how a client acts outside the active one without changing it for every other
+                 *     request in flight. It is validated exactly as everything else is: a workspace the
+                 *     caller is not a member of is a `404`, the same answer one that does not exist gets.
+                 *
+                 *     On the operations that name a workspace in their path it is **optional and
+                 *     redundant**: the path is the more specific of the two, and a header that names a
+                 *     *different* workspace is a `422` with `code: "tenant_mismatch"` rather than a silent
+                 *     preference for either. It is accepted there so that one client can set it on every
+                 *     request, and it is how the operations that have no workspace in their path say which
+                 *     workspace they mean.
+                 *
+                 *     A caller who omits it is acting in their session's active organization. A session
+                 *     that has none — a person who belongs to no workspace, one whose workspace was
+                 *     deleted, one who was removed from it — gets a `400` with
+                 *     `code: "organization_required"` on any operation that names no workspace of its own.
+                 *     `GET /api/v1/dashboard` ([#70](https://github.com/NobuData/ouroboros/issues/70)) is
+                 *     the first such operation, and it is therefore the first that can answer that code: it
+                 *     is workspace-scoped and has no path to say so in, so this header is the only thing a
+                 *     client can override it with. `GET /api/v1/orgs` names no workspace either and does
+                 *     **not** take this header at all — *which workspaces are yours* is precisely the
+                 *     question somebody in that state is asking, and answering it must not require them to
+                 *     have already chosen one.
+                 *
+                 *     Nothing is inferred from how many workspaces somebody belongs to: the choice is made
+                 *     once, at sign-in or in the picker, and lives on the session.
+                 */
+                "X-Ouro-Tenant"?: components["parameters"]["TenantHeader"];
+            };
+            path: {
+                /** @description The decision item. */
+                id: string;
+                /**
+                 * @description A declared action of the item's pinned kind.
+                 * @example allow_once
+                 */
+                actionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                /**
+                 * @example {
+                 *       "idempotencyKey": "8d2f3c51-6a0e-4c8f-9e1b-2a7d4f6c0b13"
+                 *     }
+                 */
+                "application/json": components["schemas"]["InboxActionRequest"];
+            };
+        };
+        responses: {
+            /** @description Answered — the resolution, with the owning plane's receipt. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    /**
+                     * @example {
+                     *       "itemId": "5eed0082-0000-4000-8000-000000000002",
+                     *       "kindId": "protected_path_allow_once",
+                     *       "status": "resolved",
+                     *       "replayed": false,
+                     *       "attempt": {
+                     *         "id": "0c8e5f2a-7b14-4d39-a6e0-1f2b3c4d5e6f",
+                     *         "idempotencyKey": "8d2f3c51-6a0e-4c8f-9e1b-2a7d4f6c0b13"
+                     *       },
+                     *       "resolution": {
+                     *         "actionId": "allow_once",
+                     *         "resolver": "human",
+                     *         "policy": null,
+                     *         "actor": {
+                     *           "id": "5eed0003-0000-4000-8000-000000000001",
+                     *           "name": "Ken Suenobu"
+                     *         },
+                     *         "channel": "web",
+                     *         "note": null,
+                     *         "outcome": {
+                     *           "run_id": "5eed0009-0000-4000-8000-000000000479",
+                     *           "exception_id": "3b7e9d10-2c45-4f86-8a91-0d1e2f3a4b5c",
+                     *           "evaluation_id": "7f6e5d4c-3b2a-4190-8877-665544332211",
+                     *           "control_id": "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+                     *           "control_state": "pending"
+                     *         },
+                     *         "resolvedAt": "2026-10-04T19:46:00.000Z"
+                     *       }
+                     *     }
+                     */
+                    "application/json": components["schemas"]["InboxActionResult"];
+                };
+            };
+            /**
+             * @description `organization_required` — this session is not acting in any workspace and this
+             *     operation names none.
+             */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `unauthenticated` — this request carries no session, or one this service will not
+             *     honour.
+             */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `decision_action_forbidden` — the action's declared `required_role` (or, for
+             *     `approver`, `can_approve_loops`) is not held; `decision_action_needs_person` — a
+             *     service account cannot answer; or the owning plane's own refusal (`forbidden` for an
+             *     AP.4 control the role may not ask for, `merge_not_policy_eligible`).
+             */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `decision_item_not_found`, `decision_action_not_found`, or a plane's (`fact_not_found`,
+             *     `pull_request_not_found`, `run_not_found`, `batch_not_found`).
+             */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `decision_already_answered` — someone answered first; `details.resolution` names the
+             *     actor, action, channel and time. `decision_action_in_progress` — another answer is
+             *     running; `details.attempt` names whose. `decision_item_expired`,
+             *     `decision_idempotency_key_reused`, `decision_item_ref_missing`,
+             *     `allow_once_still_blocked` (the guardrails still block the run — nothing was granted),
+             *     `bench_upgrade_target_missing`, `merge_refused`, or the owning plane's own conflict
+             *     (`merge_plan_not_armable`, `planning_target_read_only`, `fact_transition_refused`, …).
+             *     The item stays open.
+             */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `validation_failed` — the body or path is malformed; `decision_action_not_an_answer` —
+             *     the action is a link; `decision_note_required` / `decision_note_not_taken` — a note
+             *     exactly when the action takes one.
+             */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `internal_error` — the service itself failed; `decision_handler_failed` (a replayed
+             *     attempt whose plane failed unexpectedly). The item stays open.
+             */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+            /**
+             * @description `decision_action_unbound` — the action is declared, but the plane that owns it has no
+             *     operation yet. The item stays open.
+             */
+            501: {
                 headers: {
                     [name: string]: unknown;
                 };

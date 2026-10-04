@@ -3,6 +3,7 @@ import { Module, type DynamicModule } from "@nestjs/common";
 import { BetterAuthModule } from "../../auth/auth.module";
 import { AuditModule } from "../audit/audit.module";
 import { DecisionsModule } from "../decisions/decisions.module";
+import { InboxActionsModule } from "../inbox-actions/inbox-actions.module";
 import { BacklogModule } from "../backlog/backlog.module";
 import { BacklogSyncModule } from "../backlog-sync/backlog-sync.module";
 import { AuthModule } from "../auth/auth.module";
@@ -374,9 +375,14 @@ export class AppModule {
         // BN.1 ([#461](https://github.com/NobuData/ouroboros/issues/461)) — the decision kind registry,
         // the out-of-band watcher and the Needs-You feed under `/api/v1/inbox`. Every plane that
         // blocks on a person imports it for the registry (facts, pull requests, guardrails, planning,
-        // estimation, runs); it imports only `DbModule` and `AuditModule`, and nothing else claims
-        // the prefix.
+        // estimation, runs); it imports only `DbModule` and `AuditModule`. The prefix is shared
+        // with the action executor below, at a different path.
         DecisionsModule,
+        // BN.2 ([#462](https://github.com/NobuData/ouroboros/issues/462)) — the Needs-You action
+        // executor, `POST /api/v1/inbox/items/:id/actions/:actionId`. It composes the planes that
+        // own each action (PR verification, controls, guardrails, planning, facts), every one of
+        // which imports `DecisionsModule` — so it is a module of its own that nothing imports.
+        InboxActionsModule,
         // BF.2 ([#411](https://github.com/NobuData/ouroboros/issues/411)) — the fact lifecycle and
         // the staleness sweep under `/api/v1/facts`. `PullRequestsModule` imports it for the
         // commit observer PR sync reports a merge to; nothing else claims the prefix.

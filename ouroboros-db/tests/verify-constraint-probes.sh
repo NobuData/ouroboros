@@ -581,6 +581,25 @@
 #   an attempt number is used once per key       drop webhook_deliveries_key_attempt_idx
 #   the failure reason is bounded                drop webhook_deliveries_error_bounded
 #
+# #462 (BN.2, V099) records every press of a decision card's action. One probe per rule "an
+# answer runs once, first answer wins, and a failure never reads as an answer" rests on:
+#
+#   V099 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   one running attempt per item                 drop decision_action_attempts_one_running
+#   one attempt per item and key                 drop decision_action_attempts_item_key
+#   a press names its person                     rewrite decision_action_attempts_guard()
+#                                                  without the actor check
+#   a press starts running                       rewrite it without the status check
+#   a finished attempt is history                rewrite it to return before the refusal
+#   a finish is a receipt or an error            drop decision_action_attempts_status_shape
+#   it finishes after it starts                  drop decision_action_attempts_finished_after_started
+#   the channel vocabulary                       drop decision_action_attempts_channel
+#   an action id's shape                         drop decision_action_attempts_action_id_shape
+#   an idempotency key's shape                   drop decision_action_attempts_idempotency_key_shape
+#   a closure waits for a running answer         rewrite decision_item_source_resolve() without
+#                                                  the running-attempt check
+#
 # #457 (BM.1, V093) adds the decision domain — versioned kind declarations and the typed items
 # filed against them. One probe per rule the inbox's truthfulness rests on:
 #
@@ -3155,6 +3174,57 @@ expect_red 'an attempt number may repeat' \
 expect_red 'a failure reason may be unbounded' \
   'the failure reason is bounded' \
   'alter table ouroboros.webhook_deliveries drop constraint webhook_deliveries_error_bounded;'
+
+# V099 (#462). The guard's three rules are one function, so each probe rewrites the one branch it
+# aims at and leaves the other two standing.
+expect_red 'two answers may run at once' \
+  'a second answer cannot run while the first is running' \
+  'drop index ouroboros.decision_action_attempts_one_running;'
+
+expect_red 'a key may press twice' \
+  'a retry never presses twice' \
+  'alter table ouroboros.decision_action_attempts drop constraint decision_action_attempts_item_key;'
+
+expect_red 'a press may name nobody' \
+  'a press names the person who pressed it' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.decision_action_attempts_guard()'::regprocedure)" \
+       'if new.actor_id is null then' '' 'if false then')"
+
+expect_red 'a press may be filed finished' \
+  'a press starts running' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.decision_action_attempts_guard()'::regprocedure)" \
+       "if new.status <> 'running' then" '' 'if false then')"
+
+expect_red 'a finished attempt may be rewritten' \
+  'receipt is never rewritten' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.decision_action_attempts_guard()'::regprocedure)" \
+       "raise exception 'decision action attempt % is history" '' \
+       "return new; raise exception 'decision action attempt % is history")"
+
+expect_red 'a succeeded attempt may carry no receipt' \
+  'a succeeded attempt carries its receipt' \
+  'alter table ouroboros.decision_action_attempts drop constraint decision_action_attempts_status_shape;'
+
+expect_red 'an attempt may finish before it starts' \
+  'an attempt finishes after it starts' \
+  'alter table ouroboros.decision_action_attempts drop constraint decision_action_attempts_finished_after_started;'
+
+expect_red 'an attempt may come by fax' \
+  'a channel is web, email, github, slack, push or api' \
+  'alter table ouroboros.decision_action_attempts drop constraint decision_action_attempts_channel;'
+
+expect_red 'an action id may be anything' \
+  'an action id is a declared action' \
+  'alter table ouroboros.decision_action_attempts drop constraint decision_action_attempts_action_id_shape;'
+
+expect_red 'an idempotency key may be padded' \
+  'an idempotency key is trimmed and bounded' \
+  'alter table ouroboros.decision_action_attempts drop constraint decision_action_attempts_idempotency_key_shape;'
+
+expect_red 'a closure may take an item mid-answer' \
+  'a closure leaves an item alone while' \
+  "$(rewrite_definition "pg_get_functiondef('ouroboros.decision_item_source_resolve(uuid, text, jsonb)'::regprocedure)" \
+       "a.status = 'running'" '' 'false')"
 
 printf '\n'
 if check_summary; then

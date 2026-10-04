@@ -4261,7 +4261,8 @@ table (`members.roles.ts`). Every write calls the plugin's API **with the caller
 `@RequiresCapability("can_approve_loops")` on `POST …/approvals`, `…/criteria/{id}/waive`,
 `…/merge-plan/arm` and `…/merge-plan/merge` — `403 capability_required` when the member lacks it.
 Defaults: owner and admin yes, member and viewer no. An explicit setting (`member_capabilities`)
-survives role changes. The inbox's approve-class actions (#464) use the same decorator when built.
+survives role changes. The inbox's action executor (#462) checks the same capability for actions
+declared `approver` — in the service, against the declaration, rather than by decorator.
 
 **Service accounts** authenticate with `Authorization: Bearer orb_svc_…`.
 `ServiceTokenMiddleware` looks the token's SHA-256 up before any guard; `SessionOrServiceGuard`
@@ -4334,6 +4335,41 @@ event it writes directly are its record.
 disconnect, delete → restore, and delete → day 30 → purge on a fixture tenant in `ci/rest`. It
 asserts that a value sealed before the purge no longer decrypts after it.
 
+## Needs-You action executor
+
+`POST /api/v1/inbox/items/{id}/actions/{actionId}` (`src/modules/inbox-actions/`, BN.2
+[#462](https://github.com/NobuData/ouroboros/issues/462), decision **X3**) answers a decision by
+calling the plane that owns the operation — **the inbox executes nothing itself**:
+
+```
+approve_merge            AX.5 decide(approve) → AX.4 arm the PR's existing plan → run it once
+waive_annotate           AX.3 waive (note = reason) → public host annotation
+allow_once               grant (V096) → AP.3 reevaluatePaths (spends it) → AP.4 resume
+deny                     AP.4 correction round carrying the reason
+return_to_loop / retry   AP.4 correction round with the note
+cancel_run / stop_loop   AP.4 abort, confirmed with the loop's number
+approve_split            AL.3 push        require_bench_upgrade   AL.4 compose (planner bench-v1)
+confirm / retire         facts confirm|reconfirm / reject|expire
+```
+
+`sign_off`, `discard`, `accept_resize`, `keep_size` and `approve_spend` answer
+`501 decision_action_unbound`: their planes have no operation yet. The flow
+(`inbox-actions.service.ts`): the action must answer the item (a link is `422`); its declared
+`required_role` is checked server-side (`approver` = `can_approve_loops`); a note exactly when it
+`takes_note`; then a **claim** under the item's row lock — a repeated `idempotencyKey` replays the
+first attempt, a resolved item answers `409 decision_already_answered` naming who, when and how, and
+a running attempt `409 decision_action_in_progress` (V099 allows one per item; one older than ten
+minutes is taken over as abandoned). A handler that throws leaves the item **open**, its attempt
+`failed` with the plane's error (re-thrown unchanged) and audited `decision.answer_failed`; success
+writes V095's resolution and finishes the attempt in one transaction, audits `decision.answered`
+with the receipt as `outcome_*` keys, and tells `DecisionLifecycle` (BN.3's channel echo; V096's
+trigger revokes outstanding action tokens). A service account cannot answer.
+
+**Allow once** is the one new mechanism: AP.3 gained `GuardrailService.reevaluatePaths`, which
+re-judges `allowed_paths` alone over the run's recorded change-set (the hunks the secrets scan needs
+were never stored, so `secrets` is left as last judged) and spends the grant. If AP.3 still says no,
+the grant rolls back with the transaction.
+
 ## Outbound webhooks
 
 > **Issue:** [#487](https://github.com/NobuData/ouroboros/issues/487) — *[BR.3] Outbound webhooks &
@@ -4372,6 +4408,7 @@ contract (`run.opened`), the console's abort (`run.canceled`) and the merge exec
 **The registry is versioned** (`webhook.registry.ts`). Version 1 is a literal list; a release that
 adds a type appends a version, and an endpoint receives only the types of the version it
 subscribed under until it is moved. The spec fails if an audit action is registered nowhere.
+Version 2 (#462) adds `decision.answered` and `decision.answer_failed`, as audit and decision types.
 Matching is exact: a family wildcard covers its own family only.
 
 **The dispatcher** (`WebhookDispatcher`, every `OURO_WEBHOOK_DISPATCH_SECONDS`) claims outbox rows

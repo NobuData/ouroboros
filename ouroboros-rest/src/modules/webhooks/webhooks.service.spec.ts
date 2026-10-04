@@ -1,4 +1,5 @@
 import { DomainError } from "../errors/error.envelope";
+import { LATEST_REGISTRY_VERSION } from "./webhook.registry";
 import { WebhookDispatcher } from "./webhook.dispatcher";
 import { InternalAllowlist, type HostResolver } from "./webhook.ssrf";
 import type { CreateWebhookDto } from "./webhooks.dto";
@@ -100,7 +101,7 @@ describe("creating an endpoint", () => {
     const { endpoint } = await service.create(WORKSPACE, ADMIN, CREATE);
 
     expect(endpoint).toMatchObject({
-      registryVersion: 1,
+      registryVersion: LATEST_REGISTRY_VERSION,
       siem: true,
       active: true,
       host: "siem.acme.dev",

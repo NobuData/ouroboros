@@ -15,7 +15,7 @@ openapi: 3.1.0
 
 info:
   title: ouroboros-rest
-  version: "0.39.6"
+  version: "0.39.7"
   summary: The public API of Ouroboros — the only boundary between the browser and everything behind it.
   description: |-
     The **communications layer** of
@@ -22181,6 +22181,171 @@ paths:
           description: |-
             `internal_error` — the service itself failed. The message is a constant and
             `details` is empty, deliberately.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /api/v1/inbox/items/{id}/actions/{actionId}:
+    post:
+      tags: [inbox]
+      summary: Answer a decision — press one of its card's actions
+      description: |-
+        The single execution endpoint of the Needs-You inbox (#462, BN.2). The inbox executes nothing
+        itself: each declared action is a thin adapter onto the plane that owns the operation, and
+        that plane's receipt becomes the resolution's `outcome`.
+
+        | action | what it calls |
+        |---|---|
+        | `approve_merge` | AX.5 records the approval, then AX.4 arms the PR's existing merge plan and runs it once — `merge` is `merged` with `merge_sha` when the gates were already green, otherwise `armed` (AX.4 merges when they are) |
+        | `return_to_loop`, `retry_with_note` | AP.4's correction round, the note as the steering |
+        | `allow_once` | a single-use exception for exactly this run and path, then AP.3 re-judges `allowed_paths` (and consumes it), then AP.4 resumes — AP.3, not the inbox, decides the path is writable |
+        | `deny` | AP.4's correction round carrying the reason; the path stays protected |
+        | `waive_annotate` | AX.3's waiver, the note as its reason, and the public host annotation |
+        | `require_bench_upgrade` | a one-draft planning batch (planner `bench-v1`) in the PR's ticket source; the receipt carries the draft's ref |
+        | `cancel_run`, `stop_loop` | AP.4's abort |
+        | `approve_split` | AL.3's push |
+        | `confirm`, `retire` | the fact's confirm/reconfirm or reject/expire |
+
+        `sign_off`, `discard`, `accept_resize`, `keep_size` and `approve_spend` are declared, but their
+        planes have no operation yet: they answer `501 decision_action_unbound`. Links
+        (`open_verification`, `view_diff`, …) answer nothing.
+
+        **First answer wins.** Two presses at once produce one resolution; the loser gets `409`
+        with the winner's actor, action and time. **Idempotent**: a request repeated with the same
+        `idempotencyKey` answers with the first attempt (`replayed: true`) and never executes twice.
+        **Roles are declared**: the action's `required_role` is checked here (`approver` is
+        `can_approve_loops`), and the owning plane applies its own policy too. **A failing handler
+        leaves the item open**, the attempt recorded with the plane's error, which this operation
+        answers with unchanged. Every execution is audited (`decision.answered`,
+        `decision.answer_failed`).
+
+        **Every member** may call it; the declaration decides who may press what. A caller with no
+        signed-in person (a service account) is refused.
+      operationId: executeInboxAction
+      parameters:
+        - $ref: "#/components/parameters/TenantHeader"
+        - name: id
+          in: path
+          required: true
+          description: The decision item.
+          schema:
+            type: string
+            format: uuid
+        - name: actionId
+          in: path
+          required: true
+          description: A declared action of the item's pinned kind.
+          schema:
+            type: string
+            pattern: "^[a-z][a-z0-9_]{0,62}$"
+          example: allow_once
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InboxActionRequest"
+            example:
+              idempotencyKey: "8d2f3c51-6a0e-4c8f-9e1b-2a7d4f6c0b13"
+      responses:
+        "200":
+          description: Answered — the resolution, with the owning plane's receipt.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InboxActionResult"
+              example:
+                itemId: "5eed0082-0000-4000-8000-000000000002"
+                kindId: protected_path_allow_once
+                status: resolved
+                replayed: false
+                attempt:
+                  id: "0c8e5f2a-7b14-4d39-a6e0-1f2b3c4d5e6f"
+                  idempotencyKey: "8d2f3c51-6a0e-4c8f-9e1b-2a7d4f6c0b13"
+                resolution:
+                  actionId: allow_once
+                  resolver: human
+                  policy: null
+                  actor: { id: "5eed0003-0000-4000-8000-000000000001", name: "Ken Suenobu" }
+                  channel: web
+                  note: null
+                  outcome:
+                    run_id: "5eed0009-0000-4000-8000-000000000479"
+                    exception_id: "3b7e9d10-2c45-4f86-8a91-0d1e2f3a4b5c"
+                    evaluation_id: "7f6e5d4c-3b2a-4190-8877-665544332211"
+                    control_id: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d"
+                    control_state: pending
+                  resolvedAt: "2026-10-04T19:46:00.000Z"
+        "400":
+          description: |-
+            `organization_required` — this session is not acting in any workspace and this
+            operation names none.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          description: |-
+            `unauthenticated` — this request carries no session, or one this service will not
+            honour.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "403":
+          description: |-
+            `decision_action_forbidden` — the action's declared `required_role` (or, for
+            `approver`, `can_approve_loops`) is not held; `decision_action_needs_person` — a
+            service account cannot answer; or the owning plane's own refusal (`forbidden` for an
+            AP.4 control the role may not ask for, `merge_not_policy_eligible`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: |-
+            `decision_item_not_found`, `decision_action_not_found`, or a plane's (`fact_not_found`,
+            `pull_request_not_found`, `run_not_found`, `batch_not_found`).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          description: |-
+            `decision_already_answered` — someone answered first; `details.resolution` names the
+            actor, action, channel and time. `decision_action_in_progress` — another answer is
+            running; `details.attempt` names whose. `decision_item_expired`,
+            `decision_idempotency_key_reused`, `decision_item_ref_missing`,
+            `allow_once_still_blocked` (the guardrails still block the run — nothing was granted),
+            `bench_upgrade_target_missing`, `merge_refused`, or the owning plane's own conflict
+            (`merge_plan_not_armable`, `planning_target_read_only`, `fact_transition_refused`, …).
+            The item stays open.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "422":
+          description: |-
+            `validation_failed` — the body or path is malformed; `decision_action_not_an_answer` —
+            the action is a link; `decision_note_required` / `decision_note_not_taken` — a note
+            exactly when the action takes one.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "500":
+          description: |-
+            `internal_error` — the service itself failed; `decision_handler_failed` (a replayed
+            attempt whose plane failed unexpectedly). The item stays open.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "501":
+          description: |-
+            `decision_action_unbound` — the action is declared, but the plane that owns it has no
+            operation yet. The item stays open.
           content:
             application/json:
               schema:
@@ -49996,6 +50161,92 @@ components:
           format: date-time
           description: When it started waiting — the proposal's creation, or the stale flag.
 
+    InboxActionRequest:
+      type: object
+      description: |-
+        A press of a decision card's action (#462). `note` is required exactly when the action
+        declares `takes_note`; `idempotencyKey` makes a retry answer with the first attempt.
+      additionalProperties: false
+      properties:
+        note:
+          type: string
+          maxLength: 2000
+          description: The return-to-loop steering, the waiver's reason or the retirement's why.
+        idempotencyKey:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The caller's name for this press; generated when absent.
+    InboxActionResolution:
+      type: object
+      description: How the item was answered — the card's receipt.
+      additionalProperties: false
+      required: [actionId, resolver, policy, actor, channel, note, outcome, resolvedAt]
+      properties:
+        actionId:
+          type: string
+        resolver:
+          type: string
+          enum: [human, policy]
+        policy:
+          type: [string, "null"]
+          description: The policy that answered, for `resolver` policy.
+        actor:
+          oneOf:
+            - type: "null"
+            - type: object
+              additionalProperties: false
+              required: [id, name]
+              properties:
+                id:
+                  type: string
+                name:
+                  type: string
+        channel:
+          type: string
+          enum: [web, email, github, slack, push, api]
+        note:
+          type: [string, "null"]
+        outcome:
+          type: object
+          additionalProperties: true
+          description: |-
+            What the owning plane did — `{merge, merge_sha}`, `{exception_id, evaluation_id,
+            control_id}`, `{criterion_id, annotation}`, `{draft_batch_id, draft_id}`, `{control_id}`.
+        resolvedAt:
+          type: string
+          format: date-time
+    InboxActionResult:
+      type: object
+      description: |-
+        `POST /api/v1/inbox/items/{id}/actions/{actionId}`'s answer (#462): the item, the attempt
+        that answered it and the resolution. `replayed` is true when the idempotency key was seen
+        before.
+      additionalProperties: false
+      required: [itemId, kindId, status, replayed, attempt, resolution]
+      properties:
+        itemId:
+          type: string
+          format: uuid
+        kindId:
+          type: string
+        status:
+          type: string
+          enum: [resolved]
+        replayed:
+          type: boolean
+        attempt:
+          type: object
+          additionalProperties: false
+          required: [id, idempotencyKey]
+          properties:
+            id:
+              type: string
+              format: uuid
+            idempotencyKey:
+              type: string
+        resolution:
+          $ref: "#/components/schemas/InboxActionResolution"
     InboxFeed:
       type: object
       title: InboxFeed

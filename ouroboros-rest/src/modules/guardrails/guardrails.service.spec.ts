@@ -34,6 +34,7 @@ function stubRepository(
     protectedPaths?: string[];
     exceptions?: GuardrailExceptionGrant[];
     consumes?: boolean;
+    recorded?: { changeSetSeq: number; paths: string[] } | undefined;
   } = {},
 ) {
   const appended: { policyRef: number | null; verdicts: readonly GuardrailVerdictRow[] }[] = [];
@@ -57,6 +58,13 @@ function stubRepository(
       Promise.resolve(overrides.protectedPaths ?? []),
     ),
     liveExceptions: jest.fn(() => Promise.resolve(overrides.exceptions ?? [])),
+    recordedChangeSet: jest.fn(() =>
+      Promise.resolve(
+        "recorded" in overrides
+          ? overrides.recorded
+          : { changeSetSeq: 3, paths: ["boot/rollback_flag.c"] },
+      ),
+    ),
     consumeException: jest.fn(() => Promise.resolve(overrides.consumes ?? true)),
     appendVerdicts: jest.fn(
       (
@@ -294,6 +302,76 @@ describe("GuardrailService", () => {
   it("exposes the secrets ruleset's disclosure for the card's tooltip", () => {
     expect(new GuardrailService(stubRepository().repository).disclosure()).toBe(
       SECRETS_RULESET_DISCLOSURE,
+    );
+  });
+});
+
+describe("GuardrailService.reevaluatePaths (BN.2, #462)", () => {
+  const writer = recordingDatabase().service.db;
+  const PROTECTED = {
+    protectedPaths: ["boot/**"],
+    ticket: { labels: [], planFiles: ["boot/rollback_flag.c"], effort: "m" },
+  };
+
+  it("answers nothing for a run that is gone or has reported no change-set", async () => {
+    const gone = stubRepository({ policy: undefined });
+    const unreported = stubRepository({ recorded: undefined });
+
+    await expect(
+      new GuardrailService(gone.repository).reevaluatePaths(writer, RUN),
+    ).resolves.toBeUndefined();
+    await expect(
+      new GuardrailService(unreported.repository).reevaluatePaths(writer, RUN),
+    ).resolves.toBeUndefined();
+    expect(unreported.appended).toHaveLength(0);
+  });
+
+  it("re-judges allowed_paths alone, over the recorded change-set, at its number", async () => {
+    const { repository, appended, spy } = stubRepository(PROTECTED);
+
+    const outcome = await new GuardrailService(repository).reevaluatePaths(writer, RUN);
+
+    expect(outcome).toEqual({
+      evaluationId: "evaluation-allowed_paths",
+      verdict: "fail",
+      changeSetSeq: 3,
+      grantsSpent: [],
+    });
+    // One row, never the secrets check: its hunks were never stored, and a not_applicable written
+    // now would hide a real failure behind a later row.
+    expect(appended).toHaveLength(1);
+    expect(appended[0].verdicts.map((row) => [row.check, row.changeSetSeq])).toEqual([
+      ["allowed_paths", 3],
+    ]);
+    expect(spy.recordedChangeSet).toHaveBeenCalledWith(writer, RUN);
+  });
+
+  it("passes with a grant that covers the protected path, and consumes it", async () => {
+    const { repository, spy } = stubRepository({
+      ...PROTECTED,
+      exceptions: [{ id: "grant-1", pathGlob: "boot/rollback_flag.c" }],
+    });
+
+    const outcome = await new GuardrailService(repository).reevaluatePaths(writer, RUN);
+
+    expect(outcome?.verdict).toBe("pass");
+    expect(outcome?.grantsSpent).toEqual(["grant-1"]);
+    expect(spy.consumeException).toHaveBeenCalledWith(
+      writer,
+      "grant-1",
+      "evaluation-allowed_paths",
+    );
+  });
+
+  it("fails rather than keep a pass nothing paid for", async () => {
+    const { repository } = stubRepository({
+      ...PROTECTED,
+      exceptions: [{ id: "grant-1", pathGlob: "boot/rollback_flag.c" }],
+      consumes: false,
+    });
+
+    await expect(new GuardrailService(repository).reevaluatePaths(writer, RUN)).rejects.toThrow(
+      "allow-once grant grant-1 could not be consumed",
     );
   });
 });

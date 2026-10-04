@@ -47,6 +47,28 @@ describe("the guardrails repository", () => {
     expect(await repository.runPolicy(database.service.db, RUN)).toBeUndefined();
   });
 
+  it("reads the recorded change-set — the run's number and its paths in code-unit order (#462)", async () => {
+    database.answers(
+      { rows: [{ change_set_seq: 3 }] },
+      { rows: [{ path: "boot/rollback_flag.c" }, { path: "subsys/ota/rollback.c" }] },
+    );
+
+    expect(await repository.recordedChangeSet(database.service.db, RUN)).toEqual({
+      changeSetSeq: 3,
+      paths: ["boot/rollback_flag.c", "subsys/ota/rollback.c"],
+    });
+    expect(database.statements[0].sql).toContain('from "ouroboros"."runs"');
+    expect(database.statements[1].sql).toContain('from "ouroboros"."run_files"');
+    expect(database.statements[1].sql).toContain('order by path collate "C"');
+    expect(database.statements[1].parameters).toEqual([RUN]);
+  });
+
+  it("answers undefined for a run that has reported nothing", async () => {
+    database.answers({ rows: [{ change_set_seq: 0 }] }, { rows: [] });
+
+    expect(await repository.recordedChangeSet(database.service.db, RUN)).toBeUndefined();
+  });
+
   it("reads the pinned definition inside the run's workspace only", async () => {
     await repository.pinnedDefinition(database.service.db, ORG, "standard-fix", 14);
 

@@ -33522,6 +33522,190 @@ delete from ouroboros.webhook_outbox where organization_id = 'org-v098';
 delete from ouroboros.organization where "id" = 'org-v098';
 
 -- ===========================================================================
+-- V099 — decision action attempts (#462, BN.2)
+-- ===========================================================================
+--
+-- Asked here: a press is recorded running and names its person; one attempt per (item, key), so a
+-- retry never presses twice; at most one running attempt per item, so two answers cannot both reach
+-- a plane; a finished attempt is its receipt or its error and never both, and is history once
+-- finished (only the person may be forgotten); the vocabularies hold; and the out-of-band closure
+-- leaves an item alone while a person's answer to it is running — all under the service role.
+insert into ouroboros.organization ("id", "name", "slug", "createdAt") values
+  ('org-v099', 'Answer Works', 'answer-works-v099', now());
+
+insert into ouroboros."user" ("id", "name", "email", "emailVerified") values
+  ('a9900000-0000-0000-0000-00000000000a', 'Priya Presser', 'priya@answer-works.example', true),
+  ('a9900000-0000-0000-0000-00000000000b', 'Ken Presser',   'ken@answer-works.example',   true);
+
+select ouroboros.decision_item_emit(
+         'org-v099', 'fact_review',
+         '{"reason": "awaiting review", "text": "CAN frames are DMA-backed", "provenance_line": "from PR #514 review cycle"}',
+         '[]', 'facts', 'fact:v099-a:proposed');
+select ouroboros.decision_item_emit(
+         'org-v099', 'fact_review',
+         '{"reason": "awaiting review", "text": "PID gains live in config", "provenance_line": "observed in loop #1847"}',
+         '[]', 'facts', 'fact:v099-b:proposed');
+
+create function pg_temp.v099_item(key text) returns uuid language sql stable as $$
+  select id from ouroboros.decision_items where organization_id = 'org-v099' and source_ref = key
+$$;
+
+set local role ouroboros_app;
+
+insert into ouroboros.decision_action_attempts
+    (organization_id, item_id, action_id, actor_id, channel, idempotency_key)
+  values
+    ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'confirm',
+     'a9900000-0000-0000-0000-00000000000a', 'web', 'press-1');
+
+select pg_temp.must_hold(
+  (select status = 'running' and finished_at is null and outcome is null and error_code is null
+     from ouroboros.decision_action_attempts where idempotency_key = 'press-1'),
+  'a press is recorded running, under the service role');
+
+-- --- first answer wins, and a key presses once ----------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_action_attempts
+        (organization_id, item_id, action_id, actor_id, channel, idempotency_key)
+      values ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'retire',
+              'a9900000-0000-0000-0000-00000000000b', 'email', 'press-2')$$,
+  'a second answer cannot run while the first is running', 'decision_action_attempts_one_running');
+
+-- --- the out-of-band closure waits for the answer in flight ----------------------------------
+select pg_temp.must_hold(
+  not ouroboros.decision_item_source_resolve(pg_temp.v099_item('fact:v099-a:proposed'), 'web',
+                                             '{"source": "fact_resolved"}')
+  and (select status = 'open' from ouroboros.decision_items
+        where id = pg_temp.v099_item('fact:v099-a:proposed')),
+  'a closure leaves an item alone while a person''s answer to it is running');
+
+update ouroboros.decision_action_attempts
+   set status = 'succeeded', outcome = '{"fact_id": "v099-a", "status": "confirmed"}', finished_at = now()
+ where idempotency_key = 'press-1';
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_action_attempts
+        (organization_id, item_id, action_id, actor_id, channel, idempotency_key)
+      values ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'confirm',
+              'a9900000-0000-0000-0000-00000000000a', 'web', 'press-1')$$,
+  'one attempt per item and idempotency key — a retry never presses twice', 'decision_action_attempts_item_key');
+
+select pg_temp.must_hold(
+  ouroboros.decision_item_source_resolve(pg_temp.v099_item('fact:v099-b:proposed'), 'web',
+                                         '{"source": "fact_resolved"}'),
+  'with no answer running, the closure closes as before');
+
+-- --- a finished attempt is history ----------------------------------------------------------
+select pg_temp.must_reject(
+  $$update ouroboros.decision_action_attempts set outcome = '{"merge_sha": "forged"}'
+     where idempotency_key = 'press-1'$$,
+  'a finished attempt''s receipt is never rewritten', 'decision_action_attempts_history');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_action_attempts set action_id = 'retire' where idempotency_key = 'press-1'$$,
+  'what was pressed never changes', 'decision_action_attempts_history');
+
+reset role;
+
+update ouroboros.decision_action_attempts set actor_id = null where idempotency_key = 'press-1';
+
+select pg_temp.must_hold(
+  (select actor_id is null and status = 'succeeded'
+     from ouroboros.decision_action_attempts where idempotency_key = 'press-1'),
+  'and the person may be forgotten: the attempt stays');
+
+-- --- a press names its person, and starts running --------------------------------------------
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_action_attempts
+        (organization_id, item_id, action_id, actor_id, channel, idempotency_key)
+      values ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'confirm', null, 'web', 'press-3')$$,
+  'a press names the person who pressed it', 'decision_action_attempts_actor_named');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_action_attempts
+        (organization_id, item_id, action_id, actor_id, channel, idempotency_key, status, outcome,
+         finished_at)
+      values ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'confirm',
+              'a9900000-0000-0000-0000-00000000000a', 'web', 'press-3', 'succeeded', '{}', now())$$,
+  'a press starts running — nobody files a finished one', 'decision_action_attempts_starts_running');
+
+-- --- the shapes -------------------------------------------------------------------------------
+insert into ouroboros.decision_action_attempts
+    (organization_id, item_id, action_id, actor_id, channel, idempotency_key)
+  values
+    ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'retire',
+     'a9900000-0000-0000-0000-00000000000b', 'slack', 'press-4');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_action_attempts set status = 'succeeded', finished_at = now()
+     where idempotency_key = 'press-4'$$,
+  'a succeeded attempt carries its receipt', 'decision_action_attempts_status_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_action_attempts set status = 'failed', finished_at = now(),
+         error_code = 'forbidden', error_message = 'no', error_status = 200
+     where idempotency_key = 'press-4'$$,
+  'a failure carries an error status', 'decision_action_attempts_status_shape');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_action_attempts set status = 'failed', error_code = 'forbidden',
+         error_message = 'no', error_status = 403, finished_at = started_at - interval '1 second'
+     where idempotency_key = 'press-4'$$,
+  'an attempt finishes after it starts', 'decision_action_attempts_finished_after_started');
+
+update ouroboros.decision_action_attempts
+   set status = 'failed', error_code = 'fact_transition_refused',
+       error_message = 'The fact is no longer proposed.', error_status = 409, finished_at = now()
+ where idempotency_key = 'press-4';
+
+select pg_temp.must_hold(
+  (select status = 'open' from ouroboros.decision_items
+    where id = pg_temp.v099_item('fact:v099-a:proposed')),
+  'a failed attempt leaves its item open');
+
+select pg_temp.must_reject(
+  $$update ouroboros.decision_action_attempts set status = 'running', error_code = null,
+         error_message = null, error_status = null, finished_at = null
+     where idempotency_key = 'press-4'$$,
+  'a failed attempt is not run again', 'decision_action_attempts_history');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_action_attempts
+        (organization_id, item_id, action_id, actor_id, channel, idempotency_key)
+      values ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'confirm',
+              'a9900000-0000-0000-0000-00000000000a', 'fax', 'press-5')$$,
+  'a channel is web, email, github, slack, push or api', 'decision_action_attempts_channel');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_action_attempts
+        (organization_id, item_id, action_id, actor_id, channel, idempotency_key)
+      values ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'Confirm!',
+              'a9900000-0000-0000-0000-00000000000a', 'web', 'press-5')$$,
+  'an action id is a declared action''s shape', 'decision_action_attempts_action_id_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_action_attempts
+        (organization_id, item_id, action_id, actor_id, channel, idempotency_key)
+      values ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'confirm',
+              'a9900000-0000-0000-0000-00000000000a', 'web', ' padded ')$$,
+  'an idempotency key is trimmed and bounded', 'decision_action_attempts_idempotency_key_shape');
+
+select pg_temp.must_reject(
+  $$insert into ouroboros.decision_action_attempts
+        (organization_id, item_id, action_id, actor_id, channel, idempotency_key)
+      values ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'confirm',
+              'a9900000-0000-0000-0000-00000000000a', 'web', 'press-6'),
+             ('org-v099', pg_temp.v099_item('fact:v099-a:proposed'), 'confirm',
+              'a9900000-0000-0000-0000-00000000000a', 'web', 'press-7')$$,
+  'two presses in one statement still cannot both run', 'decision_action_attempts_one_running');
+
+delete from ouroboros.organization where "id" = 'org-v099';
+
+select pg_temp.must_hold(
+  not exists (select 1 from ouroboros.decision_action_attempts where organization_id = 'org-v099'),
+  'a workspace''s attempts go with it');
+
+-- ===========================================================================
 -- AK.5 — the planning invariants AL.3 and AL.4 rely on, named (#276)
 -- ===========================================================================
 --
