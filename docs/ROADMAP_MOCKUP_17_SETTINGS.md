@@ -238,7 +238,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 | Ref | GitHub | Status | Title | Summary | Labels | Parallel | MVP | Complexity | Affected Modules |
 |-----|:------:|:------:|-------|---------|--------|:--------:|:---:|:----------:|------------------|
-| BQ.1 | #480 | 🟡 Open | ouroboros-db: [BQ.1] Versioned org-policy document schema | `org_policies` + immutable versions; the five rules as structured data | mvp, settings, db | N (after WF-P.2, BA-B.3) | Y | M | ouroboros-db |
+| BQ.1 | #480 ✅ | 🟢 Done | ouroboros-db: [BQ.1] Versioned org-policy document schema | `org_policies` + immutable versions; the five rules as structured data | mvp, settings, db | N (after WF-P.2, BA-B.3) | Y | M | ouroboros-db |
 | BQ.2 | #481 | 🟡 Open | ouroboros-rest: [BQ.2] Policy resolution & enforcement wiring | One resolver; AX/AP.3/caps/dry-run consume it (amendments) | mvp, settings, rest, pr, runs | N (after BQ.1, AX.2, AP.3, BA.3) | Y | L | ouroboros-rest |
 | BQ.3 | #482 | 🟡 Open | ouroboros-rest: [BQ.3] Retention policy service | Per-class tiers; the three sweeps + audit consume (S5) | mvp, settings, rest | N (after AO.2/AH.5/AT.5) | Y | M | ouroboros-rest, ouroboros-db |
 | BQ.4 | #483 ✅ | 🟢 Done | ouroboros-rest: [BQ.4] Workspace config & deployment truth | Name/domain edit, region/training truth rendering (S6) | mvp, settings, rest | N (after BA-B.3, AD.5) | Y | S | ouroboros-rest |
@@ -246,7 +246,7 @@ created at filing; every issue assigned. Complexity chips: **XS · S · M · L**
 
 ### Issue BQ.1 — ouroboros-db: [BQ.1] Versioned org-policy document schema
 
-> **GitHub issue:** #480 · **Status:** 🟡 Open · **Parent epic:** #476
+> **GitHub issue:** #480 ✅ · **Status:** 🟢 Done · **Parent epic:** #476
 
 - **Problem Statement:** Five autonomy policies live scattered across
   planes; the card demands one versioned artifact (`policy v7`) with

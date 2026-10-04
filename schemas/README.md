@@ -24,6 +24,11 @@ schemas/
 │       ├── expected.json        # every document below and whether v1.json accepts it
 │       ├── valid/
 │       └── invalid/
+├── org-policy/
+│   ├── v1.json                  # the contract — $id: …/org-policy/v1.json, JSON Schema 2020-12
+│   └── fixtures/
+│       ├── valid/               # mockup 17's policy v7, a custom:* rule, every rule switched off
+│       └── invalid/             # one document per malformation — the directory is the verdict
 ├── plan/
 │   ├── v0.json                  # the contract — $id: …/plan/v0.json, JSON Schema 2020-12
 │   └── fixtures/
@@ -79,6 +84,7 @@ schemas/
 | [`docs/WORKFLOW_DSL.md`](../docs/WORKFLOW_DSL.md) | the specification a person reads | Worked examples taken from these fixtures |
 | [`docs/WORKFLOW_CODE_DSL.md`](../docs/WORKFLOW_CODE_DSL.md) | the code-view language a person reads | Worked examples taken from `fixtures/code/` |
 | [`ouroboros-db/scripts/workflow-dsl-drift.mjs`](../ouroboros-db/scripts/workflow-dsl-drift.mjs) | `ci/db`'s drift check (P.6) — every seeded workflow definition, as stored, validated against `v1.json` with ajv | `ouroboros-db/tests/workflow-dsl-drift.test.sh` (green over the valid fixtures, red over an invalid one and over a tightened copy of the schema) |
+| [`ouroboros-db/scripts/org-policy-schema.mjs`](../ouroboros-db/scripts/org-policy-schema.mjs) | `ci/db`'s org-policy check (BQ.1, [#480](https://github.com/NobuData/ouroboros/issues/480)) — `org-policy/v1.json` against its fixtures, and every stored `org_policy_versions.document` against it; the policy writer, BQ.2 ([#481](https://github.com/NobuData/ouroboros/issues/481)), becomes its second reader | `ouroboros-db/tests/org-policy-schema.test.sh` (the mockup's exact chip terms, every named malformation refused, a `custom:*` rule admitted, integer cents throughout, and red when the schema is tightened or loosened) |
 | [`ouroboros-engine/src/ouroboros_engine/planning/`](../ouroboros-engine/src/ouroboros_engine/planning) | `POST /v0/plan` (AL.1) — the outline parser, which is the contract's first implementation | `tests/test_planning_golden.py` (every recorded case's batch verbatim, every response valid against `plan/v0.json`, and the schema and the pydantic models agreeing field for field) |
 | [`ouroboros-runner/internal/conn/`](../ouroboros-runner/internal/conn) | the Go agent's protocol codec and validator (AG.1) — the runner contract's first implementation | `protocol_test.go` (every case's diagnostics, code and path, in the contract's order; every transcript replayed; every message type and every code covered), `frame_test.go` (the encoder reproduces a committed frame byte for byte) and `limits_test.go` (the Go constants are the schema's published limits, and the two over-limit cases built from them) |
 | [`ouroboros-rest/src/modules/farm/protocol/`](../ouroboros-rest/src/modules/farm/protocol) | the farm gateway's protocol codec (AH.3, [#251](https://github.com/NobuData/ouroboros/issues/251)) — the runner contract's second implementation, a table-for-table port of the Go one | `protocol.spec.ts` (every case's diagnostics, code and path, in the contract's order; every transcript's frames decoded and held to their direction; every fixture named by a case; the TypeScript constants are the schema's published limits, and the two over-limit cases built from them), and `gateway/agent.gateway.integration-spec.ts`, which replays the session transcripts against the running gateway in both directions |
@@ -111,7 +117,7 @@ halves on the pull request that makes it. `ci/db` watches `workflow-dsl/v1.json`
 that file: its drift check validates the seeded workflow definitions against the schema, so a
 schema edit that leaves the seeds behind fails on the pull request that makes it rather than in
 the studio later. `ci/runner` and — since the farm gateway ([#251](https://github.com/NobuData/ouroboros/issues/251))
-made `ouroboros-rest` the contract's second implementation — `ci/rest` watch `runner-protocol/**`. `ci/rest` alone watches `hil-results/**` ([#329](https://github.com/NobuData/ouroboros/issues/329)): the result parser is its only reader until the runner's upload path validates what it sends. `ci/rest` alone watches `triage/**` too ([#332](https://github.com/NobuData/ouroboros/issues/332)): `/v0/triage` is committed before the engine answers it, and `ci/engine` joins when AV.1 ([#343](https://github.com/NobuData/ouroboros/issues/343)) makes it a reader.
+made `ouroboros-rest` the contract's second implementation — `ci/rest` watch `runner-protocol/**`. `ci/rest` alone watches `hil-results/**` ([#329](https://github.com/NobuData/ouroboros/issues/329)): the result parser is its only reader until the runner's upload path validates what it sends. `ci/db` alone watches `org-policy/**` ([#480](https://github.com/NobuData/ouroboros/issues/480)) until BQ.2's writer makes `ouroboros-rest` a reader; the schema references `workflow-dsl/v1.json`'s `effort`, `label` and `path_glob` by `$id` rather than copying them, so the policy card's chips and the studio's trigger chips are one vocabulary. `ci/rest` alone watches `triage/**` too ([#332](https://github.com/NobuData/ouroboros/issues/332)): `/v0/triage` is committed before the engine answers it, and `ci/engine` joins when AV.1 ([#343](https://github.com/NobuData/ouroboros/issues/343)) makes it a reader.
 
 **Those filters name each contract rather than the directory**, and that changed when
 `runner-protocol/` arrived ([#243](https://github.com/NobuData/ouroboros/issues/243)): both

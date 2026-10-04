@@ -1264,6 +1264,22 @@
 > one live token per account. `audit_events.actor_service` names the account a request
 > authenticated as — exclusive with `actor_id`, and inside the append-only trigger's column list.
 >
+> `V092` ([#480](https://github.com/NobuData/ouroboros/issues/480), BQ.1) makes mockup 17's
+> `policy v7` one artifact with a history. V075's `org_policies` becomes the **handle** —
+> `current_version` names the version in force, only ever the newest — and
+> `org_policy_versions` the **immutable** history: `(organization_id, version)` dense per policy,
+> `document` (rule_id → `{enabled, conditions}`), `published_by`, `published_at`, `change_note`.
+> A trigger refuses every `UPDATE` and `DELETE` (only the publisher's set-null and a deleted
+> workspace's cascade pass), and `org_policy_publish(org, document, by, note)` appends and
+> advances the pointer atomically. The CHECKs hold the envelope — the five rule ids or
+> `custom:<slug>`, all five present, `{enabled: boolean, conditions: object}`, spend caps in
+> positive integer cents — and [`schemas/org-policy/v1.json`](../schemas/org-policy/v1.json) the
+> grammar inside `conditions` (the workflow DSL's predicates, #133). `dry_run` became nullable:
+> a handle a publish created holds null, which reads as never answered, so publishing changes
+> nobody's dry-run state. The migration's header is the absorption mapping BQ.2 (#481) wires —
+> dry-run, the refactor-label review rule, protected paths and the provider caps, with the cap
+> precedence (the stricter cap wins).
+>
 > [#509](https://github.com/NobuData/ouroboros/issues/509) (BU.4) seeds the page those three built
 > for, and plants the **corpus** rather than the answers:
 > [`R__dev_seed_workspace_metrics_analyzer.sql`](migrations/R__dev_seed_workspace_metrics_analyzer.sql)
@@ -2506,6 +2522,31 @@ against another copy of the schema, which is how
 a standing assertion rather than a one-off: it tightens a copy and requires the committed
 fixtures that pass the real one to fail against it.
 
+### The org-policy schema check
+
+`org_policy_versions.document` (V092, [#480](https://github.com/NobuData/ouroboros/issues/480))
+has the same problem from the other side: the database holds its envelope, and the grammar
+inside `conditions` is [`schemas/org-policy/v1.json`](../schemas/org-policy/v1.json), which a
+migration cannot read. [`scripts/org-policy-schema.mjs`](scripts/org-policy-schema.mjs) joins
+them in two modes:
+
+```bash
+ouroboros-db/scripts/org-policy-schema.mjs --fixtures       # valid/ pass, invalid/ are refused
+PGPASSWORD=ouroboros psql -h localhost -p 5432 -U ouroboros -d ouroboros_seed \
+  -f ouroboros-db/tests/lib/stored-policy-documents.sql > policies.json
+ouroboros-db/scripts/org-policy-schema.mjs policies.json    # every stored version validates
+```
+
+The fixtures run in the module tooling step through
+[`tests/org-policy-schema.test.sh`](tests/org-policy-schema.test.sh), which also holds the
+mockup's `policy v7` to its exact chip terms, requires each named malformation (unknown rule
+id, unknown predicate, non-integer cents, negative `first_n_loops`) to be refused, admits a
+`custom:*` rule, asserts money is integer cents in the migration, schema and fixtures, and turns
+the schema both tighter and looser to prove the check goes red either way. The stored-versions
+mode runs against the seeded database; it is green over no rows, because policy versions are
+published by people and the seeded `v6`/`v7` arrive with BQ.5
+([#484](https://github.com/NobuData/ouroboros/issues/484)).
+
 ## Continuous integration
 
 [`ci/db`](../.github/workflows/db.yml) is what runs all of the above on a pull request
@@ -2518,7 +2559,8 @@ two things in `ouroboros-rest` that decide what BetterAuth expects — `src/auth
 [#710](https://github.com/NobuData/ouroboros/issues/710) added the two `ouroboros-rest`
 paths, because a version bump touches no file in this directory and is exactly what the drift
 check exists to catch; [#137](https://github.com/NobuData/ouroboros/issues/137) added the
-schema, for the same reason one directory over). It runs in two halves, cheap first — a
+schema, for the same reason one directory over, and
+[#480](https://github.com/NobuData/ouroboros/issues/480) added `schemas/org-policy/**`). It runs in two halves, cheap first — a
 misnamed migration is worth reporting before a database is waited on.
 
 | Step | What it proves | Needs a database |
@@ -2535,6 +2577,7 @@ misnamed migration is worth reporting before a database is waited on.
 | `scripts/betterauth-schema.mjs --check` | The library still expects what the committed snapshot describes | yes (an empty one) |
 | `scripts/migrate --config flyway.seed.toml` ×2 | The seed applies, and applies twice without changing anything | yes (a second one) |
 | `tests/seed.sql` | The demo tenant is there, exactly once, with the ids the documentation publishes | yes (that one) |
+| `scripts/org-policy-schema.mjs` over `tests/lib/stored-policy-documents.sql` | Every stored org-policy version still validates against `schemas/org-policy/v1.json` ([#480](https://github.com/NobuData/ouroboros/issues/480)) | yes (that one) |
 | `tests/planning-invariants.sql` | The planning invariants AL.3 and AL.4 rely on, against the *seeded* database — no stored dependency cycle among them ([#276](https://github.com/NobuData/ouroboros/issues/276)) | no |
 | `tests/verify-planning-invariants.sh` | That those go red on a planted cycle, reversed or half-null month range, duplicate local key, bad push state, tint, status or endpoint, naming the invariant ([#276](https://github.com/NobuData/ouroboros/issues/276)) | yes (rolled back) |
 | `tests/insights-invariants.sql` | The rollup invariants mockup 15 trusts, against the *seeded* history — grain, components, registry, vocabularies, meta shapes ([#436](https://github.com/NobuData/ouroboros/issues/436)) | no |
@@ -2744,7 +2787,8 @@ ouroboros-db/
 │   ├── validate                      # checksums and naming rules
 │   ├── clean-dev                     # drop everything — gated three ways
 │   ├── betterauth-schema.mjs         # what BetterAuth expects, rendered and checked — #710
-│   └── price-catalog.mjs             # the extract → R__model_price_catalog.sql transform — #580
+│   ├── price-catalog.mjs             # the extract → R__model_price_catalog.sql transform — #580
+│   └── org-policy-schema.mjs         # the org-policy schema vs its fixtures and the stored versions — #480
 ├── migrations/
 │   ├── V000__bootstrap.sql           # the schema itself
 │   ├── V001__tenants.sql             # tenants, tenant_domains — #20
@@ -2843,6 +2887,7 @@ ouroboros-db/
 │   ├── V089__calibration_bounded.sql        # analyzer_calibration_contribution(): each measurement's ratio held to [0, 2] before the factor's ratio of sums — #515
 │   ├── V090__workspace_lifecycle.sql        # workspace_lifecycle (active | paused | pending_delete, purge_after), audit_event_outbox, workspace_tombstones — #489
 │   ├── V091__members_service_accounts.sql   # member_capabilities (can_approve_loops), service_accounts (scopes allow-list), service_tokens (hash-only), audit_events.actor_service — #485
+│   ├── V092__org_policy_versions.sql        # org_policies.current_version (the handle; dry_run nullable) + org_policy_versions (immutable, dense) + org_policy_publish — #480
 │   ├── R__dev_seed.sql               # the demo workspaces, dev only — #23, reshaped by #708
 │   ├── R__dev_seed_audit.sql         # the credential trail the Audit log sheet draws, dev only — #225
 │   ├── R__dev_seed_dashboard.sql     # mockup 02 as rows, dev only — #68 (sorts after the above)
@@ -2873,7 +2918,8 @@ ouroboros-db/
     │   ├── analyzer-corpus.sql       # the seeded corpus as the engine's Corpus JSON — #509
     │   ├── rediscover.py             # runs the change-point analyzer over it and compares — #509
     │   ├── dependency-cycles.sql     # the recursive-CTE walk that finds a stored cycle — #276
-    │   └── run-events-jsonl.sql      # the JSONL export's bytes, for mockup 10's transcript — #299
+    │   ├── run-events-jsonl.sql      # the JSONL export's bytes, for mockup 10's transcript — #299
+    │   └── stored-policy-documents.sql # every stored org-policy version, as the schema check's JSON — #480
     ├── rehearsal/
     │   ├── pre.sql                   # a populated V005 database, rebuilt for every run — #708
     │   └── post.sql                  # what V006 must have done to those rows — #708
@@ -2882,6 +2928,7 @@ ouroboros-db/
     ├── seed.test.sh                  # every seed's guard, order, idempotency and determinism — #23, #68
     ├── betterauth-schema.test.sh     # the drift check's contract, without a database — #710
     ├── price-catalog.test.sh         # the price transform, its provenance and --check — #580
+    ├── org-policy-schema.test.sh     # the org-policy schema: mockup terms, malformations, cents, drift — #480
     ├── constraint-probes.test.sh     # the probe verifier's usage and refusals — #69
     ├── verify-constraint-probes.sh   # that constraints.sql goes red when a rule is dropped — #69, #221, #193, #583, #104, #276
     ├── planning-invariants.test.sh   # the planting verifier's usage, and that its pieces agree — #276
@@ -3013,7 +3060,8 @@ outside this module alters it.
 | `facts` | `V071` | Mockup 14's *Learned by the loop* card ([#406](https://github.com/NobuData/ouroboros/issues/406), BE.2, decisions **K3**/**K4**) — `repo_ref`, `text`, `status`, `proposer`, `provenance`, `confirmed_by`, `confirmed_at`, `expired_reason`, `previous_use_count`, `relearned_from_fact_id`, `status_changed_by`, `status_reason` | born `proposed`; `facts_legal_transition` allows only `proposed→confirmed\|rejected`, `confirmed→stale`, `stale→expired\|confirmed`, and `confirmed`/`rejected`/`expired` need `status_changed_by` (`facts_transition_actor`); `proposer` is `manual\|correction_note\|waiver\|steer\|import\|llm`; `provenance` is typed by `fact_provenance_typed` and its run/PR/ticket refs — since `V074` also classification/waiver/steer/run_stage/gate/person — resolve in-workspace (`facts_provenance_resolves`); `confirmed_at` exactly while confirmed/stale/expired; `expired_reason` and `previous_use_count` exactly when expired, and an expired row is frozen (`facts_expired_frozen`); re-learn names an expired fact of the same workspace (`facts_relearn_from_expired`); `ouroboros_app` may not delete |
 | `fact_transitions` | `V071` | Every fact creation and status move ([#406](https://github.com/NobuData/ouroboros/issues/406)) — `from_status`, `to_status`, `actor_id`, `reason`, `at` | written only by the `security definer` `fact_transitions_record()` trigger; append-only (`fact_transitions_no_update`, the actor set-null excepted); `ouroboros_app` may only select |
 | `fact_suppressions` | `V074` | A fact candidate a proposer did not propose ([#412](https://github.com/NobuData/ouroboros/issues/412), BF.3, decision **K5**) — `repo_ref`, `proposer`, `proposer_version`, `text`, `normalized_text`, `matched_fact_id`, `provenance`, `source_key`, `created_at` | `proposer` is `correction_note\|waiver\|steer\|import\|llm` (never `manual`); `matched_fact_id` is a fact of the same workspace in any status (composite FK, cascade); `provenance` typed and resolved as a fact's; one row per `(organization_id, source_key, matched_fact_id)`; append-only (`fact_suppressions_no_update`); `ouroboros_app` may select and insert only |
-| `org_policies` | `V075` | The workspace's **dry-run** policy ([#382](https://github.com/NobuData/ouroboros/issues/382), BA.3, decision **O3**) — `dry_run`, `updated_by`, `created_at`, `updated_at` | one row per organization, as a primary key, which the onboarding default (`on conflict do nothing`) and the flip (`on conflict do update`) both conflict on; **absent while never answered** — read through `org_policies_effective`, which reads that as `false`; `dry_run` is `not null default true`; `updated_by` references `"user"` and sets null rather than cascading |
+| `org_policies` | `V075`, `V092` | The workspace's **dry-run** policy ([#382](https://github.com/NobuData/ouroboros/issues/382), BA.3, decision **O3**) and, since V092, the policy document's **handle** ([#480](https://github.com/NobuData/ouroboros/issues/480)) — `dry_run`, `updated_by`, `created_at`, `updated_at`, `current_version` | one row per organization, as a primary key, which the onboarding default (`on conflict do update … where dry_run is null`) and the flip (`on conflict do update`) both conflict on; **never answered** is no row or `dry_run` null (a handle a publish created) — read through `org_policies_effective`, which reads both as `false`; `dry_run` defaults `true`; `updated_by` references `"user"` and sets null rather than cascading; `current_version` is null until the first publish, then only ever the newest version (`org_policies_current_is_latest`, `org_policies_current_version_fk`) |
+| `org_policy_versions` | `V092` | Every published version of the org-policy document ([#480](https://github.com/NobuData/ouroboros/issues/480), BQ.1) — `version`, `document`, `published_by`, `published_at`, `change_note` | `(organization_id, version)` primary key, dense from 1 (`org_policy_versions_next_version`); **immutable** — `UPDATE`/`DELETE` refused for every role except the publisher's set-null and the workspace's cascade (`org_policy_versions_immutable`); `document` rule ids are the five or `custom:<slug>`, all five present, each `{enabled: boolean, conditions: object}`, spend caps positive integer cents; grammar in [`schemas/org-policy/v1.json`](../schemas/org-policy/v1.json); written through `org_policy_publish` |
 | `metric_definitions` | `V076`, `V078` | The Insights methodology registry ([#432](https://github.com/NobuData/ouroboros/issues/432), BI.1, decision **I1**) — `metric_id`, `family`, `title`, `formula_text`, `source_planes`, `caveats`, `unit`, `is_rate`, `version`, `proxy`, `aggregation` (`sum\|ratio\|median`, #433), `dimension_kind` | ships its first 11 rows in the migration; `unit` is `count\|pct\|duration_ms\|cents\|tokens` and every `pct` is a rate; formula text, caveats and a non-empty `source_planes` are required; a change to `formula_text`, `source_planes`, `unit`, `is_rate` or `proxy` must raise `version`, which never decreases (`metric_definitions_version_guard`); `V086` ([#510](https://github.com/NobuData/ouroboros/issues/510)) adds `build_duration` (its own family, a median per `job_label`, a new dimension kind); `ouroboros_app` may only select |
 | `metric_daily` | `V076`, `V078` | The Insights daily grain ([#432](https://github.com/NobuData/ouroboros/issues/432), [#433](https://github.com/NobuData/ouroboros/issues/433), decision **I2**) — `repo_ref` (null = org-level), `metric_id`, `is_rate`, `dimension` (`''` = none), `day`, `value`, `numerator`, `denominator`, `meta`, `computed_at` | unique nulls not distinct on `(organization_id, repo_ref, metric_id, dimension, day)`; `metric_daily_shape_guard` holds the dimension to the definition's `dimension_kind`, and a median row to ascending `meta.samples` whose median is `value`; `(metric_id, is_rate)` is a foreign key to the registry, and `numerator`/`denominator` are required exactly on rate rows (`metric_daily_rate_components`); `value` ≥ 0; `meta` is an object; BRIN on `day`; cascades with the workspace |
 | `metric_rollup_state` | `V076` | Rollup bookkeeping per (workspace, metric family) ([#432](https://github.com/NobuData/ouroboros/issues/432)) — `last_filled_day`, `backfill_cursor`, `backfill_until`, `last_run_status`, `last_run_at`, `last_error` | cursor and end are set and cleared together and the cursor never passes the end; status is `running\|succeeded\|failed` and stamped; `last_error` only on a failed run; `ouroboros_app` may not delete |
@@ -3145,7 +3193,9 @@ written default from no row, for onboarding and audit lines.
 
 **`org_policies_effective`** (`V075`) is the same shape over `org_policies`: one row per
 organization, `dry_run` coalesced to `false` for a workspace that never answered — the dry-run
-promise is the Get Started wizard's, and its completion is what writes `true` (#382).
+promise is the Get Started wizard's, and its completion is what writes `true` (#382). Since V092
+(#480) a handle row a policy publish created (`dry_run` null) also reads as never answered:
+`is_explicit` is `dry_run is not null`, and its stamps are null.
 
 **`alias_references`** (`V023`) is what references a model alias, across every storage shape
 one can be referenced from — `(organization_id, alias_id, alias, kind, ref_id, ref_label,

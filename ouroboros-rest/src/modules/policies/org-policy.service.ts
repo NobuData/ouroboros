@@ -184,7 +184,7 @@ export class OrgPolicyService implements DryRunPolicyReader {
       subjectId: organizationId,
       at: flip.row.updated_at,
       detail: {
-        dry_run: flip.row.dry_run,
+        dry_run: dryRun,
         previous: flip.previous,
         previous_explicit: flip.previousExplicit,
       },
@@ -192,7 +192,7 @@ export class OrgPolicyService implements DryRunPolicyReader {
 
     return dryRunPolicyResource({
       organization_id: organizationId,
-      dry_run: flip.row.dry_run,
+      dry_run: dryRun,
       is_explicit: true,
       updated_at: flip.row.updated_at,
       updated_by: flip.row.updated_by,

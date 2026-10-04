@@ -4345,7 +4345,7 @@ export interface OrgPoliciesEffectiveView {
   organization_id: string;
   /** Whether dry-run is active — `false` for a workspace that has never answered (no row). */
   dry_run: boolean;
-  /** Whether the workspace has an `org_policies` row. */
+  /** Whether the workspace has answered — an `org_policies` row whose `dry_run` is not null. */
   is_explicit: boolean;
   /** When a policy last changed, or null when nothing ever has. */
   updated_at: Date | null;
@@ -5594,12 +5594,22 @@ export interface ContextInjectionsTable {
 export interface OrgPoliciesTable {
   /** The workspace, and the key the onboarding default and the flip conflict on. */
   organization_id: string;
-  /** The dry-run policy — draft PRs, no merges. Defaults `true`: onboarding completion's answer. */
-  dry_run: Generated<boolean>;
+  /**
+   * The dry-run policy — draft PRs, no merges. Defaults `true`: onboarding completion's answer.
+   * Null (since V092, #480) is "never answered" — a handle row a policy publish created — and
+   * reads as off, exactly like an absent row.
+   */
+  dry_run: Generated<boolean | null>;
   /** Who last changed it, or null for the onboarding default. `on delete set null`. */
   updated_by: string | null;
   created_at: Stamped;
   updated_at: Stamped;
+  /**
+   * Which published `org_policy_versions` row is in force — the card's `policy v7` (V092,
+   * [#480](https://github.com/NobuData/ouroboros/issues/480)). Null until the first publish; moved
+   * only by `ouroboros.org_policy_publish`, only forward.
+   */
+  current_version: number | null;
 }
 
 export interface PlaybooksTable {
@@ -7443,7 +7453,14 @@ export const TABLE_COLUMNS = {
     "updated_by",
     "updated_at",
   ],
-  org_policies: ["organization_id", "dry_run", "updated_by", "created_at", "updated_at"],
+  org_policies: [
+    "organization_id",
+    "dry_run",
+    "updated_by",
+    "created_at",
+    "updated_at",
+    "current_version",
+  ],
   estimate_outcomes: [
     "id",
     "organization_id",

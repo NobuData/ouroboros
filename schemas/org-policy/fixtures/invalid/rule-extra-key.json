@@ -1,0 +1,54 @@
+{
+  "auto_merge": {
+    "enabled": true,
+    "conditions": {
+      "all": [
+        {
+          "effort_lte": "m"
+        },
+        {
+          "not": {
+            "label": "refactor"
+          }
+        }
+      ]
+    }
+  },
+  "human_review": {
+    "enabled": true,
+    "conditions": {
+      "any": [
+        {
+          "label": "refactor"
+        },
+        {
+          "effort_gte": "l"
+        }
+      ]
+    },
+    "note": "why"
+  },
+  "protected_paths": {
+    "enabled": true,
+    "conditions": {
+      "path_globs": [
+        "boot/**",
+        "keys/**",
+        ".github/**"
+      ]
+    }
+  },
+  "spend_guard": {
+    "enabled": true,
+    "conditions": {
+      "per_run_cap_cents": 250,
+      "monthly_cap_cents": 60000
+    }
+  },
+  "dry_run_new_repos": {
+    "enabled": true,
+    "conditions": {
+      "first_n_loops": 10
+    }
+  }
+}

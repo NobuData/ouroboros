@@ -246,6 +246,11 @@ check_route ouroboros-rest/package.json 'db.yml rest.yml'
 # then holds a scripted build of the seeded docs-loop to the published schema.
 check_route schemas/workflow-dsl/v1.json 'db.yml engine.yml rest.yml ui.yml'
 
+# #480 (BQ.1): the org-policy document's schema and fixtures are ci/db's alone until BQ.2 (#481)
+# gives ouroboros-rest a writer that validates against them.
+check_route schemas/org-policy/v1.json 'db.yml'
+check_route schemas/org-policy/fixtures/valid/policy-v7.json 'db.yml'
+
 # The seventh (#509), and the first from the engine into the data tier. ci/db proves the Build
 # Analyzer seed by running the engine's change-point analyzer over the seeded corpus, so the
 # analysis package and the lock that pins numpy and ruptures under it reach ci/db as well as

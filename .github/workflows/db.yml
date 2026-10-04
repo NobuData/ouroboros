@@ -22,6 +22,10 @@ name: ouroboros-db · ci
 # runs on. The file itself rather than `schemas/**`: the check reads `v1.json` and nothing
 # else, and the golden fixtures beside it are ci/rest's and ci/engine's business.
 #
+# `schemas/org-policy/**` is #480's (BQ.1): the org-policy document's schema and its golden
+# fixtures are ci/db's alone — the module tooling step holds the schema to the fixtures, and the
+# seeded-database step holds every stored policy version to the schema.
+#
 # The last two are #509's. The Build Analyzer seed is proven by running the engine's own
 # change-point analyzer over the seeded corpus and requiring it to find what the seed stored, so
 # an edit to that analyzer — or to the numpy and ruptures the lock pins under it — can make the
@@ -39,6 +43,7 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "schemas/org-policy/**"
       - "ouroboros-engine/src/ouroboros_engine/analysis/**"
       - "ouroboros-engine/uv.lock"
   push:
@@ -51,6 +56,7 @@ on:
       - "ouroboros-rest/src/auth/**"
       - "ouroboros-rest/package.json"
       - "schemas/workflow-dsl/v1.json"
+      - "schemas/org-policy/**"
       - "ouroboros-engine/src/ouroboros_engine/analysis/**"
       - "ouroboros-engine/uv.lock"
   workflow_dispatch:
@@ -434,6 +440,23 @@ jobs:
               -v ON_ERROR_STOP=1 -f /tests/lib/seeded-definitions.sql \
               > "$RUNNER_TEMP/seeded-definitions.json"
           ouroboros-db/scripts/workflow-dsl-drift.mjs "$RUNNER_TEMP/seeded-definitions.json"
+
+      # BQ.1 (#480): the org-policy document's half of the same question. The module tooling step
+      # above already holds schemas/org-policy/v1.json to its golden fixtures (valid ones pass,
+      # each named malformation is refused); this holds every policy version stored in the seeded
+      # database to it. A version is immutable, so one the schema refuses can never be fixed in
+      # place — only outlived — which is why it is asked of the rows rather than of a file. Green
+      # over no rows: versions are published by people, and the seeded v6/v7 arrive with BQ.5.
+      - name: Assert every stored policy version validates against the org-policy schema
+        run: |
+          docker run --rm --network=host \
+            --env PGPASSWORD \
+            --volume "$PWD/ouroboros-db/tests:/tests:ro" \
+            "$POSTGRES_IMAGE" \
+            psql -h "$OURO_DB_HOST" -p "$OURO_DB_PORT" -U "$OURO_DB_USER" -d "$SEED_DB_NAME" \
+              -v ON_ERROR_STOP=1 -f /tests/lib/stored-policy-documents.sql \
+              > "$RUNNER_TEMP/stored-policy-documents.json"
+          ouroboros-db/scripts/org-policy-schema.mjs "$RUNNER_TEMP/stored-policy-documents.json"
 
       # AK.5 (#276): the planning invariants AL.3's dependency-ordered push and AL.4's
       # service-side acyclicity rely on, asked of the seeded rows. constraints.sql already runs
