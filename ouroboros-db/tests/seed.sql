@@ -5574,14 +5574,15 @@ select pg_temp.must_hold(
   'and no other workspace has a metric row — the personal one stays the zero state');
 
 -- The registry rows not stored per day: cost per merged PR is computed for a window (V078),
--- calibration is read from estimate_outcomes (#435), and the scoreboard's three columns are
--- computed from the source planes per request (V082, #439).
+-- calibration is read from estimate_outcomes (#435), the scoreboard's three columns are
+-- computed from the source planes per request (V082, #439), and the decision metrics are read
+-- from decision_metrics_weekly (V095, #458).
 select pg_temp.must_hold(
   (select array_agg(metric_id order by metric_id)
-            = '{cost_per_merged_pr,estimate_band_bias,estimate_within_band_rate,estimate_within_band_rate_by_effort,scoreboard_cost_per_success,scoreboard_merged,scoreboard_trend}'
+            = '{cost_per_merged_pr,decision_answer_latency,decision_answer_latency_by_kind,decision_auto_accept_share,decision_loop_wait_max,decisions_resolved,estimate_band_bias,estimate_within_band_rate,estimate_within_band_rate_by_effort,scoreboard_cost_per_success,scoreboard_merged,scoreboard_trend}'
      from ouroboros.metric_definitions def
     where not exists (select 1 from ouroboros.metric_daily d where d.metric_id = def.metric_id)),
-  'every registered metric has rows except the seven computed per window, from estimate_outcomes or per request');
+  'every registered metric has rows except the twelve computed per window, from estimate_outcomes or per request');
 
 -- --- components seeded, values computed ----------------------------------------------------------
 --

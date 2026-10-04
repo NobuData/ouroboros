@@ -601,6 +601,38 @@
 #                                                drop decision_items_open_idx
 #                                                drop decision_items_refs_idx
 #
+# #458 (BM.2, V095) adds resolutions, run blocks, snooze and the weekly decision metrics. One probe
+# per rule the stat card and the resolved list rest on:
+#
+#   V095 rule                                    mutation
+#   ------------------------------------------   ------------------------------------------
+#   a resolver class names exactly its resolver  drop decision_resolutions_resolver_class
+#   a human answer names its person              drop decision_resolutions_human_named
+#   the action answers the kind, note iff taken  drop decision_resolutions_action_answers
+#   a policy answers only auto-resolvable kinds  drop decision_resolutions_policy_may_answer
+#   only an asking item is answered             drop decision_resolutions_item_open
+#   one answer per item (the race's backstop)    drop decision_resolutions_pkey
+#   the channel vocabulary                       drop decision_resolutions_channel
+#   a resolution is history                      drop decision_resolutions_immutable
+#   answering resolves the item                  drop decision_resolutions_close_item
+#   resolved exactly when answered (at commit)   rewrite decision_items_resolution_agrees() to pass
+#   a wait ends at the answer                    rewrite decision_loop_wait() without least()
+#   a wait is null, never zero                   rewrite decision_loop_wait() to coalesce to zero
+#   a late block refreshes the wait              drop run_blocks_refresh_loop_wait
+#   a block is about a run the item names        drop run_blocks_item_names_run
+#   a block is closed once, never moved          drop run_blocks_close_once
+#   snoozed exactly when snoozed_until is set    drop decision_items_snooze_complete
+#   waking keeps the item's age                  rewrite decision_items_wake() to reset created_at
+#   Snooze all is one scoped event               drop decision_snooze_events_scope_shape
+#   the oracle: medians, not means               rewrite decision_metrics_weekly_by_kind with avg()
+#   weeks are UTC weeks                          rewrite decision_metrics_weekly in the session zone
+#   the resolved list and wake sweep indexes     drop decision_resolutions_organization_resolved_idx
+#                                                drop decision_items_snoozed_idx
+#
+# Several of the rewrites are caught by a guard beneath the assertion they aim at — a zero wait by
+# `decision_resolutions_loop_wait_positive`, a reset age by V093's `decision_items_pinned` — so each
+# marker is the message of whichever names the rule first.
+#
 # #409 (BE.5) seeds mockup 14 and adds a probe per `ci/db` scope bullet the BE.1–BE.3 rows above
 # leave unwatched — each one a *subtler* loss than dropping the rule outright:
 #
@@ -2561,6 +2593,149 @@ expect_red 'a notification route may use any channel' \
 expect_red 'a notification route config may be any shape' \
   'a route time is HH:MM' \
   'alter table ouroboros.notification_routes drop constraint notification_routes_config_shape;'
+
+expect_red 'a policy resolution may name no policy' \
+  'a policy resolution with no policy ref' \
+  'alter table ouroboros.decision_resolutions drop constraint decision_resolutions_resolver_class;'
+
+expect_red 'a human resolution may name nobody' \
+  'a human resolution with no user' \
+  'drop trigger decision_resolutions_human_named on ouroboros.decision_resolutions;'
+
+expect_red 'any action may answer an item' \
+  'a link does not answer an item' \
+  'drop trigger decision_resolutions_action_answers on ouroboros.decision_resolutions;'
+
+expect_red 'a policy may answer any kind' \
+  'a policy cannot answer a kind that is not auto-resolvable' \
+  'drop trigger decision_resolutions_policy_may_answer on ouroboros.decision_resolutions;'
+
+expect_red 'an answered item may be answered again' \
+  'an answered item is not asking any more' \
+  'drop trigger decision_resolutions_item_open on ouroboros.decision_resolutions;'
+
+expect_red 'an item may have two resolutions' \
+  'the first one wins' \
+  'alter table ouroboros.decision_resolutions drop constraint decision_resolutions_pkey;'
+
+expect_red 'a resolution channel may be anything' \
+  'a channel is web, email' \
+  'alter table ouroboros.decision_resolutions drop constraint decision_resolutions_channel;'
+
+expect_red 'a resolution may be rewritten' \
+  'cannot be rewritten' \
+  'drop trigger decision_resolutions_immutable on ouroboros.decision_resolutions;'
+
+expect_red 'answering may leave the item open' \
+  'a person.s answer is a resolution row' \
+  'drop trigger decision_resolutions_close_item on ouroboros.decision_resolutions;'
+
+expect_red 'an item may be resolved silently' \
+  'marked resolved without a resolution' \
+  'create or replace function ouroboros.decision_items_resolution_agrees() returns trigger language plpgsql as $m$ begin return null; end; $m$;'
+
+expect_red 'a loop wait may run past the answer' \
+  'waited until the answer, not until it moved' \
+  'create or replace function ouroboros.decision_loop_wait(p_item_id uuid, p_resolved_at timestamptz)
+returns interval
+language sql stable strict parallel safe
+as $$
+  select max(coalesce(b.unblocked_at, p_resolved_at) - b.blocked_at)
+    from ouroboros.run_blocks b
+   where b.decision_item_id = p_item_id
+     and b.blocked_at < p_resolved_at
+$$;'
+
+expect_red 'no wait may read as zero' \
+  'decision_resolutions_loop_wait_positive' \
+  'create or replace function ouroboros.decision_loop_wait(p_item_id uuid, p_resolved_at timestamptz)
+returns interval
+language sql stable strict parallel safe
+as $$
+  select coalesce(max(least(coalesce(b.unblocked_at, p_resolved_at), p_resolved_at) - b.blocked_at), interval '"'"'0 seconds'"'"')
+    from ouroboros.run_blocks b
+   where b.decision_item_id = p_item_id
+     and b.blocked_at < p_resolved_at
+$$;'
+
+expect_red 'a block recorded late may leave the wait stale' \
+  'a block the run plane records after the answer' \
+  'drop trigger run_blocks_refresh_loop_wait on ouroboros.run_blocks;'
+
+expect_red 'a run may be blocked on an item about another' \
+  'only on an item that is about it' \
+  'drop trigger run_blocks_item_names_run on ouroboros.run_blocks;'
+
+expect_red 'a measured block may be moved' \
+  'a block is closed once' \
+  'drop trigger run_blocks_close_once on ouroboros.run_blocks;'
+
+expect_red 'a snoozed item may have no expiry' \
+  'a snoozed item says until when' \
+  'alter table ouroboros.decision_items drop constraint decision_items_snooze_complete;'
+
+expect_red 'waking may reset an item.s age' \
+  'decision_items_pinned|original created_at' \
+  'create or replace function ouroboros.decision_items_wake(p_organization_id text, p_at timestamptz default now())
+returns integer
+language plpgsql
+as $$
+declare
+  woken integer;
+begin
+  update ouroboros.decision_items
+     set status = '"'"'open'"'"', created_at = p_at, snoozed_until = null, snoozed_by = null, snooze_reason = null
+   where organization_id = p_organization_id
+     and status = '"'"'snoozed'"'"'
+     and snoozed_until <= p_at;
+
+  get diagnostics woken = row_count;
+  return woken;
+end;
+$$;'
+
+expect_red 'a Snooze all event may be any shape' \
+  'an all event names no single item' \
+  'alter table ouroboros.decision_snooze_events drop constraint decision_snooze_events_scope_shape;'
+
+expect_red 'the weekly median may be a mean' \
+  'hand-computed oracle' \
+  'create or replace view ouroboros.decision_metrics_weekly_by_kind with (security_invoker = true) as select r.organization_id, (date_trunc('"'"'week'"'"', r.resolved_at at time zone '"'"'UTC'"'"'))::date as week, i.kind_id, count(*)::integer as decisions, avg(r.answer_latency) as median_answer_latency from ouroboros.decision_resolutions r join ouroboros.decision_items i on i.id = r.item_id group by 1, 2, 3;'
+
+expect_red 'decision weeks may follow the session zone' \
+  'hand-computed oracle' \
+  'create or replace view ouroboros.decision_metrics_weekly
+  with (security_invoker = true) as
+with weekly as (
+  select r.organization_id,
+         (date_trunc('"'"'week'"'"', r.resolved_at))::date          as week,
+         count(*)::integer                                                       as decisions,
+         percentile_cont(0.5) within group (order by r.answer_latency)          as median_answer_latency,
+         max(r.loop_wait)                                                        as max_loop_wait,
+         (count(*) filter (where r.resolver = '"'"'policy'"'"'))::integer                as policy_resolutions
+    from ouroboros.decision_resolutions r
+   group by r.organization_id, (date_trunc('"'"'week'"'"', r.resolved_at))::date
+)
+select w.organization_id,
+       w.week,
+       w.decisions,
+       w.median_answer_latency,
+       w.max_loop_wait,
+       w.policy_resolutions,
+       round(w.policy_resolutions::numeric / w.decisions, 4)                    as auto_accept_share,
+       (select jsonb_object_agg(k.kind_id, extract(epoch from k.median_answer_latency)
+                                order by k.kind_id)
+          from ouroboros.decision_metrics_weekly_by_kind k
+         where k.organization_id = w.organization_id and k.week = w.week)       as per_kind_median_answer_seconds
+  from weekly w;;'
+
+expect_red 'the resolved list has no index' \
+  'did not use index decision_resolutions_organization_resolved_idx' \
+  'drop index ouroboros.decision_resolutions_organization_resolved_idx;'
+
+expect_red 'the snooze wake sweep has no index' \
+  'did not use index decision_items_snoozed_idx' \
+  'drop index ouroboros.decision_items_snoozed_idx;'
 
 printf '\n'
 if check_summary; then
